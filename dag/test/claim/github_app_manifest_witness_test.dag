@@ -1,0 +1,925 @@
+module test.claim.github_app_manifest_witness
+
+import std.types { NonEmptyStr, String, Bool, List, Map, Secret }
+import std.upsert_decision {
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  Noop,
+  Apply,
+  Refuse,
+}
+import gunbc.ensure { EnsureObserveOnly, EnsureMayApply }
+import extdeps.uri { Uri, Https }
+
+import extdeps.github.github { GitHubUser, Organization }
+import extdeps.transports.rest {
+  RestOk,
+  RestStatusRefused,
+  RestTransportRefused,
+  RestBodyUndecodable,
+}
+import extdeps.github.app {
+  GitHubAppId,
+  GitHubAppInstallationId,
+  GitHubAppPermission,
+  AppAccessRead,
+  AppAccessWrite,
+  ContentsAxis,
+  AdministrationAxis,
+  ObservedGitHubPermission,
+  ObservedGitHubPermissionName,
+  GitHubAppManifest,
+  AppPublic,
+  AppPrivateToOwner,
+  app_visibility_wire_bool,
+  GitHubWebhookEvent,
+  InstallationEvent,
+  InstallationRepositoriesEvent,
+  PushEvent,
+  webhook_event_wire_name,
+  webhook_event_from_wire,
+  permission_access_wire_name,
+  permission_access_from_wire,
+  ObservedPermissionsDecoded,
+  ObservedPermissionAccessUnreadable,
+  ObservedPermissionKeyUnanswered,
+  observed_permissions_from_wire_map,
+  ManifestAdmitted,
+  ManifestDuplicatePermission,
+  ManifestDuplicateEvent,
+  ManifestFieldUnrenderable,
+  admit_app_manifest,
+  AppManifestRendered,
+  AppManifestNotRenderable,
+  render_app_manifest,
+  RegistrationUrlBuilt,
+  RegistrationUrlStateUnencodable,
+  app_manifest_registration_url,
+  RegisterUnderAuthenticatedUser,
+  RegisterUnderOrganization,
+  GitHubAppManifestCode,
+  GitHubAppManifestConversion,
+  GitHubAppPublicRecord,
+  GitHubAppInstallationRecord,
+  InstallationDecoded,
+  InstallationSelectionUnreadable,
+  InstallationPermissionsUnreadable,
+  InstallationSlugEmpty,
+  InstallationHtmlUrlUnreadable,
+  installation_from_record,
+  SelectionAll,
+  SelectionSelected,
+  repository_selection_wire_name,
+  GitHubInstallationTokenRequest,
+  RepositoryNarrowingOmitted,
+  SelectedRepositoryNames,
+  PermissionNarrowingOmitted,
+  SelectedPermissions,
+  installation_token_request_body,
+  installation_token_request_url,
+  IssuanceRead,
+  IssuanceSlugEmpty,
+  IssuanceClientIdEmpty,
+  GitHubAppCredentialIssuance,
+  CredentialIssuedOnce,
+}
+import gunbc.github_app_acquisition {
+  GitHubAppAcquisitionRecord,
+  AppNeverAcquired,
+  AppAcquired,
+  census_app_manifest,
+  census_app_permissions,
+  census_app_default_events,
+  census_app_name,
+  AppRecordObserved,
+  AppRecordAbsent,
+  AppRecordUnreadable,
+  AppNotYetAddressable,
+  observe_census_app,
+  classify_census_app,
+  AppAgreesWithManifest,
+  AppPermissionDrift,
+  AppEventDrift,
+  AppPermissionsUnreadable,
+  AppIdentityDrift,
+  PermissionsAgree,
+  PermissionAxisMissing,
+  PermissionAxisWeaker,
+  permission_agreement,
+  EventsAgree,
+  EventNotSubscribed,
+  event_agreement,
+  ExchangeIssued,
+  ExchangeCodeNotLive,
+  ExchangeRefused,
+  ExchangeOutcomeUnknown,
+  ExchangeReplyIncomplete,
+  classify_census_app_exchange,
+  ReadbackConverged,
+  ReadbackDisagrees,
+  ReadbackUnavailable,
+  census_app_readback,
+  ReadAddressedAt,
+  ReadNotAddressable,
+  census_app_read_address,
+  RegistrationInstructionReady,
+  RegistrationInstructionUnavailable,
+  census_app_registration_instruction,
+}
+import gunbc.instruments.github_app_acquire {
+  HandoffValueRead,
+  HandoffValueMissing,
+  ManifestCodeAdmitted,
+  ManifestCodeStateMismatch,
+  ManifestCodeUnavailable,
+  admit_manifest_code,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUPPLIED VALUES BELOW ARE BOUNDARY INPUTS, NOT DERIVED ONES, AND THE PAIRED INHABITANCE CLAIM
+// FOR THE REAL PATH IS AN EXECUTING ENTRY POINT RATHER THAN A CLAIM HERE:
+// gunbc.instruments.github_app_acquire public_app_record_wire_receipt performs a live GET
+// /apps/{app_slug} against a real public App and a live 404 against a slug no App holds, so both the
+// 200-decodes-into-GitHubAppPublicRecord arm and the 404-reaches-AppRecordAbsent arm are established
+// by execution against GitHub rather than by a record this file authored. That receipt is not
+// enrolled in the hermetic floor because it reaches the network; deleting the GetApp operation makes
+// it fail, which is the control this note names.
+data probe_owner: GitHubUser = GitHubUser { login: "gunb-ai", id: 1, type: Organization }
+
+data declared_permission_wire_map: Map<String, String> = {
+  "metadata": "read",
+  "contents": "read",
+  "issues": "read",
+  "pull_requests": "read",
+  "checks": "read",
+  "actions": "read",
+  "workflows": "read",
+}
+
+data declared_event_wire_list: List<String> = ["installation", "installation_repositories"]
+
+data census_slug: NonEmptyStr = "gunbc-global-census"
+
+fn public_record(
+  slug: String,
+  permissions: Map<String, String>,
+  events: List<String>,
+) -> GitHubAppPublicRecord {
+  GitHubAppPublicRecord {
+    id: 4242,
+    slug: slug,
+    node_id: "MDM6QXBwNDI0Mg==",
+    name: census_app_name as String,
+    html_url: "https://github.com/apps/gunbc-global-census",
+    permissions: permissions,
+    events: events,
+  }
+}
+
+data agreeing_record: GitHubAppPublicRecord = public_record(
+  slug: "gunbc-global-census",
+  permissions: declared_permission_wire_map,
+  events: declared_event_wire_list,
+)
+
+data acquired_record: GitHubAppAcquisitionRecord = AppAcquired {
+  app_id: GitHubAppId { value: 4242 },
+  slug: census_slug,
+}
+
+// ----- the manifest renders the declared shape -----
+
+test fn w_manifest_renders_every_declared_permission_at_its_wire_name() -> Bool {
+  match render_app_manifest(m: census_app_manifest) {
+    AppManifestNotRenderable { admission: _ } => false
+    AppManifestRendered { document: d } =>
+      string_contains(s: d, pattern: "\"default_permissions\":{")
+        && string_contains(s: d, pattern: "\"metadata\":\"read\"")
+        && string_contains(s: d, pattern: "\"pull_requests\":\"read\"")
+        && string_contains(s: d, pattern: "\"workflows\":\"read\"")
+        && !string_contains(s: d, pattern: "\"administration\"")
+        && !string_contains(s: d, pattern: "\"write\"")
+  }
+}
+
+test fn w_manifest_renders_hook_events_visibility_and_redirect() -> Bool {
+  match render_app_manifest(m: census_app_manifest) {
+    AppManifestNotRenderable { admission: _ } => false
+    AppManifestRendered { document: d } =>
+      string_contains(s: d, pattern: "\"name\":\"gunbc-global-census\"")
+        && string_contains(s: d, pattern: "\"hook_attributes\":{\"url\":\"https://github.com/gunb-ai/gunbc/blob/main/DESIGN.md\",\"active\":false}")
+        && string_contains(s: d, pattern: "\"default_events\":[\"installation\",\"installation_repositories\"]")
+        && string_contains(s: d, pattern: "\"public\":true")
+        && string_contains(s: d, pattern: "\"redirect_url\":\"https://gunb.ai/github-app-manifest-return\"")
+        && !string_contains(s: d, pattern: "\"setup_url\"")
+  }
+}
+
+fn manifest_with_permissions(perms: List<GitHubAppPermission>) -> GitHubAppManifest {
+  GitHubAppManifest {
+    name: census_app_manifest.name,
+    url: census_app_manifest.url,
+    hook_attributes: census_app_manifest.hook_attributes,
+    redirect_url: census_app_manifest.redirect_url,
+    callback_urls: census_app_manifest.callback_urls,
+    setup_url: census_app_manifest.setup_url,
+    description: census_app_manifest.description,
+    public: census_app_manifest.public,
+    default_events: census_app_manifest.default_events,
+    request_oauth_on_install: census_app_manifest.request_oauth_on_install,
+    setup_on_update: census_app_manifest.setup_on_update,
+    default_permissions: perms,
+  }
+}
+
+fn manifest_with_events(events: List<GitHubWebhookEvent>) -> GitHubAppManifest {
+  GitHubAppManifest {
+    name: census_app_manifest.name,
+    url: census_app_manifest.url,
+    hook_attributes: census_app_manifest.hook_attributes,
+    redirect_url: census_app_manifest.redirect_url,
+    callback_urls: census_app_manifest.callback_urls,
+    setup_url: census_app_manifest.setup_url,
+    description: census_app_manifest.description,
+    public: census_app_manifest.public,
+    default_events: events,
+    request_oauth_on_install: census_app_manifest.request_oauth_on_install,
+    setup_on_update: census_app_manifest.setup_on_update,
+    default_permissions: census_app_manifest.default_permissions,
+  }
+}
+
+fn manifest_with_name(name: NonEmptyStr) -> GitHubAppManifest {
+  GitHubAppManifest {
+    name: name,
+    url: census_app_manifest.url,
+    hook_attributes: census_app_manifest.hook_attributes,
+    redirect_url: census_app_manifest.redirect_url,
+    callback_urls: census_app_manifest.callback_urls,
+    setup_url: census_app_manifest.setup_url,
+    description: census_app_manifest.description,
+    public: census_app_manifest.public,
+    default_events: census_app_manifest.default_events,
+    request_oauth_on_install: census_app_manifest.request_oauth_on_install,
+    setup_on_update: census_app_manifest.setup_on_update,
+    default_permissions: census_app_manifest.default_permissions,
+  }
+}
+
+test fn w_manifest_refuses_a_duplicated_permission_axis() -> Bool {
+  match admit_app_manifest(m: manifest_with_permissions(perms: [
+    GitHubAppPermission { name: ContentsAxis, access: AppAccessRead },
+    GitHubAppPermission { name: ContentsAxis, access: AppAccessWrite },
+  ])) {
+    ManifestDuplicatePermission { axis: a } => a == ContentsAxis
+    ManifestAdmitted { manifest: _ } => false
+    ManifestDuplicateEvent { event: _ } => false
+    ManifestFieldUnrenderable { field: _, value: _ } => false
+  }
+}
+
+test fn w_manifest_refuses_a_duplicated_event() -> Bool {
+  match admit_app_manifest(m: manifest_with_events(events: [InstallationEvent, PushEvent, InstallationEvent])) {
+    ManifestDuplicateEvent { event: e } => e == InstallationEvent
+    ManifestAdmitted { manifest: _ } => false
+    ManifestDuplicatePermission { axis: _ } => false
+    ManifestFieldUnrenderable { field: _, value: _ } => false
+  }
+}
+
+// A NAME CARRYING A QUOTE WOULD RENDER A DIFFERENT MANIFEST THAN THE ONE DECLARED. This is the red
+// that makes manifest_text_is_renderable a wall rather than decoration: without it the document below
+// would carry an injected default_permissions object and GitHub would create the App it described.
+test fn w_manifest_refuses_an_unrenderable_name_rather_than_escaping_it() -> Bool {
+  match render_app_manifest(m: manifest_with_name(name: "evil\",\"public\":true,\"x\":\"" as NonEmptyStr)) {
+    AppManifestRendered { document: _ } => false
+    AppManifestNotRenderable { admission: a } =>
+      match a {
+        ManifestFieldUnrenderable { field: f, value: _ } => (f as String) == "name"
+        ManifestAdmitted { manifest: _ } => false
+        ManifestDuplicatePermission { axis: _ } => false
+        ManifestDuplicateEvent { event: _ } => false
+      }
+  }
+}
+
+fn manifest_with_redirect(uri: Uri?) -> GitHubAppManifest {
+  GitHubAppManifest {
+    name: census_app_manifest.name,
+    url: census_app_manifest.url,
+    hook_attributes: census_app_manifest.hook_attributes,
+    redirect_url: uri,
+    callback_urls: census_app_manifest.callback_urls,
+    setup_url: census_app_manifest.setup_url,
+    description: census_app_manifest.description,
+    public: census_app_manifest.public,
+    default_events: census_app_manifest.default_events,
+    request_oauth_on_install: census_app_manifest.request_oauth_on_install,
+    setup_on_update: census_app_manifest.setup_on_update,
+    default_permissions: census_app_manifest.default_permissions,
+  }
+}
+
+// AN OPTIONAL FIELD IS STILL A RENDERED FIELD. redirect_url and setup_url are Optional and are
+// written into the document when present, so the renderability admission has to reach them; an
+// earlier cut checked only the required URLs and this claim is the red that fixed it.
+test fn w_an_unrenderable_optional_url_is_refused_too() -> Bool {
+  match render_app_manifest(m: manifest_with_redirect(
+    uri: Present { value: Uri { scheme: Https, locator: "gunb.ai/x\",\"public\":true" as NonEmptyStr } },
+  )) {
+    AppManifestRendered { document: _ } => false
+    AppManifestNotRenderable { admission: a } =>
+      match a {
+        ManifestFieldUnrenderable { field: f, value: _ } => (f as String) == "redirect_url"
+        ManifestAdmitted { manifest: _ } => false
+        ManifestDuplicatePermission { axis: _ } => false
+        ManifestDuplicateEvent { event: _ } => false
+      }
+  }
+}
+
+// ----- the registration URL -----
+
+test fn w_registration_url_targets_the_organization_and_carries_the_state() -> Bool {
+  match app_manifest_registration_url(
+    target: RegisterUnderOrganization { organization: "gunb-ai" as NonEmptyStr },
+    state: "abc 123" as NonEmptyStr,
+  ) {
+    RegistrationUrlStateUnencodable { cause: _ } => false
+    RegistrationUrlBuilt { url: u } =>
+      u == "https://github.com/organizations/gunb-ai/settings/apps/new?state=abc%20123"
+  }
+}
+
+test fn w_registration_url_for_a_user_is_a_different_path() -> Bool {
+  match app_manifest_registration_url(target: RegisterUnderAuthenticatedUser, state: "s1" as NonEmptyStr) {
+    RegistrationUrlStateUnencodable { cause: _ } => false
+    RegistrationUrlBuilt { url: u } => u == "https://github.com/settings/apps/new?state=s1"
+  }
+}
+
+test fn w_registration_instruction_carries_the_url_and_the_manifest() -> Bool {
+  match census_app_registration_instruction(state: "nonce-1" as NonEmptyStr) {
+    RegistrationInstructionUnavailable { reason: _ } => false
+    RegistrationInstructionReady { intervention: i } =>
+      string_contains(s: i.instruction as String, pattern: "?state=nonce-1")
+        && string_contains(s: i.instruction as String, pattern: "\"default_permissions\":{")
+        && ((i.subject as String) == (census_app_name as String))
+  }
+}
+
+// ----- the permission wire vocabulary -----
+
+test fn w_permission_access_round_trips_and_refuses_a_foreign_access() -> Bool {
+  match permission_access_from_wire(name: permission_access_wire_name(access: AppAccessWrite) as String) {
+    Absent => false
+    Present { value: v } =>
+      (v == AppAccessWrite)
+        && match permission_access_from_wire(name: "admin") { Absent => true  Present { value: _ } => false }
+  }
+}
+
+test fn w_permission_map_decode_refuses_an_unreadable_access() -> Bool {
+  match observed_permissions_from_wire_map(m: { "contents": "read", "administration": "admin" }) {
+    ObservedPermissionAccessUnreadable { wire_name: n, access: a } =>
+      ((n as String) == "administration") && (a == "admin")
+    ObservedPermissionsDecoded { permissions: _ } => false
+    ObservedPermissionKeyUnanswered { wire_name: _ } => false
+  }
+}
+
+test fn w_permission_map_decode_reads_every_declared_axis() -> Bool {
+  match observed_permissions_from_wire_map(m: declared_permission_wire_map) {
+    ObservedPermissionsDecoded { permissions: ps } =>
+      (count(ps) == 7)
+        && match permission_agreement(declared: census_app_permissions, observed: ps) {
+          PermissionsAgree => true
+          PermissionAxisMissing { axis: _ } => false
+          PermissionAxisWeaker { axis: _, declared: _, observed: _ } => false
+        }
+    ObservedPermissionAccessUnreadable { wire_name: _, access: _ } => false
+    ObservedPermissionKeyUnanswered { wire_name: _ } => false
+  }
+}
+
+test fn w_permission_agreement_is_directional() -> Bool {
+  let extra_is_not_drift = match permission_agreement(
+    declared: [GitHubAppPermission { name: ContentsAxis, access: AppAccessRead }],
+    observed: [
+      ObservedGitHubPermission { name: ObservedGitHubPermissionName { wire_name: "contents" }, access: AppAccessWrite },
+      ObservedGitHubPermission { name: ObservedGitHubPermissionName { wire_name: "issues" }, access: AppAccessRead },
+    ],
+  ) {
+    PermissionsAgree => true
+    PermissionAxisMissing { axis: _ } => false
+    PermissionAxisWeaker { axis: _, declared: _, observed: _ } => false
+  }
+  let weaker_is_drift = match permission_agreement(
+    declared: [GitHubAppPermission { name: ContentsAxis, access: AppAccessWrite }],
+    observed: [ObservedGitHubPermission { name: ObservedGitHubPermissionName { wire_name: "contents" }, access: AppAccessRead }],
+  ) {
+    PermissionAxisWeaker { axis: a, declared: d, observed: o } =>
+      (a == ContentsAxis) && (d == AppAccessWrite) && (o == AppAccessRead)
+    PermissionsAgree => false
+    PermissionAxisMissing { axis: _ } => false
+  }
+  let missing_is_drift = match permission_agreement(
+    declared: [GitHubAppPermission { name: AdministrationAxis, access: AppAccessRead }],
+    observed: [],
+  ) {
+    PermissionAxisMissing { axis: a } => a == AdministrationAxis
+    PermissionsAgree => false
+    PermissionAxisWeaker { axis: _, declared: _, observed: _ } => false
+  }
+  extra_is_not_drift && weaker_is_drift && missing_is_drift
+}
+
+test fn w_webhook_event_round_trips_and_refuses_an_unmodeled_event() -> Bool {
+  match webhook_event_from_wire(name: webhook_event_wire_name(event: InstallationRepositoriesEvent) as String) {
+    Absent => false
+    Present { value: v } =>
+      (v == InstallationRepositoriesEvent)
+        && match webhook_event_from_wire(name: "package") { Absent => true  Present { value: _ } => false }
+  }
+}
+
+test fn w_event_agreement_flags_a_missing_subscription() -> Bool {
+  match event_agreement(declared: census_app_default_events, observed: ["installation"]) {
+    EventNotSubscribed { event: e } => e == InstallationRepositoriesEvent
+    EventsAgree => false
+  }
+}
+
+test fn w_visibility_folds_to_the_wire_bool_in_both_directions() -> Bool {
+  app_visibility_wire_bool(v: AppPublic) && !app_visibility_wire_bool(v: AppPrivateToOwner)
+}
+
+// ----- the converge decision, and the duplicate-mint guard it exists for -----
+
+test fn w_acquired_and_agreeing_is_noop_which_is_the_adoption() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: acquired_record,
+    observation: AppRecordObserved { record: agreeing_record },
+    code: Present { value: "a-live-code" as GitHubAppManifestCode },
+  )
+  match classified.decision {
+    Noop => classified.verdict == Converged
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// THE CLAIM THIS WHOLE LANE EXISTS FOR. A recorded App plus a public read that does not find it is a
+// Conflict, never an Absent that authorizes a registration: minting there creates a SECOND App whose
+// private key is different and whose name collides with the first. Flipping this arm to the
+// not-acquired path is the defect, and this claim goes red on it.
+test fn w_acquired_but_absent_refuses_rather_than_minting_a_second_app() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: acquired_record,
+    observation: AppRecordAbsent,
+    code: Present { value: "a-live-code" as GitHubAppManifestCode },
+  )
+  match classified.decision {
+    Refuse { reason: r } =>
+      (classified.verdict == Conflict)
+        && string_contains(s: r as String, pattern: "would mint a SECOND App")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+test fn w_never_acquired_but_a_public_app_answers_is_a_conflict() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: AppNeverAcquired,
+    observation: AppRecordObserved { record: agreeing_record },
+    code: Present { value: "a-live-code" as GitHubAppManifestCode },
+  )
+  match classified.decision {
+    Refuse { reason: _ } => classified.verdict == Conflict
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+test fn w_never_acquired_with_a_code_applies_and_carries_the_custody_sites() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: AppNeverAcquired,
+    observation: AppNotYetAddressable,
+    code: Present { value: "a-live-code" as GitHubAppManifestCode },
+  )
+  match classified.decision {
+    Apply { plan: p } =>
+      (classified.verdict == Absent)
+        && ((p.code as String) == "a-live-code")
+        && ((p.custody.pem.secret as String) == "github-app-gunbc-global-census-pem")
+        && ((p.custody.webhook_secret.secret as String) == "github-app-gunbc-global-census-webhook-secret")
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+test fn w_never_acquired_without_a_code_refuses_and_names_the_human_step() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: AppNeverAcquired,
+    observation: AppNotYetAddressable,
+    code: none,
+  )
+  match classified.decision {
+    Refuse { reason: r } =>
+      (classified.verdict == Absent)
+        && string_contains(s: r as String, pattern: "app_registration_intervention")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+test fn w_observe_only_never_applies() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureObserveOnly,
+    record: AppNeverAcquired,
+    observation: AppNotYetAddressable,
+    code: Present { value: "a-live-code" as GitHubAppManifestCode },
+  )
+  match classified.decision {
+    Refuse { reason: _ } => true
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// DRIFT ON A LIVE APP REFUSES, IT DOES NOT APPLY. The manifest flow creates Apps and cannot edit one,
+// so an Apply here would register a second App under a name already taken.
+test fn w_permission_drift_on_a_live_app_refuses_and_says_why() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: acquired_record,
+    observation: AppRecordObserved {
+      record: public_record(
+        slug: "gunbc-global-census",
+        permissions: { "metadata": "read", "contents": "read", "issues": "read", "pull_requests": "read", "checks": "read", "actions": "read" },
+        events: declared_event_wire_list,
+      )
+    },
+    code: Present { value: "a-live-code" as GitHubAppManifestCode },
+  )
+  match classified.decision {
+    Refuse { reason: r } =>
+      (classified.verdict == Drifted)
+        && string_contains(s: r as String, pattern: "does not hold declared permission workflows")
+        && string_contains(s: r as String, pattern: "cannot edit one")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+test fn w_event_drift_on_a_live_app_refuses() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: acquired_record,
+    observation: AppRecordObserved {
+      record: public_record(
+        slug: "gunbc-global-census",
+        permissions: declared_permission_wire_map,
+        events: ["installation"],
+      )
+    },
+    code: none,
+  )
+  match classified.decision {
+    Refuse { reason: r } =>
+      (classified.verdict == Drifted)
+        && string_contains(s: r as String, pattern: "installation_repositories")
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+test fn w_an_unreadable_public_read_is_inaccessible_not_absent() -> Bool {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: acquired_record,
+    observation: AppRecordUnreadable { reason: "network" as NonEmptyStr },
+    code: Present { value: "a-live-code" as GitHubAppManifestCode },
+  )
+  match classified.decision {
+    Refuse { reason: _ } => classified.verdict == Inaccessible
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+// ----- the observation fold over a real transport outcome -----
+
+test fn w_a_404_becomes_absent_and_a_401_becomes_unreadable() -> Bool {
+  let absent = match observe_census_app(
+    record: agreeing_record,
+    outcome: RestStatusRefused { status: 404, body: "{\"message\":\"Not Found\"}" },
+  ) {
+    AppRecordAbsent => true
+    AppRecordObserved { record: _ } => false
+    AppRecordUnreadable { reason: _ } => false
+    AppNotYetAddressable => false
+  }
+  let unreadable = match observe_census_app(
+    record: agreeing_record,
+    outcome: RestStatusRefused { status: 401, body: "{\"message\":\"Bad credentials\"}" },
+  ) {
+    AppRecordUnreadable { reason: r } => string_contains(s: r as String, pattern: "401")
+    AppRecordAbsent => false
+    AppRecordObserved { record: _ } => false
+    AppNotYetAddressable => false
+  }
+  let reached = match observe_census_app(record: agreeing_record, outcome: RestTransportRefused { cause: "dns" as NonEmptyStr }) {
+    AppRecordUnreadable { reason: _ } => true
+    AppRecordAbsent => false
+    AppRecordObserved { record: _ } => false
+    AppNotYetAddressable => false
+  }
+  absent && unreadable && reached
+}
+
+test fn w_read_address_is_absent_before_the_first_acquisition() -> Bool {
+  let before = match census_app_read_address(record: AppNeverAcquired) {
+    ReadNotAddressable => true
+    ReadAddressedAt { slug: _ } => false
+  }
+  let after = match census_app_read_address(record: acquired_record) {
+    ReadAddressedAt { slug: s } => (s as String) == "gunbc-global-census"
+    ReadNotAddressable => false
+  }
+  before && after
+}
+
+// ----- the exchange, and credential custody -----
+
+fn conversion(slug: String, client_id: String) -> GitHubAppManifestConversion {
+  GitHubAppManifestConversion {
+    id: 4242,
+    slug: slug,
+    node_id: "MDM6QXBwNDI0Mg==",
+    name: census_app_name as String,
+    owner: probe_owner,
+    html_url: "https://github.com/apps/gunbc-global-census",
+    permissions: declared_permission_wire_map,
+    events: declared_event_wire_list,
+    installations_count: none,
+    client_id: client_id,
+    client_secret: "cs" as Secret,
+    webhook_secret: Present { value: "ws" as Secret },
+    pem: "-----BEGIN RSA PRIVATE KEY-----" as Secret,
+  }
+}
+
+data issued_conversion: GitHubAppManifestConversion = conversion(slug: "gunbc-global-census", client_id: "Iv1.deadbeef")
+
+test fn w_a_404_on_the_conversion_is_a_spent_code_not_a_missing_app() -> Bool {
+  match classify_census_app_exchange(
+    conversion: issued_conversion,
+    outcome: RestStatusRefused { status: 404, body: "{\"message\":\"Not Found\"}" },
+  ) {
+    ExchangeCodeNotLive { body: b } => string_contains(s: b, pattern: "Not Found")
+    ExchangeIssued { issuance: _ } => false
+    ExchangeRefused { reason: _ } => false
+    ExchangeOutcomeUnknown { detail: _ } => false
+    ExchangeReplyIncomplete { issuance: _ } => false
+  }
+}
+
+// THE CUSTODY-CRITICAL ARM, AND IT IS A MUTATION FACT RATHER THAN A CHOICE THIS MODULE MADE. A POST
+// whose response never arrived is folded by classify_rest_outcome into RestExchangeCommitAmbiguous,
+// because the write may have landed; the App may exist and its only private key was in the reply
+// nobody read. So the outcome is unknown rather than failed, and the detail names the read that must
+// happen before any retry. A classifier that reported this as a plain failure would send the operator
+// back to the registration form and lose an App.
+test fn w_an_unreached_conversion_is_commit_ambiguous_and_warns_about_the_key() -> Bool {
+  match classify_census_app_exchange(
+    conversion: issued_conversion,
+    outcome: RestTransportRefused { cause: "connection reset" as NonEmptyStr },
+  ) {
+    ExchangeOutcomeUnknown { detail: d } =>
+      string_contains(s: d as String, pattern: "may or may not have landed")
+        && string_contains(s: d as String, pattern: "READ THE ACCOUNT'S GitHub Apps SETTINGS BEFORE RETRYING")
+        && string_contains(s: d as String, pattern: "connection reset")
+    ExchangeIssued { issuance: _ } => false
+    ExchangeCodeNotLive { body: _ } => false
+    ExchangeRefused { reason: _ } => false
+    ExchangeReplyIncomplete { issuance: _ } => false
+  }
+}
+
+test fn w_an_undecodable_conversion_body_warns_that_the_key_was_in_it() -> Bool {
+  match classify_census_app_exchange(
+    conversion: issued_conversion,
+    outcome: RestBodyUndecodable { status: 201, cause: "unexpected field" as NonEmptyStr },
+  ) {
+    ExchangeOutcomeUnknown { detail: d } =>
+      string_contains(s: d as String, pattern: "no endpoint will return it again")
+        && string_contains(s: d as String, pattern: "unexpected field")
+    ExchangeIssued { issuance: _ } => false
+    ExchangeCodeNotLive { body: _ } => false
+    ExchangeRefused { reason: _ } => false
+    ExchangeReplyIncomplete { issuance: _ } => false
+  }
+}
+
+test fn w_a_201_with_no_slug_is_incomplete_rather_than_issued() -> Bool {
+  match classify_census_app_exchange(conversion: conversion(slug: "", client_id: "Iv1.x"), outcome: RestOk) {
+    ExchangeReplyIncomplete { issuance: i } =>
+      match i {
+        IssuanceSlugEmpty => true
+        IssuanceRead { issuance: _ } => false
+        IssuanceClientIdEmpty => false
+      }
+    ExchangeIssued { issuance: _ } => false
+    ExchangeCodeNotLive { body: _ } => false
+    ExchangeRefused { reason: _ } => false
+    ExchangeOutcomeUnknown { detail: _ } => false
+  }
+}
+
+test fn w_a_201_issues_the_credential_once_with_its_app_id_and_slug() -> Bool {
+  match classify_census_app_exchange(conversion: issued_conversion, outcome: RestOk) {
+    ExchangeIssued { issuance: i } =>
+      match i {
+        CredentialIssuedOnce { app_id: id, slug: s, pem: _, webhook_secret: ws, client_id: cid, client_secret: _ } =>
+          (id.value == 4242)
+            && ((s as String) == "gunbc-global-census")
+            && ((cid as String) == "Iv1.deadbeef")
+            && match ws { Present { value: _ } => true  Absent => false }
+      }
+    ExchangeCodeNotLive { body: _ } => false
+    ExchangeRefused { reason: _ } => false
+    ExchangeOutcomeUnknown { detail: _ } => false
+    ExchangeReplyIncomplete { issuance: _ } => false
+  }
+}
+
+// ----- the independent readback -----
+
+data probe_issuance: GitHubAppCredentialIssuance = CredentialIssuedOnce {
+  app_id: GitHubAppId { value: 4242 },
+  slug: census_slug,
+  pem: "-----BEGIN RSA PRIVATE KEY-----" as Secret,
+  webhook_secret: Present { value: "ws" as Secret },
+  client_id: "Iv1.deadbeef" as NonEmptyStr,
+  client_secret: "cs" as Secret,
+}
+
+// A SUCCESSFUL EXCHANGE DOES NOT MINT CONVERGENCE. The issuance below is the actuator's own report
+// that it created the App; the independent read does not find it, and the readback refuses. Removing
+// the readback and returning the issuance would make this claim green on a lie.
+test fn w_a_successful_exchange_does_not_converge_without_the_readback() -> Bool {
+  match census_app_readback(issuance: probe_issuance, observation: AppRecordAbsent) {
+    ReadbackUnavailable { reason: r } =>
+      string_contains(s: r as String, pattern: "not evidence that it landed")
+    ReadbackConverged { record: _ } => false
+    ReadbackDisagrees { agreement: _ } => false
+  }
+}
+
+test fn w_a_readback_that_agrees_converges_onto_the_acquisition_record() -> Bool {
+  match census_app_readback(issuance: probe_issuance, observation: AppRecordObserved { record: agreeing_record }) {
+    ReadbackConverged { record: r } =>
+      match r {
+        AppAcquired { app_id: id, slug: s } => (id.value == 4242) && ((s as String) == "gunbc-global-census")
+        AppNeverAcquired => false
+      }
+    ReadbackDisagrees { agreement: _ } => false
+    ReadbackUnavailable { reason: _ } => false
+  }
+}
+
+test fn w_a_readback_at_a_different_slug_disagrees() -> Bool {
+  match census_app_readback(
+    issuance: probe_issuance,
+    observation: AppRecordObserved {
+      record: public_record(slug: "someone-elses-app", permissions: declared_permission_wire_map, events: declared_event_wire_list)
+    },
+  ) {
+    ReadbackDisagrees { agreement: a } =>
+      match a {
+        AppIdentityDrift { expected_slug: e, observed_slug: o } =>
+          ((e as String) == "gunbc-global-census") && (o == "someone-elses-app")
+        AppAgreesWithManifest => false
+        AppPermissionDrift { agreement: _ } => false
+        AppEventDrift { agreement: _ } => false
+        AppPermissionsUnreadable { decode: _ } => false
+      }
+    ReadbackConverged { record: _ } => false
+    ReadbackUnavailable { reason: _ } => false
+  }
+}
+
+// ----- the state binding on the human handoff -----
+
+test fn w_a_code_returned_with_a_foreign_state_is_refused_not_spent() -> Bool {
+  match admit_manifest_code(
+    issued: HandoffValueRead { value: "issued-nonce" as NonEmptyStr },
+    observed: HandoffValueRead { value: "someone-elses-nonce" as NonEmptyStr },
+    code: HandoffValueRead { value: "a-live-code" as NonEmptyStr },
+  ) {
+    ManifestCodeStateMismatch { issued: i, observed: o } =>
+      ((i as String) == "issued-nonce") && ((o as String) == "someone-elses-nonce")
+    ManifestCodeAdmitted { code: _ } => false
+    ManifestCodeUnavailable { reason: _ } => false
+  }
+}
+
+test fn w_a_code_returned_with_the_issued_state_is_admitted() -> Bool {
+  match admit_manifest_code(
+    issued: HandoffValueRead { value: "issued-nonce" as NonEmptyStr },
+    observed: HandoffValueRead { value: "issued-nonce" as NonEmptyStr },
+    code: HandoffValueRead { value: "a-live-code" as NonEmptyStr },
+  ) {
+    ManifestCodeAdmitted { code: c } => (c as String) == "a-live-code"
+    ManifestCodeStateMismatch { issued: _, observed: _ } => false
+    ManifestCodeUnavailable { reason: _ } => false
+  }
+}
+
+test fn w_a_missing_handoff_file_is_unavailable_rather_than_a_match() -> Bool {
+  match admit_manifest_code(
+    issued: HandoffValueRead { value: "issued-nonce" as NonEmptyStr },
+    observed: HandoffValueMissing { path: ".gunbc/observed", cause: "No such file" },
+    code: HandoffValueRead { value: "a-live-code" as NonEmptyStr },
+  ) {
+    ManifestCodeUnavailable { reason: r } => string_contains(s: r, pattern: ".gunbc/observed")
+    ManifestCodeAdmitted { code: _ } => false
+    ManifestCodeStateMismatch { issued: _, observed: _ } => false
+  }
+}
+
+// ----- the installation and budget path -----
+
+fn installation_record(selection: String, permissions: Map<String, String>) -> GitHubAppInstallationRecord {
+  GitHubAppInstallationRecord {
+    id: 77,
+    app_id: 4242,
+    app_slug: "gunbc-global-census",
+    html_url: "https://github.com/settings/installations/77",
+    account: probe_owner,
+    repository_selection: selection,
+    permissions: permissions,
+    events: declared_event_wire_list,
+  }
+}
+
+test fn w_installation_decode_reads_selection_permissions_and_url() -> Bool {
+  match installation_from_record(record: installation_record(selection: "selected", permissions: declared_permission_wire_map)) {
+    InstallationDecoded { installation: i } =>
+      (i.installation_id.value == 77)
+        && (i.app_id.value == 4242)
+        && (i.repository_selection == SelectionSelected)
+        && (count(i.permissions) == 7)
+        && ((i.html_url.locator as String) == "github.com/settings/installations/77")
+    InstallationSelectionUnreadable { raw: _ } => false
+    InstallationPermissionsUnreadable { decode: _ } => false
+    InstallationSlugEmpty => false
+    InstallationHtmlUrlUnreadable { raw: _ } => false
+  }
+}
+
+// A REPOSITORY SELECTION WE CANNOT READ MUST NOT BECOME SelectionAll: that arm would report the App's
+// budget as covering every repository in the account when it may cover one.
+test fn w_an_unreadable_repository_selection_refuses_rather_than_widening() -> Bool {
+  match installation_from_record(record: installation_record(selection: "some-new-mode", permissions: declared_permission_wire_map)) {
+    InstallationSelectionUnreadable { raw: r } => r == "some-new-mode"
+    InstallationDecoded { installation: _ } => false
+    InstallationPermissionsUnreadable { decode: _ } => false
+    InstallationSlugEmpty => false
+    InstallationHtmlUrlUnreadable { raw: _ } => false
+  }
+}
+
+test fn w_repository_selection_wire_names_are_the_documented_two() -> Bool {
+  ((repository_selection_wire_name(mode: SelectionAll) as String) == "all")
+    && ((repository_selection_wire_name(mode: SelectionSelected) as String) == "selected")
+}
+
+test fn w_installation_token_request_renders_its_narrowings_and_names_its_endpoint() -> Bool {
+  let narrowed = GitHubInstallationTokenRequest {
+    installation_id: GitHubAppInstallationId { value: 77 },
+    repositories: SelectedRepositoryNames { names: ["gunbc" as NonEmptyStr] },
+    permissions: SelectedPermissions { permissions: [GitHubAppPermission { name: ContentsAxis, access: AppAccessRead }] },
+  }
+  let omitted = GitHubInstallationTokenRequest {
+    installation_id: GitHubAppInstallationId { value: 77 },
+    repositories: RepositoryNarrowingOmitted,
+    permissions: PermissionNarrowingOmitted,
+  }
+  (installation_token_request_body(request: narrowed)
+     == "{\"repositories\":[\"gunbc\"],\"permissions\":{\"contents\":\"read\"}}")
+    && (installation_token_request_body(request: omitted) == "{}")
+    && (installation_token_request_url(request: omitted)
+          == "https://api.github.com/app/installations/77/access_tokens")
+}

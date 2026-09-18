@@ -22,6 +22,7 @@ import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows 
 import extdeps.github.workflow_runs {
   conclusion_authority_consolidation_frontier_rows,
 }
+import extdeps.github.app { modeled_webhook_event_vocabulary_frontier_rows }
 import extdeps.github.workflows { create_dispatch_unconsumed_frontier_rows }
 import gunbc.public_workload_census {
   public_workload_census_replay_consumer_frontier_rows,
@@ -57,6 +58,7 @@ import product.data_category { data_category_frontier_rows }
 
 import product.fabric.job_admission { job_admission_frontier_rows }
 import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
+import gunbc.instruments.github_app_acquire { census_app_installation_route_frontier_rows }
 
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
@@ -78,6 +80,8 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     merge_state_graphql_transport_frontier_rows,
     conclusion_authority_consolidation_frontier_rows,
     create_dispatch_unconsumed_frontier_rows,
+    modeled_webhook_event_vocabulary_frontier_rows,
+    census_app_installation_route_frontier_rows,
     public_workload_census_replay_consumer_frontier_rows,
     public_workload_census_run_attempt_consumer_frontier_rows,
     public_workload_census_declared_runner_frontier_rows,

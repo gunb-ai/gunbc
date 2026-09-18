@@ -1,0 +1,745 @@
+module gunbc.github_app_acquisition
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.human_intervention {
+  HumanIntervention,
+  HumanInterventionIdentity,
+  FleetOnce,
+  NoDischargeSiteModeled,
+}
+import std.upsert_decision {
+  UpsertClassification,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UnknownRefused,
+  Noop,
+  Apply,
+  Refuse,
+}
+import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
+import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.uri { Uri, uri_https }
+import extdeps.github.app {
+  GitHubAppId,
+  GitHubAppPermission,
+  GitHubAppPermissionAccess,
+  AppAccessRead,
+  GitHubPermissionAxis,
+  ActionsAxis,
+  ContentsAxis,
+  IssuesAxis,
+  MetadataAxis,
+  PullRequestsAxis,
+  ChecksAxis,
+  WorkflowsAxis,
+  ObservedGitHubPermission,
+  observed_access_for,
+  permission_access_at_least,
+  permission_axis_wire_name,
+  permission_access_wire_name,
+  GitHubAppManifest,
+  GitHubAppHookAttributes,
+  AppPublic,
+  GitHubWebhookEvent,
+  InstallationEvent,
+  InstallationRepositoriesEvent,
+  webhook_event_wire_name,
+  webhook_event_from_wire,
+  GitHubAppRegistrationTarget,
+  RegisterUnderOrganization,
+  RegistrationUrlBuilt,
+  RegistrationUrlStateUnencodable,
+  app_manifest_registration_url,
+  AppManifestRendered,
+  AppManifestNotRenderable,
+  render_app_manifest,
+  GitHubAppManifestCode,
+  GitHubAppManifestState,
+  GitHubAppManifestConversion,
+  GitHubAppCredentialIssuance,
+  CredentialIssuedOnce,
+  ConversionIssuance,
+  IssuanceRead,
+  IssuanceSlugEmpty,
+  IssuanceClientIdEmpty,
+  conversion_issuance,
+  GitHubAppPublicRecord,
+  ObservedPermissionMapDecode,
+  ObservedPermissionsDecoded,
+  ObservedPermissionAccessUnreadable,
+  ObservedPermissionKeyUnanswered,
+  observed_permissions_from_wire_map,
+}
+import extdeps.transports.rest {
+  RestOutcome,
+  RestReadExchange,
+  RestMutationExchange,
+  RestExchangePerformance,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeCommitAmbiguous,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  classify_rest_outcome,
+}
+
+// WHAT THIS MODULE IS FOR. Creating a GitHub App by hand is a form with a name, a URL, a webhook
+// block and twenty-two permission toggles, and the operator has done it repeatedly because nothing
+// declared its shape. The shape is declared once below, rendered to the manifest document GitHub's
+// registration flow accepts, and the App that comes back is read INDEPENDENTLY through the public
+// app record rather than believed from the exchange's own reply.
+//
+// WHY THIS IS THE AUTOMATABLE HALF AND WHERE IT STOPS. The code-for-credentials exchange
+// authenticates with the temporary code alone and needs no JWT, so it runs in-process. Everything
+// downstream of the stored private key - listing installations, minting an installation access token -
+// requires an RS256-signed App JWT, and nothing in this corpus can sign RS256. That is not a gap this
+// module papers over with a plausible-looking arm: extdeps.github.app declares github.AppInstallations
+// with auth_source EnvVar so an external step supplies the JWT at the transport, and the token request
+// is modeled to its wire with no operation, because an operation that cannot execute would be a route
+// cited for a red it cannot produce (DESIGN 4b).
+
+// THE APP'S SHAPE, DECLARED ONCE. Each permission is here because a specific census read needs it,
+// and the set is what makes an installation worth having: an installation multiplies this fleet's
+// GitHub API budget, and it grants exactly these axes and no more.
+data census_app_permissions: List<GitHubAppPermission> = [
+  GitHubAppPermission { name: MetadataAxis, access: AppAccessRead },
+  GitHubAppPermission { name: ContentsAxis, access: AppAccessRead },
+  GitHubAppPermission { name: IssuesAxis, access: AppAccessRead },
+  GitHubAppPermission { name: PullRequestsAxis, access: AppAccessRead },
+  GitHubAppPermission { name: ChecksAxis, access: AppAccessRead },
+  GitHubAppPermission { name: ActionsAxis, access: AppAccessRead },
+  GitHubAppPermission { name: WorkflowsAxis, access: AppAccessRead }
+]
+
+// THE EVENTS THAT ARE WORTH RECEIVING ARE THE ONES THAT CHANGE THE BUDGET. An installation appearing
+// or its repository selection changing is the only thing about this App that we do not learn by
+// polling, so those two are the subscription and nothing else is. hook_attributes.active is false
+// because no receiver exists yet: the manifest schema REQUIRES a hook URL, so the switch is what
+// carries "nothing listens here" honestly rather than an omitted field.
+data census_app_default_events: List<GitHubWebhookEvent> = [
+  InstallationEvent,
+  InstallationRepositoriesEvent
+]
+
+// THE NAME IS THE IDENTITY, AND IT IS A CONSTANT. GitHub App names are unique across GitHub, so a
+// second registration under this name is refused upstream - which is the only reason a duplicate
+// mint is structurally bounded rather than merely unlikely. Nothing in this module derives the name
+// from a clock, a run id, or a nonce: a name carrying a nonce would make every re-run's registration
+// SUCCEED, and the fleet would accumulate one App per run with the pem of each lost on the next.
+// The per-run varying value in this flow is the state nonce, and it binds a redirect to a request;
+// it never reaches the name.
+data census_app_name: NonEmptyStr = "gunbc-global-census"
+
+data census_app_homepage: Uri = uri_https(locator: "github.com/gunb-ai/gunbc")
+
+// A WEBHOOK URL WITH NO RECEIVER IS STILL A DECLARED URL. It points at the repository rather than at
+// a fabricated endpoint, so a delivery attempt fails visibly against a real host instead of resolving
+// to something we do not own. Paired with active: false, nothing is delivered at all.
+data census_app_hook_url: Uri = uri_https(locator: "github.com/gunb-ai/gunbc/blob/main/DESIGN.md")
+
+// REDIRECT_URL IS DECLARED AND HAS NO SERVER BEHIND IT, AND THAT IS STATED RATHER THAN IMPLIED.
+// Without a redirect_url GitHub sends the owner to the new App's settings page and the temporary code
+// is never shown, so the field is effectively required for a flow a human can complete by hand.
+// Declaring one this fleet owns and does not serve means the browser lands on a page that does not
+// answer while the address bar carries ?code= and &state= - which is exactly what the operator copies
+// into the two handoff files. A URL we do not own would hand a bearer credential to a third party in
+// their referer and access logs; that is the reason this is gunb.ai rather than a convenient paste bin.
+data census_app_redirect_url: Uri = uri_https(locator: "gunb.ai/github-app-manifest-return")
+
+data census_app_registration_target: GitHubAppRegistrationTarget = RegisterUnderOrganization { organization: "gunb-ai" }
+
+data census_app_manifest: GitHubAppManifest = GitHubAppManifest {
+  name: census_app_name,
+  url: census_app_homepage,
+  hook_attributes: GitHubAppHookAttributes { url: census_app_hook_url, active: false },
+  redirect_url: Present { value: census_app_redirect_url },
+  callback_urls: [],
+  setup_url: none,
+  description: "Reads public repository metadata for the gunbc global GitHub census. Installations multiply this fleet's API budget; the App holds read-only axes and no write access.",
+  public: AppPublic,
+  default_events: census_app_default_events,
+  request_oauth_on_install: false,
+  setup_on_update: false,
+  default_permissions: census_app_permissions,
+}
+
+// WHERE THE PRIVATE KEY LIVES, NAMED BEFORE THE EXCHANGE THAT PRODUCES IT. The exchange returns the
+// pem ONCE and no endpoint re-reads it; an App whose pem is lost cannot be authenticated as, cannot
+// mint installation tokens, and cannot be re-created under the same name because the name is taken.
+// So the custody site is a declared fact of this module rather than a decision the actuator makes at
+// the moment it is holding the only copy. version is "latest" because the secret does not exist yet:
+// the FIRST AddVersion mints version 1, and a converge that named a version here would be asserting a
+// resource it has not created. hash_state is HashPending for the same reason.
+data census_app_private_key_custody: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "github-app-gunbc-global-census-pem" as NonEmptyStr,
+  version: "latest" as NonEmptyStr,
+  hash_state: HashPending,
+}
+
+data census_app_webhook_secret_custody: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "github-app-gunbc-global-census-webhook-secret" as NonEmptyStr,
+  version: "latest" as NonEmptyStr,
+  hash_state: HashPending,
+}
+
+data census_app_client_secret_custody: SecretRef = SecretRef {
+  project: fleet_secrets_gcp_project,
+  secret: "github-app-gunbc-global-census-client-secret" as NonEmptyStr,
+  version: "latest" as NonEmptyStr,
+  hash_state: HashPending,
+}
+
+type GitHubAppCustody {
+  pem: SecretRef
+  webhook_secret: SecretRef
+  client_secret: SecretRef
+}
+
+fn census_app_custody() -> GitHubAppCustody {
+  GitHubAppCustody {
+    pem: census_app_private_key_custody,
+    webhook_secret: census_app_webhook_secret_custody,
+    client_secret: census_app_client_secret_custody,
+  }
+}
+
+// THE SLUG IS NOT DERIVABLE FROM THE NAME AND THIS MODULE DOES NOT PRETEND IT IS. GitHub publishes
+// no rule for the name-to-slug transformation, so inventing one would make the public readback address
+// an App we guessed at - and a 404 from a wrong guess is indistinguishable from a 404 for an App that
+// does not exist, which is exactly the confusion that authorizes a duplicate mint. The slug is a fact
+// the conversion RETURNS, so before the first acquisition there is nothing to read and the honest
+// state says so. After it, the operator records the returned slug here, the same way
+// gunbc.review_sheet_operator records a spreadsheet id: the identifier is a declared fact, not a
+// caller string.
+type GitHubAppAcquisitionRecord
+  = AppNeverAcquired
+  | AppAcquired { app_id: GitHubAppId, slug: NonEmptyStr }
+
+data census_app_acquisition_record: GitHubAppAcquisitionRecord = AppNeverAcquired
+
+// THE HUMAN STEP EXISTS AND THE MODEL SAYS SO. GitHub requires the account or organization OWNER to
+// submit the manifest form; there is no API that creates an App, and no credential this fleet could
+// hold that would substitute for that consent. It is FleetOnce rather than EveryProvision because one
+// App serves every installation the census acquires - which is the whole economic point of this lane,
+// and is the fact a per-run cost would misprice.
+fn app_registration_intervention(url: String, manifest_document: String) -> HumanIntervention {
+  HumanIntervention {
+    identity: join(["github-app-register-", census_app_name as String], "") as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: census_app_name,
+    instruction: join(
+      [
+        "Open ",
+        url,
+        " while signed in as an owner of the target account, paste the manifest below into the form's manifest field, and submit. GitHub redirects to a URL carrying ?code=; hand that code to the conversion step within one hour, after which it expires. Then record the returned app id and slug in census_app_acquisition_record. MANIFEST: ",
+        manifest_document,
+      ],
+      "",
+    ) as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+type AppRegistrationInstruction
+  = RegistrationInstructionReady { intervention: HumanIntervention }
+  | RegistrationInstructionUnavailable { reason: NonEmptyStr }
+
+fn census_app_registration_instruction(state: GitHubAppManifestState) -> AppRegistrationInstruction {
+  match render_app_manifest(m: census_app_manifest) {
+    AppManifestNotRenderable { admission: _ } =>
+      RegistrationInstructionUnavailable {
+        reason: "declared census App manifest is not renderable; admit_app_manifest refused it" as NonEmptyStr
+      }
+    AppManifestRendered { document: document } =>
+      match app_manifest_registration_url(
+        target: census_app_registration_target,
+        state: state as NonEmptyStr,
+      ) {
+        RegistrationUrlStateUnencodable { cause: _ } =>
+          RegistrationInstructionUnavailable {
+            reason: "registration state nonce is not percent-encodable" as NonEmptyStr
+          }
+        RegistrationUrlBuilt { url: url } =>
+          RegistrationInstructionReady {
+            intervention: app_registration_intervention(url: url, manifest_document: document)
+          }
+      }
+  }
+}
+
+// THE OBSERVATION IS THE PUBLIC APP RECORD, READ WITH THE ORDINARY FLEET PAT. It is independent of
+// the exchange in the sense DESIGN 3d requires: a different credential, a different endpoint, and a
+// record GitHub renders from its own state rather than the reply the mutation handed back. It is
+// NOT the App JWT path - that would make every observation depend on the capability this lane cannot
+// realize, and would report "no App" whenever the external minting step was stale.
+type CensusAppObservation
+  = AppRecordObserved { record: GitHubAppPublicRecord }
+  | AppRecordAbsent
+  | AppRecordUnreadable { reason: NonEmptyStr }
+  | AppNotYetAddressable
+
+fn app_observation_from_exchange(
+  performance: RestExchangePerformance,
+  record: GitHubAppPublicRecord,
+) -> CensusAppObservation {
+  match performance {
+    RestExchangeSucceeded => AppRecordObserved { record: record }
+    RestExchangeStatusRefused { status: status, body: body } =>
+      if status == 404 {
+        AppRecordAbsent
+      } else {
+        AppRecordUnreadable {
+          reason: join(["public app read refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      }
+    RestExchangeCommitAmbiguous { detail: detail } =>
+      AppRecordUnreadable { reason: detail }
+    RestExchangeUnreached { cause: cause } =>
+      AppRecordUnreadable { reason: join(["public app read never reached GitHub: ", cause as String], "") as NonEmptyStr }
+    RestExchangeUndecodable { status: _, cause: cause } =>
+      AppRecordUnreadable { reason: join(["public app record undecodable: ", cause as String], "") as NonEmptyStr }
+  }
+}
+
+fn observe_census_app(
+  record: GitHubAppPublicRecord,
+  outcome: RestOutcome,
+) -> CensusAppObservation {
+  app_observation_from_exchange(
+    performance: classify_rest_outcome(standing: RestReadExchange { rest: outcome }),
+    record: record,
+  )
+}
+
+// AGREEMENT IS PER-AXIS AND DIRECTIONAL. The declared set is what we asked for; the observed set is
+// what the App holds. An axis the App holds and the manifest does not is not drift we would repair -
+// GitHub grants nothing we did not request, and an operator who widened it deliberately is a fact
+// about the App, not an error. An axis the manifest declares and the App lacks, or holds at a weaker
+// access, IS drift, because a census read bound to it will fail at a point far from here.
+type PermissionAgreement
+  = PermissionsAgree
+  | PermissionAxisMissing { axis: GitHubPermissionAxis }
+  | PermissionAxisWeaker { axis: GitHubPermissionAxis, declared: GitHubAppPermissionAccess, observed: GitHubAppPermissionAccess }
+
+fn permission_agreement(
+  declared: List<GitHubAppPermission>,
+  observed: List<ObservedGitHubPermission>,
+) -> PermissionAgreement {
+  fold(declared, init: PermissionsAgree, f: fn(acc, p) {
+    match acc {
+      PermissionAxisMissing { axis: a } => PermissionAxisMissing { axis: a }
+      PermissionAxisWeaker { axis: a, declared: d, observed: o } =>
+        PermissionAxisWeaker { axis: a, declared: d, observed: o }
+      PermissionsAgree =>
+        match observed_access_for(perms: observed, axis: p.name) {
+          Absent => PermissionAxisMissing { axis: p.name }
+          Present { value: held } =>
+            if permission_access_at_least(held: held, requested: p.access) {
+              PermissionsAgree
+            } else {
+              PermissionAxisWeaker { axis: p.name, declared: p.access, observed: held }
+            }
+        }
+    }
+  })
+}
+
+type EventAgreement
+  = EventsAgree
+  | EventNotSubscribed { event: GitHubWebhookEvent }
+
+fn event_is_subscribed(observed: List<String>, event: GitHubWebhookEvent) -> Bool {
+  fold(observed, init: false, f: fn(found, raw) {
+    if found {
+      true
+    } else {
+      match webhook_event_from_wire(name: raw) {
+        Absent => false
+        Present { value: e } => e == event
+      }
+    }
+  })
+}
+
+fn event_agreement(
+  declared: List<GitHubWebhookEvent>,
+  observed: List<String>,
+) -> EventAgreement {
+  fold(declared, init: EventsAgree, f: fn(acc, e) {
+    match acc {
+      EventNotSubscribed { event: x } => EventNotSubscribed { event: x }
+      EventsAgree =>
+        if event_is_subscribed(observed: observed, event: e) {
+          EventsAgree
+        } else {
+          EventNotSubscribed { event: e }
+        }
+    }
+  })
+}
+
+type CensusAppAgreement
+  = AppAgreesWithManifest
+  | AppPermissionDrift { agreement: PermissionAgreement }
+  | AppEventDrift { agreement: EventAgreement }
+  | AppPermissionsUnreadable { decode: ObservedPermissionMapDecode }
+  | AppIdentityDrift { expected_slug: NonEmptyStr, observed_slug: String }
+
+fn census_app_agreement(
+  expected_slug: NonEmptyStr,
+  record: GitHubAppPublicRecord,
+) -> CensusAppAgreement {
+  if record.slug != (expected_slug as String) {
+    AppIdentityDrift { expected_slug: expected_slug, observed_slug: record.slug }
+  } else {
+    match observed_permissions_from_wire_map(m: record.permissions) {
+      ObservedPermissionAccessUnreadable { wire_name: n, access: a } =>
+        AppPermissionsUnreadable { decode: ObservedPermissionAccessUnreadable { wire_name: n, access: a } }
+      ObservedPermissionKeyUnanswered { wire_name: n } =>
+        AppPermissionsUnreadable { decode: ObservedPermissionKeyUnanswered { wire_name: n } }
+      ObservedPermissionsDecoded { permissions: observed } =>
+        match permission_agreement(declared: census_app_permissions, observed: observed) {
+          PermissionAxisMissing { axis: a } =>
+            AppPermissionDrift { agreement: PermissionAxisMissing { axis: a } }
+          PermissionAxisWeaker { axis: a, declared: d, observed: o } =>
+            AppPermissionDrift { agreement: PermissionAxisWeaker { axis: a, declared: d, observed: o } }
+          PermissionsAgree =>
+            match event_agreement(declared: census_app_default_events, observed: record.events) {
+              EventNotSubscribed { event: e } =>
+                AppEventDrift { agreement: EventNotSubscribed { event: e } }
+              EventsAgree => AppAgreesWithManifest
+            }
+        }
+    }
+  }
+}
+
+// THE PLAN IS THE EXCHANGE, AND IT CARRIES THE CODE RATHER THAN BEING THE CODE. A converge that
+// decided Apply without a code in hand would be deciding to ask a human, which is a different
+// decision from deciding to spend one.
+type CensusAppPlan {
+  code: GitHubAppManifestCode
+  custody: GitHubAppCustody
+}
+
+// THE DECISION, AND THE ONE ARM THE WHOLE LANE EXISTS FOR. AppAcquired plus an absent public record
+// is NOT "absent, so mint": it is a Conflict. The record says this App exists and the read says it
+// does not, and the only action that reconciles those by creating something is the duplicate mint
+// this lane is guarding against. Minting there would also be unrecoverable in the specific way this
+// subject is unrecoverable - the second App gets a different pem, the first App's pem is still the
+// only one that ever existed for it, and the name is already spent.
+//
+// AppAcquired plus an agreeing record is Noop, and Noop IS the adoption: a second run reads the App,
+// finds it is the one the manifest declares, and does nothing. That is what "re-running adopts rather
+// than duplicating" means here - not a lookup that finds a candidate, but a decision that produces no
+// registration URL and no exchange.
+fn classify_census_app(
+  policy: EnsurePolicy,
+  record: GitHubAppAcquisitionRecord,
+  observation: CensusAppObservation,
+  code: GitHubAppManifestCode?,
+) -> UpsertClassification<CensusAppPlan> {
+  match observation {
+    AppRecordUnreadable { reason: r } =>
+      UpsertClassification { verdict: Inaccessible, decision: Refuse { reason: r } }
+    AppNotYetAddressable =>
+      match record {
+        AppAcquired { app_id: _, slug: s } =>
+          UpsertClassification {
+            verdict: UnknownRefused,
+            decision: Refuse {
+              reason: join(["census App ", s as String, " is recorded as acquired but the observation was not addressed at it"], "") as NonEmptyStr
+            },
+          }
+        AppNeverAcquired => census_app_not_acquired_classification(policy: policy, code: code)
+      }
+    AppRecordAbsent =>
+      match record {
+        AppAcquired { app_id: _, slug: s } =>
+          UpsertClassification {
+            verdict: Conflict,
+            decision: Refuse {
+              reason: join(
+                [
+                  "census App ",
+                  s as String,
+                  " is recorded as acquired and the public app record is absent; a registration here would mint a SECOND App with a different private key while the first one's name stays spent. Read the App's settings page and reconcile census_app_acquisition_record before any converge is authorized",
+                ],
+                "",
+              ) as NonEmptyStr
+            },
+          }
+        AppNeverAcquired => census_app_not_acquired_classification(policy: policy, code: code)
+      }
+    AppRecordObserved { record: observed } =>
+      match record {
+        AppNeverAcquired =>
+          UpsertClassification {
+            verdict: Conflict,
+            decision: Refuse {
+              reason: join(
+                [
+                  "a public App already answers at slug ",
+                  observed.slug,
+                  " while census_app_acquisition_record says this fleet never acquired one; either the record is stale or the name is held by someone else, and neither is repaired by registering again",
+                ],
+                "",
+              ) as NonEmptyStr
+            },
+          }
+        AppAcquired { app_id: _, slug: s } =>
+          match census_app_agreement(expected_slug: s, record: observed) {
+            AppAgreesWithManifest =>
+              UpsertClassification { verdict: Converged, decision: Noop }
+            AppIdentityDrift { expected_slug: e, observed_slug: o } =>
+              UpsertClassification {
+                verdict: Conflict,
+                decision: Refuse {
+                  reason: join(["public app record answers for slug ", o, " which is not the recorded ", e as String], "") as NonEmptyStr
+                },
+              }
+            AppPermissionsUnreadable { decode: _ } =>
+              UpsertClassification {
+                verdict: Inaccessible,
+                decision: Refuse {
+                  reason: join(["census App ", s as String, " permissions object could not be decoded"], "") as NonEmptyStr
+                },
+              }
+            AppPermissionDrift { agreement: a } =>
+              UpsertClassification {
+                verdict: Drifted,
+                decision: Refuse { reason: permission_drift_reason(slug: s, agreement: a) },
+              }
+            AppEventDrift { agreement: a } =>
+              UpsertClassification {
+                verdict: Drifted,
+                decision: Refuse { reason: event_drift_reason(slug: s, agreement: a) },
+              }
+          }
+      }
+  }
+}
+
+// DRIFT ON AN EXISTING APP REFUSES RATHER THAN APPLYING, AND THE REASON IS UPSTREAM, NOT TIMIDITY.
+// The manifest flow CREATES an App; there is no manifest endpoint that edits one. Repairing a
+// permission or an event subscription on a live App is a different act performed on its settings
+// page, and every existing installation must then approve the widened permission set before it takes
+// effect. So an Apply here would be the wrong verb on the wrong subject - it would register a new App.
+fn permission_drift_reason(slug: NonEmptyStr, agreement: PermissionAgreement) -> NonEmptyStr {
+  match agreement {
+    PermissionsAgree =>
+      join(["census App ", slug as String, " permissions agree"], "") as NonEmptyStr
+    PermissionAxisMissing { axis: a } =>
+      join(
+        [
+          "census App ",
+          slug as String,
+          " does not hold declared permission ",
+          permission_axis_wire_name(axis: a) as String,
+          "; the manifest flow creates Apps and cannot edit one, so repair this on the App's settings page and re-approve the installations",
+        ],
+        "",
+      ) as NonEmptyStr
+    PermissionAxisWeaker { axis: a, declared: d, observed: o } =>
+      join(
+        [
+          "census App ",
+          slug as String,
+          " holds ",
+          permission_axis_wire_name(axis: a) as String,
+          " at ",
+          permission_access_wire_name(access: o) as String,
+          " where the manifest declares ",
+          permission_access_wire_name(access: d) as String,
+        ],
+        "",
+      ) as NonEmptyStr
+  }
+}
+
+fn event_drift_reason(slug: NonEmptyStr, agreement: EventAgreement) -> NonEmptyStr {
+  match agreement {
+    EventsAgree => join(["census App ", slug as String, " events agree"], "") as NonEmptyStr
+    EventNotSubscribed { event: e } =>
+      join(
+        [
+          "census App ",
+          slug as String,
+          " is not subscribed to declared event ",
+          webhook_event_wire_name(event: e) as String,
+        ],
+        "",
+      ) as NonEmptyStr
+  }
+}
+
+fn census_app_not_acquired_classification(
+  policy: EnsurePolicy,
+  code: GitHubAppManifestCode?,
+) -> UpsertClassification<CensusAppPlan> {
+  match policy {
+    EnsureObserveOnly =>
+      UpsertClassification {
+        verdict: Absent,
+        decision: Refuse { reason: "census App is not acquired and the policy is observe-only" as NonEmptyStr },
+      }
+    EnsureMayApply =>
+      match code {
+        Absent =>
+          UpsertClassification {
+            verdict: Absent,
+            decision: Refuse {
+              reason: "census App is not acquired and no manifest code is in hand; the owner must submit the manifest form first, which is what app_registration_intervention instructs" as NonEmptyStr
+            },
+          }
+        Present { value: c } =>
+          UpsertClassification {
+            verdict: Absent,
+            decision: Apply { plan: CensusAppPlan { code: c, custody: census_app_custody() } },
+          }
+      }
+  }
+}
+
+// THE ACTUATION'S OWN REPLY, CLASSIFIED. A 404 on the conversion is not "the App is missing": the
+// path names the CODE, so a 404 says the code is not a live code - spent by an earlier exchange, or
+// past the one hour the registration flow allows. Naming that arm matters for credential custody,
+// because the two readings prescribe opposite actions: re-run the exchange, or go back to the human
+// step and get a fresh code.
+//
+// WHICH PERFORMANCE ARMS A MUTATION CAN ACTUALLY REACH, STATED SO THE MATCH BELOW IS NOT MISREAD AS
+// FIVE LIVE OUTCOMES. classify_rest_outcome folds a mutation's transport refusal AND its undecodable
+// body into RestExchangeCommitAmbiguous - only a READ exchange surfaces RestExchangeUnreached or
+// RestExchangeUndecodable - so for this POST the reachable arms are Succeeded, StatusRefused and
+// CommitAmbiguous. The other two are matched for totality and route to the same unknown-outcome
+// carrier rather than carrying prose that describes a red they cannot produce (DESIGN 4b).
+//
+// AND UNKNOWN IS THE ARM THAT CANNOT BE RE-RUN BLIND. A mutation whose outcome we could not read may
+// have created the App and issued the only private key it will ever have, so it demands a read of the
+// account's Apps before anything else - which is what every route into this arm says.
+type CensusAppExchangeOutcome
+  = ExchangeIssued { issuance: GitHubAppCredentialIssuance }
+  | ExchangeCodeNotLive { body: String }
+  | ExchangeRefused { reason: NonEmptyStr }
+  | ExchangeOutcomeUnknown { detail: NonEmptyStr }
+  | ExchangeReplyIncomplete { issuance: ConversionIssuance }
+
+fn exchange_outcome_unknown(detail: String) -> CensusAppExchangeOutcome {
+  ExchangeOutcomeUnknown {
+    detail: join(
+      [
+        detail,
+        " -- READ THE ACCOUNT'S GitHub Apps SETTINGS BEFORE RETRYING: if the App was created, its private key was returned in the reply this client could not read and no endpoint will return it again",
+      ],
+      "",
+    ) as NonEmptyStr
+  }
+}
+
+fn classify_census_app_exchange(
+  conversion: GitHubAppManifestConversion,
+  outcome: RestOutcome,
+) -> CensusAppExchangeOutcome {
+  match classify_rest_outcome(standing: RestMutationExchange { rest: outcome }) {
+    RestExchangeSucceeded =>
+      match conversion_issuance(c: conversion) {
+        IssuanceRead { issuance: i } => ExchangeIssued { issuance: i }
+        IssuanceSlugEmpty => ExchangeReplyIncomplete { issuance: IssuanceSlugEmpty }
+        IssuanceClientIdEmpty => ExchangeReplyIncomplete { issuance: IssuanceClientIdEmpty }
+      }
+    RestExchangeStatusRefused { status: status, body: body } =>
+      if status == 404 {
+        ExchangeCodeNotLive { body: body }
+      } else {
+        ExchangeRefused {
+          reason: join(["manifest conversion refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+        }
+      }
+    RestExchangeCommitAmbiguous { detail: detail } =>
+      exchange_outcome_unknown(detail: detail as String)
+    RestExchangeUnreached { cause: cause } =>
+      exchange_outcome_unknown(detail: cause as String)
+    RestExchangeUndecodable { status: _, cause: cause } =>
+      exchange_outcome_unknown(detail: cause as String)
+  }
+}
+
+// WHAT THE OPERATOR MUST RECORD AFTER A SUCCESSFUL EXCHANGE, projected from the issuance rather than
+// retyped. The secrets themselves are written to the custody sites by gunbc.secret_provision; what
+// belongs in SOURCE is the App's identity, because the next converge's observation is addressed by it.
+fn acquisition_record_from_issuance(issuance: GitHubAppCredentialIssuance) -> GitHubAppAcquisitionRecord {
+  match issuance {
+    CredentialIssuedOnce { app_id: id, slug: s, pem: _, webhook_secret: _, client_id: _, client_secret: _ } =>
+      AppAcquired { app_id: id, slug: s }
+  }
+}
+
+// THE READBACK IS A SECOND, INDEPENDENT OBSERVATION AND IT IS NOT OPTIONAL. It is the SAME public
+// read as the pre-decision observation, addressed at the slug the exchange returned, and it is what
+// converts an Apply into a convergence claim. A successful exchange reply is not that claim: the reply
+// is the actuator describing its own effect, and DESIGN 3d rules that a successful actuation return
+// cannot mint convergence. The distinction has teeth here because the exchange is the ONE call in this
+// flow whose failure destroys the subject, so believing its own reply is the expensive mistake.
+type CensusAppReadback
+  = ReadbackConverged { record: GitHubAppAcquisitionRecord }
+  | ReadbackDisagrees { agreement: CensusAppAgreement }
+  | ReadbackUnavailable { reason: NonEmptyStr }
+
+fn census_app_readback(
+  issuance: GitHubAppCredentialIssuance,
+  observation: CensusAppObservation,
+) -> CensusAppReadback {
+  match issuance {
+    CredentialIssuedOnce { app_id: _, slug: slug, pem: _, webhook_secret: _, client_id: _, client_secret: _ } =>
+      match observation {
+        AppNotYetAddressable =>
+          ReadbackUnavailable { reason: "readback was not addressed at the issued slug" as NonEmptyStr }
+        AppRecordAbsent =>
+          ReadbackUnavailable {
+            reason: join(
+              [
+                "the exchange reported issuing App ",
+                slug as String,
+                " and the independent public read does not find it; the exchange's own reply is not evidence that it landed",
+              ],
+              "",
+            ) as NonEmptyStr
+          }
+        AppRecordUnreadable { reason: r } => ReadbackUnavailable { reason: r }
+        AppRecordObserved { record: observed } =>
+          match census_app_agreement(expected_slug: slug, record: observed) {
+            AppAgreesWithManifest =>
+              ReadbackConverged { record: acquisition_record_from_issuance(issuance: issuance) }
+            AppIdentityDrift { expected_slug: e, observed_slug: o } =>
+              ReadbackDisagrees { agreement: AppIdentityDrift { expected_slug: e, observed_slug: o } }
+            AppPermissionDrift { agreement: a } =>
+              ReadbackDisagrees { agreement: AppPermissionDrift { agreement: a } }
+            AppEventDrift { agreement: a } =>
+              ReadbackDisagrees { agreement: AppEventDrift { agreement: a } }
+            AppPermissionsUnreadable { decode: d } =>
+              ReadbackDisagrees { agreement: AppPermissionsUnreadable { decode: d } }
+          }
+      }
+  }
+}
+
+// THE SLUG THE PUBLIC READ IS ADDRESSED AT. Before the first acquisition there is none, and the
+// observation is AppNotYetAddressable rather than a 404 against a guessed slug - which is the same
+// distinction the record type exists to keep: "we have not created it" and "it is not there" are
+// different facts, and only the first authorizes a registration.
+type CensusAppReadAddress
+  = ReadAddressedAt { slug: NonEmptyStr }
+  | ReadNotAddressable
+
+fn census_app_read_address(record: GitHubAppAcquisitionRecord) -> CensusAppReadAddress {
+  match record {
+    AppNeverAcquired => ReadNotAddressable
+    AppAcquired { app_id: _, slug: s } => ReadAddressedAt { slug: s }
+  }
+}

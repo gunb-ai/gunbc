@@ -1,0 +1,547 @@
+module gunbc.instruments.github_app_acquire
+
+import std.types { NonEmptyStr, String, Secret, List }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.upsert_decision {
+  ObservationVerdict,
+  UpsertDecision,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UnknownRefused,
+  Noop,
+  Apply,
+  Refuse,
+}
+import std.human_intervention {
+  HumanIntervention,
+}
+import gunbc.ensure { EnsureObserveOnly, EnsureMayApply }
+import gunbc.github_app_acquisition {
+  AppNeverAcquired,
+  AppAcquired,
+  census_app_acquisition_record,
+  CensusAppReadAddress,
+  ReadAddressedAt,
+  ReadNotAddressable,
+  census_app_read_address,
+  CensusAppObservation,
+  AppRecordObserved,
+  AppRecordAbsent,
+  AppRecordUnreadable,
+  AppNotYetAddressable,
+  observe_census_app,
+  CensusAppPlan,
+  classify_census_app,
+  CensusAppExchangeOutcome,
+  ExchangeIssued,
+  ExchangeCodeNotLive,
+  ExchangeRefused,
+  ExchangeOutcomeUnknown,
+  ExchangeReplyIncomplete,
+  classify_census_app_exchange,
+  CensusAppReadback,
+  ReadbackConverged,
+  ReadbackDisagrees,
+  ReadbackUnavailable,
+  census_app_readback,
+  RegistrationInstructionReady,
+  RegistrationInstructionUnavailable,
+  census_app_registration_instruction,
+}
+import extdeps.github.app {
+  GitHubAppManifestCode,
+  GitHubAppManifestState,
+  GitHubAppCredentialIssuance,
+  CredentialIssuedOnce,
+  GitHubAppInstallation,
+  GitHubAppInstallationRecord,
+  InstallationRecordDecode,
+  InstallationDecoded,
+  InstallationSelectionUnreadable,
+  InstallationPermissionsUnreadable,
+  InstallationSlugEmpty,
+  InstallationHtmlUrlUnreadable,
+  installation_from_record,
+  repository_selection_wire_name,
+  GitHubInstallationTokenRequest,
+  RepositoryNarrowingOmitted,
+  PermissionNarrowingOmitted,
+  installation_token_request_url,
+  installation_token_request_body,
+}
+import extdeps.transports.rest {
+  RestReadExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeCommitAmbiguous,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  classify_rest_outcome,
+}
+
+// THE ROUTE THAT ACTUALLY RUNS THE FLOW. Three entry points rather than one, because the flow has a
+// human in the middle of it and a single entry would have to either block on that human or pretend
+// the click does not exist. They are argv-free: every value that varies per run arrives through a
+// declared file path, so nothing a caller types on a command line reaches a URL or a credential.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_registration_instruction_receipt
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_observe_receipt
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_acquire_receipt
+//
+// THE FILES ARE THE HUMAN'S SIDE OF THE HANDOFF. GitHub returns the temporary code by redirecting the
+// operator's BROWSER, and this process has no receiver on that redirect - the declared redirect_url
+// has no server behind it, which is stated where it is declared rather than hidden here. So the
+// operator copies `code` and `state` out of the address bar into these two files, and the code's
+// one-hour expiry starts at the click, not at the paste.
+//
+// THEY LIVE UNDER .gunbc/ BECAUSE THAT DIRECTORY IS ALREADY GIT-IGNORED (.gitignore, /.gunbc/). A
+// manifest code creates an App under whatever manifest its flow declared, so it is a bearer
+// credential for one hour; putting it anywhere a `git add -A` reaches would publish it. This is not a
+// new ignore rule added to make a chosen path safe - the path was chosen because the rule was already
+// there, which is the direction that cannot be quietly reversed by someone tidying .gitignore.
+data census_app_state_path: String = ".gunbc/github-app-manifest-state"
+
+data census_app_code_path: String = ".gunbc/github-app-manifest-code"
+
+data census_app_observed_state_path: String = ".gunbc/github-app-manifest-observed-state"
+
+type ManifestHandoffValue
+  = HandoffValueRead { value: NonEmptyStr }
+  | HandoffValueMissing { path: String, cause: String }
+  | HandoffValueEmpty { path: String }
+
+fn read_handoff_value(path: String) -> ManifestHandoffValue uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: path)
+  if read.success {
+    let trimmed = trim(read.content)
+    if trimmed == "" {
+      HandoffValueEmpty { path: path }
+    } else {
+      HandoffValueRead { value: trimmed as NonEmptyStr }
+    }
+  } else {
+    HandoffValueMissing { path: path, cause: read.error }
+  }
+}
+
+fn handoff_value_refusal(v: ManifestHandoffValue) -> String {
+  match v {
+    HandoffValueRead { value: _ } => ""
+    HandoffValueMissing { path: p, cause: c } =>
+      join(["no value at ", p, ": ", c], "")
+    HandoffValueEmpty { path: p } => join(["value at ", p, " is empty"], "")
+  }
+}
+
+// THE STATE CHECK IS THE ONE WALL THIS PROCESS CAN STAND BEHIND ON THE HUMAN HALF. A code is a
+// bearer credential that creates an App under whatever manifest its flow declared; accepting one that
+// did not come back with the state we issued would spend it on someone else's registration. Comparing
+// them is cheap, total, and the only thing between the exchange and a code of unknown provenance.
+type ManifestCodeAdmission
+  = ManifestCodeAdmitted { code: GitHubAppManifestCode }
+  | ManifestCodeStateMismatch { issued: NonEmptyStr, observed: NonEmptyStr }
+  | ManifestCodeUnavailable { reason: String }
+
+fn admit_manifest_code(
+  issued: ManifestHandoffValue,
+  observed: ManifestHandoffValue,
+  code: ManifestHandoffValue,
+) -> ManifestCodeAdmission {
+  match issued {
+    HandoffValueMissing { path: p, cause: c } =>
+      ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
+    HandoffValueEmpty { path: p } =>
+      ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
+    HandoffValueRead { value: issued_state } =>
+      match observed {
+        HandoffValueMissing { path: p, cause: c } =>
+          ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
+        HandoffValueEmpty { path: p } =>
+          ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
+        HandoffValueRead { value: observed_state } =>
+          if (issued_state as String) != (observed_state as String) {
+            ManifestCodeStateMismatch { issued: issued_state, observed: observed_state }
+          } else {
+            match code {
+              HandoffValueMissing { path: p, cause: c } =>
+                ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueMissing { path: p, cause: c }) }
+              HandoffValueEmpty { path: p } =>
+                ManifestCodeUnavailable { reason: handoff_value_refusal(v: HandoffValueEmpty { path: p }) }
+              HandoffValueRead { value: c } =>
+                ManifestCodeAdmitted { code: c as GitHubAppManifestCode }
+            }
+          }
+      }
+  }
+}
+
+fn intervention_text(intervention: HumanIntervention) -> String {
+  join(["HUMAN STEP ", intervention.identity as String, ": ", intervention.instruction as String], "")
+}
+
+// ENTRY ONE: WHAT THE HUMAN MUST DO, DERIVED RATHER THAN REMEMBERED. It exits non-zero because the
+// App is not converged when this is the answer, and a zero here would report an acquisition that has
+// not happened. When the App IS already acquired it exits zero and produces no registration URL at
+// all - which is the adoption path seen from the human's side.
+fn census_app_registration_instruction_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+  match census_app_acquisition_record {
+    AppAcquired { app_id: _, slug: s } => ExitSuccess
+    AppNeverAcquired =>
+      match read_handoff_value(path: census_app_state_path) {
+        HandoffValueMissing { path: p, cause: c } =>
+          exit_failure(reason: join([
+            "no registration state nonce at ", p, " (", c,
+            "); write an unguessable random string there first, then re-run. It binds the code GitHub returns to this request.",
+          ], ""))
+        HandoffValueEmpty { path: p } =>
+          exit_failure(reason: join(["registration state nonce at ", p, " is empty"], ""))
+        HandoffValueRead { value: state } =>
+          match census_app_registration_instruction(state: state as GitHubAppManifestState) {
+            RegistrationInstructionUnavailable { reason: r } => exit_failure(reason: r as String)
+            RegistrationInstructionReady { intervention: i } =>
+              exit_failure(reason: intervention_text(intervention: i))
+          }
+      }
+  }
+}
+
+// THE OBSERVATION, PERFORMED. This is the live read: github.AppPublicRegistry.GetApp against the
+// recorded slug with the ordinary fleet PAT. When the record says the App was never acquired there is
+// no slug to address, so the observation is AppNotYetAddressable and NO request is made - guessing a
+// slug and reading a 404 would manufacture "absent" out of "we do not know where to look".
+fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservation uses net: Network {
+  match address {
+    ReadNotAddressable => AppNotYetAddressable
+    ReadAddressedAt { slug: slug } => {
+      let result = github.AppPublicRegistry.GetApp(
+        auth_token: "" as Secret,
+        app_slug: slug as String,
+      )
+      observe_census_app(record: result.result, outcome: result.outcome)
+    }
+  }
+}
+
+fn decision_text(decision: UpsertDecision<CensusAppPlan>) -> String {
+  match decision {
+    Noop => "noop"
+    Apply { plan: _ } => "apply"
+    Refuse { reason: r } => join(["refuse: ", r as String], "")
+  }
+}
+
+fn verdict_text(verdict: ObservationVerdict) -> String {
+  match verdict {
+    Converged => "converged"
+    Absent => "absent"
+    Drifted => "drifted"
+    Conflict => "conflict"
+    Inaccessible => "inaccessible"
+    UnknownRefused => "unknown-refused"
+  }
+}
+
+// ENTRY TWO: OBSERVE AND DECIDE, WITHOUT ACTUATING. EnsureObserveOnly is passed as a literal here
+// because that is what this entry point IS - the policy is the instrument's identity, not a knob.
+// The acquiring entry below passes EnsureMayApply for the same reason.
+fn census_app_observe_receipt() -> ProcessExit uses net: Network {
+  let observation = observe_census_app_live(
+    address: census_app_read_address(record: census_app_acquisition_record),
+  )
+  let classified = classify_census_app(
+    policy: EnsureObserveOnly,
+    record: census_app_acquisition_record,
+    observation: observation,
+    code: none,
+  )
+  match classified.decision {
+    Noop => ExitSuccess
+    Apply { plan: _ } =>
+      exit_failure(reason: "observe-only classification produced an Apply, which is unreachable for EnsureObserveOnly")
+    Refuse { reason: r } =>
+      exit_failure(reason: join([verdict_text(verdict: classified.verdict), ": ", r as String], ""))
+  }
+}
+
+// THE EXCHANGE, PERFORMED. github.AppManifests.ConvertManifestCode carries no credential: the code
+// authenticates it, which is why this half of the flow runs in-process at all.
+fn exchange_census_app_code(code: GitHubAppManifestCode) -> CensusAppExchangeOutcome uses net: Network {
+  let result = github.AppManifests.ConvertManifestCode(code: code as String)
+  classify_census_app_exchange(conversion: result.result, outcome: result.outcome)
+}
+
+fn issued_slug(issuance: GitHubAppCredentialIssuance) -> NonEmptyStr {
+  match issuance {
+    CredentialIssuedOnce { app_id: _, slug: s, pem: _, webhook_secret: _, client_id: _, client_secret: _ } => s
+  }
+}
+
+fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusAppReadback uses net: Network {
+  census_app_readback(
+    issuance: issuance,
+    observation: observe_census_app_live(
+      address: ReadAddressedAt { slug: issued_slug(issuance: issuance) },
+    ),
+  )
+}
+
+fn readback_exit(readback: CensusAppReadback) -> ProcessExit {
+  match readback {
+    ReadbackConverged { record: r } =>
+      match r {
+        AppNeverAcquired =>
+          exit_failure(reason: "readback converged onto a record that says the App was never acquired")
+        AppAcquired { app_id: id, slug: s } =>
+          exit_failure(reason: join(
+            [
+              "ACQUIRED AND READ BACK. Record it in gunbc.github_app_acquisition census_app_acquisition_record as AppAcquired { app_id: GitHubAppId { value: ",
+              to_string(id.value),
+              " }, slug: \"",
+              s as String,
+              "\" }, and write the pem, webhook secret and client secret to their declared custody sites NOW: the private key was returned once and no endpoint returns it again. This run exits non-zero because the source record still says AppNeverAcquired, so the flow is not converged until that edit lands.",
+            ],
+            "",
+          ))
+      }
+    ReadbackDisagrees { agreement: _ } =>
+      exit_failure(reason: "the exchange reported success and the independent public read disagrees with the declared manifest")
+    ReadbackUnavailable { reason: r } => exit_failure(reason: r as String)
+  }
+}
+
+// ENTRY THREE: THE WHOLE CONVERGE. observe -> decide -> actuate -> INDEPENDENT READBACK, with the
+// readback addressed at the slug the exchange returned and performed through the same public-record
+// read the observation used, not through the exchange's own reply.
+fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+  let observation = observe_census_app_live(
+    address: census_app_read_address(record: census_app_acquisition_record),
+  )
+  let admission = admit_manifest_code(
+    issued: read_handoff_value(path: census_app_state_path),
+    observed: read_handoff_value(path: census_app_observed_state_path),
+    code: read_handoff_value(path: census_app_code_path),
+  )
+  match admission {
+    ManifestCodeStateMismatch { issued: i, observed: o } =>
+      exit_failure(reason: join([
+        "the state returned with the code is not the state this flow issued (issued ", i as String,
+        ", observed ", o as String,
+        "); the code came back from a different registration flow and is refused rather than spent",
+      ], ""))
+    ManifestCodeUnavailable { reason: r } =>
+      census_app_acquire_without_code(observation: observation, reason: r)
+    ManifestCodeAdmitted { code: code } =>
+      census_app_acquire_with_code(observation: observation, code: code)
+  }
+}
+
+fn census_app_acquire_without_code(observation: CensusAppObservation, reason: String) -> ProcessExit {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: census_app_acquisition_record,
+    observation: observation,
+    code: none,
+  )
+  match classified.decision {
+    Noop => ExitSuccess
+    Apply { plan: _ } =>
+      exit_failure(reason: "classification produced an Apply with no code in hand")
+    Refuse { reason: r } =>
+      exit_failure(reason: join([verdict_text(verdict: classified.verdict), ": ", r as String, " [", reason, "]"], ""))
+  }
+}
+
+fn census_app_acquire_with_code(
+  observation: CensusAppObservation,
+  code: GitHubAppManifestCode,
+) -> ProcessExit uses net: Network {
+  let classified = classify_census_app(
+    policy: EnsureMayApply,
+    record: census_app_acquisition_record,
+    observation: observation,
+    code: Present { value: code },
+  )
+  match classified.decision {
+    Noop => ExitSuccess
+    Refuse { reason: r } =>
+      exit_failure(reason: join([verdict_text(verdict: classified.verdict), ": ", r as String], ""))
+    Apply { plan: plan } =>
+      match exchange_census_app_code(code: plan.code) {
+        ExchangeCodeNotLive { body: b } =>
+          exit_failure(reason: join([
+            "the manifest code is not live: GitHub answered 404 for it. A code is spendable once and expires one hour after the click, so re-run census_app_registration_instruction_receipt and submit the form again. Body: ", b,
+          ], ""))
+        ExchangeRefused { reason: r } => exit_failure(reason: r as String)
+        ExchangeOutcomeUnknown { detail: d } => exit_failure(reason: d as String)
+        ExchangeReplyIncomplete { issuance: _ } =>
+          exit_failure(reason: "the conversion answered 201 with a reply missing the slug or client id, so the App it created cannot be addressed")
+        ExchangeIssued { issuance: issuance } =>
+          readback_exit(readback: acquisition_readback_live(issuance: issuance))
+      }
+  }
+}
+
+// THE INHABITANCE RECEIPT FOR THE PUBLIC-RECORD READ, and it is here because without it every claim
+// about GitHubAppPublicRecord would rest on values this repository authored. The census App does not
+// exist yet, so there is no slug of ours to address; a real, stable, public App belonging to someone
+// else establishes exactly the fact the witnesses need and nothing more - that GET /apps/{app_slug}
+// answers 200 with a body this operation decodes, that its permissions object folds through
+// observed_permissions_from_wire_map, and that a 404 from that same route reaches AppRecordAbsent
+// rather than an exception. It asserts NOTHING about the census App, which is why the drift
+// comparison below is against the record's own slug and not against census_app_permissions.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function public_app_record_wire_receipt
+data inhabitance_probe_app_slug: NonEmptyStr = "dependabot"
+
+data inhabitance_probe_absent_app_slug: NonEmptyStr = "gunbc-slug-that-no-app-holds"
+
+fn public_app_record_wire_receipt() -> ProcessExit uses net: Network {
+  match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_app_slug }) {
+    AppNotYetAddressable =>
+      exit_failure(reason: "the probe slug is addressable by construction; this arm is unreachable")
+    AppRecordUnreadable { reason: r } => exit_failure(reason: r as String)
+    AppRecordAbsent =>
+      exit_failure(reason: join(["public app ", inhabitance_probe_app_slug as String, " answered 404"], ""))
+    AppRecordObserved { record: record } =>
+      if record.slug != (inhabitance_probe_app_slug as String) {
+        exit_failure(reason: join(["public app record answered for slug ", record.slug], ""))
+      } else {
+        public_app_absence_receipt()
+      }
+  }
+}
+
+// THE ABSENT ARM IS READ FOR REAL TOO. A 404 reaching AppRecordAbsent rather than an exception is the
+// arm the duplicate-mint guard is built on, so it is established by a live read of a slug no App
+// holds, not by supplying a RestStatusRefused value to the fold.
+fn public_app_absence_receipt() -> ProcessExit uses net: Network {
+  match observe_census_app_live(address: ReadAddressedAt { slug: inhabitance_probe_absent_app_slug }) {
+    AppRecordAbsent => ExitSuccess
+    AppRecordObserved { record: r } =>
+      exit_failure(reason: join(["expected no App at ", inhabitance_probe_absent_app_slug as String, ", found ", r.slug], ""))
+    AppNotYetAddressable =>
+      exit_failure(reason: "the probe slug is addressable by construction; this arm is unreachable")
+    AppRecordUnreadable { reason: r } =>
+      exit_failure(reason: join(["absent-slug read was unreadable rather than a 404: ", r as String], ""))
+  }
+}
+
+// THE BUDGET PATH, ROUTED. GET /app/installations is the only endpoint that answers "how much API
+// budget does this App actually hold", and it is the one call in this flow that needs an RS256-signed
+// App JWT. Nothing in this corpus can sign one, so the credential is read at the transport from
+// GITHUB_APP_JWT and an external step mints it: this entry point does not take a token, cannot be
+// handed one, and refuses through the ordinary 401 classification when the environment has none.
+//
+// IT IS DECLARED AS A ROUTE RATHER THAN LEFT FOR LATER because an operation with no call site is the
+// dangling modeling DESIGN 3c refuses. What it cannot yet do is EXECUTE GREEN - the census App does
+// not exist, so it has no installations and there is no key to sign with - and that gap is the
+// frontier row below rather than a claim in this note.
+//
+// TWO REFUSALS, BOTH MEASURED LIVE, AND NEITHER FABRICATES A BUDGET. With no GITHUB_APP_JWT the
+// TRANSPORT refuses before the request - AuthDeclaredButUnwired, "auth declared but no token
+// resolved" - rather than sending an unauthenticated GET; with a JWT that is not a valid App JWT,
+// GitHub answers 401 and that status reaches the refusal below. The second is the arm this entry
+// point's own code produces; the first belongs to the REST realization and is named here because a
+// reader would otherwise expect the 401 path to be the only wall.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function census_app_installations_receipt
+type CensusAppInstallationReading
+  = InstallationsRead { installations: List<GitHubAppInstallation> }
+  | InstallationsUndecodable { decode: InstallationRecordDecode }
+  | InstallationsUnreadable { reason: NonEmptyStr }
+
+fn decode_installation_records(records: List<GitHubAppInstallationRecord>) -> CensusAppInstallationReading {
+  fold(records, init: InstallationsRead { installations: [] }, f: fn(acc, record) {
+    match acc {
+      InstallationsUndecodable { decode: d } => InstallationsUndecodable { decode: d }
+      InstallationsUnreadable { reason: r } => InstallationsUnreadable { reason: r }
+      InstallationsRead { installations: got } =>
+        match installation_from_record(record: record) {
+          InstallationDecoded { installation: i } =>
+            InstallationsRead { installations: concat(got, [i]) }
+          InstallationSelectionUnreadable { raw: raw } =>
+            InstallationsUndecodable { decode: InstallationSelectionUnreadable { raw: raw } }
+          InstallationPermissionsUnreadable { decode: d } =>
+            InstallationsUndecodable { decode: InstallationPermissionsUnreadable { decode: d } }
+          InstallationSlugEmpty => InstallationsUndecodable { decode: InstallationSlugEmpty }
+          InstallationHtmlUrlUnreadable { raw: raw } =>
+            InstallationsUndecodable { decode: InstallationHtmlUrlUnreadable { raw: raw } }
+        }
+    }
+  })
+}
+
+// THE TOKEN REQUEST IS PROJECTED, NOT SENT. Its endpoint and body are what the external minting step
+// must issue for each installation, derived from the installation this read observed rather than
+// hand-typed beside it. Narrowing is omitted because the App's own permission set is already the
+// declared minimum; a narrowing would be a second policy fact and belongs to whatever consumer needs
+// less than the App holds.
+fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
+  let request = GitHubInstallationTokenRequest {
+    installation_id: installation.installation_id,
+    repositories: RepositoryNarrowingOmitted,
+    permissions: PermissionNarrowingOmitted,
+  }
+  join([
+    "POST ", installation_token_request_url(request: request),
+    " body ", installation_token_request_body(request: request),
+    " account ", installation.account.login,
+    " selection ", repository_selection_wire_name(mode: installation.repository_selection) as String,
+  ], "")
+}
+
+fn census_app_installations_receipt() -> ProcessExit uses net: Network {
+  let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
+  match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
+    RestExchangeStatusRefused { status: status, body: body } =>
+      exit_failure(reason: join([
+        "GET /app/installations refused with status ", to_string(status),
+        ". It needs an RS256-signed App JWT in GITHUB_APP_JWT, minted externally from the stored pem; nothing in this corpus can sign one. Body: ", body,
+      ], ""))
+    RestExchangeUnreached { cause: c } => exit_failure(reason: c as String)
+    RestExchangeUndecodable { status: _, cause: c } => exit_failure(reason: c as String)
+    RestExchangeCommitAmbiguous { detail: d } => exit_failure(reason: d as String)
+    RestExchangeSucceeded =>
+      match decode_installation_records(records: result.result) {
+        InstallationsUnreadable { reason: r } => exit_failure(reason: r as String)
+        InstallationsUndecodable { decode: _ } =>
+          exit_failure(reason: "an installation record did not decode; refusing rather than reporting a partial budget")
+        InstallationsRead { installations: installations } =>
+          exit_failure(reason: join([
+            "census App installations: ", to_string(count(installations)), " -- ",
+            join(map(installations, i => installation_token_plan_line(installation: i)), " | "),
+          ], ""))
+      }
+  }
+}
+
+data census_app_installation_route_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "census_app_installations_receipt"),
+    reason: "the route exists and cannot execute green yet: the census App has not been registered, so it has no installations, and the App JWT this endpoint requires is RS256-signed with a private key this corpus cannot sign with. Measured live today it refuses twice and fabricates nothing -- the transport refuses with AuthDeclaredButUnwired when GITHUB_APP_JWT is absent, and GitHub answers 401 when it holds a value that is not a valid App JWT",
+    dissolution: unbound_dissolution(
+      description: "dissolves when this entry point returns ExitSuccess against a live GET /app/installations -- which needs BOTH the census App acquired through census_app_acquire_receipt AND an external step that signs an App JWT from the stored pem and exports it as GITHUB_APP_JWT. A witness over supplied GitHubAppInstallationRecord values does not fire this; only a live green does"
+    )
+  )
+]
