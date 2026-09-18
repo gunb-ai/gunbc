@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
-import std.types { Bool, Int, NonEmptyStr, String, Timestamp, Duration }
+import std.types { Bool, Int, NonEmptyStr, String, Timestamp }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.temporal_effect {
   HeldLeaseObservedState,
@@ -11,7 +11,7 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.algebra { trim }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, Minute, minute }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization {
   AttemptIdentity, AuthorizationRequest,
@@ -89,11 +89,11 @@ fn mtcollins1_boot_approval_window() -> Second {
   second(count: mtcollins1_boot_poll_tick_budget * (second_count(s: mtcollins1_boot_poll_cadence) as Int))
 }
 
-fn mtcollins1_boot_step_timeout_minutes() -> Duration {
-  let secs = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
-    + (second_count(s: mtcollins1_boot_approval_window()) as Int)
-    + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
-  (secs + 59) / 60
+fn mtcollins1_boot_step_timeout_minutes() -> Minute {
+  let secs = second_count(s: mtcollins1_boot_prelude_allowance)
+    + second_count(s: mtcollins1_boot_approval_window())
+    + second_count(s: mtcollins1_boot_actuation_allowance)
+  minute(count: (secs + 59) / 60)
 }
 
 fn mtcollins1_status_from_get(success: Bool, body: String) -> FiledApprovalStatus {

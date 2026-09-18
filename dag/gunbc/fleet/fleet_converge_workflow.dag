@@ -1191,7 +1191,7 @@ fn fleet_converge_mtcollins1_boot_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_boot_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: mtcollins1_boot_step_timeout_minutes() }
+    timeout_minutes: Present { value: minute_count(mtcollins1_boot_step_timeout_minutes()) }
   }
 }
 

@@ -2,7 +2,7 @@ module test.claim.machine_intake.mtcollins1_boot_run_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
-import std.measure { second_count }
+import std.measure { second_count, minute_count }
 import v2.std.optional { Present }
 import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_approval_window, mtcollins1_boot_poll_cadence, mtcollins1_boot_poll_tick_budget,
@@ -44,7 +44,7 @@ test fn the_step_timeout_covers_the_poll_window_and_the_actuation_allowance() ->
   let covered = (second_count(s: mtcollins1_boot_prelude_allowance) as Int)
     + (second_count(s: mtcollins1_boot_approval_window()) as Int)
     + (second_count(s: mtcollins1_boot_actuation_allowance) as Int)
-  (mtcollins1_boot_step_timeout_minutes() * 60) >= covered
+  (minute_count(m: mtcollins1_boot_step_timeout_minutes()) as Int) * 60 >= covered
 }
 
 test fn a_zero_window_expires_on_the_next_observation() -> Bool {
