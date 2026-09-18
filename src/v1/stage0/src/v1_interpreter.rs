@@ -22784,12 +22784,12 @@ fn app_attest_verify_attestation(
             "credential key is not a P-256 uncompressed point".to_string(),
         ));
     }
-    if Sha256::digest(&point).as_slice() != key_id {
+    if Sha256::digest(&point)[..] != *key_id {
         return Err(R::KeyIdMismatch);
     }
     let parsed = app_attest_auth_data(auth_data, true).map_err(R::Undecodable)?;
     // 5. RP ID hash is SHA256(App ID).
-    if parsed.rp_id_hash != Sha256::digest(app_id.as_bytes()).as_slice() {
+    if *parsed.rp_id_hash != Sha256::digest(app_id.as_bytes())[..] {
         return Err(R::AppIdMismatch);
     }
     // 6. A fresh key has signed nothing.
@@ -22872,7 +22872,7 @@ fn app_attest_verify_assertion(
         return Err(R::SignatureInvalid);
     }
     let parsed = app_attest_auth_data(auth_data, false).map_err(R::Undecodable)?;
-    if parsed.rp_id_hash != Sha256::digest(app_id.as_bytes()).as_slice() {
+    if *parsed.rp_id_hash != Sha256::digest(app_id.as_bytes())[..] {
         return Err(R::AppIdMismatch);
     }
     let validation_category =
