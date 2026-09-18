@@ -5,35 +5,44 @@ import std.types { Bool, String }
 import gunbc.machine_intake_megarac_media_attach {
   SessionReleased,
   SessionReleaseRefused,
+  SessionCsrfParsed,
+  SessionCsrfUnreadable,
   megarac_session_release_by_reobservation,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn a_live_get_after_close_is_not_released() -> Bool {
-  match megarac_session_release_by_reobservation(get_succeeded: true, get_body: "{\"ok\":true}\n200") {
+  match megarac_session_release_by_reobservation(get_succeeded: true, get_body: "{\"ok\":true}\n200", csrf: SessionCsrfParsed) {
     SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "still succeeded")
     _ => false
   }
 }
 
 test fn a_timeout_get_after_close_is_not_released() -> Bool {
-  match megarac_session_release_by_reobservation(get_succeeded: false, get_body: "\n000") {
+  match megarac_session_release_by_reobservation(get_succeeded: false, get_body: "\n000", csrf: SessionCsrfParsed) {
     SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "unreadable")
     _ => false
   }
 }
 
 test fn a_mid_body_401_with_a_non_401_writeout_is_not_released() -> Bool {
-  match megarac_session_release_by_reobservation(get_succeeded: false, get_body: "note\n401\n200") {
+  match megarac_session_release_by_reobservation(get_succeeded: false, get_body: "note\n401\n200", csrf: SessionCsrfParsed) {
     SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "unreadable")
     _ => false
   }
 }
 
-test fn http_401_on_get_after_close_is_released() -> Bool {
-  match megarac_session_release_by_reobservation(get_succeeded: false, get_body: "{\"error\":\"invalid session\"}\n401") {
+test fn http_401_on_get_after_close_is_released_only_with_a_parsed_token() -> Bool {
+  match megarac_session_release_by_reobservation(get_succeeded: false, get_body: "{\"error\":\"invalid session\"}\n401", csrf: SessionCsrfParsed) {
     SessionReleased => true
+    _ => false
+  }
+}
+
+test fn http_401_with_a_sentinel_csrf_is_not_released() -> Bool {
+  match megarac_session_release_by_reobservation(get_succeeded: false, get_body: "{\"error\":\"invalid session\"}\n401", csrf: SessionCsrfUnreadable) {
+    SessionReleaseRefused { detail: d } => string_contains(s: d, pattern: "sentinel")
     _ => false
   }
 }
