@@ -297,6 +297,59 @@ pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
     }
 }
 
+pub fn parse_content_hash_candidate(wire: String) -> Option<Rc<ContentHash>> {
+    if v1_rt::starts_with(wire.clone(), "sha256:".to_string()) {
+        match Rc::new(
+            wire.clone()
+                .split(&"sha256:".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .get((1) as usize)
+        .cloned()
+        {
+            std::option::Option::None => std::option::Option::None,
+            Some(hex) => match sha256_hex_digest(hex.clone()) {
+                std::option::Option::None => std::option::Option::None,
+                Some(d) => Some(as_content_hash_cryptographic(d.clone())),
+            },
+        }
+    } else {
+        if v1_rt::starts_with(wire.clone(), "sha512:".to_string()) {
+            match Rc::new(
+                wire.clone()
+                    .split(&"sha512:".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .get((1) as usize)
+            .cloned()
+            {
+                std::option::Option::None => std::option::Option::None,
+                Some(hex) => match sha512_hex_digest(hex.clone()) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(d) => Some(as_content_hash_sha512(d.clone())),
+                },
+            }
+        } else {
+            content_hash_from_structural_digest(wire.clone())
+        }
+    }
+}
+
+pub fn parse_content_hash(wire: String) -> Option<Rc<ContentHash>> {
+    match parse_content_hash_candidate(wire.clone()) {
+        std::option::Option::None => std::option::Option::None,
+        Some(parsed) => {
+            if (serialize_content_hash(parsed.clone()) == wire.clone()) {
+                Some(parsed.clone())
+            } else {
+                std::option::Option::None
+            }
+        }
+    }
+}
+
 pub fn sha256_digest_wire_form(digest: Rc<Sha256Digest>) -> String {
     Rc::new(vec!["sha256:".to_string(), digest.hex.clone()]).join(&"".to_string())
 }
