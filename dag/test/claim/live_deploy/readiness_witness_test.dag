@@ -8,7 +8,7 @@ import gunbc.live_deploy.readiness {
   live_deploy_service_ready_once_for_deploy,
   live_deploy_poll_service_ready_after_attempts,
   healthz_body_groundable,
-  live_deploy_healthz_get_for_port,
+  live_deploy_healthz_get_for_port, live_deploy_healthz_probe_deadline,
   service_readiness_reason,
   observe_service_readiness_from_healthz,
   healthz_body_verdict,
@@ -34,6 +34,7 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.live_deploy.spec { deployment_plan_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import v2.std.optional { Present, Absent }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import gunbc.host_effect {
   LocalShell,
@@ -160,18 +161,25 @@ fn witness_argv_join(argv: List<String>) -> String {
   )
 }
 
+// THE PROBE ARGV CARRIES THE DERIVED DEADLINE, NOT THE TOOL DEFAULT: this goes red if the bound
+// regresses to curl_localhost_max_time (the 5 s that refused three deploys).
 test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let url = live_deploy_health_url_for_port(port: port)
-  let argv = http_client_get_argv(url: url)
-  let surface = witness_argv_join(argv: argv)
-  string_contains(s: surface, pattern: "curl")
-    && string_contains(s: surface, pattern: "--connect-timeout")
-    && string_contains(s: surface, pattern: to_string(second_count(s: curl_localhost_connect_timeout)))
-    && string_contains(s: surface, pattern: "--max-time")
-    && string_contains(s: surface, pattern: to_string(second_count(s: curl_localhost_max_time)))
-    && string_contains(s: url as String, pattern: "127.0.0.1:")
-    && string_contains(s: url as String, pattern: "/healthz")
+  match live_deploy_healthz_probe_deadline(spec: deployment_spec_srv1()) {
+    Absent => false
+    Present { value: deadline } => {
+      let argv = http_client_get_argv(url: url, max_time: deadline)
+      let surface = witness_argv_join(argv: argv)
+      string_contains(s: surface, pattern: "curl")
+        && string_contains(s: surface, pattern: "--connect-timeout")
+        && string_contains(s: surface, pattern: to_string(second_count(s: curl_localhost_connect_timeout)))
+        && string_contains(s: surface, pattern: join(["--max-time ", to_string(second_count(s: deadline))], ""))
+        && !string_contains(s: surface, pattern: join(["--max-time ", to_string(second_count(s: curl_localhost_max_time))], ""))
+        && string_contains(s: url as String, pattern: "127.0.0.1:")
+        && string_contains(s: url as String, pattern: "/healthz")
+    }
+  }
 }
 
 test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
@@ -224,6 +232,7 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let read = live_deploy_healthz_get_for_port(
     port: port,
+    spec: deployment_spec_srv1(),
     transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
   )
   match observe_service_readiness_from_healthz(
@@ -309,3 +318,13 @@ test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
 
+
+// THE LOCAL PROBE DEADLINE IS THE UNIT'S WALL LIMIT DOUBLED, never the curl tool default: srv1's
+// spec declares a 120 s wall, so the probe waits 240 s; a spec with no wall limit grounds no
+// deadline and the probe refuses.
+test fn the_healthz_probe_deadline_derives_from_the_serve_wall_limit() -> Bool {
+  match live_deploy_healthz_probe_deadline(spec: deployment_spec_srv1()) {
+    Present { value: d } => second_count(s: d) == 240
+    Absent => false
+  }
+}

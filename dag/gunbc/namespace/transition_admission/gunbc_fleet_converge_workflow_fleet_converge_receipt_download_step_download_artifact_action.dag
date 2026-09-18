@@ -1,0 +1,19 @@
+module gunbc.namespace.transition_admission.gunbc_fleet_converge_workflow_fleet_converge_receipt_download_step_download_artifact_action
+
+import std.types { NonEmptyStr, List }
+import std.integer { UInt32 }
+import std.decl_ref { decl_ref }
+import gunbc.compiler_frontend_program_interlock { TargetChanged }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+
+data gunbc_fleet_converge_workflow_fleet_converge_receipt_download_step_download_artifact_action: TransitionAdmission = TransitionAdmission {
+  label: "ACTION-USE ADMISSION download_artifact_action home gunbc.action_use_admission" as NonEmptyStr,
+  subject: Binding {
+    enclosing: decl_ref("gunbc.fleet_converge_workflow", "fleet_converge_receipt_download_step"),
+    spelling: "download_artifact_action" as NonEmptyStr,
+    expected_candidates: [decl_ref("gunbc.action_use_admission", "download_artifact_action")],
+  },
+  disposition: TargetChanged,
+  deletion_follow_up: NotAuthored,
+  owner_pull_request: 11587 as UInt32,
+}
