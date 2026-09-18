@@ -8,7 +8,7 @@ import std.human_intervention {
   FleetOnce,
   NoDischargeSiteModeled,
 }
-import extdeps.uri { Uri, Https, uri_https }
+import extdeps.uri { Uri, uri_https, uri_scheme_is_https }
 import gunbc.network_boot_delivery { FleetBootServiceReceipt }
 import gunbc.network_boot_predecessor_census { predecessor_disposition_of, DurableOriginNotBootOrigin }
 import gunbc.cloudflare.r2_origin {
@@ -34,6 +34,30 @@ type BootBundleMember
 type BootBundleObject {
   member: BootBundleMember
   digest: Sha256Digest
+}
+
+// THE BUCKET IS PUBLIC, SO WHAT A PRODUCER HANDS THE PUBLISHER IS CLASSIFIED BEFORE A KEY IS MINTED.
+// A host credential, a cloud token or an install secret named for publication refuses here, typed,
+// and never reaches a PUT: anything under a digest key is world-readable through the custom domain.
+// The residual is the image's CONTENT -- a rootfs that embeds a secret is a producer fact this fold
+// cannot see, and that obligation stays with the image producer.
+type BootPublicationCandidate
+  = CandidateBootArtifact { object: BootBundleObject }
+  | CandidateHostCredential
+  | CandidateCloudToken
+  | CandidateInstallSecret
+
+type BootPublicationAdmission
+  = BootPublicationAdmitted { object: BootBundleObject }
+  | BootPublicationRefusedSecretMaterial {}
+
+fn admit_boot_publication(candidate: BootPublicationCandidate) -> BootPublicationAdmission {
+  match candidate {
+    CandidateBootArtifact { object: o } => BootPublicationAdmitted { object: o }
+    CandidateHostCredential => BootPublicationRefusedSecretMaterial {}
+    CandidateCloudToken => BootPublicationRefusedSecretMaterial {}
+    CandidateInstallSecret => BootPublicationRefusedSecretMaterial {}
+  }
 }
 
 // A KEY IS THE DIGEST AND NOTHING ELSE. There is no mutable name ("latest", an arch alias) because a
@@ -129,7 +153,7 @@ type BootReadbackLocator
 
 fn boot_readback_locator(receipt: FleetBootServiceReceipt, key: NonEmptyStr) -> BootReadbackLocator {
   let domain = receipt.origin_custom_domain
-  if domain.scheme != Https {
+  if !uri_scheme_is_https(s: domain.scheme) {
     BootReadbackRefusedNotHttps {}
   } else if host_is_r2_dev(locator: domain.locator as String) {
     BootReadbackRefusedR2Dev { locator: domain.locator }

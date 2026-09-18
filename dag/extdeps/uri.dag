@@ -46,6 +46,21 @@ fn uri_scheme_is_http(s: UriScheme) -> Bool {
   }
 }
 
+// TLS-only, as distinct from uri_scheme_is_http which admits both HTTP schemes.
+fn uri_scheme_is_https(s: UriScheme) -> Bool {
+  match s {
+    Http => false
+    Https => true
+    Tftp => false
+    File => false
+    Ftp => false
+    Javascript => false
+    Data => false
+    Vbscript => false
+    Mailto => false
+  }
+}
+
 fn uri_is_url(uri: Uri) -> Bool {
   uri_scheme_is_http(s: uri.scheme)
 }
