@@ -168,8 +168,12 @@ type CollectiveGroupAdvertised {
   expected_ranks: List<HostIdentity>
   latency_ceiling: Nanosecond
   latency_message_bytes: ByteSize
+  all_reduce_size_semantics: NcclTestsSizeSemantics
   bandwidth_floor: Bandwidth
   bandwidth_message_bytes: ByteSize
+  all_to_all_latency_ceiling: Nanosecond
+  all_to_all_message_bytes: ByteSize
+  all_to_all_size_semantics: NcclTestsSizeSemantics
   rank_symmetry_max_latency_multiple: Nat
 }
 
@@ -252,6 +256,8 @@ type CollectiveGroupReceipt {
   all_to_all_latency: CollectiveLatencyStanding
   rank_symmetry: RankSymmetryStanding
   host_registered_ib_fallback: HostRegisteredIbFallbackStanding
+  window: CollectiveWindowStanding
+  primitive_attribution: CollectivePrimitiveAttribution
 }
 
 type NodeQualificationReceipt {
@@ -270,6 +276,8 @@ type QualificationRefusal
   | GpuDirectRdmaDidNotHold { standing: GpuDirectRdmaQualification }
   | AllToAllLatencyDidNotHold { standing: CollectiveLatencyStanding }
   | HostRegisteredIbFallbackDidNotHold { standing: HostRegisteredIbFallbackStanding }
+  | CollectiveWindowDidNotHold { standing: CollectiveWindowStanding }
+  | CollectivePrimitiveDidNotHold { attribution: CollectivePrimitiveAttribution }
 
 type NodeQualificationAdmission
   = NodeQualified { receipt: NodeQualificationReceipt }
@@ -360,9 +368,23 @@ fn sample_stricter_latency(s: CollectiveSample) -> Nanosecond {
   }
 }
 
+fn size_semantics_eq(a: NcclTestsSizeSemantics, b: NcclTestsSizeSemantics) -> Bool {
+  match a {
+    EachRankContributesTheSizeColumn => match b {
+      EachRankContributesTheSizeColumn => true
+      TotalBufferSplitPerPeer { rank_count: _ } => false
+    }
+    TotalBufferSplitPerPeer { rank_count: n } => match b {
+      EachRankContributesTheSizeColumn => false
+      TotalBufferSplitPerPeer { rank_count: m } => n == m
+    }
+  }
+}
+
 fn qualify_collective_latency(
   ceiling: Nanosecond,
   at: ByteSize,
+  required_semantics: NcclTestsSizeSemantics,
   reading: CollectiveCurveReading,
 ) -> CollectiveLatencyStanding {
   match reading {
@@ -371,25 +393,32 @@ fn qualify_collective_latency(
     CollectiveCurveRead {
       samples: samples,
       instrument: _,
-      size_semantics: _,
+      size_semantics: sem,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
       window: _,
     } =>
-      match sample_at_message_bytes(samples: samples, want: at) {
-        Absent => CollectiveLatencyUnread {
-          ceiling: ceiling,
-          because: "nccl-tests returned no sample at the advertised message size" as NonEmptyStr,
-        }
-        Present { value: s } => {
-          let measured = sample_stricter_latency(s: s)
-          if nanosecond_count(n: measured) <= nanosecond_count(n: ceiling) {
-            CollectiveLatencyAgrees { ceiling: ceiling, measured: measured }
-          } else {
-            CollectiveLatencyFallsShort { ceiling: ceiling, measured: measured }
+      if size_semantics_eq(a: required_semantics, b: sem) {
+        match sample_at_message_bytes(samples: samples, want: at) {
+          Absent => CollectiveLatencyUnread {
+            ceiling: ceiling,
+            because: "nccl-tests returned no sample at the advertised message size" as NonEmptyStr,
           }
+          Present { value: s } => {
+            let measured = sample_stricter_latency(s: s)
+            if nanosecond_count(n: measured) <= nanosecond_count(n: ceiling) {
+              CollectiveLatencyAgrees { ceiling: ceiling, measured: measured }
+            } else {
+              CollectiveLatencyFallsShort { ceiling: ceiling, measured: measured }
+            }
+          }
+        }
+      } else {
+        CollectiveLatencyUnread {
+          ceiling: ceiling,
+          because: "the curve's size column is not the advertised semantics; all-reduce and all-to-all are not commensurate" as NonEmptyStr,
         }
       }
   }
@@ -398,6 +427,7 @@ fn qualify_collective_latency(
 fn qualify_collective_bandwidth(
   floor: Bandwidth,
   at: ByteSize,
+  required_semantics: NcclTestsSizeSemantics,
   reading: CollectiveCurveReading,
 ) -> CollectiveBandwidthStanding {
   match reading {
@@ -406,24 +436,90 @@ fn qualify_collective_bandwidth(
     CollectiveCurveRead {
       samples: samples,
       instrument: _,
-      size_semantics: _,
+      size_semantics: sem,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
       window: _,
     } =>
-      match sample_at_message_bytes(samples: samples, want: at) {
-        Absent => CollectiveBandwidthUnread {
-          floor: floor,
-          because: "nccl-tests returned no sample at the advertised message size" as NonEmptyStr,
+      if size_semantics_eq(a: required_semantics, b: sem) {
+        match sample_at_message_bytes(samples: samples, want: at) {
+          Absent => CollectiveBandwidthUnread {
+            floor: floor,
+            because: "nccl-tests returned no sample at the advertised message size" as NonEmptyStr,
+          }
+          Present { value: s } => if bandwidth_count(b: s.bus_bandwidth) >= bandwidth_count(b: floor) {
+            CollectiveBandwidthAgrees { floor: floor, measured: s.bus_bandwidth }
+          } else {
+            CollectiveBandwidthFallsShort { floor: floor, measured: s.bus_bandwidth }
+          }
         }
-        Present { value: s } => if bandwidth_count(b: s.bus_bandwidth) >= bandwidth_count(b: floor) {
-          CollectiveBandwidthAgrees { floor: floor, measured: s.bus_bandwidth }
-        } else {
-          CollectiveBandwidthFallsShort { floor: floor, measured: s.bus_bandwidth }
+      } else {
+        CollectiveBandwidthUnread {
+          floor: floor,
+          because: "the curve's size column is not the advertised semantics; all-reduce and all-to-all are not commensurate" as NonEmptyStr,
         }
       }
+  }
+}
+
+fn reading_window(reading: CollectiveCurveReading) -> CollectiveWindowStanding {
+  match reading {
+    CollectiveCurveUnread { because: b } => WindowStandingUnread { because: b }
+    CollectiveCurveRead {
+      samples: _,
+      instrument: _,
+      size_semantics: _,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: _,
+      window: w,
+    } => w
+  }
+}
+
+fn reading_attribution(reading: CollectiveCurveReading) -> CollectivePrimitiveAttribution {
+  match reading {
+    CollectiveCurveUnread { because: _ } => CollectivePrimitiveAttributionUnestablished
+    CollectiveCurveRead {
+      samples: _,
+      instrument: _,
+      size_semantics: _,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: a,
+      window: _,
+    } => a
+  }
+}
+
+fn join_windows(a: CollectiveWindowStanding, b: CollectiveWindowStanding) -> CollectiveWindowStanding {
+  match a {
+    WindowStandingUnread { because: _ } => a
+    WindowSharedWithDeclaredTraffic => match b {
+      WindowStandingUnread { because: _ } => b
+      WindowSharedWithDeclaredTraffic => a
+      WindowIsolated => a
+    }
+    WindowIsolated => b
+  }
+}
+
+fn join_attributions(
+  a: CollectivePrimitiveAttribution,
+  b: CollectivePrimitiveAttribution,
+) -> CollectivePrimitiveAttribution {
+  match a {
+    CollectivePrimitiveAttributionUnestablished => a
+    CollectivePrimitiveMeasuredOnDifferentRuntime { measured_with: _, serving: _ } => match b {
+      CollectivePrimitiveAttributionUnestablished => b
+      CollectivePrimitiveMeasuredOnDifferentRuntime { measured_with: _, serving: _ } => a
+      CollectivePrimitiveSameRuntime { nccl: _ } => a
+    }
+    CollectivePrimitiveSameRuntime { nccl: _ } => b
   }
 }
 
@@ -653,16 +749,19 @@ fn qualify_collective_group(
     collective_latency: qualify_collective_latency(
       ceiling: advertised.latency_ceiling,
       at: advertised.latency_message_bytes,
+      required_semantics: advertised.all_reduce_size_semantics,
       reading: measured.collective,
     ),
     collective_bandwidth: qualify_collective_bandwidth(
       floor: advertised.bandwidth_floor,
       at: advertised.bandwidth_message_bytes,
+      required_semantics: advertised.all_reduce_size_semantics,
       reading: measured.collective,
     ),
     all_to_all_latency: qualify_collective_latency(
-      ceiling: advertised.latency_ceiling,
-      at: advertised.latency_message_bytes,
+      ceiling: advertised.all_to_all_latency_ceiling,
+      at: advertised.all_to_all_message_bytes,
+      required_semantics: advertised.all_to_all_size_semantics,
       reading: measured.all_to_all,
     ),
     rank_symmetry: qualify_rank_symmetry(
@@ -672,6 +771,14 @@ fn qualify_collective_group(
       at: advertised.latency_message_bytes,
     ),
     host_registered_ib_fallback: measured.host_registered_ib_fallback,
+    window: join_windows(
+      a: reading_window(reading: measured.collective),
+      b: reading_window(reading: measured.all_to_all),
+    ),
+    primitive_attribution: join_attributions(
+      a: reading_attribution(reading: measured.collective),
+      b: reading_attribution(reading: measured.all_to_all),
+    ),
   }
 }
 
@@ -769,6 +876,23 @@ fn all_to_all_refusal(s: CollectiveLatencyStanding) -> List<QualificationRefusal
   }
 }
 
+fn window_refusal(s: CollectiveWindowStanding) -> List<QualificationRefusal> {
+  match s {
+    WindowIsolated => []
+    WindowSharedWithDeclaredTraffic => [CollectiveWindowDidNotHold { standing: s }]
+    WindowStandingUnread { because: _ } => [CollectiveWindowDidNotHold { standing: s }]
+  }
+}
+
+fn primitive_refusal(a: CollectivePrimitiveAttribution) -> List<QualificationRefusal> {
+  match a {
+    CollectivePrimitiveSameRuntime { nccl: _ } => []
+    CollectivePrimitiveAttributionUnestablished =>
+      [CollectivePrimitiveDidNotHold { attribution: a }]
+    CollectivePrimitiveMeasuredOnDifferentRuntime { measured_with: _, serving: _ } =>
+      [CollectivePrimitiveDidNotHold { attribution: a }]
+  }
+}
 fn ib_fallback_refusal(s: HostRegisteredIbFallbackStanding) -> List<QualificationRefusal> {
   match s {
     HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
@@ -807,7 +931,13 @@ fn qualification_refusals(receipt: NodeQualificationReceipt) -> List<Qualificati
                     gpu_direct_refusal(s: receipt.host.gpu_direct_rdma),
                     concat(
                       all_to_all_refusal(s: receipt.group.all_to_all_latency),
-                      ib_fallback_refusal(s: receipt.group.host_registered_ib_fallback),
+                      concat(
+                        ib_fallback_refusal(s: receipt.group.host_registered_ib_fallback),
+                        concat(
+                          window_refusal(s: receipt.group.window),
+                          primitive_refusal(a: receipt.group.primitive_attribution),
+                        ),
+                      ),
                     ),
                   ),
                 ),

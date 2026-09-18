@@ -35,13 +35,14 @@ import product.fabric.node_qualification {
   RailLinkModeAgrees, RailLinkModeDiffers, RailLinkModeUnread,
   NicPcieFallsShort, NicPcieUnread, NicPcieAgrees, NicPcieOfferUngrounded,
   NicPcieExceeds, NicPcieDiffers,
-  CollectiveLatencyUnread, CollectiveBandwidthUnread,
+  CollectiveLatencyUnread, CollectiveLatencyAgrees, CollectiveBandwidthUnread,
   RankSymmetryUnread, RankSymmetryFallsShort, RankSymmetryAgrees,
   GpuDirectRdmaEvidenceMissing, GpuDirectRdmaRecorded,
   NodeQualified, NodeNotQualified,
   qualify_node, admit_qualified_node, qualify_rail_link_mode, qualify_accelerator_count,
-  qualify_rank_symmetry, qualify_nic_pcie,
-  WindowStandingUnread, WindowSharedWithDeclaredTraffic,
+  qualify_rank_symmetry, qualify_nic_pcie, qualify_collective_latency,
+  WindowStandingUnread, WindowSharedWithDeclaredTraffic, WindowIsolated,
+  CollectivePrimitiveSameRuntime,
   claimed_delivery_refusals, OfferClaimsNodeDelivery,
 }
 import gunbc.spark.group_b_node_qualification { group_b_qualification_admission, group_b_measured }
@@ -90,8 +91,12 @@ fn fx_advertised() -> AdvertisedNodeOffer {
       expected_ranks: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
       latency_ceiling: nanosecond(count: 1000),
       latency_message_bytes: byte_size(count: 8),
+      all_reduce_size_semantics: EachRankContributesTheSizeColumn,
       bandwidth_floor: bandwidth(count: 100),
       bandwidth_message_bytes: byte_size(count: 8),
+      all_to_all_latency_ceiling: nanosecond(count: 1000),
+      all_to_all_message_bytes: byte_size(count: 8),
+      all_to_all_size_semantics: TotalBufferSplitPerPeer { rank_count: 2 },
       rank_symmetry_max_latency_multiple: 2,
     },
   }
@@ -114,8 +119,10 @@ fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
-    primitive_attribution: CollectivePrimitiveAttributionUnestablished,
-    window: WindowStandingUnread { because: "fixture window" as NonEmptyStr },
+    primitive_attribution: CollectivePrimitiveSameRuntime {
+      nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+    },
+    window: WindowIsolated,
   }
 }
 
@@ -127,8 +134,10 @@ fn fx_all_to_all_curve(samples: List<CollectiveSample>) -> CollectiveCurveReadin
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
-    primitive_attribution: CollectivePrimitiveAttributionUnestablished,
-    window: WindowStandingUnread { because: "fixture window" as NonEmptyStr },
+    primitive_attribution: CollectivePrimitiveSameRuntime {
+      nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+    },
+    window: WindowIsolated,
   }
 }
 
@@ -338,8 +347,12 @@ fn fx_rank_pair_advertised() -> AdvertisedNodeOffer {
       expected_ranks: ["rank-fast" as HostIdentity, "rank-slow" as HostIdentity],
       latency_ceiling: a.group.latency_ceiling,
       latency_message_bytes: a.group.latency_message_bytes,
+      all_reduce_size_semantics: a.group.all_reduce_size_semantics,
       bandwidth_floor: a.group.bandwidth_floor,
       bandwidth_message_bytes: a.group.bandwidth_message_bytes,
+      all_to_all_latency_ceiling: a.group.all_to_all_latency_ceiling,
+      all_to_all_message_bytes: a.group.all_to_all_message_bytes,
+      all_to_all_size_semantics: a.group.all_to_all_size_semantics,
       rank_symmetry_max_latency_multiple: a.group.rank_symmetry_max_latency_multiple,
     },
   }
@@ -636,5 +649,35 @@ test fn rank_symmetry_compares_the_advertised_size_not_each_curve_head() -> Bool
     RankSymmetryUnread { because: _ } => true
     RankSymmetryFallsShort { degraded: _ } => false
     RankSymmetryAgrees { rank_count: _ } => false
+  }
+}
+
+test fn all_to_all_is_not_scored_on_all_reduce_size_semantics() -> Bool {
+  match qualify_collective_latency(
+    ceiling: nanosecond(count: 100000),
+    at: byte_size(count: 8192),
+    required_semantics: EachRankContributesTheSizeColumn,
+    reading: fx_all_to_all_curve(samples: [fx_sample()]),
+  ) {
+    CollectiveLatencyUnread { ceiling: _, because: _ } => true
+    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
+    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
+  }
+}
+
+test fn group_b_shared_window_and_different_nccl_do_not_hold() -> Bool {
+  match group_b_qualification_admission() {
+    NodeQualified { receipt: _ } => false
+    NodeNotQualified { receipt: r, refusals: _ } =>
+      match r.group.window {
+        WindowSharedWithDeclaredTraffic => true
+        WindowIsolated => false
+        WindowStandingUnread { because: _ } => false
+      }
+        && match r.group.primitive_attribution {
+          CollectivePrimitiveMeasuredOnDifferentRuntime { measured_with: _, serving: _ } => true
+          CollectivePrimitiveAttributionUnestablished => false
+          CollectivePrimitiveSameRuntime { nccl: _ } => false
+        }
   }
 }

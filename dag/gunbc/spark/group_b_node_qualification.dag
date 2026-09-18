@@ -134,8 +134,12 @@ data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
     expected_ranks: group_b_expected_ranks,
     latency_ceiling: nanosecond(count: 100000),
     latency_message_bytes: byte_size(count: 8192),
+    all_reduce_size_semantics: EachRankContributesTheSizeColumn,
     bandwidth_floor: bandwidth(count: 10000000000),
     bandwidth_message_bytes: byte_size(count: 8192),
+    all_to_all_latency_ceiling: nanosecond(count: 100000),
+    all_to_all_message_bytes: byte_size(count: 8192),
+    all_to_all_size_semantics: TotalBufferSplitPerPeer { rank_count: 4 },
     rank_symmetry_max_latency_multiple: 2,
   },
 }
