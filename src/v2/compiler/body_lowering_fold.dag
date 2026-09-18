@@ -2064,7 +2064,7 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
 // by the time this shell reduces, and this arm lifts the member out of the sequence's right
 // projection after checking the marker lexeme really is "test". A non-"test" marker is a typed
 // refusal, never a retained wrapper. The TEST-NESS marker is deliberately not reified into the
-// member node: it is authored source data under DESIGN section 4c and rides its own channel,
+// member node: it rides its own channel beside the semantic tree (the DESIGN section 4c shape),
 // v2.compiler.test_marker_capture over the same parse tree, so the semantic member stays identical
 // to a plain fn's.
 fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<Node> {
