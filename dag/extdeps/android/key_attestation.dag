@@ -32,5 +32,3 @@ type KeymasterSecurityLevel
 type AndroidAttestationChain {
   certificates_der_b64: List<NonEmptyStr>
 }
-
-data software_level_is_not_hardware_note: NonEmptyStr = "SecurityLevelSoftware means the key is not hardware-backed; a verifier requiring a device-bound key refuses it rather than admitting it at a weaker standing."

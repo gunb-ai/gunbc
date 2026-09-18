@@ -77,7 +77,6 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_vers
 // reach the dashboard on srv1 within the code's lifetime". Single use and a short lifetime bound it;
 // peer attribution at the serve boundary (approval_identity_attribution_frontier) is what would make
 // it operator-only.
-data enrolment_code_residual_note: NonEmptyStr = "The one-time enrolment code is issued on the dashboard, which binds loopback behind tailscale serve: off-tailnet callers are excluded, on-host POSIX users are not. It is single-use and short-lived; it is not operator-only until peer attribution at the serve boundary lands (approval_identity_attribution_frontier)."
 
 // THE CODE IS THE IDENTIFIER: the operator types one thing, so a separate id would be a second key
 // for one fact. It also names the enrolment it produces (enrollment_id_for_code), so issuance,
