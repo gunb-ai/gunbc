@@ -1,6 +1,6 @@
 module product.fabric.failure_scenario_admission
 
-import std.types { Bool, Int, List, EpochSecs }
+import std.types { Bool, Int, List }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
@@ -112,6 +112,15 @@ type FailureScenarioRefusal<P>
 // established against and the exercise that made its route ready. Reporting the subjects is what
 // makes those fields consumed rather than decorative (review 67499 was right that nothing read them),
 // and it is what a receipt for this decision needs.
+//
+// DECLARED FRONTIER, stated at its real strength (review 67791): today the only reader of `covered` is
+// this module's witness, because admit_failure_scenarios itself has no production caller yet - the
+// private capacity contract (gunbc-private#141) deliberately answers its planning question WITHOUT this
+// fold, since it has no grounded capacity or committed demand to hand it. So `covered` is consumed by
+// a claim, not by a decision. TRIGGER: the first production caller of admit_failure_scenarios - a fleet
+// admission step holding admitted capacity for an observed, exercised fleet and a committed buyer
+// demand - which must record `covered` as the receipt of the admission it made. If that caller lands
+// and does not read `covered`, the field should be deleted rather than kept.
 type CoveredSubject<P> {
   offer: FabricIdentity<P, OfferKey>
   demand: FabricIdentity<P, DemandKey>
