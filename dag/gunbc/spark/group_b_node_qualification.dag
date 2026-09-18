@@ -13,9 +13,10 @@ import extdeps.nvidia.cuda_device_attribute {
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery,
   CountUnread, ByteSizeUnread, LinkModeRead, PcieLinkRead,
-  CollectiveCurveRead, CollectiveSample, NcclTestsAllReducePerf,
-  SmallMessageStepThenPlateau,
+  CollectiveCurveRead, CollectiveSample, NcclTestsAllReducePerf, NcclTestsAllToAllPerf,
+  SmallMessageStepThenPlateau, SmallMessageShapeUncharacterized,
   EngineBufferModeUnestablished, PerLayerAllReduceCountUnestablished,
+  EachRankContributesTheSizeColumn, TotalBufferSplitPerPeer,
   EthtoolLinkModes, LspciLnkSta,
   NodeQualificationAdmission, qualify_node, admit_qualified_node,
 }
@@ -41,8 +42,11 @@ data advertised_spark_connectx7_per_port_link: PcieLink = PcieLink { generation:
 // (dense-TP 45x2 vs MoE replacing the second with expert-parallel all-to-all). Do not collapse
 // those into a single millisecond figure. Transport env copied from the serving container:
 // NCCL_SOCKET_IFNAME=enp1s0f1np1, NCCL_IB_HCA=rocep1s0f1, RoCEv2. NCCL 2.31.2 user-prefix.
-// First sample is 8192 B. The 8KB->16KB step then 16-32KB plateau is recorded as a protocol-
-// boundary candidate (LL/LL128/Simple), not smoothed as bandwidth.
+// First sample is 8192 B. nccl-tests size for all_reduce is what EACH RANK CONTRIBUTES, not a
+// total-buffer figure comparable to alltoall_perf's size column (that one is the total buffer,
+// split per peer as size/nRanks). The 8KB->16KB step then 16-32KB plateau is recorded as a
+// protocol-boundary candidate (LL/LL128/Simple), not smoothed as bandwidth. Engine-side message
+// sizes and operation counts are not derived here.
 
 fn group_b_all_reduce_sample(
   message_bytes: Nat,
@@ -69,6 +73,20 @@ fn group_b_all_reduce_half_curve() -> List<CollectiveSample> {
     group_b_all_reduce_sample(message_bytes: 262144, in_place_ns: 945330, out_of_place_ns: 950000, busbw: 420000000),
     group_b_all_reduce_sample(message_bytes: 524288, in_place_ns: 1978540, out_of_place_ns: 2070680, busbw: 400000000),
     group_b_all_reduce_sample(message_bytes: 1048576, in_place_ns: 4494060, out_of_place_ns: 4614400, busbw: 350000000),
+  ]
+}
+
+fn group_b_all_to_all_half_curve() -> List<CollectiveSample> {
+  [
+    group_b_all_reduce_sample(message_bytes: 8192, in_place_ns: 20150, out_of_place_ns: 24500, busbw: 300000000),
+    group_b_all_reduce_sample(message_bytes: 16384, in_place_ns: 29940, out_of_place_ns: 24670, busbw: 410000000),
+    group_b_all_reduce_sample(message_bytes: 24576, in_place_ns: 30380, out_of_place_ns: 29220, busbw: 610000000),
+    group_b_all_reduce_sample(message_bytes: 32768, in_place_ns: 30620, out_of_place_ns: 35230, busbw: 800000000),
+    group_b_all_reduce_sample(message_bytes: 65536, in_place_ns: 45420, out_of_place_ns: 56310, busbw: 1080000000),
+    group_b_all_reduce_sample(message_bytes: 131072, in_place_ns: 85760, out_of_place_ns: 81790, busbw: 1150000000),
+    group_b_all_reduce_sample(message_bytes: 262144, in_place_ns: 147740, out_of_place_ns: 149530, busbw: 1330000000),
+    group_b_all_reduce_sample(message_bytes: 524288, in_place_ns: 261730, out_of_place_ns: 267380, busbw: 1500000000),
+    group_b_all_reduce_sample(message_bytes: 1048576, in_place_ns: 537720, out_of_place_ns: 513310, busbw: 1460000000),
   ]
 }
 
@@ -100,7 +118,16 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
   collective: CollectiveCurveRead {
     samples: group_b_all_reduce_half_curve(),
     instrument: NcclTestsAllReducePerf,
+    size_semantics: EachRankContributesTheSizeColumn,
     small_message_shape: SmallMessageStepThenPlateau { step_at: byte_size(count: 16384) },
+    engine_buffer_mode: EngineBufferModeUnestablished,
+    per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
+  },
+  all_to_all: CollectiveCurveRead {
+    samples: group_b_all_to_all_half_curve(),
+    instrument: NcclTestsAllToAllPerf,
+    size_semantics: TotalBufferSplitPerPeer { rank_count: 4 },
+    small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
   },

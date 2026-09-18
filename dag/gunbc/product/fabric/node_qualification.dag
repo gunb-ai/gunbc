@@ -40,7 +40,11 @@ type RailLinkInstrument = EthtoolLinkModes | MstlinkStatus
 
 type NicPcieInstrument = LspciLnkSta | SysfsCurrentLinkWidth
 
-type CollectiveInstrument = NcclTestsAllReducePerf | NcclTestsAllGatherPerf
+type CollectiveInstrument = NcclTestsAllReducePerf | NcclTestsAllGatherPerf | NcclTestsAllToAllPerf
+
+type NcclTestsSizeSemantics
+  = EachRankContributesTheSizeColumn
+  | TotalBufferSplitPerPeer { rank_count: Nat }
 
 // ── PER-AXIS READINGS. Failure and unread cannot construct a measured value. ───────────────────
 
@@ -84,6 +88,7 @@ type CollectiveCurveReading
   = CollectiveCurveRead {
       samples: List<CollectiveSample>,
       instrument: CollectiveInstrument,
+      size_semantics: NcclTestsSizeSemantics,
       small_message_shape: CollectiveSmallMessageShape,
       engine_buffer_mode: EngineBufferModeStanding,
       per_layer_all_reduce_count: PerLayerAllReduceCountStanding,
@@ -113,6 +118,7 @@ type MeasuredNodeDelivery {
   rail_link_mode: LinkModeReading
   nic_pcie: PcieLinkReading
   collective: CollectiveCurveReading
+  all_to_all: CollectiveCurveReading
   ranks: List<RankCollectiveReading>
   gpu_direct_rdma: CudaDeviceAttributeReading
 }
@@ -256,6 +262,7 @@ fn qualify_collective_latency(
     CollectiveCurveRead {
       samples: samples,
       instrument: _,
+      size_semantics: _,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -287,6 +294,7 @@ fn qualify_collective_bandwidth(
     CollectiveCurveRead {
       samples: samples,
       instrument: _,
+      size_semantics: _,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -311,6 +319,7 @@ fn rank_curve_unread_reason(curve: CollectiveCurveReading) -> NonEmptyStr? {
     CollectiveCurveRead {
       samples: _,
       instrument: _,
+      size_semantics: _,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -331,6 +340,7 @@ fn rank_first_latency(curve: CollectiveCurveReading) -> Nat? {
     CollectiveCurveRead {
       samples: samples,
       instrument: _,
+      size_semantics: _,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,

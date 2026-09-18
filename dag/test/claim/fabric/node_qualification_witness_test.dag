@@ -19,10 +19,11 @@ import product.fabric.node_qualification {
   CountRead, CountUnread, ByteSizeRead, ByteSizeUnread,
   LinkModeRead, LinkModeUnread, PcieLinkRead, PcieLinkUnread,
   CollectiveCurveRead, CollectiveCurveUnread,
-  EthtoolLinkModes, LspciLnkSta, NcclTestsAllReducePerf,
+  EthtoolLinkModes, LspciLnkSta, NcclTestsAllReducePerf, NcclTestsAllToAllPerf,
   SmallMessageShapeUncharacterized, SmallMessageStepThenPlateau,
   EngineBufferModeUnestablished, EngineBufferModeInPlace, EngineBufferModeOutOfPlace,
   PerLayerAllReduceCountUnestablished, PerLayerAllReduceCount,
+  EachRankContributesTheSizeColumn, TotalBufferSplitPerPeer,
   AcceleratorCountAgrees, AcceleratorCountFallsShort, AcceleratorCountUnread,
   RailLinkModeAgrees, RailLinkModeFallsShort, RailLinkModeUnread,
   NicPcieFallsShort, NicPcieUnread,
@@ -68,10 +69,15 @@ fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
   CollectiveCurveRead {
     samples: samples,
     instrument: NcclTestsAllReducePerf,
+    size_semantics: EachRankContributesTheSizeColumn,
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
   }
+}
+
+fn fx_all_to_all_unread() -> CollectiveCurveReading {
+  CollectiveCurveUnread { because: "fixture has no all-to-all curve" as NonEmptyStr }
 }
 
 fn fx_measured_all_agree() -> MeasuredNodeDelivery {
@@ -81,6 +87,7 @@ fn fx_measured_all_agree() -> MeasuredNodeDelivery {
     rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
     nic_pcie: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
     collective: fx_curve(samples: [fx_sample()]),
+    all_to_all: fx_all_to_all_unread(),
     ranks: [
       RankCollectiveReading {
         rank: "rank-0" as HostIdentity,
@@ -114,6 +121,7 @@ test fn unread_evidence_is_not_qualification() -> Bool {
     rail_link_mode: LinkModeUnread { because: "ethtool not run" as NonEmptyStr },
     nic_pcie: PcieLinkUnread { because: "lspci not run" as NonEmptyStr },
     collective: CollectiveCurveUnread { because: "nccl-tests not run" as NonEmptyStr },
+    all_to_all: CollectiveCurveUnread { because: "alltoall_perf not run" as NonEmptyStr },
     ranks: [],
     gpu_direct_rdma: CudaAttributeUnread {
       attribute: CudaDevAttrGpuDirectRdmaSupported,
@@ -214,6 +222,7 @@ test fn gdr_expected_and_unsupported_refuses_admission() -> Bool {
     rail_link_mode: measured.rail_link_mode,
     nic_pcie: measured.nic_pcie,
     collective: measured.collective,
+    all_to_all: measured.all_to_all,
     ranks: measured.ranks,
     gpu_direct_rdma: CudaAttributeRead {
       attribute: CudaDevAttrGpuDirectRdmaSupported,
@@ -268,6 +277,7 @@ fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDel
     rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
     nic_pcie: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
     collective: fx_curve(samples: [fx_sample()]),
+    all_to_all: fx_all_to_all_unread(),
     ranks: ranks,
     gpu_direct_rdma: CudaAttributeRead {
       attribute: CudaDevAttrGpuDirectRdmaSupported,
@@ -359,6 +369,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
     CollectiveCurveRead {
       samples: samples,
       instrument: _,
+      size_semantics: sem,
       small_message_shape: shape,
       engine_buffer_mode: buf,
       per_layer_all_reduce_count: layers,
@@ -370,6 +381,10 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
             && nanosecond_count(n: s.in_place_latency) == 108420
             && nanosecond_count(n: s.out_of_place_latency) == 179540
             && nanosecond_count(n: s.in_place_latency) != nanosecond_count(n: s.out_of_place_latency)
+            && match sem {
+              EachRankContributesTheSizeColumn => true
+              TotalBufferSplitPerPeer { rank_count: _ } => false
+            }
             && match shape {
               SmallMessageStepThenPlateau { step_at: at } => byte_size_count(b: at) == 16384
               SmallMessageShapeUncharacterized => false
@@ -384,5 +399,48 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
               PerLayerAllReduceCount { count: _ } => false
             }
       }
+  }
+}
+
+test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
+  match group_b_measured.collective {
+    CollectiveCurveUnread { because: _ } => false
+    CollectiveCurveRead {
+      samples: ar,
+      instrument: _,
+      size_semantics: ar_sem,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+    } => match group_b_measured.all_to_all {
+      CollectiveCurveUnread { because: _ } => false
+      CollectiveCurveRead {
+        samples: a2a,
+        instrument: _,
+        size_semantics: a2a_sem,
+        small_message_shape: _,
+        engine_buffer_mode: _,
+        per_layer_all_reduce_count: _,
+      } =>
+        match ar.first() {
+          Absent => false
+          Present { value: ar0 } => match a2a.first() {
+            Absent => false
+            Present { value: a2a0 } =>
+              byte_size_count(b: ar0.message_bytes) == byte_size_count(b: a2a0.message_bytes)
+                && byte_size_count(b: ar0.message_bytes) == 8192
+                && nanosecond_count(n: ar0.in_place_latency) == 108420
+                && nanosecond_count(n: a2a0.in_place_latency) == 20150
+                && match ar_sem {
+                  EachRankContributesTheSizeColumn => true
+                  TotalBufferSplitPerPeer { rank_count: _ } => false
+                }
+                && match a2a_sem {
+                  TotalBufferSplitPerPeer { rank_count: n } => n == 4
+                  EachRankContributesTheSizeColumn => false
+                }
+          }
+        }
+    }
   }
 }
