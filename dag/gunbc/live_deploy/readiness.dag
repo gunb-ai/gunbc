@@ -1,6 +1,9 @@
 module gunbc.live_deploy.readiness
 
 import std.types { String, Bool, Int, NonEmptyStr, List, CommitSha }
+import std.evaluation_budget { LimitSet, LimitUnset }
+import std.measure { positive_millisecond_count }
+import v2.std.optional { Present, Absent }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.live_deploy.candidate { CandidateRelease }
 import gunbc.readiness { Readiness, Ready, Pending, Refused }
@@ -142,14 +145,35 @@ fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -
   }
 }
 
-fn live_deploy_healthz_get_local(port: Int) -> HealthzEffectiveRead {
+// THE PROBE DEADLINE IS DERIVED FROM THE UNIT'S OWN WALL LIMIT, NOT FROM THE CURL TOOL DEFAULT.
+// The roadmap server is one interpreter serving one request at a time, and its unit declares that
+// a request may take up to serve_wall_limit (dashboard_serve_wall_limit, 120 s). A /healthz that
+// arrives behind such a request is answered only after it, so a probe bounded at the tool's 5 s
+// (extdeps.tools.curl curl_localhost_max_time) refused three deploys on 2026-09-17/18 whose server
+// answered /healthz in 0.1 s the moment it was idle -- two authorities on how long a request may
+// take, disagreeing by 24x (DESIGN 3). The bound is twice the wall limit: the request in service
+// plus the probe's own, each within what the unit promises. A unit with no wall limit cannot
+// ground a deadline, and the probe refuses rather than guessing one.
+fn live_deploy_healthz_probe_deadline_seconds(spec: DeploymentSpec) -> Int? {
+  match spec.service.serve_wall_limit {
+    LimitUnset => none
+    LimitSet { limit: l } => Present { value: (2 * positive_millisecond_count(m: l) + 999) / 1000 }
+  }
+}
+
+fn live_deploy_healthz_get_local(port: Int, spec: DeploymentSpec) -> HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
-  let got = http.Client.GetLocalhostBounded(url: url)
-  healthz_effective_read_from_get(
-    success: got.success,
-    body: got.body,
-    error: "http client GET failed"
-  )
+  match live_deploy_healthz_probe_deadline_seconds(spec: spec) {
+    Absent => HealthzProbeRefused { probe_error: "the serve unit declares no wall limit, so no probe deadline can be derived from it" }
+    Present { value: seconds } => {
+      let got = http.Client.GetWithin(url: url, max_seconds: to_string(seconds) as NonEmptyStr)
+      healthz_effective_read_from_get(
+        success: got.success,
+        body: got.body,
+        error: join(["http client GET failed within the ", to_string(seconds), " s probe deadline derived from the serve wall limit"], "")
+      )
+    }
+  }
 }
 
 fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> HealthzEffectiveRead {
@@ -197,9 +221,9 @@ fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffective
   }
 }
 
-fn live_deploy_healthz_get_for_port(port: Int, transport: HostEffectTransport) -> HealthzEffectiveRead {
+fn live_deploy_healthz_get_for_port(port: Int, spec: DeploymentSpec, transport: HostEffectTransport) -> HealthzEffectiveRead {
   match transport {
-    LocalShell => live_deploy_healthz_get_local(port: port)
+    LocalShell => live_deploy_healthz_get_local(port: port, spec: spec)
     SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
     FleetSsh { target: t, context: c } => live_deploy_healthz_get_fleet_ssh(port: port, target: t, context: c)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -475,6 +499,7 @@ fn live_deploy_service_ready_once_for_deploy(
       observe_service_readiness_from_healthz(
         read: live_deploy_healthz_get_for_port(
           port: deployment_plan_listen_port(spec: spec),
+          spec: spec,
           transport: transport,
         ),
         bundle: materialize_live_roadmap_site_surface_bundle(),
