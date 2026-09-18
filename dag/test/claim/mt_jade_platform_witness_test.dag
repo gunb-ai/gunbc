@@ -299,6 +299,8 @@ test fn w_2u_fan_connectors_are_six_60_by_56_dual_rotor() -> Bool {
     && millimeter_count(m: mt_jade_fan_connectors_1u.frame_thickness) == 56
     && mt_jade_fan_connectors_1u.dual_rotor
 }
+
+test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Bool {
   mt_jade_crps_power.psu_count == 2
     && mt_jade_crps_power.hot_plug
     && (mt_jade_crps_power.redundancy_label as String) == "1+1"
