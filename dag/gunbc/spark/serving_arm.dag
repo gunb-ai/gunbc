@@ -531,7 +531,11 @@ data gunbc_sparkrun_ds4_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcSparkrunVllmDs4Gb10,
   artifact: runtime_artifact_identity(
     pin: PinnedByDigest { reference: sparkrun_vllm_ds4_gb10_pinned_reference() },
-    source: SourceRevisionEstablished { revision: (defaults_source_revision(r: Vllm1967a5627)).full_revision },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm1967a5627)).full_revision,
+      package_version: sparkrun_vllm_ds4_gb10_vllm_version,
+      build_provenance: "the revision is the trailing token of the vllm version the image reports; claimed_defaults_revision below carries the same claim for what an omitted flag resolves to, and neither is a comparison of the image's bytes against that tree" as NonEmptyStr,
+    },
     patch_set: [],
     provenance: "the digest is READ FROM its authority rather than restated: extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference builds repository@sha256:digest from the rows that module owns. Two earlier shapes were both wrong in opposite directions -- one carried the SENTENCE \"digest pinned in extdeps.docker.images...\" inside the reference string, which read as a pin and was prose about one; the correction for it answered PinnedElsewhere and dropped the digest out of the VALUE, which left runtime_artifact_wire handing docker a bare repository name that resolves to :latest. Naming an authority and calling it are different acts, and only the second puts the bytes in the launch" as NonEmptyStr,
   ),
@@ -893,7 +897,11 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcGlm53NopeDerivedGb10,
   artifact: runtime_artifact_identity(
     pin: PinnedByDigest { reference: glm53_nope_derived_registry_reading.image_reference },
-    source: SourceRevisionEstablished { revision: (defaults_source_revision(r: Vllm8d09804)).full_revision },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
+      package_version: glm53_nope_derived_vllm_version,
+      build_provenance: "the derived layer's build is recorded (three FlashInfer wheels over the GLM NoPE base), but the base's own vLLM tree is known only from vllm.__version__ read inside the image on srv9 2026-09-13 -- extdeps.vllm.runtime_defaults says of this revision that it is the image saying which tree it was built from, not a comparison of its bytes against that tree" as NonEmptyStr,
+    },
     patch_set: [
       "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
       "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
