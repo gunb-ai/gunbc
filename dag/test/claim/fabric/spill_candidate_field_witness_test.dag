@@ -60,12 +60,12 @@ import product.placement_supply { HostIdentity }
 import product.fabric.node_qualification {
   OfferDoesNotClaimNodeDelivery, OfferDeliveryClaim, OfferClaimsNodeDelivery,
   GroupQualified, CollectiveGroupReceipt, CollectiveGroupAdvertised,
-  GroupHostRosterComplete, CollectiveLatencyAgrees, CollectiveBandwidthAgrees,
+  GroupHostRosterComplete, CollectiveLatencyUnread, CollectiveBandwidthUnread,
   RankSymmetryUnread, rank_symmetry_unread_awaits_rank_local_receipt,
   WindowIsolated, CollectivePrimitiveSameRuntime, NcclLibraryVersion,
   HostRegisteredIbFallbackCitedOnServingRuntime,
   CollectiveProtocol, NcclTestsAllReducePerf, EachRankContributesTheSizeColumn,
-  NcclTestsHalf,
+  NcclTestsHalf, supplied_historical_curve_unread,
 }
 import gunbc.spark.group_b_node_qualification { group_b_delivery_claim, group_b_claimed_offer }
 
@@ -426,17 +426,17 @@ fn s_qualified_delivery(offer: FabricIdentity<NonEmptyStr, OfferKey>) -> OfferDe
           },
         },
         host_roster: GroupHostRosterComplete { rank_count: 1 },
-        collective_latency: CollectiveLatencyAgrees {
+        collective_latency: CollectiveLatencyUnread {
           ceiling: nanosecond(count: 1000),
-          measured: nanosecond(count: 10),
+          because: supplied_historical_curve_unread,
         },
-        collective_bandwidth: CollectiveBandwidthAgrees {
+        collective_bandwidth: CollectiveBandwidthUnread {
           floor: bandwidth(count: 100),
-          measured: bandwidth(count: 200),
+          because: supplied_historical_curve_unread,
         },
-        all_to_all_latency: CollectiveLatencyAgrees {
+        all_to_all_latency: CollectiveLatencyUnread {
           ceiling: nanosecond(count: 1000),
-          measured: nanosecond(count: 10),
+          because: supplied_historical_curve_unread,
         },
         rank_symmetry: RankSymmetryUnread {
           because: rank_symmetry_unread_awaits_rank_local_receipt,

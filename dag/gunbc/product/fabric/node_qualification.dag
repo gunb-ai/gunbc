@@ -344,15 +344,19 @@ type GpuDirectStanding
     }
   | GpuDirectUnread { because: NonEmptyStr }
 
+// Group-curve latency and bandwidth stay unread until CollectiveObservationReceipt is minted
+// from nccl-tests output and the launch population. There is no Agrees or FallsShort
+// constructor: a supplied historical curve and an AwaitingLiveProducerMint tag are not that
+// producer. Discriminating reds are the unread reasons (protocol, roster, provenance).
+// TRIGGER: mint CollectiveObservationReceipt from the live producer.
+// SUFFICIENT FOR: Agrees/FallsShort at an advertised message size become reachable.
 type CollectiveLatencyStanding
-  = CollectiveLatencyAgrees { ceiling: Nanosecond, measured: Nanosecond }
-  | CollectiveLatencyFallsShort { ceiling: Nanosecond, measured: Nanosecond }
-  | CollectiveLatencyUnread { ceiling: Nanosecond, because: NonEmptyStr }
+  = CollectiveLatencyUnread { ceiling: Nanosecond, because: NonEmptyStr }
 
 type CollectiveBandwidthStanding
-  = CollectiveBandwidthAgrees { floor: Bandwidth, measured: Bandwidth }
-  | CollectiveBandwidthFallsShort { floor: Bandwidth, measured: Bandwidth }
-  | CollectiveBandwidthUnread { floor: Bandwidth, because: NonEmptyStr }
+  = CollectiveBandwidthUnread { floor: Bandwidth, because: NonEmptyStr }
+
+data collective_curve_unread_awaits_live_producer: NonEmptyStr = "group curve scoring is unread until CollectiveObservationReceipt is minted from nccl-tests output and the launch population; a supplied historical curve is not that producer" as NonEmptyStr
 
 // Rank-local symmetry is unread until RankLocalCollectiveReceipt exists. There is no Agrees or
 // FallsShort constructor: a RankLocalCollectiveCurve tag is not that producer. Discriminating
@@ -522,25 +526,6 @@ fn qualify_gpu_direct(
   }
 }
 
-fn sample_at_message_bytes(samples: List<CollectiveSample>, want: ByteSize) -> CollectiveSample? {
-  match samples.first() {
-    Absent => none
-    Present { value: s } => if byte_size_count(b: s.message_bytes) == byte_size_count(b: want) {
-      Present { value: s }
-    } else {
-      sample_at_message_bytes(samples: samples.skip(n: 1), want: want)
-    }
-  }
-}
-
-fn sample_stricter_latency(s: CollectiveSample) -> Nanosecond {
-  if nanosecond_count(n: s.in_place_latency) >= nanosecond_count(n: s.out_of_place_latency) {
-    s.in_place_latency
-  } else {
-    s.out_of_place_latency
-  }
-}
-
 fn curve_protocol(reading: CollectiveCurveReading) -> CollectiveProtocol? {
   match reading {
     CollectiveCurveUnread { because: _ } => none
@@ -576,7 +561,6 @@ fn protocol_population_unread_reason(
 
 fn qualify_collective_latency(
   ceiling: Nanosecond,
-  at: ByteSize,
   expected: List<HostIdentity>,
   required: CollectiveProtocol,
   reading: CollectiveCurveReading,
@@ -611,7 +595,7 @@ fn qualify_collective_latency(
               }
               AwaitingLiveProducerMint => CollectiveLatencyUnread {
                 ceiling: ceiling,
-                because: supplied_historical_curve_unread,
+                because: collective_curve_unread_awaits_live_producer,
               }
             }
           }
@@ -629,7 +613,6 @@ fn qualify_collective_latency(
 
 fn qualify_collective_bandwidth(
   floor: Bandwidth,
-  at: ByteSize,
   expected: List<HostIdentity>,
   required: CollectiveProtocol,
   reading: CollectiveCurveReading,
@@ -664,7 +647,7 @@ fn qualify_collective_bandwidth(
               }
               AwaitingLiveProducerMint => CollectiveBandwidthUnread {
                 floor: floor,
-                because: supplied_historical_curve_unread,
+                because: collective_curve_unread_awaits_live_producer,
               }
             }
           }
@@ -998,21 +981,18 @@ fn qualify_collective_group<P>(
     host_roster: qualify_group_host_roster(expected: advertised.expected_ranks, admissions: host_admissions),
     collective_latency: qualify_collective_latency(
       ceiling: advertised.latency_ceiling,
-      at: advertised.latency_message_bytes,
       expected: advertised.expected_ranks,
       required: advertised.all_reduce_protocol,
       reading: measured.collective,
     ),
     collective_bandwidth: qualify_collective_bandwidth(
       floor: advertised.bandwidth_floor,
-      at: advertised.bandwidth_message_bytes,
       expected: advertised.expected_ranks,
       required: advertised.all_reduce_protocol,
       reading: measured.collective,
     ),
     all_to_all_latency: qualify_collective_latency(
       ceiling: advertised.all_to_all_latency_ceiling,
-      at: advertised.all_to_all_message_bytes,
       expected: advertised.expected_ranks,
       required: advertised.all_to_all_protocol,
       reading: measured.all_to_all,
@@ -1213,9 +1193,6 @@ fn gpu_direct_refusal(s: GpuDirectStanding) -> List<QualificationRefusal> {
 
 fn latency_refusal(s: CollectiveLatencyStanding) -> List<QualificationRefusal> {
   match s {
-    CollectiveLatencyAgrees { ceiling: _, measured: _ } => []
-    CollectiveLatencyFallsShort { ceiling: _, measured: _ } =>
-      [CollectiveLatencyDidNotHold { standing: s }]
     CollectiveLatencyUnread { ceiling: _, because: _ } =>
       [CollectiveLatencyDidNotHold { standing: s }]
   }
@@ -1223,9 +1200,6 @@ fn latency_refusal(s: CollectiveLatencyStanding) -> List<QualificationRefusal> {
 
 fn bandwidth_refusal(s: CollectiveBandwidthStanding) -> List<QualificationRefusal> {
   match s {
-    CollectiveBandwidthAgrees { floor: _, measured: _ } => []
-    CollectiveBandwidthFallsShort { floor: _, measured: _ } =>
-      [CollectiveBandwidthDidNotHold { standing: s }]
     CollectiveBandwidthUnread { floor: _, because: _ } =>
       [CollectiveBandwidthDidNotHold { standing: s }]
   }
@@ -1239,9 +1213,6 @@ fn symmetry_refusal(s: RankSymmetryStanding) -> List<QualificationRefusal> {
 
 fn all_to_all_refusal(s: CollectiveLatencyStanding) -> List<QualificationRefusal> {
   match s {
-    CollectiveLatencyAgrees { ceiling: _, measured: _ } => []
-    CollectiveLatencyFallsShort { ceiling: _, measured: _ } =>
-      [AllToAllLatencyDidNotHold { standing: s }]
     CollectiveLatencyUnread { ceiling: _, because: _ } =>
       [AllToAllLatencyDidNotHold { standing: s }]
   }

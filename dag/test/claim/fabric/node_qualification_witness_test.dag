@@ -46,8 +46,8 @@ import product.fabric.node_qualification {
   RailLinkModeAgrees, RailLinkModeDiffers, RailLinkModeUnread,
   NicPcieFallsShort, NicPcieUnread, NicPcieAgrees, NicPcieOfferUngrounded,
   NicPcieExceeds, NicPcieDiffers,
-  CollectiveLatencyUnread, CollectiveLatencyAgrees, CollectiveLatencyFallsShort,
-  CollectiveBandwidthUnread, CollectiveBandwidthAgrees,
+  CollectiveLatencyUnread,
+  CollectiveBandwidthUnread,
   RankSymmetryUnread, RankSymmetryStanding,
   rank_symmetry_unread_duplicate_expected, rank_symmetry_unread_missing_rank,
   rank_symmetry_unread_copied_curve, rank_symmetry_unread_protocol_mismatch,
@@ -165,17 +165,17 @@ fn fx_positive_group_receipt<P>(offer: FabricIdentity<P, OfferKey>) -> Collectiv
     offer: offer,
     advertised: fx_advertised().group,
     host_roster: GroupHostRosterComplete { rank_count: 2 },
-    collective_latency: CollectiveLatencyAgrees {
+    collective_latency: CollectiveLatencyUnread {
       ceiling: nanosecond(count: 1000),
-      measured: nanosecond(count: 10),
+      because: supplied_historical_curve_unread,
     },
-    collective_bandwidth: CollectiveBandwidthAgrees {
+    collective_bandwidth: CollectiveBandwidthUnread {
       floor: bandwidth(count: 100),
-      measured: bandwidth(count: 200),
+      because: supplied_historical_curve_unread,
     },
-    all_to_all_latency: CollectiveLatencyAgrees {
+    all_to_all_latency: CollectiveLatencyUnread {
       ceiling: nanosecond(count: 1000),
-      measured: nanosecond(count: 10),
+      because: supplied_historical_curve_unread,
     },
     rank_symmetry: RankSymmetryUnread { because: rank_symmetry_unread_awaits_rank_local_receipt },
     host_registered_ib_fallback: fx_ib_ok(),
@@ -434,8 +434,6 @@ test fn unread_evidence_is_not_qualification() -> Bool {
       refusals.length() > 0
         && match r.collective_latency {
           CollectiveLatencyUnread { ceiling: _, because: _ } => true
-          CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
-          CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
         }
         && match r.rank_symmetry {
           RankSymmetryUnread { because: b } =>
@@ -804,14 +802,11 @@ test fn rank_curves_with_a_different_protocol_are_unread() -> Bool {
 test fn all_to_all_is_not_scored_on_all_reduce_protocol() -> Bool {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 100000),
-    at: byte_size(count: 8192),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
     required: fx_all_reduce_protocol(),
     reading: fx_all_to_all_curve(samples: [fx_sample()]),
   ) {
     CollectiveLatencyUnread { ceiling: _, because: _ } => true
-    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
-    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
   }
 }
 
@@ -861,7 +856,6 @@ test fn nccl_tests_printed_busbw_inhabits_bits_per_second() -> Bool {
 test fn a_size_column_rank_count_that_is_not_the_protocol_rank_count_is_unread() -> Bool {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 1000),
-    at: byte_size(count: 8),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
     required: CollectiveProtocol {
       instrument: NcclTestsAllToAllPerf,
@@ -872,22 +866,17 @@ test fn a_size_column_rank_count_that_is_not_the_protocol_rank_count_is_unread()
     reading: fx_all_to_all_curve(samples: [fx_sample()]),
   ) {
     CollectiveLatencyUnread { ceiling: _, because: _ } => true
-    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
-    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
   }
 }
 
 test fn a_protocol_rank_count_that_is_not_the_roster_is_unread() -> Bool {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 1000),
-    at: byte_size(count: 8),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity, "rank-2" as HostIdentity, "rank-3" as HostIdentity],
     required: fx_all_reduce_protocol(),
     reading: fx_curve(samples: [fx_sample()]),
   ) {
     CollectiveLatencyUnread { ceiling: _, because: _ } => true
-    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
-    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
   }
 }
 
@@ -956,7 +945,6 @@ test fn a_failing_host_receipt_wrapped_as_host_qualified_is_refused() -> Bool {
 test fn a_curve_from_another_four_host_roster_is_unread() -> Bool {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 1000),
-    at: byte_size(count: 8),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
     required: fx_all_reduce_protocol(),
     reading: CollectiveCurveRead {
@@ -977,15 +965,12 @@ test fn a_curve_from_another_four_host_roster_is_unread() -> Bool {
     },
   ) {
     CollectiveLatencyUnread { ceiling: _, because: _ } => true
-    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
-    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
   }
 }
 
 test fn group_a_samples_relabeled_as_group_b_do_not_agree() -> Bool {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 1000),
-    at: byte_size(count: 8),
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
     required: fx_all_reduce_protocol(),
     reading: CollectiveCurveRead {
@@ -1007,8 +992,6 @@ test fn group_a_samples_relabeled_as_group_b_do_not_agree() -> Bool {
   ) {
     CollectiveLatencyUnread { ceiling: _, because: b } =>
       (b as String) == (supplied_historical_curve_unread as String)
-    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
-    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
   }
 }
 
