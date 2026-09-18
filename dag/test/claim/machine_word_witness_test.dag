@@ -70,12 +70,68 @@ test fn width8_and_width16_are_realizable_holds() -> Bool {
     && word32_refused(result: word_of_int(width: Width16, value: 65536))
 }
 
-test fn bitwise_connectives_hold() -> Bool {
-  let a = word32_or_zero(value: 4042322160)
-  let b = word32_or_zero(value: 267391984)
-  word32_value_or(result: word_and(a: a, b: b), fallback: 0 - 1) == 15728880
-    && word32_value_or(result: word_or(a: a, b: b), fallback: 0 - 1) == 4293984240
-    && word32_value_or(result: word_xor(a: a, b: b), fallback: 0 - 1) == 4278255360
+// THE THREE CONNECTIVES ARE THREE CLAIMS, NOT ONE CONJUNCTION. A conjunction of independent cases
+// reports one verdict for three subjects: the first failing term hides the other two, and the whole
+// set pays one budget. Splitting them loses no coverage and is what lets a red name its own subject.
+// The narrow claims below it are the discriminators between the two ways a connective can be wrong:
+// a wrong PLACE DECISION (bitwise_place_bit disagreeing with the connective) and a wrong PLACE
+// ACCUMULATION (bitwise_fold assembling the decisions into the wrong number), which a claim over
+// the composed operation alone cannot tell apart.
+test fn bitwise_and_holds() -> Bool {
+  word32_value_or(result: word_and(a: word32_or_zero(value: 4042322160), b: word32_or_zero(value: 267391984)), fallback: 0 - 1) == 15728880
+}
+
+test fn bitwise_or_holds() -> Bool {
+  word32_value_or(result: word_or(a: word32_or_zero(value: 4042322160), b: word32_or_zero(value: 267391984)), fallback: 0 - 1) == 4293984240
+}
+
+test fn bitwise_xor_holds() -> Bool {
+  word32_value_or(result: word_xor(a: word32_or_zero(value: 4042322160), b: word32_or_zero(value: 267391984)), fallback: 0 - 1) == 4278255360
+}
+
+// Whether a wide connective REFUSES or merely answers wrongly is the discriminator between an
+// accumulation that overflowed the width and a place decision that disagreed with the connective.
+// A claim that only compares the value conflates them, because word32_value_or reports a refusal
+// as its fallback and a fallback is indistinguishable from a wrong number.
+test fn bitwise_and_answers_rather_than_refusing_holds() -> Bool {
+  match word_and(a: word32_or_zero(value: 4042322160), b: word32_or_zero(value: 267391984)) {
+    WordReady { word: _ } => true
+    WordRefused { cause: _ } => false
+  }
+}
+
+test fn bitwise_place_decisions_hold() -> Bool {
+  bitwise_place_bit(op: BitAnd, x: 1, y: 1) == 1
+    && bitwise_place_bit(op: BitAnd, x: 1, y: 0) == 0
+    && bitwise_place_bit(op: BitOr, x: 1, y: 0) == 1
+    && bitwise_place_bit(op: BitOr, x: 0, y: 0) == 0
+    && bitwise_place_bit(op: BitXor, x: 1, y: 0) == 1
+    && bitwise_place_bit(op: BitXor, x: 1, y: 1) == 0
+}
+
+test fn bitwise_fold_accumulates_places_holds() -> Bool {
+  bitwise_fold(op: BitXor, a: 3, b: 1, remaining: 2, place: 1, acc: 0) == 2
+    && bitwise_fold(op: BitAnd, a: 3, b: 1, remaining: 2, place: 1, acc: 0) == 1
+    && bitwise_fold(op: BitOr, a: 2, b: 1, remaining: 2, place: 1, acc: 0) == 3
+    && bitwise_fold(op: BitXor, a: 8, b: 0, remaining: 4, place: 1, acc: 0) == 8
+}
+
+test fn bitwise_narrow_connectives_hold() -> Bool {
+  let one = word32_or_zero(value: 1)
+  let two = word32_or_zero(value: 2)
+  let three = word32_or_zero(value: 3)
+  word32_value_or(result: word_and(a: one, b: three), fallback: 0 - 1) == 1
+    && word32_value_or(result: word_and(a: one, b: two), fallback: 0 - 1) == 0
+    && word32_value_or(result: word_or(a: one, b: two), fallback: 0 - 1) == 3
+    && word32_value_or(result: word_xor(a: three, b: one), fallback: 0 - 1) == 2
+}
+
+// The highest place a 32-bit fold reaches, isolated. The accumulation multiplies a place decision
+// by a running place that doubles 32 times, so the top place is 2^31 and the running place reaches
+// 2^32 after the last step -- the one value in the loop that is outside the width it is folding.
+test fn bitwise_top_place_holds() -> Bool {
+  word32_value_or(result: word_or(a: word32_or_zero(value: 2147483648), b: word32_or_zero(value: 1)), fallback: 0 - 1) == 2147483649
+    && word32_value_or(result: word_and(a: word32_or_zero(value: 2147483648), b: word32_or_zero(value: 4294967295)), fallback: 0 - 1) == 2147483648
 }
 
 test fn complement_of_zero_is_all_ones_holds() -> Bool {
