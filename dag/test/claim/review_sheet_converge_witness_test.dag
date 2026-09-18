@@ -2279,3 +2279,90 @@ fn w_discharged_drive_member() -> HumanIntervention {
     },
   }
 }
+
+// -------------------------------------------------------------------------------------
+// EVIDENCE RE-ENROLLED AFTER A REWRITE DROPPED IT. When
+// committed_project_and_writer_are_unresolved_not_secrets_defaults was rewritten for the estate's
+// move to a SELECTED home, four independent conjuncts went with it that had nothing to do with that
+// move. Their subjects did not change, so DESIGN section 4b(4) applies exactly: a climb deletes the
+// production machinery it obsoletes, and the evidence stays enrolled. Nothing climbed -- the
+// assertions were collateral, and the dangling imports left behind were the tell.
+//
+// They return as four tests rather than one conjunction, which is the split the witness-standing
+// rule wants anyway: a conjunction forces every case through one budget and reports "one of four
+// failed" when the point of each is a different subject.
+//
+// A fifth conjunct is NOT restored here on purpose. The WIF intervention's NoDischargeSiteModeled
+// standing is already covered by fleet_secrets_wif_binding_is_still_undischarged, with a control,
+// so re-adding it would be a second copy of one fact rather than recovered coverage.
+// -------------------------------------------------------------------------------------
+
+// THE SHARING READING IS A TRANSCRIBED OBSERVATION AND ITS PROVENANCE IS THE EVIDENCE. A policy
+// reading with no read date and no named source is an assertion about a Workspace console someone
+// looked at once; these three fields are what make it checkable by a second reader.
+test fn workspace_sharing_reading_carries_its_provenance() -> Bool {
+  match buyer_review_workspace_domain_sharing() {
+    DomainSharingAllowsServiceAccountShare =>
+      (buyer_review_workspace_sharing_reading.read_on as String) == "2026-09-11"
+        && string_contains(
+          s: buyer_review_workspace_sharing_reading.source as String,
+          pattern: "Drive and Docs > Sharing settings",
+        )
+        && string_contains(
+          s: buyer_review_workspace_sharing_reading.quoted_selection as String,
+          pattern: "shared outside of gunb.ai",
+        )
+    DomainSharingPolicyUnobserved => false
+    DomainSharingForbidsExternalPrincipals => false
+  }
+}
+
+// THE TENANCY IS WORKSPACE, NOT A PLAIN ACCOUNT, and the difference decides which admission path
+// runs: a plain account never consults a domain sharing policy at all.
+test fn fleet_account_tenancy_is_a_workspace_domain() -> Bool {
+  match buyer_review_account_tenancy {
+    ReviewSheetWorkspaceDomain => true
+    ReviewSheetPlainGoogleAccount => false
+    AccountTenancyUnobserved => false
+  }
+}
+
+// THE BUYER SPREADSHEET IS STILL AWAITING CREATION, which is what keeps the identified-spreadsheet
+// arm of the admission unreached. A test that assumed an identified sheet would be asserting a
+// state the fleet has never been in.
+test fn buyer_review_spreadsheet_is_still_awaiting_creation() -> Bool {
+  match buyer_review_spreadsheet {
+    SpreadsheetAwaitingCreation => true
+    SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
+  }
+}
+
+// LIVE ACCESS IS STILL CLOSED, AND THE REASON MOVED. The dropped conjunct asserted this through
+// ReviewSheetEstateUnresolved with subject sheets_calling_home -- true when the home was unresolved
+// and FALSE now, which is why it could not be restored as written. The home is selected, so the
+// fleet standing stops one step later, at a serviceusage state nobody has observed. What the wall
+// establishes is unchanged and is what this asserts: the zero-argument entry, which reads the FLEET
+// standing rather than a supplied admission, does not open live access. The sibling at
+// live_access_opens_for_an_admitted_fleet drives the same fold from an ADMITTED admission, so
+// between them the open and closed directions are both executed.
+test fn fleet_live_access_is_not_open() -> Bool {
+  match review_sheet_live_access(
+    credential: SecretRef {
+      project: "custody-only",
+      secret: "unused" as NonEmptyStr,
+      version: "pending",
+      hash_state: HashPending,
+    },
+  ) {
+    ReviewSheetLiveNotAdmitted { admission: a } =>
+      match a {
+        ReviewSheetOperatorRefused { reason: r } =>
+          string_contains(s: r as String, pattern: "unobserved")
+        ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+        ReviewSheetAwaitingHuman { intervention: _ } => false
+        ReviewSheetNeedsApiEnable { plan: _ } => false
+        ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+      }
+    ReviewSheetLiveOpen { access: _ } => false
+  }
+}
