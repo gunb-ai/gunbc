@@ -19745,15 +19745,14 @@ macro_rules! v1_builtin_arms {
             },
 
             // APPLE APP ATTEST, ASSERTION: the signature over SHA256(authenticatorData ||
-            // SHA256(clientData)) under the ATTESTED key, the app's RP ID hash, and a counter
-            // strictly above the stored one -- a replayed assertion refuses.
+            // SHA256(clientData)) under the ATTESTED key, and the app's RP ID hash. The counter is
+            // returned, not judged: whether it must exceed a stored one is the caller's.
             arm "free_call.app_attest_verify_assertion" { "app_attest_verify_assertion" } => {
                 Ok(Some(str_value(app_attest_assertion_line(
                     expect_value_str($positional.first().copied(), "app_attest_verify_assertion assertion")?.as_str(),
                     expect_value_str($positional.get(1).copied(), "app_attest_verify_assertion client_data")?.as_str(),
                     expect_value_str($positional.get(2).copied(), "app_attest_verify_assertion key")?.as_str(),
                     expect_value_str($positional.get(3).copied(), "app_attest_verify_assertion app_id")?.as_str(),
-                    expect_int($positional.get(4).copied(), "app_attest_verify_assertion previous_counter")?,
                 ))))
             },
 
@@ -22523,6 +22522,8 @@ enum AppAttestAttestationRefusal {
     CounterNonZero(u32),
     EnvironmentUnexpected,
     CredentialIdMismatch,
+    ValidationCategoryAbsent,
+    BundleVersionAbsent,
 }
 
 /// A refusal of Apple's assertion procedure (extdeps.apple.app_attest AssertionRefusal).
@@ -22531,7 +22532,6 @@ enum AppAttestAssertionRefusal {
     Undecodable(String),
     SignatureInvalid,
     AppIdMismatch,
-    CounterNotIncreasing(u32),
 }
 
 fn app_attest_cbor_map(bytes: &[u8]) -> Result<Vec<(ciborium::Value, ciborium::Value)>, String> {
@@ -22568,6 +22568,9 @@ struct AppAttestAuthData<'a> {
     counter: u32,
     aaguid: &'a [u8],
     credential_id: &'a [u8],
+    // Present only when the ED flag (0x80) is set: the WebAuthn extensions CBOR map that follows
+    // the COSE credential key.
+    extensions: Option<Vec<(ciborium::Value, ciborium::Value)>>,
 }
 
 fn app_attest_auth_data(auth_data: &[u8], attested: bool) -> Result<AppAttestAuthData<'_>, String> {
@@ -22575,29 +22578,51 @@ fn app_attest_auth_data(auth_data: &[u8], attested: bool) -> Result<AppAttestAut
         return Err("authenticator data shorter than 37 octets".to_string());
     }
     let counter = u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
-    let (aaguid, credential_id): (&[u8], &[u8]) = if attested {
-        if auth_data.len() < 55 {
-            return Err("attested credential data shorter than 18 octets".to_string());
+    if !attested {
+        return Ok(AppAttestAuthData {
+            rp_id_hash: &auth_data[..32],
+            counter,
+            aaguid: &[],
+            credential_id: &[],
+            extensions: None,
+        });
+    }
+    if auth_data.len() < 55 {
+        return Err("attested credential data shorter than 18 octets".to_string());
+    }
+    let len = u16::from_be_bytes([auth_data[53], auth_data[54]]) as usize;
+    let credential_id = auth_data
+        .get(55..55 + len)
+        .ok_or_else(|| "credential id overruns the authenticator data".to_string())?;
+    // The COSE key is one CBOR item of variable length; reading it through a slice reader leaves
+    // the slice positioned at whatever follows it.
+    let mut rest: &[u8] = &auth_data[55 + len..];
+    ciborium::de::from_reader::<ciborium::Value, _>(&mut rest)
+        .map_err(|e| format!("COSE credential key: {e}"))?;
+    let extensions = if auth_data[32] & 0x80 != 0 {
+        match ciborium::de::from_reader::<ciborium::Value, _>(&mut rest) {
+            Ok(ciborium::Value::Map(entries)) => Some(entries),
+            Ok(_) => return Err("extensions are not a CBOR map".to_string()),
+            Err(e) => return Err(format!("extensions: {e}")),
         }
-        let len = u16::from_be_bytes([auth_data[53], auth_data[54]]) as usize;
-        let id = auth_data
-            .get(55..55 + len)
-            .ok_or_else(|| "credential id overruns the authenticator data".to_string())?;
-        (&auth_data[37..53], id)
     } else {
-        (&[], &[])
+        None
     };
+    if !rest.is_empty() {
+        return Err("authenticator data has trailing octets".to_string());
+    }
     Ok(AppAttestAuthData {
         rp_id_hash: &auth_data[..32],
         counter,
-        aaguid,
+        aaguid: &auth_data[37..53],
         credential_id,
+        extensions,
     })
 }
 
-/// `child` is signed by `issuer`'s key, names `issuer` as its issuer, and is valid at `now`.
-/// ECDSA over P-256 or P-384 with SHA-256 or SHA-384 -- the only suites Apple's chain uses; any
-/// other algorithm refuses.
+/// `child` is signed by `issuer`'s key, names `issuer` as its issuer, and both are valid at
+/// `now`; `issuer` must be a CA. ECDSA over P-256 or P-384 with SHA-256 or SHA-384 -- the only
+/// suites Apple's chain uses; any other algorithm refuses.
 fn app_attest_signed_by(
     child: &x509_parser::certificate::X509Certificate<'_>,
     issuer: &x509_parser::certificate::X509Certificate<'_>,
@@ -22659,10 +22684,19 @@ fn app_attest_parse_certificate(
         .map_err(|e| AppAttestAttestationRefusal::Undecodable(format!("X.509: {e}")))
 }
 
-/// Apple's attestation procedure ("Validating apps that connect to your server"), steps 1-8.
+/// What a verified attestation yields: the credential key the server stores, the receipt for
+/// Apple's fraud-metric call, and the two extension values -- the category is returned for the
+/// caller's policy to judge, never judged here.
+struct AppAttestAttested {
+    point: Vec<u8>,
+    receipt: Vec<u8>,
+    validation_category: u32,
+    bundle_version: String,
+}
+
+/// Apple's attestation procedure ("Validating apps that connect to your server"), steps 1-10.
 /// The trust anchor is `root_pem` alone: x5c supplies the credential certificate and its
-/// intermediate, and anything x5c says about a root is never read. Success is the attested
-/// credential's SEC 1 uncompressed point and SHA-256(client data).
+/// intermediate, and nothing x5c carries beyond them is read.
 fn app_attest_verify_attestation(
     attestation: &[u8],
     client_data: &[u8],
@@ -22671,7 +22705,7 @@ fn app_attest_verify_attestation(
     production: bool,
     root_pem: &str,
     now: i64,
-) -> Result<(Vec<u8>, [u8; 32]), AppAttestAttestationRefusal> {
+) -> Result<AppAttestAttested, AppAttestAttestationRefusal> {
     use sha2::{Digest, Sha256};
     use AppAttestAttestationRefusal as R;
     let map = app_attest_cbor_map(attestation).map_err(R::Undecodable)?;
@@ -22697,9 +22731,8 @@ fn app_attest_verify_attestation(
             .map(|b| b.as_slice())
             .ok_or_else(|| R::Undecodable(format!("x5c[{i}] is missing or not a byte string")))
     };
-    let (credential_der, intermediate_der) = (der(0)?, der(1)?);
-    let credential = app_attest_parse_certificate(credential_der)?;
-    let intermediate = app_attest_parse_certificate(intermediate_der)?;
+    let credential = app_attest_parse_certificate(der(0)?)?;
+    let intermediate = app_attest_parse_certificate(der(1)?)?;
     let (_, root_pem) = x509_parser::pem::parse_x509_pem(root_pem.as_bytes())
         .map_err(|e| R::ChainUntrusted(format!("pinned root is not PEM: {e}")))?;
     let root = root_pem
@@ -22711,7 +22744,7 @@ fn app_attest_verify_attestation(
     // 2-3. nonce = SHA256(authData || SHA256(clientData)), carried in the credential certificate's
     // 1.2.840.113635.100.8.2 extension as SEQUENCE { [1] { OCTET STRING nonce } }. DER has one
     // encoding per value, so byte equality with that encoding is the whole comparison.
-    let client_data_hash: [u8; 32] = Sha256::digest(client_data).into();
+    let client_data_hash = Sha256::digest(client_data);
     let nonce = Sha256::new()
         .chain_update(auth_data)
         .chain_update(client_data_hash)
@@ -22726,9 +22759,9 @@ fn app_attest_verify_attestation(
     if carried != Some(expected.as_slice()) {
         return Err(R::NonceMismatch);
     }
-    // 4. SHA256(credential public key) is the key id.
+    // 4. SHA256(credential public key, X9.62 uncompressed) is the key id.
     let point = credential.public_key().subject_public_key.data.to_vec();
-    if p256::ecdsa::VerifyingKey::from_sec1_bytes(&point).is_err() || point.len() != 65 {
+    if point.len() != 65 || p256::ecdsa::VerifyingKey::from_sec1_bytes(&point).is_err() {
         return Err(R::Undecodable(
             "credential key is not a P-256 uncompressed point".to_string(),
         ));
@@ -22737,7 +22770,7 @@ fn app_attest_verify_attestation(
         return Err(R::KeyIdMismatch);
     }
     let parsed = app_attest_auth_data(auth_data, true).map_err(R::Undecodable)?;
-    // 5. RP ID hash is SHA256("<team id>.<bundle id>").
+    // 5. RP ID hash is SHA256(App ID).
     if parsed.rp_id_hash != Sha256::digest(app_id.as_bytes()).as_slice() {
         return Err(R::AppIdMismatch);
     }
@@ -22758,19 +22791,44 @@ fn app_attest_verify_attestation(
     if parsed.credential_id != key_id {
         return Err(R::CredentialIdMismatch);
     }
-    Ok((point, client_data_hash))
+    // 9-10. The launch category (UInt32) and the distributed app version (String) from the
+    // extensions map.
+    let extension = |name: &str| {
+        parsed
+            .extensions
+            .as_ref()
+            .and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some(name)))
+            .map(|(_, v)| v)
+    };
+    let validation_category = extension("apple_validation_category_01")
+        .and_then(|v| v.as_integer())
+        .and_then(|i| u32::try_from(i).ok())
+        .ok_or(R::ValidationCategoryAbsent)?;
+    let bundle_version = extension("apple_bundle_version_01")
+        .and_then(|v| v.as_text())
+        .filter(|v| !v.is_empty() && !v.contains('\n'))
+        .ok_or(R::BundleVersionAbsent)?
+        .to_string();
+    let receipt = app_attest_cbor_bytes(att_stmt, "receipt").map_err(R::Undecodable)?;
+    if receipt.is_empty() {
+        return Err(R::Undecodable("receipt is empty".to_string()));
+    }
+    Ok(AppAttestAttested {
+        point,
+        receipt: receipt.to_vec(),
+        validation_category,
+        bundle_version,
+    })
 }
 
 /// Apple's assertion procedure: the signature over nonce = SHA256(authenticatorData ||
-/// SHA256(clientData)) verifies under the ATTESTED key, the RP ID hash is the app's, and the
-/// counter strictly exceeds the last one stored -- a replayed or reordered assertion refuses.
-/// Success is the new counter, which the caller must store.
+/// SHA256(clientData)) verifies under the ATTESTED key, and the RP ID hash is the app's. The
+/// counter is returned; whether it must exceed a stored one is the caller's to judge.
 fn app_attest_verify_assertion(
     assertion: &[u8],
     client_data: &[u8],
     point: &[u8],
     app_id: &str,
-    previous_counter: u32,
 ) -> Result<u32, AppAttestAssertionRefusal> {
     use p256::ecdsa::signature::Verifier;
     use sha2::{Digest, Sha256};
@@ -22799,16 +22857,13 @@ fn app_attest_verify_assertion(
     if parsed.rp_id_hash != Sha256::digest(app_id.as_bytes()).as_slice() {
         return Err(R::AppIdMismatch);
     }
-    if parsed.counter <= previous_counter {
-        return Err(R::CounterNotIncreasing(parsed.counter));
-    }
     Ok(parsed.counter)
 }
 
 /// The `app_attest_verify_attestation` builtin's answer as the one-line code
-/// extdeps.apple.app_attest app_attest_attestation_of reads: `verified <point b64url> <client
-/// data hash hex>`, or one refusal code per step. Malformed input is `undecodable <cause>`,
-/// never a verified line.
+/// extdeps.apple.app_attest app_attest_attestation_of reads: `verified <point b64url> <category>
+/// <receipt base64> <bundle version>` (the version last, as the rest of the line), or one refusal
+/// code per step. Malformed input is `undecodable <cause>`, never a verified line.
 fn app_attest_attestation_line(
     attestation_b64: &str,
     client_data: &str,
@@ -22836,10 +22891,12 @@ fn app_attest_attestation_line(
         root_pem,
         now,
     ) {
-        Ok((point, client_data_hash)) => format!(
-            "verified {} {}",
-            URL_SAFE_NO_PAD.encode(point),
-            hex::encode(client_data_hash)
+        Ok(a) => format!(
+            "verified {} {} {} {}",
+            URL_SAFE_NO_PAD.encode(a.point),
+            a.validation_category,
+            STANDARD.encode(a.receipt),
+            a.bundle_version
         ),
         Err(R::Undecodable(cause)) => format!("undecodable {cause}"),
         Err(R::FormatUnexpected(declared)) => format!("format {declared}"),
@@ -22850,6 +22907,8 @@ fn app_attest_attestation_line(
         Err(R::CounterNonZero(counter)) => format!("counter {counter}"),
         Err(R::EnvironmentUnexpected) => "environment".to_string(),
         Err(R::CredentialIdMismatch) => "credential_id".to_string(),
+        Err(R::ValidationCategoryAbsent) => "category_absent".to_string(),
+        Err(R::BundleVersionAbsent) => "bundle_version_absent".to_string(),
     }
 }
 
@@ -22859,7 +22918,6 @@ fn app_attest_assertion_line(
     client_data: &str,
     point_b64url: &str,
     app_id: &str,
-    previous_counter: i64,
 ) -> String {
     use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
     use base64::Engine;
@@ -22870,16 +22928,11 @@ fn app_attest_assertion_line(
     ) else {
         return "undecodable assertion is not base64 or key is not base64url".to_string();
     };
-    let Ok(previous) = u32::try_from(previous_counter) else {
-        return format!("undecodable previous counter {previous_counter} is not a 32-bit counter");
-    };
-    match app_attest_verify_assertion(&assertion, client_data.as_bytes(), &point, app_id, previous)
-    {
+    match app_attest_verify_assertion(&assertion, client_data.as_bytes(), &point, app_id) {
         Ok(counter) => format!("verified {counter}"),
         Err(R::Undecodable(cause)) => format!("undecodable {cause}"),
         Err(R::SignatureInvalid) => "signature".to_string(),
         Err(R::AppIdMismatch) => "app_id".to_string(),
-        Err(R::CounterNotIncreasing(counter)) => format!("counter {counter}"),
     }
 }
 

@@ -392,11 +392,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
         name: "String".to_string(),
     }),
-    }), Rc::new(BuiltinParam {
-        name: "previous_counter".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Int".to_string(),
-    }),
     })]),
         returns: string_type(),
     }));
