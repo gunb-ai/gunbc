@@ -62,7 +62,7 @@ import product.fabric.node_qualification {
   OfferClaimsNodeDelivery, GroupQualified,
   CollectiveGroupReceipt,
   WindowStandingUnread, WindowSharedWithDeclaredTraffic, WindowIsolated,
-  claimed_delivery_refusals, claimed_delivery_check, host_admission_refusals,
+  claimed_delivery_check, host_admission_refusals,
   group_admission_refusals,
   host_qualification_refusals,
   ClaimedDeliveryHolds, ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
@@ -625,9 +625,10 @@ test fn spark_per_port_attachment_does_not_admit_a_caller_x16() -> Bool {
 }
 
 test fn claiming_group_b_delivery_on_an_offer_is_refused() -> Bool {
-  match claimed_delivery_refusals(claim: group_b_delivery_claim) {
-    Present { value: r } => r.length() > 0
-    Absent => false
+  match claimed_delivery_check(claim: group_b_delivery_claim) {
+    ClaimedDeliveryUnqualified { refusals: r } => r.length() > 0
+    ClaimedDeliveryHolds => false
+    ClaimedDeliveryOfferMismatch { claim_names: _, receipt_names: _ } => false
   }
 }
 

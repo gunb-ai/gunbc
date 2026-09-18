@@ -1112,15 +1112,6 @@ fn claimed_delivery_check<P>(claim: OfferDeliveryClaim<P>) -> ClaimedDeliveryChe
   }
 }
 
-fn claimed_delivery_refusals<P>(claim: OfferDeliveryClaim<P>) -> List<QualificationRefusal>? {
-  match claimed_delivery_check(claim: claim) {
-    ClaimedDeliveryHolds => none
-    ClaimedDeliveryUnqualified { refusals: refusals } => Present { value: refusals }
-    ClaimedDeliveryOfferMismatch { claim_names: _, receipt_names: _ } =>
-      Present { value: [] }
-  }
-}
-
 fn accelerator_refusal(s: AcceleratorCountStanding) -> List<QualificationRefusal> {
   match s {
     AcceleratorCountAgrees { count: _ } => []
