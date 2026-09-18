@@ -356,26 +356,39 @@ type LiveDeployFleetRequestAdmission
 // answered the same question; a caller-supplied target made a different unit undetectable (review 67399).
 // The executable digest is the candidate bytes named by desired_member(Executable); the unit is
 // taken from the bound roster row. first_foreign / unit_owned_by_target then key on that same unit.
-fn release_target_refusal_for_desired(
+// ONE MATCH ON Executable: the helper returns the bound target or the refusal (review 67431).
+type LiveDeployReleaseTargetBind
+  = LiveDeployReleaseTargetBound { target: ReleaseTarget }
+  | LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestAdmission }
+
+fn bind_release_target_to_desired(
   row: DesiredDeployment,
+  candidate: CandidateRelease,
   desired_member: fn(ConvergedMember) -> MemberIdentity,
-) -> LiveDeployFleetRequestAdmission? {
+) -> LiveDeployReleaseTargetBind {
   match desired_member(UnitFile) {
     UnitFileAt { file } =>
       if (file.unit as String) != (row.names.unit_name as String) {
-        Present {
-          value: LiveDeployFleetRequestUnitMismatch {
+        LiveDeployReleaseTargetRefused {
+          cause: LiveDeployFleetRequestUnitMismatch {
             carried: file.unit,
             rostered: row.names.unit_name,
           },
         }
       } else {
         match desired_member(Executable) {
-          ExecutableIdentity { digest: _ } => none
-          _ => Present { value: LiveDeployFleetRequestExecutableUnbound }
+          ExecutableIdentity { digest } =>
+            LiveDeployReleaseTargetBound {
+              target: ReleaseTarget {
+                revision: candidate.revision,
+                executable: digest,
+                unit: row.names.unit_name,
+              },
+            }
+          _ => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
         }
       }
-    _ => Present { value: LiveDeployFleetRequestUnitFileUnbound }
+    _ => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
   }
 }
 
@@ -393,27 +406,19 @@ fn admit_live_deploy_fleet_request(
     DesiredSelectedIdentityMismatch { carried, rostered } =>
       LiveDeployFleetRequestIdentityMismatch { carried: carried, rostered: rostered }
     DesiredSelectedIdentityBound { row } =>
-      match release_target_refusal_for_desired(row: row, desired_member: desired_member) {
-        Present { value: refusal } => refusal
-        Absent =>
-          match desired_member(Executable) {
-            ExecutableIdentity { digest } =>
-              match admit_live_deploy_member_basis(
-                candidate: candidate,
-                target: ReleaseTarget {
-                  revision: candidate.revision,
-                  executable: digest,
-                  unit: row.names.unit_name,
-                },
-                observed: observed,
-                desired: desired_member,
-              ) {
-                LiveDeployBasisRefused { cause } =>
-                  LiveDeployFleetRequestBasisRefused { cause: cause }
-                LiveDeployBasisAdmitted { basis } =>
-                  LiveDeployFleetRequestAdmitted { desired: row, basis: basis }
-              }
-            _ => LiveDeployFleetRequestExecutableUnbound
+      match bind_release_target_to_desired(row: row, candidate: candidate, desired_member: desired_member) {
+        LiveDeployReleaseTargetRefused { cause } => cause
+        LiveDeployReleaseTargetBound { target } =>
+          match admit_live_deploy_member_basis(
+            candidate: candidate,
+            target: target,
+            observed: observed,
+            desired: desired_member,
+          ) {
+            LiveDeployBasisRefused { cause } =>
+              LiveDeployFleetRequestBasisRefused { cause: cause }
+            LiveDeployBasisAdmitted { basis } =>
+              LiveDeployFleetRequestAdmitted { desired: row, basis: basis }
           }
       }
   }
