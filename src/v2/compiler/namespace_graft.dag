@@ -323,12 +323,8 @@ fn namespace_graft_unit_captured(unit: Node) -> Node? {
   parse_production_captured_child_optional(node: unit)
 }
 
-// Record field_decl_block is not Named-rehomed here (body_lower_type_decl / #11582).
-// The unit is a residual: body_edges_for_graft reconstructs it beside any sibling
-// Named edge so a nonempty combined cannot delete it.
-// review 67681: this skip is wider than `type Rec { … }` — variant field_decl_block
-// (`type Box = Leaf | Cell { … }`, `type Foo = Bar {}`) takes the same arm. Narrowing
-// by type_alias_rhs Named-rehomed records (unchosen choice arm) and broke Flag+Rec.
+// Record field_decl_block units are residual, not Named; class
+// gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft.
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
   match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_field_decl_block) {
     Present { value: _ } => optional_absent()
@@ -408,22 +404,9 @@ fn namespace_graft_residual_decl_units(units: List<Node>) -> List<Node> {
   })
 }
 
-// Flattening to Named declaration edges is what symbol_index_fill consumes. A fn_decl
-// arrives already rehomed by body_lower_fn_decl_to_arrow; type_decl and data_decl did
-// not, so flatten was empty for a type-only module (reconstruct kept raw shells —
-// resolve walked On/Off as bare mentions) and nonempty when a fn sat beside them
-// (the type shell was dropped). Neither arm is a refusal. Rehome type/data onto
-// Named containment first; reconstruct remains only when nothing first-class
-// survived (import-only and the lost-forest refusal still sit on that empty path).
-// Flatten keeps an existing Named member when its target subtree holds an Arrow
-// (fn) or Disj (coproduct), or when the target itself is a Conj that is not a
-// record field_decl_block (where-alias / lowered type body). Records stay off
-// this path via the type_decl Named skip plus this Conj carve-out — dropping
-// every Conj refused where-aliases and graft-shape (required-floor 6ec06e9).
 // Flatten keeps Named members that are not parse machinery. A Conj that still
 // carries field_decl_block is the record form (residual reconstruct), not a
-// flatten member. Atom targets must stay — the graft-shape fixture is two Named
-// atoms, and dropping them emptied the body (required-floor f6ea532).
+// flatten member. Atom targets stay: the graft-shape fixture is two Named atoms.
 fn namespace_graft_keep_flattened_member_edge(
   productions: List<GrammarProduction>,
   edge: Edge

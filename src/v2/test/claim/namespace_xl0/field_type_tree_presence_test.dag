@@ -113,18 +113,14 @@ test fn control_a_parameter_type_name_is_an_atom_in_the_tree_holds() -> Bool {
   atom_present(lexeme: "Xl0UserType")
 }
 
-// CONTROL, CORRECTED: a type DECLARATION name is an edge label, not an atom. Asserting it as an
-// atom was an error and its red said nothing about the tree. Flatten-drop rehomes coproduct/alias,
-// not field_decl_block; Xl0Wrapper is still absent (same standing RED as body_lower_type_decl).
+// CONTROL: a type declaration name is an edge label, not an atom.
+// Record skip: gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft.
 test fn the_record_type_declaration_is_absent_from_the_tree_today() -> Bool {
   !present_anywhere(lexeme: "Xl0Wrapper")
 }
 
-// WHAT WAS MEASURED: the fixture contains `type Xl0Wrapper { fld: Xl0FieldOnly }`, ingest ACCEPTS,
-// and Xl0UserType is an atom as a parameter type. The record name, field name, and field type are
-// all absent from atoms and edge labels. Graft skips units that carry dag_surface_field_decl_block
-// (namespace_graft_type_decl_named_edge). These stay absence measurements until the body-lowering
-// follow-up after gunbc#11582.
+// Fixture: type Xl0Wrapper { fld: Xl0FieldOnly }. Class
+// gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft.
 test fn the_bare_field_type_is_absent_from_the_tree_today() -> Bool {
   !present_anywhere(lexeme: "Xl0FieldOnly")
 }

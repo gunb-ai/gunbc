@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data record_type_decl_field_block_not_named_at_graft: RecurringFailureMode = RecurringFailureMode {
+  identity: "record_type_decl_field_block_not_named_at_graft" as NonEmptyStr,
+
+  receipts: [
+    "**a type_decl whose parse tree still carries dag_surface_field_decl_block is not rehomed onto a Named graft edge** (INVALID STATE: `type Rec { n: Int }` stays a residual reconstructed shell, so symbol_index_fill does not see Rec as containment the way it sees `type Flag = On | Off` or a fn. Coproduct and alias units are Named in namespace_graft_type_decl_named_edge; the field_decl_block skip is the record half of the same flatten-drop class.)",
+
+    "HARM: record assemble refuses (standing RED), and a record name is not a first-class module member. Residual reconstruct keeps the unit beside a sibling Named graft so the shell is not silently deleted; that is mitigation of drop, not Named rehome.",
+
+    "DISCRIMINATOR: RED while namespace_graft_type_decl_named_edge returns Absent whenever parse_subtree_locate_production finds dag_surface_field_decl_block under the unit. GREEN when body_lower_type_decl rehomes that form onto Named containment and the skip is deleted.",
+
+    "EVIDENCE ENROLLED: v2.test.claim.declaration_graft_assemble declaration_graft_record_type_only_does_not_accept_today and declaration_graft_record_construct_does_not_accept_today (`!assemble_accepts`). They flip to a permanent regression control when record assemble accepts, they do not retire. v2.test.claim.declaration_graft_assemble declaration_graft_coproduct_beside_record_does_not_erase_rec refuses to treat Rejected as Rec survival.",
+
+    "RUNG FOUND AT: 1, mitigatable -- residual reconstruct contains the drop; the invalid Named-absence is still writable. CEILING: 3 once body_lower_type_decl is the Named home for field_decl_block type_decl, so graft need not skip.",
+
+    "NEXT-RUNG TRIGGER: body_lower_type_decl rehomes a field_decl_block type_decl onto a Named containment edge (the capability tracked as gunbc#11582), and namespace_graft_type_decl_named_edge no longer returns Absent on that production. Nothing smaller retires this row: landing 11582 without that rehome, or deleting the skip without the lowering, is not the climb.",
+  ],
+
+  evidence: [],
+}

@@ -182,10 +182,8 @@ test fn declaration_graft_coproduct_beside_record_does_not_erase_rec() -> Bool {
   }
 }
 
-// Record Named-rehome is body_lower_type_decl / gunbc#11582, not flatten-drop.
-// Per-PR measurements of the defect (assemble does not accept). Naming is not
-// asserted via !named_reachable: that is true on every Rejected and does not
-// inspect labels. They go red when record assemble accepts.
+// Record assemble standing RED: gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft.
+// Not asserted via !named_reachable: that is true on every Rejected.
 test fn declaration_graft_record_type_only_does_not_accept_today() -> Bool {
   !declaration_graft_assemble_accepts(src: src_g_type_only)
 }
