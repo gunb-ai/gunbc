@@ -1,5 +1,6 @@
 module gunbc.machine_intake_bmc_fan_observation
 
+import extdeps.bmc.ipmi
 import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
@@ -38,6 +39,21 @@ import gunbc.clock_read { clock_now_probed_at_or_unknown }
 // machine's own power and thermal-publication state beside each sample can be: it either shows the
 // duty moving after the host starts publishing thermals or it shows the duty flat, and those are
 // different findings with different owners.
+//
+// THE BARE `import extdeps.bmc.ipmi` IS LOAD-BEARING AND ITS ABSENCE IS NOT A COMPILE ERROR.
+// SERVICE OPERATIONS REGISTER FROM THE IMPORT CLOSURE, so a module that calls
+// diagnostic.ipmi.Tool.* without importing the module that declares the service resolves clean,
+// typechecks clean, passes every hermetic witness, and then refuses at RUN TIME with
+// `Unimplemented { what: "unknown service operation: diagnostic.ipmi.Tool.ChassisStatus" }` - a
+// diagnostic that names the operation and not the missing import.
+//
+// MEASURED, NOT ANTICIPATED: fleet-converge run 35401192650 died exactly there, on the first
+// dispatch of this lane, after 30 green witnesses and a green corpus resolve. That is DESIGN §5's
+// specification-without-execution in its purest form - the suite proved the decode, the standing
+// and the refusals, and could not prove that the program reaches a controller at all, because the
+// only thing that establishes it is running it. gunbc.machine_intake_mtcollins1_actuate's own
+// header records the identical failure against shell.Env.Get, which is where the explanation came
+// from; this module simply repeated it.
 //
 // READS ONLY, BY CONSTRUCTION AND NOT BY CONVENTION. Every operation this module reaches is one of
 // the `readonly` arms of diagnostic.ipmi.Tool - SdrTypeList and ChassisStatus. There is no arm here

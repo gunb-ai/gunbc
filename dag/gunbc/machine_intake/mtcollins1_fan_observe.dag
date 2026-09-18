@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_fan_observe
 
+import extdeps.shell
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Int, List, NonEmptyStr, String }
@@ -74,6 +75,12 @@ data mtcollins1_fan_policy_authority: FanPolicyAuthority = FanPolicyAuthority {
 // lengthening the series does not require editing the standing.
 data mtcollins1_fan_transition_window: Second = second(count: 60)
 
+// THE BARE `import extdeps.shell` ABOVE IS WHAT MAKES shell.Env.Get RESOLVABLE AT RUN TIME, for the
+// reason gunbc.machine_intake_mtcollins1_actuate's header states at length: service operations
+// register from the import closure, so without it this function refuses with
+// `Unimplemented { what: "unknown service operation: shell.Env.Get" }` - naming the operation
+// rather than the import, which is why that module hit it first and this one hit it second.
+//
 // A CREDENTIAL PATH IS A TYPED OUTCOME AND NOT AN OPTIONAL, the same shape
 // gunbc.fleet_bootstrap_principal_session uses for exactly this fact. Optional would carry two
 // different absences on one arm - the variable was never set, and it was set to whitespace - and the
