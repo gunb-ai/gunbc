@@ -16,7 +16,7 @@ This page is an index of a path, not the proof that it works. What establishes t
 
 ## The path
 
-10 steps in order. Run each verification before moving on: a step that half-worked is the expensive kind, because the failure surfaces several steps later attached to the wrong cause.
+11 steps in order. Run each verification before moving on: a step that half-worked is the expensive kind, because the failure surfaces several steps later attached to the wrong cause.
 
 ### 1. clone
 
@@ -68,7 +68,17 @@ Who is needed: needs a machine: a host whose cgroup exposes an enforceable memor
 
 Done when: The run announces one phase line per phase it owns and one routed line per phase it does not, and exits nonzero on any failed phase. QUALIFY THE HOST BEFORE SPENDING THE TIME: this is the longest step by a wide margin and the most memory-hungry, so read your own bound with `cat /sys/fs/cgroup/memory.max` and compare it against the declared per-slot allowance, which is gunbc.runner_slot_allocation gunbc_runner_slot_memory_max -- the page names the symbol rather than copying the number, so look it up there and it cannot go stale on you. Confirm yours is at or above it first -- a host under it will run for a long time and then refuse or be killed. When it does refuse, classify the refusal with the three arms the run-witnesses obstacle rows carry before touching the corpus.
 
-### 6. run-build-lane
+### 6. run-one-witness
+
+Run ONE witness file's claims in ONE process. The floor above runs everything; while you are changing one module you want its witness, and the cost of a run is dominated by loading and typechecking the entry's closure -- minutes -- not by the claims. `gunbc run --claim-run` with no `--function` executes every `test fn` the entry declares over one load, prints one PASS or FAIL line per claim, runs every claim even after a red so the file reports all of its reds, and exits nonzero if any failed. `--function` is repeatable when you want a subset; the named functions run in the order given.
+
+`./target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/spark/pair_serving_authority_witness_test.dag --claim-run`
+
+Who is needed: self-serve
+
+Done when: One PASS line per test fn the file declares, and exit 0. Name a function that does not exist beside real ones and the run reports its refusal after the passes and exits 1 -- that is the control that the loop reports every function rather than the first. THE ENTRY IN THE RECIPE IS AN EXAMPLE: substitute the witness you are working on. The argv comes from gunbc.cli_invoke gunbc_run_all_claims_invocation_words, the same authority the floor's per-claim invocations use, so a flag renamed on the modeled surface is renamed here.
+
+### 7. run-build-lane
 
 Run the emission lane: the regen comparison and the emission compile. Also tens of minutes. RUN IT BEFORE YOU CHANGE ANYTHING, because the change step asks you to take it from refusing to green and you cannot see that transition if you never saw it green first.
 
@@ -78,7 +88,7 @@ Who is needed: self-serve
 
 Done when: The generated-artifact phase reports each population it owns, and names the path plus the regeneration recipe when a projection has drifted.
 
-### 7. change
+### 8. change
 
 Make one small change in the .dag authority that owns the fact, then regenerate what projects from it. A NAMED FIRST CHANGE, WITH ITS FILE, because a step that says only which KIND of change to make is a step that sends you exploring: open dag/gunbc/contributor_onboarding_path.dag, edit one why string in onboarding_design_reading -- a row of the reading order on this very page -- and regenerate. DO THE REGEN SECOND, NOT FIRST. Edit, then run the emission lane and watch it REFUSE and name your drifted file, then regen, then run it again and watch it pass. Running regen before the lane skips the refusal, which is the half of the loop worth seeing. THEN COMMIT: that is what converges the merge driver the seed-hooks step told you to check later, so check it now. It is the smallest projection in the repository, so the loop closes in one run, and the file you are reading is the diff.
 
@@ -88,7 +98,7 @@ Who is needed: self-serve
 
 Done when: THE REGEN REWRITES MORE THAN YOUR ONE FILE AND THAT IS EXPECTED: it writes every docs projection, including two large ledgers. They should come out byte-identical to what is committed, so `git status` shows only the files you meant -- if it shows more, read that as a finding rather than as noise. RUN IT AS ./target/release/gunbc, NOT AS THE BARE gunbc PRINTED ABOVE -- that substitution is the path-addressed-binary rule at the top of this page and it is the one readers miss, because the recipe looks copy-pasteable. THE RULE IS NAMED RATHER THAN NUMBERED HERE ON PURPOSE: an ordinal authored in this row is a second copy of the roster's order, and that copy has already gone stale once. Then the build lane above goes from refusing the drift to exiting zero, with the regenerated bytes in the diff. THE LEADING gunbc IN THIS RECIPE MUST BE THE BINARY THE build STEP BUILT, ADDRESSED BY PATH. The command is reproduced verbatim from the authority that the drift refusal itself prints, so it names the program bare -- and a bare name resolves against the shell path, which is the stale-binary trap the run-witnesses obstacle rows name. The run-witnesses and run-build-lane steps are path-addressed because their program has a location authority; this one has none, so you supply the path.
 
-### 8. local-checks
+### 9. local-checks
 
 Run the checks that block a merge and the ones that are local diligence only.
 
@@ -98,7 +108,7 @@ Who is needed: self-serve
 
 Done when: Clippy over every target is clean; a warning is an error.
 
-### 9. propose
+### 10. propose
 
 Push a branch and open a pull request.
 
@@ -106,7 +116,7 @@ Who is needed: needs a credential: push access to the repository, or a fork plus
 
 Done when: The pull request exists and the required contexts are queued against its head.
 
-### 10. land
+### 11. land
 
 Get the change reviewed and merged.
 

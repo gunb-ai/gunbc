@@ -186,6 +186,23 @@ fn gunbc_run_invocation_words(
   )
 }
 
+// EVERY CLAIM OF ONE WITNESS IN ONE PROCESS. `--function` is repeatable on the modeled surface
+// (gunbc.cli_dispatch_surface), and a `--claim-run` with NO function executes every `test fn` the
+// entry declares over one load of its closure. This is the argv for that: the same shape as
+// above with the function words omitted, so there is still one place deciding the order.
+fn gunbc_run_all_claims_invocation_words(
+  source_roots: List<String>,
+  entry: String
+) -> List<InvocationWord> {
+  concat(
+    concat(
+      concat([LiteralWord { spelling: "run" }], source_root_invocation_words(roots: source_roots)),
+      [LiteralWord { spelling: "--entry" }, LiteralWord { spelling: entry }]
+    ),
+    [LiteralWord { spelling: "--claim-run" }]
+  )
+}
+
 fn gunbc_run_transport_argv(
   source_roots: List<String>,
   entry: String,

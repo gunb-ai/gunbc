@@ -9,6 +9,7 @@ import extdeps.languages.markdown { serialize_markdown_source }
 import extdeps.exec.command { argv_words }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command, repo_self_test_command }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
+import gunbc.cli_invoke { gunbc_run_all_claims_invocation_words, invocation_words_bare }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.witness_floor_workflow { witness_floor_required_bins }
 import tools.docs_projection_agreement { docs_projection_regen_command }
@@ -239,6 +240,12 @@ fn onboarding_witness_command() -> String {
   join(argv_words(command: witnesses_lane_run_command()), " ")
 }
 
+// The one-witness recipe, path-addressed: the built binary, the witness roots, the entry, and
+// `--claim-run` with no `--function`, which runs every `test fn` the file declares in one process.
+fn onboarding_one_witness_command() -> String {
+  join(concat(["./target/release/gunbc"], invocation_words_bare(words: gunbc_run_all_claims_invocation_words(source_roots: witness_layer_roots, entry: "dag/test/claim/spark/pair_serving_authority_witness_test.dag"))), " ")
+}
+
 fn onboarding_build_lane_command() -> String {
   join(argv_words(command: build_lane_run_command()), " ")
 }
@@ -286,6 +293,13 @@ data onboarding_steps: List<OnboardingStep> = [
     command: Present { value: onboarding_witness_command() as NonEmptyStr },
     verification: "The run announces one phase line per phase it owns and one routed line per phase it does not, and exits nonzero on any failed phase. QUALIFY THE HOST BEFORE SPENDING THE TIME: this is the longest step by a wide margin and the most memory-hungry, so read your own bound with `cat /sys/fs/cgroup/memory.max` and compare it against the declared per-slot allowance, which is gunbc.runner_slot_allocation gunbc_runner_slot_memory_max -- the page names the symbol rather than copying the number, so look it up there and it cannot go stale on you. Confirm yours is at or above it first -- a host under it will run for a long time and then refuse or be killed. When it does refuse, classify the refusal with the three arms the run-witnesses obstacle rows carry before touching the corpus." as NonEmptyStr,
     blocker: NeedsMachine { resource: "a host whose cgroup exposes an enforceable memory bound large enough for the floor fold" as NonEmptyStr },
+  },
+  OnboardingStep {
+    id: "run-one-witness" as NonEmptyStr,
+    goal: "Run ONE witness file's claims in ONE process. The floor above runs everything; while you are changing one module you want its witness, and the cost of a run is dominated by loading and typechecking the entry's closure -- minutes -- not by the claims. `gunbc run --claim-run` with no `--function` executes every `test fn` the entry declares over one load, prints one PASS or FAIL line per claim, runs every claim even after a red so the file reports all of its reds, and exits nonzero if any failed. `--function` is repeatable when you want a subset; the named functions run in the order given." as NonEmptyStr,
+    command: Present { value: onboarding_one_witness_command() as NonEmptyStr },
+    verification: "One PASS line per test fn the file declares, and exit 0. Name a function that does not exist beside real ones and the run reports its refusal after the passes and exits 1 -- that is the control that the loop reports every function rather than the first. THE ENTRY IN THE RECIPE IS AN EXAMPLE: substitute the witness you are working on. The argv comes from gunbc.cli_invoke gunbc_run_all_claims_invocation_words, the same authority the floor's per-claim invocations use, so a flag renamed on the modeled surface is renamed here." as NonEmptyStr,
+    blocker: SelfServe,
   },
   OnboardingStep {
     id: "run-build-lane" as NonEmptyStr,
