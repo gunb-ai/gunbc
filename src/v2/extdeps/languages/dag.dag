@@ -734,11 +734,11 @@ fn dag_grammar_module_header_expr() -> GrammarExpr {
 
 fn dag_grammar_qualified_name_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    left: dag_grammar_binding_name_terminal(),
     right: dag_grammar_repeat(
       element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_dot),
-        right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+        right: dag_grammar_binding_name_terminal()
       )
     )
   )
@@ -748,7 +748,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_terminal(token_class: ^dag_token_ident)),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_binding_name_terminal()),
       right: dag_grammar_terminal(token_class: ^dag_token_gt)
     )
   )
@@ -829,7 +829,7 @@ fn dag_grammar_where_predicate_arg_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_optional(
         element: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_colon),
@@ -845,7 +845,7 @@ fn dag_grammar_where_predicate_arg_expr() -> GrammarExpr {
 // the authored spelling and does not mint a second table.
 fn dag_grammar_where_predicate_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+    left: dag_grammar_binding_name_terminal(),
     right: dag_grammar_optional(
       element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_lparen),
@@ -880,7 +880,7 @@ fn dag_grammar_import_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_binding_name_terminal()),
       right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
     )
   )
@@ -1238,7 +1238,7 @@ fn dag_grammar_expr_list_helper() -> GrammarExpr {
 }
 
 fn dag_grammar_untyped_params_helper() -> GrammarExpr {
-  dag_grammar_comma_list_expr(item: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident))
+  dag_grammar_comma_list_expr(item: dag_grammar_binding_name_terminal())
 }
 
 fn dag_grammar_postfix_call_suffix_expr() -> GrammarExpr {
@@ -1324,7 +1324,7 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_primary_ident_suffix_expr()
     ),
     right: dag_grammar_choice(
@@ -1594,7 +1594,7 @@ fn dag_grammar_fn_literal_expr() -> GrammarExpr {
 fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_fat_arrow),
         right: dag_grammar_nonterminal(production: ^dag_production_expr)
@@ -1603,16 +1603,16 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
-        left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+        left: dag_grammar_binding_name_terminal(),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_comma),
           right: dag_grammar_sequence(
-            left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+            left: dag_grammar_binding_name_terminal(),
             right: dag_grammar_sequence(
               left: dag_grammar_repeat(
                 element: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_comma),
-                  right: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)
+                  right: dag_grammar_binding_name_terminal()
                 )
               ),
               right: dag_grammar_sequence(
@@ -1644,7 +1644,7 @@ fn dag_grammar_alias_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_alias),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_eq),
         right: dag_grammar_nonterminal(production: ^dag_production_qualified_name)
@@ -1681,7 +1681,7 @@ fn dag_grammar_type_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_type),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_sequence(
         left: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_generic_params)),
         right: dag_grammar_optional(
@@ -1702,7 +1702,7 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_data),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_colon),
         right: dag_grammar_sequence(
@@ -1721,7 +1721,7 @@ fn dag_grammar_fn_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_kw_fn),
     right: dag_grammar_sequence(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident),
+      left: dag_grammar_binding_name_terminal(),
       right: dag_grammar_sequence(
         left: dag_grammar_optional(element: dag_grammar_nonterminal(production: ^dag_production_generic_params)),
         right: dag_grammar_sequence(
@@ -1773,8 +1773,11 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // parse_transport_binding matches rest/shell/file as ShIdent, not keywords —
 // keywording `file` would steal ordinary names). Modifiers and the
 // ident-led clauses that must refuse an unknown starter are KEYWORD
-// terminals, the SH-2 move: an unknown identifier in a modifier slot cannot
-// inhabit the production. The v2-inline operation form and service-level
+// terminals so FIRST sets stay disjoint. Those tokens are also members of
+// dag_binding_name_keyword_tokens and every name position that uses
+// dag_grammar_binding_name_terminal (qualified names, primary expr, lets,
+// fields, decl names) — a keyword that is only reserved, not name-admitted,
+// refuses ordinary `from` / `transport` / `input` uses. The v2-inline operation form and service-level
 // `config` are v1-admitted and not yet in this nest — named remainder, not
 // a silent drop. Parsing is not lowering: dissolve-on
 // ^service_family_body_lowering — a consumed body-lowering arm for
