@@ -26,16 +26,17 @@ import gunbc.network_boot_delivery {
   BootControlObserved,
   BootstrapTrustUnestablished,
   ClientBootModeObserved,
+  ClientBootModePredecessor,
   ClientBootModeUnobserved,
   ControlledNetworkBootstrap,
   DhcpFilenameHint,
   FleetBootServiceEstablished,
+  FleetBootServicePredecessor,
   FleetBootServiceReceipt,
   FleetBootServiceStanding,
   FleetBootServiceUnestablished,
   GlobalHttpsEndpointReachable,
   GlobalHttpsEndpointUnreachable,
-  MeasuredNetworkBootFact,
   NetworkBootBootArtifacts,
   NetworkBootBootControlReceipt,
   NetworkBootBootSourceOverride,
@@ -54,7 +55,6 @@ import gunbc.network_boot_delivery {
   ManifestVerificationRefused,
   NetworkBootJoinInputs,
   NetworkBootServingInfrastructure,
-  NonEstablishingNetworkBootPredecessor,
   ObservedClientBootModeReceipt,
   ObservedDhcpPxeClient,
   ProductionTrustedBootstrap,
@@ -123,7 +123,6 @@ fn fleet_ok() -> FleetBootServiceStanding {
       https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
       origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
       signing_key_identity: "boot-manifest-key-0",
-      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -161,7 +160,6 @@ fn client_ok() -> ClientBootModeObserved {
         vendor_class: "PXEClient:Arch:00011:UNDI:003016",
         arch: UefiArm64,
       },
-      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -172,7 +170,6 @@ fn control_ok() -> BootControlObserved {
   BootControlObserved {
     receipt: NetworkBootBootControlReceipt {
       target: target,
-      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -196,7 +193,6 @@ fn manifest_ok() -> SignedBootManifestStanding {
       signing_key_identity: "boot-manifest-key-0",
       callback_identity: "intake-callback-0",
     },
-    evidence_class: MeasuredNetworkBootFact,
     observation: obs,
     observed_at: 1788000000000,
   }
@@ -356,7 +352,6 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     boot_control: BootControlObserved {
       receipt: NetworkBootBootControlReceipt {
         target: other_target,
-        evidence_class: MeasuredNetworkBootFact,
         observation: obs,
         observed_at: 1788000000000,
       },
@@ -398,7 +393,6 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
         signing_key_identity: "boot-manifest-key-0",
         callback_identity: "intake-callback-0",
       },
-      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -457,7 +451,6 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
         signing_key_identity: "boot-manifest-key-0",
         callback_identity: "intake-callback-0",
       },
-      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -525,7 +518,6 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
         signing_key_identity: "boot-manifest-key-0",
         callback_identity: "intake-callback-0",
       },
-      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788003600000,
     },
@@ -576,7 +568,6 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
           vendor_class: "HTTPClient:Arch:00013",
           arch: HttpBootArm64,
         },
-        evidence_class: MeasuredNetworkBootFact,
         observation: obs,
         observed_at: 1788000000000,
       },
@@ -623,18 +614,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
     decl_name: "srv4_bmc_netboot_serve_plan",
     field: WholeDeclaration,
   }
-  let client = ClientBootModeObserved {
-    receipt: ObservedClientBootModeReceipt {
-      target: target,
-      client: ObservedDhcpPxeClient {
-        vendor_class: "PXEClient:Arch:00011:UNDI:003016",
-        arch: UefiArm64,
-      },
-      evidence_class: NonEstablishingNetworkBootPredecessor,
-      observation: frozen,
-      observed_at: 1788000000000,
-    },
-  }
+  let client = ClientBootModePredecessor { observation: frozen }
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
@@ -662,16 +642,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
     decl_name: "srv4_bmc_netboot_serve_plan",
     field: WholeDeclaration,
   }
-  let fleet = FleetBootServiceEstablished {
-    receipt: FleetBootServiceReceipt {
-      https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
-      origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
-      signing_key_identity: "boot-manifest-key-0",
-      evidence_class: NonEstablishingNetworkBootPredecessor,
-      observation: frozen,
-      observed_at: 1788000000000,
-    },
-  }
+  let fleet = FleetBootServicePredecessor { observation: frozen }
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
