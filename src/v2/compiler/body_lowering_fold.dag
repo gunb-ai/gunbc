@@ -2098,17 +2098,15 @@ fn body_lower_fn_decl_named_member_wrap(arrow: Node, fn_name: Symbol) -> Node {
 // v2.compiler.test_marker_capture over the same parse tree, so the semantic member stays identical
 // to a plain fn's.
 //
-// THREE PRODUCERS OF TEST-NESS STAND TODAY, AND THIS NAMES ALL OF THEM RATHER THAN DROPPING ONE.
+// TWO PRODUCERS OF TEST-NESS STAND TODAY, AND THIS NAMES BOTH RATHER THAN DROPPING ONE.
 // (1) The capture above, the compiler's. (2) The floor's witness universe, derived by
 // v2.workflow.floor_discovery_source_authority discover_floor_rows_for_source, a line scan for
 // `test fn ` / `test data ` over source text that deliberately neither parses nor resolves
 // (v2.workflow.floor_naming_hygiene names it a second parser). TRIGGER for converging it onto this
 // channel: the floor preparing a parse artifact for each discovered source, at which point discovery
-// reads the marks from that parse instead of rescanning the bytes. (3) v2.workflow.realization_attempt
-// capture_test_markers, which strips the marker from source text before ingest. Its stated reason,
-// that the grammar could not parse the marker, no longer holds (dag_production_test_fn_decl parses
-// it and this arm lowers it), and its count has no reader. TRIGGER for deleting it: gunbc#11573
-// merging, which makes this capture the one on main; the deletion is its own change after that.
+// reads the marks from that parse instead of rescanning the bytes. A third producer,
+// v2.workflow.realization_attempt's line-rewriting capture, was deleted in the change that added
+// this channel: its only reason was a grammar that could not parse the marker.
 fn body_lower_test_fn_decl_to_member(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent => body_lower_wrapper_retained_shell(shell: shell)
