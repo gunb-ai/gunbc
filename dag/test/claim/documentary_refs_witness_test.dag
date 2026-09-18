@@ -49,7 +49,14 @@ fn fixture_fact(qualified_name: String, name: String, path: String) -> DeclFact 
 // generated_document_declaration_refs(). This is the
 // control that proves the refusals below are caused by the perturbation rather than by a fixture
 // that never resolved anything.
-
+//
+// THE `v2.` PREFIX IS ABSENT FROM THE required_gate_prefixes FACT ON PURPOSE AND IS NOT A TYPO. A
+// DeclFact carries the LOGICAL qualified name: v2.std.decl_index logical_qualified_name_from_module
+// strips a leading `v2.` when it builds the name the resolver matches on, while
+// module_path_declared compares the module row against the FULL path. So fixture_modules() says
+// `v2.workflow.required_floor` and the fact says `workflow.required_floor.required_gate_prefixes`,
+// and both are correct. The asymmetry was invisible until that row, because the only other fact
+// here names a `gunbc.` module with nothing to strip.
 fn intact_facts() -> List<DeclFact> {
   [
     fixture_fact(
@@ -57,12 +64,6 @@ fn intact_facts() -> List<DeclFact> {
       name: "v1_seed_standing",
       path: "dag/gunbc/v1/v1_maintenance_standing.dag",
     ),
-    // THE `v2.` PREFIX IS ABSENT ON PURPOSE AND IS NOT A TYPO. A DeclFact carries the LOGICAL
-    // qualified name, and v2.std.decl_index logical_qualified_name_from_module strips a leading
-    // `v2.` when it builds the name the resolver matches on -- while module_path_declared compares
-    // the module row against the FULL path. So the row above says `v2.workflow.required_floor` and
-    // this fact says `workflow.…`, and both are correct. The asymmetry was invisible until this
-    // row, because the only other fact here names a `gunbc.` module with nothing to strip.
     fixture_fact(
       qualified_name: "workflow.required_floor.required_gate_prefixes",
       name: "required_gate_prefixes",
