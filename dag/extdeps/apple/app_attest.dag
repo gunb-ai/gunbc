@@ -25,7 +25,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //   * It certifies nothing about any other key. The link from the attested app to the decision key
 //     is made by the enrolment protocol: the clientDataHash the app attests over commits to the
 //     decision key and the one-time enrolment code (gunbc.auth.approval_device_redemption).
-data attestation_proves_the_app_not_the_person_note: NonEmptyStr = "An App Attest attestation certifies a Secure Enclave key belonging to a genuine instance of one team id + bundle id on Apple hardware. It carries no biometric gate and says nothing about other keys; binding it to the biometric-gated decision key is the enrolment protocol's job, through the clientDataHash."
 
 type AttestKeyId = NonEmptyStr where brand("AttestKeyId")
 
@@ -66,7 +65,6 @@ type AttestationRefusal
   | AttestationBundleVersionAbsent
   | AttestationUndecodable { cause: String }
 
-data apple_app_attest_root_ca_note: NonEmptyStr = "The trust anchor is Apple's App Attestation Root CA, published at www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem. It is pinned by the verifier's configuration, never taken from the attestation's own x5c."
 
 data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
 
@@ -111,7 +109,6 @@ fn attestation_verification_from_implementation(
   }
 }
 
-data app_attest_unavailable_in_simulator_note: NonEmptyStr = "DCAppAttestService.isSupported is false in the Simulator and on devices without a Secure Enclave; the app must refuse enrolment there rather than enrolling without an attestation."
 
 // ── Assertions ───────────────────────────────────────────────────────────────────────────────
 // Each later request carries an assertion: CBOR { signature, authenticatorData } produced by

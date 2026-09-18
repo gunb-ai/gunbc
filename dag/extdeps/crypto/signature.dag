@@ -23,7 +23,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // server that records which device decided, and must not be able to forge that device's decision --
 // needs a public-key construction. That is the only property this module adds, and the only one a
 // consumer may rely on it for.
-data verification_key_cannot_sign_note: NonEmptyStr = "An ECDSA public key verifies and cannot sign. A record that names a device's public key as the signer of a decision therefore attributes the decision to whoever holds the private key, and nothing that holds only the public key -- including the server storing the record -- can manufacture a matching signature. That is the property a MAC cannot give (extdeps.crypto.mac symmetric_verification_is_issuance_note)."
 
 // ONE FIXED SUITE, closed for the same algorithm-confusion reason as MacSuite: the verifier picks
 // the suite from its enrolled key, never from the message it is checking.

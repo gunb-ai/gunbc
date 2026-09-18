@@ -30,5 +30,3 @@ type FcmErrorCode
   | FcmUnavailable
   | FcmInternal
   | FcmThirdPartyAuthError
-
-data fcm_transport_encryption_note: NonEmptyStr = "FCM encrypts in transit but is not end-to-end encrypted: Google can read message content. Firebase's own guidance for sensitive payloads is an opaque data message followed by a fetch from the application server."

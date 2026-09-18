@@ -33,7 +33,6 @@ fn apns_host(e: ApnsEnvironment) -> NonEmptyStr {
   }
 }
 
-data testflight_is_production_note: NonEmptyStr = "TestFlight builds are distribution-signed, so their device tokens are production tokens and must be sent to api.push.apple.com. Only an Xcode development build uses api.sandbox.push.apple.com."
 
 // ── Token-based provider authentication ──────────────────────────────────────────────────────
 // The provider signs a JWT (RFC 7519) with the .p8 auth key: header { alg: ES256, kid: <key id> },
@@ -221,5 +220,3 @@ fn apns_send_outcome_of(rest: RestOutcome, apns_id: String) -> ApnsSendOutcome {
     RestBodyUndecodable { status, cause } => ApnsUndecodable { status: status, cause: cause as String }
   }
 }
-
-data apns_accepted_is_not_delivery_note: NonEmptyStr = "ApnsAccepted establishes that APNs accepted the request for delivery. APNs stores and forwards one notification per device while it is offline and may drop it; acceptance is not delivery, not display, and never consent."
