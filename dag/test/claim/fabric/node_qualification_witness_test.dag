@@ -1,6 +1,6 @@
 module test.claim.fabric.node_qualification_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr }
 import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count }
 import product.placement_supply { HostIdentity }
 import extdeps.ethernet.link_mode {
@@ -22,10 +22,12 @@ import product.fabric.node_qualification {
   AcceleratorCountAgrees, AcceleratorCountFallsShort, AcceleratorCountUnread,
   RailLinkModeAgrees, RailLinkModeFallsShort, RailLinkModeUnread,
   NicPcieFallsShort, NicPcieUnread,
-  CollectiveLatencyUnread, CollectiveBandwidthUnread, RankSymmetryUnread, RankSymmetryFallsShort,
+  CollectiveLatencyUnread, CollectiveBandwidthUnread,
+  RankSymmetryUnread, RankSymmetryFallsShort, RankSymmetryAgrees,
   GpuDirectRdmaFallsShort, GpuDirectRdmaEvidenceMissing,
   NodeQualified, NodeNotQualified,
   qualify_node, admit_qualified_node, qualify_rail_link_mode, qualify_accelerator_count,
+  qualify_rank_symmetry,
 }
 import gunbc.spark.group_b_node_qualification { group_b_qualification_admission }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -231,13 +233,23 @@ test fn fewer_accelerators_than_advertised_falls_short() -> Bool {
   }
 }
 
-test fn a_degraded_rank_is_named_not_averaged() -> Bool {
-  let slow = CollectiveSample {
+fn fx_slow_sample() -> CollectiveSample {
+  CollectiveSample {
     message_bytes: byte_size(count: 8),
     bus_bandwidth: bandwidth(count: 200),
     latency: nanosecond(count: 5000),
   }
-  let measured = MeasuredNodeDelivery {
+}
+
+fn fx_rank(id: String, sample: CollectiveSample) -> RankCollectiveReading {
+  RankCollectiveReading {
+    rank: id as HostIdentity,
+    curve: CollectiveCurveRead { samples: [sample], instrument: NcclTestsAllReducePerf },
+  }
+}
+
+fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDelivery {
+  MeasuredNodeDelivery {
     accelerator_count: CountRead { count: 4 },
     usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
     rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
@@ -246,23 +258,24 @@ test fn a_degraded_rank_is_named_not_averaged() -> Bool {
       samples: [fx_sample()],
       instrument: NcclTestsAllReducePerf,
     },
-    ranks: [
-      RankCollectiveReading {
-        rank: "rank-fast" as HostIdentity,
-        curve: CollectiveCurveRead { samples: [fx_sample()], instrument: NcclTestsAllReducePerf },
-      },
-      RankCollectiveReading {
-        rank: "rank-slow" as HostIdentity,
-        curve: CollectiveCurveRead { samples: [slow], instrument: NcclTestsAllReducePerf },
-      },
-    ],
+    ranks: ranks,
     gpu_direct_rdma: CudaAttributeRead {
       attribute: CudaDevAttrGpuDirectRdmaSupported,
       value: 1,
     },
   }
+}
+
+test fn a_degraded_rank_is_named_not_averaged() -> Bool {
   match admit_qualified_node(
-    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: measured),
+    receipt: qualify_node(
+      node: fx_node,
+      advertised: fx_advertised(),
+      measured: fx_measured_with_ranks(ranks: [
+        fx_rank(id: "rank-fast", sample: fx_sample()),
+        fx_rank(id: "rank-slow", sample: fx_slow_sample()),
+      ]),
+    ),
   ) {
     NodeQualified { receipt: _ } => false
     NodeNotQualified { receipt: r, refusals: _ } => match r.rank_symmetry {
@@ -271,6 +284,34 @@ test fn a_degraded_rank_is_named_not_averaged() -> Bool {
       RankSymmetryUnread { because: _ } => false
     }
   }
+}
+
+test fn a_slow_rank_listed_first_is_still_degraded() -> Bool {
+  match qualify_rank_symmetry(ranks: [
+    fx_rank(id: "rank-slow", sample: fx_slow_sample()),
+    fx_rank(id: "rank-fast", sample: fx_sample()),
+  ]) {
+    RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
+    RankSymmetryAgrees { rank_count: _ } => false
+    RankSymmetryUnread { because: _ } => false
+  }
+    && match admit_qualified_node(
+      receipt: qualify_node(
+        node: fx_node,
+        advertised: fx_advertised(),
+        measured: fx_measured_with_ranks(ranks: [
+          fx_rank(id: "rank-slow", sample: fx_slow_sample()),
+          fx_rank(id: "rank-fast", sample: fx_sample()),
+        ]),
+      ),
+    ) {
+      NodeQualified { receipt: _ } => false
+      NodeNotQualified { receipt: r, refusals: _ } => match r.rank_symmetry {
+        RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
+        RankSymmetryAgrees { rank_count: _ } => false
+        RankSymmetryUnread { because: _ } => false
+      }
+    }
 }
 
 test fn group_b_live_receipt_is_not_qualified() -> Bool {

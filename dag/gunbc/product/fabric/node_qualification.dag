@@ -287,18 +287,44 @@ fn rank_first_latency(curve: CollectiveCurveReading) -> Nat? {
   }
 }
 
+fn min_rank_latency(ranks: List<RankCollectiveReading>) -> Nat? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => {
+      let rest = min_rank_latency(ranks: ranks.skip(n: 1))
+      match rank_first_latency(curve: r.curve) {
+        Absent => rest
+        Present { value: lat } => match rest {
+          Absent => Present { value: lat }
+          Present { value: m } => Present { value: if lat < m { lat } else { m } }
+        }
+      }
+    }
+  }
+}
+
+fn first_rank_without_latency(ranks: List<RankCollectiveReading>) -> HostIdentity? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => match rank_first_latency(curve: r.curve) {
+      Absent => Present { value: r.rank }
+      Present { value: _ } => first_rank_without_latency(ranks: ranks.skip(n: 1))
+    }
+  }
+}
+
 fn first_degraded_rank(
-  baseline: Nat,
+  floor: Nat,
   ranks: List<RankCollectiveReading>,
 ) -> HostIdentity? {
   match ranks.first() {
     Absent => none
     Present { value: r } => match rank_first_latency(curve: r.curve) {
-      Absent => first_degraded_rank(baseline: baseline, ranks: ranks.skip(n: 1))
-      Present { value: lat } => if lat > baseline {
+      Absent => first_degraded_rank(floor: floor, ranks: ranks.skip(n: 1))
+      Present { value: lat } => if lat > floor {
         Present { value: r.rank }
       } else {
-        first_degraded_rank(baseline: baseline, ranks: ranks.skip(n: 1))
+        first_degraded_rank(floor: floor, ranks: ranks.skip(n: 1))
       }
     }
   }
@@ -317,18 +343,15 @@ fn qualify_rank_symmetry(ranks: List<RankCollectiveReading>) -> RankSymmetryStan
           because: "rank curve unread without a reason" as NonEmptyStr,
         }
       }
-      Absent => match ranks.first() {
-        Absent => RankSymmetryUnread {
-          because: "no per-rank collective curve was supplied" as NonEmptyStr,
+      Absent => match first_rank_without_latency(ranks: ranks) {
+        Present { value: _ } => RankSymmetryUnread {
+          because: "a rank produced no latency sample; missing latency is unread, not a floor" as NonEmptyStr,
         }
-        Present { value: first_rank } => match rank_first_latency(curve: first_rank.curve) {
+        Absent => match min_rank_latency(ranks: ranks) {
           Absent => RankSymmetryUnread {
-            because: "first rank produced no latency sample" as NonEmptyStr,
+            because: "no rank produced a latency sample" as NonEmptyStr,
           }
-          Present { value: baseline } => match first_degraded_rank(
-            baseline: baseline,
-            ranks: ranks.skip(n: 1),
-          ) {
+          Present { value: floor } => match first_degraded_rank(floor: floor, ranks: ranks) {
             Present { value: degraded } => RankSymmetryFallsShort { degraded: degraded }
             Absent => RankSymmetryAgrees { rank_count: ranks.length() }
           }
