@@ -132,42 +132,18 @@ fn ethernet_function_identity(a: EthernetFunction, b: EthernetFunction) -> Funct
       FunctionIdentityUnobserved {
         discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
       }
-    BmcDedicated => ethernet_observed_function_against(observed: BmcDedicated, other: b)
-    BmcNcsi => ethernet_observed_function_against(observed: BmcNcsi, other: b)
-    HostData => ethernet_observed_function_against(observed: HostData, other: b)
-    PrebootNetwork => ethernet_observed_function_against(observed: PrebootNetwork, other: b)
-  }
-}
-
-fn ethernet_observed_function_against(observed: EthernetFunction, other: EthernetFunction) -> FunctionIdentityStanding {
-  match other {
-    FunctionUnobserved { discriminator: _ } =>
-      FunctionIdentityUnobserved {
-        discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
-      }
-    BmcDedicated =>
-      if observed == BmcDedicated {
-        ObservedSameFunction
-      } else {
-        ObservedDistinctFunctions
-      }
-    BmcNcsi =>
-      if observed == BmcNcsi {
-        ObservedSameFunction
-      } else {
-        ObservedDistinctFunctions
-      }
-    HostData =>
-      if observed == HostData {
-        ObservedSameFunction
-      } else {
-        ObservedDistinctFunctions
-      }
-    PrebootNetwork =>
-      if observed == PrebootNetwork {
-        ObservedSameFunction
-      } else {
-        ObservedDistinctFunctions
+    _ =>
+      match b {
+        FunctionUnobserved { discriminator: _ } =>
+          FunctionIdentityUnobserved {
+            discriminator: "at least one function is unobserved; matching discriminator prose is not function identity",
+          }
+        _ =>
+          if a == b {
+            ObservedSameFunction
+          } else {
+            ObservedDistinctFunctions
+          }
       }
   }
 }

@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure {
   Bandwidth, Gram, Hertz, MegatransfersPerSecond, Micrometer, Millimeter, PhysicalCoreCount, RackUnit,
-  bandwidth, gram, gram_count, hertz, megatransfers_per_second, micrometer, micrometer_count,
+  bandwidth, gram, hertz, megatransfers_per_second, micrometer,
   millimeter, physical_core_count, rack_unit,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
@@ -140,11 +140,3 @@ data sv328r_specifications_model_scope: ExternalModelScope = ExternalModelScope 
 }
 
 data extdeps_model_scope: ExternalModelScope = sv328r_specifications_model_scope
-
-fn sv328r_weight_grams() -> Nat {
-  gram_count(g: sv328r_stated_weight)
-}
-
-fn sv328r_depth_micrometers() -> Nat {
-  micrometer_count(m: sv328r_dimensions.depth)
-}
