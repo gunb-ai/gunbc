@@ -3,7 +3,8 @@ module product.fabric.node_qualification
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
-  ByteSize, byte_size_count, Bandwidth, bandwidth_count, Nanosecond, nanosecond_count,
+  ByteSize, byte_size_count, Bandwidth, bandwidth, bandwidth_count, bits_per_byte,
+  Nanosecond, nanosecond_count,
 }
 import product.placement_supply { HostIdentity }
 import product.fabric.identity { FabricIdentity, OfferKey }
@@ -90,6 +91,13 @@ type CollectiveSample {
   bus_bandwidth: Bandwidth
   in_place_latency: Nanosecond
   out_of_place_latency: Nanosecond
+}
+
+// nccl-tests prints busbw in decimal GB/s (10^9 bytes/s). Bandwidth is bits/s
+// (DataRate: transfers × bus width). Passing the printed figure through bandwidth()
+// unscaled is a meaning fork: the same type as lane_rate_25g, short by bits_per_byte.
+fn nccl_tests_busbw_from_printed_gbs(printed_times_1e9: Nat) -> Bandwidth {
+  bandwidth(count: printed_times_1e9 * bits_per_byte())
 }
 
 type CollectiveSmallMessageShape

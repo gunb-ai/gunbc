@@ -41,6 +41,7 @@ import product.fabric.node_qualification {
   qualify_host, qualify_collective_group, admit_qualified_host, admit_qualified_group,
   qualify_rail_link_mode, qualify_accelerator_count,
   qualify_rank_symmetry, qualify_nic_pcie, qualify_collective_latency,
+  nccl_tests_busbw_from_printed_gbs,
   WindowStandingUnread, WindowSharedWithDeclaredTraffic, WindowIsolated,
   claimed_delivery_refusals,
 }
@@ -835,6 +836,10 @@ test fn unread_dtypes_do_not_compare_equal() -> Bool {
     DtypeAgrees => false
     DtypeDiffers => false
   } && !protocol_eq(a: unread, b: unread)
+}
+
+test fn nccl_tests_printed_busbw_inhabits_bits_per_second() -> Bool {
+  bandwidth_count(b: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 110000000)) == 880000000
 }
 
 test fn a_size_column_rank_count_that_is_not_the_protocol_rank_count_is_unread() -> Bool {
