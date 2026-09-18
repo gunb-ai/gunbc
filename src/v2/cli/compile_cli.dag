@@ -11,8 +11,8 @@ import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { fold_list, length, list_reverse }
 import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.integer { integer_int_to_decimal_string }
-import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Extent, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, Rejected, SourcePortLocus, Textual, WholeFile }
+import v2.std.diagnostic { Accepted, Diagnostic, NonEmptyDiagnostics, Rejected }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_text }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -259,26 +259,8 @@ type CliRunOutcome
 // THE WHOLE ORDERED CHAIN, BECAUSE THE HEAD IS NOT THE CAUSE. Rendering only the head answers
 // `parse_grammar_choice_overlap_residue` for every entry tried; that is a grammar-global ADVISORY
 // and never the fatal. The fatal diagnostic is the last one, and `parse_g0_tokens_remain_diagnostic`
-// builds its locus from the first remaining token.
-fn cli_locus_text(d: Diagnostic) -> String {
-  match d.at {
-    Textual { file: f, extent: e } => concat(concat(symbol_lexeme(sym: f), " "), cli_extent_text(e: e))
-    SourcePortLocus { anchor: _, file: f, extent: e } => concat(concat(symbol_lexeme(sym: f), " "), cli_extent_text(e: e))
-    NodeLocus { anchor: _ } => "<node locus, no file>"
-    InvariantPortLocus { anchor: _, invariant: inv } => concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
-  }
-}
-
-fn cli_extent_text(e: Extent) -> String {
-  match e {
-    WholeFile => "(whole file)"
-    ByteRange { start: st, end: en } =>
-      concat(
-        concat("bytes ", integer_int_to_decimal_string(value: st)),
-        concat("..", integer_int_to_decimal_string(value: en))
-      )
-  }
-}
+// builds its locus from the first remaining token. File+extent is
+// `lens_verdict_diagnostic_locus_text` — not a second `match d.at` here (DESIGN section 3).
 
 fn cli_fatal_diagnostic(d: NonEmptyDiagnostics) -> Diagnostic {
   fold_list(xs: d.tail, empty: d.head, cons: fn(acc, diag) { diag })
@@ -330,7 +312,7 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                   reason: d.head.reason,
                   detail: concat(
                     concat("the closure did not emit; diagnostic chain: ", cli_diagnostic_chain(d: d)),
-                    concat(" | FATAL AT ", cli_locus_text(d: cli_fatal_diagnostic(d: d)))
+                    concat(" | FATAL AT ", lens_verdict_diagnostic_locus_text(d: cli_fatal_diagnostic(d: d)))
                   )
                 }
             }

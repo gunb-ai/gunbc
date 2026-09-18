@@ -1,5 +1,24 @@
 module v2.test.parse.weather_g0_prefix_parse
 
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  CorrectionNotModeled,
+  Diagnostic,
+  Rejected,
+  Textual,
+  Unavailable
+}
+import v2.std.language_model { LanguageModel }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_module, lens_verdict_diagnostic_locus_text }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SH-1: weather.dag stopped at leftover `fn` because G0 had no float literal. v1 scan_number
@@ -45,4 +64,25 @@ test fn trailing_dot_float_still_refuses_holds() -> Bool {
     true => false
     false => true
   }
+}
+
+fn weather_fn_token_locus_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_g0_tokens_remain,
+    at: Textual {
+      file: symbol_intern_lexeme(lexeme: "dag/examples/weather/weather.dag"),
+      extent: ByteRange { start: 267, end: 269 }
+    },
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
+test fn weather_fatal_locus_text_keeps_file_and_bytes_holds() -> Bool {
+  lens_verdict_diagnostic_locus_text(d: weather_fn_token_locus_diagnostic())
+    == "dag/examples/weather/weather.dag bytes 267..269"
+}
+
+test fn weather_fatal_locus_text_is_not_the_module_name_fold_holds() -> Bool {
+  lens_verdict_diagnostic_locus_text(d: weather_fn_token_locus_diagnostic())
+    != lens_verdict_diagnostic_locus_module(d: weather_fn_token_locus_diagnostic())
 }
