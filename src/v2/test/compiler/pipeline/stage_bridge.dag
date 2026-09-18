@@ -46,6 +46,7 @@ import v2.test.compiler.pipeline.corpus {
   pipeline_corpus_pick_source
 }
 import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 
 fn pipeline_find_arrow_in_module(root: Node) -> Optional<Node> {
   match root.kind {
@@ -272,6 +273,13 @@ fn pipeline_normalize_add_relationship_holds() -> Bool {
 
 fn pipeline_infer_add_fixture_relationship_holds() -> Bool {
   pipeline_inferred_outcome_is_accepted(o: infer(tree: fixture_add_resolved_tree()))
+}
+
+fn pipeline_lower_add_fixture_relationship_holds() -> Bool {
+  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
+    Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn pipeline_match_corpus_normalize_relationship_holds() -> Bool {
