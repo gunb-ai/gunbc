@@ -292,9 +292,9 @@ test fn a_cross_module_reference_to_a_data_declaration_refuses_today() -> Bool {
 // `r.v` over a parameter lowers to the same spine as a module path -- that is deliberate, and the
 // lowering's header says why. What the RESOLVER does with it today is a separate fact, and it is
 // not the unique-on-chain projection docs/plans/namespace-resolution-design.md section 13 rules:
-// try_resolve_qualified_name_node still sends the path to symbol_index_lookup as corpus-root
-// absolute (its own header calls that arm UNFIRED), so a local field access refuses as an
-// absolute-path miss. It refused BEFORE this lowering too, for a different wrong reason: the
+// try_resolve_qualified_name_node finds the head `r` bound on the chain, cannot yet project
+// through it (its own header calls that arm UNFIRED), and refuses Unbound rather than reading the
+// path absolutely (qualified_head_bound_on_chain). It refused BEFORE this lowering too, for a different wrong reason: the
 // infix arm lowered `r.v` to Transform(dot, r, v) and the bare `v` was unbound at resolve. Same
 // verdict, same reason symbol, neither the honest "field projection unresolved". So this is not a
 // rung drop -- refuse-for-the-wrong-reason before, refuse-for-the-wrong-reason after -- and it is
@@ -307,18 +307,21 @@ test fn a_local_field_access_refuses_unbound_today() -> Bool {
   }
 }
 
-// THE COLLISION THE ABSOLUTE-PATH ARM ADMITS, MEASURED SO IT IS COUNTED RATHER THAN DISCOVERED.
-// A parameter named like a root segment (`v2`) and a body chain starting with it: section 13 says
-// shadowing REFUSES at the reference site; the unfired arm instead resolves the whole chain as an
-// absolute path and Accepts, ignoring the binder on the chain. Before this lowering the same body
-// lowered to Transform(dot, v2, test) and refused (`test` unbound) -- a refusal for the wrong
-// reason that happened to be the safe verdict. This row states the standing the arm actually has
-// today, and reds when unique-on-chain lands, which is the trigger it names.
-test fn a_binder_shadowing_a_root_segment_is_not_yet_refused_today() -> Bool {
+// THE COLLISION THE ABSOLUTE ARM ADMITTED, NOW REFUSED (review 67651 on gunbc#11582). A parameter
+// named like a root segment (`v2`) heading a chain that is also a valid absolute path: section 13
+// says two binders answer -- the one on the chain and the root -- and the reference REFUSES as
+// Ambiguous; it may never pick the root and Accept a meaning the source did not spell. For one
+// head of this PR the unfired absolute arm did exactly that, which was a refuse -> Accept flip
+// (before this lowering the body lowered to Transform(dot, v2, test) and refused `test` unbound),
+// i.e. a rung drop with no declaration. v2.compiler.resolve try_resolve_qualified_name_node now
+// looks the head up on the chain first and refuses Ambiguous when the chain and the root both
+// answer, so the verdict is a located refusal with the section-13 reason. What this row does NOT
+// claim: the projection through the binder (`v2.test...` read relative to the parameter, which is
+// meaningless here and meaningful for `r.v`). That is the local-receiver row's trigger.
+test fn a_binder_shadowing_a_root_segment_refuses_ambiguous_holds() -> Bool {
   match xl0r_resolved_shadowing_consumer() {
-    Accepted { value: resolved, diagnostics: _ } =>
-      xl0r_resolved_atom_present(root: resolved, identity: ^xl0r_provided_fn)
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_ambiguous_symbol
   }
 }
 
