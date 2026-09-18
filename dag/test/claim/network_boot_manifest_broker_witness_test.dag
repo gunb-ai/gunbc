@@ -2,12 +2,17 @@ module test.claim.network_boot_manifest_broker_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, Secret }
 import std.content_hash { ContentHash, content_hash_of_value }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_implementation }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 import gunbc.network_boot_delivery {
   SignedBootManifestIdentity,
+  SignedBootManifestIdentified,
+  SignedBootManifestAbsent,
+  MeasuredNetworkBootFact,
+  NonEstablishingNetworkBootPredecessor,
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
   BootstrapTrustUnestablished,
@@ -38,9 +43,16 @@ import gunbc.network_boot_manifest_broker {
   redeem_signed_boot_manifest,
   verify_signed_boot_manifest,
   signed_boot_manifest_signing_input,
+  signed_boot_manifest_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data standing_obs: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.network_boot_manifest_broker_witness",
+  decl_name: "standing_obs",
+  field: WholeDeclaration,
+}
 
 data broker_key_id: MacKeyId = "boot-manifest-key-0" as MacKeyId
 
@@ -274,6 +286,21 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
         _ => false
       }
     BootManifestAuthentic { claims: _ } => false
+  }
+}
+
+test fn issued_ticket_standing_is_a_measured_network_boot_fact() -> Bool {
+  match signed_boot_manifest_standing(
+    ticket: issued_ticket(id: good_identity()),
+    observation: standing_obs,
+    observed_at: 1788001800000,
+  ) {
+    SignedBootManifestIdentified { identity: _, evidence_class: c, observation: _, observed_at: _ } =>
+      match c {
+        MeasuredNetworkBootFact => true
+        NonEstablishingNetworkBootPredecessor => false
+      }
+    SignedBootManifestAbsent => false
   }
 }
 
