@@ -55,7 +55,8 @@ import product.fabric.candidate_field {
   FieldNodeNotQualified,
   assemble_candidate_field,
 }
-import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
+import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery, OfferDeliveryClaim }
+import gunbc.spark.group_b_node_qualification { group_b_delivery_claim }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -367,8 +368,23 @@ fn s_inputs(key: OfferKey) -> DispatchInputs<NonEmptyStr> {
   }
 }
 
+fn s_request_with_delivery(
+  key: OfferKey,
+  route: ProviderRoute,
+  micros: Nat,
+  delivery: OfferDeliveryClaim,
+) -> FieldRequest<NonEmptyStr> {
+  FieldRequest {
+    offer: s_offer(key: key, route: route, micros: micros),
+    dispatch: s_inputs(key: key),
+    delivery: delivery,
+  }
+}
+
 fn s_request(key: OfferKey, route: ProviderRoute, micros: Nat) -> FieldRequest<NonEmptyStr> {
-  FieldRequest { offer: s_offer(key: key, route: route, micros: micros), dispatch: s_inputs(key: key), delivery: OfferDoesNotClaimNodeDelivery }
+  s_request_with_delivery(
+    key: key, route: route, micros: micros, delivery: OfferDoesNotClaimNodeDelivery,
+  )
 }
 
 // THE ROSTER, CHEAPEST FIRST. Roster order is also the StableRosterOrder tie policy's order, so
@@ -527,6 +543,23 @@ fn s_admitted_keys(field: CandidateField<NonEmptyStr>) -> List<NonEmptyStr> {
 // a fixture in which nothing wins at all, and the file would assert nothing about admission.
 test fn w_the_one_modeled_route_survives_the_field() -> Bool {
   s_admitted_keys(field: s_default_field()) == ["spill-hetzner-cax41"]
+}
+
+test fn w_an_offer_claiming_unqualified_node_delivery_is_excluded() -> Bool {
+  let field = s_field(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [
+      s_request_with_delivery(
+        key: "spill-hetzner-cax41",
+        route: s_hetzner_route(),
+        micros: 4000,
+        delivery: group_b_delivery_claim,
+      ),
+    ],
+  )
+  s_admitted_keys(field: field) == []
+    && s_excluded_keys(field: field, tag: "node-not-qualified") == ["spill-hetzner-cax41"]
 }
 
 // RED - AN UNCLASSIFIED ROUTE REFUSES RATHER THAN DEFAULTING. Three of four providers have no

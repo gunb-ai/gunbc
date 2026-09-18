@@ -11,7 +11,7 @@ import extdeps.ethernet.link_mode {
 import extdeps.storage.types { PcieLink, Gen5 }
 import extdeps.nvidia.cuda_driver {
   CudaQuerySucceeded, CudaQueryFailed, CudaQueryUnparsed,
-  GpuDirectRdmaSupportedAttribute,
+  GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute,
   cuda_attribute_outcome, cuda_device_attribute_ordinal,
   cuda_device_attribute_program,
 }
@@ -55,7 +55,7 @@ import product.fabric.node_qualification {
 import gunbc.spark.group_b_node_qualification {
   group_b_qualification_admission, group_b_measured,
   group_b_gdr_cu_device_get_attribute_stdout,
-  group_b_gdr_query_argv, group_b_gdr_capability_wire,
+  group_b_gdr_query_argv, group_b_dmabuf_query_argv, group_b_gdr_capability_wire,
   group_b_delivery_claim, group_b_delivery_field_exclusion,
 }
 import product.fabric.candidate_field { FieldNodeNotQualified }
@@ -767,6 +767,23 @@ test fn cuda_gdr_argv_is_python_dash_c_with_ordinal_116() -> Bool {
         interpreter == python_interpreter_command
           && flag == python_program_flag
           && program == (cuda_device_attribute_program(a: GpuDirectRdmaSupportedAttribute) as String)
+      _ => false
+    }
+}
+
+test fn cuda_dmabuf_argv_is_python_dash_c_with_ordinal_124() -> Bool {
+  cuda_device_attribute_ordinal(a: DmaBufSupportedAttribute) == 124
+    && match group_b_dmabuf_query_argv {
+      Cons {
+        head: interpreter,
+        tail: Cons {
+          head: flag,
+          tail: Cons { head: program, tail: Empty },
+        },
+      } =>
+        interpreter == python_interpreter_command
+          && flag == python_program_flag
+          && program == (cuda_device_attribute_program(a: DmaBufSupportedAttribute) as String)
       _ => false
     }
 }
