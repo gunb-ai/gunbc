@@ -1,0 +1,142 @@
+module test.claim.fleet.site_pxe_edge_converge_witness
+
+import std.types { Bool, List, String }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.toolchain.types { Aarch64 }
+import product.placement_supply { HostIdentity }
+import gunbc.network_boot_delivery { ArchitectureChainloader, DhcpFilenameHint }
+import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.site_pxe_edge_converge {
+  SitePxeEdgeChainloaderPin,
+  SitePxeEdgeChainloaderPinned,
+  SitePxeEdgeChainloaderUnpinned,
+  SitePxeEdgeChainloaderTarget,
+  ChainloaderDigestObserved,
+  ChainloaderDigestUnobservable,
+  SitePxeEdgeProbeHeld,
+  SitePxeEdgeProbeRefused,
+  SitePxeEdgeSubjectAdmitted,
+  SitePxeEdgeSubjectRefused,
+  site_pxe_edge_chainloader_pin,
+  site_pxe_edge_chainloader_target,
+  site_pxe_edge_chainloader_path,
+  site_pxe_edge_gate_causes,
+  site_pxe_edge_digest_observation,
+  site_pxe_edge_desired_files,
+  site_pxe_edge_unit_file,
+  site_pxe_edge_subject,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data hex_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: hex_a })
+
+data digest_b: ContentHash = Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
+
+fn pinned(digest: ContentHash) -> SitePxeEdgeChainloaderPin {
+  SitePxeEdgeChainloaderPinned {
+    transport: ArchitectureChainloader {
+      architecture: Aarch64,
+      filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+      chainloader_digest: digest,
+    },
+  }
+}
+
+fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget {
+  match site_pxe_edge_chainloader_target(pin: pin) {
+    Present { value: t } => t
+    Absent => SitePxeEdgeChainloaderTarget { filename: "unreachable", digest: digest_b }
+  }
+}
+
+test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
+  length(site_pxe_edge_gate_causes(
+    pin: pinned(digest: digest_a),
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  )) == 0
+}
+
+// TODAY'S STATE, on the real row: nothing is pinned, so the gate is closed on the pin even with a
+// file present and every other probe held.
+test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
+  let causes = site_pxe_edge_gate_causes(
+    pin: site_pxe_edge_chainloader_pin,
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  )
+  length(causes) == 1 && (match causes.first() {
+    Present { value: c } => starts_with(s: c, prefix: "chainloader-unpinned: ")
+    Absent => false
+  })
+}
+
+test fn mismatched_digest_closes_the_gate() -> Bool {
+  site_pxe_edge_gate_causes(
+    pin: pinned(digest: digest_a),
+    chainloader: ChainloaderDigestObserved { digest: digest_b },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  ) == ["chainloader-digest-mismatch"]
+}
+
+test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
+  site_pxe_edge_gate_causes(
+    pin: pinned(digest: digest_a),
+    chainloader: ChainloaderDigestUnobservable { reason: "no such file" },
+    dnsmasq_binary: SitePxeEdgeProbeRefused { reason: "absent" },
+    privilege: SitePxeEdgeProbeHeld,
+  ) == ["chainloader-unobservable: no such file", "dnsmasq-binary: absent"]
+}
+
+test fn sha256sum_line_parses_to_the_pinned_hash() -> Bool {
+  match site_pxe_edge_digest_observation(path: "/srv/x/snponly.efi", success: true, line: concat(hex_a, "  /srv/x/snponly.efi\n")) {
+    ChainloaderDigestObserved { digest: d } => d == digest_a
+    ChainloaderDigestUnobservable { reason: _ } => false
+  }
+}
+
+test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool {
+  match site_pxe_edge_digest_observation(path: "/srv/x/snponly.efi", success: false, line: "") {
+    ChainloaderDigestObserved { digest: _ } => false
+    ChainloaderDigestUnobservable { reason: _ } => true
+  }
+}
+
+test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool {
+  let t = target_of(pin: pinned(digest: digest_a))
+  match site_pxe_edge_desired_files(target: t).first() {
+    Absent => false
+    Present { value: cfg } =>
+      cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
+        && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
+        && contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+        && contains(cfg.content, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi")
+        && contains(cfg.content, "tftp-root=/srv/gunbc-site-pxe-edge/tftp")
+        && length(split(cfg.content, "dhcp-boot=")) == 2
+        && site_pxe_edge_chainloader_path(target: t) as String == "/srv/gunbc-site-pxe-edge/tftp/snponly.efi"
+  }
+}
+
+test fn unit_runs_dnsmasq_on_the_edge_config() -> Bool {
+  let u = site_pxe_edge_unit_file()
+  u.path == "/etc/systemd/system/gunbc-site-pxe-edge.service"
+    && contains(u.content, "ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/gunbc-site-pxe-edge.dnsmasq.conf")
+    && contains(u.content, "WantedBy=multi-user.target")
+}
+
+test fn only_srv4_is_the_edge_host() -> Bool {
+  (match site_pxe_edge_subject(host: "srv3" as HostIdentity) {
+    SitePxeEdgeSubjectRefused { cause: _ } => true
+    SitePxeEdgeSubjectAdmitted { target: _ } => false
+  }) && (match site_pxe_edge_subject(host: "srv4" as HostIdentity) {
+    SitePxeEdgeSubjectAdmitted { target: t } => t.principal as String == "ubuntu"
+    SitePxeEdgeSubjectRefused { cause: _ } => false
+  })
+}

@@ -25,6 +25,9 @@ type DnsmasqDirective =
   | DnsmasqDhcpOptionForceTag { tag: String, option: String, value: String }
   | DnsmasqDhcpHostSetTag { mac: String, tag: String }
   | DnsmasqDhcpBootTags { tags: List<String>, target: String }
+  | DnsmasqLogDhcp
+  | DnsmasqEnableTftp
+  | DnsmasqTftpRoot { path: String }
 
 data dnsmasq_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -41,6 +44,9 @@ fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
       concat(concat("dhcp-host=", mac), concat(",set:", tag))
     DnsmasqDhcpBootTags { tags: tags, target: target } =>
       concat(concat("dhcp-boot=", fold(tags, init: "", f: (acc, t) => concat(acc, concat(concat("tag:", t), ",")))), target)
+    DnsmasqLogDhcp => "log-dhcp"
+    DnsmasqEnableTftp => "enable-tftp"
+    DnsmasqTftpRoot { path: path } => concat("tftp-root=", path)
   }
 }
 

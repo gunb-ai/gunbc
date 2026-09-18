@@ -13,6 +13,9 @@ import extdeps.formats.dnsmasq {
   DnsmasqDhcpMatchSet,
   DnsmasqDhcpHostSetTag,
   DnsmasqDhcpBootTags,
+  DnsmasqLogDhcp,
+  DnsmasqEnableTftp,
+  DnsmasqTftpRoot,
   serialize_dnsmasq
 }
 import gunbc.network_boot_delivery {
@@ -205,28 +208,34 @@ fn site_edge_admission_of_standing(standing: SitePxeEdgeStanding, unreachable: L
 // edge on a segment with an existing DHCP server must say, and it is never evidence -- standing
 // comes only from the observed offer above. Only the aarch64 tag gets a boot line, and that line
 // also requires the known-machine tag, so the rendered edge offers nothing to an unknown machine
-// or architecture.
+// or architecture. The TFTP root it serves holds only that chainloader; kernels, initrds and images
+// are fetched from the global HTTPS boot origin, never from the edge.
 data site_edge_arm64_tag: String = "efi-arm64"
 
 data site_edge_known_tag: String = "onboarding-known"
 
-fn site_edge_proxy_dhcp_directives(network_address: NonEmptyStr, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>) -> List<DnsmasqDirective> {
+fn site_edge_proxy_dhcp_directives(network_address: NonEmptyStr, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>, tftp_root: NonEmptyStr) -> List<DnsmasqDirective> {
   concat(
     [
       DnsmasqComment { text: concat("gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only, per ", ipxe_chainloading_authority.uri.locator) },
       DnsmasqPort { value: 0 },
+      DnsmasqLogDhcp,
       DnsmasqDhcpRangeProxy { network_address: network_address as String },
       DnsmasqDhcpMatchSet { tag: site_edge_arm64_tag, option: "option:client-arch", value: to_string(uefi_arm64_client_arch_code) },
     ],
     concat(
       map(known_client_macs, m => DnsmasqDhcpHostSetTag { mac: m as String, tag: site_edge_known_tag }),
-      [DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: filename as String }],
+      [
+        DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: filename as String },
+        DnsmasqEnableTftp,
+        DnsmasqTftpRoot { path: tftp_root as String },
+      ],
     ),
   )
 }
 
-fn site_edge_proxy_dhcp_config(network_address: NonEmptyStr, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>) -> String {
-  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, filename: filename, known_client_macs: known_client_macs))
+fn site_edge_proxy_dhcp_config(network_address: NonEmptyStr, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>, tftp_root: NonEmptyStr) -> String {
+  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, filename: filename, known_client_macs: known_client_macs, tftp_root: tftp_root))
 }
 
 // The first onboarding segment's roster, and its only known client today.

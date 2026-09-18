@@ -185,12 +185,14 @@ test fn mtcollins1_on_its_measured_segment_is_not_yet_admitted() -> Bool {
 }
 
 test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
-  let cfg = site_edge_proxy_dhcp_config(network_address: "192.168.1.0", filename: chainloader_filename, known_client_macs: [known_mac])
+  let cfg = site_edge_proxy_dhcp_config(network_address: "192.168.1.0", filename: chainloader_filename, known_client_macs: [known_mac], tftp_root: "/srv/edge-tftp")
   contains(cfg, "port=0")
     && contains(cfg, "dhcp-range=192.168.1.0,proxy")
     && contains(cfg, "dhcp-match=set:efi-arm64,option:client-arch,11")
     && contains(cfg, "dhcp-host=02:00:00:00:0c:01,set:onboarding-known")
     && contains(cfg, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi")
     && contains(cfg, "ipxe.org/howto/chainloading")
+    && contains(cfg, "enable-tftp")
+    && contains(cfg, "tftp-root=/srv/edge-tftp")
     && length(split(cfg, "dhcp-boot=")) == 2
 }

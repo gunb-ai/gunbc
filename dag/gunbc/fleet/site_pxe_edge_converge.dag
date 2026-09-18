@@ -1,0 +1,610 @@
+module gunbc.site_pxe_edge_converge
+
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
+import std.algebra { trim }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { ContentHash }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.crypto.hash { sha256_digest_content_hash }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_digest_from_line }
+import extdeps.systemd { ActiveState }
+import extdeps.systemd.systemctl {
+  systemctl_daemon_reload_argv,
+  systemctl_enable_argv,
+  systemctl_restart_argv,
+  systemctl_show_property_argv,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile,
+  ServiceUnitFile,
+  Description,
+  After,
+  Wants,
+  ServiceType,
+  ExecStart,
+  Restart,
+  Installable,
+  WantedBy,
+  serialize_systemd_unit_file,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_remote_file_write {
+  RemoteFileModeOwnerReadWriteWorldRead,
+  RemoteFileViaNonInteractiveSudo,
+  TypedRemoteFileWriteAdmission,
+  TypedRemoteFileWriteAdmitted,
+  TypedRemoteFileWriteAdmissionRefused,
+  TypedRemoteFileConverged,
+  TypedRemoteFileConvergenceRefused,
+  ComparisonIdentical,
+  ComparisonDiffers,
+  ComparisonUnavailable,
+  typed_remote_file_write_seal,
+  typed_remote_file_step,
+  TypedRemoteFileStepRan,
+  TypedRemoteFileStepArgvRefused,
+  TypedRemoteFileStepLegRefused,
+  typed_remote_file_compare_argv,
+  classify_typed_remote_file_comparison,
+  converge_typed_remote_file,
+}
+import gunbc.runner_host_grants { executor_bootstrap_principal }
+import gunbc.runner_host_file_converge { elevated_argv }
+import gunbc.machine_intake_subject { content_hash_equal }
+import gunbc.network_boot_delivery {
+  SiteBootstrapTransport,
+  ArchitectureChainloader,
+  DhcpFilenameHint,
+  PresignedUrlAvailabilityFence,
+}
+import gunbc.site_uefi_arm64_pxe_edge { site_edge_proxy_dhcp_config, first_onboarding_known_client_macs }
+
+// THE FIRST ONBOARDING SEGMENT'S EDGE, CONVERGED ON srv4 THROUGH THE FLEET-CONVERGE WORKFLOW.
+// Operator ruling (PXE-FABRIC 0C, via sleek-carp-159): the serving host is a converged executor on
+// Mt. Collins's /24, srv4 unless srv3 is measurably freer, and no fact says it is. A peer of
+// gunbc.runner_host_file_converge rather than an axis of gunbc.fleet_converge_plan: that plan's
+// request coproduct carries runner and fabric populations and has no file or daemon axis, and the
+// parent ruled out stretching it to fake one.
+//
+// WHAT CONVERGE ESTABLISHES AND WHAT IT DOES NOT. A converged run says srv4 holds the declared
+// config and unit bytes, the unit is active, and the chainloader at the TFTP root hashes to the
+// pinned digest. It does NOT establish the edge: gunbc.site_uefi_arm64_pxe_edge mints standing only
+// from an observed boot offer reaching a client. A daemon that started is not an offer that arrived.
+data site_pxe_edge_host: HostIdentity = "srv4" as HostIdentity
+
+data site_pxe_edge_segment_network: NonEmptyStr = "192.168.1.0"
+
+data site_pxe_edge_unit_name: NonEmptyStr = "gunbc-site-pxe-edge.service"
+
+data site_pxe_edge_unit_path: FilePath = "/etc/systemd/system/gunbc-site-pxe-edge.service"
+
+data site_pxe_edge_config_path: FilePath = "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
+
+// The TFTP root holds exactly one file, the chainloader. Converge never writes into it: the binary's
+// bytes have no producer in this repository yet, so it is observed at its pinned digest or refused.
+data site_pxe_edge_tftp_root: NonEmptyStr = "/srv/gunbc-site-pxe-edge/tftp"
+
+data site_pxe_edge_dnsmasq_binary: NonEmptyStr = "/usr/sbin/dnsmasq"
+
+// Both desired files are directly under /etc or /etc/systemd/system, directories that exist on every
+// host, because typed_remote_file_write stages beside its destination and creates no parents.
+data site_pxe_edge_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" as NonEmptyStr }
+
+// THE CHAINLOADER PIN. Pinned carries the network_boot_delivery transport itself, so its digest and
+// filename are the SAME authority the edge's standing reads, not a second spelling of them. Unpinned
+// is today's state and names what would ground it. The chainloader is THIS edge's artifact (the
+// global boot origin carries kernel, initrd and images, not the chainloader), and no build of it has
+// been digested yet; a guessed URL or filename with no digest is exactly what may not be served.
+type SitePxeEdgeChainloaderPin
+  = SitePxeEdgeChainloaderPinned { transport: SiteBootstrapTransport }
+  | SitePxeEdgeChainloaderUnpinned { obligation: NonEmptyStr }
+
+data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChainloaderUnpinned {
+  obligation: "build the iPXE bin-arm64-efi chainloader (extdeps.firmware.ipxe) at a recorded upstream revision, pin its sha256 here as an ArchitectureChainloader, and place the file in site_pxe_edge_tftp_root",
+}
+
+type SitePxeEdgeChainloaderTarget {
+  filename: NonEmptyStr
+  digest: ContentHash
+}
+
+fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget? {
+  match pin {
+    SitePxeEdgeChainloaderUnpinned { obligation: _ } => Absent
+    SitePxeEdgeChainloaderPinned { transport: t } =>
+      match t {
+        ArchitectureChainloader { architecture: _, filename_hint: hint, chainloader_digest: d } =>
+          match hint {
+            DhcpFilenameHint { filename: f } => Present { value: SitePxeEdgeChainloaderTarget { filename: f, digest: d } }
+            PresignedUrlAvailabilityFence { uri: _ } => Absent
+          }
+      }
+  }
+}
+
+fn site_pxe_edge_chainloader_path(target: SitePxeEdgeChainloaderTarget) -> NonEmptyStr {
+  join([site_pxe_edge_tftp_root as String, "/", target.filename as String], "") as NonEmptyStr
+}
+
+// ── Desired files (pure) ─────────────────────────────────────────────────────────────────────────
+
+type SitePxeEdgeFile {
+  subject: NonEmptyStr
+  path: FilePath
+  content: String
+}
+
+fn site_pxe_edge_config_file(target: SitePxeEdgeChainloaderTarget) -> SitePxeEdgeFile {
+  SitePxeEdgeFile {
+    subject: "dnsmasq-proxy-dhcp-config",
+    path: site_pxe_edge_config_path,
+    content: site_edge_proxy_dhcp_config(
+      network_address: site_pxe_edge_segment_network,
+      filename: target.filename,
+      known_client_macs: first_onboarding_known_client_macs,
+      tftp_root: site_pxe_edge_tftp_root,
+    ),
+  }
+}
+
+data site_pxe_edge_unit: SystemdUnitFile = ServiceUnitFile {
+  unit: [
+    Description { text: "gunbc site PXE edge: ProxyDHCP + TFTP, UEFI ARM64 chainloader only" },
+    After { target: "network-online.target" },
+    Wants { target: "network-online.target" },
+  ],
+  service: [
+    ServiceType { mode: "simple" },
+    ExecStart { command: join([site_pxe_edge_dnsmasq_binary as String, " --keep-in-foreground --conf-file=", site_pxe_edge_config_path as String], "") as NonEmptyStr },
+    Restart { policy: "on-failure" },
+  ],
+  install: Installable { directives: [WantedBy { target: "multi-user.target" }] },
+}
+
+fn site_pxe_edge_unit_file() -> SitePxeEdgeFile {
+  SitePxeEdgeFile {
+    subject: "systemd-unit",
+    path: site_pxe_edge_unit_path,
+    content: serialize_systemd_unit_file(file: site_pxe_edge_unit),
+  }
+}
+
+fn site_pxe_edge_desired_files(target: SitePxeEdgeChainloaderTarget) -> List<SitePxeEdgeFile> {
+  [site_pxe_edge_config_file(target: target), site_pxe_edge_unit_file()]
+}
+
+// ── The gate (pure) ──────────────────────────────────────────────────────────────────────────────
+
+type SitePxeEdgeProbe
+  = SitePxeEdgeProbeHeld
+  | SitePxeEdgeProbeRefused { reason: String }
+
+type SitePxeEdgeChainloaderObservation
+  = ChainloaderDigestObserved { digest: ContentHash }
+  | ChainloaderDigestUnobservable { reason: String }
+
+// EVERY REASON TO WITHHOLD THE DAEMON, COUNTED, NOT THE FIRST ONE. A daemon offering a filename the
+// TFTP root cannot serve, or a digest nobody pinned, is an edge that answers wrongly; so any cause
+// here closes the gate and nothing is written or started.
+fn site_pxe_edge_gate_causes(
+  pin: SitePxeEdgeChainloaderPin,
+  chainloader: SitePxeEdgeChainloaderObservation,
+  dnsmasq_binary: SitePxeEdgeProbe,
+  privilege: SitePxeEdgeProbe,
+) -> List<String> {
+  concat(
+    concat(
+      match site_pxe_edge_chainloader_target(pin: pin) {
+        Absent => [concat("chainloader-unpinned: ", site_pxe_edge_pin_obligation(pin: pin))]
+        Present { value: target } =>
+          match chainloader {
+            ChainloaderDigestUnobservable { reason: r } => [concat("chainloader-unobservable: ", r)]
+            ChainloaderDigestObserved { digest: d } =>
+              if content_hash_equal(left: d, right: target.digest) { [] } else { ["chainloader-digest-mismatch"] }
+          }
+      },
+      match dnsmasq_binary {
+        SitePxeEdgeProbeHeld => []
+        SitePxeEdgeProbeRefused { reason: r } => [concat("dnsmasq-binary: ", r)]
+      },
+    ),
+    match privilege {
+      SitePxeEdgeProbeHeld => []
+      SitePxeEdgeProbeRefused { reason: r } => [concat("administrator-privilege: ", r)]
+    },
+  )
+}
+
+fn site_pxe_edge_pin_obligation(pin: SitePxeEdgeChainloaderPin) -> String {
+  match pin {
+    SitePxeEdgeChainloaderUnpinned { obligation: o } => o as String
+    SitePxeEdgeChainloaderPinned { transport: _ } => "pinned transport carries no DHCP filename hint"
+  }
+}
+
+fn site_pxe_edge_digest_observation(path: NonEmptyStr, success: Bool, line: String) -> SitePxeEdgeChainloaderObservation {
+  match sha256sum_digest_from_line(path: path, success: success, line: line) {
+    Sha256FileDigestUnavailable { path: _, reason: r } => ChainloaderDigestUnobservable { reason: r }
+    Sha256FileDigest { digest: d } =>
+      match sha256_digest_content_hash(digest: d) {
+        Absent => ChainloaderDigestUnobservable { reason: "sha256sum printed a field that is not a sha256 digest" }
+        Present { value: h } => ChainloaderDigestObserved { digest: h }
+      }
+  }
+}
+
+// ── Subject ──────────────────────────────────────────────────────────────────────────────────────
+
+type SitePxeEdgeSubjectAdmission
+  = SitePxeEdgeSubjectAdmitted { target: SshTarget }
+  | SitePxeEdgeSubjectRefused { cause: String }
+
+fn site_pxe_edge_subject(host: HostIdentity) -> SitePxeEdgeSubjectAdmission {
+  if (host as String) != (site_pxe_edge_host as String) {
+    SitePxeEdgeSubjectRefused {
+      cause: join(["site_pxe_edge_converge: ", host as String, " is not the site edge host (", site_pxe_edge_host as String, "); the edge lives on one executor per segment"], ""),
+    }
+  } else {
+    SitePxeEdgeSubjectAdmitted {
+      target: SshTarget {
+        endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
+        principal: executor_bootstrap_principal.login,
+      },
+    }
+  }
+}
+
+// ── Observation (effectful) ──────────────────────────────────────────────────────────────────────
+
+fn site_pxe_edge_argv_probe(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>, what: String) -> SitePxeEdgeProbe
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
+    TypedArgvExecRefused { reason: why } => SitePxeEdgeProbeRefused { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success {
+        SitePxeEdgeProbeHeld
+      } else {
+        SitePxeEdgeProbeRefused { reason: join([what, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") }
+      }
+  }
+}
+
+fn observe_site_pxe_edge_chainloader(target: SshTarget, context: FleetSshExecutionContext, pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderObservation
+  uses net: Network
+{
+  match site_pxe_edge_chainloader_target(pin: pin) {
+    Absent => ChainloaderDigestUnobservable { reason: "no pinned chainloader to digest" }
+    Present { value: c } => {
+      let path = site_pxe_edge_chainloader_path(target: c)
+      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sha256sum", path as String]) {
+        TypedArgvExecRefused { reason: why } => ChainloaderDigestUnobservable { reason: why }
+        TypedArgvExecConverged { result: r } => site_pxe_edge_digest_observation(path: path, success: r.success, line: r.stdout)
+      }
+    }
+  }
+}
+
+type SitePxeEdgeFileStanding
+  = EdgeFileIdentical
+  | EdgeFileDiffers
+  | EdgeFileAbsent
+  | EdgeFileUnobservable { reason: String }
+
+fn site_pxe_edge_file_admission(file: SitePxeEdgeFile) -> TypedRemoteFileWriteAdmission {
+  typed_remote_file_write_seal(path: file.path, content: file.content, allowed_scope: site_pxe_edge_file_scope)
+}
+
+// The comparison is typed_remote_file_write's own far-side `cmp -s -`, so the plan's "identical" and
+// the write's read-back are one judgment.
+fn observe_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext, file: SitePxeEdgeFile) -> SitePxeEdgeFileStanding
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["test", "-e", file.path as String]) {
+    TypedArgvExecRefused { reason: why } => EdgeFileUnobservable { reason: why }
+    TypedArgvExecConverged { result: presence } =>
+      if presence.exit_code == 1 {
+        EdgeFileAbsent
+      } else if presence.exit_code != 0 {
+        EdgeFileUnobservable { reason: join(["presence test exit=", to_string(presence.exit_code), " ", trim(s: presence.stderr)], "") }
+      } else {
+        match site_pxe_edge_file_admission(file: file) {
+          TypedRemoteFileWriteAdmissionRefused { cause: c } => EdgeFileUnobservable { reason: c as String }
+          TypedRemoteFileWriteAdmitted { write: w } =>
+            match typed_remote_file_step(target: target, context: context, raws: typed_remote_file_compare_argv(write: w), stdin_payload: w.content) {
+              TypedRemoteFileStepArgvRefused => EdgeFileUnobservable { reason: "comparison argv refused as non-portable" }
+              TypedRemoteFileStepLegRefused { cause: why } => EdgeFileUnobservable { reason: why as String }
+              TypedRemoteFileStepRan { result: back } =>
+                match classify_typed_remote_file_comparison(write: w, compare_exit_code: back.exit_code, compare_stderr: back.stderr) {
+                  ComparisonIdentical => EdgeFileIdentical
+                  ComparisonDiffers { reason: _ } => EdgeFileDiffers
+                  ComparisonUnavailable { reason: r } => EdgeFileUnobservable { reason: r }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecutionContext) -> SitePxeEdgeProbe
+  uses net: Network
+{
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_property_argv(unit: site_pxe_edge_unit_name, property: ActiveState)) {
+    TypedArgvExecRefused { reason: why } => SitePxeEdgeProbeRefused { reason: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success && trim(s: r.stdout) == "ActiveState=active" {
+        SitePxeEdgeProbeHeld
+      } else {
+        SitePxeEdgeProbeRefused { reason: join(["unit ", site_pxe_edge_unit_name as String, " ", trim(s: r.stdout), " exit=", to_string(r.exit_code)], "") }
+      }
+  }
+}
+
+// ── Plan and apply ───────────────────────────────────────────────────────────────────────────────
+
+type SitePxeEdgeMode
+  = SitePxeEdgeObserveOnly
+  | SitePxeEdgeApply
+
+type SitePxeEdgeFileOutcome
+  = EdgeFileLeftInPlace
+  | EdgeFileWrittenAndReadBack
+  | EdgeFileWriteRefused { step: String, reason: String }
+  | EdgeFileNotApplied { reason: String }
+
+type SitePxeEdgeFileResult {
+  file: SitePxeEdgeFile
+  before: SitePxeEdgeFileStanding
+  outcome: SitePxeEdgeFileOutcome
+}
+
+type SitePxeEdgeRun {
+  mode: SitePxeEdgeMode
+  gate_causes: List<String>
+  files: List<SitePxeEdgeFileResult>
+  activation: SitePxeEdgeProbe
+  unit_active: SitePxeEdgeProbe
+}
+
+fn site_pxe_edge_file_needs_write(standing: SitePxeEdgeFileStanding) -> Bool {
+  match standing {
+    EdgeFileIdentical => false
+    EdgeFileDiffers => true
+    EdgeFileAbsent => true
+    EdgeFileUnobservable { reason: _ } => false
+  }
+}
+
+fn site_pxe_edge_file_outcome_settled(outcome: SitePxeEdgeFileOutcome) -> Bool {
+  match outcome {
+    EdgeFileLeftInPlace => true
+    EdgeFileWrittenAndReadBack => true
+    EdgeFileWriteRefused { step: _, reason: _ } => false
+    EdgeFileNotApplied { reason: _ } => false
+  }
+}
+
+fn apply_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext, file: SitePxeEdgeFile, before: SitePxeEdgeFileStanding) -> SitePxeEdgeFileOutcome
+  uses net: Network
+{
+  match before {
+    EdgeFileIdentical => EdgeFileLeftInPlace
+    EdgeFileUnobservable { reason: r } => EdgeFileNotApplied { reason: concat("unobservable before write: ", r) }
+    EdgeFileDiffers => write_site_pxe_edge_file(target: target, context: context, file: file)
+    EdgeFileAbsent => write_site_pxe_edge_file(target: target, context: context, file: file)
+  }
+}
+
+fn write_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext, file: SitePxeEdgeFile) -> SitePxeEdgeFileOutcome
+  uses net: Network
+{
+  match converge_typed_remote_file(
+    target: target,
+    context: context,
+    admission: site_pxe_edge_file_admission(file: file),
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    privilege: RemoteFileViaNonInteractiveSudo,
+  ) {
+    TypedRemoteFileConvergenceRefused { step: st, reason: why } => EdgeFileWriteRefused { step: st, reason: why }
+    TypedRemoteFileConverged { converged: _ } => EdgeFileWrittenAndReadBack
+  }
+}
+
+// daemon-reload, enable, restart -- restart and not start, so a rewritten config is actually the one
+// running. Refused at the first failing step, by name.
+fn activate_site_pxe_edge_unit(target: SshTarget, context: FleetSshExecutionContext) -> SitePxeEdgeProbe
+  uses net: Network
+{
+  match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_daemon_reload_argv()), what: "daemon-reload") {
+    SitePxeEdgeProbeRefused { reason: r } => SitePxeEdgeProbeRefused { reason: r }
+    SitePxeEdgeProbeHeld =>
+      match site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_enable_argv(unit: site_pxe_edge_unit_name)), what: "enable") {
+        SitePxeEdgeProbeRefused { reason: r } => SitePxeEdgeProbeRefused { reason: r }
+        SitePxeEdgeProbeHeld =>
+          site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: systemctl_restart_argv(unit: site_pxe_edge_unit_name)), what: "restart")
+      }
+  }
+}
+
+fn site_pxe_edge_file_results(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  mode: SitePxeEdgeMode,
+  gate_open: Bool,
+  files: List<SitePxeEdgeFile>,
+) -> List<SitePxeEdgeFileResult>
+  uses net: Network
+{
+  map(files, f => {
+    let before = observe_site_pxe_edge_file(target: target, context: context, file: f)
+    SitePxeEdgeFileResult {
+      file: f,
+      before: before,
+      outcome: match mode {
+        SitePxeEdgeObserveOnly => EdgeFileNotApplied { reason: "observe-only" }
+        SitePxeEdgeApply =>
+          if gate_open {
+            apply_site_pxe_edge_file(target: target, context: context, file: f, before: before)
+          } else {
+            EdgeFileNotApplied { reason: "gate closed" }
+          }
+      },
+    }
+  })
+}
+
+// ORDER: privilege, dnsmasq binary and chainloader digest (the gate), then every desired file, then
+// activation only when the gate is open and every file settled, then the unit's active state read
+// back. A closed gate still observes the files, so an observe dispatch says what WOULD be written.
+fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode) -> SitePxeEdgeRun
+  uses net: Network
+{
+  let pin = site_pxe_edge_chainloader_pin
+  let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
+  let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
+  let chainloader = observe_site_pxe_edge_chainloader(target: target, context: context, pin: pin)
+  let causes = site_pxe_edge_gate_causes(pin: pin, chainloader: chainloader, dnsmasq_binary: binary, privilege: privilege)
+  let files = match site_pxe_edge_chainloader_target(pin: pin) {
+    Absent => [site_pxe_edge_unit_file()]
+    Present { value: c } => site_pxe_edge_desired_files(target: c)
+  }
+  let results = site_pxe_edge_file_results(target: target, context: context, mode: mode, gate_open: length(causes) == 0, files: files)
+  let activation = match mode {
+    SitePxeEdgeObserveOnly => SitePxeEdgeProbeRefused { reason: "observe-only" }
+    SitePxeEdgeApply =>
+      if length(causes) == 0 && all(results, r => site_pxe_edge_file_outcome_settled(outcome: r.outcome)) {
+        activate_site_pxe_edge_unit(target: target, context: context)
+      } else {
+        SitePxeEdgeProbeRefused { reason: "not attempted: gate closed or a file did not settle" }
+      }
+  }
+  SitePxeEdgeRun {
+    mode: mode,
+    gate_causes: causes,
+    files: results,
+    activation: activation,
+    unit_active: observe_site_pxe_edge_unit_active(target: target, context: context),
+  }
+}
+
+// Observe succeeds when it could SEE everything; drift and a closed gate are its findings. Apply
+// succeeds only when the gate was open, every file settled, activation held and the unit reads active.
+fn site_pxe_edge_run_succeeded(run: SitePxeEdgeRun) -> Bool {
+  match run.mode {
+    SitePxeEdgeObserveOnly =>
+      !any(run.files, r => match r.before {
+        EdgeFileUnobservable { reason: _ } => true
+        EdgeFileIdentical => false
+        EdgeFileDiffers => false
+        EdgeFileAbsent => false
+      })
+    SitePxeEdgeApply =>
+      length(run.gate_causes) == 0
+        && all(run.files, r => site_pxe_edge_file_outcome_settled(outcome: r.outcome))
+        && site_pxe_edge_probe_held(probe: run.activation)
+        && site_pxe_edge_probe_held(probe: run.unit_active)
+  }
+}
+
+fn site_pxe_edge_probe_held(probe: SitePxeEdgeProbe) -> Bool {
+  match probe {
+    SitePxeEdgeProbeHeld => true
+    SitePxeEdgeProbeRefused { reason: _ } => false
+  }
+}
+
+fn site_pxe_edge_probe_wire(probe: SitePxeEdgeProbe) -> String {
+  match probe {
+    SitePxeEdgeProbeHeld => "held"
+    SitePxeEdgeProbeRefused { reason: r } => concat("REFUSED ", r)
+  }
+}
+
+fn site_pxe_edge_file_standing_wire(standing: SitePxeEdgeFileStanding) -> String {
+  match standing {
+    EdgeFileIdentical => "identical"
+    EdgeFileDiffers => "differs"
+    EdgeFileAbsent => "absent"
+    EdgeFileUnobservable { reason: r } => concat("UNOBSERVABLE ", r)
+  }
+}
+
+fn site_pxe_edge_file_outcome_wire(outcome: SitePxeEdgeFileOutcome) -> String {
+  match outcome {
+    EdgeFileLeftInPlace => "left-in-place"
+    EdgeFileWrittenAndReadBack => "written-and-read-back"
+    EdgeFileWriteRefused { step: st, reason: why } => join(["REFUSED step=", st, " ", why], "")
+    EdgeFileNotApplied { reason: why } => concat("not-applied ", why)
+  }
+}
+
+fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
+  join([
+    "mode=", match run.mode { SitePxeEdgeObserveOnly => "observe" SitePxeEdgeApply => "apply" }, "\n",
+    join(map(run.gate_causes, c => join(["gate-closed ", c, "\n"], "")), ""),
+    join(map(run.files, r => join(["file ", r.file.subject as String, " path=", r.file.path as String, " before=", site_pxe_edge_file_standing_wire(standing: r.before), " outcome=", site_pxe_edge_file_outcome_wire(outcome: r.outcome), "\n"], "")), ""),
+    "activation=", site_pxe_edge_probe_wire(probe: run.activation), "\n",
+    "unit-active=", site_pxe_edge_probe_wire(probe: run.unit_active), "\n",
+    "terminal=", if site_pxe_edge_run_succeeded(run: run) { "succeeded" } else { "REFUSED" }, "\n",
+  ], "")
+}
+
+// ── The CI entries ───────────────────────────────────────────────────────────────────────────────
+
+data site_pxe_edge_converge_attempt_raw: String = "site-pxe-edge-converge-ci"
+
+data site_pxe_edge_converge_receipt_path: String = "target/site-pxe-edge-converge-receipt.txt"
+
+fn site_pxe_edge_ci_wet(mode: SitePxeEdgeMode) -> ProcessExit
+  uses net: Network
+{
+  match actions_variable_read(name: fleet_converge_expected_host_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      exit_failure(reason: join(["site_pxe_edge_converge: ", v, " ", d, "; one host per run, named by the dispatch"], ""))
+    ActionsVariablePresent { value: raw_host } =>
+      match site_pxe_edge_subject(host: raw_host as HostIdentity) {
+        SitePxeEdgeSubjectRefused { cause: c } => exit_failure(reason: c)
+        SitePxeEdgeSubjectAdmitted { target: target } =>
+          match prepare_fleet_ssh_agent_context(attempt_raw: site_pxe_edge_converge_attempt_raw) {
+            FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+            FleetSshContextReady { context: context, receipt: context_receipt } => {
+              let run = run_site_pxe_edge(target: target, context: context, mode: mode)
+              let body = join([
+                "site_pxe_edge_converge host=", raw_host, " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+                context_receipt,
+                site_pxe_edge_run_text(run: run),
+              ], "")
+              let w = Filesystem.Write(path: site_pxe_edge_converge_receipt_path, content: body)
+              if w.success == false {
+                exit_failure(reason: join(["site_pxe_edge_converge: receipt write failed: ", w.error, "\n", body], ""))
+              } else if site_pxe_edge_run_succeeded(run: run) == false {
+                exit_failure(reason: body)
+              } else {
+                ExitSuccess
+              }
+            }
+          }
+      }
+  }
+}
+
+fn site_pxe_edge_observe_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  site_pxe_edge_ci_wet(mode: SitePxeEdgeObserveOnly)
+}
+
+fn site_pxe_edge_converge_ci_wet() -> ProcessExit
+  uses net: Network
+{
+  site_pxe_edge_ci_wet(mode: SitePxeEdgeApply)
+}
