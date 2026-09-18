@@ -9,6 +9,7 @@ import std.measure {
   MoneyRate, MoneyPerSecond, MoneyAmountMicro, money_amount_micro,
   Second, second,
   HardwareThreadCount, hardware_thread_count,
+  nanosecond, bandwidth, byte_size,
 }
 import extdeps.currency.currency { Usd }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
@@ -54,7 +55,17 @@ import product.fabric.candidate_field {
   FieldNodeNotQualified, FieldDeliveryClaimNamesAnotherOffer,
   assemble_candidate_field,
 }
-import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery, OfferDeliveryClaim }
+import product.placement_supply { HostIdentity }
+import product.fabric.node_qualification {
+  OfferDoesNotClaimNodeDelivery, OfferDeliveryClaim, OfferClaimsNodeDelivery,
+  GroupQualified, CollectiveGroupReceipt, CollectiveGroupAdvertised,
+  GroupHostRosterComplete, CollectiveLatencyAgrees, CollectiveBandwidthAgrees,
+  RankSymmetryUnread, rank_symmetry_unread_awaits_rank_local_receipt,
+  WindowIsolated, CollectivePrimitiveSameRuntime, NcclLibraryVersion,
+  HostRegisteredIbFallbackCitedOnServingRuntime,
+  CollectiveProtocol, NcclTestsAllReducePerf, EachRankContributesTheSizeColumn,
+  NcclTestsHalf,
+}
 import gunbc.spark.group_b_node_qualification { group_b_delivery_claim, group_b_claimed_offer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -386,6 +397,61 @@ fn s_request(key: OfferKey, route: ProviderRoute, amount: MoneyAmountMicro) -> F
   )
 }
 
+fn s_qualified_delivery(offer: FabricIdentity<NonEmptyStr, OfferKey>) -> OfferDeliveryClaim<NonEmptyStr> {
+  OfferClaimsNodeDelivery {
+    offer: offer,
+    admission: GroupQualified {
+      receipt: CollectiveGroupReceipt {
+        offer: offer,
+        advertised: CollectiveGroupAdvertised {
+          expected_ranks: ["spill-rank-0" as HostIdentity],
+          latency_ceiling: nanosecond(count: 1000),
+          latency_message_bytes: byte_size(count: 8),
+          all_reduce_protocol: CollectiveProtocol {
+            instrument: NcclTestsAllReducePerf,
+            size_semantics: EachRankContributesTheSizeColumn,
+            dtype: NcclTestsHalf,
+            rank_count: 1,
+          },
+          bandwidth_floor: bandwidth(count: 100),
+          bandwidth_message_bytes: byte_size(count: 8),
+          all_to_all_latency_ceiling: nanosecond(count: 1000),
+          all_to_all_message_bytes: byte_size(count: 8),
+          all_to_all_protocol: CollectiveProtocol {
+            instrument: NcclTestsAllReducePerf,
+            size_semantics: EachRankContributesTheSizeColumn,
+            dtype: NcclTestsHalf,
+            rank_count: 1,
+          },
+        },
+        host_roster: GroupHostRosterComplete { rank_count: 1 },
+        collective_latency: CollectiveLatencyAgrees {
+          ceiling: nanosecond(count: 1000),
+          measured: nanosecond(count: 10),
+        },
+        collective_bandwidth: CollectiveBandwidthAgrees {
+          floor: bandwidth(count: 100),
+          measured: bandwidth(count: 200),
+        },
+        all_to_all_latency: CollectiveLatencyAgrees {
+          ceiling: nanosecond(count: 1000),
+          measured: nanosecond(count: 10),
+        },
+        rank_symmetry: RankSymmetryUnread {
+          because: rank_symmetry_unread_awaits_rank_local_receipt,
+        },
+        host_registered_ib_fallback: HostRegisteredIbFallbackCitedOnServingRuntime {
+          nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+        },
+        window: WindowIsolated,
+        primitive_attribution: CollectivePrimitiveSameRuntime {
+          nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+        },
+      },
+    },
+  }
+}
+
 // THE ROSTER, CHEAPEST FIRST. Roster order is also the StableRosterOrder tie policy's order, so
 // putting the cheapest unassessed offer FIRST is deliberate: if the field leaked it through, it
 // would win both on price and on order, and no tie-break accident could disguise the failure.
@@ -543,6 +609,24 @@ fn s_admitted_keys(field: CandidateField<NonEmptyStr>) -> List<NonEmptyStr> {
 // a fixture in which nothing wins at all, and the file would assert nothing about admission.
 test fn w_the_one_modeled_route_survives_the_field() -> Bool {
   s_admitted_keys(field: s_default_field()) == ["spill-hetzner-cax41"]
+}
+
+test fn w_an_offer_claiming_its_own_qualified_node_delivery_is_admitted() -> Bool {
+  let offer = FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }
+  let field = s_field(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [
+      s_request_with_delivery(
+        key: "spill-hetzner-cax41",
+        route: s_hetzner_route(),
+        amount: money_amount_micro(count: 4000),
+        delivery: s_qualified_delivery(offer: offer),
+      ),
+    ],
+  )
+  s_admitted_keys(field: field) == ["spill-hetzner-cax41"]
+    && s_excluded_keys(field: field, tag: "node-not-qualified") == []
 }
 
 test fn w_an_offer_claiming_another_offers_delivery_is_excluded() -> Bool {

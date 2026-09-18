@@ -213,39 +213,6 @@ fn observation_roster_unread_reason(
   }
 }
 
-fn collective_instrument_eq(a: CollectiveInstrument, b: CollectiveInstrument) -> Bool {
-  match a {
-    NcclTestsAllReducePerf => match b {
-      NcclTestsAllReducePerf => true
-      NcclTestsAllGatherPerf => false
-      NcclTestsAllToAllPerf => false
-    }
-    NcclTestsAllGatherPerf => match b {
-      NcclTestsAllGatherPerf => true
-      NcclTestsAllReducePerf => false
-      NcclTestsAllToAllPerf => false
-    }
-    NcclTestsAllToAllPerf => match b {
-      NcclTestsAllToAllPerf => true
-      NcclTestsAllReducePerf => false
-      NcclTestsAllGatherPerf => false
-    }
-  }
-}
-
-fn size_semantics_eq(a: NcclTestsSizeSemantics, b: NcclTestsSizeSemantics) -> Bool {
-  match a {
-    EachRankContributesTheSizeColumn => match b {
-      EachRankContributesTheSizeColumn => true
-      TotalBufferSplitPerPeer { rank_count: _ } => false
-    }
-    TotalBufferSplitPerPeer { rank_count: n } => match b {
-      TotalBufferSplitPerPeer { rank_count: m } => n == m
-      EachRankContributesTheSizeColumn => false
-    }
-  }
-}
-
 fn dtype_join(a: NcclTestsDtype, b: NcclTestsDtype) -> DtypeJoin {
   match a {
     NcclTestsDtypeUnread => DtypeUnread
@@ -257,8 +224,8 @@ fn dtype_join(a: NcclTestsDtype, b: NcclTestsDtype) -> DtypeJoin {
 }
 
 fn protocol_eq(a: CollectiveProtocol, b: CollectiveProtocol) -> Bool {
-  collective_instrument_eq(a: a.instrument, b: b.instrument)
-    && size_semantics_eq(a: a.size_semantics, b: b.size_semantics)
+  a.instrument == b.instrument
+    && a.size_semantics == b.size_semantics
     && match dtype_join(a: a.dtype, b: b.dtype) {
       DtypeAgrees => true
       DtypeDiffers => false
