@@ -4,7 +4,10 @@ import std.types { NonEmptyStr, String, Int, Bool, List, Secret, EpochSecs }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.measure { Second, second, ByteSize, byte_size }
-import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
+import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256, SignatureSigned, SigningKeyUnreadable, p256_ecdsa_sign }
+import extdeps.auth.jwt { JwtCompactSerialization }
+import extdeps.auth.jws { jws_signing_input, jws_compact }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int }
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 // Apple Push Notification service, HTTP/2 provider API with token-based authentication.
@@ -61,7 +64,7 @@ type ApnsProviderIdentity {
 type ApnsProviderToken {
   identity: ApnsProviderIdentity
   issued_at_epoch: EpochSecs
-  jwt: NonEmptyStr
+  jwt: JwtCompactSerialization
 }
 
 // Minting refuses rather than fabricating. The one malformed input the bound implementation can see
@@ -71,20 +74,20 @@ type ApnsProviderTokenMint
   = ApnsProviderTokenSigned { token: ApnsProviderToken }
   | ApnsAuthKeyUnreadable { key_id: ApnsKeyId }
 
-// `es256_jwt_sign` is a host primitive over RustCrypto's p256 SigningKey (RFC 6979 deterministic
-// nonces, so one input has one token and no RNG is consulted): header {"alg":"ES256","kid"},
-// claims {"iss","iat"}, unpadded base64url segments, JOSE r || s signature (RFC 7518 §3.4). The key
-// travels as a Secret and never appears in an argv (gunbc.credential_argv_exposure), which is why
-// this is a primitive and not a shell transport. The suite match is total so a second
-// SignatureSuite arm cannot reach the ES256 implementation without an authored arm.
+// THE TOKEN IS A JWS (extdeps.auth.jws) OVER A JWT (extdeps.auth.jwt): protected header
+// {"alg": "ES256", "kid": <key id>}, payload {"iss": <team id>, "iat": <issued>}, both serialized by
+// extdeps.languages.json.emit, and the signature over the JWS signing input is ES256 -- ECDSA P-256
+// SHA-256 as extdeps.crypto.signature p256_ecdsa_sign, whose r || s base64url is exactly RFC 7518
+// §3.4's JWS Signature. The only host kernel is that signature; every wire shape is modeled.
 fn apns_provider_token(identity: ApnsProviderIdentity, auth_key: Secret, issued_at_epoch: EpochSecs) -> ApnsProviderTokenMint {
-  match apns_provider_token_suite {
-    EcdsaP256Sha256 =>
-      match es256_jwt_sign(auth_key as String, identity.key_id as String, identity.team_id as String, issued_at_epoch as Int) {
-        Absent => ApnsAuthKeyUnreadable { key_id: identity.key_id }
-        Present { value: jwt } =>
-          ApnsProviderTokenSigned { token: ApnsProviderToken { identity: identity, issued_at_epoch: issued_at_epoch, jwt: jwt as NonEmptyStr } }
-      }
+  let signing_input = jws_signing_input(
+    protected_header: json_object(members: [json_kv(key: "alg", value: json_string(s: "ES256")), json_kv(key: "kid", value: json_string(s: identity.key_id as String))]),
+    payload: json_object(members: [json_kv(key: "iss", value: json_string(s: identity.team_id as String)), json_kv(key: "iat", value: json_int(n: issued_at_epoch as Int))]),
+  )
+  match p256_ecdsa_sign(suite: apns_provider_token_suite, key_pem: auth_key, message: signing_input) {
+    SigningKeyUnreadable { suite: _ } => ApnsAuthKeyUnreadable { key_id: identity.key_id }
+    SignatureSigned { signature } =>
+      ApnsProviderTokenSigned { token: ApnsProviderToken { identity: identity, issued_at_epoch: issued_at_epoch, jwt: jws_compact(signing_input: signing_input, signature_b64url: signature.b64url) } }
   }
 }
 

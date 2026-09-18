@@ -516,9 +516,9 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "free_call.es256_jwt_sign" },
+      arm: InterpreterPrimitiveArmId { identity: "free_call.p256_ecdsa_sign_b64url" },
       form: FreeCall,
-      authored_spelling: "es256_jwt_sign",
+      authored_spelling: "p256_ecdsa_sign_b64url",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_builtin_inner",
       dispatch_emit_site: EvalBuiltinInnerSite,

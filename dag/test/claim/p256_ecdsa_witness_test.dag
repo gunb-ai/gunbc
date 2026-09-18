@@ -7,6 +7,7 @@ import extdeps.crypto.signature {
   VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
   SignatureVerification, SignatureVerified, SignatureInvalid, VerifyingKeyMalformed,
   SignatureEncodingRefused, VerifyingKeyUndecodable, p256_ecdsa_verify,
+  SignatureSigned, SigningKeyUnreadable, p256_ecdsa_sign,
 }
 import extdeps.apple.apns {
   ApnsProviderIdentity, ApnsKeyId, AppleTeamId,
@@ -100,9 +101,11 @@ data test_identity: ApnsProviderIdentity = ApnsProviderIdentity {
   key_id: "ABC123DEFG" as ApnsKeyId,
 }
 
-// {"alg":"ES256","kid":"ABC123DEFG"} . {"iss":"DEF123GHIJ","iat":1700000000}
-data expected_signing_input: NonEmptyStr = "eyJhbGciOiJFUzI1NiIsImtpZCI6IkFCQzEyM0RFRkcifQ.eyJpc3MiOiJERUYxMjNHSElKIiwiaWF0IjoxNzAwMDAwMDAwfQ"
-data expected_signature: NonEmptyStr = "9eqgVsaVpJcjng-z9xvwbFH5RQ4bIRjaUdI0UT5WUNjDlcVbRVsgHTYZ2TWGP-HMFIbg6jaaLZG9RVlfBpOdlg"
+// {"alg": "ES256", "kid": "ABC123DEFG"} . {"iss": "DEF123GHIJ", "iat": 1700000000}, the spelling
+// extdeps.languages.json.emit serializes; the segments were computed independently (Python base64)
+// and the signature verified with openssl against the RFC public key.
+data expected_signing_input: NonEmptyStr = "eyJhbGciOiAiRVMyNTYiLCAia2lkIjogIkFCQzEyM0RFRkcifQ.eyJpc3MiOiAiREVGMTIzR0hJSiIsICJpYXQiOiAxNzAwMDAwMDAwfQ"
+data expected_signature: NonEmptyStr = "OTyh71RihyTg_dlPNjtlmiynS2x_YcIkJJNTJB0Ds-KhH-mkLZcdCnbaDiWWSWMSf-yJ0JrnC9OZxO-2ju2bYg"
 
 test fn the_provider_token_is_the_expected_es256_jwt() -> Bool {
   match apns_provider_token(identity: test_identity, auth_key: rfc7515_p8, issued_at_epoch: 1700000000) {
@@ -127,5 +130,26 @@ test fn a_key_that_is_not_pkcs8_pem_mints_no_token() -> Bool {
   match apns_provider_token(identity: test_identity, auth_key: "not a key" as Secret, issued_at_epoch: 1700000000) {
     ApnsAuthKeyUnreadable { key_id } => key_id == test_identity.key_id
     _ => false
+  }
+}
+
+// ── The signing seam directly ────────────────────────────────────────────────────────────────
+// The RFC's private key signing the RFC's own signing input: RFC 6979 makes the result deterministic
+// (not the published value, which used a random nonce), and it must verify under the RFC public key.
+test fn p256_ecdsa_sign_produces_a_signature_the_rfc_public_key_verifies() -> Bool {
+  match p256_ecdsa_sign(suite: EcdsaP256Sha256, key_pem: rfc7515_p8, message: rfc7515_input) {
+    SignatureSigned { signature } =>
+      match p256_ecdsa_verify(key: rfc7515_key, signature: signature, message: rfc7515_input) {
+        SignatureVerified { verified: _ } => true
+        _ => false
+      }
+    SigningKeyUnreadable { suite: _ } => false
+  }
+}
+
+test fn p256_ecdsa_sign_refuses_a_key_that_is_not_pkcs8_pem() -> Bool {
+  match p256_ecdsa_sign(suite: EcdsaP256Sha256, key_pem: "not a key" as Secret, message: rfc7515_input) {
+    SigningKeyUnreadable { suite: _ } => true
+    SignatureSigned { signature: _ } => false
   }
 }

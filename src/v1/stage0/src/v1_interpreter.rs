@@ -19707,20 +19707,19 @@ macro_rules! v1_builtin_arms {
                 }))
             },
 
-            // THE APNs PROVIDER TOKEN (extdeps.apple.apns apns_provider_token): an RFC 7519 JWT
-            // signed ES256 (RFC 7518 §3.4) with the .p8 PKCS #8 auth key. Header {alg, kid},
-            // claims {iss, iat}, each segment unpadded base64url, the signature JOSE r || s.
-            // RustCrypto's SigningKey signs with RFC 6979 deterministic nonces, so no RNG is
-            // consulted and one input has exactly one token. A key that is not a P-256 PKCS #8
-            // PEM, or a negative issue time, answers ABSENT -- never a token.
-            arm "free_call.es256_jwt_sign" { "es256_jwt_sign" } => {
-                Ok(Some(match es256_jwt_sign(
-                    expect_value_str($positional.first().copied(), "es256_jwt_sign key")?.as_str(),
-                    expect_value_str($positional.get(1).copied(), "es256_jwt_sign key_id")?.as_str(),
-                    expect_value_str($positional.get(2).copied(), "es256_jwt_sign team_id")?.as_str(),
-                    expect_int($positional.get(3).copied(), "es256_jwt_sign issued_at")?,
+            // ECDSA P-256 / SHA-256 SIGNING, the key holder's twin of p256_ecdsa_verify_b64url and
+            // bound behind extdeps.crypto.signature p256_ecdsa_sign. The key is a PKCS #8 PEM (the
+            // shape of an APNs .p8); the message is SHA-256 hashed here; the answer is the 64-octet
+            // r || s as unpadded base64url. Only the signature is a host kernel: every wire shape
+            // around it (a JWS header, claims, segments, compact form) is assembled in the .dag.
+            // RFC 6979 deterministic nonces, so no RNG is consulted and one input has one
+            // signature. A key that is not a P-256 PKCS #8 PEM answers ABSENT -- never a signature.
+            arm "free_call.p256_ecdsa_sign_b64url" { "p256_ecdsa_sign_b64url" } => {
+                Ok(Some(match p256_ecdsa_sign_b64url(
+                    expect_value_str($positional.first().copied(), "p256_ecdsa_sign_b64url key")?.as_str(),
+                    expect_value_str($positional.get(1).copied(), "p256_ecdsa_sign_b64url message")?.as_str(),
                 ) {
-                    Some(token) => str_value(token),
+                    Some(signature) => str_value(signature),
                     None => Value::Null,
                 }))
             },
@@ -22475,39 +22474,17 @@ fn p256_ecdsa_verify_b64url(
     Some(key.verify(message.as_bytes(), &sig).is_ok())
 }
 
-/// The `es256_jwt_sign` builtin's computation: the compact JWS of the APNs provider token, or
-/// `None` when the key is not a P-256 PKCS #8 PEM or the issue time is negative.
-fn es256_jwt_sign(p8_pem: &str, key_id: &str, team_id: &str, issued_at: i64) -> Option<String> {
+/// The `p256_ecdsa_sign_b64url` builtin's computation: the fixed-width r || s of `message` under
+/// the PKCS #8 PEM key, unpadded base64url, or `None` when the key is not a P-256 PKCS #8 PEM.
+fn p256_ecdsa_sign_b64url(p8_pem: &str, message: &str) -> Option<String> {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
     use p256::ecdsa::signature::Signer;
     use p256::ecdsa::{Signature, SigningKey};
     use p256::pkcs8::DecodePrivateKey;
-    if issued_at < 0 {
-        return None;
-    }
     let key = SigningKey::from_pkcs8_pem(p8_pem).ok()?;
-    // serde_json escapes the two caller strings; member order is fixed by the literal.
-    let header = format!(
-        "{{\"alg\":\"ES256\",\"kid\":{}}}",
-        serde_json::to_string(key_id).ok()?
-    );
-    let claims = format!(
-        "{{\"iss\":{},\"iat\":{}}}",
-        serde_json::to_string(team_id).ok()?,
-        issued_at
-    );
-    let signing_input = format!(
-        "{}.{}",
-        URL_SAFE_NO_PAD.encode(header.as_bytes()),
-        URL_SAFE_NO_PAD.encode(claims.as_bytes())
-    );
-    let signature: Signature = key.sign(signing_input.as_bytes());
-    Some(format!(
-        "{}.{}",
-        signing_input,
-        URL_SAFE_NO_PAD.encode(signature.to_bytes())
-    ))
+    let signature: Signature = key.sign(message.as_bytes());
+    Some(URL_SAFE_NO_PAD.encode(signature.to_bytes()))
 }
 
 /// A refusal of Apple's attestation procedure, one arm per step (extdeps.apple.app_attest
@@ -23111,7 +23088,7 @@ fn app_attest_assertion_answer(
 
 #[cfg(test)]
 mod p256_ecdsa_tests {
-    use super::{es256_jwt_sign, p256_ecdsa_verify_b64url};
+    use super::{p256_ecdsa_sign_b64url, p256_ecdsa_verify_b64url};
 
     // RFC 7515 Appendix A.3: a published ES256 JWS, verified against a key and signature this
     // implementation did not produce.
@@ -23159,28 +23136,25 @@ mod p256_ecdsa_tests {
         );
     }
 
+    // Signing the RFC's own signing input with the RFC's private key: RFC 6979 makes the value
+    // deterministic, and it must verify under the RFC public key (the published signature does
+    // not match byte-for-byte because the RFC used a random nonce).
     #[test]
-    fn an_es256_provider_token_verifies_under_its_public_key() {
-        let token =
-            es256_jwt_sign(RFC7515_A3_P8, "ABC123DEFG", "DEF123GHIJ", 1_700_000_000).unwrap();
-        let (input, sig) = token.rsplit_once('.').unwrap();
-        assert_eq!(input, "eyJhbGciOiJFUzI1NiIsImtpZCI6IkFCQzEyM0RFRkcifQ.eyJpc3MiOiJERUYxMjNHSElKIiwiaWF0IjoxNzAwMDAwMDAwfQ");
+    fn a_signature_verifies_under_its_public_key() {
+        let sig = p256_ecdsa_sign_b64url(RFC7515_A3_P8, RFC7515_A3_INPUT).unwrap();
         assert_eq!(
-            p256_ecdsa_verify_b64url(RFC7515_A3_POINT, sig, input),
+            p256_ecdsa_verify_b64url(RFC7515_A3_POINT, &sig, RFC7515_A3_INPUT),
             Some(true)
+        );
+        assert_eq!(
+            p256_ecdsa_verify_b64url(RFC7515_A3_POINT, &sig, "a different message"),
+            Some(false)
         );
     }
 
     #[test]
-    fn a_key_that_is_not_pkcs8_pem_yields_no_token() {
-        assert_eq!(
-            es256_jwt_sign("not a key", "ABC123DEFG", "DEF123GHIJ", 1_700_000_000),
-            None
-        );
-        assert_eq!(
-            es256_jwt_sign(RFC7515_A3_P8, "ABC123DEFG", "DEF123GHIJ", -1),
-            None
-        );
+    fn a_key_that_is_not_pkcs8_pem_yields_no_signature() {
+        assert_eq!(p256_ecdsa_sign_b64url("not a key", RFC7515_A3_INPUT), None);
     }
 }
 
