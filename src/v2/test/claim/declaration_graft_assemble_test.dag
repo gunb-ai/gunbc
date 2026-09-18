@@ -17,7 +17,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Named, Node, Positional, node_subtree_nodes }
+import v2.std.node { Atom, Named, Node, Positional, TypeNode, node_subtree_nodes }
 import v2.std.text { String }
 import v2.std.compilers.lexing { symbol_lexeme }
 
@@ -88,6 +88,28 @@ fn declaration_graft_label_present(root: Node, lexeme: String) -> Bool {
   )
 }
 
+fn declaration_graft_atom_present(root: Node, lexeme: String) -> Bool {
+  fold(
+    node_subtree_nodes(root: root),
+    init: false,
+    f: fn(found, n) {
+      if found {
+        true
+      } else {
+        match n.kind {
+          TypeNode { connective: Atom { identity: sym } } => symbol_lexeme(sym: sym) == lexeme
+          _ => false
+        }
+      }
+    }
+  )
+}
+
+fn declaration_graft_present_anywhere(root: Node, lexeme: String) -> Bool {
+  declaration_graft_label_present(root: root, lexeme: lexeme)
+    || declaration_graft_atom_present(root: root, lexeme: lexeme)
+}
+
 fn declaration_graft_named_reachable(src: String, lexeme: String) -> Bool {
   match declaration_graft_assemble_for(src: src) {
     Accepted { value: root, diagnostics: _ } =>
@@ -107,6 +129,7 @@ data src_f: String = "module p\n\ntype Flag = On | Off\nfn flip(f: Flag) -> Flag
 data src_g: String = "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n: 1 } }\n"
 data src_g_type_only: String = "module p\n\ntype Rec { n: Int }\n"
 data src_dag_user_fn: String = "module p\n\nfn dag_user(x: Int) -> Int { x }\n"
+data src_flag_and_rec: String = "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n"
 
 test fn declaration_graft_empty_module_accepts() -> Bool {
   declaration_graft_assemble_accepts(src: src_a)
@@ -146,4 +169,15 @@ test fn declaration_graft_match_variants_accepts() -> Bool {
 
 test fn declaration_graft_dag_prefix_user_fn_is_named() -> Bool {
   declaration_graft_named_reachable(src: src_dag_user_fn, lexeme: "dag_user")
+}
+
+// Fail-closed on Rec erasure beside a graftable coproduct: Accept with Rec
+// missing is fabricated success. Refuse, or Accept with Rec still in the tree.
+test fn declaration_graft_coproduct_beside_record_does_not_erase_rec() -> Bool {
+  match declaration_graft_assemble_for(src: src_flag_and_rec) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: root, diagnostics: _ } =>
+      declaration_graft_label_present(root: root, lexeme: "Flag")
+        && declaration_graft_present_anywhere(root: root, lexeme: "Rec")
+  }
 }

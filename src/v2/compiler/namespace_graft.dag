@@ -453,6 +453,26 @@ fn namespace_graft_named_edges_from_units(units: List<Node>) -> List<Edge> {
   })
 }
 
+fn namespace_graft_is_type_decl_unit(unit: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: unit) {
+    Present { value: id } => id == ^dag_surface_type_decl
+    Absent => false
+  }
+}
+
+fn namespace_graft_residual_type_decl_units(units: List<Node>) -> List<Node> {
+  fold(units, init: [], f: fn(acc, unit) {
+    if namespace_graft_is_type_decl_unit(unit: unit) {
+      match namespace_graft_type_decl_named_edge(unit: unit) {
+        Present { value: _ } => acc
+        Absent => list_snoc_item(xs: acc, item: unit)
+      }
+    } else {
+      acc
+    }
+  })
+}
+
 fn namespace_graft_decl_edges_from_node(node: Node) -> List<Edge> {
   namespace_graft_named_edges_from_units(units: namespace_graft_collect_unit_nodes(node: node))
 }
@@ -510,14 +530,17 @@ fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
     edges: namespace_graft_collect_body_edges_from_node(node: working)
   )
   let combined = concat(from_decls, flattened)
+  let residuals = namespace_graft_residual_type_decl_units(units: units)
   if count(combined) == 0 {
     if count(units) == 0 {
       []
     } else {
       namespace_graft_reconstruct_declaration_forest(units: units)
     }
-  } else {
+  } else if count(residuals) == 0 {
     combined
+  } else {
+    concat(combined, namespace_graft_reconstruct_declaration_forest(units: residuals))
   }
 }
 
