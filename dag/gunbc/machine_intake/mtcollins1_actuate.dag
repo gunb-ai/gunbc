@@ -190,12 +190,12 @@ fn mtcollins1_netboot_handoff(password_file_raw: String) -> ProcessExit
 // answers — so today this is the only delivery route that reaches this machine at all.
 data mtcollins1_cdrom_device: NonEmptyStr = "cdrom"
 
-data mtcollins1_cdrom_readback_rendering: NonEmptyStr = "Force Boot from CD/DVD"
-
 // Measured, not guessed: `chassis bootdev cdrom` followed by `chassis bootparam get 5` renders
 // "Boot Device Selector : Force Boot from CD/DVD". The netboot route's rendering is "Force PXE",
 // a different string for the same field, which is exactly why the arm takes the expected text from
 // its caller rather than deriving it from the device word.
+data mtcollins1_cdrom_readback_rendering: NonEmptyStr = "Force Boot from CD/DVD"
+
 data mtcollins1_param5_flag_valid: NonEmptyStr = "Boot Flag Valid"
 
 data mtcollins1_param5_oneshot: NonEmptyStr = "Options apply to only next boot"
@@ -206,6 +206,9 @@ data mtcollins1_param5_efi: NonEmptyStr = "BIOS EFI boot"
 
 data mtcollins1_cdrom_boot_options: NonEmptyStr = "efiboot"
 
+// PXE sends boot_options empty, so the firmware axis here is the unit default
+// ("BIOS PC Compatible (legacy)"), not a requested boot type. The selector is
+// the Force PXE rendering measured on this unit.
 data mtcollins1_pxe_param5_expected: BootParam5Expected = BootParam5Expected {
   flag_valid: mtcollins1_param5_flag_valid,
   persistence: mtcollins1_param5_oneshot,
@@ -213,6 +216,7 @@ data mtcollins1_pxe_param5_expected: BootParam5Expected = BootParam5Expected {
   selector: mtcollins1_boot_readback_rendering,
 }
 
+// CDROM requests options=efiboot; the firmware axis is that request, not a default.
 data mtcollins1_cdrom_param5_expected: BootParam5Expected = BootParam5Expected {
   flag_valid: mtcollins1_param5_flag_valid,
   persistence: mtcollins1_param5_oneshot,
