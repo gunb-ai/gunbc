@@ -64,7 +64,6 @@ import gunbc.network_boot_delivery {
   SiteBootstrapTransport,
   ArchitectureChainloader,
   DhcpFilenameHint,
-  PresignedUrlAvailabilityFence,
 }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly, ipxe_build_target_path }
 import gunbc.site_uefi_arm64_pxe_edge { site_edge_proxy_dhcp_config, first_onboarding_known_client_macs }
@@ -126,7 +125,6 @@ fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEd
         ArchitectureChainloader { architecture: _, filename_hint: hint, chainloader_digest: d } =>
           match hint {
             DhcpFilenameHint { filename: f } => Present { value: SitePxeEdgeChainloaderTarget { filename: f, digest: d } }
-            PresignedUrlAvailabilityFence { uri: _ } => Absent
           }
       }
   }
@@ -232,7 +230,7 @@ fn site_pxe_edge_gate_causes(
 fn site_pxe_edge_pin_obligation(pin: SitePxeEdgeChainloaderPin) -> String {
   match pin {
     SitePxeEdgeChainloaderUnpinned { obligation: o } => o as String
-    SitePxeEdgeChainloaderPinned { transport: _ } => "pinned transport carries no DHCP filename hint"
+    SitePxeEdgeChainloaderPinned { transport: _ } => "pinned"
   }
 }
 
