@@ -23,20 +23,19 @@ import gunbc.spark.serving_load_probe {
   glm_native_declared_shared_traffic, glm_native_smoke_protocol,
   serving_load_observation, serving_load_observation_text,
   drain_from_queue, window_from_drain, counter_continuity,
-  DrainObservedIdle, DrainNotIdle, DrainUnread, ArrivalSkewUnread,
+  ArrivalSkewUnread,
+  occupancy_trace_from_endpoint_scrapes,
   OperationLedger, LedgerClosed, LedgerIncomplete,
-  OccupancyUnsampled,
   ClientOutputTokensUnread,
   ClientBenchLatencyUnread,
-  RateFromGenerationTokens, RateUndenominable, RateUnreadable,
+  RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
 }
 
 // ── THE INHABITANCE ROUTE ─────────────────────────────────────────────────────────────────────
 //
 // Witnesses supply metric bodies. This function is the one that drives `vllm bench serve` against
-// the live native GLM head and folds engine-counter receipts. It is operator-invoked, not a CI
-// job: the arm is shared, and colliding with another experiment is the isolation failure the
-// design names.
+// the live native GLM head and folds receipts. The arm is shared with operator interactive
+// sessions; a drain of zero is not exclusivity. This fold records that standing and still runs.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/spark/serving_load_probe_cli.dag --function glm_native_serving_load_wet
@@ -98,17 +97,11 @@ fn glm_native_serving_load_wet() -> ProcessExit
         drain: drain,
         traffic_receipt: glm_native_declared_shared_traffic,
       )
-      match drain {
-        DrainNotIdle { running: n } =>
-          exit_failure(reason: join(["refusing to drive load: num_requests_running=", to_string(n), " so this window is not drained"], ""))
-        DrainUnread { cause: c } =>
-          exit_failure(reason: join(["refusing to drive load: drain unread: ", c as String], ""))
-        DrainObservedIdle => {
-          let bench = spark_remote_run(ctx: ctx, argv: bench_exec_argv())
-          let after = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-after")
-          if body_is_failure(body: after) {
-            exit_failure(reason: after)
-          } else {
+      let bench = spark_remote_run(ctx: ctx, argv: bench_exec_argv())
+      let after = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-after")
+      if body_is_failure(body: after) {
+        exit_failure(reason: after)
+      } else {
             let bench_ok = match bench {
               RemoteUnreachable { cause: _ } => false
               RemoteRan { exit_code: code, stdout: _, stderr: _ } => code == 0
@@ -120,7 +113,7 @@ fn glm_native_serving_load_wet() -> ProcessExit
             }
             let before_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: before)
             let after_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: after)
-            let occ = OccupancyUnsampled { cause: "the wet fold scrapes metrics only before and after the blocking bench process; mid-run occupancy is not sampled" as NonEmptyStr }
+            let occ = occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after)
             let obs = serving_load_observation(
               subject: glm_native_live_subject_standing(),
               protocol: glm_native_smoke_protocol,
@@ -148,13 +141,11 @@ fn glm_native_serving_load_wet() -> ProcessExit
               exit_failure(reason: body)
             } else {
               match obs.rate {
-                RateFromGenerationTokens { tokens: _, scrape_millis: _ } => ExitSuccess
+                RateFromClientOutputTokens { tokens: _, scrape_millis: _ } => ExitSuccess
                 RateUndenominable { because: _ } => exit_failure(reason: body)
                 RateUnreadable { because: _ } => exit_failure(reason: body)
               }
             }
-          }
-        }
       }
     }
   }, attempt_raw: glm_native_serving_load_attempt_raw, credential_file_name: "gunbc-glm-native-serving-load-admin-password" as NonEmptyStr)

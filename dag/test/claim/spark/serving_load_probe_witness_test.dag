@@ -26,11 +26,13 @@ import gunbc.spark.serving_load_probe {
   window_from_drain, isolated_window, drain_from_queue,
   ArmInService, ArmOutOfService,
   OperationLedger, LedgerClosed, ledger_admits_token_denomination,
-  RateFromGenerationTokens, RateUndenominable, RateUnreadable,
+  RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
   ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
   TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, generation_token_delta,
   derive_rate_honest, serving_load_observation, ServingLoadObservation, tokens_per_observation_second,
   saturation_from_one_run, observation_rate_is_stored_separately,
+  foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread,
+  CapacityClaimUnavailable,
   glm_native_holistic_protocol, holistic_protocol_is_session_shaped,
   glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
   OccupancySampled, OccupancyUnsampled, OccupancySample,
@@ -62,6 +64,7 @@ fn metrics_body(running: String, waiting: String, capacity: String, preempt: Str
     "vllm:num_requests_running{model_name=\"glm\"} ", running, "\n",
     "vllm:num_requests_waiting_by_reason{model_name=\"glm\",reason=\"capacity\"} ", capacity, "\n",
     "vllm:num_preemptions_total{model_name=\"glm\"} ", preempt, "\n",
+    "vllm:prompt_tokens_total{model_name=\"glm\"} 0.0\n",
     "vllm:generation_tokens_total{model_name=\"glm\"} ", gen, "\n",
     "vllm:inter_token_latency_seconds_sum{model_name=\"glm\"} ", itl_sum, "\n",
     "vllm:inter_token_latency_seconds_count{model_name=\"glm\"} ", itl_count, "\n",
@@ -103,6 +106,7 @@ test fn declared_shared_traffic_names_the_harness_probe_and_nccl_tests() -> Bool
   string_contains(s: glm_native_declared_shared_traffic as String, pattern: "harness_probe_cli")
     && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "nccl-tests")
     && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "operator")
+    && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "70-110k")
 }
 
 test fn isolated_window_refuses_while_the_arm_is_in_service() -> Bool {
@@ -152,17 +156,12 @@ test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool 
       t == 128 &&
         match derive_rate_honest(
           ledger: closed_ok(),
-          continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
-          generation: TokenDeltaRead { tokens: t },
           scrape_millis: Present { value: 2000 },
-          arrival: tight_arrival(),
-          occupancy: OccupancySampled { samples: [OccupancySample { running: 2, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
-          max_concurrency: Present { value: 2 },
           client_output: ClientOutputTokensObserved { tokens: t },
         ) {
-          RateFromGenerationTokens { tokens: tok, scrape_millis: ms } =>
+          RateFromClientOutputTokens { tokens: tok, scrape_millis: ms } =>
             tok == 128 && ms == 2000 &&
-              match tokens_per_observation_second(r: RateFromGenerationTokens { tokens: tok, scrape_millis: ms }) {
+              match tokens_per_observation_second(r: RateFromClientOutputTokens { tokens: tok, scrape_millis: ms }) {
                 Absent => false
                 Present { value: rate } => rate == 64
               }
@@ -193,7 +192,7 @@ fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
     window: window_from_drain(drain: DrainObservedIdle, traffic_receipt: "fx" as NonEmptyStr),
     continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
     arrival: tight_arrival(),
-    occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
+    occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0, prompt_tokens: 0 }] },
     client_output: ClientOutputTokensUnread { cause: "fixture has no client token total" as NonEmptyStr },
     before_at: 100,
     after_at: 102,
@@ -207,7 +206,7 @@ fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
 test fn failed_after_tokens_makes_the_observation_rate_undenominable() -> Bool {
   match fx_obs(ledger: closed_failed_after_tokens()).rate {
     RateUndenominable { because: _ } => true
-    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateFromClientOutputTokens { tokens: _, scrape_millis: _ } => false
     RateUnreadable { because: _ } => false
   }
 }
@@ -215,33 +214,23 @@ test fn failed_after_tokens_makes_the_observation_rate_undenominable() -> Bool {
 test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool {
   match derive_rate_honest(
     ledger: LedgerClosed { offered: 4, completed: 0, failed: 4, failed_after_tokens: 0 },
-    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
-    generation: TokenDeltaRead { tokens: 128 },
     scrape_millis: Present { value: 2000 },
-    arrival: tight_arrival(),
-    occupancy: OccupancySampled { samples: [] },
-    max_concurrency: Present { value: 2 },
     client_output: ClientOutputTokensUnread { cause: "none" as NonEmptyStr },
   ) {
     RateUnreadable { because: _ } => true
-    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateFromClientOutputTokens { tokens: _, scrape_millis: _ } => false
     RateUndenominable { because: _ } => false
   }
 }
 
-test fn occupancy_above_declared_concurrency_refuses_the_rate() -> Bool {
+test fn occupancy_above_declared_concurrency_does_not_refuse_the_client_rate() -> Bool {
   match derive_rate_honest(
     ledger: closed_ok(),
-    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
-    generation: TokenDeltaRead { tokens: 128 },
     scrape_millis: Present { value: 2000 },
-    arrival: tight_arrival(),
-    occupancy: OccupancySampled { samples: [OccupancySample { running: 5, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
-    max_concurrency: Present { value: 2 },
     client_output: ClientOutputTokensObserved { tokens: 128 },
   ) {
-    RateUnreadable { because: _ } => true
-    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateFromClientOutputTokens { tokens: t, scrape_millis: _ } => t == 128
+    RateUnreadable { because: _ } => false
     RateUndenominable { because: _ } => false
   }
 }
@@ -249,50 +238,40 @@ test fn occupancy_above_declared_concurrency_refuses_the_rate() -> Bool {
 test fn unread_client_output_tokens_refuse_the_rate() -> Bool {
   match derive_rate_honest(
     ledger: closed_ok(),
-    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
-    generation: TokenDeltaRead { tokens: 128 },
     scrape_millis: Present { value: 2000 },
-    arrival: tight_arrival(),
-    occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
-    max_concurrency: Present { value: 2 },
     client_output: ClientOutputTokensUnread { cause: "bench stdout not parsed" as NonEmptyStr },
   ) {
     RateUnreadable { because: _ } => true
-    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateFromClientOutputTokens { tokens: _, scrape_millis: _ } => false
     RateUndenominable { because: _ } => false
   }
 }
 
-test fn extra_engine_tokens_beyond_the_client_ledger_refuse_the_rate() -> Bool {
+test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Bool {
   match derive_rate_honest(
     ledger: closed_ok(),
-    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
-    generation: TokenDeltaRead { tokens: 200 },
     scrape_millis: Present { value: 2000 },
-    arrival: tight_arrival(),
-    occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
-    max_concurrency: Present { value: 2 },
     client_output: ClientOutputTokensObserved { tokens: 128 },
   ) {
-    RateUnreadable { because: _ } => true
-    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateFromClientOutputTokens { tokens: t, scrape_millis: _ } =>
+      t == 128 &&
+        match foreign_work_bound(generation: TokenDeltaRead { tokens: 200 }, client_output: ClientOutputTokensObserved { tokens: 128 }) {
+          ForeignWorkBounded { engine_generation: g, client_output: c, surplus: s } => g == 200 && c == 128 && s == 72
+          ForeignWorkUnread { because: _ } => false
+        }
+    RateUnreadable { because: _ } => false
     RateUndenominable { because: _ } => false
   }
 }
 
-test fn unsampled_occupancy_refuses_the_rate() -> Bool {
+test fn unsampled_occupancy_does_not_refuse_the_client_rate() -> Bool {
   match derive_rate_honest(
     ledger: closed_ok(),
-    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
-    generation: TokenDeltaRead { tokens: 128 },
     scrape_millis: Present { value: 2000 },
-    arrival: tight_arrival(),
-    occupancy: OccupancyUnsampled { cause: "blocking bench; no mid-run scrape" as NonEmptyStr },
-    max_concurrency: Present { value: 2 },
     client_output: ClientOutputTokensObserved { tokens: 128 },
   ) {
-    RateUnreadable { because: _ } => true
-    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateFromClientOutputTokens { tokens: t, scrape_millis: _ } => t == 128
+    RateUnreadable { because: _ } => false
     RateUndenominable { because: _ } => false
   }
 }
@@ -310,7 +289,11 @@ test fn a_long_context_protocol_does_not_mint_an_admission_ceiling() -> Bool {
 
 test fn one_run_does_not_decide_saturation() -> Bool {
   let obs = fx_obs(ledger: closed_ok())
-  !saturation_from_one_run(obs: obs) && !observation_rate_is_stored_separately(obs: obs)
+  !saturation_from_one_run(obs: obs)
+    && !observation_rate_is_stored_separately(obs: obs)
+    && match obs.capacity_claim {
+      CapacityClaimUnavailable { because: _ } => true
+    }
 }
 
 test fn the_holistic_protocol_does_not_corroborate_the_single_stream_bound() -> Bool {

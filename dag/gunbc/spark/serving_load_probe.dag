@@ -3,7 +3,7 @@ module gunbc.spark.serving_load_probe
 import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
-import v2.std.algebra { length, filter }
+import v2.std.algebra { length, filter, list_map }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import product.capacity.lease { LeaseGrant }
@@ -12,7 +12,7 @@ import extdeps.prometheus.client {
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
 import extdeps.vllm.metrics {
-  VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal,
+  VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal, PromptTokensTotal,
   HistogramStatistic, HistogramSum, HistogramCount,
   vllm_metric_exports_histogram_statistics,
 }
@@ -51,9 +51,10 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 // emits tokens and then fails cannot be denominated in tokens. A quiet endpoint read is not an
 // isolation receipt.
 //
-// THE RATE IS DERIVED AND NEVER STORED, the same law gunbc.harness.harness_throughput states for
-// its own stream: counts and an engine interval are carried; tokens-per-second is a function of
-// them.
+// THE RATE IS DERIVED FROM THE CLIENT LEDGER, never from generation_tokens_total. That engine
+// counter includes foreign decode on this arm. Surplus (engine minus client, floored at zero)
+// bounds shared work. A latency distribution beside declared contention is still a distribution;
+// an aggregate capacity claim is not available from a shared window.
 
 type DrainReceipt
   = DrainObservedIdle
@@ -337,6 +338,7 @@ type OccupancySample {
   waiting: Nat
   capacity_waiting: Nat
   preemptions: Nat
+  prompt_tokens: Nat
 }
 
 type OccupancyTrace
@@ -352,26 +354,31 @@ fn occupancy_from_body(body: String) -> OccupancySample? {
         Present { value: pr } =>
           match capacity_waiting_count(p: p) {
             Absent => none
-            Present { value: c } => Present { value: OccupancySample { running: r, waiting: w, capacity_waiting: c, preemptions: pr } }
+            Present { value: c } =>
+              match metric_count(body: body, metric: PromptTokensTotal) {
+                Absent => none
+                Present { value: pt } =>
+                  Present { value: OccupancySample { running: r, waiting: w, capacity_waiting: c, preemptions: pr, prompt_tokens: pt } }
+              }
           }
       }
   }
 }
 
-// Unsampled occupancy cannot exclude a harness_probe_cli arrival mid-window, so it does not
-// admit a comparable rate. running above declared max-concurrency is the same refuse.
-fn occupancy_admits_declared_load(trace: OccupancyTrace, max_concurrency: Nat?) -> Bool {
-  match trace {
-    OccupancyUnsampled { cause: _ } => false
-    OccupancySampled { samples: ss } =>
-      if length(ss) == 0 {
-        false
-      } else {
-        match max_concurrency {
-          Absent => true
-          Present { value: cap } =>
-            length(filter(ss, s => s.running > cap)) == 0
-        }
+fn metric_count(body: String, metric: VllmServingMetric) -> Nat? {
+  match harness_gauge_value(body: body, metric: metric) {
+    Absent => none
+    Present { value: t } => harness_gauge_count(text: t)
+  }
+}
+
+fn occupancy_trace_from_endpoint_scrapes(before_body: String, after_body: String) -> OccupancyTrace {
+  match occupancy_from_body(body: before_body) {
+    Absent => OccupancyUnsampled { cause: "a bound scrape could not yield running/waiting/prompt_tokens" as NonEmptyStr }
+    Present { value: a } =>
+      match occupancy_from_body(body: after_body) {
+        Absent => OccupancySampled { samples: [a] }
+        Present { value: b } => OccupancySampled { samples: [a, b] }
       }
   }
 }
@@ -409,7 +416,7 @@ fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, cli
                 if nat_abs_diff(a: c, b: g) <= generation_client_token_agreement_bound {
                   LedgerAndCounterAgree { generation_tokens: g, completed_requests: n }
                 } else {
-                  LedgerCounterDisagree { because: "client completed-token count and generation_tokens_total delta disagree beyond the declared bound; foreign load (including harness_probe_cli) is the remaining explanation and the rate is not reported" as NonEmptyStr }
+                  LedgerCounterDisagree { because: "generation_tokens_total includes foreign decode beside this client ledger; surplus bounds shared work and is not a refuse of the client rate" as NonEmptyStr }
                 }
             }
           }
@@ -417,8 +424,39 @@ fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, cli
   }
 }
 
+type ForeignWorkBound
+  = ForeignWorkUnread { because: NonEmptyStr }
+  | ForeignWorkBounded { engine_generation: Nat, client_output: Nat, surplus: Nat }
+
+fn foreign_work_bound(generation: TokenDelta, client_output: ClientOutputTokens) -> ForeignWorkBound {
+  match generation {
+    TokenDeltaUnread { cause: c } => ForeignWorkUnread { because: c }
+    TokenDeltaReset { cause: c } => ForeignWorkUnread { because: c }
+    TokenDeltaRead { tokens: g } =>
+      match client_output {
+        ClientOutputTokensUnread { cause: c } => ForeignWorkUnread { because: c }
+        ClientOutputTokensObserved { tokens: c } =>
+          ForeignWorkBounded { engine_generation: g, client_output: c, surplus: if g >= c { g - c } else { 0 } }
+      }
+  }
+}
+
+type CapacityClaim
+  = CapacityClaimUnavailable { because: NonEmptyStr }
+
+fn capacity_claim_for_window(window: ProbeWindowStanding) -> CapacityClaim {
+  match window {
+    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } =>
+      CapacityClaimUnavailable { because: "one run does not decide saturation even under isolation" as NonEmptyStr }
+    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } =>
+      CapacityClaimUnavailable { because: "this arm has no exclusive window; a latency distribution beside foreign load is real, an aggregate capacity claim is not" as NonEmptyStr }
+    WindowIsolationUnread { cause: _, drain: _ } =>
+      CapacityClaimUnavailable { because: "window isolation is unread, so no capacity claim is available" as NonEmptyStr }
+  }
+}
+
 type DerivedRate
-  = RateFromGenerationTokens { tokens: Nat, scrape_millis: Nat }
+  = RateFromClientOutputTokens { tokens: Nat, scrape_millis: Nat }
   | RateUndenominable { because: NonEmptyStr }
   | RateUnreadable { because: NonEmptyStr }
 
@@ -426,50 +464,25 @@ fn tokens_per_observation_second(r: DerivedRate) -> Nat? {
   match r {
     RateUndenominable { because: _ } => none
     RateUnreadable { because: _ } => none
-    RateFromGenerationTokens { tokens: t, scrape_millis: ms } =>
+    RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
       if ms == 0 { none } else { Present { value: (t * 1000) / ms } }
   }
 }
 
 fn derive_rate_honest(
   ledger: OperationLedger,
-  continuity: CounterContinuity,
-  generation: TokenDelta,
   scrape_millis: Nat?,
-  arrival: ArrivalSkew,
-  occupancy: OccupancyTrace,
-  max_concurrency: Nat?,
   client_output: ClientOutputTokens,
 ) -> DerivedRate {
   if !ledger_admits_token_denomination(l: ledger) {
     RateUndenominable { because: "the operation ledger does not admit token denomination" as NonEmptyStr }
   } else {
-    match ledger_counter_agreement(ledger: ledger, generation: generation, client_output: client_output) {
-      LedgerCounterDisagree { because: c } => RateUnreadable { because: c }
-      AgreementUnread { because: c } => RateUnreadable { because: c }
-      LedgerAndCounterAgree { generation_tokens: _, completed_requests: _ } =>
-        if !occupancy_admits_declared_load(trace: occupancy, max_concurrency: max_concurrency) {
-          RateUnreadable { because: "a mid-run occupancy sample exceeded declared max-concurrency, so foreign load or oversubscription is visible and the rate is not reported" as NonEmptyStr }
-        } else {
-          match continuity {
-            ContinuityUnread { cause: c } => RateUnreadable { because: c }
-            ExporterChanged { before: _, after: _ } =>
-              RateUnreadable { because: "generation_tokens_total resets on restart; the exporter changed across the window" as NonEmptyStr }
-            SameExporter { start_field: _ } =>
-              if !arrival_admits_rate_comparison(s: arrival) {
-                RateUnreadable { because: "arrival skew is unread or exceeds the comparison bound, so a rate comparison is refused" as NonEmptyStr }
-              } else {
-                match scrape_millis {
-                  Absent => RateUnreadable { because: "the metric-scrape interval is not a positive span" as NonEmptyStr }
-                  Present { value: ms } =>
-                    match generation {
-                      TokenDeltaUnread { cause: c } => RateUnreadable { because: c }
-                      TokenDeltaReset { cause: c } => RateUnreadable { because: c }
-                      TokenDeltaRead { tokens: t } => RateFromGenerationTokens { tokens: t, scrape_millis: ms }
-                    }
-                }
-              }
-          }
+    match client_output {
+      ClientOutputTokensUnread { cause: c } => RateUnreadable { because: c }
+      ClientOutputTokensObserved { tokens: c } =>
+        match scrape_millis {
+          Absent => RateUnreadable { because: "the client interval is not a positive span" as NonEmptyStr }
+          Present { value: ms } => RateFromClientOutputTokens { tokens: c, scrape_millis: ms }
         }
     }
   }
@@ -523,6 +536,8 @@ type ServingLoadObservation {
   corroboration: DecodeCorroboration
   provenance: ProbeProvenance
   client_latency: ClientBenchLatency
+  foreign_work: ForeignWorkBound
+  capacity_claim: CapacityClaim
   rate: DerivedRate
   raw_before: NonEmptyStr
   raw_after: NonEmptyStr
@@ -565,14 +580,11 @@ fn serving_load_observation(
     corroboration: decode_corroboration_for_protocol(req: protocol),
     provenance: glm_native_live_probe_provenance,
     client_latency: client_latency,
+    foreign_work: foreign_work_bound(generation: generation, client_output: client_output),
+    capacity_claim: capacity_claim_for_window(window: window),
     rate: derive_rate_honest(
       ledger: ledger,
-      continuity: continuity,
-      generation: generation,
       scrape_millis: scrape_interval_millis(before_at: before_at, after_at: after_at),
-      arrival: arrival,
-      occupancy: occupancy,
-      max_concurrency: protocol.max_concurrency,
       client_output: client_output,
     ),
     raw_before: before_body as NonEmptyStr,
@@ -581,6 +593,10 @@ fn serving_load_observation(
 }
 
 fn observation_rate_is_stored_separately(_: ServingLoadObservation) -> Bool {
+  false
+}
+
+fn saturation_from_one_run(_: ServingLoadObservation) -> Bool {
   false
 }
 
@@ -601,9 +617,25 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "corroboration: ", corroboration_text(c: o.corroboration), "\n",
     "provenance: ", provenance_text(p: o.provenance), "\n",
     "client latency: ", client_latency_text(c: o.client_latency), "\n",
+    "foreign work: ", foreign_work_text(f: o.foreign_work), "\n",
+    "capacity claim: ", capacity_claim_text(c: o.capacity_claim), "\n",
     "rate: ", rate_text(r: o.rate), "\n",
     "saturation decided from this run: ", if saturation_from_one_run(obs: o) { "yes" } else { "no" }, "\n",
   ], "")
+}
+
+fn foreign_work_text(f: ForeignWorkBound) -> String {
+  match f {
+    ForeignWorkUnread { because: c } => join(["unread ", c as String], "")
+    ForeignWorkBounded { engine_generation: g, client_output: c, surplus: s } =>
+      join(["engine=", to_string(g), " client=", to_string(c), " surplus=", to_string(s)], "")
+  }
+}
+
+fn capacity_claim_text(c: CapacityClaim) -> String {
+  match c {
+    CapacityClaimUnavailable { because: b } => join(["unavailable ", b as String], "")
+  }
 }
 
 fn client_latency_text(c: ClientBenchLatency) -> String {
@@ -635,10 +667,20 @@ fn corroboration_text(c: DecodeCorroboration) -> String {
   }
 }
 
+fn occupancy_sample_text(s: OccupancySample) -> String {
+  join([
+    "running=", to_string(s.running),
+    " waiting=", to_string(s.waiting),
+    " prompt_tokens=", to_string(s.prompt_tokens),
+    " preemptions=", to_string(s.preemptions),
+  ], "")
+}
+
 fn occupancy_text(t: OccupancyTrace) -> String {
   match t {
     OccupancyUnsampled { cause: c } => join(["unsampled ", c as String], "")
-    OccupancySampled { samples: ss } => join(["samples=", to_string(length(ss))], "")
+    OccupancySampled { samples: ss } =>
+      join(["samples=", to_string(length(ss)), " ", join(list_map(xs: ss, f: occupancy_sample_text), " | ")], "")
   }
 }
 
@@ -723,7 +765,7 @@ fn rate_text(r: DerivedRate) -> String {
   match r {
     RateUndenominable { because: c } => join(["undenominable ", c as String], "")
     RateUnreadable { because: c } => join(["unreadable ", c as String], "")
-    RateFromGenerationTokens { tokens: t, scrape_millis: ms } =>
+    RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
       join([
         "generation_tokens=", to_string(t),
         " scrape_millis=", to_string(ms),
@@ -769,7 +811,7 @@ data glm_native_engine_tokenizer_path: NonEmptyStr = snapshot_install_path(
 // is the validated wiring argv; it is not a comparable rate protocol (arrival skew).
 data glm_native_smoke_dataset: RandomDatasetSpec = RandomDatasetSpec {
   input_len: token_count(count: 256),
-  output_len: token_count(count: 64),
+  output_len: token_count(count: 128),
   prefix_len: token_count(count: 0),
 }
 
@@ -802,7 +844,7 @@ data glm_native_live_probe_provenance: ProbeProvenance = DriverObserverSplit {
   observer: "deep-otter-201 HTTP scrape of 192.168.1.236:30000/metrics" as NonEmptyStr,
 }
 
-data glm_native_declared_shared_traffic: NonEmptyStr = "operator interactive sessions share Group B; gunbc.harness.harness_cli harness_probe_cli may POST a turn; proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers; a drain snapshot is not exclusion and is not out-of-service" as NonEmptyStr
+data glm_native_declared_shared_traffic: NonEmptyStr = "operator interactive long-context sessions (70-110k prompt jumps) share Group B as production traffic with no exclusive window; gunbc.harness.harness_cli harness_probe_cli may POST a turn; proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers; a drain snapshot is not exclusion and is not out-of-service" as NonEmptyStr
 
 data glm_native_arm_service: ArmServiceStanding = ArmInService {
   because: "the operator serves interactive work on this arm; WindowIsolated requires an out-of-service receipt that has not been issued" as NonEmptyStr
