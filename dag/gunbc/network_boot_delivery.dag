@@ -78,6 +78,7 @@ type NetworkBootManifestVerificationClass
   | ManifestVerificationWrongMessage
   | ManifestVerificationWrongTarget
   | ManifestVerificationWrongArchitecture
+  | ManifestVerificationWrongFirmwareClass
   | ManifestVerificationExpired
   | ManifestVerificationNotYetValid
   | ManifestVerificationReplay
