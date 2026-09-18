@@ -1,0 +1,75 @@
+module test.claim.network_boot_predecessor_census_witness
+
+import std.types { Bool, List, NonEmptyStr, String, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.network_boot_predecessor_census {
+  AuthoredPlanNotEstablishment,
+  CitedUpstreamShape,
+  DurableOriginNotBootOrigin,
+  FrozenMachineLocalNotFleetAuthority,
+  HttpBootConstructorBesideNotInstead,
+  KeepMeasuredClientFactUnextended,
+  NetworkBootPredecessorDisposition,
+  SiteAdapterMayConsumeFormat,
+  dnsmasq_format_indent_unit,
+  durable_origin_bucket_name,
+  durable_origin_is_allocated,
+  grubnet_aa64_filename,
+  ipxe_docs_locator,
+  mtcollins1_measured_arch_code,
+  mtcollins1_measured_vendor_class,
+  network_boot_predecessor_census,
+  predecessor_disposition_of,
+  r2_custom_domain_is_production_hostname_shape,
+  srv3_chain_is_authored_plan,
+  srv4_plan_is_machine_local,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn disposition_is(module_path: String, decl_name: String, expected: NetworkBootPredecessorDisposition) -> Bool {
+  match predecessor_disposition_of(module_path: module_path, decl_name: decl_name) {
+    Absent => false
+    Present { value: d } => d == expected
+  }
+}
+
+test fn census_identity_joins_the_named_predecessors() -> Bool {
+  list_length(network_boot_predecessor_census()) == 10
+    && disposition_is(module_path: "gunbc.bmc_netboot_serve", decl_name: "srv4_bmc_netboot_serve_plan", expected: FrozenMachineLocalNotFleetAuthority)
+    && disposition_is(module_path: "gunbc.os_install", decl_name: "srv3_pxe_network_boot_chain", expected: AuthoredPlanNotEstablishment)
+    && disposition_is(module_path: "gunbc.machine_intake_mtcollins1_netboot_client_observation", decl_name: "mtcollins1_pxe_vendor_class", expected: KeepMeasuredClientFactUnextended)
+    && disposition_is(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_durable_origin_standing", expected: DurableOriginNotBootOrigin)
+    && disposition_is(module_path: "extdeps.formats.dnsmasq", decl_name: "dnsmasq_protocol", expected: SiteAdapterMayConsumeFormat)
+    && disposition_is(module_path: "extdeps.firmware.uefi_http_boot", decl_name: "extdeps_external_authority_anchor", expected: HttpBootConstructorBesideNotInstead)
+    && disposition_is(module_path: "extdeps.firmware.ipxe", decl_name: "extdeps_external_authority_anchor", expected: CitedUpstreamShape)
+    && disposition_is(module_path: "extdeps.cloudflare.r2", decl_name: "r2_custom_domain_reading", expected: DurableOriginNotBootOrigin)
+    && disposition_is(module_path: "gunbc.spark.dgx_pxe_boot", decl_name: "SparkUefiPxeConfiguration", expected: FrozenMachineLocalNotFleetAuthority)
+    && disposition_is(module_path: "extdeps.provisioning.network_boot", decl_name: "network_uefi_bootloader_artifact", expected: AuthoredPlanNotEstablishment)
+}
+
+test fn unknown_predecessor_has_no_disposition() -> Bool {
+  match predecessor_disposition_of(module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn inhabitance_reads_the_real_predecessor_values() -> Bool {
+  srv4_plan_is_machine_local() == "192.168.1.195"
+    && string_contains(s: srv3_chain_is_authored_plan() as String, pattern: "install.srv3.lan")
+    && string_contains(s: mtcollins1_measured_vendor_class() as String, pattern: "PXEClient:Arch:00011")
+    && mtcollins1_measured_arch_code() == 11
+    && durable_origin_is_allocated()
+    && match durable_origin_bucket_name() {
+      Present { value: name } => name == "gunbai-fabric-origin"
+      Absent => false
+    }
+    && string_contains(s: r2_custom_domain_is_production_hostname_shape() as String, pattern: "r2.dev")
+    && dnsmasq_format_indent_unit() == ""
+    && match grubnet_aa64_filename() {
+      Present { value: name } => name == "grubnetaa64.efi"
+      Absent => false
+    }
+    && string_contains(s: ipxe_docs_locator() as String, pattern: "ipxe.org/docs")
+}

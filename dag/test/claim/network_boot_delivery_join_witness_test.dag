@@ -1,0 +1,419 @@
+module test.claim.network_boot_delivery_join_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types { Aarch64, X86_64, Wasm32 }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import product.placement_supply { SiteIdentity }
+import gunbc.machine_intake_subject {
+  AssemblyManifest,
+  ComponentIdentity,
+  DimmComponent,
+  FirmwareEntry,
+  FirmwareManifest,
+  IntakeAttemptId,
+  MachineIntakeSubject,
+  UnitKey,
+  qualification_subject_of,
+}
+import gunbc.machine_intake_access { BootDeliveryTarget }
+import gunbc.network_boot_delivery {
+  ArchitectureChainloader,
+  BootControlObserved,
+  BootstrapTrustUnestablished,
+  ClientBootModeObserved,
+  ClientBootModeUnobserved,
+  ControlledNetworkBootstrap,
+  DhcpFilenameHint,
+  FleetBootServiceEstablished,
+  FleetBootServiceReceipt,
+  FleetBootServiceStanding,
+  FleetBootServiceUnestablished,
+  GlobalHttpsEndpointReachable,
+  GlobalHttpsEndpointUnreachable,
+  NetworkBootBootArtifacts,
+  NetworkBootBootControlReceipt,
+  NetworkBootBootSourceOverride,
+  NetworkBootClientBootMode,
+  NetworkBootDeliveryEstablished,
+  NetworkBootDeliveryUnestablished,
+  NetworkBootJoinInputs,
+  NetworkBootServingInfrastructure,
+  ObservedClientBootModeReceipt,
+  ObservedDhcpPxeClient,
+  ProductionTrustedBootstrap,
+  SignedBootManifestAbsent,
+  SignedBootManifestIdentified,
+  SignedBootManifestIdentity,
+  SignedBootManifestStanding,
+  SiteBootstrapDiscovery,
+  SiteDiscoveryUnobserved,
+  SiteNativeDhcp,
+  SitePxeEdge,
+  SitePxeEdgeArchitectureRefused,
+  SitePxeEdgeEstablished,
+  SitePxeEdgeStanding,
+  SitePxeEdgeUnestablished,
+  bootstrap_trust_standing,
+  first_slice_admitted_architectures,
+  join_network_boot_delivery,
+  site_pxe_edge_standing,
+  wet_acceptance_binds_mt_collins_now,
+  wet_acceptance_subject,
+  WetAcceptanceSubjectUnbound,
+  MtJadeArrivingBarebones,
+  MtCollinsAfterCdBoot,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data unit: UnitKey = "BRD-PXE-FABRIC-0A" as UnitKey
+
+data assembly: AssemblyManifest = AssemblyManifest {
+  chassis_part_number: "CH-PXE-0A",
+  components: [ComponentIdentity { kind: DimmComponent, slot: "A1", identity: "SPD-PXE-0A" }],
+}
+
+data firmware_manifest: FirmwareManifest = FirmwareManifest {
+  entries: [FirmwareEntry { component: "bmc", version: "0.0.1" }],
+  configuration_digests: [],
+}
+
+data attempt: IntakeAttemptId = "intake-pxe-fabric-0a" as IntakeAttemptId
+
+data intake_subject: MachineIntakeSubject = MachineIntakeSubject {
+  subject: qualification_subject_of(unit_key: unit, assembly: assembly, firmware: firmware_manifest),
+  attempt_id: attempt,
+}
+
+data target: BootDeliveryTarget = BootDeliveryTarget {
+  subject: intake_subject,
+  endpoint: BmcControllerEndpoint { host: "192.168.9.10" },
+}
+
+data other_target: BootDeliveryTarget = BootDeliveryTarget {
+  subject: intake_subject,
+  endpoint: BmcControllerEndpoint { host: "192.168.9.11" },
+}
+
+data artifact: ContentHash = content_hash_of_value(value: "pxe-fabric-root-fixture")
+
+data obs: DeclarationRef = DeclarationRef {
+  module_path: "test.claim.network_boot_delivery_join_witness",
+  decl_name: "obs",
+  field: WholeDeclaration,
+}
+
+fn fleet_ok() -> FleetBootServiceStanding {
+  FleetBootServiceEstablished {
+    receipt: FleetBootServiceReceipt {
+      https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
+      origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
+      signing_key_identity: "boot-manifest-key-0",
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+}
+
+fn reachable_edge(discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
+  SitePxeEdge {
+    site: "onboarding-segment" as SiteIdentity,
+    admitted_architectures: first_slice_admitted_architectures,
+    discovery: discovery,
+    bootstrap_transport: ArchitectureChainloader {
+      architecture: Aarch64,
+      filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+      chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+    },
+    global_endpoint_reachability: GlobalHttpsEndpointReachable { observation: obs, observed_at: 1788000000000 },
+  }
+}
+
+fn site_ok() -> SitePxeEdgeStanding {
+  site_pxe_edge_standing(
+    edge: reachable_edge(discovery: SiteNativeDhcp),
+    client_architecture: Aarch64,
+    observation: obs,
+    observed_at: 1788000000000,
+  )
+}
+
+fn client_ok() -> ClientBootModeObserved {
+  ClientBootModeObserved {
+    receipt: ObservedClientBootModeReceipt {
+      target: target,
+      client: ObservedDhcpPxeClient {
+        vendor_class: "PXEClient:Arch:00011:UNDI:003016",
+        arch_code: 11,
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+}
+
+fn control_ok() -> BootControlObserved {
+  BootControlObserved {
+    receipt: NetworkBootBootControlReceipt {
+      target: target,
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+}
+
+fn manifest_ok() -> SignedBootManifestStanding {
+  SignedBootManifestIdentified {
+    identity: SignedBootManifestIdentity {
+      target_unit: unit,
+      attempt_id: attempt,
+      nonce: "nonce-0a",
+      architecture: Aarch64,
+      chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+      kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+      initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+      root_digest: artifact,
+      kernel_cmdline: "console=ttyAMA0",
+      not_before: 1788000000000,
+      expiry: 1788003600000,
+      signing_key_identity: "boot-manifest-key-0",
+      callback_identity: "intake-callback-0",
+    },
+    observation: obs,
+    observed_at: 1788000000000,
+  }
+}
+
+fn complete_inputs() -> NetworkBootJoinInputs {
+  NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+}
+
+test fn four_receipts_join_to_established() -> Bool {
+  match join_network_boot_delivery(inputs: complete_inputs()) {
+    NetworkBootDeliveryEstablished { evidence: e } => e.artifact_digest == artifact
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+  }
+}
+
+test fn missing_fleet_unestablishes_serving() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: FleetBootServiceUnestablished,
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootServingInfrastructure)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+  }
+}
+
+test fn mismatched_chainloader_architecture_does_not_establish() -> Bool {
+  match site_pxe_edge_standing(
+    edge: SitePxeEdge {
+      site: "onboarding-segment" as SiteIdentity,
+      admitted_architectures: first_slice_admitted_architectures,
+      discovery: SiteNativeDhcp,
+      bootstrap_transport: ArchitectureChainloader {
+        architecture: Wasm32,
+        filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+        chainloader_digest: content_hash_of_value(value: "ipxe-wrong-arch-fixture"),
+      },
+      global_endpoint_reachability: GlobalHttpsEndpointReachable { observation: obs, observed_at: 1788000000000 },
+    },
+    client_architecture: Aarch64,
+    observation: obs,
+    observed_at: 1788000000000,
+  ) {
+    SitePxeEdgeArchitectureRefused { architecture: a } => a == Wasm32
+    SitePxeEdgeEstablished { receipt: _ } => false
+    SitePxeEdgeUnestablished => false
+  }
+}
+
+test fn unknown_architecture_does_not_establish() -> Bool {
+  match site_pxe_edge_standing(
+    edge: reachable_edge(discovery: SiteNativeDhcp),
+    client_architecture: X86_64,
+    observation: obs,
+    observed_at: 1788000000000,
+  ) {
+    SitePxeEdgeArchitectureRefused { architecture: a } => a == X86_64
+    SitePxeEdgeEstablished { receipt: _ } => false
+    SitePxeEdgeUnestablished => false
+  }
+}
+
+test fn unreachable_origin_does_not_establish_site() -> Bool {
+  match site_pxe_edge_standing(
+    edge: SitePxeEdge {
+      site: "onboarding-segment" as SiteIdentity,
+      admitted_architectures: first_slice_admitted_architectures,
+      discovery: SiteNativeDhcp,
+      bootstrap_transport: ArchitectureChainloader {
+        architecture: Aarch64,
+        filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+      },
+      global_endpoint_reachability: GlobalHttpsEndpointUnreachable,
+    },
+    client_architecture: Aarch64,
+    observation: obs,
+    observed_at: 1788000000000,
+  ) {
+    SitePxeEdgeUnestablished => true
+    SitePxeEdgeEstablished { receipt: _ } => false
+    SitePxeEdgeArchitectureRefused { architecture: _ } => false
+  }
+}
+
+test fn unobserved_discovery_does_not_establish_site() -> Bool {
+  match site_pxe_edge_standing(
+    edge: reachable_edge(discovery: SiteDiscoveryUnobserved),
+    client_architecture: Aarch64,
+    observation: obs,
+    observed_at: 1788000000000,
+  ) {
+    SitePxeEdgeUnestablished => true
+    SitePxeEdgeEstablished { receipt: _ } => false
+    SitePxeEdgeArchitectureRefused { architecture: _ } => false
+  }
+}
+
+test fn wrong_target_boot_control_unestablishes_override() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: BootControlObserved {
+      receipt: NetworkBootBootControlReceipt {
+        target: other_target,
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+    },
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootSourceOverride)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+  }
+}
+
+test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestIdentified {
+      identity: SignedBootManifestIdentity {
+        target_unit: "BRD-OTHER-UNIT" as UnitKey,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+  }
+}
+
+test fn absent_manifest_unestablishes_artifacts() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestAbsent,
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+  }
+}
+
+test fn unobserved_client_unestablishes_client_mode() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: ClientBootModeUnobserved,
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootClientBootMode)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+  }
+}
+
+test fn controlled_network_is_not_production_trust() -> Bool {
+  match bootstrap_trust_standing(firmware_https_or_secure_boot: false, isolated_onboarding_network: true) {
+    ControlledNetworkBootstrap =>
+      match bootstrap_trust_standing(firmware_https_or_secure_boot: true, isolated_onboarding_network: true) {
+        ProductionTrustedBootstrap => true
+        ControlledNetworkBootstrap => false
+        BootstrapTrustUnestablished => false
+      }
+    ProductionTrustedBootstrap => false
+    BootstrapTrustUnestablished => false
+  }
+}
+
+test fn neither_trust_input_is_unestablished() -> Bool {
+  match bootstrap_trust_standing(firmware_https_or_secure_boot: false, isolated_onboarding_network: false) {
+    BootstrapTrustUnestablished => true
+    ProductionTrustedBootstrap => false
+    ControlledNetworkBootstrap => false
+  }
+}
+
+test fn wet_acceptance_subject_is_unbound_and_not_mt_collins_now() -> Bool {
+  match wet_acceptance_subject() {
+    WetAcceptanceSubjectUnbound { proposed_first: first, fallback: fallback } =>
+      match first {
+        MtJadeArrivingBarebones =>
+          match fallback {
+            MtCollinsAfterCdBoot => wet_acceptance_binds_mt_collins_now(standing: wet_acceptance_subject()) == false
+            MtJadeArrivingBarebones => false
+          }
+        MtCollinsAfterCdBoot => false
+      }
+  }
+}

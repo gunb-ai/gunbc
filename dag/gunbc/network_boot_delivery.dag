@@ -1,12 +1,14 @@
 module gunbc.network_boot_delivery
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
-import extdeps.toolchain.types { Architecture }
-import gunbc.machine_intake_access { BootDeliveryTarget }
-import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
+import extdeps.toolchain.types { Architecture, Aarch64, architecture_is_aarch64 }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64, dhcp_processor_architecture_code }
+import product.placement_supply { SiteIdentity }
+import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
+import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
 // namespace ruling). Its four evidence axes have independent producers — client firmware mode,
@@ -65,15 +67,132 @@ data network_boot_requirements_all: List<NetworkBootRequirement> = [
   NetworkBootBootArtifacts,
 ]
 
-// DHCP filenames and presigned URLs are routing hints and availability fences.
-// They never become identity or integrity evidence.
+// THE GLOBALLY SHARED SERVICE is the HTTPS boot authority plus a disjoint boot-origin
+// bucket. It is not a fleet-wide DHCP or TFTP daemon. A receipt here is evidence for the
+// serving-infrastructure axis; it does not by itself establish NetworkBootDelivery.
+type FleetBootServiceReceipt {
+  https_boot_endpoint: Uri
+  origin_custom_domain: Uri
+  signing_key_identity: NonEmptyStr
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type FleetBootServiceStanding
+  = FleetBootServiceEstablished { receipt: FleetBootServiceReceipt }
+  | FleetBootServiceUnestablished
+
+// DHCP filenames and URLs are routing hints. They never become identity or integrity evidence.
 type BootDiscoveryHint
   = DhcpFilenameHint { filename: NonEmptyStr }
   | PresignedUrlAvailabilityFence { uri: Uri }
 
-// One canonical signed ticket identity. Issuance and verification of the MAC,
-// window, replay, and digest join live in gunbc.network_boot_manifest_broker;
-// this slice names the identity that issuer must inhabit.
+type SiteBootstrapDiscovery
+  = SiteNativeDhcp
+  | SiteProxyDhcp
+  | SiteDhcpRelay
+  | SiteDiscoveryUnobserved
+
+type SiteBootstrapTransport
+  = ArchitectureChainloader {
+      architecture: Architecture
+      filename_hint: BootDiscoveryHint
+      chainloader_digest: ContentHash
+    }
+
+type GlobalHttpsReachability
+  = GlobalHttpsEndpointReachable { observation: DeclarationRef, observed_at: EpochMs }
+  | GlobalHttpsEndpointUnreachable
+
+type SitePxeEdge {
+  site: SiteIdentity
+  admitted_architectures: List<Architecture>
+  discovery: SiteBootstrapDiscovery
+  bootstrap_transport: SiteBootstrapTransport
+  global_endpoint_reachability: GlobalHttpsReachability
+}
+
+type SitePxeEdgeReceipt {
+  edge: SitePxeEdge
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type SitePxeEdgeStanding
+  = SitePxeEdgeEstablished { receipt: SitePxeEdgeReceipt }
+  | SitePxeEdgeUnestablished
+  | SitePxeEdgeArchitectureRefused { architecture: Architecture }
+
+data first_slice_admitted_architectures: List<Architecture> = [Aarch64]
+
+fn architecture_admitted_on_edge(arch: Architecture, admitted: List<Architecture>) -> Bool {
+  admitted |> any(a => a == arch)
+}
+
+fn site_pxe_edge_standing(edge: SitePxeEdge, client_architecture: Architecture, observation: DeclarationRef, observed_at: EpochMs) -> SitePxeEdgeStanding {
+  match edge.discovery {
+    SiteDiscoveryUnobserved => SitePxeEdgeUnestablished
+    SiteNativeDhcp => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
+    SiteProxyDhcp => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
+    SiteDhcpRelay => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
+  }
+}
+
+fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Architecture, observation: DeclarationRef, observed_at: EpochMs) -> SitePxeEdgeStanding {
+  match edge.global_endpoint_reachability {
+    GlobalHttpsEndpointUnreachable => SitePxeEdgeUnestablished
+    GlobalHttpsEndpointReachable { observation: _, observed_at: _ } =>
+      match edge.bootstrap_transport {
+        ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: _ } =>
+          if architecture_admitted_on_edge(arch: client_architecture, admitted: edge.admitted_architectures) == false {
+            SitePxeEdgeArchitectureRefused { architecture: client_architecture }
+          } else {
+            if loader_arch == client_architecture {
+              SitePxeEdgeEstablished {
+                receipt: SitePxeEdgeReceipt { edge: edge, observation: observation, observed_at: observed_at },
+              }
+            } else {
+              SitePxeEdgeArchitectureRefused { architecture: loader_arch }
+            }
+          }
+      }
+  }
+}
+
+// Client firmware class as measured. UefiPxe is not authored here: that upstream variant
+// requires a TFTP root this service does not serve.
+type ObservedDhcpPxeClient {
+  vendor_class: NonEmptyStr
+  arch_code: Int
+}
+
+type ObservedClientBootModeReceipt {
+  target: BootDeliveryTarget
+  client: ObservedDhcpPxeClient
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type ObservedClientBootModeStanding
+  = ClientBootModeObserved { receipt: ObservedClientBootModeReceipt }
+  | ClientBootModeUnobserved
+
+fn observed_client_is_uefi_arm64(client: ObservedDhcpPxeClient) -> Bool {
+  client.arch_code == dhcp_processor_architecture_code(a: UefiArm64)
+}
+
+type NetworkBootBootControlReceipt {
+  target: BootDeliveryTarget
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type BootControlReceiptStanding
+  = BootControlObserved { receipt: NetworkBootBootControlReceipt }
+  | BootControlUnobserved
+
+// One canonical signed ticket. Verification of signature and digests is 0D; this slice
+// names the identity the later issuer must inhabit.
 type SignedBootManifestIdentity {
   target_unit: UnitKey
   attempt_id: IntakeAttemptId
@@ -98,7 +217,6 @@ type SignedBootManifestStanding
     }
   | SignedBootManifestAbsent
 
-// Two honest trust standings. ControlledNetworkBootstrap is not production trust.
 type BootstrapTrustStanding
   = ProductionTrustedBootstrap
   | ControlledNetworkBootstrap
@@ -113,5 +231,153 @@ fn bootstrap_trust_standing(firmware_https_or_secure_boot: Bool, isolated_onboar
     } else {
       BootstrapTrustUnestablished
     }
+  }
+}
+
+type NetworkBootJoinInputs {
+  target: BootDeliveryTarget
+  artifact_digest: ContentHash
+  fleet: FleetBootServiceStanding
+  site: SitePxeEdgeStanding
+  client: ObservedClientBootModeStanding
+  boot_control: BootControlReceiptStanding
+  manifest: SignedBootManifestStanding
+}
+
+fn axis_missing(present: Bool, axis: NetworkBootRequirement) -> List<NetworkBootRequirement> {
+  if present {
+    []
+  } else {
+    [axis]
+  }
+}
+
+fn serving_axis_present(fleet: FleetBootServiceStanding, site: SitePxeEdgeStanding) -> Bool {
+  match fleet {
+    FleetBootServiceUnestablished => false
+    FleetBootServiceEstablished { receipt: _ } =>
+      match site {
+        SitePxeEdgeEstablished { receipt: _ } => true
+        SitePxeEdgeUnestablished => false
+        SitePxeEdgeArchitectureRefused { architecture: _ } => false
+      }
+  }
+}
+
+fn client_axis_present(client: ObservedClientBootModeStanding, target: BootDeliveryTarget) -> Bool {
+  match client {
+    ClientBootModeUnobserved => false
+    ClientBootModeObserved { receipt: r } =>
+      same_boot_delivery_target(left: r.target, right: target) && observed_client_is_uefi_arm64(client: r.client)
+  }
+}
+
+fn boot_control_axis_present(boot_control: BootControlReceiptStanding, target: BootDeliveryTarget) -> Bool {
+  match boot_control {
+    BootControlUnobserved => false
+    BootControlObserved { receipt: r } => same_boot_delivery_target(left: r.target, right: target)
+  }
+}
+
+fn boot_artifacts_axis_present(manifest: SignedBootManifestStanding, digest: ContentHash, target: BootDeliveryTarget) -> Bool {
+  match manifest {
+    SignedBootManifestAbsent => false
+    SignedBootManifestIdentified { identity: id, observation: _, observed_at: _ } =>
+      architecture_is_aarch64(a: id.architecture)
+        && content_hash_equal(left: id.root_digest, right: digest)
+        && id.expiry > id.not_before
+        && (id.target_unit as NonEmptyStr) == (target.subject.subject.unit_key as NonEmptyStr)
+        && (id.attempt_id as NonEmptyStr) == (target.subject.attempt_id as NonEmptyStr)
+  }
+}
+
+fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRef, observed_at: EpochMs) -> NetworkBootRequirementEvidence {
+  NetworkBootRequirementEvidence {
+    requirement: requirement,
+    observation: observation,
+    observed_at: observed_at,
+  }
+}
+
+fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliveryStanding {
+  let serving_ok = serving_axis_present(fleet: inputs.fleet, site: inputs.site)
+  let client_ok = client_axis_present(client: inputs.client, target: inputs.target)
+  let control_ok = boot_control_axis_present(boot_control: inputs.boot_control, target: inputs.target)
+  let artifacts_ok = boot_artifacts_axis_present(manifest: inputs.manifest, digest: inputs.artifact_digest, target: inputs.target)
+  let missing = concat(
+    concat(
+      axis_missing(present: control_ok, axis: NetworkBootBootSourceOverride),
+      axis_missing(present: client_ok, axis: NetworkBootClientBootMode),
+    ),
+    concat(
+      axis_missing(present: serving_ok, axis: NetworkBootServingInfrastructure),
+      axis_missing(present: artifacts_ok, axis: NetworkBootBootArtifacts),
+    ),
+  )
+  match missing.first() {
+    Present { value: _ } => NetworkBootDeliveryUnestablished { missing: missing }
+    Absent =>
+      match inputs.fleet {
+        FleetBootServiceUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
+        FleetBootServiceEstablished { receipt: fleet } =>
+          match inputs.site {
+            SitePxeEdgeUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
+            SitePxeEdgeArchitectureRefused { architecture: _ } => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
+            SitePxeEdgeEstablished { receipt: _ } =>
+              match inputs.client {
+                ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
+                ClientBootModeObserved { receipt: client } =>
+                  match inputs.boot_control {
+                    BootControlUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
+                    BootControlObserved { receipt: control } =>
+                      match inputs.manifest {
+                        SignedBootManifestAbsent => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                        SignedBootManifestIdentified { identity: _, observation: manifest_obs, observed_at: manifest_at } =>
+                          NetworkBootDeliveryEstablished {
+                            evidence: NetworkBootDeliveryEstablishment {
+                              target: inputs.target,
+                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
+                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
+                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
+                              boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
+                              artifact_digest: inputs.artifact_digest,
+                            },
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// 0WET subject is a PARAMETER, not a UnitKey. Operator 2026-09-18: not Mt. Collins until its
+// CD boot lands; no other ARM64 unit was named, so the first candidate is Mt. Jade (arriving,
+// barebones, no drives) and Mt. Collins post-CD is the fallback. Minting a fleet key here
+// would fabricate an identity the operator did not bind.
+type WetAcceptanceCandidate
+  = MtJadeArrivingBarebones
+  | MtCollinsAfterCdBoot
+
+type WetAcceptanceSubjectStanding
+  = WetAcceptanceSubjectUnbound {
+      proposed_first: WetAcceptanceCandidate
+      fallback: WetAcceptanceCandidate
+    }
+
+fn wet_acceptance_subject() -> WetAcceptanceSubjectStanding {
+  WetAcceptanceSubjectUnbound {
+    proposed_first: MtJadeArrivingBarebones,
+    fallback: MtCollinsAfterCdBoot,
+  }
+}
+
+fn wet_acceptance_binds_mt_collins_now(standing: WetAcceptanceSubjectStanding) -> Bool {
+  match standing {
+    WetAcceptanceSubjectUnbound { proposed_first: first, fallback: _ } =>
+      match first {
+        MtCollinsAfterCdBoot => true
+        MtJadeArrivingBarebones => false
+      }
   }
 }
