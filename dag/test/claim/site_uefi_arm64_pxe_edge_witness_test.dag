@@ -241,7 +241,7 @@ test fn the_landed_roster_parses_to_the_measured_host_nic() -> Bool {
 }
 
 test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
-  let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), filename: chainloader_filename, known_client_macs: [known_mac])
+  let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), known_client_macs: [known_mac])
   contains(cfg, "port=0")
     && contains(cfg, "dhcp-range=192.168.1.0,proxy")
     && contains(cfg, "dhcp-match=set:efi-arm64,option:client-arch,11")
