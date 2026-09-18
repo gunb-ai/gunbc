@@ -110,7 +110,6 @@ type ResolutionContext {
   lm: LanguageModel
   roots: ValidatedModuleRoots
   symbol_index: SymbolIndex
-  canonical_symbols: PointwisePower<Symbol>
 }
 
 fn resolution_context(
@@ -127,8 +126,7 @@ fn resolution_context(
           symbol_index: symbol_index_fill_module_roots(
             index: empty_symbol_index(),
             roots: normalized_tree_roots_to_nodes(roots: validated_roots.roots)
-          ),
-          canonical_symbols: lm.canonical_symbols
+          )
         },
         diagnostics: d
       }
@@ -663,10 +661,10 @@ fn namespace_for_subject_root(
 ) -> Outcome<AdmittedSubject> {
   let validated_roots = shared.roots
   if well_formed(n: subject_module_root.root) {
-    let base = admission_namespace_base(canonical_symbols: shared.canonical_symbols)
+    let base = admission_namespace_base(canonical_symbols: shared.lm.canonical_symbols)
     let initial = namespace_admission_initial_state(
       policy: policy,
-      canonical_symbols: shared.canonical_symbols,
+      canonical_symbols: shared.lm.canonical_symbols,
       subject_module_root: subject_module_root,
       subject_qn: admission.subject.name
     )
