@@ -107,6 +107,14 @@ service gcp.IamAdmin {
     }
     response {
       200 => GcpPolicy
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
   operation GetServiceAccount {
     input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
     output { email: ServiceAccountEmail, sa_name: String from "name", outcome: RestOutcome }
