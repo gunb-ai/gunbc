@@ -2,7 +2,7 @@ module gunbc.machine_intake_oob_boot_handoff
 
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, ipmi_boot_selection_options_token }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection, ipmi_boot_device_label, ipmi_boot_selection_options_token }
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessRoute,
@@ -198,7 +198,7 @@ fn oob_boot_handoff(
     return BootHandoffNotAdmitted { admission: admission }
   }
   let bmc_host = observation.endpoint.host
-  let device = selection.device_wire
+  let device = ipmi_boot_device_label(device: selection.device)
 
   set = diagnostic.ipmi.Tool.ChassisBootDevWithOptions(
     bmc_host: bmc_host,

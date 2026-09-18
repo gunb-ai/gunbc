@@ -39,14 +39,14 @@ type IpmiBootPersistence
 // The wire and read-back spellings travel with the semantic axes because they are one CLI
 // serialization. A caller selects `IpmiBootCdrom`; it never authors `cdrom`,
 // an `options=` word, or one of the four strings used to adjudicate parameter 5.
-// The options token for `ChassisBootDevWithOptions` is derived from firmware_mode
-// and persistence (`ipmi_boot_selection_options_token`); it is not stored beside them.
+// The chassis-bootdev device word is derived from `device` (`ipmi_boot_device_label`);
+// the options token is derived from firmware_mode and persistence
+// (`ipmi_boot_selection_options_token`). Neither is stored beside the axes.
 type IpmiBootSelection sole_constructor {
   architecture: Architecture
   device: IpmiBootDevice
   firmware_mode: IpmiFirmwareBootMode
   persistence: IpmiBootPersistence
-  device_wire: NonEmptyStr
   expected_flag_rendering: NonEmptyStr
   expected_device_rendering: NonEmptyStr
   expected_mode_rendering: NonEmptyStr
@@ -60,7 +60,6 @@ fn aarch64_uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection
       device: IpmiBootPxe,
       firmware_mode: IpmiBootEfi,
       persistence: IpmiBootOnce,
-      device_wire: "pxe",
       expected_flag_rendering: "Boot Flag Valid",
       expected_device_rendering: "Force PXE",
       expected_mode_rendering: "BIOS EFI boot",
@@ -71,7 +70,6 @@ fn aarch64_uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection
       device: IpmiBootCdrom,
       firmware_mode: IpmiBootEfi,
       persistence: IpmiBootOnce,
-      device_wire: "cdrom",
       expected_flag_rendering: "Boot Flag Valid",
       expected_device_rendering: "Force Boot from CD/DVD",
       expected_mode_rendering: "BIOS EFI boot",

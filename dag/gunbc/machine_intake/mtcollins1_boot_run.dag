@@ -365,11 +365,21 @@ fn mtcollins1_host_capture_section_exit_zero(capture: String, name: String) -> B
   }
 }
 
+fn mtcollins1_host_capture_has_envelope_marker(capture: String, machine: NonEmptyStr, kind: String) -> Bool {
+  fold(
+    split(s: capture, delimiter: "\n"),
+    init: false,
+    f: (acc, line) =>
+      acc || (
+        string_contains(s: line, pattern: concat("GUNBC-HOST-CAPTURE ", concat(machine as String, " ")))
+          && string_contains(s: line, pattern: concat(" ", concat(kind, " ")))
+      ),
+  )
+}
+
 fn mtcollins1_host_capture_envelope_complete(capture: String, machine: NonEmptyStr) -> Bool {
-  string_contains(s: capture, pattern: concat("GUNBC-HOST-CAPTURE ", concat(machine as String, " ")))
-    && string_contains(s: capture, pattern: " begin ")
-    && string_contains(s: capture, pattern: concat("GUNBC-HOST-CAPTURE ", concat(machine as String, " ")))
-    && string_contains(s: capture, pattern: " end ")
+  mtcollins1_host_capture_has_envelope_marker(capture: capture, machine: machine, kind: "begin")
+    && mtcollins1_host_capture_has_envelope_marker(capture: capture, machine: machine, kind: "end")
 }
 
 fn mtcollins1_host_capture_nproc_exact(capture: String, threads: String) -> Bool {

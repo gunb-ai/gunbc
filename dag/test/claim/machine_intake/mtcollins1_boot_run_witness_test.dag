@@ -286,6 +286,10 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     ),
   )
   let begin_only = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n----SECTION nproc----\n160\n"
+  let begin_with_spurious_end = concat(
+    "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
+    "console said the process reached the end of its run\n----SECTION nproc----\n160\n",
+  )
   mtcollins1_boot_terminal_observed(capture: clean, subject: subject)
     && !mtcollins1_boot_terminal_observed(capture: "BootControlIssued cdrom", subject: subject)
     && !mtcollins1_boot_terminal_observed(capture: ghes_ce, subject: subject)
@@ -293,6 +297,7 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
     && !mtcollins1_boot_terminal_observed(capture: nproc_elsewhere, subject: subject)
     && !mtcollins1_boot_terminal_observed(capture: digest_mismatch, subject: subject)
     && !mtcollins1_boot_terminal_observed(capture: begin_only, subject: subject)
+    && !mtcollins1_boot_terminal_observed(capture: begin_with_spurious_end, subject: subject)
 }
 
 test fn boot_loopback_filing_is_srv1_only() -> Bool {
