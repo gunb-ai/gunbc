@@ -160,7 +160,13 @@ fn curl_aws_sigv4_s3_provider(region: NonEmptyStr) -> String {
 // -T names the local file to upload and the URL names the remote object EXACTLY; the trailing-slash
 // directory behaviour curl_ftps_upload_command warns about is avoided the same way, by never
 // emitting a URL that ends in "/".
+// STATUS-ONLY STDOUT. Pair with `-o` so the transfer body is not on stdout; then this format is
+// the whole stdout. ProbeServiceRoot keeps the body on stdout and must not reuse this row.
 data curl_http_code_write_out_format: String = "%\{http_code\}"
+
+// BODY THEN STATUS. curl appends a newline and the three-digit code after the body. The last
+// newline-delimited line is the status; it is not a trailing-three-character guess.
+data curl_http_code_after_newline_write_out_format: String = "\n%\{http_code\}"
 
 type CurlWriteOutHttpStatus
   = CurlWroteHttpStatus { status: HttpStatus }
@@ -175,26 +181,18 @@ fn classify_curl_write_out_stdout(stdout: String) -> CurlWriteOutHttpStatus {
         cause: "curl write-out printed a status outside HTTP's range" as NonEmptyStr,
       }
     }
-    Absent => {
-      let n = string_length(s: code)
-      if n < 3 {
-        CurlWroteNoHttpStatus {
-          cause: "curl write-out was shorter than three digits" as NonEmptyStr,
-        }
-      } else {
-        match parse_int(s: substring(s: code, start: n - 3, end: n)) {
-          Absent => CurlWroteNoHttpStatus {
-            cause: "curl write-out trailing token was not an HTTP status" as NonEmptyStr,
-          }
-          Present { value: trailing } => match http_status_of(n: trailing) {
-            Present { value: status } => CurlWroteHttpStatus { status: status }
-            Absent => CurlWroteNoHttpStatus {
-              cause: "curl write-out trailing token was outside HTTP's range" as NonEmptyStr,
-            }
-          }
-        }
-      }
+    Absent => CurlWroteNoHttpStatus {
+      cause: "curl write-out stdout was not an HTTP status" as NonEmptyStr,
     }
+  }
+}
+
+fn classify_curl_http_code_after_newline(stdout: String) -> CurlWriteOutHttpStatus {
+  match split(s: stdout, delimiter: "\n").last() {
+    Absent => CurlWroteNoHttpStatus {
+      cause: "curl wrote no newline-delimited HTTP status" as NonEmptyStr,
+    }
+    Present { value: line } => classify_curl_write_out_stdout(stdout: line)
   }
 }
 

@@ -1,6 +1,7 @@
 module extdeps.ampere.mt_jade_getting_started_guide.subject
 
 import std.types { NonEmptyStr }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking, SpecificationDocumentDate }
@@ -36,14 +37,16 @@ data mt_jade_gsg_date: SpecificationDocumentDate = SpecificationDocumentDate {
   day: 12,
 }
 
-data mt_jade_gsg_content_digest: NonEmptyStr = "sha256 f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f"
+data mt_jade_gsg_content_digest: Sha256Digest = Sha256Digest {
+  hex: "f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f" as Sha256DigestHex,
+}
 
 type MtJadeGettingStartedGuide {
   title: NonEmptyStr
   issue: NonEmptyStr
   published: SpecificationDocumentDate
   publisher: Vendor<Hardware>
-  content_digest: NonEmptyStr
+  content_digest: Sha256Digest
 }
 
 data mt_jade_getting_started_guide: MtJadeGettingStartedGuide = MtJadeGettingStartedGuide {

@@ -4,6 +4,7 @@ import std.types { Bool, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.ampere.mt_jade_getting_started_guide.subject {
+  mt_jade_gsg_content_digest,
   mt_jade_gsg_issue,
   mt_jade_gsg_title,
 }
@@ -28,6 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn w_jade_gsg_identity_is_issue_1_00() -> Bool {
   (mt_jade_gsg_issue as String) == "1.00"
     && (mt_jade_gsg_title as String) != ""
+    && (mt_jade_gsg_content_digest.hex as String) == "f6528f70dec97b8838bd67413566287fc7c465addbf07182e9bdd1d48874c69f"
 }
 
 test fn w_jade_gsg_table11_16_dimm_row_is_the_odd_hash_slots() -> Bool {

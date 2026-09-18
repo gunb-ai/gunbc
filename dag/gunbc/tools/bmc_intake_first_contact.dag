@@ -7,8 +7,8 @@ import extdeps.shell
 import extdeps.tools.curl {
   CurlWroteHttpStatus,
   CurlWroteNoHttpStatus,
-  classify_curl_write_out_stdout,
-  curl_http_code_write_out_format,
+  classify_curl_http_code_after_newline,
+  curl_http_code_after_newline_write_out_format,
 }
 import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
 import gunbc.tools.bmc_first_contact { bmc_first_contact_host }
@@ -29,7 +29,7 @@ type IntakeRedfishSurface
 fn classify_intake_probe(reached_host: Bool, blob: String) -> IntakeRedfishSurface {
   match reached_host {
     false => HostUnreachable { diagnostic: blob }
-    true => match classify_curl_write_out_stdout(stdout: blob) {
+    true => match classify_curl_http_code_after_newline(stdout: blob) {
       CurlWroteHttpStatus { status: status } => RedfishHttpSurface { status: status, blob: blob }
       CurlWroteNoHttpStatus { cause: cause } => WriteOutUnreadable { blob: blob, cause: cause }
     }
@@ -41,7 +41,7 @@ fn bmc_intake_first_contact() -> CliWireResponse
 {
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)
-  resp = redfish.Http.ProbeServiceRoot(bmc_host: bmc, write_out: curl_http_code_write_out_format)
+  resp = redfish.Http.ProbeServiceRoot(bmc_host: bmc, write_out: curl_http_code_after_newline_write_out_format)
   match classify_intake_probe(reached_host: resp.success, blob: resp.body) {
     HostUnreachable { diagnostic: d } =>
       CliWirePrintable { bytes: d, exit: exit_failure(reason: d) }
