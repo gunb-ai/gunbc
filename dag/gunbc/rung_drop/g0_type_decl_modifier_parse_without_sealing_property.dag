@@ -4,30 +4,32 @@ import std.types { List, NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// DECLARED 2026-09-18 (review 67821). G0 now consumes the two type-decl modifiers v1
-// drop_leading_type_modifier drops (`nominal_opaque`, then `sole_constructor`) so the native
-// door can pass posix_effective_principal.dag. v1 then mints the sealing property via
-// parsed_sole_constructor_properties. G0 only consumes the tokens. On main the native route
-// refused the modifier with parse_g0_tokens_remain; after the grammar row those types parse
-// and the construction / opacity wall is not recorded on the native path.
+// DECLARED 2026-09-18 (reviews 67821, 67834). G0 now consumes the two type-decl modifiers
+// v1 drop_leading_type_modifier drops so the native door can pass
+// posix_effective_principal.dag. v1 mints only sole_constructor, via
+// parsed_sole_constructor_properties. nominal_opaque is dropped and mints nothing
+// (gunbc.recurring_failure_mode absence_classifier_default_bucket). On main the
+// native route refused the modifier with parse_g0_tokens_remain; after the grammar
+// row a sole_constructor type parses and the construction wall is not recorded on
+// the native path.
 
 data g0_type_decl_modifier_parse_without_sealing_property_population: List<String> = [
-  "v2.extdeps.languages.dag dag_grammar_type_decl_modifiers_expr — G0 consumes the two v1 type-decl modifiers",
-  "native emit of type decls that carry nominal_opaque or sole_constructor — the construction and opacity properties are not minted",
+  "v2.extdeps.languages.dag dag_grammar_type_decl_modifiers_expr — G0 consumes sole_constructor after the type name",
+  "native emit of type decls that carry sole_constructor — the construction property is not minted",
 ]
 
 data g0_type_decl_modifier_parse_without_sealing_property: RungDrop = RungDrop {
   identity: "g0_type_decl_modifier_parse_without_sealing_property" as NonEmptyStr,
-  subject: "native G0 path records sole_constructor and nominal_opaque as type-item properties, the way v1 parse_type_after_kw does",
+  subject: "native G0 path records sole_constructor as a type-item property, the way v1 parsed_sole_constructor_properties does",
   declared: "2026-09-18",
   standing: Standing,
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
-      replacement: "v2 parse mints those properties from the captured modifier terminals"
+      replacement: "v2 parse mints the sole_constructor property from the captured modifier terminal"
     },
     population: g0_type_decl_modifier_parse_without_sealing_property_population,
-    restoration_trigger: "v2 parse mints sole_constructor and nominal_opaque properties from the captured modifier terminals on a type decl, sufficient for the construction and opacity walls v1 parsed_sole_constructor_properties and the nominal_opaque drop enforce. Consuming the tokens without minting those properties does not retire this row."
+    restoration_trigger: "v2 parse mints the sole_constructor property from the captured modifier terminal on a type decl, sufficient for the construction wall v1 parsed_sole_constructor_properties enforces. Consuming the token without minting that property does not retire this row. Token consumption of nominal_opaque matches v1 and is not this drop."
   }
 }
