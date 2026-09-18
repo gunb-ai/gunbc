@@ -70,7 +70,9 @@ import gunbc.review_sheet_header_init {
 //     the whole reason the specimen exists -- without it the column-0 reading of the header row is
 //     indistinguishable from the enumerating one, and it would stamp a header over anything sitting
 //     in B1 onward of an otherwise blank row 1. The data rows already had their non-first-column
-//     case; the header row did not.
+//     case; the header row did not. Both halves of that were RUN rather than reasoned: the mutation
+//     refused naming header_row_content_past_column_a_is_content, and a second run with only that
+//     claim removed passed, so the remaining claims really are blind to the column-0 reading.
 //
 // Each row above was RUN, and each run refused naming the claim that row lists first. Two notes on
 // the executed forms, because the table would otherwise read as stronger than what was measured.
