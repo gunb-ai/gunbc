@@ -992,7 +992,7 @@ test fn unestablished_trust_does_not_join() -> Bool {
 }
 
 test fn controlled_network_trust_can_establish() -> Bool {
-  let inputs =   NetworkBootJoinInputs {
+  let inputs = NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
