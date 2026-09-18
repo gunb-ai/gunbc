@@ -3,6 +3,7 @@ module gunbc.boot_artifact_delivery
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash }
+import extdeps.uri { Uri }
 import product.placement_supply { SiteIdentity }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
 import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
