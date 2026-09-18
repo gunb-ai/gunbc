@@ -134,14 +134,15 @@ fn boot_network_reachability_missing(obs: BootNetworkReachabilityObservation) ->
 }
 
 fn global_https_reachability_from_boot_network(obs: BootNetworkReachabilityObservation) -> GlobalHttpsReachability {
-  if (length(boot_network_reachability_missing(obs: obs)) == 0) {
-    match obs.global_https_fetch {
-      BootNetworkProbeSucceeded { observation: o, observed_at: t } => GlobalHttpsEndpointReachable { observation: o, observed_at: t }
-      BootNetworkProbeFailed { observation: _, observed_at: _ } => GlobalHttpsEndpointUnreachable
-      BootNetworkProbeUnobserved => GlobalHttpsEndpointUnreachable
-    }
-  } else {
-    GlobalHttpsEndpointUnreachable
+  match obs.global_https_fetch {
+    BootNetworkProbeFailed { observation: _, observed_at: _ } => GlobalHttpsEndpointUnreachable
+    BootNetworkProbeUnobserved => GlobalHttpsEndpointUnreachable
+    BootNetworkProbeSucceeded { observation: o, observed_at: t } =>
+      if probe_succeeded(probe: obs.dns_resolution) && probe_succeeded(probe: obs.default_route) {
+        GlobalHttpsEndpointReachable { observation: o, observed_at: t }
+      } else {
+        GlobalHttpsEndpointUnreachable
+      }
   }
 }
 
