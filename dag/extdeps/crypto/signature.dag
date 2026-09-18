@@ -1,6 +1,6 @@
 module extdeps.crypto.signature
 
-import std.types { NonEmptyStr, String, Int }
+import std.types { NonEmptyStr, String, Int, Secret }
 import std.encoding { base64_decode, UrlSafe }
 import std.logic { Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
@@ -167,5 +167,30 @@ fn encoding_refusal(v: SignatureVerification) -> SignatureVerification {
   match v {
     SignatureInvalid { suite: s } => SignatureEncodingRefused { suite: s }
     _ => v
+  }
+}
+
+// ── Signing ──────────────────────────────────────────────────────────────────────────────────
+// THE KEY HOLDER'S OPERATION, and the only one this module adds for it. The private key travels as a
+// PKCS #8 PEM Secret (an APNs .p8 is exactly that) and never enters an argv
+// (gunbc.credential_argv_exposure), which is why this is a host primitive and not a shell transport.
+// The signature comes back in the one spelling verification admits -- 64-octet r || s, unpadded
+// base64url -- as SignatureBytes, so whatever carries it (a JWS, a record) needs no re-encoding.
+type SignatureSigning
+  = SignatureSigned { signature: SignatureBytes }
+  | SigningKeyUnreadable { suite: SignatureSuite }
+
+// `p256_ecdsa_sign_b64url` is RustCrypto's p256 SigningKey over SHA-256 with RFC 6979 deterministic
+// nonces: no RNG, one message has one signature. Absent means the key is not a P-256 PKCS #8 PEM.
+// The suite match is total so a second SignatureSuite arm cannot reach this implementation without
+// an authored arm.
+fn p256_ecdsa_sign(suite: SignatureSuite, key_pem: Secret, message: NonEmptyStr) -> SignatureSigning {
+  match suite {
+    EcdsaP256Sha256 =>
+      match p256_ecdsa_sign_b64url(key_pem as String, message as String) {
+        Absent => SigningKeyUnreadable { suite: suite }
+        Present { value: b64url } =>
+          SignatureSigned { signature: SignatureBytes { suite: suite, encoding: P1363FixedWidth, b64url: b64url as NonEmptyStr } }
+      }
   }
 }

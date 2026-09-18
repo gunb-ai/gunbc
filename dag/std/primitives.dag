@@ -64,13 +64,13 @@ data p256_ecdsa_verify_b64url_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-// ES256 JWT issuance for the APNs provider token (extdeps.apple.apns apns_provider_token): work
-// linear in the key id and team id it encodes, output linear in them plus the fixed 86-character
-// signature segment.
-data es256_jwt_sign_contract: PrimitiveContract = {
-  name: "es256_jwt_sign",
+// ECDSA P-256 / SHA-256 signing, the key holder's twin of p256_ecdsa_verify_b64url_contract: work
+// linear in the message, output the 86-character base64url of the 64-octet r || s. Bound by
+// extdeps.crypto.signature p256_ecdsa_sign.
+data p256_ecdsa_sign_b64url_contract: PrimitiveContract = {
+  name: "p256_ecdsa_sign_b64url",
   work: "n",
-  output_size: "n",
+  output_size: "86",
   certainty: Proven,
   carrier_cost: CarrierInsensitive
 }
@@ -582,7 +582,7 @@ fn builtin_registry_surface_names() -> List<String> {
     "hmac_sha256_verify_hex",
     "hmac_sha256_hex",
     "p256_ecdsa_verify_b64url",
-    "es256_jwt_sign",
+    "p256_ecdsa_sign_b64url",
     "count",
     "string_length",
     "code_point",
@@ -723,7 +723,7 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     hmac_sha256_verify_hex_contract,
     hmac_sha256_hex_contract,
     p256_ecdsa_verify_b64url_contract,
-    es256_jwt_sign_contract,
+    p256_ecdsa_sign_b64url_contract,
     substring_contract,
     string_contains_contract,
     starts_with_contract,
