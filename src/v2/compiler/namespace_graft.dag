@@ -498,6 +498,51 @@ fn namespace_graft_named_edges_from_units(units: List<Node>) -> List<Edge> {
   })
 }
 
+fn namespace_graft_record_edge_from_sequence(node: Node) -> Edge? {
+  match sugar_sequence_pair_optional(node: node) {
+    Absent => optional_absent()
+    Present { value: pair } =>
+      match namespace_graft_ident_from_node(node: pair.left) {
+        Absent => optional_absent()
+        Present { value: type_name } =>
+          match namespace_graft_find_emitted(
+            node: pair.right,
+            emitted: ^dag_surface_field_decl_block
+          ) {
+            Absent => optional_absent()
+            Present { value: block } =>
+              if namespace_graft_is_machinery_symbol(sym: type_name) {
+                optional_absent()
+              } else {
+                optional_present(
+                  value: Edge {
+                    label: Named { name: type_name },
+                    target: node_synthetic(
+                      kind: TypeNode { connective: Conj },
+                      children: namespace_graft_collect_field_edges(node: block)
+                    )
+                  }
+                )
+              }
+          }
+      }
+  }
+}
+
+fn namespace_graft_decl_edges_from_node(node: Node) -> List<Edge> {
+  match namespace_graft_named_edge_from_unit(unit: node) {
+    Present { value: edge } => [edge]
+    Absent =>
+      match namespace_graft_record_edge_from_sequence(node: node) {
+        Present { value: edge } => [edge]
+        Absent =>
+          fold(node.children, init: [], f: fn(acc, e) {
+            concat(acc, namespace_graft_decl_edges_from_node(node: e.target))
+          })
+      }
+  }
+}
+
 // Flattening to Named declaration edges is what symbol_index_fill consumes. A fn_decl
 // arrives already rehomed by body_lower_fn_decl_to_arrow; type_decl and data_decl did
 // not, so flatten was empty for a type-only module (reconstruct kept raw shells —
@@ -532,7 +577,7 @@ fn namespace_graft_flattened_member_edges(edges: List<Edge>) -> List<Edge> {
 fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   let units = namespace_graft_collect_unit_nodes(node: working)
-  let from_decls = namespace_graft_named_edges_from_units(units: units)
+  let from_decls = namespace_graft_decl_edges_from_node(node: working)
   let flattened = namespace_graft_flattened_member_edges(
     edges: namespace_graft_collect_body_edges_from_node(node: working)
   )
