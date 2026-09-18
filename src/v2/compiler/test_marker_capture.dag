@@ -33,7 +33,8 @@ import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissi
 // channel exists to close.
 //
 // CONSUMER: v2.compiler.normalize runs it over the same parse tree it lowers and seals the result
-// beside the root in NormalizedTree, where name resolution reads it.
+// beside the root in NormalizedTree, where name resolution (v2.compiler.resolve resolve_atom_bound)
+// reads it and refuses references to what it marks.
 fn test_marker_capture(tree: Node) -> Outcome<TestMarkerChannel> {
   let no_rows: List<TestMarkedDeclaration> = []
   match test_marker_capture_walk(n: tree, acc: outcome_accepted(value: no_rows)) {

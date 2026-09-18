@@ -143,6 +143,11 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
   })
 }
 
+// DISSOLVE-ON MET, DELETION PENDING: the contextual `test` production (dag_production_test_fn_decl)
+// parses the marker, and v2.compiler.test_marker_capture carries it on its own channel, so the
+// condition below holds once gunbc#11573 is on main. Deleting this capture is its own change after
+// that. The paragraph below is the scaffold's original reasoning, kept as its record.
+//
 // STAGED SCAFFOLD (escalation msg_628838a5; dissolve-on: GrammarExpr contextual-keyword terminal
 // lands and dag fn_decl/data_decl productions carry the test marker structurally): the v2 dag
 // grammar cannot yet parse the authored test marker ('test' is a module-path segment, so it cannot
@@ -367,9 +372,10 @@ fn attempt_assembled(
 
 // Sweep seam (CI2-0 Commit B): ONE assembly per entry closure, then one attempt_joined per required
 // test-fn identity — the exactly-once accounting grain the mandate names. The ingest is
-// marker-captured at this seam only (test_marker_capture_note: the grammar cannot yet parse the
-// authored test marker, so the capture scaffold rewrites line-leading markers and the count stays
-// observable); an assembly refusal is replicated to EVERY identity in the entry with the
+// marker-captured at this seam only (a scaffold whose original reason -- the grammar could not parse
+// the authored test marker -- NO LONGER HOLDS: dag_production_test_fn_decl parses it and
+// v2.compiler.test_marker_capture captures it. Retirement trigger: gunbc#11573 merging; the deletion
+// is its own change after that); an assembly refusal is replicated to EVERY identity in the entry with the
 // reason-classified phase, because each identity is accountable and none of them reached its join.
 
 fn capture_markers_ingest(ingest: SourceRootIngest) -> SourceRootIngest {
