@@ -16,11 +16,20 @@ prior CI rate inapplicable** — and it answers it by naming carriers that exist
 
 **No fold anywhere derives an aggregate CI rate** — completed homogeneous work per unit time, bound to
 an admitted subject, a declared protocol and an observed realization. Durations DO exist and are
-derived (`gunbc.superseded_run_starvation_census` `timestamp_diff_seconds`); a rate does not. 76
-modules under `dag/gunbc/runner/` model slot
-identity, width admission, microVM sizing, placement, connectivity repair, and receipts for nearly
-every step of an attempt's life. Searching them for a throughput quantity returns two hits, and
-neither is one: `runner_unit_file` `InvocationLocalCargo { jobs_per_slot }` is a **cargo invocation
+derived (`gunbc.superseded_run_starvation_census` `timestamp_diff_seconds`); a rate does not.
+
+The runner modules under `dag/gunbc/runner/` model slot identity, width admission, microVM sizing,
+placement, connectivity repair, and receipts for nearly every step of an attempt's life. The query
+behind the claims below is named rather than its output copied (§6): a case-insensitive search of
+those modules for a rate or duration vocabulary — `throughput`, `per_hour`, `jobs_per`, `duration`,
+`elapsed`, `wall_clock` — re-derives what this census read, and a reader who runs it today sees
+whatever is true today rather than what was true when this was written. **Naming the producer instead
+of its count is not a formality here**: an earlier revision of this census copied a hit count out of a
+narrower search and used it as the evidence for a claim this document has since retracted (see the
+corrections below), so the copied number outlived the search that produced it by exactly the margin
+that makes transcription dangerous.
+
+What that search surfaces in the runner modules is not a rate: `runner_unit_file` `InvocationLocalCargo { jobs_per_slot }` is a **cargo invocation
 parameter** — how many compile jobs one slot may spawn — and `runner_slot_allocation` carries a prose
 aside about oversubscription degrading throughput. Both are inputs to a configuration; neither is an
 observation of delivered work per unit time.
