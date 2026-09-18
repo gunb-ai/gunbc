@@ -3,6 +3,7 @@ module gunbc.machine_intake_mtcollins1_connectx4lx_observation
 import std.types { Bool, NonEmptyStr, String }
 import std.measure { bandwidth_count }
 import extdeps.ethernet.link_mode { LinkMode, ieee_25gbase_cr, lane_rate_25g }
+import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.linux.mlx5_core { mlx5_core_module_name }
 import extdeps.mikrotik.crs812 { crs812_lane_speed_for_link_mode, Crs812LaneSpeedForMode, NoLaneSpeedForMode }
 import extdeps.network.mcx4121a_acat { Mcx4121aAcat, mcx4121a_acat }
@@ -27,6 +28,10 @@ type Connectx4LxHostObservation
       driver_read_obligation: NonEmptyStr
       discharges_at: NonEmptyStr
     }
+  | Connectx4LxHostObserved {
+      pcie_identity: NonEmptyStr
+      bound_module: LinuxKernelModuleName
+    }
 
 data connectx4lx_host_observation: Connectx4LxHostObservation = Connectx4LxHostUnobserved {
   seated_report: "operator 2026-09-17: OEM Mellanox ConnectX-4 LX MCX4121A-ACAT PCIe x8 3.0 25GbE SFP28 seated in Mt. Collins unit 1; far end unconnected; host mid first-boot so lspci and ethtool are not yet observable",
@@ -38,6 +43,7 @@ data connectx4lx_host_observation: Connectx4LxHostObservation = Connectx4LxHostU
 // A transceiver is seated. Identity is unread. fs_145681 is a 400G QSFP-DD breakout and is not this part.
 type SeatedTransceiverObservation
   = SeatedTransceiverUnobserved { read_obligation: NonEmptyStr }
+  | SeatedTransceiverObserved { identity: NonEmptyStr }
 
 data seated_transceiver_observation: SeatedTransceiverObservation = SeatedTransceiverUnobserved {
   read_obligation: "after the first EDAC-pass Linux boot, read the seated SFP28 cage (ethtool -m / mlx5 EEPROM) and author a receipt here; do not assume extdeps.transceiver.fs_145681",

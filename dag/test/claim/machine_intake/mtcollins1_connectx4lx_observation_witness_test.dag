@@ -7,8 +7,8 @@ import extdeps.mikrotik.crs812 { NoLaneSpeedForMode }
 import extdeps.network.mcx4121a_acat { mcx4121a_acat }
 import product.cable_order_admission { OrderRefused, OrderCodingUndeclared, LegCodingUndeclared }
 import gunbc.machine_intake_mtcollins1_connectx4lx_observation {
-  connectx4lx_host_observation, Connectx4LxHostUnobserved,
-  seated_transceiver_observation, SeatedTransceiverUnobserved,
+  connectx4lx_host_observation, Connectx4LxHostUnobserved, Connectx4LxHostObserved,
+  seated_transceiver_observation, SeatedTransceiverUnobserved, SeatedTransceiverObserved,
   mtcollins1_to_crs812_link_plan, MediaUnchosen,
   crs812_has_no_25gbase_cr_lane_speed, sfp56_group_publishes_25g,
   arrived_is_pcie_cem,
@@ -28,17 +28,17 @@ test fn the_seated_card_is_the_nvidia_opn_not_the_ibm_fru() -> Bool {
 
 test fn host_observation_stays_unobserved_until_the_boot_run() -> Bool {
   match connectx4lx_host_observation {
-    Connectx4LxHostUnobserved { seated_report: seated, pcie_read_obligation: pcie, driver_read_obligation: drv, discharges_at: boot } =>
-      seated != "" && pcie != "" && drv != "" && boot != ""
-        && string_contains(s: drv as String, pattern: mlx5_core_module_name as String)
-    _ => false
+    Connectx4LxHostUnobserved { seated_report: _, pcie_read_obligation: _, driver_read_obligation: drv, discharges_at: _ } =>
+      string_contains(s: drv as String, pattern: mlx5_core_module_name as String)
+    Connectx4LxHostObserved { pcie_identity: _, bound_module: _ } => false
   }
 }
 
 test fn seated_transceiver_identity_is_unobserved() -> Bool {
   match seated_transceiver_observation {
-    SeatedTransceiverUnobserved { read_obligation: o } => o != ""
-    _ => false
+    SeatedTransceiverUnobserved { read_obligation: o } =>
+      string_contains(s: o as String, pattern: "fs_145681")
+    SeatedTransceiverObserved { identity: _ } => false
   }
 }
 

@@ -21,7 +21,7 @@ import gunbc.machine_intake_mtcollins1_expansion_attachment {
 import gunbc.machine_intake_mtcollins1_expansion_candidates {
   candidate_verdicts, mtcollins1_candidate_verdicts, InstalledUnobserved,
 }
-import gunbc.machine_intake_mtcollins1_connectx4lx_observation { Connectx4LxHostUnobserved }
+import gunbc.machine_intake_mtcollins1_connectx4lx_observation { Connectx4LxHostUnobserved, Connectx4LxHostObserved }
 import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -73,9 +73,8 @@ test fn real_candidates_reach_typed_verdicts() -> Bool {
                 && arrived.host_link.generation == Gen3 && arrived.host_link.lane_count == 8
                 && arrived.port_count == 2 && arrived.port_connector == "SFP28" && relay != ""
                 && match host {
-                  Connectx4LxHostUnobserved { seated_report: seated, pcie_read_obligation: pcie, driver_read_obligation: drv, discharges_at: boot } =>
-                    seated != "" && pcie != "" && drv != "" && boot != ""
-                  _ => false
+                  Connectx4LxHostUnobserved { seated_report: _, pcie_read_obligation: _, driver_read_obligation: _, discharges_at: _ } => true
+                  Connectx4LxHostObserved { pcie_identity: _, bound_module: _ } => false
                 }
             _ => false
           }
