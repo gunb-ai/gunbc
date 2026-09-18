@@ -32,7 +32,7 @@ import gunbc.spark.serving_arm {
   glm_native_initial_profile,
 }
 import gunbc.spark.serving_runtime_capability_probe {
-  Fp4WeightSupportedHere, runtime_kernel_capability_label,
+  Fp4WeightSupportedHere, ModeloptQuantizationModulePresent, runtime_kernel_capability_label,
   KernelObservedPresent, KernelObservedAbsent, KernelProbeRefused, KernelProbeSymbolUngrounded,
   OutcomeFound, OutcomeUnrecorded, OutcomeConflicted,
   capability_outcome, v41_sm121_capability_probe_rows, gb10_observed_compute_capability,
@@ -74,35 +74,45 @@ type WeightFitProjection sole_constructor {
   verdict: WeightFitVerdict
 }
 
-fn ceil_div(n: Nat, d: Nat) -> Nat {
-  if d == 0 { d } else { (n + (d - 1)) / d }
+// ZERO RANKS IS A REFUSAL, NOT A SHARE OF ZERO. A degenerate rank count has no per-rank figure, and
+// answering 0 bytes per rank would admit any checkpoint on no hardware -- a fabricated fit from a
+// fold whose whole job is to refuse. So the division is partial and the projection is optional.
+fn ceil_div(n: Nat, d: Nat) -> Nat? {
+  if d == 0 { none } else { Present { value: (n + (d - 1)) / d } }
 }
 
-fn weights_per_rank_bytes(weights: ByteSize, ranks: Nat) -> ByteSize {
-  byte_size(count: ceil_div(n: byte_size_count(b: weights), d: ranks))
+fn weights_per_rank_bytes(weights: ByteSize, ranks: Nat) -> ByteSize? {
+  match ceil_div(n: byte_size_count(b: weights), d: ranks) {
+    Absent => none
+    Present { value: c } => Present { value: byte_size(count: c) }
+  }
 }
 
 fn usable_bytes(pool: ByteSize, utilization: BasisPoint) -> ByteSize {
   byte_size(count: (byte_size_count(b: pool) * basis_point_count(bp: utilization)) / basis_point_unity_count())
 }
 
-fn project_weight_fit(weights: ByteSize, ranks: Nat, pool_per_rank: ByteSize, utilization: BasisPoint) -> WeightFitProjection {
-  let per_rank = weights_per_rank_bytes(weights: weights, ranks: ranks)
-  let usable = usable_bytes(pool: pool_per_rank, utilization: utilization)
-  let per_rank_count = byte_size_count(b: per_rank)
-  let usable_count = byte_size_count(b: usable)
-  WeightFitProjection {
-    weights: weights,
-    ranks: ranks,
-    weights_per_rank: per_rank,
-    pool_per_rank: pool_per_rank,
-    utilization: utilization,
-    usable_per_rank: usable,
-    verdict: if usable_count >= per_rank_count {
-      WeightsFitWithHeadroom { kv_headroom_per_rank: byte_size(count: usable_count - per_rank_count) }
-    } else {
-      WeightsExceedUsable { shortfall_per_rank: byte_size(count: per_rank_count - usable_count) }
-    },
+fn project_weight_fit(weights: ByteSize, ranks: Nat, pool_per_rank: ByteSize, utilization: BasisPoint) -> WeightFitProjection? {
+  match weights_per_rank_bytes(weights: weights, ranks: ranks) {
+    Absent => none
+    Present { value: per_rank } => {
+      let usable = usable_bytes(pool: pool_per_rank, utilization: utilization)
+      let per_rank_count = byte_size_count(b: per_rank)
+      let usable_count = byte_size_count(b: usable)
+      Present { value: WeightFitProjection {
+        weights: weights,
+        ranks: ranks,
+        weights_per_rank: per_rank,
+        pool_per_rank: pool_per_rank,
+        utilization: utilization,
+        usable_per_rank: usable,
+        verdict: if usable_count >= per_rank_count {
+          WeightsFitWithHeadroom { kv_headroom_per_rank: byte_size(count: usable_count - per_rank_count) }
+        } else {
+          WeightsExceedUsable { shortfall_per_rank: byte_size(count: per_rank_count - usable_count) }
+        },
+      } }
+    }
   }
 }
 
@@ -114,7 +124,7 @@ fn gb10_pool_bytes() -> ByteSize {
   gibibyte_to_byte_size(g: gibibyte(count: gb10_unified_pool_gib))
 }
 
-fn project_on_gb10(manifest: GlmCheckpointManifest, topology: ServingTopology, utilization: BasisPoint) -> WeightFitProjection {
+fn project_on_gb10(manifest: GlmCheckpointManifest, topology: ServingTopology, utilization: BasisPoint) -> WeightFitProjection? {
   project_weight_fit(
     weights: manifest.safetensors_bytes,
     ranks: serving_topology_rank_count(t: topology),
@@ -209,75 +219,42 @@ fn architecture_answer(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> St
   }
 }
 
-// ── THE RUNTIME-IMAGE REPORT, TYPED AS WHAT IT IS ─────────────────────────────────────────────
+// ── THE QUANTIZATION-MODULE QUESTION IS ASKED OF THE PROBE ROSTER, BY THE ARM'S OWN PIN ──────
 //
-// THE GLM PERFORMANCE LANE PROBED THE IMAGE GROUP B SERVES, and what it established is carried
-// here at exactly its strength. Instrument (run on the head, 2026-09-18):
-//   docker run --rm --entrypoint python3 gunbc-vllm-glm53-gb10:derived-c99be081f219d123 -c "<script>"
-// printing vllm.__version__, globbing vllm/model_executor/layers/quantization/*.py for modelopt.py,
-// and testing ModelRegistry.get_supported_archs() for GlmMoeDsaForCausalLM. That establishes the
-// ARCHITECTURE IS REGISTERED and a modelopt quantization MODULE IS PRESENT in the package. It does
-// NOT establish that the NVFP4 W4A4 path has working kernels for this architecture on SM121, and no
-// checkpoint was loaded -- that stronger claim is the Fp4WeightSupportedHere probe below, and this
-// report never stands in for it.
+// The first revision of this module carried the lane's reading as a report row here, keyed first by
+// a tag and then by the content id. The exact-match join on the tag caught that the serving image
+// had no runtime row at all (gunbc.spark.serving_arm glm53_derived_row now models it), and once the
+// image had a row and a probe roster entry the report was a second home for facts the roster owns.
+// So the question is asked the same way the FP4 one is: capability_outcome over the roster, keyed by
+// the runtime row's pin, with an ungrounded or unrecorded outcome refusing by name. A rebuilt image
+// with a new content id answers OutcomeUnrecorded rather than inheriting.
 //
-// THE FIRST REVISION OF THIS ROW WAS KEYED BY THE TAG, AND THE EXACT-MATCH JOIN REFUSED IT -- WHICH
-// CAUGHT SOMETHING REAL. `docker image inspect` on the head answered Id sha256:c7d63d15... for the
-// tag, and the running containers' .Image is that id; the only modelled GLM runtime at the time
-// (GunbcGlm53NopeDerivedGb10) pinned sha256:41366caf..., a DIFFERENT repository built five days
-// earlier. The serving image had no runtime row at all. A lenient join would have attached this
-// report to the NoPE image and called the serving image covered; instead the refusal named the
-// unmodelled image, and gunbc.spark.serving_arm glm53_derived_row now models it, pinned by this id.
-//
-// THE REPORT IS KEYED BY THE CONTENT ID THAT WAS PROBED, never by the tag it was reached through.
-// THE PROBE THAT WOULD REPLACE THIS is a RuntimeCapabilityProbeRow in
-// gunbc.spark.serving_runtime_capability_probe keyed by this content id, once that image has a
-// runtime row of its own; this report dissolves into that row when one is taken.
-type RuntimeImageReport {
-  image_reference: NonEmptyStr
-  reached_through_tag: NonEmptyStr
-  vllm_version: NonEmptyStr
-  architecture_registered: NonEmptyStr
-  quant_method_module_present: NonEmptyStr
-  instrument: NonEmptyStr
-  reported_by: NonEmptyStr
-}
-
-data glm53_group_b_image_report: RuntimeImageReport = RuntimeImageReport {
-  image_reference: "sha256:c7d63d153f991b9f1bd7e6419dcd1a5109746670747be90f4ff6da74f0e8fe84" as NonEmptyStr,
-  reached_through_tag: "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr,
-  vllm_version: "0.1.dev1+g8d09804c8" as NonEmptyStr,
-  architecture_registered: "GlmMoeDsaForCausalLM" as NonEmptyStr,
-  quant_method_module_present: glm_5_3_nvfp4_quantization.quant_method,
-  instrument: "docker run --rm --entrypoint python3 <tag> -c: print vllm.__version__; glob vllm/model_executor/layers/quantization/*.py for modelopt.py and mxfp4.py; GlmMoeDsaForCausalLM in ModelRegistry.get_supported_archs()" as NonEmptyStr,
-  reported_by: "the GLM performance lane (calm-bat-65) on the Group B head, 2026-09-18: Id read by `docker image inspect --format '\{\{.Id\}\}'` on the tag, RepoDigests empty (locally built, never pushed), Created 2026-09-17T14:55:06-04:00, and the running container's .Image is the same id; vllm 0.1.dev1+g8d09804c8; modelopt.py present; the architecture membership True. The package's modelopt module being present is NOT evidence that NVFP4 W4A4 kernels run for this architecture on SM121" as NonEmptyStr,
-}
-
-fn quantization_answer(rrow: ServingRuntimeRow, report: RuntimeImageReport, required_method: NonEmptyStr) -> StaticCompatibilityAnswer {
+// MODULE PRESENCE IS THE WEAKER CLAIM AND ANSWERS ONLY ITS OWN QUESTION: whether the installed
+// package carries the ModelOpt config module a "modelopt" checkpoint dispatches to. The kernel path
+// is Fp4WeightSupportedHere below, and nothing lets this answer stand in for that one.
+fn quantization_answer(rrow: ServingRuntimeRow, device: GpuComputeCapability, required_method: NonEmptyStr) -> StaticCompatibilityAnswer {
   let pin = runtime_artifact_wire(a: rrow.artifact)
-  if (report.image_reference as String) != (pin as String) {
-    NotEstablished {
+  match capability_outcome(rows: v41_sm121_capability_probe_rows(), image_reference: pin, capability: ModeloptQuantizationModulePresent, device: device) {
+    OutcomeUnrecorded => NotEstablished {
       question: QuantizationMethodShippedByRuntime,
       missing: join([
-        "the only observation of the ", required_method as String, " module was taken inside ",
-        report.image_reference as String, " (reached through ", report.reached_through_tag as String,
-        ") and this runtime row pins ", pin as String,
-        "; they are different images, so the image that was probed has no runtime row and the runtime this projection asks about was not probed. ",
-        "A runtime row for the probed image -- artifact identity, registry reading inside that digest, hub cli path -- is what makes the projection answer for the image that is actually serving",
+        "no ", runtime_kernel_capability_label(c: ModeloptQuantizationModulePresent), " probe row exists for ", pin as String,
+        "; a glob of vllm/model_executor/layers/quantization/ inside that digest produces one",
       ], "") as NonEmptyStr,
     }
-  } else if (report.quant_method_module_present as String) != (required_method as String) {
-    NotEstablished {
+    OutcomeConflicted { distinct_answers: n } => NotEstablished {
       question: QuantizationMethodShippedByRuntime,
-      missing: join([
-        "the report answers for ", report.quant_method_module_present as String, " and the checkpoint needs ", required_method as String,
-      ], "") as NonEmptyStr,
+      missing: join(["the probe roster holds ", to_string(n), " distinct answers for ", pin as String, "; re-probe rather than choose"], "") as NonEmptyStr,
     }
-  } else {
-    Established { question: QuantizationMethodShippedByRuntime, evidence: join([
-      "the ", required_method as String, " quantization module is present in the package inside ", report.image_reference as String,
-      " (", report.instrument as String, "); this is module presence, not a kernel path -- the FP4-on-device question is asked separately",
-    ], "") as NonEmptyStr }
+    OutcomeFound { outcome: o } => match o {
+      KernelObservedPresent { symbol: sym } => Established { question: QuantizationMethodShippedByRuntime, evidence: join([
+        "the ", required_method as String, " quantization module is present inside ", pin as String, ": ", sym as String,
+        " -- module presence, not a kernel path; the FP4-on-device question is asked separately",
+      ], "") as NonEmptyStr }
+      KernelObservedAbsent { symbol: sym } => MeasuredNegative { question: QuantizationMethodShippedByRuntime, evidence: sym }
+      KernelProbeRefused { reason: r } => NotEstablished { question: QuantizationMethodShippedByRuntime, missing: r }
+      KernelProbeSymbolUngrounded { roster: _, defect: d } => NotEstablished { question: QuantizationMethodShippedByRuntime, missing: d }
+    }
   }
 }
 
@@ -312,10 +289,10 @@ fn fp4_device_answer(rrow: ServingRuntimeRow, device: GpuComputeCapability) -> S
   }
 }
 
-fn static_compatibility_answers(crow: ServingCheckpointRow, rrow: ServingRuntimeRow, report: RuntimeImageReport, required_method: NonEmptyStr) -> List<StaticCompatibilityAnswer> {
+fn static_compatibility_answers(crow: ServingCheckpointRow, rrow: ServingRuntimeRow, required_method: NonEmptyStr) -> List<StaticCompatibilityAnswer> {
   [
     architecture_answer(rrow: rrow, architecture: crow.architecture),
-    quantization_answer(rrow: rrow, report: report, required_method: required_method),
+    quantization_answer(rrow: rrow, device: gb10_observed_compute_capability, required_method: required_method),
     fp4_device_answer(rrow: rrow, device: gb10_observed_compute_capability),
   ]
 }
@@ -365,7 +342,6 @@ fn project_deployment(
   topology: ServingTopology,
   manifest: GlmCheckpointManifest,
   utilization: BasisPoint,
-  report: RuntimeImageReport,
   required_method: NonEmptyStr,
 ) -> DeploymentProjection {
   let verdict = match serving_checkpoint_row(c: checkpoint) {
@@ -373,17 +349,20 @@ fn project_deployment(
     Present { value: crow } =>
       match serving_runtime_row(r: runtime) {
         Absent => ProjectionRefused { cause: "no runtime row: the image has no modelled identity to ask about" as NonEmptyStr, fit: none, answers: [] }
-        Present { value: rrow } => {
-          let fit = project_on_gb10(manifest: manifest, topology: topology, utilization: utilization)
-          let answers = static_compatibility_answers(crow: crow, rrow: rrow, report: report, required_method: required_method)
-          match fit_refusal_text(p: fit) {
-            Present { value: t } => ProjectionRefused { cause: t as NonEmptyStr, fit: Present { value: fit }, answers: answers }
-            Absent => match unestablished_text(answers: answers) {
-              Present { value: t } => ProjectionRefused { cause: t as NonEmptyStr, fit: Present { value: fit }, answers: answers }
-              Absent => ProjectionAdmitsStatically { fit: fit, answers: answers }
+        Present { value: rrow } =>
+          match project_on_gb10(manifest: manifest, topology: topology, utilization: utilization) {
+            Absent => ProjectionRefused { cause: "the topology has no ranks, so there is no per-rank figure to project" as NonEmptyStr, fit: none, answers: [] }
+            Present { value: fit } => {
+              let answers = static_compatibility_answers(crow: crow, rrow: rrow, required_method: required_method)
+              match fit_refusal_text(p: fit) {
+                Present { value: t } => ProjectionRefused { cause: t as NonEmptyStr, fit: Present { value: fit }, answers: answers }
+                Absent => match unestablished_text(answers: answers) {
+                  Present { value: t } => ProjectionRefused { cause: t as NonEmptyStr, fit: Present { value: fit }, answers: answers }
+                  Absent => ProjectionAdmitsStatically { fit: fit, answers: answers }
+                }
+              }
             }
           }
-        }
       }
   }
   DeploymentProjection { checkpoint: checkpoint, runtime: runtime, topology: topology, verdict: verdict }
@@ -401,7 +380,6 @@ fn radixark_nvfp4_projection(topology: ServingTopology) -> DeploymentProjection 
     topology: topology,
     manifest: glm_5_3_nvfp4_manifest,
     utilization: live_arm_utilization(),
-    report: glm53_group_b_image_report,
     required_method: glm_5_3_nvfp4_quantization.quant_method,
   )
 }
@@ -416,18 +394,21 @@ fn radixark_nvfp4_tp8() -> DeploymentProjection {
 
 // THE WEIGHT FIT ALONE, for the two rows and for the arm that is serving today. These are the numbers
 // a reader compares: bytes per rank, usable bytes per rank, headroom.
-fn radixark_nvfp4_fit(topology: ServingTopology) -> WeightFitProjection {
+fn radixark_nvfp4_fit(topology: ServingTopology) -> WeightFitProjection? {
   project_on_gb10(manifest: glm_5_3_nvfp4_manifest, topology: topology, utilization: live_arm_utilization())
 }
 
-fn glm53_flash_native_live_arm_fit() -> WeightFitProjection {
+fn glm53_flash_native_live_arm_fit() -> WeightFitProjection? {
   project_on_gb10(manifest: glm_5_3_flash_native_manifest, topology: FourSparkTp4, utilization: live_arm_utilization())
 }
 
-fn kv_headroom_per_rank(p: WeightFitProjection) -> ByteSize? {
-  match p.verdict {
-    WeightsFitWithHeadroom { kv_headroom_per_rank: h } => Present { value: h }
-    WeightsExceedUsable { shortfall_per_rank: _ } => none
+fn kv_headroom_per_rank(p: WeightFitProjection?) -> ByteSize? {
+  match p {
+    Absent => none
+    Present { value: fit } => match fit.verdict {
+      WeightsFitWithHeadroom { kv_headroom_per_rank: h } => Present { value: h }
+      WeightsExceedUsable { shortfall_per_rank: _ } => none
+    }
   }
 }
 
@@ -461,6 +442,7 @@ fn projection_leaves_more_kv_than_live_arm(topology: ServingTopology) -> Bool {
 type ExpertOffloadProjection
   = OffloadRefusedUnifiedMemory { device: NonEmptyStr, expert_bytes_per_token: ByteSize, expert_visits_per_token: Nat }
   | OffloadNotProjected { device: NonEmptyStr, memory_kind: String }
+  | OffloadShapeUnprojectable { because: NonEmptyStr }
 
 fn memory_kind_label(k: MemoryKind) -> String {
   match k {
@@ -470,20 +452,20 @@ fn memory_kind_label(k: MemoryKind) -> String {
   }
 }
 
-fn expert_bytes_per_token(shape: GlmMoeDsaShape, expert_bytes: ByteSize) -> ByteSize {
-  byte_size(count: glm_5_3_routed_expert_visits_per_token(s: shape) * byte_size_count(b: expert_bytes))
-}
-
 fn project_expert_offload(shape: GlmMoeDsaShape, expert_bytes: ByteSize) -> ExpertOffloadProjection {
   let device = nvidia_gb10_gpu_catalog.model
-  match nvidia_gb10_gpu_catalog.memory.memory_kind {
-    UnifiedShared => OffloadRefusedUnifiedMemory {
-      device: device,
-      expert_bytes_per_token: expert_bytes_per_token(shape: shape, expert_bytes: expert_bytes),
-      expert_visits_per_token: glm_5_3_routed_expert_visits_per_token(s: shape),
-    }
-    Dram => OffloadNotProjected { device: device, memory_kind: memory_kind_label(k: Dram) }
-    Hbm => OffloadNotProjected { device: device, memory_kind: memory_kind_label(k: Hbm) }
+  match glm_5_3_routed_expert_visits_per_token(s: shape) {
+    Absent => OffloadShapeUnprojectable { because: "the shape's dense prefix is longer than its stack, so it has no MoE layer count and no expert visits per token" as NonEmptyStr }
+    Present { value: visits } =>
+      match nvidia_gb10_gpu_catalog.memory.memory_kind {
+        UnifiedShared => OffloadRefusedUnifiedMemory {
+          device: device,
+          expert_bytes_per_token: byte_size(count: visits * byte_size_count(b: expert_bytes)),
+          expert_visits_per_token: visits,
+        }
+        Dram => OffloadNotProjected { device: device, memory_kind: memory_kind_label(k: Dram) }
+        Hbm => OffloadNotProjected { device: device, memory_kind: memory_kind_label(k: Hbm) }
+      }
   }
 }
 
@@ -534,6 +516,14 @@ fn offload_text(o: ExpertOffloadProjection) -> String {
     OffloadNotProjected { device: d, memory_kind: k } => join([
       "expert offload NOT PROJECTED on ", d as String, " (", k, "): this module models no host-to-device bus",
     ], "")
+    OffloadShapeUnprojectable { because: b } => join(["expert offload UNPROJECTABLE: ", b as String], "")
+  }
+}
+
+fn optional_fit_text(p: WeightFitProjection?) -> String {
+  match p {
+    Absent => "no per-rank figure: the topology has no ranks"
+    Present { value: fit } => fit_text(p: fit)
   }
 }
 
@@ -541,7 +531,7 @@ fn radixark_nvfp4_gb10_readout() -> String {
   join([
     projection_text(p: radixark_nvfp4_tp4()),
     projection_text(p: radixark_nvfp4_tp8()),
-    join(["live GLM-5.3-Flash arm for comparison: ", fit_text(p: glm53_flash_native_live_arm_fit())], ""),
+    join(["live GLM-5.3-Flash arm for comparison: ", optional_fit_text(p: glm53_flash_native_live_arm_fit())], ""),
     offload_text(o: radixark_nvfp4_expert_offload()),
   ], "\n")
 }

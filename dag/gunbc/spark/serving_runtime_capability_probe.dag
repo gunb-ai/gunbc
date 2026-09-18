@@ -130,7 +130,13 @@ type RuntimeKernelCapability
   | FlashInferSparseMlaSm120Symbols
   | Csa2CompressorKernels
   | DSparkSpeculator
+  | ModeloptQuantizationModulePresent
 
+// ModeloptQuantizationModulePresent IS MODULE PRESENCE AND NOTHING MORE. It asks whether the
+// installed vLLM package carries vllm/model_executor/layers/quantization/modelopt.py -- the config
+// class a checkpoint whose quant_method is "modelopt" dispatches to. It says nothing about whether
+// the NVFP4 W4A4 kernels that class would select exist for the device; that is Fp4WeightSupportedHere,
+// and a consumer that let this row answer that question would be reading a loader for a kernel.
 fn runtime_kernel_capability_label(c: RuntimeKernelCapability) -> String {
   match c {
     ArchitectureRegistered => "architecture-registered"
@@ -140,6 +146,7 @@ fn runtime_kernel_capability_label(c: RuntimeKernelCapability) -> String {
     FlashInferSparseMlaSm120Symbols => "flashinfer-sparse-mla-sm120-symbols"
     Csa2CompressorKernels => "csa2-compressor-kernels"
     DSparkSpeculator => "dspark-speculator"
+    ModeloptQuantizationModulePresent => "modelopt-quantization-module-present"
   }
 }
 
@@ -895,7 +902,20 @@ data glm53_derived_probe: ProbedRuntimeImage = ProbedRuntimeImage {
   framework_version: "0.1.dev1+g8d09804c8" as NonEmptyStr,
 }
 
+// THE MODELOPT MODULE IS PRESENT, from the same run that found the FP4 discriminator missing: the
+// script globbed vllm/model_executor/layers/quantization/*.py and reported modelopt.py (and mxfp4.py)
+// present. It is a row here rather than a report in the projection module because a per-image
+// capability observation has exactly this home, and the projection asks the roster for it by the
+// arm's own pin -- a rebuilt image with a new content id answers OutcomeUnrecorded, never inherits.
 data glm53_derived_probe_rows: List<RuntimeCapabilityProbeRow> = [
+  RuntimeCapabilityProbeRow {
+    image: glm53_derived_probe,
+    host: "192.168.1.236 (the Group B head)" as NonEmptyStr,
+    compute_capability: gb10_observed_compute_capability,
+    probed_at: "2026-09-18" as NonEmptyStr,
+    capability: ModeloptQuantizationModulePresent,
+    outcome: KernelObservedPresent { symbol: "vllm/model_executor/layers/quantization/modelopt.py present in the installed package (glob over the quantization directory; mxfp4.py present beside it); docker run --rm --entrypoint python3 gunbc-vllm-glm53-gb10:derived-c99be081f219d123, executed by the GLM performance lane" as NonEmptyStr },
+  },
   RuntimeCapabilityProbeRow {
     image: glm53_derived_probe,
     host: "192.168.1.236 (the Group B head)" as NonEmptyStr,
@@ -965,5 +985,6 @@ fn v41_capability_probe_symbol(c: RuntimeKernelCapability) -> CapabilityProbeSym
     FlashInferSparseMlaSm120Symbols => ProbeSymbolGrounded { symbol: join(["the FlashInfer sparse MLA SM120 decode entry points extdeps.vllm.deepseek_v4_1_sm12 v41_sm12_demand_symbols declares, each imported inside the image. They are what ", v41_sm12_attention_class as String, " requires on the major-12 arm, and they are asked separately from the layout so a missing package does not read as a rejected layout. The SCOPED question -- has_flashinfer_sparse_mla_sm120_config, which asks whether the dispatch table carries a specialization for this checkpoint's head count and top-k -- is not this capability, and upstream's own docstring says the unscoped one can pass where the scoped one refuses"], "") as NonEmptyStr }
     Csa2CompressorKernels => ProbeSymbolGrounded { symbol: "the modules vllm.models.deepseek_v4_1.compressor and vllm.models.deepseek_v4_1.sparse_mla -- the compressed sparse attention path, whose compressor pools compress_ratio tokens into one KV latent. Both paths exist in the upstream tree at the pinned revision" as NonEmptyStr }
     DSparkSpeculator => ProbeSymbolGrounded { symbol: "the modules vllm.models.deepseek_v4_1.nvidia.dspark and vllm.v1.worker.gpu.spec_decode.dspark, both present in the upstream tree at the pinned revision" as NonEmptyStr }
+    ModeloptQuantizationModulePresent => ProbeSymbolGrounded { symbol: "the file vllm/model_executor/layers/quantization/modelopt.py inside the installed package, found by glob over that directory; presence of the ModelOpt quantization config module, not of any kernel it would select" as NonEmptyStr }
   }
 }

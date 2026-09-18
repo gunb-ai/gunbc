@@ -12,9 +12,8 @@ import extdeps.radixark.glm_5_3_nvfp4 {
   nvfp4_routed_experts_share_basis_points, nvfp4_share_of_native_basis_points, nvfp4_quantized_classes,
 }
 import gunbc.spark.serving_arm {
-  ServingCheckpoint, Glm53RadixArkNvfp4Modelopt, ServingRuntime, GunbcGlm53DerivedGb10,
+  ServingCheckpoint, Glm53RadixArkNvfp4Modelopt, ServingRuntime, GunbcGlm53DerivedGb10, GunbcGlm53NopeDerivedGb10,
   ServingTopology, FourSparkTp4, EightSparkTp8,
-  serving_runtime_row, runtime_artifact_wire,
 }
 import gunbc.spark.serving_fit_projection {
   WeightFitProjection, WeightFitVerdict, WeightsFitWithHeadroom, WeightsExceedUsable,
@@ -25,8 +24,7 @@ import gunbc.spark.serving_fit_projection {
   StaticCompatibilityQuestion, ArchitectureRegisteredInRuntime, QuantizationMethodShippedByRuntime, Fp4WeightsSupportedOnDevice,
   StaticCompatibilityAnswer, Established, MeasuredNegative, NotEstablished,
   answer_question, answer_is_established, static_question_label,
-  RuntimeImageReport, glm53_group_b_image_report,
-  ExpertOffloadProjection, OffloadRefusedUnifiedMemory, OffloadNotProjected, radixark_nvfp4_expert_offload,
+  ExpertOffloadProjection, OffloadRefusedUnifiedMemory, OffloadNotProjected, OffloadShapeUnprojectable, radixark_nvfp4_expert_offload,
 }
 
 // ── THE BYTE MODEL AGAINST THE FORMAT ─────────────────────────────────────────────────────────
@@ -52,8 +50,10 @@ test fn w_group_size_read_off_the_scale_tensor_equals_the_declared_one() -> Bool
 // 47 HEADERS. This is the independent verification the brief asked for: 725B parameters at
 // 4.5 bits each is a derivation, and the measured 407,686,809,600 is the instrument's answer.
 test fn w_routed_expert_total_derived_equals_measured() -> Bool {
-  byte_size_count(b: nvfp4_routed_experts_total_bytes(s: glm_5_3_shape))
-    == byte_size_count(b: nvfp4_measured_partition.routed_experts)
+  match nvfp4_routed_experts_total_bytes(s: glm_5_3_shape) {
+    Absent => false
+    Present { value: derived } => byte_size_count(b: derived) == byte_size_count(b: nvfp4_measured_partition.routed_experts)
+  }
 }
 
 // THE TWO MEASURED CLASSES SIT INSIDE THE MANIFEST, and the artifact is a compression of the base:
@@ -61,16 +61,20 @@ test fn w_routed_expert_total_derived_equals_measured() -> Bool {
 test fn w_measured_partition_sits_inside_the_manifest_and_compresses_the_base() -> Bool {
   let routed = byte_size_count(b: nvfp4_measured_partition.routed_experts)
   let nextn = byte_size_count(b: nvfp4_measured_partition.nextn_layer)
-  let share = nvfp4_share_of_native_basis_points()
   routed + nextn < byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes)
-    && share >= 6000 && share < 6500
+    && match nvfp4_share_of_native_basis_points() {
+      Absent => false
+      Present { value: share } => share >= 6000 && share < 6500
+    }
 }
 
 // AND IT IS 87.7 PERCENT OF THE ARTIFACT, not 88 and not 92: the nextn layer's 256 bf16 experts are
 // the difference between "every expert tensor" and "every NVFP4 expert tensor".
 test fn w_routed_experts_are_between_8700_and_8800_basis_points_of_the_safetensors() -> Bool {
-  let bp = nvfp4_routed_experts_share_basis_points(m: glm_5_3_nvfp4_manifest)
-  bp >= 8700 && bp < 8800
+  match nvfp4_routed_experts_share_basis_points(m: glm_5_3_nvfp4_manifest) {
+    Absent => false
+    Present { value: bp } => bp >= 8700 && bp < 8800
+  }
 }
 
 test fn w_only_the_routed_experts_are_quantized() -> Bool {
@@ -80,8 +84,14 @@ test fn w_only_the_routed_experts_are_quantized() -> Bool {
 }
 
 test fn w_the_moe_layer_count_is_derived_from_layers_and_dense_prefix() -> Bool {
-  glm_5_3_moe_layer_count(s: glm_5_3_shape) == 75
-    && glm_5_3_routed_expert_visits_per_token(s: glm_5_3_shape) == 600
+  match glm_5_3_moe_layer_count(s: glm_5_3_shape) {
+    Absent => false
+    Present { value: layers } => layers == 75
+      && match glm_5_3_routed_expert_visits_per_token(s: glm_5_3_shape) {
+        Absent => false
+        Present { value: v } => v == 600
+      }
+  }
 }
 
 // ── THE FIT FOLD, ON SUPPLIED VALUES ──────────────────────────────────────────────────────────
@@ -90,39 +100,66 @@ test fn w_the_moe_layer_count_is_derived_from_layers_and_dense_prefix() -> Bool 
 // ten at 8400 basis points is eight usable, not nine. Supplied values, because the claim is about
 // the fold's arithmetic and not about any manifest.
 test fn w_weights_per_rank_round_up_and_usable_rounds_down() -> Bool {
-  let p = project_weight_fit(weights: byte_size(count: 10), ranks: 3, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400))
-  byte_size_count(b: p.weights_per_rank) == 4 && byte_size_count(b: p.usable_per_rank) == 8
+  match project_weight_fit(weights: byte_size(count: 10), ranks: 3, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
+    Absent => false
+    Present { value: p } => byte_size_count(b: p.weights_per_rank) == 4 && byte_size_count(b: p.usable_per_rank) == 8
+  }
+}
+
+// ZERO RANKS REFUSES RATHER THAN ADMITTING ON A SHARE OF ZERO: the RED for a fabricated-zero arm.
+test fn w_zero_ranks_has_no_projection() -> Bool {
+  match project_weight_fit(weights: byte_size(count: 10), ranks: 0, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn verdict_of(weights: Nat) -> WeightFitVerdict? {
+  match project_weight_fit(weights: byte_size(count: weights), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000)) {
+    Absent => none
+    Present { value: p } => Present { value: p.verdict }
+  }
 }
 
 test fn w_weights_equal_to_usable_fit_with_zero_headroom() -> Bool {
-  let p = project_weight_fit(weights: byte_size(count: 800), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000))
-  match p.verdict {
-    WeightsFitWithHeadroom { kv_headroom_per_rank: h } => byte_size_count(b: h) == 0
-    WeightsExceedUsable { shortfall_per_rank: _ } => false
+  match verdict_of(weights: 800) {
+    Absent => false
+    Present { value: v } => match v {
+      WeightsFitWithHeadroom { kv_headroom_per_rank: h } => byte_size_count(b: h) == 0
+      WeightsExceedUsable { shortfall_per_rank: _ } => false
+    }
   }
 }
 
 test fn w_one_byte_over_usable_refuses_with_a_one_byte_shortfall() -> Bool {
-  let p = project_weight_fit(weights: byte_size(count: 801), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000))
-  match p.verdict {
-    WeightsFitWithHeadroom { kv_headroom_per_rank: _ } => false
-    WeightsExceedUsable { shortfall_per_rank: s } => byte_size_count(b: s) == 1
+  match verdict_of(weights: 801) {
+    Absent => false
+    Present { value: v } => match v {
+      WeightsFitWithHeadroom { kv_headroom_per_rank: _ } => false
+      WeightsExceedUsable { shortfall_per_rank: s } => byte_size_count(b: s) == 1
+    }
   }
 }
 
 // ── THE PROJECTION THE OPERATOR ASKED FOR, THROUGH THE REAL MANIFEST AND THE LIVE ARM'S PROFILE ─
 
 test fn w_tp4_does_not_fit_the_live_utilisation() -> Bool {
-  match radixark_nvfp4_fit(topology: FourSparkTp4).verdict {
-    WeightsFitWithHeadroom { kv_headroom_per_rank: _ } => false
-    WeightsExceedUsable { shortfall_per_rank: s } => byte_size_count(b: s) > 0
+  match radixark_nvfp4_fit(topology: FourSparkTp4) {
+    Absent => false
+    Present { value: p } => match p.verdict {
+      WeightsFitWithHeadroom { kv_headroom_per_rank: _ } => false
+      WeightsExceedUsable { shortfall_per_rank: s } => byte_size_count(b: s) > 0
+    }
   }
 }
 
 test fn w_tp8_fits_the_live_utilisation() -> Bool {
-  match radixark_nvfp4_fit(topology: EightSparkTp8).verdict {
-    WeightsFitWithHeadroom { kv_headroom_per_rank: h } => byte_size_count(b: h) > 0
-    WeightsExceedUsable { shortfall_per_rank: _ } => false
+  match radixark_nvfp4_fit(topology: EightSparkTp8) {
+    Absent => false
+    Present { value: p } => match p.verdict {
+      WeightsFitWithHeadroom { kv_headroom_per_rank: h } => byte_size_count(b: h) > 0
+      WeightsExceedUsable { shortfall_per_rank: _ } => false
+    }
   }
 }
 
@@ -187,61 +224,49 @@ test fn w_tp8_refuses_on_the_fp4_device_probe_alone() -> Bool {
   }
 }
 
-// THE DISCRIMINATING RED FOR THE JOIN: the same report keyed by a reference no row pins refuses the
-// quantization question and names both images, so a report cannot be attached to a runtime it did not
-// probe.
-test fn w_a_report_keyed_by_another_reference_does_not_establish_the_quantization_path() -> Bool {
-  let elsewhere = RuntimeImageReport {
-    image_reference: "sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
-    reached_through_tag: glm53_group_b_image_report.reached_through_tag,
-    vllm_version: glm53_group_b_image_report.vllm_version,
-    architecture_registered: glm53_group_b_image_report.architecture_registered,
-    quant_method_module_present: glm53_group_b_image_report.quant_method_module_present,
-    instrument: glm53_group_b_image_report.instrument,
-    reported_by: "fixture: the live report keyed by a reference no row pins" as NonEmptyStr,
-  }
+// THE DISCRIMINATING RED FOR THE JOIN: the same checkpoint projected on the NoPE-derived runtime --
+// whose pin has no modelopt probe row -- refuses the quantization question as NotEstablished naming
+// the missing row, while the serving runtime's pin answers Established. A roster keyed by anything
+// looser than the exact pin would let the NoPE image inherit the serving image's reading.
+test fn w_the_nope_runtime_has_no_modelopt_reading_and_refuses_by_name() -> Bool {
   let p = project_deployment(
     checkpoint: Glm53RadixArkNvfp4Modelopt,
-    runtime: GunbcGlm53DerivedGb10,
+    runtime: GunbcGlm53NopeDerivedGb10,
     topology: EightSparkTp8,
     manifest: glm_5_3_nvfp4_manifest,
     utilization: live_arm_utilization(),
-    report: elsewhere,
     required_method: glm_5_3_nvfp4_quantization.quant_method,
   )
   !established(p: p, q: QuantizationMethodShippedByRuntime)
     && match answer_for(p: p, q: QuantizationMethodShippedByRuntime) {
       Absent => false
       Present { value: a } => match a {
-        NotEstablished { question: _, missing: m } => string_contains(s: m as String, pattern: "they are different images")
+        NotEstablished { question: _, missing: m } => string_contains(s: m as String, pattern: "no modelopt-quantization-module-present probe row exists")
         Established { question: _, evidence: _ } => false
         MeasuredNegative { question: _, evidence: _ } => false
       }
     }
 }
 
-// THE LIVE REPORT IS KEYED BY THE ROW'S OWN PIN -- read both from their homes and compared, so a repin
-// of the row without a new probe reddens here -- and establishes the quantization module while the
-// FP4-on-device answer stays unestablished: module presence never stands in for the kernel probe.
-test fn w_the_live_report_is_keyed_by_the_serving_rows_pin() -> Bool {
-  match serving_runtime_row(r: GunbcGlm53DerivedGb10) {
-    Absent => false
-    Present { value: rrow } => {
-      let p = radixark_nvfp4_tp8()
-      (glm53_group_b_image_report.image_reference as String) == (runtime_artifact_wire(a: rrow.artifact) as String)
-        && established(p: p, q: QuantizationMethodShippedByRuntime)
-        && !established(p: p, q: Fp4WeightsSupportedOnDevice)
-    }
-  }
+// MODULE PRESENCE NEVER STANDS IN FOR THE KERNEL PROBE: on the serving runtime the quantization
+// question is Established from the roster and the FP4-on-device question is not, in one projection.
+test fn w_module_presence_does_not_answer_the_kernel_question() -> Bool {
+  let p = radixark_nvfp4_tp8()
+  established(p: p, q: QuantizationMethodShippedByRuntime)
+    && !established(p: p, q: Fp4WeightsSupportedOnDevice)
 }
 
 // ── EXPERT OFFLOAD IS REFUSED ON GB10, WITH THE FIGURE DERIVED ────────────────────────────────
 test fn w_expert_offload_is_refused_on_unified_memory_with_the_per_token_bytes() -> Bool {
   match radixark_nvfp4_expert_offload() {
     OffloadNotProjected { device: _, memory_kind: _ } => false
+    OffloadShapeUnprojectable { because: _ } => false
     OffloadRefusedUnifiedMemory { device: _, expert_bytes_per_token: b, expert_visits_per_token: v } =>
-      v == glm_5_3_routed_expert_visits_per_token(s: glm_5_3_shape)
-        && byte_size_count(b: b) == v * byte_size_count(b: nvfp4_representative_expert_bytes())
-        && byte_size_count(b: b) > 12000000000
+      match glm_5_3_routed_expert_visits_per_token(s: glm_5_3_shape) {
+        Absent => false
+        Present { value: visits } => v == visits
+          && byte_size_count(b: b) == v * byte_size_count(b: nvfp4_representative_expert_bytes())
+          && byte_size_count(b: b) > 12000000000
+      }
   }
 }

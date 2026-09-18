@@ -233,9 +233,12 @@ fn nvfp4_group_size_from_layout(s: GlmMoeDsaShape) -> Nat? {
 // its instrument named, and equal to the derivation at byte grain (the witness reads both). The
 // nextn predictor layer (model.layers.78) also holds 256 experts, but they are in the ignore list
 // and stored bf16, so they are NOT in this total; they are the second figure below.
-fn nvfp4_routed_experts_total_bytes(s: GlmMoeDsaShape) -> ByteSize {
+fn nvfp4_routed_experts_total_bytes(s: GlmMoeDsaShape) -> ByteSize? {
   let per_expert = byte_size_count(b: nvfp4_representative_expert_bytes())
-  byte_size(count: per_expert * s.n_routed_experts * glm_5_3_moe_layer_count(s: s))
+  match glm_5_3_moe_layer_count(s: s) {
+    Absent => none
+    Present { value: layers } => Present { value: byte_size(count: per_expert * s.n_routed_experts * layers) }
+  }
 }
 
 type MeasuredBytePartition sole_constructor {
@@ -251,16 +254,18 @@ data nvfp4_measured_partition: MeasuredBytePartition = MeasuredBytePartition {
 }
 
 // THE SHARE OF THE ARTIFACT THAT IS NVFP4, in basis points so a consumer can screen on it without a
-// float. Derived from the measured total over the manifest's safetensors bytes.
-fn nvfp4_routed_experts_share_basis_points(m: GlmCheckpointManifest) -> Nat {
+// float. Derived from the measured total over the manifest's safetensors bytes. An empty manifest
+// has no share -- "0 basis points" would read as "none of it is NVFP4", which is a claim -- so the
+// fold refuses rather than divides.
+fn nvfp4_routed_experts_share_basis_points(m: GlmCheckpointManifest) -> Nat? {
   let total = byte_size_count(b: m.safetensors_bytes)
-  if total == 0 { total } else { (byte_size_count(b: nvfp4_measured_partition.routed_experts) * 10000) / total }
+  if total == 0 { none } else { Present { value: (byte_size_count(b: nvfp4_measured_partition.routed_experts) * 10000) / total } }
 }
 
 // WHAT THE REDISTRIBUTION COMPRESSED, in basis points of the base's native FP8 safetensors: the
 // 465 GB artifact against Z.ai's 756 GB one. This is the one place the base manifest is consumed,
 // and it is why the base module carries it.
-fn nvfp4_share_of_native_basis_points() -> Nat {
+fn nvfp4_share_of_native_basis_points() -> Nat? {
   let native = byte_size_count(b: glm_5_3_native_manifest.safetensors_bytes)
-  if native == 0 { native } else { (byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes) * 10000) / native }
+  if native == 0 { none } else { Present { value: (byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes) * 10000) / native } }
 }
