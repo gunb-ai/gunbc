@@ -15,7 +15,7 @@ import extdeps.provisioning.dhcp_client_arch {
   dhcp_client_processor_architecture,
 }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection }
-import product.placement_supply { SiteIdentity }
+import product.placement_supply { SiteIdentity, site_identity_eq }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
 
@@ -211,8 +211,12 @@ fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Archite
   }
 }
 
-// Client firmware class as measured. UefiPxe is not authored here: that upstream variant
-// requires a TFTP root this service does not serve.
+// Client firmware class as measured. The join admits exactly one class, UefiArm64 (DHCP
+// option 93 code 11, the UefiPxe mode): the first slice's edge hands the client an
+// architecture chainloader over the site's TFTP bootstrap transport, and only a PXE client
+// fetches that. HttpBootArm64 (code 19, UefiHttpBoot) is refused because an HTTP-boot client
+// fetches its image by URI and never runs the edge chainloader, so the chainloader digest the
+// join checks against the ticket would bind nothing the client executed.
 type ObservedDhcpPxeClient {
   vendor_class: NonEmptyStr
   arch: DhcpProcessorArchitecture
@@ -376,7 +380,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
         SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } =>
           NetworkBootDeliveryArchitectureRefused { cause: ChainloaderMismatch { client: c, chainloader: l } }
         SitePxeEdgeEstablished { receipt: site } =>
-          if (site.edge.site as String) != (inputs.expected_site as String) {
+          if site_identity_eq(a: site.edge.site, b: inputs.expected_site) == false {
             NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: site.edge.site }
           } else {
           match inputs.client {
@@ -393,7 +397,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                   if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
                     NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
                   } else {
-                  if (client.site as String) != (inputs.expected_site as String) {
+                  if site_identity_eq(a: client.site, b: inputs.expected_site) == false {
                     NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: client.site }
                   } else {
                     match inputs.boot_control {

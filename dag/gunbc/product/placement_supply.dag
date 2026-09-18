@@ -24,6 +24,10 @@ fn host_identity_eq(a: HostIdentity, b: HostIdentity) -> Bool {
   a as String == b as String
 }
 
+fn site_identity_eq(a: SiteIdentity, b: SiteIdentity) -> Bool {
+  a as String == b as String
+}
+
 // The same comparison for physical assets, and it lives here for the same reason the one above does:
 // product.placement_supply owns PhysicalAssetIdentity, so consumers that need to ask whether two
 // asset identities are the same asset should not each re-derive it. It was re-derived once already
