@@ -339,13 +339,21 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
   }
 }
 
-fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
+// Which scope answered a name, in the one walk that finds it. A local binder shadows the module
+// scope, so only a ROOT hit can be a reference to a module-level declaration, and the test-code wall
+// (resolve_atom_bound) reads that distinction from here rather than re-walking the chain.
+type ScopeBinding
+  = BoundInFrame { canonical: Symbol }
+  | BoundAtRoot { canonical: Symbol }
+  | ScopeUnbound
+
+fn lookup_chain(s: Scope, name: Symbol) -> Outcome<ScopeBinding> {
   match s {
     ScopeFrame { locals: m, outer: o } =>
       match v2.std.collection.map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
-            Accepted { value: optional_present(value: v), diagnostics: d_here }
+            Accepted { value: BoundInFrame { canonical: v }, diagnostics: d_here }
           Absent =>
             match lookup_chain(s: o, name: name) {
               Accepted { value: found, diagnostics: d_outer } =>
@@ -364,8 +372,8 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
     ScopeRoot { module: mod } =>
       match v2.std.collection.map_get(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
-          Present { value: v } => Accepted { value: optional_present(value: v), diagnostics: d }
-          Absent => Accepted { value: optional_absent(), diagnostics: d }
+          Present { value: v } => Accepted { value: BoundAtRoot { canonical: v }, diagnostics: d }
+          Absent => Accepted { value: ScopeUnbound, diagnostics: d }
         }
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
@@ -498,19 +506,6 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
   }
 }
 
-// A local binder shadows the module scope, so a name a frame binds is never a reference to a
-// module-level declaration, test-marked or not.
-fn scope_frames_bind(s: Scope, name: Symbol) -> Bool {
-  match s {
-    ScopeFrame { locals: m, outer: o } =>
-      match map_lookup(m: m, key: name) {
-        Present { value: _ } => true
-        Absent => scope_frames_bind(s: o, name: name)
-      }
-    ScopeRoot { module: _ } => false
-  }
-}
-
 fn root_binding_origin(namespace: Namespace, name: Symbol) -> QualifiedName {
   match map_lookup(m: namespace.imported_origins, key: name) {
     Present { value: origin } => origin
@@ -560,22 +555,20 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {
-        Present { value: canonical } =>
-          if scope_frames_bind(s: ctx.scope, name: identity) {
-            Accepted {
-              value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
-              diagnostics: pending
-            }
-          } else {
-            resolve_atom_bound(
-              ctx: ctx,
-              n: n,
-              canonical: canonical,
-              path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
-              pending: pending
-            )
+        BoundInFrame { canonical: canonical } =>
+          Accepted {
+            value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
+            diagnostics: pending
           }
-        Absent =>
+        BoundAtRoot { canonical: canonical } =>
+          resolve_atom_bound(
+            ctx: ctx,
+            n: n,
+            canonical: canonical,
+            path: qualified_name_snoc(qn: root_binding_origin(namespace: ctx.namespace, name: identity), segment: identity),
+            pending: pending
+          )
+        ScopeUnbound =>
           match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
             SymbolIndexAtomHit { canonical: canonical, path: path } =>
               resolve_atom_bound(ctx: ctx, n: n, canonical: canonical, path: path, pending: pending)
