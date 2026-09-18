@@ -155,6 +155,7 @@ pub enum TargetProducer {
     BehavioralReceiptSelftest,
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
+    PrimitiveEgressCensus,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -211,6 +212,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("evaluation-store-address-exact-head"),
             TargetProducer::EvaluationStoreAddressExactHead,
+        ),
+        (
+            instrument_label("primitive-egress-census"),
+            TargetProducer::PrimitiveEgressCensus,
         ),
     ]
 }
@@ -406,6 +411,101 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::EvaluationStoreAddressExactHead => {
             run_evaluation_store_address_exact_head()
         }
+        TargetProducer::PrimitiveEgressCensus => run_primitive_egress_census(),
+    }
+}
+
+/// THE PRIMITIVE EGRESS CENSUS PRODUCER (gunbc#11642): evaluate
+/// `gunbc.primitive_egress.census_live primitive_egress_census_exit`, which answers a
+/// `CliWireResponse` -- the receipt bytes (one JSON object per line) plus the exit the census
+/// standing carries. The bytes are printed on EVERY termination, because the receipt is the
+/// product and a did-not-hold census is exactly when its identity lists are wanted.
+///
+/// THE THREE TERMINATIONS map off the wire exit read through the one classifier in `cli_run`:
+/// success is the census holding; `ExitFailure { code: 1 }` is a located census finding (an
+/// identity with zero or two dispositions) and is `ObservationDidNotHold`; `ExitFailure { code: 2 }`
+/// is the population not being established (a refused entry, no identities) and is `Refused`;
+/// a resolve or eval failure is `SubjectUnreached`.
+fn run_primitive_egress_census() -> InvocationOutcome {
+    const ENTRY: &str = "dag/gunbc/primitive_egress/census_live.dag";
+    const FUNCTION: &str = "primitive_egress_census_exit";
+    const LABEL: &str = "primitive-egress-census";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{LABEL}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, ENTRY) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{LABEL}: resolve failed for {ENTRY}: {cause}"),
+            };
+        }
+    };
+    let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+        graph.diagnostics.clone(),
+    );
+    if !blocking.is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{LABEL}: {ENTRY} has blocking diagnostics: {}",
+                blocking.iter().cloned().collect::<Vec<_>>().join("; ")
+            ),
+        };
+    }
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let value = match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &[], true) {
+        Ok(value) => value,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{LABEL}: eval failed: {cause}"),
+            }
+        }
+    };
+    match cli_run::classify_cli_wire(&value, &ctx) {
+        cli_run::CliWireClass::Printable { bytes, exit } => {
+            let termination = match &exit {
+                cli_run::ExitClass::Success => Termination::ObservationHeld,
+                cli_run::ExitClass::Failure { code: 1, .. } => Termination::ObservationDidNotHold,
+                cli_run::ExitClass::Failure { .. } => Termination::Refused,
+                cli_run::ExitClass::NotProcessExit { .. } => Termination::Refused,
+            };
+            let reason = match exit {
+                cli_run::ExitClass::Success => format!("{LABEL}: held"),
+                cli_run::ExitClass::Failure { reason, .. } => {
+                    reason.unwrap_or_else(|| format!("{LABEL}: failed"))
+                }
+                cli_run::ExitClass::NotProcessExit { type_name } => {
+                    format!("{LABEL}: wire exit is `{type_name}`, not a ProcessExit")
+                }
+            };
+            InvocationOutcome {
+                termination,
+                message: format!("{bytes}{reason}"),
+            }
+        }
+        cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{LABEL}: renderer refused: {cause}"),
+        },
+        cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{LABEL}: {FUNCTION} returned `{type_name}`, not a CliWireResponse"),
+        },
+        cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{LABEL}: malformed CliWireResponse: {detail}"),
+        },
     }
 }
 

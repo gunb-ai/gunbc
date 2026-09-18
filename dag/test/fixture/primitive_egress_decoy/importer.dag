@@ -1,0 +1,7 @@
+module test.fixture.primitive_egress_decoy.importer
+
+import test.fixture.primitive_egress_decoy.decoy { length }
+
+fn same_leaf_imported_call() -> Int {
+  length(xs: [3])
+}

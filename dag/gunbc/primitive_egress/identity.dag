@@ -1,0 +1,172 @@
+module gunbc.primitive_egress.identity
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug, primitive_identity_runtime_name }
+import std.primitive_identity {
+  PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler,
+  primitive_identity_lookup, primitive_identity_eq,
+}
+
+// CANONICAL IDENTITY BEFORE CLASSIFICATION. Every spelling on every surface and every resolved
+// consumer edge joins ONE PrimitiveIdentity here, and only that identity is classified. The join
+// has three routes, asked in order, and the route is carried on the answer so a receipt can say
+// which one decided: the D0 surface-scoped alias table in std.primitive_identity (the authority
+// this module completes rather than forks -- its own note names the population-wide join as its
+// dissolution), then the population-wide alias rows below, then the spelling itself. The last
+// route is the identity relation on names, not a default classification: a spelling that no
+// alias row claims IS its own primitive, and the census still refuses to classify it unless a
+// disposition row names it.
+//
+// WHY ALIASES ARE FORM-SCOPED. The interpreter dispatches free calls and method calls through
+// different arm families, and one spelling can name different arms in the two forms:
+// `append` is the `list_push` arm as a free call and the `concat` arm as a method. Aliasing it
+// either way would erase the conflict the census exists to surface, so `append` stays its own
+// identity (see its Unresolved row) and only unambiguous spellings are aliased.
+
+type CallForm
+  = FreeForm
+  | MethodForm
+  | FormlessSurface
+
+type AliasScope
+  = AnyForm
+  | OnlyForm { form: CallForm }
+
+type SpellingAliasRow {
+  scope: AliasScope
+  spelling: String
+  canonical: String
+  reason: NonEmptyStr
+}
+
+fn spelling_alias(spelling: String, canonical: String, reason: String) -> SpellingAliasRow {
+  SpellingAliasRow { scope: AnyForm, spelling: spelling, canonical: canonical, reason: reason as NonEmptyStr }
+}
+
+fn form_label(form: CallForm) -> String {
+  match form {
+    FreeForm => "free"
+    MethodForm => "method"
+    FormlessSurface => "formless"
+  }
+}
+
+fn call_form_eq(a: CallForm, b: CallForm) -> Bool {
+  form_label(form: a) == form_label(form: b)
+}
+
+fn alias_scope_admits(scope: AliasScope, form: CallForm) -> Bool {
+  match scope {
+    AnyForm => true
+    OnlyForm { form: f } => call_form_eq(a: f, b: form)
+  }
+}
+
+// The population-wide alias rows. Each row is a spelling that names an operation whose canonical
+// name is spelled differently on another surface; the reason names the evidence (an interpreter
+// arm shared by both spellings, a bridge name that differs from the semantic operation, a
+// delegate declaration that projects the primitive).
+fn egress_alias_rows() -> List<SpellingAliasRow> {
+  [
+    spelling_alias(spelling: "count", canonical: "length", reason: "gunbc.v1_interpreter_primitive_surface method_call.length carries the spellings length, count and size on one arm; free_call.count and free_call.length both answer the element count of a free monoid (chars for String, items for List) -- one operation, three spellings"),
+    spelling_alias(spelling: "size", canonical: "length", reason: "third spelling on the method_call.length arm; no other surface carries it"),
+    spelling_alias(spelling: "len", canonical: "length", reason: "std.primitives len_contract is the cost contract of the same element-count operation; no registry row, arm or bridge spells len"),
+    spelling_alias(spelling: "string_length", canonical: "length", reason: "v1_rt string_length is the String realization of free-monoid length (code-point count, measured on v1_rt::string_length and the free_call.length arm's Str case); its own contract, registry row and bridge are the bridge/runtime-name-differs-from-operation-name case"),
+    spelling_alias(spelling: "map_has", canonical: "map_contains_key", reason: "free_call.map_contains_key and method_call.map_contains_key both carry map_has as a second spelling"),
+    spelling_alias(spelling: "rc_vec_ptr_eq", canonical: "rc_ptr_eq", reason: "one interpreter arm free_call.rc_ptr_eq carries both spellings; both are pointer identity of a shared carrier"),
+    spelling_alias(spelling: "empty_map_primitive_delegate", canonical: "empty_map", reason: "v2.std.collection empty_map_primitive_delegate is the HostRealizedSeam projection of empty_map (std.primitive_projection roster) and shares the map_grounding.empty_map arm"),
+    spelling_alias(spelling: "map_insert_primitive_delegate", canonical: "map_insert", reason: "HostRealizedSeam projection of map_insert; shares the map_grounding.map_insert arm"),
+    spelling_alias(spelling: "insert", canonical: "map_insert", reason: "method_call.insert carries the spellings insert and map_insert on one arm"),
+    spelling_alias(spelling: "map_lookup", canonical: "lookup", reason: "v2.std.collection map_lookup is the ModeledProjection of the lookup primitive (std.primitive_projection roster) and shares the map_grounding.lookup arm"),
+    spelling_alias(spelling: "map_lookup_primitive_delegate", canonical: "lookup", reason: "HostRealizedSeam projection of lookup; shares the map_grounding.lookup arm"),
+    spelling_alias(spelling: "merge", canonical: "map_merge", reason: "method_call.merge overlays one map on another and increments the map_merge mutation counter -- the method spelling of the map_merge free call"),
+    spelling_alias(spelling: "push", canonical: "append", reason: "push is a third spelling on the method_call.concat arm beside append; it joins the append identity so the append conflict (element push on the algebra template versus concatenation on the interpreter arm) is carried once"),
+    spelling_alias(spelling: "list_concat", canonical: "concat", reason: "extdeps.languages.rust.emit rt row list_concat -> rc_list_concat is the List realization name of concat; the bridge-family arm of the same name realizes it in the interpreter"),
+    spelling_alias(spelling: "Filesystem.Read|List", canonical: "filesystem_read", reason: "the service_dispatch.Filesystem.checkout_input carve-out row in gunbc.v1_interpreter_primitive_surface is the interpreter's own Filesystem read dispatch; it answers the same subject as the filesystem_read contract, registry row and bridge"),
+    spelling_alias(spelling: "fold", canonical: "fold_list", reason: "std.primitive_identity primitive_fold_list_spelling_fork_note: contract/algebra carry fold, interpreter/emit carry fold_list, one operation; the D0 table binds the surface rows and this row binds the resolved consumer edges (AlgebraMethod template fold)"),
+  ]
+}
+
+type JoinRoute
+  = JoinedByD0AliasTable
+  | JoinedByEgressAliasRow { reason: NonEmptyStr }
+  | JoinedBySpelling
+
+type CanonicalJoin {
+  identity: PrimitiveIdentity
+  route: JoinRoute
+}
+
+fn egress_alias_for(spelling: String, form: CallForm) -> SpellingAliasRow? {
+  egress_alias_rows()
+    |> fold(init: none, f: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if row.spelling == spelling && alias_scope_admits(scope: row.scope, form: form) {
+            Present { value: row }
+          } else {
+            none
+          }
+      }
+    })
+}
+
+// The one join every surface fact and every consumer edge goes through. `surface` is Absent for a
+// consumer edge (a call site inhabits no realization surface, so passing one would fabricate a
+// D0 join key -- the same argument std.primitive_identity makes for its canonical-name arm).
+fn canonical_join(surface: PrimitiveSurfaceAuthority?, spelling: String, form: CallForm) -> CanonicalJoin {
+  let d0 = match surface {
+    Present { value: s } => primitive_identity_lookup(authority: s, authored_symbol: spelling)
+    Absent => none
+  }
+  match d0 {
+    Present { value: id } => CanonicalJoin { identity: id, route: JoinedByD0AliasTable }
+    Absent =>
+      match egress_alias_for(spelling: spelling, form: form) {
+        Present { value: row } =>
+          CanonicalJoin { identity: primitive_identity_slug(name: row.canonical), route: JoinedByEgressAliasRow { reason: row.reason } }
+        Absent =>
+          CanonicalJoin { identity: primitive_identity_slug(name: spelling), route: JoinedBySpelling }
+      }
+  }
+}
+
+fn canonical_identity(surface: PrimitiveSurfaceAuthority?, spelling: String, form: CallForm) -> PrimitiveIdentity {
+  canonical_join(surface: surface, spelling: spelling, form: form).identity
+}
+
+fn identity_name(identity: PrimitiveIdentity) -> String {
+  primitive_identity_runtime_name(identity: identity)
+}
+
+// Every alias row must name a canonical that is itself canonical (no chains) and must not name a
+// spelling that the D0 table binds to a DIFFERENT identity -- two alias tables disagreeing is the
+// fork this module exists to close, so it is checked rather than assumed.
+fn egress_alias_rows_are_acyclic() -> Bool {
+  egress_alias_rows() |> all(fn(row) {
+    match egress_alias_for(spelling: row.canonical, form: FreeForm) {
+      Present { value: _ } => false
+      Absent =>
+        match egress_alias_for(spelling: row.canonical, form: MethodForm) {
+          Present { value: _ } => false
+          Absent => true
+        }
+    }
+  })
+}
+
+fn d0_surfaces() -> List<PrimitiveSurfaceAuthority> {
+  [BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler]
+}
+
+fn egress_alias_rows_agree_with_d0_table() -> Bool {
+  egress_alias_rows() |> all(fn(row) {
+    d0_surfaces() |> all(fn(s) {
+      match primitive_identity_lookup(authority: s, authored_symbol: row.spelling) {
+        Absent => true
+        Present { value: id } => primitive_identity_eq(left: id, right: primitive_identity_slug(name: row.canonical))
+      }
+    })
+  })
+}

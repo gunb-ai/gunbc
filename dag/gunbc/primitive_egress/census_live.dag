@@ -1,0 +1,171 @@
+module gunbc.primitive_egress.census_live
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import std.decl_ref { DeclarationRef }
+import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
+import std.algebra { all_algebra_template_names }
+import std.primitive_projection { primitive_projection_roster }
+import std.primitive_identity { BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, EmitHandler }
+import extdeps.languages.rust.emit { rt_function_registry }
+import gunbc.v1_interpreter_primitive_surface { v1_interpreter_primitive_arms }
+import gunbc.seed_growth_admission { seed_growth_roster_all_declarations }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.primitive_egress.identity { FreeForm, MethodForm, FormlessSurface }
+import gunbc.primitive_egress.census {
+  SurfaceFact, surface_fact, interpreter_arm_fact,
+  PrimitiveCallEdge, PrimitiveCallEntryRefusal, PrimitiveCallEdgeCensus,
+  PrimitiveCallEdgeCensusRefused, PrimitiveCallEdgeCensusObserved,
+  CensusInputs, PrimitiveCensus, primitive_census, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
+  census_standing,
+}
+import gunbc.primitive_egress.dispositions { primitive_disposition_rows }
+import gunbc.primitive_egress.receipt { census_receipt_lines }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ONE INDEPENDENTLY DERIVED DENOMINATOR. Five realization surfaces, each read from its own
+// authority: the builtin registry's KEY SET from the compiled registry (never the hand roster in
+// std.primitives, whose drift is reported below), the contract rows, the algebra templates, the
+// Rust runtime bridge registry, and the interpreter arm roster with each arm's call form.
+fn registry_surface_facts() -> List<SurfaceFact> {
+  builtin_function_registry_keys() |> map(k => surface_fact(surface: BuiltinRegistry, spelling: k, form: FreeForm))
+}
+
+fn contract_surface_facts() -> List<SurfaceFact> {
+  primitive_contract_roster() |> map(c => surface_fact(surface: PrimitiveContractRow, spelling: c.name, form: FormlessSurface))
+}
+
+fn distinct_names(xs: List<String>) -> List<String> {
+  xs |> fold(init: [], f: fn(acc, x) { if acc |> any(y => y == x) { acc } else { list_push(acc, x) } })
+}
+
+fn algebra_surface_facts() -> List<SurfaceFact> {
+  distinct_names(xs: all_algebra_template_names()) |> map(n => surface_fact(surface: AlgebraTemplate, spelling: n, form: MethodForm))
+}
+
+fn emit_surface_facts() -> List<SurfaceFact> {
+  rt_function_registry |> map(e => surface_fact(surface: EmitHandler, spelling: e.name, form: FreeForm))
+}
+
+fn interpreter_surface_facts() -> List<SurfaceFact> {
+  v1_interpreter_primitive_arms() |> map(arm => interpreter_arm_fact(arm: arm))
+}
+
+fn live_surface_facts() -> List<SurfaceFact> {
+  concat(concat(concat(concat(registry_surface_facts(), contract_surface_facts()), algebra_surface_facts()), emit_surface_facts()), interpreter_surface_facts())
+}
+
+// The hand roster beside the registry, checked against the authority it mirrors. Both directions
+// are lists so the receipt names the drifted rows rather than a count.
+fn registry_roster_missing_from_hand_roster() -> List<String> {
+  let roster = builtin_registry_surface_names()
+  builtin_function_registry_keys() |> filter(fn(k) { !(roster |> any(r => r == k)) })
+}
+
+fn hand_roster_rows_absent_from_registry() -> List<String> {
+  let keys = builtin_function_registry_keys()
+  builtin_registry_surface_names() |> filter(fn(r) { !(keys |> any(k => k == r)) })
+}
+
+// THE CONSUMER POPULATION, in two resolver runs because src/v1 and src/v2 cannot share one
+// prepared subject (gunbc.ci_layer_roots non_executing_witness_module_prefixes: twelve
+// last-segment collisions rebind silently under one pool). The admitted corpus is resolved as
+// dag ∪ src/v2 -- the witness layer roots -- and the seed's own .dag as src/v1 against dag,
+// with dag's entries excluded from the second walk so no module is counted twice.
+data admitted_corpus_pool_roots: List<String> = ["dag", "src/v2"]
+data seed_pool_roots: List<String> = ["dag", "src/v1"]
+data seed_pool_exclusions: List<String> = ["dag/"]
+
+// Fixture subtrees hold programs authored to REFUSE (planted reds, parse probes); they are not
+// consumers and resolving them refuses by design. Everything else under the pool is admitted, and
+// a refusal there is a census refusal, never a silent omission.
+data admitted_corpus_exclusions: List<String> = ["/fixture/", "/fixtures/", "/probe/", "/parsecheck", "/manual/", "/retirement/", "/ctl/"]
+
+fn admitted_corpus_edge_census() -> PrimitiveCallEdgeCensus {
+  compile_dag_primitive_call_edges(admitted_corpus_exclusions, admitted_corpus_pool_roots)
+}
+
+fn seed_edge_census() -> PrimitiveCallEdgeCensus {
+  compile_dag_primitive_call_edges(seed_pool_exclusions, seed_pool_roots)
+}
+
+type LiveEdges
+  = LiveEdgesRefused { cause: NonEmptyStr }
+  | LiveEdgesObserved { edges: List<PrimitiveCallEdge>, entries_refused: List<PrimitiveCallEntryRefusal>, entries_resolved: Int }
+
+fn merge_edge_census(a: PrimitiveCallEdgeCensus, b: PrimitiveCallEdgeCensus) -> LiveEdges {
+  match a {
+    PrimitiveCallEdgeCensusRefused { cause: c } => LiveEdgesRefused { cause: concat("admitted corpus: ", c) as NonEmptyStr }
+    PrimitiveCallEdgeCensusObserved { entries_resolved: ra, entries_refused: fa, edges: ea } =>
+      match b {
+        PrimitiveCallEdgeCensusRefused { cause: c } => LiveEdgesRefused { cause: concat("seed corpus: ", c) as NonEmptyStr }
+        PrimitiveCallEdgeCensusObserved { entries_resolved: rb, entries_refused: fb, edges: eb } =>
+          LiveEdgesObserved { edges: concat(ea, eb), entries_refused: concat(fa, fb), entries_resolved: count(ra) + count(rb) }
+      }
+  }
+}
+
+fn live_edges() -> LiveEdges {
+  merge_edge_census(a: admitted_corpus_edge_census(), b: seed_edge_census())
+}
+
+type LiveCensus
+  = LiveCensusRefused { cause: NonEmptyStr }
+  | LiveCensusObserved { census: PrimitiveCensus, entries_resolved: Int }
+
+fn live_census() -> LiveCensus {
+  match live_edges() {
+    LiveEdgesRefused { cause: c } => LiveCensusRefused { cause: c }
+    LiveEdgesObserved { edges: edges, entries_refused: refused, entries_resolved: n } =>
+      LiveCensusObserved {
+        census: primitive_census(inputs: CensusInputs {
+          surface_facts: live_surface_facts(),
+          edges: edges,
+          entries_refused: refused,
+          projections: primitive_projection_roster(),
+          dispositions: primitive_disposition_rows(),
+          seed_growth_decls: seed_growth_roster_all_declarations(),
+        }),
+        entries_resolved: n,
+      }
+  }
+}
+
+fn live_census_standing() -> CensusStanding {
+  match live_census() {
+    LiveCensusRefused { cause: c } => CensusRefused { cause: c }
+    LiveCensusObserved { census: c, entries_resolved: _ } => census_standing(c: c)
+  }
+}
+
+// THE INSTRUMENT ENTRY. Prints the machine-readable receipt (one JSON object per line) and exits
+// by the census standing: 0 held, 1 did not hold (a located census finding), 2 refused (the
+// population could not be established). Identities are the authority; every count in the
+// receipt is rendered from a list the receipt also prints. A CliWireResponse rather than a bare
+// ProcessExit because a ProcessExit can print only through a failure reason, and the receipt is
+// the product on success too (gunbc.cli_wire).
+fn primitive_egress_census_exit() -> CliWireResponse {
+  match live_census() {
+    LiveCensusRefused { cause: c } =>
+      CliWirePrintable { bytes: concat("primitive-egress-census: refused: ", c as String, "\n"), exit: ExitFailure { code: 2, reason: c as String } }
+    LiveCensusObserved { census: c, entries_resolved: n } => {
+      let lines = census_receipt_lines(c: c, entries_resolved: n, roster_missing: registry_roster_missing_from_hand_roster(), roster_extra: hand_roster_rows_absent_from_registry())
+      let bytes = concat(lines |> join(separator: "\n"), "\n")
+      match census_standing(c: c) {
+        CensusHeld => CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+        CensusDidNotHold { cause: cause } => CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 1, reason: concat("primitive-egress-census: did not hold: ", cause as String) } }
+        CensusRefused { cause: cause } => CliWirePrintable { bytes: bytes, exit: ExitFailure { code: 2, reason: concat("primitive-egress-census: refused: ", cause as String) } }
+      }
+    }
+  }
+}
+
+fn primitive_egress_census_receipt() -> String {
+  match live_census() {
+    LiveCensusRefused { cause: c } => concat("{\"census\":\"refused\",\"cause\":", c as String, "}")
+    LiveCensusObserved { census: c, entries_resolved: n } =>
+      census_receipt_lines(c: c, entries_resolved: n, roster_missing: registry_roster_missing_from_hand_roster(), roster_extra: hand_roster_rows_absent_from_registry()) |> join(separator: "\n")
+  }
+}

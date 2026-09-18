@@ -1,0 +1,262 @@
+module gunbc.primitive_egress.disposition
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
+import gunbc.primitive_egress.category { PrimitiveCategory, ReplacementLane, category_owner_lane }
+
+// THE FIVE SEMANTIC DISPOSITIONS OF PRIMITIVE-EGRESS-0 (gunbc#11626), each carrying the evidence
+// the CENSUS-0 acceptance contract (gunbc#11642) requires for that class and nothing that could be
+// filled by default. A disposition is a fact about the OPERATION'S CONTRACT AND SUBJECT, never
+// about its present implementation language, directory or transport: a Rust body is not evidence
+// of purity, a `/proc` read is not automatically Filesystem, and a registry row is not a class.
+//
+// Unresolved is a valid census result and blocks that primitive's migration; it is never a
+// default. There is deliberately no constructor that takes fewer fields than its class needs.
+
+type DispositionClass
+  = PureDagComputationClass
+  | BoundHostEffectClass
+  | TargetKernelRealizationClass
+  | CompilerQueryFrontierClass
+  | UnresolvedClass
+
+fn disposition_class_label(c: DispositionClass) -> String {
+  match c {
+    PureDagComputationClass => "PureDagComputation"
+    BoundHostEffectClass => "BoundHostEffect"
+    TargetKernelRealizationClass => "TargetKernelRealization"
+    CompilerQueryFrontierClass => "CompilerQueryFrontier"
+    UnresolvedClass => "Unresolved"
+  }
+}
+
+fn disposition_class_eq(a: DispositionClass, b: DispositionClass) -> Bool {
+  disposition_class_label(c: a) == disposition_class_label(c: b)
+}
+
+// Where the operation's semantic authority lives today. AuthorityRequired names the module that
+// must declare it; it is a located obligation, not an excuse.
+type OperationAuthorityStanding
+  = AuthorityDeclared { declaration: DeclarationRef }
+  | AuthorityRequired { home: NonEmptyStr }
+
+type DagBodyStanding
+  = DagBodyExists { declaration: DeclarationRef }
+  | DagBodyRequired
+
+type ProviderInterfaceStanding
+  = ProviderInterfaceDeclared { declaration: DeclarationRef }
+  | ProviderInterfaceRequired { shape: NonEmptyStr }
+
+type ReferenceBodyStanding
+  = ReferenceBodyExists { declaration: DeclarationRef }
+  | ReferenceBodyAbsent
+
+type EquivalenceQualification
+  = QualifiedByWitness { declaration: DeclarationRef }
+  | EquivalenceUnqualified { obligation: NonEmptyStr }
+
+type UnresolvedCause
+  = MixedSemanticQuestions { questions: List<NonEmptyStr> }
+  | ContractAbsent { detail: NonEmptyStr }
+  | ConflictingRealizations { detail: NonEmptyStr }
+  | SubjectUnestablished { detail: NonEmptyStr }
+
+type PrimitiveDisposition
+  = PureDagComputation {
+      operation_authority: OperationAuthorityStanding
+      modeled_inputs: NonEmptyStr
+      result_contract: NonEmptyStr
+      dag_body: DagBodyStanding
+    }
+  | BoundHostEffect {
+      operation_identity: NonEmptyStr
+      logical_subject: NonEmptyStr
+      provider_interface: ProviderInterfaceStanding
+      current_ambient_realization: NonEmptyStr
+    }
+  | TargetKernelRealization {
+      semantic_operation_authority: DeclarationRef
+      required_semantics: NonEmptyStr
+      target_realization: NonEmptyStr
+      reference_body: ReferenceBodyStanding
+      equivalence: EquivalenceQualification
+    }
+  | CompilerQueryFrontier {
+      judgment_subject: NonEmptyStr
+      accepted_compiler_product: NonEmptyStr
+      current_host_producer: DeclarationRef
+      deletion_trigger: NonEmptyStr
+    }
+  | Unresolved {
+      cause: UnresolvedCause
+      located_evidence: NonEmptyStr
+      candidate_classes: List<DispositionClass>
+      settling_observation: NonEmptyStr
+    }
+
+fn disposition_class(d: PrimitiveDisposition) -> DispositionClass {
+  match d {
+    PureDagComputation { operation_authority: _, modeled_inputs: _, result_contract: _, dag_body: _ } => PureDagComputationClass
+    BoundHostEffect { operation_identity: _, logical_subject: _, provider_interface: _, current_ambient_realization: _ } => BoundHostEffectClass
+    TargetKernelRealization { semantic_operation_authority: _, required_semantics: _, target_realization: _, reference_body: _, equivalence: _ } => TargetKernelRealizationClass
+    CompilerQueryFrontier { judgment_subject: _, accepted_compiler_product: _, current_host_producer: _, deletion_trigger: _ } => CompilerQueryFrontierClass
+    Unresolved { cause: _, located_evidence: _, candidate_classes: _, settling_observation: _ } => UnresolvedClass
+  }
+}
+
+// One authored classification of one canonical primitive identity. The identity is minted from
+// the canonical name through std.primitive_projection's one slug constructor, so a row and a
+// surface fact that name the same primitive compare equal by construction.
+type PrimitiveDispositionRow {
+  identity: PrimitiveIdentity
+  category: PrimitiveCategory
+  disposition: PrimitiveDisposition
+}
+
+fn disposition_row(name: String, category: PrimitiveCategory, disposition: PrimitiveDisposition) -> PrimitiveDispositionRow {
+  PrimitiveDispositionRow {
+    identity: primitive_identity_slug(name: name),
+    category: category,
+    disposition: disposition,
+  }
+}
+
+fn row_owner_lane(row: PrimitiveDispositionRow) -> ReplacementLane {
+  category_owner_lane(category: row.category)
+}
+
+fn row_class(row: PrimitiveDispositionRow) -> DispositionClass {
+  disposition_class(d: row.disposition)
+}
+
+// Constructors that spell the evidence a class needs, so an authored row cannot omit a field.
+fn pure_dag(
+  name: String,
+  category: PrimitiveCategory,
+  authority: OperationAuthorityStanding,
+  inputs: String,
+  result: String,
+  body: DagBodyStanding,
+) -> PrimitiveDispositionRow {
+  disposition_row(name: name, category: category, disposition: PureDagComputation {
+    operation_authority: authority,
+    modeled_inputs: inputs as NonEmptyStr,
+    result_contract: result as NonEmptyStr,
+    dag_body: body,
+  })
+}
+
+fn host_effect(
+  name: String,
+  category: PrimitiveCategory,
+  operation: String,
+  subject: String,
+  provider: ProviderInterfaceStanding,
+  ambient: String,
+) -> PrimitiveDispositionRow {
+  disposition_row(name: name, category: category, disposition: BoundHostEffect {
+    operation_identity: operation as NonEmptyStr,
+    logical_subject: subject as NonEmptyStr,
+    provider_interface: provider,
+    current_ambient_realization: ambient as NonEmptyStr,
+  })
+}
+
+fn target_kernel(
+  name: String,
+  category: PrimitiveCategory,
+  authority: DeclarationRef,
+  semantics: String,
+  realization: String,
+  reference: ReferenceBodyStanding,
+  equivalence: EquivalenceQualification,
+) -> PrimitiveDispositionRow {
+  disposition_row(name: name, category: category, disposition: TargetKernelRealization {
+    semantic_operation_authority: authority,
+    required_semantics: semantics as NonEmptyStr,
+    target_realization: realization as NonEmptyStr,
+    reference_body: reference,
+    equivalence: equivalence,
+  })
+}
+
+fn compiler_query(
+  name: String,
+  subject: String,
+  product: String,
+  producer: DeclarationRef,
+  trigger: String,
+) -> PrimitiveDispositionRow {
+  disposition_row(name: name, category: SeedQuery, disposition: CompilerQueryFrontier {
+    judgment_subject: subject as NonEmptyStr,
+    accepted_compiler_product: product as NonEmptyStr,
+    current_host_producer: producer,
+    deletion_trigger: trigger as NonEmptyStr,
+  })
+}
+
+fn unresolved(
+  name: String,
+  category: PrimitiveCategory,
+  cause: UnresolvedCause,
+  evidence: String,
+  candidates: List<DispositionClass>,
+  settling: String,
+) -> PrimitiveDispositionRow {
+  disposition_row(name: name, category: category, disposition: Unresolved {
+    cause: cause,
+    located_evidence: evidence as NonEmptyStr,
+    candidate_classes: candidates,
+    settling_observation: settling as NonEmptyStr,
+  })
+}
+
+fn mixed(questions: List<String>) -> UnresolvedCause {
+  MixedSemanticQuestions { questions: questions |> map(q => q as NonEmptyStr) }
+}
+
+fn authority(module_path: String, decl_name: String) -> OperationAuthorityStanding {
+  AuthorityDeclared { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn authority_required(home: String) -> OperationAuthorityStanding {
+  AuthorityRequired { home: home as NonEmptyStr }
+}
+
+fn body_at(module_path: String, decl_name: String) -> DagBodyStanding {
+  DagBodyExists { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn provider_required(shape: String) -> ProviderInterfaceStanding {
+  ProviderInterfaceRequired { shape: shape as NonEmptyStr }
+}
+
+fn provider_declared(module_path: String, decl_name: String) -> ProviderInterfaceStanding {
+  ProviderInterfaceDeclared { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn reference_at(module_path: String, decl_name: String) -> ReferenceBodyStanding {
+  ReferenceBodyExists { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn unqualified(obligation: String) -> EquivalenceQualification {
+  EquivalenceUnqualified { obligation: obligation as NonEmptyStr }
+}
+
+fn qualified_by(module_path: String, decl_name: String) -> EquivalenceQualification {
+  QualifiedByWitness { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
+}
+
+fn host(decl_name: String) -> DeclarationRef {
+  decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: decl_name)
+}
+
+fn rt(decl_name: String) -> DeclarationRef {
+  decl_ref(module_path: "v1_compiler.v1_rt", decl_name: decl_name)
+}
+
+fn cli_run(decl_name: String) -> DeclarationRef {
+  decl_ref(module_path: "v1_compiler.cli_run", decl_name: decl_name)
+}

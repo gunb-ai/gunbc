@@ -1,0 +1,204 @@
+module gunbc.primitive_egress.receipt
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json }
+import gunbc.primitive_egress.category { category_label }
+import gunbc.primitive_egress.disposition {
+  PrimitiveDispositionRow, PrimitiveDisposition, PureDagComputation, BoundHostEffect, TargetKernelRealization,
+  CompilerQueryFrontier, Unresolved, UnresolvedCause, MixedSemanticQuestions, ContractAbsent, ConflictingRealizations,
+  SubjectUnestablished, DispositionClass, disposition_class_label, row_class, row_owner_lane,
+}
+import gunbc.primitive_egress.identity { JoinRoute, JoinedByD0AliasTable, JoinedByEgressAliasRow, JoinedBySpelling, form_label }
+import gunbc.primitive_egress.census {
+  PrimitiveCensus, IdentityStanding, JoinedSurfaceFact, DispositionMatch, ExactlyOneDisposition, NoDisposition, MultipleDispositions,
+  SeedGrowthOwnership, SeedGrowthRows, NoSeedGrowthRow, ConsumerTally,
+  registry_without_contract, contract_without_interpreter_arm, interpreter_arm_without_contract, emitted_bridge_without_consumer,
+  unused_primitives, consumers_with_unresolved_callee, duplicate_realizations, interpreter_arm_without_emitted_route,
+  zero_disposition, multiple_disposition, exactly_one_disposition, unresolved_identities, v2_projection, v1_only_projection,
+  shared_v1_v2_identities, aliased_identities, compiler_query_without_seed_growth_row, standings_of_class,
+  PureDagComputationClass, BoundHostEffectClass, TargetKernelRealizationClass, CompilerQueryFrontierClass, UnresolvedClass,
+  census_standing, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
+}
+import std.primitive_identity { PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler }
+
+// MACHINE-READABLE RECEIPT: one JSON object per line. The first line is the summary whose every
+// count is the length of a list printed on a later line; then one `identity` line per canonical
+// identity; then one `population` line per named population carrying the identity names.
+
+fn strs(xs: List<String>) -> JsonValue {
+  json_array(elements: xs |> map(x => json_string(s: x)))
+}
+
+fn names(ss: List<IdentityStanding>) -> List<String> {
+  ss |> map(s => s.name)
+}
+
+fn decl_keys(ds: List<DeclarationRef>) -> List<String> {
+  ds |> map(d => declaration_ref_display_key(ref: d))
+}
+
+fn surface_label(s: PrimitiveSurfaceAuthority) -> String {
+  match s {
+    BuiltinRegistry => "registry"
+    PrimitiveContractRow => "contract"
+    AlgebraTemplate => "algebra"
+    InterpreterDispatch => "interpreter"
+    EmitHandler => "emit"
+  }
+}
+
+fn route_label(r: JoinRoute) -> String {
+  match r {
+    JoinedByD0AliasTable => "d0_alias_table"
+    JoinedByEgressAliasRow { reason: _ } => "egress_alias_row"
+    JoinedBySpelling => "spelling"
+  }
+}
+
+fn fact_json(f: JoinedSurfaceFact) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "surface", value: json_string(s: surface_label(s: f.fact.surface))),
+    json_kv(key: "spelling", value: json_string(s: f.fact.spelling)),
+    json_kv(key: "form", value: json_string(s: form_label(form: f.fact.form))),
+    json_kv(key: "join", value: json_string(s: route_label(r: f.join.route))),
+  ])
+}
+
+fn cause_json(c: UnresolvedCause) -> JsonValue {
+  match c {
+    MixedSemanticQuestions { questions: qs } => json_object(members: [json_kv(key: "kind", value: json_string(s: "MixedSemanticQuestions")), json_kv(key: "questions", value: strs(xs: qs |> map(q => q as String)))])
+    ContractAbsent { detail: d } => json_object(members: [json_kv(key: "kind", value: json_string(s: "ContractAbsent")), json_kv(key: "detail", value: json_string(s: d as String))])
+    ConflictingRealizations { detail: d } => json_object(members: [json_kv(key: "kind", value: json_string(s: "ConflictingRealizations")), json_kv(key: "detail", value: json_string(s: d as String))])
+    SubjectUnestablished { detail: d } => json_object(members: [json_kv(key: "kind", value: json_string(s: "SubjectUnestablished")), json_kv(key: "detail", value: json_string(s: d as String))])
+  }
+}
+
+fn disposition_json(row: PrimitiveDispositionRow) -> JsonValue {
+  let lane = row_owner_lane(row: row)
+  let base = [
+    json_kv(key: "class", value: json_string(s: disposition_class_label(c: row_class(row: row)))),
+    json_kv(key: "category", value: json_string(s: category_label(category: row.category))),
+    json_kv(key: "owner_issue", value: json_int(n: lane.issue)),
+    json_kv(key: "owner_lane", value: json_string(s: lane.label as String)),
+  ]
+  match row.disposition {
+    PureDagComputation { operation_authority: _, modeled_inputs: i, result_contract: r, dag_body: _ } =>
+      json_object(members: concat(base, [json_kv(key: "modeled_inputs", value: json_string(s: i as String)), json_kv(key: "result_contract", value: json_string(s: r as String))]))
+    BoundHostEffect { operation_identity: o, logical_subject: s, provider_interface: _, current_ambient_realization: a } =>
+      json_object(members: concat(base, [json_kv(key: "operation", value: json_string(s: o as String)), json_kv(key: "logical_subject", value: json_string(s: s as String)), json_kv(key: "ambient_realization", value: json_string(s: a as String))]))
+    TargetKernelRealization { semantic_operation_authority: a, required_semantics: s, target_realization: t, reference_body: _, equivalence: _ } =>
+      json_object(members: concat(base, [json_kv(key: "semantic_authority", value: json_string(s: declaration_ref_display_key(ref: a))), json_kv(key: "required_semantics", value: json_string(s: s as String)), json_kv(key: "target_realization", value: json_string(s: t as String))]))
+    CompilerQueryFrontier { judgment_subject: j, accepted_compiler_product: p, current_host_producer: h, deletion_trigger: t } =>
+      json_object(members: concat(base, [json_kv(key: "judgment_subject", value: json_string(s: j as String)), json_kv(key: "accepted_compiler_product", value: json_string(s: p as String)), json_kv(key: "host_producer", value: json_string(s: declaration_ref_display_key(ref: h))), json_kv(key: "deletion_trigger", value: json_string(s: t as String))]))
+    Unresolved { cause: c, located_evidence: e, candidate_classes: ks, settling_observation: o } =>
+      json_object(members: concat(base, [json_kv(key: "cause", value: cause_json(c: c)), json_kv(key: "located_evidence", value: json_string(s: e as String)), json_kv(key: "candidate_classes", value: strs(xs: ks |> map(k => disposition_class_label(c: k)))), json_kv(key: "settling_observation", value: json_string(s: o as String))]))
+  }
+}
+
+fn match_json(m: DispositionMatch) -> JsonValue {
+  match m {
+    ExactlyOneDisposition { row: r } => disposition_json(row: r)
+    NoDisposition => json_object(members: [json_kv(key: "class", value: json_string(s: "NONE")), json_kv(key: "matching_dispositions", value: json_int(n: 0))])
+    MultipleDispositions { rows: rs } => json_object(members: [json_kv(key: "class", value: json_string(s: "MULTIPLE")), json_kv(key: "matching_dispositions", value: json_int(n: count(rs)))])
+  }
+}
+
+fn tally_json(t: ConsumerTally) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "v2_sites", value: json_int(n: t.v2_sites)),
+    json_kv(key: "v1_sites", value: json_int(n: t.v1_sites)),
+    json_kv(key: "dag_sites", value: json_int(n: t.dag_sites)),
+    json_kv(key: "test_sites", value: json_int(n: t.test_sites)),
+    json_kv(key: "v2_modules", value: strs(xs: t.v2_modules)),
+    json_kv(key: "v1_modules", value: strs(xs: t.v1_modules)),
+    json_kv(key: "unresolved_sites", value: json_int(n: t.unresolved_sites)),
+    json_kv(key: "unresolved_callers", value: strs(xs: t.unresolved_callers)),
+  ])
+}
+
+fn seed_growth_json(s: SeedGrowthOwnership) -> JsonValue {
+  match s {
+    SeedGrowthRows { declarations: ds } => strs(xs: decl_keys(ds: ds))
+    NoSeedGrowthRow => json_array(elements: [])
+  }
+}
+
+fn identity_line(s: IdentityStanding) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "identity", value: json_string(s: s.name)),
+    json_kv(key: "spellings", value: strs(xs: s.spellings)),
+    json_kv(key: "surfaces", value: json_array(elements: s.facts |> map(f => fact_json(f: f)))),
+    json_kv(key: "route", value: json_object(members: [
+      json_kv(key: "contract", value: json_bool(b: s.contract)),
+      json_kv(key: "registry", value: json_bool(b: s.registry)),
+      json_kv(key: "algebra", value: json_bool(b: s.algebra)),
+      json_kv(key: "interpreter_arm", value: json_bool(b: s.interpreter_arm)),
+      json_kv(key: "interpreter_arm_count", value: json_int(n: s.interpreter_arm_count)),
+      json_kv(key: "emit_bridge", value: json_bool(b: s.emit_bridge)),
+      json_kv(key: "modeled_dag_bodies", value: strs(xs: decl_keys(ds: s.modeled_bodies))),
+      json_kv(key: "host_seams", value: strs(xs: decl_keys(ds: s.host_seams))),
+      json_kv(key: "divergent_bodies", value: strs(xs: decl_keys(ds: s.divergent_bodies))),
+      json_kv(key: "seed_growth_rows", value: seed_growth_json(s: s.seed_growth)),
+    ])),
+    json_kv(key: "consumers", value: tally_json(t: s.consumers)),
+    json_kv(key: "disposition", value: match_json(m: s.disposition)),
+  ]))
+}
+
+fn population_line(name: String, members: List<String>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "population", value: json_string(s: name)),
+    json_kv(key: "count", value: json_int(n: count(members))),
+    json_kv(key: "members", value: strs(xs: members)),
+  ]))
+}
+
+fn standing_label(s: CensusStanding) -> String {
+  match s {
+    CensusHeld => "held"
+    CensusDidNotHold { cause: _ } => "did_not_hold"
+    CensusRefused { cause: _ } => "refused"
+  }
+}
+
+fn census_receipt_lines(c: PrimitiveCensus, entries_resolved: Int, roster_missing: List<String>, roster_extra: List<String>) -> List<String> {
+  let populations = [
+    population_line(name: "expected_identities", members: names(ss: c.standings)),
+    population_line(name: "exactly_one_disposition", members: names(ss: exactly_one_disposition(c: c))),
+    population_line(name: "zero_disposition", members: names(ss: zero_disposition(c: c))),
+    population_line(name: "multiple_disposition", members: names(ss: multiple_disposition(c: c))),
+    population_line(name: "dispositions_naming_no_identity", members: c.dispositions_naming_no_identity |> map(r => r.identity.slug as String)),
+    population_line(name: "pure_dag_computation", members: names(ss: standings_of_class(c: c, wanted: PureDagComputationClass))),
+    population_line(name: "bound_host_effect", members: names(ss: standings_of_class(c: c, wanted: BoundHostEffectClass))),
+    population_line(name: "target_kernel_realization", members: names(ss: standings_of_class(c: c, wanted: TargetKernelRealizationClass))),
+    population_line(name: "compiler_query_frontier", members: names(ss: standings_of_class(c: c, wanted: CompilerQueryFrontierClass))),
+    population_line(name: "unresolved", members: names(ss: unresolved_identities(c: c))),
+    population_line(name: "registry_without_contract", members: names(ss: registry_without_contract(c: c))),
+    population_line(name: "contract_without_interpreter_arm", members: names(ss: contract_without_interpreter_arm(c: c))),
+    population_line(name: "interpreter_arm_without_contract", members: names(ss: interpreter_arm_without_contract(c: c))),
+    population_line(name: "emitted_bridge_without_consumer", members: names(ss: emitted_bridge_without_consumer(c: c))),
+    population_line(name: "unused_primitives", members: names(ss: unused_primitives(c: c))),
+    population_line(name: "consumers_with_unresolved_callee", members: names(ss: consumers_with_unresolved_callee(c: c))),
+    population_line(name: "duplicate_realizations", members: names(ss: duplicate_realizations(c: c))),
+    population_line(name: "interpreter_arm_without_emitted_route_reached_by_v2", members: names(ss: interpreter_arm_without_emitted_route(c: c))),
+    population_line(name: "compiler_query_without_seed_growth_row", members: names(ss: compiler_query_without_seed_growth_row(c: c))),
+    population_line(name: "v2_projection", members: names(ss: v2_projection(c: c))),
+    population_line(name: "v1_only_projection", members: names(ss: v1_only_projection(c: c))),
+    population_line(name: "shared_v1_v2", members: names(ss: shared_v1_v2_identities(c: c))),
+    population_line(name: "aliased_identities", members: names(ss: aliased_identities(c: c))),
+    population_line(name: "off_surface_call_spellings", members: c.consumer_fold.off_surface_spellings),
+    population_line(name: "hand_roster_missing_registry_rows", members: roster_missing),
+    population_line(name: "hand_roster_rows_absent_from_registry", members: roster_extra),
+    population_line(name: "entries_refused", members: c.entries_refused |> map(r => concat(r.entry, ": ", r.cause))),
+  ]
+  let summary = serialize_json(v: json_object(members: [
+    json_kv(key: "census", value: json_string(s: "primitive-egress-census")),
+    json_kv(key: "standing", value: json_string(s: standing_label(s: census_standing(c: c)))),
+    json_kv(key: "entries_resolved", value: json_int(n: entries_resolved)),
+    json_kv(key: "identities", value: json_int(n: count(c.standings))),
+    json_kv(key: "service_operation_sites", value: json_int(n: c.consumer_fold.service_sites)),
+    json_kv(key: "off_surface_sites", value: json_int(n: c.consumer_fold.off_surface_sites)),
+  ]))
+  concat(concat([summary], c.standings |> map(s => identity_line(s: s))), populations)
+}

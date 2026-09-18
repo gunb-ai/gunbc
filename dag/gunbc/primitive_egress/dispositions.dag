@@ -1,0 +1,15 @@
+module gunbc.primitive_egress.dispositions
+
+import std.types { List }
+import gunbc.primitive_egress.disposition { PrimitiveDispositionRow }
+import gunbc.primitive_egress.dispositions_text { dispositions_text_rows }
+import gunbc.primitive_egress.dispositions_collection { dispositions_collection_rows }
+import gunbc.primitive_egress.dispositions_hosts { dispositions_hosts_rows }
+import gunbc.primitive_egress.dispositions_seed_query { dispositions_seed_query_rows }
+
+// THE ONE DISPOSITION LEDGER the census joins. Rows are grouped by the lane that will retire
+// them, and the census refuses an identity that two files both claim (MultipleDispositions) or
+// that no file claims (NoDisposition) -- the grouping is a browsing convention, never a key.
+fn primitive_disposition_rows() -> List<PrimitiveDispositionRow> {
+  concat(concat(concat(dispositions_text_rows(), dispositions_collection_rows()), dispositions_hosts_rows()), dispositions_seed_query_rows())
+}

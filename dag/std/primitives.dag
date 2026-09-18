@@ -554,6 +554,11 @@ data contiguous_loop_elementwise_float_kernel_contract: PrimitiveContract = {
 // v1.compiler.infer_method for dag/ compile scope (review 46064) — same parallel-enumeration debt,
 // not a new fork. Dissolve-on: fold builtin_function_registry construction from this list as the
 // single authority.
+// DRIFT IS NOW MEASURED, NOT PREDICTED: gunbc.primitive_egress.census_live reads the authority's
+// key set through the builtin_function_registry_keys compiler query and prints both set
+// differences (hand_roster_missing_registry_rows / hand_roster_rows_absent_from_registry) in every
+// census receipt. Brought back to the key set on 2026-09-18, seventeen rows behind and one row
+// (emit_map_has) ahead of the registry it mirrors.
 
 fn builtin_registry_surface_names() -> List<String> {
   [
@@ -592,7 +597,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "map_is_empty",
     "rc_ptr_eq",
     "rc_vec_ptr_eq",
-    "emit_map_has",
     "set_contains",
     "lookup",
     "map_get",
@@ -687,6 +691,23 @@ fn builtin_registry_surface_names() -> List<String> {
     "is_xid_start",
     "is_xid_continue",
     "is_emoji_ident",
+    "claim_scope_dag_multi_module_fixture",
+    "class_b_import_closure_gate_not_affected_skip",
+    "compile_dag_call_form_leaf_guard",
+    "compile_dag_callsite_resolved_call_edges",
+    "compile_dag_diagnostic_census",
+    "compile_dag_importer_resolved_call_edges",
+    "compile_dag_multi_module_fixture",
+    "compile_dag_reference_occurrence_binding_census",
+    "dependency_resolution_facts",
+    "observe_declared_import_closure_symbol_binding",
+    "parse_roadmap_acceptance_event_history_jsonl",
+    "parse_stage0_cargo_manifest_bins",
+    "project_roadmap_acceptance_event_history_from_authority_text_host",
+    "toolchain_home_interference_probe",
+    "type_ref_hit_ne_bind_measure_active",
+    "builtin_function_registry_keys",
+    "compile_dag_primitive_call_edges",
   ]
 }
 

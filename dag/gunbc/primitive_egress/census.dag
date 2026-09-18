@@ -1,0 +1,524 @@
+module gunbc.primitive_egress.census
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import std.primitive_projection {
+  PrimitiveIdentity, PrimitiveProjection, ProjectionFidelity, HostRealizedSeam, ModeledProjection, DivergentProjection,
+  primitive_identity_runtime_name,
+}
+import std.primitive_identity {
+  PrimitiveSurfaceAuthority, BuiltinRegistry, PrimitiveContractRow, AlgebraTemplate, InterpreterDispatch, EmitHandler,
+  primitive_identity_eq,
+}
+import gunbc.v1_interpreter_primitive_surface {
+  InterpreterPrimitiveDispatchArm, InterpreterDispatchForm, FreeCall, MethodCall, ServiceDispatch, NativeSpecial, UnknownForm,
+}
+import gunbc.primitive_egress.identity {
+  CallForm, FreeForm, MethodForm, FormlessSurface, CanonicalJoin, JoinRoute,
+  JoinedByD0AliasTable, JoinedByEgressAliasRow, JoinedBySpelling,
+  canonical_join, identity_name, form_label,
+}
+import gunbc.primitive_egress.disposition {
+  PrimitiveDispositionRow, DispositionClass, UnresolvedClass, PureDagComputationClass, BoundHostEffectClass,
+  TargetKernelRealizationClass, CompilerQueryFrontierClass,
+  row_class, row_owner_lane, disposition_class_label,
+}
+import gunbc.primitive_egress.category { category_label }
+
+// ---------------------------------------------------------------------------------------------
+// INPUT CARRIERS. Every fold below takes its population as a PARAMETER, so a witness can supply a
+// planted surface fact, edge or disposition row and watch one finding go red (DESIGN section 3:
+// a witness discriminates at one interface). The production binding is in
+// gunbc.primitive_egress.census_live, which is the only module that reads the live tree.
+// ---------------------------------------------------------------------------------------------
+
+// One spelling on one realization surface, before the join. `form` is the call form the surface
+// realizes: the builtin registry types free calls, algebra templates type method calls, a contract
+// row is formless, and an interpreter arm carries the form its arm family dispatches.
+type SurfaceFact {
+  surface: PrimitiveSurfaceAuthority
+  spelling: String
+  form: CallForm
+}
+
+fn surface_fact(surface: PrimitiveSurfaceAuthority, spelling: String, form: CallForm) -> SurfaceFact {
+  SurfaceFact { surface: surface, spelling: spelling, form: form }
+}
+
+fn arm_call_form(form: InterpreterDispatchForm) -> CallForm {
+  match form {
+    FreeCall => FreeForm
+    MethodCall => MethodForm
+    ServiceDispatch => FormlessSurface
+    NativeSpecial => FreeForm
+    UnknownForm { label: _ } => FormlessSurface
+  }
+}
+
+fn interpreter_arm_fact(arm: InterpreterPrimitiveDispatchArm) -> SurfaceFact {
+  surface_fact(surface: InterpreterDispatch, spelling: arm.authored_spelling as String, form: arm_call_form(form: arm.form))
+}
+
+// The resolver's callee identity for one call site, as gunbc.v1 cli_run
+// compile_dag_primitive_call_edges answers it. Only the first arm and the algebra arm carry an
+// identity the resolver ESTABLISHED; the plain-method and undetermined arms carry a spelling the
+// resolver could not bind, and the service arm is a bound-provider operation rather than a primitive.
+type PrimitiveCalleeIdentity
+  = RuntimePrimitiveCallee { primitive_name: String, projected_from_module: String?, projected_from_decl: String? }
+  | AlgebraMethodCallee { template_name: String }
+  | ServiceOperationCallee { service_name: String, operation: String }
+  | PlainMethodCallee { spelling: String }
+  | UndeterminedFreeCallee { spelling: String }
+
+type PrimitiveCallEdge {
+  caller_module: String
+  caller_decl: String
+  authored_spelling: String
+  callee: PrimitiveCalleeIdentity
+  span_file: String
+  span_start: Int
+}
+
+type PrimitiveCallEntryRefusal {
+  entry: String
+  cause: String
+}
+
+type PrimitiveCallEdgeCensus
+  = PrimitiveCallEdgeCensusRefused { cause: String }
+  | PrimitiveCallEdgeCensusObserved {
+      entries_resolved: List<String>
+      entries_refused: List<PrimitiveCallEntryRefusal>
+      edges: List<PrimitiveCallEdge>
+    }
+
+// ---------------------------------------------------------------------------------------------
+// THE JOIN.
+// ---------------------------------------------------------------------------------------------
+
+type JoinedSurfaceFact {
+  fact: SurfaceFact
+  join: CanonicalJoin
+}
+
+fn join_surface_fact(fact: SurfaceFact) -> JoinedSurfaceFact {
+  JoinedSurfaceFact { fact: fact, join: canonical_join(surface: Present { value: fact.surface }, spelling: fact.spelling, form: fact.form) }
+}
+
+// Which layer a caller inhabits, read off the resolver's own module identity. `v2.` is src/v2 and
+// `v1.` is the seed's own .dag; everything else is the dag/ layer. A test module in any layer is
+// bucketed apart so production consumer counts are not inflated by witnesses.
+type CallerLayer
+  = V2Caller
+  | V1Caller
+  | DagCaller
+  | TestCaller
+
+fn caller_layer(module_path: String) -> CallerLayer {
+  if starts_with(module_path, "test.") || string_contains(module_path, ".test.") || starts_with(module_path, "v2.test.") {
+    TestCaller
+  } else if starts_with(module_path, "v2.") {
+    V2Caller
+  } else if starts_with(module_path, "v1.") {
+    V1Caller
+  } else {
+    DagCaller
+  }
+}
+
+fn caller_layer_label(layer: CallerLayer) -> String {
+  match layer {
+    V2Caller => "v2"
+    V1Caller => "v1"
+    DagCaller => "dag"
+    TestCaller => "test"
+  }
+}
+
+// The consumer side of the join at identity grain: how many call sites reach the identity from
+// each layer, through which route, and how many sites SPELL it without the resolver having
+// established the callee.
+type ConsumerTally {
+  v2_sites: Int
+  v1_sites: Int
+  dag_sites: Int
+  test_sites: Int
+  v2_modules: List<String>
+  v1_modules: List<String>
+  unresolved_sites: Int
+  unresolved_callers: List<String>
+}
+
+fn empty_tally() -> ConsumerTally {
+  ConsumerTally { v2_sites: 0, v1_sites: 0, dag_sites: 0, test_sites: 0, v2_modules: [], v1_modules: [], unresolved_sites: 0, unresolved_callers: [] }
+}
+
+fn push_distinct(xs: List<String>, x: String) -> List<String> {
+  if xs |> any(y => y == x) { xs } else { list_push(xs, x) }
+}
+
+fn tally_resolved(t: ConsumerTally, layer: CallerLayer, module: String) -> ConsumerTally {
+  match layer {
+    V2Caller => ConsumerTally { v2_sites: t.v2_sites + 1, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: push_distinct(xs: t.v2_modules, x: module), v1_modules: t.v1_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
+    V1Caller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites + 1, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: push_distinct(xs: t.v1_modules, x: module), unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
+    DagCaller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites + 1, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: t.v1_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
+    TestCaller => ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites + 1, v2_modules: t.v2_modules, v1_modules: t.v1_modules, unresolved_sites: t.unresolved_sites, unresolved_callers: t.unresolved_callers }
+  }
+}
+
+fn tally_unresolved(t: ConsumerTally, caller: String) -> ConsumerTally {
+  ConsumerTally { v2_sites: t.v2_sites, v1_sites: t.v1_sites, dag_sites: t.dag_sites, test_sites: t.test_sites, v2_modules: t.v2_modules, v1_modules: t.v1_modules, unresolved_sites: t.unresolved_sites + 1, unresolved_callers: push_distinct(xs: t.unresolved_callers, x: caller) }
+}
+
+fn tally_total_sites(t: ConsumerTally) -> Int {
+  t.v2_sites + t.v1_sites + t.dag_sites + t.test_sites
+}
+
+// How one edge joins: to a canonical identity as an ESTABLISHED consumer, to a canonical identity
+// as a site the resolver left unresolved, to a service operation (not a primitive), or to a
+// spelling on no surface at all (a record-field closure invoked as a method, an unresolved
+// free call to nothing the census knows -- reported as a receipt count, never as an identity).
+type EdgeJoin
+  = EstablishedConsumer { identity: PrimitiveIdentity }
+  | UnresolvedConsumer { identity: PrimitiveIdentity }
+  | ServiceOperationSite { service_name: String, operation: String }
+  | OffSurfaceSite { spelling: String }
+
+fn edge_join(edge: PrimitiveCallEdge, on_surface: fn(PrimitiveIdentity) -> Bool) -> EdgeJoin {
+  match edge.callee {
+    RuntimePrimitiveCallee { primitive_name: n, projected_from_module: _, projected_from_decl: _ } =>
+      EstablishedConsumer { identity: canonical_join(surface: none, spelling: n, form: FreeForm).identity }
+    AlgebraMethodCallee { template_name: t } =>
+      EstablishedConsumer { identity: canonical_join(surface: none, spelling: t, form: MethodForm).identity }
+    ServiceOperationCallee { service_name: s, operation: op } =>
+      if s == "Filesystem" && (op == "Read" || op == "List") {
+        EstablishedConsumer { identity: canonical_join(surface: none, spelling: "Filesystem.Read|List", form: FormlessSurface).identity }
+      } else {
+        ServiceOperationSite { service_name: s, operation: op }
+      }
+    PlainMethodCallee { spelling: sp } => {
+      let id = canonical_join(surface: none, spelling: sp, form: MethodForm).identity
+      if on_surface(id) { UnresolvedConsumer { identity: id } } else { OffSurfaceSite { spelling: sp } }
+    }
+    UndeterminedFreeCallee { spelling: sp } => {
+      let id = canonical_join(surface: none, spelling: sp, form: FreeForm).identity
+      if on_surface(id) { UnresolvedConsumer { identity: id } } else { OffSurfaceSite { spelling: sp } }
+    }
+  }
+}
+
+type ConsumerFold {
+  tallies: Map<String, ConsumerTally>
+  service_sites: Int
+  off_surface_sites: Int
+  off_surface_spellings: List<String>
+}
+
+fn consumer_fold(edges: List<PrimitiveCallEdge>, on_surface: fn(PrimitiveIdentity) -> Bool) -> ConsumerFold {
+  edges |> fold(
+    init: ConsumerFold { tallies: empty_map(), service_sites: 0, off_surface_sites: 0, off_surface_spellings: [] },
+    f: fn(acc, edge) {
+      match edge_join(edge: edge, on_surface: on_surface) {
+        EstablishedConsumer { identity: id } => {
+          let key = identity_name(identity: id)
+          let prior = match map_get(acc.tallies, key) { Present { value: t } => t  Absent => empty_tally() }
+          ConsumerFold {
+            tallies: map_insert(acc.tallies, key, tally_resolved(t: prior, layer: caller_layer(module_path: edge.caller_module), module: edge.caller_module)),
+            service_sites: acc.service_sites, off_surface_sites: acc.off_surface_sites, off_surface_spellings: acc.off_surface_spellings,
+          }
+        }
+        UnresolvedConsumer { identity: id } => {
+          let key = identity_name(identity: id)
+          let prior = match map_get(acc.tallies, key) { Present { value: t } => t  Absent => empty_tally() }
+          ConsumerFold {
+            tallies: map_insert(acc.tallies, key, tally_unresolved(t: prior, caller: concat(edge.caller_module, " ", edge.caller_decl))),
+            service_sites: acc.service_sites, off_surface_sites: acc.off_surface_sites, off_surface_spellings: acc.off_surface_spellings,
+          }
+        }
+        ServiceOperationSite { service_name: _, operation: _ } =>
+          ConsumerFold { tallies: acc.tallies, service_sites: acc.service_sites + 1, off_surface_sites: acc.off_surface_sites, off_surface_spellings: acc.off_surface_spellings }
+        OffSurfaceSite { spelling: sp } =>
+          ConsumerFold { tallies: acc.tallies, service_sites: acc.service_sites, off_surface_sites: acc.off_surface_sites + 1, off_surface_spellings: push_distinct(xs: acc.off_surface_spellings, x: sp) }
+      }
+    }
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// IDENTITY STANDING: the second projection the contract asks for -- current route state,
+// separately from the semantic class.
+// ---------------------------------------------------------------------------------------------
+
+type DispositionMatch
+  = ExactlyOneDisposition { row: PrimitiveDispositionRow }
+  | NoDisposition
+  | MultipleDispositions { rows: List<PrimitiveDispositionRow> }
+
+type SeedGrowthOwnership
+  = SeedGrowthRows { declarations: List<DeclarationRef> }
+  | NoSeedGrowthRow
+
+type IdentityStanding {
+  identity: PrimitiveIdentity
+  name: String
+  spellings: List<String>
+  facts: List<JoinedSurfaceFact>
+  contract: Bool
+  registry: Bool
+  algebra: Bool
+  interpreter_arm: Bool
+  emit_bridge: Bool
+  interpreter_arm_count: Int
+  modeled_bodies: List<DeclarationRef>
+  host_seams: List<DeclarationRef>
+  divergent_bodies: List<DeclarationRef>
+  consumers: ConsumerTally
+  disposition: DispositionMatch
+  seed_growth: SeedGrowthOwnership
+}
+
+fn facts_carry_surface(facts: List<JoinedSurfaceFact>, surface: PrimitiveSurfaceAuthority) -> Bool {
+  facts |> any(f => f.fact.surface == surface)
+}
+
+fn count_surface(facts: List<JoinedSurfaceFact>, surface: PrimitiveSurfaceAuthority) -> Int {
+  count(facts |> filter(f => f.fact.surface == surface))
+}
+
+fn distinct_identities(joined: List<JoinedSurfaceFact>) -> List<PrimitiveIdentity> {
+  joined |> fold(init: [], f: fn(acc, j) {
+    if acc |> any(id => primitive_identity_eq(left: id, right: j.join.identity)) { acc } else { list_push(acc, j.join.identity) }
+  })
+}
+
+fn projection_declarations(rows: List<PrimitiveProjection>, identity: PrimitiveIdentity, wanted: fn(ProjectionFidelity) -> Bool) -> List<DeclarationRef> {
+  rows
+    |> filter(fn(r) { primitive_identity_eq(left: r.primitive, right: identity) && wanted(r.fidelity) })
+    |> map(r => r.declaration)
+}
+
+fn is_modeled(f: ProjectionFidelity) -> Bool {
+  match f { ModeledProjection => true  HostRealizedSeam => false  DivergentProjection { divergence: _ } => false }
+}
+
+fn is_host_seam(f: ProjectionFidelity) -> Bool {
+  match f { HostRealizedSeam => true  ModeledProjection => false  DivergentProjection { divergence: _ } => false }
+}
+
+fn is_divergent(f: ProjectionFidelity) -> Bool {
+  match f { DivergentProjection { divergence: _ } => true  ModeledProjection => false  HostRealizedSeam => false }
+}
+
+fn disposition_match(rows: List<PrimitiveDispositionRow>, identity: PrimitiveIdentity) -> DispositionMatch {
+  let matches = rows |> filter(fn(r) { primitive_identity_eq(left: r.identity, right: identity) })
+  let n = count(matches)
+  if n == 0 { NoDisposition }
+  else if n == 1 { match matches |> first { Present { value: r } => ExactlyOneDisposition { row: r }  Absent => NoDisposition } }
+  else { MultipleDispositions { rows: matches } }
+}
+
+// Seed-growth ownership joins the primitive's runtime name against the declarations every
+// SeedGrowthJustification row enumerates. A primitive whose host realization is declared under a
+// different name answers NoSeedGrowthRow, which is reported, never silently owned.
+fn seed_growth_ownership(decls: List<DeclarationRef>, name: String) -> SeedGrowthOwnership {
+  let owned = decls |> filter(fn(d) { d.decl_name == name })
+  if count(owned) == 0 { NoSeedGrowthRow } else { SeedGrowthRows { declarations: owned } }
+}
+
+fn identity_standing(
+  identity: PrimitiveIdentity,
+  joined: List<JoinedSurfaceFact>,
+  projections: List<PrimitiveProjection>,
+  consumers: ConsumerFold,
+  dispositions: List<PrimitiveDispositionRow>,
+  seed_growth_decls: List<DeclarationRef>,
+) -> IdentityStanding {
+  let name = identity_name(identity: identity)
+  let facts = joined |> filter(fn(j) { primitive_identity_eq(left: j.join.identity, right: identity) })
+  IdentityStanding {
+    identity: identity,
+    name: name,
+    spellings: facts |> fold(init: [], f: fn(acc, f) { push_distinct(xs: acc, x: f.fact.spelling) }),
+    facts: facts,
+    contract: facts_carry_surface(facts: facts, surface: PrimitiveContractRow),
+    registry: facts_carry_surface(facts: facts, surface: BuiltinRegistry),
+    algebra: facts_carry_surface(facts: facts, surface: AlgebraTemplate),
+    interpreter_arm: facts_carry_surface(facts: facts, surface: InterpreterDispatch),
+    emit_bridge: facts_carry_surface(facts: facts, surface: EmitHandler),
+    interpreter_arm_count: count_surface(facts: facts, surface: InterpreterDispatch),
+    modeled_bodies: projection_declarations(rows: projections, identity: identity, wanted: is_modeled),
+    host_seams: projection_declarations(rows: projections, identity: identity, wanted: is_host_seam),
+    divergent_bodies: projection_declarations(rows: projections, identity: identity, wanted: is_divergent),
+    consumers: match map_get(consumers.tallies, name) { Present { value: t } => t  Absent => empty_tally() },
+    disposition: disposition_match(rows: dispositions, identity: identity),
+    seed_growth: seed_growth_ownership(decls: seed_growth_decls, name: name),
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE CENSUS.
+// ---------------------------------------------------------------------------------------------
+
+type CensusInputs {
+  surface_facts: List<SurfaceFact>
+  edges: List<PrimitiveCallEdge>
+  entries_refused: List<PrimitiveCallEntryRefusal>
+  projections: List<PrimitiveProjection>
+  dispositions: List<PrimitiveDispositionRow>
+  seed_growth_decls: List<DeclarationRef>
+}
+
+type PrimitiveCensus {
+  standings: List<IdentityStanding>
+  consumer_fold: ConsumerFold
+  entries_refused: List<PrimitiveCallEntryRefusal>
+  dispositions_naming_no_identity: List<PrimitiveDispositionRow>
+}
+
+fn primitive_census(inputs: CensusInputs) -> PrimitiveCensus {
+  let joined = inputs.surface_facts |> map(f => join_surface_fact(fact: f))
+  let identities = distinct_identities(joined: joined)
+  let on_surface = fn(id) { identities |> any(x => primitive_identity_eq(left: x, right: id)) }
+  let consumers = consumer_fold(edges: inputs.edges, on_surface: on_surface)
+  PrimitiveCensus {
+    standings: identities |> map(id => identity_standing(
+      identity: id, joined: joined, projections: inputs.projections, consumers: consumers,
+      dispositions: inputs.dispositions, seed_growth_decls: inputs.seed_growth_decls,
+    )),
+    consumer_fold: consumers,
+    entries_refused: inputs.entries_refused,
+    dispositions_naming_no_identity: inputs.dispositions |> filter(fn(r) { !on_surface(r.identity) }),
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// FINDINGS. Each is an identity LIST; a count is rendered from it, never authored.
+// ---------------------------------------------------------------------------------------------
+
+fn standings_where(c: PrimitiveCensus, p: fn(IdentityStanding) -> Bool) -> List<IdentityStanding> {
+  c.standings |> filter(p)
+}
+
+fn registry_without_contract(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.registry && !s.contract })
+}
+
+fn contract_without_interpreter_arm(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.contract && !s.interpreter_arm })
+}
+
+fn interpreter_arm_without_contract(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.interpreter_arm && !s.contract })
+}
+
+fn has_any_consumer(s: IdentityStanding) -> Bool {
+  tally_total_sites(t: s.consumers) > 0
+}
+
+fn emitted_bridge_without_consumer(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.emit_bridge && !has_any_consumer(s: s) })
+}
+
+fn unused_primitives(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { !has_any_consumer(s: s) && s.consumers.unresolved_sites == 0 })
+}
+
+fn consumers_with_unresolved_callee(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.consumers.unresolved_sites > 0 })
+}
+
+// An identity realized by more than one interpreter arm, or by an interpreter arm AND a modeled
+// .dag body the builtin intercept shadows: two routes that can disagree about one meaning.
+fn duplicate_realizations(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.interpreter_arm_count > 1 || (s.interpreter_arm && count(s.modeled_bodies) > 0) })
+}
+
+fn interpreter_arm_without_emitted_route(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.interpreter_arm && !s.emit_bridge && count(s.modeled_bodies) == 0 && s.consumers.v2_sites > 0 })
+}
+
+fn zero_disposition(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { match s.disposition { NoDisposition => true  ExactlyOneDisposition { row: _ } => false  MultipleDispositions { rows: _ } => false } })
+}
+
+fn multiple_disposition(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { match s.disposition { MultipleDispositions { rows: _ } => true  ExactlyOneDisposition { row: _ } => false  NoDisposition => false } })
+}
+
+fn exactly_one_disposition(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { match s.disposition { ExactlyOneDisposition { row: _ } => true  MultipleDispositions { rows: _ } => false  NoDisposition => false } })
+}
+
+fn standing_class(s: IdentityStanding) -> DispositionClass? {
+  match s.disposition {
+    ExactlyOneDisposition { row: r } => Present { value: row_class(row: r) }
+    NoDisposition => none
+    MultipleDispositions { rows: _ } => none
+  }
+}
+
+fn standings_of_class(c: PrimitiveCensus, wanted: DispositionClass) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) {
+    match standing_class(s: s) {
+      Present { value: k } => disposition_class_label(c: k) == disposition_class_label(c: wanted)
+      Absent => false
+    }
+  })
+}
+
+fn unresolved_identities(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_of_class(c: c, wanted: UnresolvedClass)
+}
+
+fn v2_projection(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.consumers.v2_sites > 0 })
+}
+
+fn v1_only_projection(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.consumers.v1_sites > 0 && s.consumers.v2_sites == 0 && s.consumers.dag_sites == 0 })
+}
+
+fn shared_v1_v2_identities(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { s.consumers.v1_sites > 0 && s.consumers.v2_sites > 0 })
+}
+
+fn aliased_identities(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_where(c: c, p: fn(s) { count(s.spellings) > 1 })
+}
+
+fn compiler_query_without_seed_growth_row(c: PrimitiveCensus) -> List<IdentityStanding> {
+  standings_of_class(c: c, wanted: CompilerQueryFrontierClass)
+    |> filter(fn(s) { match s.seed_growth { NoSeedGrowthRow => true  SeedGrowthRows { declarations: _ } => false } })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE EXIT STANDING. The landing bar from the acceptance contract: every joined identity carries
+// exactly one disposition, no disposition row names an identity outside the join, and no
+// production entry was refused by the resolver. Unresolved identities do NOT fail the census;
+// they are explicit and migration-blocking for their own primitive.
+// ---------------------------------------------------------------------------------------------
+
+type CensusStanding
+  = CensusHeld
+  | CensusDidNotHold { cause: NonEmptyStr }
+  | CensusRefused { cause: NonEmptyStr }
+
+fn names_of(ss: List<IdentityStanding>) -> String {
+  ss |> map(s => s.name) |> join(separator: ",")
+}
+
+fn census_standing(c: PrimitiveCensus) -> CensusStanding {
+  if count(c.entries_refused) > 0 {
+    CensusRefused { cause: concat("resolver refused ", to_string(count(c.entries_refused)), " admitted entries; the consumer population is incomplete: ", c.entries_refused |> map(r => r.entry) |> join(separator: ",")) as NonEmptyStr }
+  } else if count(c.standings) == 0 {
+    CensusRefused { cause: "no primitive identity joined any surface" as NonEmptyStr }
+  } else if count(zero_disposition(c: c)) > 0 {
+    CensusDidNotHold { cause: concat("identities with no disposition: ", names_of(ss: zero_disposition(c: c))) as NonEmptyStr }
+  } else if count(multiple_disposition(c: c)) > 0 {
+    CensusDidNotHold { cause: concat("identities with more than one disposition: ", names_of(ss: multiple_disposition(c: c))) as NonEmptyStr }
+  } else if count(c.dispositions_naming_no_identity) > 0 {
+    CensusDidNotHold { cause: concat("disposition rows naming no joined identity: ", c.dispositions_naming_no_identity |> map(r => identity_name(identity: r.identity)) |> join(separator: ",")) as NonEmptyStr }
+  } else {
+    CensusHeld
+  }
+}

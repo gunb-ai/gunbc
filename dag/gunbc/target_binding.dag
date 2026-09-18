@@ -23,6 +23,7 @@ type TargetProducer
   | CompileCleanDiagnosticCensusProducer
   | V2NativeCliProducer
   | EvaluationStoreAddressExactHeadProducer
+  | PrimitiveEgressCensusProducer
 
 type TargetBinding {
   target: Label

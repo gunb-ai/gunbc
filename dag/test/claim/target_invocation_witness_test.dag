@@ -16,6 +16,7 @@ import gunbc.target_binding {
   BehavioralReceiptCensusProducer, BehavioralReceiptSelftestProducer,
   CompileCleanDiagnosticCensusProducer,
   EvaluationStoreAddressExactHeadProducer,
+  PrimitiveEgressCensusProducer,
   CompileCleanDiagnosticCensusStanding, CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused, CompileCleanDiagnosticCensusObservation,
   CompileCleanDiagnosticCensusIdentity,
@@ -49,6 +50,7 @@ import gunbc.instrument_targets {
   behavioral_receipt_selftest_label,
   compile_clean_diagnostic_census_label,
   evaluation_store_address_exact_head_label,
+  primitive_egress_census_label,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -141,6 +143,15 @@ test fn the_evaluation_store_address_exact_head_operand_routes_to_its_own_produc
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: evaluation_store_address_exact_head_label())
         && (b.producer == EvaluationStoreAddressExactHeadProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_primitive_egress_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:primitive-egress-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: primitive_egress_census_label())
+        && (b.producer == PrimitiveEgressCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
