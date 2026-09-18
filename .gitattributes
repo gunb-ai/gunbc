@@ -24,6 +24,7 @@ ROADMAP.md merge=generated-artifact
 dag/gunbc/stage0/stage0_crate_layout_generated.dag merge=generated-artifact
 dag/gunbc/stage0/stage0_crate_partition_generated.dag merge=generated-artifact
 dag/gunbc/stage0/stage0_executable_assembly_generated.dag merge=generated-artifact
+dag/test/fixture/approval_device_redemption/vectors.json merge=generated-artifact
 docs/design-rung-drops.md merge=generated-artifact
 docs/onboarding.md merge=generated-artifact
 docs/plans/blackjack-onboarding.md merge=generated-artifact

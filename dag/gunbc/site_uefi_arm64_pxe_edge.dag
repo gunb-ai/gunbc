@@ -259,7 +259,7 @@ data site_edge_arm64_tag: String = "efi-arm64"
 
 data site_edge_known_tag: String = "onboarding-known"
 
-fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, filename: NonEmptyStr, known_client_macs: List<Eui48Address>, tftp_root: NonEmptyStr) -> List<DnsmasqDirective> {
+fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, known_client_macs: List<Eui48Address>, tftp_root: NonEmptyStr) -> List<DnsmasqDirective> {
   concat(
     [
       DnsmasqComment { text: join(["gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only: iPXE ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String, " per ", ipxe_chainloading_authority.uri.locator], "") },
@@ -271,7 +271,7 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, filename: NonEm
     concat(
       map(known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
       [
-        DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: filename as String },
+        DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: ipxe_arm64_efi_snponly.image as String },
         DnsmasqEnableTftp,
         DnsmasqTftpRoot { path: tftp_root as String },
       ],
@@ -281,8 +281,8 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, filename: NonEm
 
 // CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to
 // srv4 as the edge daemon's config.
-fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, filename: NonEmptyStr, known_client_macs: List<Eui48Address>, tftp_root: NonEmptyStr) -> String {
-  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, filename: filename, known_client_macs: known_client_macs, tftp_root: tftp_root))
+fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, known_client_macs: List<Eui48Address>, tftp_root: NonEmptyStr) -> String {
+  serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, known_client_macs: known_client_macs, tftp_root: tftp_root))
 }
 
 // The first onboarding segment's only known client, parsed from the measured observation's wire text

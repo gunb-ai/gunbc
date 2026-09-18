@@ -145,13 +145,12 @@ type SitePxeEdgeFile {
   content: String
 }
 
-fn site_pxe_edge_config_file(target: SitePxeEdgeChainloaderTarget, known_client_macs: List<Eui48Address>) -> SitePxeEdgeFile {
+fn site_pxe_edge_config_file(known_client_macs: List<Eui48Address>) -> SitePxeEdgeFile {
   SitePxeEdgeFile {
     subject: "dnsmasq-proxy-dhcp-config",
     path: site_pxe_edge_config_path,
     content: site_edge_proxy_dhcp_config(
       network_address: site_pxe_edge_segment_network,
-      filename: target.filename,
       known_client_macs: known_client_macs,
       tftp_root: site_pxe_edge_tftp_root,
     ),
@@ -181,7 +180,7 @@ fn site_pxe_edge_unit_file() -> SitePxeEdgeFile {
 }
 
 fn site_pxe_edge_desired_files(target: SitePxeEdgeChainloaderTarget, known_client_macs: List<Eui48Address>) -> List<SitePxeEdgeFile> {
-  [site_pxe_edge_config_file(target: target, known_client_macs: known_client_macs), site_pxe_edge_unit_file()]
+  [site_pxe_edge_config_file(known_client_macs: known_client_macs), site_pxe_edge_unit_file()]
 }
 
 // ── The gate (pure) ──────────────────────────────────────────────────────────────────────────────
