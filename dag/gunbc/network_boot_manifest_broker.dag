@@ -34,7 +34,8 @@ import extdeps.crypto.mac {
 import gunbc.machine_intake_subject { IntakeAttemptId }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
-  signed_boot_manifest_window_refusal,
+  ManifestVerificationNotYetValid,
+  ManifestVerificationExpired,
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
   SignedBootManifestVerified,
@@ -157,7 +158,7 @@ fn issue_signed_boot_manifest(
 ) -> BootManifestIssuance {
   match trust {
     BootstrapTrustUnestablished => BootManifestIssuanceRefused { cause: ManifestIssuanceTrustUnestablished }
-    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
+    ProductionTrustedBootstrap { grounds: _ } => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
     ControlledNetworkBootstrap { evidence: _ } => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
   }
 }
@@ -206,7 +207,7 @@ fn verify_signed_boot_manifest(
 ) -> BootManifestVerification {
   match expectation.trust.standing {
     BootstrapTrustUnestablished => refused(class: ManifestVerificationTrust)
-    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
+    ProductionTrustedBootstrap { grounds: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
     ControlledNetworkBootstrap { evidence: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
   }
 }
@@ -251,6 +252,20 @@ fn join_verified_mac(
       Present { value: window_class } => refused(class: window_class)
       Absent => BootManifestAuthentic { claims: ticket.claims }
     }
+  }
+}
+
+// Redemption-time window. The 0A join re-adjudicates the same identity at the
+// observation time it alone holds (ManifestJoinNotYetValid / ManifestJoinExpired);
+// this is the broker's own stop at the moment a ticket is presented, so a
+// stale ticket is refused before any join input is built from it.
+fn signed_boot_manifest_window_refusal(identity: SignedBootManifestIdentity, at: EpochMs) -> NetworkBootManifestVerificationClass? {
+  if at < identity.not_before {
+    Present { value: ManifestVerificationNotYetValid }
+  } else if at >= identity.expiry {
+    Present { value: ManifestVerificationExpired }
+  } else {
+    none
   }
 }
 

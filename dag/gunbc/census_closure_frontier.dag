@@ -48,6 +48,7 @@ import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
+import gunbc.network_boot_delivery { network_boot_delivery_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
 import extdeps.backblaze.b2 { backblaze_b2_frontier_rows }
 import extdeps.cloud.gcp.storage { gcs_storage_frontier_rows }
@@ -61,7 +62,6 @@ import product.data_category { data_category_frontier_rows }
 
 import product.fabric.job_admission { job_admission_frontier_rows }
 import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
-import gunbc.network_boot_delivery { network_boot_delivery_join_frontier_rows }
 import gunbc.network_boot_manifest_broker { network_boot_manifest_broker_frontier_rows }
 import gunbc.github_app_acquisition { github_app_human_step_frontier_rows }
 import gunbc.instruments.github_app_acquire {
@@ -112,6 +112,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_r2_token_mint_frontier_rows,
     cloudflare_account_api_tokens_frontier_rows,
     cloudflare_r2_frontier_rows,
+    network_boot_delivery_frontier_rows,
     cloudflare_r2_supplier_frontier_rows,
     backblaze_b2_frontier_rows,
     gcs_storage_frontier_rows,
@@ -123,7 +124,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     job_admission_frontier_rows,
     arm_ci_seller_census_later_consumer_frontier_rows,
     runner_canary_executed_evidence_frontier,
-    network_boot_delivery_join_frontier_rows,
     network_boot_manifest_broker_frontier_rows,
   ]
 }
