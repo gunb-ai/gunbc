@@ -1,0 +1,140 @@
+module gunbc.machine_intake_mtjade1_first_dpc_population_plan
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count }
+import extdeps.cpu.ampere_altra_platform_hw_design.platform {
+  DimmSlotPosition,
+  OneDimmPerChannel,
+  dimms_per_channel_count,
+  one_dimm_per_channel_populated_slot,
+}
+import extdeps.memory.types {
+  DramDieStacking,
+  DualDiePackage,
+  MonolithicDie,
+  ThreeDimensionalStacked,
+}
+import extdeps.ocp.mt_jade.memory_mixing {
+  DifferentChannel,
+  Mixing1rAnd2r,
+  MixingNotPreferred,
+  MixingNotSupported,
+  MixingSupported,
+  MixingUndetermined,
+  MixedDimmSupportAmbiguous,
+  MixedDimmSupportResolved,
+  MixedDimmSupportUnmodelled,
+  mt_jade_mixed_dimm_support,
+}
+import extdeps.ocp.mt_jade.platform { MasterSocket, ProcessorSocketRole, SlaveSocket }
+
+// FIRST 1DPC FILL FOR THE BAREBONES JADE UNIT. Table 3 (extdeps.ocp.mt_jade.memory_mixing) does
+// not name fill order or which member of a channel pair is populated first. Ampere Altra
+// platform HW design section 2.2.3 does: 1DPC occupies Slot0, the DIMM farther from that CPU.
+// Mt. Collins Table 11 odd J-connectors are that product's silk, not this board's. This plan
+// names the sixteen Slot0 positions; silkscreen J-labels stay unobserved until a photo is
+// joined to Slot0 = farther-from-CPU.
+
+type JadeFirstDpcSlot {
+  socket: ProcessorSocketRole
+  channel_ordinal: Int
+  slot: DimmSlotPosition
+}
+
+type JadeFirstDpcSilkStanding
+  = ConnectorSilkUnobserved { discriminator: NonEmptyStr }
+
+type JadeFirstDpcModuleClass
+  = UniformMonolithicRdimm
+  | UniformDualDieRdimm
+  | MixedModuleClassRefused { cause: NonEmptyStr }
+
+fn jade_first_dpc_topology_is_one_dimm_per_channel() -> Bool {
+  dimms_per_channel_count(topology: OneDimmPerChannel) == 1
+}
+
+fn jade_first_dpc_slot() -> DimmSlotPosition {
+  one_dimm_per_channel_populated_slot()
+}
+
+fn jade_first_dpc_dimm_count() -> Int {
+  2 * altra_ddr4_channel_count
+}
+
+fn jade_channel_slot(
+  socket: ProcessorSocketRole,
+  channel_ordinal: Int,
+) -> JadeFirstDpcSlot {
+  JadeFirstDpcSlot {
+    socket: socket,
+    channel_ordinal: channel_ordinal,
+    slot: jade_first_dpc_slot(),
+  }
+}
+
+// Sixteen named positions: socket0 master channels 0..7 Slot0, then socket1 slave channels 0..7
+// Slot0. Channel ordinals are MCU indices, not silkscreen numbers.
+data jade_first_dpc_slots: List<JadeFirstDpcSlot> = [
+  jade_channel_slot(socket: MasterSocket, channel_ordinal: 0),
+  jade_channel_slot(socket: MasterSocket, channel_ordinal: 1),
+  jade_channel_slot(socket: MasterSocket, channel_ordinal: 2),
+  jade_channel_slot(socket: MasterSocket, channel_ordinal: 3),
+  jade_channel_slot(socket: MasterSocket, channel_ordinal: 4),
+  jade_channel_slot(socket: MasterSocket, channel_ordinal: 5),
+  jade_channel_slot(socket: MasterSocket, channel_ordinal: 6),
+  jade_channel_slot(socket: MasterSocket, channel_ordinal: 7),
+  jade_channel_slot(socket: SlaveSocket, channel_ordinal: 0),
+  jade_channel_slot(socket: SlaveSocket, channel_ordinal: 1),
+  jade_channel_slot(socket: SlaveSocket, channel_ordinal: 2),
+  jade_channel_slot(socket: SlaveSocket, channel_ordinal: 3),
+  jade_channel_slot(socket: SlaveSocket, channel_ordinal: 4),
+  jade_channel_slot(socket: SlaveSocket, channel_ordinal: 5),
+  jade_channel_slot(socket: SlaveSocket, channel_ordinal: 6),
+  jade_channel_slot(socket: SlaveSocket, channel_ordinal: 7),
+]
+
+data jade_first_dpc_silk_standing: JadeFirstDpcSilkStanding = ConnectorSilkUnobserved {
+  discriminator: "Photograph each channel pair; the member farther from that socket is Slot0 / DIMM0 and receives the 1DPC stick. Do not copy Mt. Collins J1,J3,...,J31.",
+}
+
+// Same-channel Table 3 cells are not engaged at 1DPC. Cross-channel 1R+2R is MixingUndetermined
+// (TBD). First fill therefore uses sixteen identical modules: one rank, one width, one density,
+// one speed, one vendor, one die-stacking class.
+fn jade_first_dpc_same_channel_mixing_is_engaged() -> Bool {
+  false
+}
+
+fn jade_first_dpc_cross_channel_1r_2r_is_undetermined() -> Bool {
+  match mt_jade_mixed_dimm_support(placement: DifferentChannel, axis: Mixing1rAnd2r) {
+    MixedDimmSupportResolved { cell: c } => match c.support {
+      MixingUndetermined => true
+      MixingSupported => false
+      MixingNotSupported => false
+      MixingNotPreferred => false
+    }
+    MixedDimmSupportUnmodelled { query: _ } => false
+    MixedDimmSupportAmbiguous { query: _ } => false
+  }
+}
+
+// Dual-die 2DRx4 (extdeps.memory.micron MTA36ADS2G72PZ-2G1A1) is DualDiePackage, not a bogus
+// 2Rx4. Mixing it with monolithic parts on Collins produced CHANNEL Mismatch Byte 6 even though
+// DifferentDramDies on DifferentChannel reads MixingSupported. First fill is one stacking class.
+fn jade_first_dpc_admits_die_stacking(stacking: DramDieStacking, uniform: Bool) -> JadeFirstDpcModuleClass {
+  match uniform {
+    false => MixedModuleClassRefused {
+      cause: "First 1DPC fill is sixteen identical modules. Mixed die stacking is a later experiment.",
+    }
+    true => match stacking {
+      DualDiePackage => UniformDualDieRdimm
+      MonolithicDie => UniformMonolithicRdimm
+      ThreeDimensionalStacked => MixedModuleClassRefused {
+        cause: "3DS is not the first-fill class.",
+      }
+    }
+  }
+}
+
+fn jade_first_dpc_preferred_class() -> JadeFirstDpcModuleClass {
+  UniformMonolithicRdimm
+}
