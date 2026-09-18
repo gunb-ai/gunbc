@@ -2,6 +2,7 @@ module test.claim.approval_broker_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.auth.approval_broker {
+  HeaderAttributedToProxy, HeaderUnattributed,
   DecisionMethodAdmission, DecisionMethodCommits, DecisionMethodRetrievesOnly,
   DecisionMethodUnsupported, decision_method_admission,
   Redemption, RedemptionAdmitted, RedemptionRefused, RedemptionRefusal,
@@ -73,7 +74,7 @@ fn redeem_with(method: HttpMethod, identity: TailnetIdentity) -> Redemption {
     capability: good_capability(),
     expectation: witness_expectation,
     mac_result: good_mac(),
-    presented_identity: identity,
+    attribution: HeaderAttributedToProxy { presented: identity },
     expected_operator: operator_login,
     observed_at: witness_now,
   )
@@ -245,4 +246,22 @@ test fn an_unfenced_takeover_is_refused_and_a_fenced_one_is_not() -> Bool {
     }
   )
   && takeover_is_admissible(t: TakeoverFencedByProvider { fence: "etag-observed" as NonEmptyStr })
+}
+
+// AN UNATTRIBUTED HEADER NEVER BECOMES A LOGIN ON THE RECORD: the redemption is admitted on the
+// capability alone and decided_by names the bearer, whatever login the header carried -- including
+// the operator's own, because on that deployment the header could have been written by anyone.
+test fn an_unattributed_header_records_the_bearer_and_never_the_presented_login() -> Bool {
+  match redeem_capability(
+    method: POST,
+    capability: good_capability(),
+    expectation: witness_expectation,
+    mac_result: good_mac(),
+    attribution: HeaderUnattributed { residual: "witness: loopback bind, on-host peer unattributed" },
+    expected_operator: operator_login,
+    observed_at: witness_now,
+  ) {
+    RedemptionAdmitted { claims: _, decided_by: by } => string_contains(s: by as String, pattern: "bearer of capability") && !string_contains(s: by as String, pattern: operator_login as String)
+    RedemptionRefused { cause: _ } => false
+  }
 }

@@ -3,7 +3,8 @@ module v1.compiler.stage0_crates
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 import v1.std.core { TextFile }
-import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep, generated_rust_lint_relaxations }
+import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep, emit_cargo_features_section, generated_rust_lint_relaxations }
+import v1.compiler.runtime_rust { rust_runtime_cargo_features }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_partition_package_graph {
@@ -320,7 +321,7 @@ fn stage0_partition_row_dependencies_outcome(
 // row would ASSERT the probe is a generated partition crate, which it is not.
 fn stage0_features_for_crate_kind(kind: GeneratedPartitionCrateKind) -> List<CargoFeature> {
   match kind {
-    GeneratedFoundationCrate => [CargoFeature { name: "text_lookup_work_counter", dependencies: [] }]
+    GeneratedFoundationCrate => rust_runtime_cargo_features()
     GeneratedLayeredCoreCrate => []
     GeneratedEmitCoreCrate => []
   }
@@ -362,33 +363,12 @@ fn render_stage0_crate_dep(dep: CargoDependency) -> String {
   }
 }
 
-fn render_stage0_crate_feature(feature: CargoFeature) -> String {
-  if (feature.dependencies |> count) == 0 {
-    concat(feature.name, " = []\n")
-  } else {
-    let dep_names = feature.dependencies |> map(d => concat("\"", d, "\"")) |> join(separator: ", ")
-    concat(feature.name, " = [", dep_names, "]\n")
-  }
-}
-
-fn render_stage0_crate_features_section(features: List<CargoFeature>) -> String {
-  if (features |> count) == 0 {
-    ""
-  } else {
-    concat(
-      "\n[features]\n",
-      "default = []\n",
-      features |> map(render_stage0_crate_feature) |> join(separator: "")
-    )
-  }
-}
-
 fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> TextFile {
   let deps = spec.dependencies |> map(render_stage0_crate_dep) |> join(separator: "")
   let content = concat(
     render_cargo_package_header_prefix(name: spec.package_name),
     "\nedition = \"2021\"",
-    render_stage0_crate_features_section(features: spec.features),
+    emit_cargo_features_section(features: spec.features),
     "\n\n[dependencies]\n",
     deps
   )

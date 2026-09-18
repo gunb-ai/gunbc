@@ -1,0 +1,464 @@
+module extdeps.google.drive
+
+import std.types { NonEmptyStr, String, Int, List, Secret, Bool }
+import extdeps.transports.rest { RestOutcome }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact, Subject, JsonPending }
+import std.credentials { EnvVar }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3" }
+}
+
+data drive_drives_get_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/drives/get" }
+}
+
+data drive_permissions_list_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/permissions/list" }
+}
+
+data drive_permissions_create_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/permissions/create" }
+}
+
+data drive_files_list_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/files/list" }
+}
+
+data drive_files_create_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/reference/rest/v3/files/create" }
+}
+
+data drive_search_terms_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/guides/search-files" }
+}
+
+data drive_roles_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/guides/ref-roles" }
+}
+
+data drive_oauth_scope_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/drive/api/guides/api-specific-auth" }
+}
+
+data google_drive_api: NonEmptyStr = "Google Drive API"
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.google.drive",
+      decl_name: "google_drive_api",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [
+    drive_drives_get_citation,
+    drive_permissions_list_citation,
+    drive_permissions_create_citation,
+    drive_files_list_citation,
+    drive_files_create_citation,
+    drive_search_terms_citation,
+    drive_roles_citation,
+    drive_oauth_scope_citation
+  ]
+}
+
+data drive_api_version: NonEmptyStr = "v3"
+
+data drive_api_base: NonEmptyStr = "https://www.googleapis.com/drive/v3"
+
+data drive_serviceusage_api_id: NonEmptyStr = "drive.googleapis.com"
+
+// The full scope, not drive.file. A shared-drive MEMBERSHIP write is a permission on a resource
+// this application did not create, which drive.file cannot express: drive.file is scoped to files
+// the app itself created or the user opened with it. Naming the narrower scope here would be a
+// scope this module cannot actually operate under.
+// THE CREDENTIAL NEVER BECOMES AN ARGV WORD. gunbc.credential_argv_exposure measures srv1 directly:
+// /proc has no hidepid, cmdline is 0444, and runner slots execute in the host pid namespace, so an
+// argv word is readable by any job payload a pull request can influence. A re-measurement on
+// 2026-09-16 reproduced it and added the other half -- environ is 0400 and cross-user reads are
+// denied -- so auth_source reads the variable in-process at the transport, exactly as
+// github.Workflows does for GITHUB_TOKEN, and no operation below takes a token as an input a caller
+// could interpolate.
+// THE NAME IS SPELLED TWICE AND THAT IS FORCED, NOT AN OVERSIGHT. The service config's auth_source
+// is read by extract_string_value, which pulls a string LITERAL out of the node rather than
+// evaluating an expression, so a reference to this declaration resolves to nothing and the
+// transport reports AuthDeclaredButUnwired with the variable "absent". github.Workflows spells
+// GITHUB_TOKEN as a literal for the same reason. This row is the name consumers read and the
+// literal above is the name the transport reads.
+//
+// WHAT PINS THEM IS WEAKER THAN THIS ANNOTATION ONCE CLAIMED, and the correction matters because
+// the overclaim was being cited as coverage in three places. drive_token_env_matches_the_configured_literal
+// compares THIS ROW to a third copy of the string written inside the claim. It cannot read the
+// auth_source literal in the config below -- no claim in this corpus can, because the config is a
+// declaration the parser consumes rather than a value any fold can reach. So editing the transport
+// literal ALONE, which is precisely the drift described, leaves the claim green. What the claim
+// really establishes is that this row did not move without the claim moving with it, which is worth
+// keeping and is not the wall that was advertised. DESIGN section 4b is the rule that was broken:
+// a check cited as coverage for a red it cannot produce is worse than an absent one.
+//
+// THE REAL WALL IS CONSTRUCTION AND IT IS A LANGUAGE-LAYER FIX. The duplicate exists only because
+// extract_string_value pulls a literal out of the node instead of evaluating a reference; a config
+// parse that resolved a declaration reference would make the second spelling UNWRITABLE rather than
+// merely watched, which is DESIGN section 5's preference for making a state unwritable over
+// checking for it afterwards. That capability is the next-rung trigger for this class, rostered as
+// gunbc.recurring_failure_mode a_pin_claim_compares_two_copies_while_a_third_drifts.
+data drive_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"
+
+data drive_full_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/drive"
+
+data drive_file_oauth_scope: NonEmptyStr = "https://www.googleapis.com/auth/drive.file"
+
+data drive_queries_per_minute_per_user: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "google_drive" as NonEmptyStr,
+  scope: "queries_per_minute_per_user" as NonEmptyStr,
+  requests: 12000,
+  period: PerMinute
+}
+
+data drive_rate_limits: List<UpstreamRateLimit> = [drive_queries_per_minute_per_user]
+
+// SHARED-DRIVE ROLES ARE NOT THE FILE-SHARING ROLES, and the two spellings differ where it
+// matters most. The console calls the role we want "Content manager"; the API spells it
+// fileOrganizer. Organizer is the console's "Manager", which additionally administers MEMBERSHIP
+// -- so a writer granted Organizer could add principals to the drive, which is exactly the
+// authority a write-only automation must not hold. They are separated as variants rather than
+// carried as a string so that "Content manager" cannot be written where the wire needs
+// fileOrganizer, and so the escalation to Organizer has to be authored deliberately.
+type DrivePermissionRole
+  = RoleOrganizer
+  | RoleFileOrganizer
+  | RoleWriter
+  | RoleCommenter
+  | RoleReader
+
+fn drive_permission_role_wire(r: DrivePermissionRole) -> String {
+  match r {
+    RoleOrganizer => "organizer"
+    RoleFileOrganizer => "fileOrganizer"
+    RoleWriter => "writer"
+    RoleCommenter => "commenter"
+    RoleReader => "reader"
+  }
+}
+
+fn drive_permission_role_from_wire(raw: String) -> DrivePermissionRole? {
+  if raw == drive_permission_role_wire(r: RoleOrganizer) {
+    Present { value: RoleOrganizer }
+  } else {
+    if raw == drive_permission_role_wire(r: RoleFileOrganizer) {
+      Present { value: RoleFileOrganizer }
+    } else {
+      if raw == drive_permission_role_wire(r: RoleWriter) {
+        Present { value: RoleWriter }
+      } else {
+        if raw == drive_permission_role_wire(r: RoleCommenter) {
+          Present { value: RoleCommenter }
+        } else {
+          if raw == drive_permission_role_wire(r: RoleReader) {
+            Present { value: RoleReader }
+          } else {
+            none
+          }
+        }
+      }
+    }
+  }
+}
+
+// A service account is type "user" to Drive. It is NOT a distinct principal kind on the wire,
+// which is worth stating because the sharing DIALOG refuses a gserviceaccount.com address while
+// the API accepts it as an ordinary user -- an observed divergence between two surfaces of one
+// product, not a property of any drive.
+type DrivePrincipalType
+  = PrincipalUser
+  | PrincipalGroup
+  | PrincipalDomain
+  | PrincipalAnyone
+
+// THE READ DIRECTION EXISTED ONLY AS A WRITE. An earlier revision declared the wire fold below and
+// no decoder, so DrivePermission.type was decoded by nothing and read by nothing while the write
+// side set a typed PrincipalUser. That asymmetry is not cosmetic on this resource: a permission of
+// type domain or anyone can carry the same ROLE as the writer's, so a consumer matching on role
+// alone reads a world-writable drive as "the writer is a member". The decoder is what lets a
+// consumer refuse that, and an unrecognised spelling answers Absent so it can be refused rather
+// than guessed.
+fn drive_principal_type_from_wire(raw: String) -> DrivePrincipalType? {
+  if raw == drive_principal_type_wire(t: PrincipalUser) {
+    Present { value: PrincipalUser }
+  } else {
+    if raw == drive_principal_type_wire(t: PrincipalGroup) {
+      Present { value: PrincipalGroup }
+    } else {
+      if raw == drive_principal_type_wire(t: PrincipalDomain) {
+        Present { value: PrincipalDomain }
+      } else {
+        if raw == drive_principal_type_wire(t: PrincipalAnyone) {
+          Present { value: PrincipalAnyone }
+        } else {
+          none
+        }
+      }
+    }
+  }
+}
+
+fn drive_principal_type_wire(t: DrivePrincipalType) -> String {
+  match t {
+    PrincipalUser => "user"
+    PrincipalGroup => "group"
+    PrincipalDomain => "domain"
+    PrincipalAnyone => "anyone"
+  }
+}
+
+type DriveError {
+  code: Int
+  message: String
+  status: String
+}
+
+type DriveResource {
+  id: String
+  name: String
+  kind: String
+}
+
+type DrivePermission {
+  id: String
+  emailAddress: String?
+  role: String
+  type: String
+}
+
+type DrivePermissionList {
+  permissions: List<DrivePermission>?
+  nextPageToken: String?
+}
+
+// A FILE PROPERTY IS THE IDEMPOTENCY CARRIER, AND IT DELIBERATELY IS NOT appProperties. An earlier
+// revision used appProperties and said in this very annotation that it is PRIVATE to the calling
+// application -- then built a converge whose create and whose search were always going to run under
+// DIFFERENT OAuth clients: the bootstrap under an operator's Cloud SDK credential, the recurrence
+// under review-sheet-writer@. A property private to the creating app is invisible to the searching
+// app, so the search would have answered SheetAbsent against a file that exists and the converge
+// would have minted a second spreadsheet on its first run as the writer -- the exact duplicate this
+// design exists to make impossible. The live no-op that looked like proof used ONE credential for
+// both halves, so it could not have caught this.
+//
+// `properties` are visible to any application with access to the file, which is what makes the
+// marker survive the credential transition that is the whole point of the writer account. The cost
+// is that another app CAN see and in principle write the same key; the key is namespaced for that
+// reason, and a collision is a refusal here rather than a silent adoption because two files
+// carrying it is SheetDuplicated. Trading app-privacy for identity that outlives a credential is
+// the right trade for a marker whose only job is to be findable again.
+//
+// name is deliberately NOT the identity -- a human renaming a sheet in a drive they own would
+// otherwise cause the next converge to create a second one.
+type DriveFile {
+  id: String
+  name: String
+  mimeType: String
+  properties: String?
+}
+
+type DriveFileList {
+  files: List<DriveFile>?
+  incompleteSearch: Bool?
+  nextPageToken: String?
+}
+
+data structural_coverage_gap_drive_file_properties: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "DriveFile" },
+      JsonPending { field: "properties map<string,string>" }
+    ],
+    trigger: "a consumer needs to READ an properties value back rather than filter on it in the query"
+  }
+]
+
+data google_sheet_mime_type: NonEmptyStr = "application/vnd.google-apps.spreadsheet"
+
+service drive.Drives {
+  config {
+    endpoint: drive_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GUNBC_REVIEW_SHEET_TOKEN" }
+  }
+
+  operation GetDrive {
+    input { drive_id: String }
+    output { drive: DriveResource, outcome: RestOutcome }
+    readonly
+    transport rest { method: GET, path: "/drives/\{drive_id\}" }
+    response {
+      200 => DriveResource
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+}
+
+// supportsAllDrives is a constant on every operation below, never a caller parameter. Without it
+// the API answers about My Drive only and a shared-drive id reads as absent -- a 404 meaning "you
+// did not ask about shared drives" rather than "it is not there" -- and a caller that could pass
+// false could ask a question whose refusal it would misread.
+//
+// sendNotificationEmail is false on the create because the grantee is a service account: there is
+// no inbox to notify, and Drive refuses a notification to a non-notifiable grantee.
+service drive.Permissions {
+  config {
+    endpoint: drive_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GUNBC_REVIEW_SHEET_TOKEN" }
+  }
+
+  operation ListPermissions {
+    input { file_id: String }
+    output { list: DrivePermissionList, outcome: RestOutcome }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/files/\{file_id\}/permissions",
+      query: {
+        supportsAllDrives: "true",
+        fields: "permissions(id,emailAddress,role,type),nextPageToken"
+      }
+    }
+    response {
+      200 => DrivePermissionList
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+
+  operation CreatePermission {
+    input {
+      file_id: String
+      role: DrivePermissionRole
+      principal_type: DrivePrincipalType
+      email_address: String
+    }
+    output { permission_id: String from "id", outcome: RestOutcome }
+    transport rest {
+      method: POST,
+      path: "/files/\{file_id\}/permissions",
+      query: { supportsAllDrives: "true", sendNotificationEmail: "false" },
+      body: {
+        role: drive_permission_role_wire(r: role),
+        type: drive_principal_type_wire(t: principal_type),
+        emailAddress: email_address
+      }
+    }
+    response {
+      200 => DrivePermission
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+}
+
+// corpora=drive with driveId is what makes ListFiles read THAT drive rather than the caller's own
+// corpus, and includeItemsFromAllDrives must accompany supportsAllDrives or the result set comes
+// back silently empty for a shared drive -- which would read as absence and authorize a duplicate
+// create. incompleteSearch is carried on the response for the same reason: a partial search that
+// found nothing is not an observation of absence.
+//
+// CreateFile IS NOT IDEMPOTENT. Every successful call mints a new file with a new id, and a
+// transport refusal leaves the caller unable to say whether one was minted. The recovery is the
+// marker_property_key supplied before the call: it is written onto the file at creation, so a later
+// ListFiles filtered on that key recovers the exact file a lost answer may have created. A key
+// derived from the RESPONSE would be unrecoverable in precisely the case it is needed.
+// properties IS A MAP OF NAME TO VALUE, not a record with key and value fields, and the first
+// live run proved the difference the expensive way: a body of { key: K, value: V } created two
+// properties literally named "key" and "value", so the file existed and no search for a property
+// NAMED K could ever find it. The property name is therefore a literal in the body -- the body
+// builder emits field names as written and cannot take one from a parameter -- and
+// gunbc.review_sheet_drive_converge review_sheet_marker_property_key carries the same spelling for
+// consumers. NOTHING PINS THE TWO TO EACH OTHER, and saying so is the point: the claim
+// test.claim.review_sheet_drive_converge_witness marker_property_key_matches_the_created_property
+// joins that declaration to a copy of the string inside the claim, not to the literal in the body
+// below, so editing the body literal alone leaves it green. The honest sibling is the search side,
+// where test.claim.review_sheet_transport_pin_witness search_query_carries_the_declared_property_key
+// reads the query BUILT from the declaration and therefore ties the declaration to the search. The
+// write side has no such tie and is asserted by a human reading two lines.
+service drive.Files {
+  config {
+    endpoint: drive_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GUNBC_REVIEW_SHEET_TOKEN" }
+  }
+
+  operation ListFiles {
+    input { drive_id: String, query: String }
+    output { list: DriveFileList, outcome: RestOutcome }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/files",
+      query: {
+        q: query,
+        driveId: drive_id,
+        corpora: "drive",
+        includeItemsFromAllDrives: "true",
+        supportsAllDrives: "true",
+        fields: "files(id,name,mimeType),incompleteSearch,nextPageToken"
+      }
+    }
+    response {
+      200 => DriveFileList
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+
+  operation CreateFile {
+    input {
+      name: String
+      mime_type: String
+      parent_id: String
+      marker_property_value: String
+    }
+    output { file_id: String from "id", outcome: RestOutcome }
+    transport rest {
+      method: POST,
+      path: "/files",
+      query: { supportsAllDrives: "true", fields: "id,name,mimeType" },
+      body: {
+        name: name,
+        mimeType: mime_type,
+        parents: [parent_id],
+        properties: { gunbcReviewSheet: marker_property_value }
+      }
+    }
+    response {
+      200 => DriveFile
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+}

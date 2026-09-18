@@ -2,16 +2,26 @@ module gunbc.roadmap_serve
 
 import extdeps.tailscale.identity { tailnet_identity_of, tailnet_identity_login }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_request_submission {
+  admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_reason, read_submission_keyring, read_publisher_token, escalation_status,
+  parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
+  SubmissionFiledAndNotified, SubmissionFiledNotNotified, SubmissionFiledPublisherTokenUnavailable, SubmissionFiledLinksNotIssued,
+  SubmissionAlreadyFiled, SubmissionStoreRefused, SubmissionRefused, SubmissionFiledCapabilityKeyUnavailable,
+  SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled, SubmissionAuthorityRefused,
+}
 import gunbc.auth.approval_decision_store {
   approval_decision_store_root, approval_identity_trust, read_approval_keyring, redeem_over_store, store_redemption_reason,
   RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionSegmentMalformed, RedemptionEscalationNotFiled,
   RedemptionBrokerRefused, RedemptionLostTheRace, RedemptionStoreUnreadable, RedemptionKeyringUnavailable,
   RedemptionIdentityUntrusted, RedemptionCommitRefused,
-  IdentityHeaderTrustEstablished, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
+  IdentityHeaderTrustEstablished, IdentityHeaderUnattributed, IdentityHeaderTrustNotEstablished, ApprovalKeyringRefused, ApprovalKeyFileAbsent, approval_mac_key_path,
+  parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
 }
-import std.types { String, Int, Bool, List, CommitSha, HttpMethod, GET, POST, HttpStatus }
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
-import std.markup { Fragment }
+import std.markup { Fragment, attr }
+import gunbc.site.markup { txt, el, el_attrs }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri_path {
@@ -212,6 +222,8 @@ type RoadmapServeHandler
   | BeltPublishHandler
   | ApprovalConfirmPageHandler
   | ApprovalDecideHandler
+  | ApprovalSubmitHandler
+  | ApprovalStatusHandler
 
 // Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -293,6 +305,8 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/approve/\{capability\}", handler: ApprovalConfirmPageHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/approve/\{capability\}", handler: ApprovalDecideHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/approvals", handler: ApprovalSubmitHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/approvals/\{escalation_id\}", handler: ApprovalStatusHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
@@ -525,17 +539,23 @@ fn approval_confirm_page_response(
   request: ServeHttpRequest,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
-  serve_text_response(
-    status: 200,
-    content_type: text_plain_utf8,
-    body: join([
-      "This page does not decide anything.\n\n",
-      "Opening a link -- by tapping it, previewing it, or having a scanner fetch it -- must never\n",
-      "spend an approval, so this route renders and stops. The button on this page POSTs to the\n",
-      "same path, and that request is the one that commits.\n\n",
-      "capability: ", path_param_value(params: params, name: "capability"), "\n",
-    ], ""),
-  )
+  let segment = path_param_value(params: params, name: "capability")
+  let decision_word = match parse_capability_segment(segment: segment) {
+    CapabilitySegmentParsed { escalation_id: _, decision: ProposeApprove, tag_hex: _ } => "APPROVE"
+    CapabilitySegmentParsed { escalation_id: _, decision: ProposeDeny, tag_hex: _ } => "DENY"
+    CapabilitySegmentMalformed { detail: _ } => "(malformed capability)"
+  }
+  serve_page_response(page: el("html", [
+    el("head", [ el("title", [ txt("gunbc approval") ]), el_attrs("meta", [ attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1") ], []) ]),
+    el("body", [
+      el("h1", [ txt(join(["Confirm: ", decision_word], "")) ]),
+      el("p", [ txt("This page does not decide anything. Opening a link -- by tapping it, previewing it, or having a scanner fetch it -- must never spend an approval, so this route renders and stops. The button below POSTs to the same path, and that request is the one that commits.") ]),
+      el("p", [ txt(join(["capability: ", segment], "")) ]),
+      el_attrs("form", [ attr(name: "method", value: "post"), attr(name: "action", value: join(["/approve/", segment], "")) ], [
+        el_attrs("button", [ attr(name: "type", value: "submit") ], [ txt(decision_word) ]),
+      ]),
+    ]),
+  ]))
 }
 
 // THE POST IS THE ONLY ROUTE THAT COMMITS, and every refusal it can produce is the broker's or
@@ -557,28 +577,45 @@ fn approval_confirm_page_response(
 // before trying again, and it is the honest successor to the 501 this route answered while the
 // store did not exist.
 //
-// THE CLOCK AND THE KEYRING ARE READ ONLY PAST THE TRUST GATE. Both are effects, and an effect
-// performed on the way to a refusal is work the refusal should have prevented -- it is also what
-// keeps the hermetic witness able to reach this handler while the row says not established, since
-// Clock.Now has no hermetic arm.
+// THE SEGMENT IS PARSED BEFORE ANY HOST READ, AND THE CLOCK AND KEYRING ARE READ ONLY PAST THE
+// TRUST GATE. All three are ordered so that a refusal costs no effect it should have prevented: a
+// segment that is not <escalation>.<decision>.<hex> is 400 with the clock, the keyring and the
+// store untouched -- which is also what keeps the hermetic witness able to reach this handler
+// whether or not the trust standing is established (it is derived from the instance bind and is
+// closed while srv1_live_dashboard_instance binds 0.0.0.0), since Clock.Now has no hermetic arm.
 fn approval_decide_response(
   request: ServeHttpRequest,
   params: List<PathParamBinding>,
 ) -> ServeHttpResponse {
+  let segment = path_param_value(params: params, name: "capability")
+  match parse_capability_segment(segment: segment) {
+    CapabilitySegmentMalformed { detail: d } =>
+      serve_text_response(
+        status: 400,
+        content_type: text_plain_utf8,
+        body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.identity), "\n"], ""),
+      )
+    CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } => approval_decide_parsed_response(request: request, segment: segment)
+  }
+}
+
+fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -> ServeHttpResponse {
   let observed_at = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ""
     IdentityHeaderTrustEstablished { evidence: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
+    IdentityHeaderUnattributed { residual: _ } => match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" }
   }
   let keyring = match approval_identity_trust {
     IdentityHeaderTrustNotEstablished { blocker: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: approval_mac_key_path } }
     IdentityHeaderTrustEstablished { evidence: _ } => read_approval_keyring()
+    IdentityHeaderUnattributed { residual: _ } => read_approval_keyring()
   }
   let outcome = redeem_over_store(
     root: approval_decision_store_root,
     trust: approval_identity_trust,
     keyring: keyring,
     method: request.method,
-    segment: path_param_value(params: params, name: "capability"),
+    segment: segment,
     presented_identity: request.identity,
     observed_at: observed_at,
   )
@@ -600,11 +637,63 @@ fn approval_decide_response(
     content_type: text_plain_utf8,
     body: join([
       "approval decision: ", store_redemption_reason(r: outcome), "\n",
-      "capability: ", path_param_value(params: params, name: "capability"), "\n",
+      "capability: ", segment, "\n",
       "identity: ", tailnet_identity_login(i: request.identity), "\n",
       "observed_at: ", observed_at, "\n",
     ], ""),
   )
+}
+
+// THE FILING ROUTE. No identity gate here: the filer is a workflow run on a tagged node with no
+// login to present, and its enrolment is the MAC over the canonical request under the submission
+// key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
+// the body and renders the outcome, and the response never carries a link -- links go only to the
+// operator's phone.
+fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
+  let outcome = match parse_submission_envelope(text: request.body) {
+    SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
+    SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
+      match admit_parsed_submission(tag_hex: tag, request: r, keyring: read_submission_keyring()) {
+        SubmissionNotAdmitted { refusal: refused } => SubmissionRefused { refusal: refused }
+        SubmissionVerified { request: admitted } =>
+          file_and_notify(
+            root: approval_decision_store_root,
+            capability_keyring: read_approval_keyring(),
+            publisher: read_publisher_token(),
+            request: admitted,
+          )
+      }
+  }
+  let status = match outcome {
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => 201
+    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => 502
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => 503
+    SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => 503
+    SubmissionAlreadyFiled { escalation_id: _ } => 409
+    SubmissionStoreRefused { detail: _ } => 503
+    SubmissionRefused { refusal: v } => match v {
+      SubmissionUnreadable { detail: _ } => 400
+      SubmissionKeyUnavailable { cause: _ } => 503
+      SubmissionNotEnrolled { detail: _ } => 403
+      SubmissionAuthorityRefused { requester: _, authority: _ } => 403
+    }
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => 503
+  }
+  serve_text_response(
+    status: status,
+    content_type: text_plain_utf8,
+    body: join(["approval submission: ", submission_outcome_reason(o: outcome), "\n"], ""),
+  )
+}
+
+// THE STATUS ROUTE a filing run polls: standing and, once decided, who and when. Nothing here is
+// a secret and nothing here decides, so it takes no identity and performs no write.
+// THE SEGMENT IS NON-EMPTY BY THE ROUTER'S CONSTRUCTION (extdeps.uri_path: a ParamToken binds a
+// non-empty segment and empties never match), so this handler is only ever entered with an id and
+// carries no guard for the state the router already makes unreachable (review 67057).
+fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+  let standing = escalation_status(root: approval_decision_store_root, escalation_id: path_param_value(params: params, name: "escalation_id") as NonEmptyStr)
+  serve_text_response(status: standing.status, content_type: text_plain_utf8, body: standing.body)
 }
 
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
@@ -768,6 +857,8 @@ fn roadmap_serve_invoke_over(
     SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
     ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params)
     ApprovalDecideHandler => approval_decide_response(request: request, params: params)
+    ApprovalSubmitHandler => approval_submit_response(request: request)
+    ApprovalStatusHandler => approval_status_response(params: params)
     SandboxEchoHandler => sandbox_echo_response(request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)

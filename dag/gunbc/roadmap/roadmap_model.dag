@@ -733,10 +733,18 @@ fn live_receipts_join_declared_nodes(
   )
 }
 
-fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> List<RoadmapAcceptanceReceipt> {
+// Replay refusing and replay succeeding with nothing live are two different answers, and an
+// unreplayable history is not an answer at all, so they may not share the empty list. The
+// distinction is carried structurally here at the producer rather than reconstructed by any
+// consumer.
+type LiveAcceptanceReceiptProjection
+  = LiveAcceptanceReceiptsReplayed { live: List<RoadmapAcceptanceReceipt> }
+  | LiveAcceptanceReceiptsReplayRefused
+
+fn project_live_acceptance_receipts(history: List<RoadmapAcceptanceEvent>) -> LiveAcceptanceReceiptProjection {
   match replay_acceptance_history(events: history) {
-    Present { value: state } => state.live
-    Absent => []
+    Present { value: state } => LiveAcceptanceReceiptsReplayed { live: state.live }
+    Absent => LiveAcceptanceReceiptsReplayRefused
   }
 }
 

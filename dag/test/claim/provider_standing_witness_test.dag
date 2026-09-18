@@ -564,22 +564,3 @@ test fn witness_turn_outcome_unobserved_is_ineligible() -> Bool {
     draw: LimitDispatchDrawAutomatic,
   )
 }
-
-test fn provider_standing_keystone_holds() -> Bool {
-  witness_limit_warning_does_not_block_selection()
-    && witness_model_limit_rejection_does_not_block_account_selection()
-    && witness_claude_native_bucket_exhaustion_blocks_model_draw()
-    && witness_model_limit_rejection_does_not_block_unspecified_draw()
-    && witness_unspecified_draw_refuses_selection_eligibility()
-    && witness_native_bucket_rejection_blocks_automatic_draw()
-    && witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfox_admitted()
-    && witness_unobserved_standing_is_ineligible()
-    && witness_turn_outcome_unobserved_is_ineligible()
-    && witness_cursor_capability_gap_is_eligible()
-    && witness_codex_unavailable_prefers_claude_over_codex()
-    && witness_offer_list_order_does_not_change_automatic_selection()
-    && witness_standing_ineligible_codex_selects_claude_before_resolve()
-    && witness_profile_present_token_absent_not_selection_eligible()
-    && witness_profile_present_token_absent_not_authenticated_standing()
-    && witness_profile_present_token_absent_claude_skipped_for_codex()
-}

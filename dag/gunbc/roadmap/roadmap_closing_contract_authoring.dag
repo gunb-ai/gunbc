@@ -3,6 +3,7 @@ module gunbc.roadmap_closing_contract_authoring
 import std.types { String, NonEmptyStr, Bool, List, FilePath }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap_authority { declared_roadmap_nodes }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ValidationOperation,

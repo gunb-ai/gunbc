@@ -2816,7 +2816,6 @@ mod import_binding_authority_tests {
                 formals: Rc::new(im::Vector::new()),
             }),
             inferred: crate::v1_std_core::unit_type(),
-            is_async: false,
             output_provenance: Rc::new(im::Vector::new()),
             variant_provenance: crate::v1_rt::rc_empty_map(),
         });

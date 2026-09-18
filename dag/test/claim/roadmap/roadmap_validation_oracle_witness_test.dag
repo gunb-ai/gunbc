@@ -1019,31 +1019,3 @@ test fn verify_lamp_refuses_a_foreign_receipt_document() -> Bool {
     receipt: "{\"schema\": \"something-else/v1\", \"verdict\": \"passed\"}",
   ) == "refused"
 }
-
-test fn roadmap_validation_oracle_keystone_holds() -> Bool {
-  diff_touching_only_the_subject_verifies_clean()
-    && diff_editing_its_own_witness_refuses_with_oracle_moved()
-    && oracle_identity_separates_the_two_witness_sources()
-    && deleted_witness_answers_oracle_missing_not_red()
-    && readable_source_without_the_declaration_is_also_missing()
-    && duplicated_declaration_answers_oracle_ambiguous()
-    && declaration_scan_ignores_the_name_inside_a_note()
-    && oracle_importing_test_helpers_refuses_as_unpinned_dependency()
-    && oracle_importing_only_subject_modules_still_verifies()
-    && unpinned_dependency_detail_names_the_uncovered_modules()
-    && cargo_test_validation_refuses_as_unpinnable()
-    && unspecified_contract_refuses_rather_than_verifying()
-    && empty_validation_contract_refuses_as_closes_nothing_not_admitted()
-    && attempt_without_a_recorded_pin_refuses()
-    && refused_and_failed_verdicts_are_distinct_on_the_wire()
-    && refusal_quoting_passed_does_not_decode_as_passed()
-    && truncated_receipt_with_passed_prefix_is_not_passed()
-    && foreign_receipt_document_is_undecodable()
-    && moved_oracle_detail_locates_both_identities()
-    && verify_lamp_stays_pending_without_a_receipt()
-    && verify_lamp_completes_only_on_a_passed_receipt()
-    && verify_lamp_shows_a_refusal_as_refused_not_failed()
-    && not_run_receipt_is_distinct_from_every_recorded_verdict()
-    && not_run_receipt_reads_as_pending_not_as_a_verdict()
-    && verify_lamp_refuses_a_foreign_receipt_document()
-}

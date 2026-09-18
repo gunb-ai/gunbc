@@ -1,0 +1,202 @@
+module gunbc.review_sheet_drive_actuator
+
+import std.types { NonEmptyStr, String, Bool }
+import std.resources { Network }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.ensure { EnsurePolicy }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import extdeps.transports.rest {
+  RestExchangeStanding,
+  RestReadExchange,
+  RestMutationExchange,
+  RestExchangePerformance,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.drive
+import extdeps.google.drive {
+  DrivePermissionList,
+  DrivePermissionRole,
+  RoleFileOrganizer,
+  PrincipalUser,
+  drive_permission_role_wire,
+}
+import gunbc.review_sheet_drive_converge {
+  DriveMembershipObservation,
+  MembershipObserved,
+  MembershipAbsent,
+  MembershipUnreadable,
+  MembershipPageIncomplete,
+  MembershipGrantPlan,
+  membership_from_permissions,
+  ensure_drive_membership,
+}
+
+// THE CALLER. review_sheet_drive_converge decides; this module is the only place that performs.
+// The split is not ceremony: every decision above is a pure fold over a response shape, which is
+// why fifteen witnesses could establish it without a network, and this module is what those
+// witnesses deliberately do not execute.
+//
+// WHY A GRANT IS FOLLOWED BY A READ. permissions.create is a mutation, so a lost answer leaves the
+// write in an unknown state -- classify_rest_outcome says so by name, RestExchangeCommitAmbiguous.
+// Retrying would be wrong (a second grant against an existing principal is not a correction) and
+// reporting success would be worse. The recovery is the same ListPermissions the converge already
+// performs: membership is a readable fact, so an ambiguous write is resolved by looking, never by
+// assuming. That is why the ambiguous arm re-reads instead of refusing outright.
+
+type MembershipConvergeOutcome
+  = MembershipAlreadyHeld { role: DrivePermissionRole }
+  | MembershipGrantedAndVerified { role: DrivePermissionRole }
+  | MembershipGrantUnverified { cause: NonEmptyStr }
+  | MembershipConvergeRefused { cause: NonEmptyStr }
+
+fn read_membership(
+  drive_id: NonEmptyStr,
+  writer: ServiceAccountEmail,
+) -> DriveMembershipObservation uses net: Network {
+  let read = drive.Permissions.ListPermissions(file_id: drive_id as String)
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded => membership_from_permissions(list: read.list, writer: writer)
+    RestExchangeStatusRefused { status, body } =>
+      MembershipUnreadable {
+        reason: join(["permissions.list refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      MembershipUnreadable {
+        reason: join(["permissions.list never reached Drive: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      MembershipUnreadable {
+        reason: join(["permissions.list answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      MembershipUnreadable {
+        reason: join(["permissions.list reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// The verification arm is deliberately the SAME read, not a trusted echo of the create's response.
+// A create that answers 200 has told us what it did, not what is now true; only a read establishes
+// the second, and it is the read this converge would perform on its next pass anyway.
+fn verify_granted_membership(
+  drive_id: NonEmptyStr,
+  writer: ServiceAccountEmail,
+  grant_detail: NonEmptyStr,
+) -> MembershipConvergeOutcome uses net: Network {
+  match read_membership(drive_id: drive_id, writer: writer) {
+    MembershipObserved { role: r } => MembershipGrantedAndVerified { role: r }
+    MembershipAbsent =>
+      MembershipGrantUnverified {
+        cause: join(
+          ["the writer is still absent after ", grant_detail as String, "; the grant did not take and was not refused, so nothing here may report it as held"],
+          "",
+        ) as NonEmptyStr
+      }
+    MembershipUnreadable { reason: r } =>
+      MembershipGrantUnverified {
+        cause: join([grant_detail as String, ", and the verifying read could not settle it: ", r as String], "") as NonEmptyStr
+      }
+    MembershipPageIncomplete { next_page_token: _ } =>
+      MembershipGrantUnverified {
+        cause: join(
+          [grant_detail as String, ", and the verifying read returned one page of a longer list; a page is not the list, so this establishes neither that the writer is present nor that it is absent"],
+          "",
+        ) as NonEmptyStr
+      }
+  }
+}
+
+fn perform_membership_grant(
+  plan: MembershipGrantPlan,
+) -> MembershipConvergeOutcome uses net: Network {
+  let created = drive.Permissions.CreatePermission(
+    file_id: plan.drive_id as String,
+    role: plan.role,
+    principal_type: PrincipalUser,
+    email_address: plan.writer as String,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: created.outcome }) {
+    RestExchangeSucceeded =>
+      verify_granted_membership(
+        drive_id: plan.drive_id,
+        writer: plan.writer,
+        grant_detail: "permissions.create answered success" as NonEmptyStr,
+      )
+    RestExchangeCommitAmbiguous { detail } =>
+      verify_granted_membership(
+        drive_id: plan.drive_id,
+        writer: plan.writer,
+        grant_detail: join(["permissions.create left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
+      )
+    RestExchangeStatusRefused { status, body } =>
+      MembershipConvergeRefused {
+        cause: join(["permissions.create refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      MembershipConvergeRefused {
+        cause: join(["permissions.create never reached Drive: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      MembershipConvergeRefused {
+        cause: join(["permissions.create answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// THE WHOLE MEMBERSHIP CONVERGE, and the only entry point an operator runs for this step. Read,
+// decide, perform only on Apply, then read again. Re-running it after success observes the member
+// and answers MembershipAlreadyHeld without writing.
+fn converge_drive_membership(
+  drive_id: NonEmptyStr,
+  writer: ServiceAccountEmail,
+  policy: EnsurePolicy,
+) -> MembershipConvergeOutcome uses net: Network {
+  let observed = read_membership(drive_id: drive_id, writer: writer)
+  match ensure_drive_membership(
+    policy: policy,
+    observed: observed,
+    drive_id: drive_id,
+    writer: writer,
+  ) {
+    Noop => membership_noop_outcome(observed: observed)
+    Refuse { reason: r } => MembershipConvergeRefused { cause: r }
+    Apply { plan: p } => perform_membership_grant(plan: p)
+  }
+}
+
+// Noop is only reachable from an observed member, but the type does not know that, and inventing a
+// role to report here would be a fabricated answer about a principal we did read. The unreachable
+// arms refuse instead.
+fn membership_noop_outcome(observed: DriveMembershipObservation) -> MembershipConvergeOutcome {
+  match observed {
+    MembershipObserved { role: r } => MembershipAlreadyHeld { role: r }
+    MembershipAbsent =>
+      MembershipConvergeRefused {
+        cause: "converged on an absent membership, which no arm of ensure_drive_membership produces" as NonEmptyStr
+      }
+    MembershipUnreadable { reason: r } =>
+      MembershipConvergeRefused {
+        cause: join(["converged on an unreadable membership: ", r as String], "") as NonEmptyStr
+      }
+    MembershipPageIncomplete { next_page_token: _ } =>
+      MembershipConvergeRefused {
+        cause: "converged on one page of a longer permission list, which no arm of ensure_drive_membership produces" as NonEmptyStr
+      }
+  }
+}
+
+fn membership_outcome_text(o: MembershipConvergeOutcome) -> String {
+  match o {
+    MembershipAlreadyHeld { role: r } =>
+      join(["already held: ", drive_permission_role_wire(r: r)], "")
+    MembershipGrantedAndVerified { role: r } =>
+      join(["granted and verified by readback: ", drive_permission_role_wire(r: r)], "")
+    MembershipGrantUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
+    MembershipConvergeRefused { cause: c } => join(["REFUSED: ", c as String], "")
+  }
+}
