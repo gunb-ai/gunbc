@@ -46,7 +46,9 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryEstablished,
   NetworkBootDeliveryEvidenceRefused,
   NetworkBootDeliveryManifestRefused,
+  NetworkBootDeliverySiteUnestablished,
   NetworkBootDeliveryTargetMismatch,
+  NetworkBootDeliveryTrustUnestablished,
   NetworkBootDeliveryUnestablished,
   ManifestJoinExpired,
   ManifestJoinWrongTarget,
@@ -67,9 +69,12 @@ import gunbc.network_boot_delivery {
   SiteBootstrapDiscovery,
   SiteDiscoveryUnobserved,
   SiteNativeDhcp,
+  ManifestJoinChainloaderDigestDisagrees,
+  ManifestJoinWrongSigningKey,
   SitePxeEdge,
   SitePxeEdgeArchitectureRefused,
   SitePxeEdgeEstablished,
+  SitePxeEdgeReceipt,
   SitePxeEdgeStanding,
   SitePxeEdgeUnestablished,
   bootstrap_trust_standing,
@@ -202,6 +207,7 @@ fn complete_inputs() -> NetworkBootJoinInputs {
   NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -219,6 +225,8 @@ test fn four_receipts_join_to_established() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
 }
 
@@ -226,6 +234,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: FleetBootServiceUnestablished,
     site: site_ok(),
     client: client_ok(),
@@ -240,6 +249,32 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
+  }
+}
+
+test fn missing_site_is_not_missing_fleet_serving() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
+    fleet: fleet_ok(),
+    site: SitePxeEdgeUnestablished,
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliverySiteUnestablished => true
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
 }
 
@@ -289,6 +324,7 @@ test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site,
     client: client_ok(),
@@ -303,6 +339,8 @@ test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
 }
 
@@ -346,6 +384,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -366,6 +405,8 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
 }
 
@@ -373,6 +414,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -397,9 +439,11 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
       observed_at: 1788000000000,
     },
   }
-  match join_network_boot_delivery(inputs: inputs) {
+  let wrong_unit = match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -407,16 +451,17 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
-  let inputs = NetworkBootJoinInputs {
+  let absent_inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
     boot_control: control_ok(),
     manifest: SignedBootManifestAbsent,
   }
-  match join_network_boot_delivery(inputs: inputs) {
+  let absent = match join_network_boot_delivery(inputs: absent_inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -424,13 +469,17 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
+  wrong_unit && absent
 }
 
 test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -458,6 +507,8 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryManifestRefused { cause: ManifestUnsignedIdentity } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -471,6 +522,7 @@ test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -485,6 +537,8 @@ test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: ManifestVerificationRefused { class: ManifestVerificationMac, observation: o } } =>
       (o.decl_name as String) == (obs.decl_name as String)
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -498,6 +552,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -525,6 +580,8 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinExpired { expiry: _, observed_at: _ } } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -538,6 +595,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: ClientBootModeUnobserved,
@@ -552,6 +610,8 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
 }
 
@@ -559,6 +619,7 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: ClientBootModeObserved {
@@ -584,6 +645,8 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
     NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
 }
 
@@ -608,6 +671,186 @@ test fn neither_trust_input_is_unestablished() -> Bool {
   }
 }
 
+test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
+    fleet: fleet_ok(),
+    site: SitePxeEdgeEstablished {
+      receipt: SitePxeEdgeReceipt {
+        edge: SitePxeEdge {
+          site: "onboarding-segment" as SiteIdentity,
+          admitted_architectures: first_slice_admitted_architectures,
+          discovery: SiteNativeDhcp,
+          bootstrap_transport: ArchitectureChainloader {
+            architecture: Wasm32,
+            filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+            chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+          },
+          global_endpoint_reachability: GlobalHttpsEndpointReachable { observation: obs, observed_at: 1788000000000 },
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+    },
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryArchitectureRefused { architecture: a } => a == Wasm32
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
+  }
+}
+
+test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
+    fleet: fleet_ok(),
+    site: SitePxeEdgeEstablished {
+      receipt: SitePxeEdgeReceipt {
+        edge: reachable_edge(discovery: SiteNativeDhcp),
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+    },
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        chainloader_digest: content_hash_of_value(value: "ipxe-other-bytes"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryManifestRefused { cause: ManifestJoinChainloaderDigestDisagrees } => true
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+  }
+}
+
+test fn fleet_signing_key_must_match_ticket() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-other",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongSigningKey } => true
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+  }
+}
+
+test fn unestablished_trust_does_not_join() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    trust: BootstrapTrustUnestablished,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryTrustUnestablished => true
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+  }
+}
+
+test fn controlled_network_trust_can_establish() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    trust: ControlledNetworkBootstrap,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryEstablished { evidence: e } => e.artifact_digest == artifact
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
+  }
+}
+
 test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
   let frozen = DeclarationRef {
     module_path: "gunbc.bmc_netboot_serve",
@@ -618,6 +861,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet_ok(),
     site: site_ok(),
     client: client,
@@ -633,6 +877,8 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
 }
 
@@ -646,6 +892,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
   let inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
     fleet: fleet,
     site: site_ok(),
     client: client_ok(),
@@ -661,5 +908,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
   }
 }
