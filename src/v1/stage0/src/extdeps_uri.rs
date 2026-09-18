@@ -48,6 +48,13 @@ pub struct Uri {
     pub locator: NonEmptyStr,
 }
 
+pub fn uri_http(locator: String) -> Rc<Uri> {
+    Rc::new(Uri {
+        scheme: UriScheme::Http,
+        locator: locator.clone(),
+    })
+}
+
 pub fn uri_https(locator: String) -> Rc<Uri> {
     Rc::new(Uri {
         scheme: UriScheme::Https,
@@ -58,6 +65,20 @@ pub fn uri_https(locator: String) -> Rc<Uri> {
 pub fn uri_scheme_is_http(s: UriScheme) -> bool {
     match s.clone() {
         UriScheme::Http => true,
+        UriScheme::Https => true,
+        UriScheme::Tftp => false,
+        UriScheme::File => false,
+        UriScheme::Ftp => false,
+        UriScheme::Javascript => false,
+        UriScheme::Data => false,
+        UriScheme::Vbscript => false,
+        UriScheme::Mailto => false,
+    }
+}
+
+pub fn uri_scheme_is_https(s: UriScheme) -> bool {
+    match s.clone() {
+        UriScheme::Http => false,
         UriScheme::Https => true,
         UriScheme::Tftp => false,
         UriScheme::File => false,
@@ -103,42 +124,6 @@ pub fn uri_scheme_wire(s: UriScheme) -> String {
 
 pub fn uri_wire(uri: Rc<Uri>) -> String {
     v1_rt::concat(uri_scheme_wire(uri.scheme.clone()), uri.locator.clone())
-}
-
-pub fn uri_from_wire(url: String) -> Option<Rc<Uri>> {
-    {
-        let s = crate::std_algebra::trim(url.clone());
-        match (*parse_href_scheme(s.clone())).clone() {
-            ParsedHrefScheme::RelativeHref => std::option::Option::None,
-            ParsedHrefScheme::UnknownHref => std::option::Option::None,
-            ParsedHrefScheme::HrefScheme { scheme: scheme, .. } => {
-                let prefix = uri_scheme_wire(scheme.clone());
-                let locator = Rc::new(
-                    Rc::new(
-                        s.clone()
-                            .split(&prefix.clone())
-                            .map(|s| s.to_string())
-                            .collect::<Vec<_>>(),
-                    )
-                    .iter()
-                    .cloned()
-                    .skip(1 as usize)
-                    .collect::<Vec<_>>(),
-                )
-                .join(&prefix.clone());
-                if (v1_rt::starts_with(s.clone(), prefix.clone())
-                    && !(locator.clone() == "".to_string()))
-                {
-                    Some(Rc::new(Uri {
-                        scheme: scheme.clone(),
-                        locator: locator.clone(),
-                    }))
-                } else {
-                    std::option::Option::None
-                }
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

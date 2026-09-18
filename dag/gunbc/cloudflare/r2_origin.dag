@@ -100,6 +100,10 @@ type OriginAdmission
 // and would have grown a differently shaped write field beside it; two shapes for one concept is the
 // fork DESIGN section 3 forbids, so both directions inhabit OriginCredentialStanding and the field
 // names carry the direction.
+//
+// OriginCredentialMintEntryUnbuilt: no mint entry exists for this credential yet; secret_id is where
+// its token will be stored once one does. Distinct from OriginCredentialUnminted so mint_entry keeps
+// one meaning: an entry to run.
 type OriginCredentialStanding
   = OriginCredentialPinned {
       access_key_id: NonEmptyStr
@@ -108,8 +112,6 @@ type OriginCredentialStanding
   | OriginCredentialUnminted {
       mint_entry: DeclarationRef
     }
-  // No mint entry exists for this credential yet; secret_id is where its token will be stored once
-  // one does. Distinct from OriginCredentialUnminted so mint_entry keeps one meaning: an entry to run.
   | OriginCredentialMintEntryUnbuilt {
       secret_id: NonEmptyStr
     }
