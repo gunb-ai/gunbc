@@ -41,9 +41,9 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_vers
 // The protocol between the roadmap server and the operator's phone for redeeming an approval with
 // a device-bound, biometric-gated signature: one protocol, platform realizations beside it. This
 // module is the MODEL; extdeps.apple.* and extdeps.google/android.* model the upstream interfaces.
-// No realization exists yet: the iOS client, the server routes, the verifiers and the APNs publisher
-// are each a frontier below (ios_realization_frontier, approval_device_routes_frontier,
-// ecdsa_verification_realization_frontier), and Android is modeled at every platform point and
+// The ECDSA verifier is realized (extdeps.crypto.signature p256_ecdsa_verify). The iOS client, the
+// server routes, the App Attest verifiers and the APNs publisher are each a frontier below (ios_realization_frontier, approval_device_routes_frontier,
+// app_attest_verification_realization_frontier), and Android is modeled at every platform point and
 // realized by nothing (android_realization_frontier).
 //
 // WHY A DEVICE SIGNATURE. The loopback deployment cannot attribute Tailscale-User-Login to the proxy
@@ -488,7 +488,7 @@ data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution
   description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: a dashboard enrolment-code issuer; POST approval_device_enrol_path consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); assertion-authenticated reads at approval_device_pending_path and approval_device_request_path_prefix that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path through redeem_device_over_store; and file_and_notify's APNs publish, authenticated by a cached extdeps.apple.apns apns_provider_token minted from approval_apns_auth_key_secret_ref, rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login",
 )
 
-data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
+data app_attest_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
   description: "an App Attest attestation and assertion verifier (CBOR decode, X.509 chain to the pinned Apple App Attestation Root CA, App ID prefix RP ID, validation category and bundle version) behind extdeps.apple.app_attest attestation_verification_from_implementation and assertion_verification_from_implementation -- SUFFICIENT FOR the device routes to mint AttestationVerified and AssertionVerified from real bytes (SignatureVerified is minted from real bytes by extdeps.crypto.signature p256_ecdsa_verify)",
 )
 
