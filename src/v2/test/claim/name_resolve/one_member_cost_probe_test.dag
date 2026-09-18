@@ -203,6 +203,10 @@ test fn one_member_missing_subject_still_refuses() -> Bool {
   })
 }
 
+test fn language_model_construction_does_not_fill_canonical_map() -> Bool {
+  dag_language_model().language_identity == ^dag_language_model_surface_id
+}
+
 test fn dag_canonical_symbols_keep_prelude_and_reject_uncanonical() -> Bool {
   dag_canonical_symbols().member(^dag_c3_surface_sugar_service)
     && !dag_canonical_symbols().member(^probe_uncanonical_export)
