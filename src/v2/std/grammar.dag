@@ -1734,10 +1734,7 @@ fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
 }
 
 fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
-  match map_lookup(m: grammar_carried_symbol_map(grammar: grammar), key: sym) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }
 
 fn grammar_symbol_map_put(m: Map<Symbol, Bool>, sym: Symbol) -> Map<Symbol, Bool> {
