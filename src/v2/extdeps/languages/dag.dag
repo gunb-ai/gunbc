@@ -86,7 +86,8 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar,
   lex_rule_set_insert_token_classes,
-  lex_rule_set_token_class_map
+  lex_rule_set_token_class_map,
+  lex_rules_insert_token_classes
 }
 import v2.std.node {
   Arrow,
@@ -2310,6 +2311,23 @@ fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
 
 fn dag_canonical_symbols() -> PointwisePower<Symbol> {
   dag_pointwise_from_symbol_map(m: dag_canonical_symbol_map())
+}
+
+fn dag_resolution_canonical_symbols(lm: LanguageModel) -> PointwisePower<Symbol> {
+  match lm.grammar {
+    VoidGrammar => lm.canonical_symbols
+    ModeledGrammar { root: _ } =>
+      dag_pointwise_from_symbol_map(
+        m: dag_language_model_binding_canonical_map(
+          m: dag_surface_sugar_symbol_map(
+            m: lex_rules_insert_token_classes(
+              m: grammar_carried_symbol_map(grammar: lm.grammar),
+              rules: lm.lex
+            )
+          )
+        )
+      )
+  }
 }
 
 fn dag_language_model_void() -> LanguageModel {

@@ -5,7 +5,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
-  dag_canonical_symbols,
+  dag_resolution_canonical_symbols,
   dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
@@ -234,7 +234,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
       root: tree.root,
       bindings: empty_map()
     ),
-    canonical_symbols: dag_canonical_symbols(),
+    canonical_symbols: dag_resolution_canonical_symbols(lm: lm),
     symbol_index: empty_symbol_index(),
     module_qn: Empty
   }
