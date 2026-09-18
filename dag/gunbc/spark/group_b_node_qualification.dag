@@ -22,7 +22,6 @@ import product.fabric.node_qualification {
   NcclLibraryVersion, ServingNcclIdentity,
   HostRegisteredIbFallbackStanding, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
   EthtoolLinkModes, LspciLnkSta, WindowSharedWithDeclaredTraffic,
-  GpuDirectRdmaDeviceUnsupported,
   GroupQualificationAdmission, HostQualificationAdmission,
   qualify_host, qualify_collective_group, admit_qualified_host, admit_qualified_group,
   OfferDeliveryClaim, OfferClaimsNodeDelivery,
@@ -172,7 +171,6 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
       link: PcieLink { generation: Gen5, lane_count: 4 },
       instrument: LspciLnkSta,
     },
-    gpu_direct_rdma: GpuDirectRdmaDeviceUnsupported { platform: "GB10" as NonEmptyStr },
   },
   group: CollectiveGroupMeasured {
     collective: CollectiveCurveRead {
@@ -213,7 +211,7 @@ fn group_b_group_admission() -> GroupQualificationAdmission {
     receipt: qualify_collective_group(
       advertised: group_b_advertised.group,
       measured: group_b_measured.group,
-      host_receipts: [],
+      host_admissions: [],
     ),
   )
 }

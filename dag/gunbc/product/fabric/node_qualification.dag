@@ -4,7 +4,6 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size_count, Bandwidth, bandwidth_count, Nanosecond, nanosecond_count,
-  measure_le, measure_scale_fraction_floor,
 }
 import product.placement_supply { HostIdentity }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
@@ -110,16 +109,9 @@ type CollectiveWindowStanding
   | WindowSharedWithDeclaredTraffic
   | WindowStandingUnread { because: NonEmptyStr }
 
-// GPUDirect is a measured platform fact, not an advertised floor. THIS MODULE DOES NOT OWN THE
-// CUDA QUERY: #11560 (extdeps.nvidia.cuda_driver / gpu_direct_rdma and
-// gunbc.spark.serving_rank_observe RankGpuDirectCapabilityReceipt) is that producer. Until that
-// PR lands, standings here are supplied historical readings. TRIGGER: rebase onto #11560 and
-// consume rank_gpu_direct_capability. SUFFICIENT FOR: a GB10 unsupported reading is an incarnation-
-// bound receipt, not an authored capability constructor in this file.
-type GpuDirectRdmaCapability
-  = GpuDirectRdmaDeviceUnsupported { platform: NonEmptyStr }
-  | GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: Bool }
-  | GpuDirectRdmaCapabilityUnread { cause: NonEmptyStr }
+// GPUDirect is owned by #11560 (RankGpuDirectCapabilityReceipt). This PR does not fork that
+// capability type. TRIGGER: rebase onto #11560 and add a host axis that consumes
+// rank_gpu_direct_capability. SUFFICIENT FOR: GB10 unsupported is an incarnation-bound receipt.
 
 type RankCurveProducer
   = RankLocalCollectiveCurve
@@ -236,7 +228,6 @@ type HostMeasuredDelivery {
   usable_memory: ByteSizeReading
   rail_link_mode: LinkModeReading
   nic_pcie: PcieLinkReading
-  gpu_direct_rdma: GpuDirectRdmaCapability
 }
 
 // THE SERVING GROUP / COLLECTIVE SUBJECT. A four-rank curve does not inhabit a HostIdentity.
@@ -311,10 +302,6 @@ type RankSymmetryStanding
   | RankSymmetryFallsShort { degraded: HostIdentity }
   | RankSymmetryUnread { because: NonEmptyStr }
 
-type GpuDirectRdmaQualification
-  = GpuDirectRdmaRecorded { capability: GpuDirectRdmaCapability }
-  | GpuDirectRdmaEvidenceMissing { capability: GpuDirectRdmaCapability }
-
 type HostQualificationReceipt {
   node: HostIdentity
   advertised: HostAdvertisedDelivery
@@ -322,7 +309,6 @@ type HostQualificationReceipt {
   usable_memory: UsableMemoryStanding
   rail_link_mode: RailLinkModeStanding
   nic_pcie: NicPcieStanding
-  gpu_direct_rdma: GpuDirectRdmaQualification
 }
 
 type CollectiveGroupReceipt {
@@ -357,7 +343,6 @@ type QualificationRefusal
   | CollectiveLatencyDidNotHold { standing: CollectiveLatencyStanding }
   | CollectiveBandwidthDidNotHold { standing: CollectiveBandwidthStanding }
   | RankSymmetryDidNotHold { standing: RankSymmetryStanding }
-  | GpuDirectRdmaDidNotHold { standing: GpuDirectRdmaQualification }
   | AllToAllLatencyDidNotHold { standing: CollectiveLatencyStanding }
   | HostRegisteredIbFallbackDidNotHold { standing: HostRegisteredIbFallbackStanding }
   | CollectiveWindowDidNotHold { standing: CollectiveWindowStanding }
@@ -617,108 +602,6 @@ fn join_attributions(
   }
 }
 
-fn rank_curve_unread_reason(curve: CollectiveCurveReading) -> NonEmptyStr? {
-  match curve {
-    CollectiveCurveUnread { because: b } => Present { value: b }
-    CollectiveCurveRead {
-      samples: _,
-      protocol: _,
-      small_message_shape: _,
-      engine_buffer_mode: _,
-      per_layer_all_reduce_count: _,
-      primitive_attribution: _,
-      window: _,
-    } => none
-  }
-}
-
-fn first_unread_rank(ranks: List<RankCollectiveReading>) -> RankCollectiveReading? {
-  first(filter(ranks, r => match rank_curve_unread_reason(curve: r.curve) {
-    Present { value: _ } => true
-    Absent => false
-  }))
-}
-
-fn rank_latency_at(curve: CollectiveCurveReading, at: ByteSize) -> Nanosecond? {
-  match curve {
-    CollectiveCurveUnread { because: _ } => none
-    CollectiveCurveRead {
-      samples: samples,
-      protocol: _,
-      small_message_shape: _,
-      engine_buffer_mode: _,
-      per_layer_all_reduce_count: _,
-      primitive_attribution: _,
-      window: _,
-    } =>
-      match sample_at_message_bytes(samples: samples, want: at) {
-        Absent => none
-        Present { value: s } => Present { value: sample_stricter_latency(s: s) }
-      }
-  }
-}
-
-fn min_rank_latency(at: ByteSize, ranks: List<RankCollectiveReading>) -> Nanosecond? {
-  match ranks.first() {
-    Absent => none
-    Present { value: r } => {
-      let rest = min_rank_latency(at: at, ranks: ranks.skip(n: 1))
-      match rank_latency_at(curve: r.curve, at: at) {
-        Absent => rest
-        Present { value: lat } => match rest {
-          Absent => Present { value: lat }
-          Present { value: m } => Present {
-            value: if measure_le(a: lat, b: m) { lat } else { m }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn first_rank_without_latency(at: ByteSize, ranks: List<RankCollectiveReading>) -> HostIdentity? {
-  match ranks.first() {
-    Absent => none
-    Present { value: r } => match rank_latency_at(curve: r.curve, at: at) {
-      Absent => Present { value: r.rank }
-      Present { value: _ } => first_rank_without_latency(at: at, ranks: ranks.skip(n: 1))
-    }
-  }
-}
-
-fn first_degraded_rank(
-  floor: Nanosecond,
-  max_latency_multiple: Nat,
-  at: ByteSize,
-  ranks: List<RankCollectiveReading>,
-) -> HostIdentity? {
-  match ranks.first() {
-    Absent => none
-    Present { value: r } => match rank_latency_at(curve: r.curve, at: at) {
-      Absent => first_degraded_rank(
-        floor: floor,
-        max_latency_multiple: max_latency_multiple,
-        at: at,
-        ranks: ranks.skip(n: 1),
-      )
-      Present { value: lat } =>
-        if measure_le(
-          a: lat,
-          b: measure_scale_fraction_floor(m: floor, num: max_latency_multiple, den: 1),
-        ) {
-          first_degraded_rank(
-            floor: floor,
-            max_latency_multiple: max_latency_multiple,
-            at: at,
-            ranks: ranks.skip(n: 1),
-          )
-        } else {
-          Present { value: r.rank }
-        }
-    }
-  }
-}
-
 fn rank_named(ranks: List<RankCollectiveReading>, want: HostIdentity) -> RankCollectiveReading? {
   first(filter(ranks, r => host_eq(a: r.rank, b: want)))
 }
@@ -816,8 +699,6 @@ fn qualify_rank_symmetry(
   expected: List<HostIdentity>,
   ranks: List<RankCollectiveReading>,
   required: CollectiveProtocolKey,
-  max_latency_multiple: Nat,
-  at: ByteSize,
 ) -> RankSymmetryStanding {
   if expected.length() == 0 {
     RankSymmetryUnread {
@@ -848,32 +729,8 @@ fn qualify_rank_symmetry(
                 Present { value: _ } => RankSymmetryUnread {
                   because: "rank curves do not share the advertised protocol key" as NonEmptyStr,
                 }
-                Absent => match first_unread_rank(ranks: ranks) {
-                  Present { value: r } => match rank_curve_unread_reason(curve: r.curve) {
-                    Present { value: b } => RankSymmetryUnread { because: b }
-                    Absent => RankSymmetryUnread {
-                      because: "rank curve unread without a reason" as NonEmptyStr,
-                    }
-                  }
-                  Absent => match first_rank_without_latency(at: at, ranks: ranks) {
-                    Present { value: _ } => RankSymmetryUnread {
-                      because: "a rank produced no latency sample at the advertised message size; missing latency is unread, not a floor" as NonEmptyStr,
-                    }
-                    Absent => match min_rank_latency(at: at, ranks: ranks) {
-                      Absent => RankSymmetryUnread {
-                        because: "no rank produced a latency sample at the advertised message size" as NonEmptyStr,
-                      }
-                      Present { value: floor } => match first_degraded_rank(
-                        floor: floor,
-                        max_latency_multiple: max_latency_multiple,
-                        at: at,
-                        ranks: ranks,
-                      ) {
-                        Present { value: degraded } => RankSymmetryFallsShort { degraded: degraded }
-                        Absent => RankSymmetryAgrees { rank_count: expected.length() }
-                      }
-                    }
-                  }
+                Absent => RankSymmetryUnread {
+                  because: "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr,
                 }
               }
             }
@@ -881,17 +738,6 @@ fn qualify_rank_symmetry(
         }
       }
     }
-  }
-}
-
-fn qualify_gpu_direct_rdma(capability: GpuDirectRdmaCapability) -> GpuDirectRdmaQualification {
-  match capability {
-    GpuDirectRdmaCapabilityUnread { cause: _ } =>
-      GpuDirectRdmaEvidenceMissing { capability: capability }
-    GpuDirectRdmaDeviceUnsupported { platform: _ } =>
-      GpuDirectRdmaRecorded { capability: capability }
-    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _ } =>
-      GpuDirectRdmaRecorded { capability: capability }
   }
 }
 
@@ -919,14 +765,31 @@ fn qualify_host(
       advertised: advertised.nic_pcie,
       reading: measured.nic_pcie,
     ),
-    gpu_direct_rdma: qualify_gpu_direct_rdma(capability: measured.gpu_direct_rdma),
+  }
+}
+
+fn admission_receipt(a: HostQualificationAdmission) -> HostQualificationReceipt {
+  match a {
+    HostQualified { receipt: r } => r
+    HostNotQualified { receipt: r, refusals: _ } => r
+  }
+}
+
+fn first_unqualified_admission(admissions: List<HostQualificationAdmission>) -> HostIdentity? {
+  match admissions.first() {
+    Absent => none
+    Present { value: a } => match a {
+      HostNotQualified { receipt: r, refusals: _ } => Present { value: r.node }
+      HostQualified { receipt: _ } => first_unqualified_admission(admissions: admissions.skip(n: 1))
+    }
   }
 }
 
 fn qualify_group_host_roster(
   expected: List<HostIdentity>,
-  receipts: List<HostQualificationReceipt>,
+  admissions: List<HostQualificationAdmission>,
 ) -> GroupHostRosterStanding {
+  let receipts = map(admissions, a => admission_receipt(a: a))
   if expected.length() == 0 {
     GroupHostRosterUnread {
       because: "the group advertisement named no expected ranks" as NonEmptyStr,
@@ -938,17 +801,22 @@ fn qualify_group_host_roster(
       }
       Absent => match first_duplicate_host(seen: [], rest: host_receipt_nodes(receipts: receipts)) {
         Present { value: _ } => GroupHostRosterUnread {
-          because: "host receipts name a host twice" as NonEmptyStr,
+          because: "host admissions name a host twice" as NonEmptyStr,
         }
         Absent => match first_host_receipt_missing(expected: expected, receipts: receipts) {
           Present { value: _ } => GroupHostRosterUnread {
-            because: "an expected rank has no host receipt; a group must not qualify from one host's facts" as NonEmptyStr,
+            because: "an expected rank has no host admission; a group must not qualify from one host's facts" as NonEmptyStr,
           }
           Absent => match first_extra_host_receipt(expected: expected, receipts: receipts) {
             Present { value: _ } => GroupHostRosterUnread {
-              because: "a host receipt is not on the expected roster" as NonEmptyStr,
+              because: "a host admission is not on the expected roster" as NonEmptyStr,
             }
-            Absent => GroupHostRosterComplete { rank_count: expected.length() }
+            Absent => match first_unqualified_admission(admissions: admissions) {
+              Present { value: _ } => GroupHostRosterUnread {
+                because: "a host on the expected roster is not qualified; group admission does not ignore HostNotQualified" as NonEmptyStr,
+              }
+              Absent => GroupHostRosterComplete { rank_count: expected.length() }
+            }
           }
         }
       }
@@ -959,11 +827,11 @@ fn qualify_group_host_roster(
 fn qualify_collective_group(
   advertised: CollectiveGroupAdvertised,
   measured: CollectiveGroupMeasured,
-  host_receipts: List<HostQualificationReceipt>,
+  host_admissions: List<HostQualificationAdmission>,
 ) -> CollectiveGroupReceipt {
   CollectiveGroupReceipt {
     advertised: advertised,
-    host_roster: qualify_group_host_roster(expected: advertised.expected_ranks, receipts: host_receipts),
+    host_roster: qualify_group_host_roster(expected: advertised.expected_ranks, admissions: host_admissions),
     collective_latency: qualify_collective_latency(
       ceiling: advertised.latency_ceiling,
       at: advertised.latency_message_bytes,
@@ -986,8 +854,6 @@ fn qualify_collective_group(
       expected: advertised.expected_ranks,
       ranks: measured.ranks,
       required: advertised.all_reduce_protocol,
-      max_latency_multiple: advertised.rank_symmetry_max_latency_multiple,
-      at: advertised.latency_message_bytes,
     ),
     host_registered_ib_fallback: measured.host_registered_ib_fallback,
     window: join_windows(
@@ -1013,13 +879,10 @@ fn host_qualification_refusals(receipt: HostQualificationReceipt) -> List<Qualif
     accelerator_refusal(s: receipt.accelerators),
     concat(
       memory_refusal(s: receipt.usable_memory),
-      concat(
-        rail_refusal(s: receipt.rail_link_mode),
         concat(
+          rail_refusal(s: receipt.rail_link_mode),
           pcie_refusal(s: receipt.nic_pcie),
-          gpu_direct_refusal(s: receipt.gpu_direct_rdma),
         ),
-      ),
     ),
   )
 }
@@ -1195,13 +1058,5 @@ fn ib_fallback_refusal(s: HostRegisteredIbFallbackStanding) -> List<Qualificatio
     } => [HostRegisteredIbFallbackDidNotHold { standing: s }]
     HostRegisteredIbFallbackUnread { because: _ } =>
       [HostRegisteredIbFallbackDidNotHold { standing: s }]
-  }
-}
-
-fn gpu_direct_refusal(s: GpuDirectRdmaQualification) -> List<QualificationRefusal> {
-  match s {
-    GpuDirectRdmaRecorded { capability: _ } => []
-    GpuDirectRdmaEvidenceMissing { capability: _ } =>
-      [GpuDirectRdmaDidNotHold { standing: s }]
   }
 }

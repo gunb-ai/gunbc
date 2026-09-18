@@ -10,7 +10,7 @@ import extdeps.storage.types { PcieLink, Gen5 }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
   CollectiveCurveReading, CollectiveProtocolKey,
-  HostAdvertisedDelivery, HostMeasuredDelivery, HostQualificationReceipt,
+  HostAdvertisedDelivery, HostMeasuredDelivery,
   CollectiveGroupAdvertised, CollectiveGroupMeasured,
   AdvertisedSparkConnectX7PerPort, AdvertisedDiscreteAdapterSku,
   CountRead, CountUnread, ByteSizeRead, ByteSizeUnread,
@@ -33,9 +33,6 @@ import product.fabric.node_qualification {
   NicPcieExceeds, NicPcieDiffers,
   CollectiveLatencyUnread, CollectiveLatencyAgrees, CollectiveBandwidthUnread,
   RankSymmetryUnread, RankSymmetryFallsShort, RankSymmetryAgrees,
-  GpuDirectRdmaEvidenceMissing, GpuDirectRdmaRecorded,
-  GpuDirectRdmaCapability, GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet,
-  GpuDirectRdmaCapabilityUnread,
   RankLocalCollectiveCurve, GroupWideCurveCopiedOntoRank,
   HostQualified, HostNotQualified, GroupQualified, GroupNotQualified,
   HostQualificationAdmission, GroupQualificationAdmission,
@@ -57,18 +54,6 @@ data fx_node: HostIdentity = "fixture-node" as HostIdentity
 
 fn fx_pcie16() -> PcieLink { PcieLink { generation: Gen5, lane_count: 16 } }
 fn fx_pcie4() -> PcieLink { PcieLink { generation: Gen5, lane_count: 4 } }
-
-fn fx_gdr_supported() -> GpuDirectRdmaCapability {
-  GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: false }
-}
-
-fn fx_gdr_unsupported() -> GpuDirectRdmaCapability {
-  GpuDirectRdmaDeviceUnsupported { platform: "GB10" as NonEmptyStr }
-}
-
-fn fx_gdr_unread() -> GpuDirectRdmaCapability {
-  GpuDirectRdmaCapabilityUnread { cause: "cuda query not run" as NonEmptyStr }
-}
 
 fn fx_all_reduce_protocol() -> CollectiveProtocolKey {
   CollectiveProtocolKey {
@@ -177,7 +162,6 @@ fn fx_measured_all_agree() -> MeasuredNodeDelivery {
       usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
       rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
       nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
-      gpu_direct_rdma: fx_gdr_supported(),
     },
     group: CollectiveGroupMeasured {
       collective: fx_curve(samples: [fx_sample()]),
@@ -204,8 +188,12 @@ test fn a_fully_read_agreeing_node_is_qualified() -> Bool {
     HostQualified { receipt: _ } => true
     HostNotQualified { receipt: _, refusals: _ } => false
   } && match fx_admit_group(m: fx_measured_all_agree()) {
-    GroupQualified { receipt: _ } => true
-    GroupNotQualified { receipt: _, refusals: _ } => false
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: _ } => match r.rank_symmetry {
+      RankSymmetryUnread { because: _ } => true
+      RankSymmetryAgrees { rank_count: _ } => false
+      RankSymmetryFallsShort { degraded: _ } => false
+    }
   }
 }
 
@@ -237,32 +225,68 @@ fn fx_rank(id: String, sample: CollectiveSample) -> RankCollectiveReading {
   }
 }
 
-fn fx_pair_hosts() -> List<HostQualificationReceipt> {
+fn fx_pair_hosts() -> List<HostQualificationAdmission> {
   [
-    qualify_host(
-      node: "rank-0" as HostIdentity,
-      advertised: fx_advertised().host,
-      measured: fx_measured_all_agree().host,
+    admit_qualified_host(
+      receipt: qualify_host(
+        node: "rank-0" as HostIdentity,
+        advertised: fx_advertised().host,
+        measured: fx_measured_all_agree().host,
+      ),
     ),
-    qualify_host(
-      node: "rank-1" as HostIdentity,
-      advertised: fx_advertised().host,
-      measured: fx_measured_all_agree().host,
+    admit_qualified_host(
+      receipt: qualify_host(
+        node: "rank-1" as HostIdentity,
+        advertised: fx_advertised().host,
+        measured: fx_measured_all_agree().host,
+      ),
     ),
   ]
 }
 
-fn fx_rank_pair_hosts() -> List<HostQualificationReceipt> {
+fn fx_rank_pair_hosts() -> List<HostQualificationAdmission> {
   [
-    qualify_host(
-      node: "rank-fast" as HostIdentity,
-      advertised: fx_rank_pair_advertised().host,
-      measured: fx_measured_all_agree().host,
+    admit_qualified_host(
+      receipt: qualify_host(
+        node: "rank-fast" as HostIdentity,
+        advertised: fx_rank_pair_advertised().host,
+        measured: fx_measured_all_agree().host,
+      ),
     ),
-    qualify_host(
-      node: "rank-slow" as HostIdentity,
-      advertised: fx_rank_pair_advertised().host,
-      measured: fx_measured_all_agree().host,
+    admit_qualified_host(
+      receipt: qualify_host(
+        node: "rank-slow" as HostIdentity,
+        advertised: fx_rank_pair_advertised().host,
+        measured: fx_measured_all_agree().host,
+      ),
+    ),
+  ]
+}
+
+fn fx_unqualified_host_measured() -> HostMeasuredDelivery {
+  HostMeasuredDelivery {
+    accelerator_count: CountRead { count: 4 },
+    usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
+    rail_link_mode: LinkModeRead { mode: ieee_50gbase_cr2, instrument: EthtoolLinkModes },
+    nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
+  }
+}
+
+fn fx_pair_unqualified_hosts() -> List<HostQualificationAdmission> {
+  [
+    admit_qualified_host(
+      receipt: qualify_host(
+        node: "rank-0" as HostIdentity,
+        advertised: fx_advertised().host,
+        measured: fx_unqualified_host_measured(),
+      ),
+    ),
+    admit_qualified_host(
+      receipt: qualify_host(
+        node: "rank-1" as HostIdentity,
+        advertised: fx_advertised().host,
+        measured: fx_unqualified_host_measured(),
+      ),
     ),
   ]
 }
@@ -278,7 +302,7 @@ fn fx_admit_group(m: MeasuredNodeDelivery) -> GroupQualificationAdmission {
     receipt: qualify_collective_group(
       advertised: fx_advertised().group,
       measured: m.group,
-      host_receipts: fx_pair_hosts(),
+      host_admissions: fx_pair_hosts(),
     ),
   )
 }
@@ -286,13 +310,13 @@ fn fx_admit_group(m: MeasuredNodeDelivery) -> GroupQualificationAdmission {
 fn fx_admit_group_for(
   advertised: AdvertisedNodeOffer,
   m: MeasuredNodeDelivery,
-  hosts: List<HostQualificationReceipt>,
+  hosts: List<HostQualificationAdmission>,
 ) -> GroupQualificationAdmission {
   admit_qualified_group(
     receipt: qualify_collective_group(
       advertised: advertised.group,
       measured: m.group,
-      host_receipts: hosts,
+      host_admissions: hosts,
     ),
   )
 }
@@ -304,7 +328,6 @@ fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDel
       usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
       rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
       nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
-      gpu_direct_rdma: fx_gdr_supported(),
     },
     group: CollectiveGroupMeasured {
       collective: fx_curve(samples: [fx_sample()]),
@@ -331,7 +354,6 @@ test fn unread_evidence_is_not_qualification() -> Bool {
       usable_memory: ByteSizeUnread { because: "memory query not run" as NonEmptyStr },
       rail_link_mode: LinkModeUnread { because: "ethtool not run" as NonEmptyStr },
       nic_pcie: PcieLinkUnread { because: "lspci not run" as NonEmptyStr },
-      gpu_direct_rdma: fx_gdr_unread(),
     },
     group: CollectiveGroupMeasured {
       collective: CollectiveCurveUnread { because: "nccl-tests not run" as NonEmptyStr },
@@ -347,10 +369,6 @@ test fn unread_evidence_is_not_qualification() -> Bool {
           AcceleratorCountUnread { advertised: n, because: _ } => n == 4
           AcceleratorCountAgrees { count: _ } => false
           AcceleratorCountFallsShort { advertised: _, measured: _ } => false
-        }
-        && match r.gpu_direct_rdma {
-          GpuDirectRdmaEvidenceMissing { capability: _ } => true
-          GpuDirectRdmaRecorded { capability: _ } => false
         }
     HostQualified { receipt: _ } => false
   } && match fx_admit_group(m: unread) {
@@ -397,31 +415,6 @@ test fn realized_50g_against_advertised_100g_cr2_falls_short() -> Bool {
   }
 }
 
-test fn gb10_unsupported_gdr_does_not_refuse_a_host_that_otherwise_agrees() -> Bool {
-  let measured = fx_measured_all_agree()
-  let gdr_zero = MeasuredNodeDelivery {
-    host: HostMeasuredDelivery {
-      accelerator_count: measured.host.accelerator_count,
-      usable_memory: measured.host.usable_memory,
-      rail_link_mode: measured.host.rail_link_mode,
-      nic_pcie: measured.host.nic_pcie,
-      gpu_direct_rdma: fx_gdr_unsupported(),
-    },
-    group: measured.group,
-  }
-  match fx_admit_host(m: gdr_zero) {
-    HostQualified { receipt: r } => match r.gpu_direct_rdma {
-      GpuDirectRdmaRecorded { capability: c } => match c {
-        GpuDirectRdmaDeviceUnsupported { platform: _ } => true
-        GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _ } => false
-        GpuDirectRdmaCapabilityUnread { cause: _ } => false
-      }
-      GpuDirectRdmaEvidenceMissing { capability: _ } => false
-    }
-    HostNotQualified { receipt: _, refusals: _ } => false
-  }
-}
-
 test fn fewer_accelerators_than_advertised_falls_short() -> Bool {
   match qualify_accelerator_count(advertised: 4, reading: CountRead { count: 3 }) {
     AcceleratorCountFallsShort { advertised: a, measured: m } => a == 4 && m == 3
@@ -441,9 +434,9 @@ test fn a_degraded_rank_is_named_not_averaged() -> Bool {
   ) {
     GroupQualified { receipt: _ } => false
     GroupNotQualified { receipt: r, refusals: _ } => match r.rank_symmetry {
-      RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
+      RankSymmetryUnread { because: _ } => true
+      RankSymmetryFallsShort { degraded: _ } => false
       RankSymmetryAgrees { rank_count: _ } => false
-      RankSymmetryUnread { because: _ } => false
     }
   }
 }
@@ -456,12 +449,10 @@ test fn a_slow_rank_listed_first_is_still_degraded() -> Bool {
       fx_rank(id: "rank-fast", sample: fx_sample()),
     ],
     required: fx_all_reduce_protocol(),
-    max_latency_multiple: 2,
-    at: byte_size(count: 8),
   ) {
-    RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
+    RankSymmetryUnread { because: _ } => true
+    RankSymmetryFallsShort { degraded: _ } => false
     RankSymmetryAgrees { rank_count: _ } => false
-    RankSymmetryUnread { because: _ } => false
   }
 }
 
@@ -483,14 +474,6 @@ test fn group_b_live_receipt_is_not_qualified() -> Bool {
           NicPcieExceeds { advertised: _, measured: _, instrument: _ } => false
           NicPcieDiffers { advertised: _, measured: _, instrument: _ } => false
           NicPcieOfferUngrounded { advertised: _, because: _ } => false
-        }
-        && match r.gpu_direct_rdma {
-          GpuDirectRdmaRecorded { capability: c } => match c {
-            GpuDirectRdmaDeviceUnsupported { platform: _ } => true
-            GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _ } => false
-            GpuDirectRdmaCapabilityUnread { cause: _ } => false
-          }
-          GpuDirectRdmaEvidenceMissing { capability: _ } => false
         }
   } && match group_b_group_admission() {
     GroupQualified { receipt: _ } => false
@@ -658,8 +641,6 @@ test fn a_partly_missing_expected_rank_is_unread_not_agrees() -> Bool {
       fx_rank(id: "rank-1", sample: fx_sample()),
     ],
     required: fx_all_reduce_protocol(),
-    max_latency_multiple: 2,
-    at: byte_size(count: 8),
   ) {
     RankSymmetryUnread { because: _ } => true
     RankSymmetryAgrees { rank_count: _ } => false
@@ -672,10 +653,12 @@ test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
     advertised: fx_advertised(),
     m: fx_measured_all_agree(),
     hosts: [
-      qualify_host(
-        node: "rank-0" as HostIdentity,
-        advertised: fx_advertised().host,
-        measured: fx_measured_all_agree().host,
+      admit_qualified_host(
+        receipt: qualify_host(
+          node: "rank-0" as HostIdentity,
+          advertised: fx_advertised().host,
+          measured: fx_measured_all_agree().host,
+        ),
       ),
     ],
   ) {
@@ -684,6 +667,35 @@ test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
       GroupHostRosterUnread { because: _ } => true
       GroupHostRosterComplete { rank_count: _ } => false
     }
+  }
+}
+
+test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> Bool {
+  match fx_admit_group_for(
+    advertised: fx_advertised(),
+    m: fx_measured_all_agree(),
+    hosts: fx_pair_unqualified_hosts(),
+  ) {
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: _ } => match r.host_roster {
+      GroupHostRosterUnread { because: _ } => true
+      GroupHostRosterComplete { rank_count: _ } => false
+    }
+  }
+}
+
+test fn a_copied_group_curve_labelled_rank_local_is_unread() -> Bool {
+  match qualify_rank_symmetry(
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+    ranks: [
+      fx_rank(id: "rank-0", sample: fx_sample()),
+      fx_rank(id: "rank-1", sample: fx_sample()),
+    ],
+    required: fx_all_reduce_protocol(),
+  ) {
+    RankSymmetryUnread { because: _ } => true
+    RankSymmetryAgrees { rank_count: _ } => false
+    RankSymmetryFallsShort { degraded: _ } => false
   }
 }
 
@@ -699,8 +711,6 @@ test fn a_copied_group_curve_is_not_rank_local() -> Bool {
       },
     ],
     required: fx_all_reduce_protocol(),
-    max_latency_multiple: 2,
-    at: byte_size(count: 8),
   ) {
     RankSymmetryUnread { because: _ } => true
     RankSymmetryAgrees { rank_count: _ } => false
@@ -715,8 +725,6 @@ test fn duplicate_expected_ranks_are_unread_not_symmetric() -> Bool {
       fx_rank(id: "rank-0", sample: fx_sample()),
     ],
     required: fx_all_reduce_protocol(),
-    max_latency_multiple: 2,
-    at: byte_size(count: 8),
   ) {
     RankSymmetryUnread { because: _ } => true
     RankSymmetryAgrees { rank_count: _ } => false
@@ -736,8 +744,6 @@ test fn rank_curves_with_a_different_protocol_are_unread() -> Bool {
       },
     ],
     required: fx_all_reduce_protocol(),
-    max_latency_multiple: 2,
-    at: byte_size(count: 8),
   ) {
     RankSymmetryUnread { because: _ } => true
     RankSymmetryAgrees { rank_count: _ } => false
@@ -764,8 +770,6 @@ test fn rank_symmetry_compares_the_advertised_size_not_each_curve_head() -> Bool
       },
     ],
     required: fx_all_reduce_protocol(),
-    max_latency_multiple: 2,
-    at: byte_size(count: 8),
   ) {
     RankSymmetryUnread { because: _ } => true
     RankSymmetryFallsShort { degraded: _ } => false
