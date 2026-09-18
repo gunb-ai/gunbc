@@ -130,23 +130,31 @@ fn toml_render_pair(kv: TomlKeyValue) -> String {
 //   and therefore LIVE TOML -- a note silently becoming a key. Every line gets its own `#`.
 //
 //   CONTROLS: TOML admits only TAB among the control characters inside a comment; the rest of C0
-//   and U+007F are prohibited outright. A comment cannot carry escape sequences -- its content is
+//   and U+007F are prohibited outright -- including a standalone CR, which is NOT a newline. A comment cannot carry escape sequences -- its content is
 //   raw -- so a prohibited character is rendered as its `\uXXXX` TEXT, which is valid comment
 //   content and preserves what the author wrote rather than deleting it silently.
+// ONLY THE CRLF PAIR IS A NEWLINE. TOML defines a newline as LF or CRLF, so the PAIR normalizes to
+// one line break -- but a STANDALONE CR is not a line break, it is a prohibited control inside
+// comment content, and deleting it would silently drop authored content while this module claims
+// to preserve it. Normalizing the pair first and letting any surviving CR fall through to
+// `toml_comment_char` is what makes the two cases different: `one\r\ntwo` becomes two comment
+// lines, `one\rtwo` becomes one line carrying literal `\u000D`.
 fn toml_comment_lines(text: String) -> List<String> {
-  split(s: replace(s: text, from: "\r", to: ""), delimiter: "\n")
+  split(s: replace(s: text, from: "\r\n", to: "\n"), delimiter: "\n")
     |> map(line => chars(s: line) |> map(toml_comment_char) |> join(separator: ""))
 }
 
+// TAB IS THE ONE CONTROL A COMMENT ADMITS; everything else defers to the escaper above rather than
+// restating which code points lack a literal form and how one renders as `\u00XX`. An earlier
+// revision spelled that body a second time here, so a correction to the predicate or the nibble
+// encoding would have left this copy on the old rule -- with each of the two witnesses staying
+// green against its own copy, which is the failure mode that makes duplicated logic dangerous
+// rather than merely verbose.
 fn toml_comment_char(point: Int) -> String {
-  if (point == 9) {
+  if point == 9 {
     from_code_point(point)
   } else {
-    if (point < 32) || (point == 127) {
-      concat("\\u00", concat(toml_hex_nibble(n: point / 16), toml_hex_nibble(n: point - ((point / 16) * 16))))
-    } else {
-      from_code_point(point)
-    }
+    toml_escape_remaining_control(point: point)
   }
 }
 

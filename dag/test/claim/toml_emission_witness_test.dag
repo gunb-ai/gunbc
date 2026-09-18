@@ -191,6 +191,20 @@ test fn a_multi_line_comment_cannot_escape_into_live_toml() -> Bool {
     && (toml_render_comment(text: "plain") == "# plain\n")
 }
 
+// A STANDALONE CR IS NOT A NEWLINE AND MUST NOT VANISH. TOML's newline is LF or CRLF, so the PAIR
+// is a line break while a lone CR is a prohibited control inside comment content. Stripping every
+// CR before sanitizing -- which is what this implementation did until the input was tested --
+// passes every other comment claim while silently DELETING authored content, so the discriminating
+// pair is the two cases side by side: the CRLF splits, the lone CR survives as visible text. The
+// trailing case is here for the route discipline that caught the injection defect.
+test fn a_standalone_carriage_return_survives_as_text_rather_than_vanishing() -> Bool {
+  (toml_render_comment(text: "one\rtwo") == "# one\\u000Dtwo\n")
+    && (toml_render_comment(text: "one\r\ntwo") == "# one\n# two\n")
+    && (toml_render_entry(e: toml_entry_trailing(
+         key: "k", value: TomlInteger { value: 1 }, trailing_comment: "one\rtwo"
+       )) == "k = 1  # one\\u000Dtwo\n")
+}
+
 // THE TRAILING COMMENT IS ITS OWN ROUTE AND WAS THE ONE LEFT OPEN. It is the only comment position
 // that follows a value on the same line, and an earlier revision appended it raw -- so a newline in
 // it rendered its second line as a real assignment. Asserting `toml_render_comment` alone never
