@@ -19,7 +19,7 @@ import gunbc.machine_intake_mtcollins1_expansion_attachment {
   NoObservationForUnit, attachment_for_unit, attachment_against_evidence,
 }
 import gunbc.machine_intake_mtcollins1_expansion_candidates {
-  candidate_verdicts, mtcollins1_candidate_verdicts, InstalledUnobserved,
+  candidate_verdicts, mtcollins1_candidate_verdicts, InstalledUnobserved, FullHeightBracket, LowProfileBracket,
 }
 import gunbc.machine_intake_mtcollins1_connectx4lx_observation { Connectx4LxHostUnobserved, Connectx4LxHostObserved }
 import gunbc.machine_intake_mtcollins1_dimm_connector_observation { observed_unit }
@@ -68,10 +68,14 @@ test fn real_candidates_reach_typed_verdicts() -> Bool {
         name == "mcx4121a_acat" && settle != ""
           && match candidate { PcieCem => true, _ => false }
           && match row.candidate.context {
-            InstalledUnobserved { ordered: ordered, arrived: arrived, host: host, relay_message: relay } =>
+            InstalledUnobserved { ordered: ordered, ordered_bracket: bracket, arrived: arrived, host: host, relay_message: relay } =>
               ordered.port_connector == "SFP28" && arrived.opn == "MCX4121A-ACAT"
                 && arrived.host_link.generation == Gen3 && arrived.host_link.lane_count == 8
                 && arrived.port_count == 2 && arrived.port_connector == "SFP28" && relay != ""
+                && match bracket {
+                  FullHeightBracket => true
+                  LowProfileBracket => false
+                }
                 && match host {
                   Connectx4LxHostUnobserved { seated_report: _, pcie_read_obligation: _, driver_read_obligation: _, discharges_at: _ } => true
                   Connectx4LxHostObserved { pcie_identity: _, bound_module: _ } => false
