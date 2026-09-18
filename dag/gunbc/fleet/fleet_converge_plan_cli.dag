@@ -825,6 +825,9 @@ fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
 // THE LINE STOPS BEFORE THE HOST IS READ when the canonical host-convergence protocol does
 // not bind (gunbc.host_convergence_protocol canonical_protocol_gate). A declared frontier
 // openly awaiting its consumer does not stop it; a self-naming or fired frontier does.
+// RUNG: test.claim.host_convergence_protocol_witness exercises canonical_protocol_gate
+// directly, refusals and admission both. This wet arm, which only matches the gate's
+// result, is proven by typecheck alone; no witness executes it.
 fn fleet_converge_plan_scoped_bound_wet(
   run: ActionsRunBinding,
   expected_host: String,
