@@ -2294,6 +2294,9 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
   )
 }
 
+// Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
+// floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
+// PointwisePower closure at the consumer; that closure is not the stored value.
 fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
     m: dag_surface_sugar_symbol_map(
