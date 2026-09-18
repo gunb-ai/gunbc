@@ -1,6 +1,7 @@
 module gunbc.bmc_health_reader
 
 import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
 import extdeps.bmc.types { AccountRoleReadOnly, redfish_account_role_wire }
 import extdeps.languages.json.emit { JsonBool, JsonValue, json_bool, json_kv, json_object, json_string, serialize_json }
 import gunbc.scm.json_member {
@@ -32,7 +33,7 @@ import extdeps.languages.json.parse {
 // UserName (Base.1.16.0.PropertyValueFormatError, observed on srv1 2026-09-18).
 data bmc_health_reader_username: NonEmptyStr = "gunbc_health"
 
-fn bmc_health_reader_secret_id(host: NonEmptyStr) -> NonEmptyStr {
+fn bmc_health_reader_secret_id(host: HostIdentity) -> NonEmptyStr {
   concat("bmc-", host as String, "-health-reader") as NonEmptyStr
 }
 

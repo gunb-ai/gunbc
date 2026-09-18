@@ -24,7 +24,9 @@ import gunbc.tools.bmc_health_reader_converge {
   reader_login_exit,
 }
 import gunbc.tools.bmc_onboard { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
-import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeUnreached }
+import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeSucceeded, RestExchangeUnreached }
+import gunbc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import std.process { ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -78,18 +80,19 @@ test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool 
   let judged = match plan_reader_account(observation: reader_account_from_json(body: body)) { ReaderAccountConverged => true _ => false }
   judged
     && string_contains(s: body, pattern: "gunbc_health")
-    && bmc_health_reader_secret_id(host: "srv3") == "bmc-srv3-health-reader"
-    && bmc_health_reader_body_path(host_name: "srv3") != bmc_health_reader_body_path(host_name: "srv4")
+    && bmc_health_reader_secret_id(host: operator_host_srv3) == "bmc-srv3-health-reader"
+    && bmc_health_reader_body_path(host: operator_host_srv3) != bmc_health_reader_body_path(host: operator_host_srv4)
 }
 
 // Only a 404 says the secret is absent; a refused status or an unreached call is a read failure
 // that says nothing about existence (reviews 67836, 67848). The administrator probe and the reader
 // flow both read custody through this one classifier.
 test fn only_a_404_reads_as_absent_custody() -> Bool {
-  let absent = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 404, body: "not found" }) { CustodyCredentialAbsent => true _ => false }
-  let denied = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 403, body: "denied" }) { CustodyCredentialUnreadable { cause: _ } => true _ => false }
-  let unreached = match custody_read_refusal_cause(performance: RestExchangeUnreached { cause: "timeout" }) { CustodyCredentialUnreadable { cause: _ } => true _ => false }
-  absent && denied && unreached
+  let absent = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 404, body: "not found" }) { Present { value: CustodyCredentialAbsent } => true _ => false }
+  let denied = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 403, body: "denied" }) { Present { value: CustodyCredentialUnreadable { cause: _ } } => true _ => false }
+  let unreached = match custody_read_refusal_cause(performance: RestExchangeUnreached { cause: "timeout" }) { Present { value: CustodyCredentialUnreadable { cause: _ } } => true _ => false }
+  let success_decodes = match custody_read_refusal_cause(performance: RestExchangeSucceeded) { none => true _ => false }
+  absent && denied && unreached && success_decodes
 }
 
 // A login that never reached the BMC keeps its local cause instead of reading as a refused password.
@@ -103,4 +106,14 @@ test fn a_login_that_was_never_attempted_is_not_a_refused_password() -> Bool {
     _ => false
   }
   not_attempted && rejected
+}
+
+// One host carrier: the plan's endpoint, its admin secret and the reader secret all derive from the
+// same fleet host, so no argument can pair one host's secret with another's BMC (review 67867).
+test fn every_name_a_plan_uses_derives_from_its_one_host() -> Bool {
+  srv3_onboarding_plan.host == operator_host_srv3
+    && srv3_onboarding_plan.secret_name == "bmc-srv3-admin"
+    && srv3_onboarding_plan.bmc.host == "192.168.1.192"
+    && bmc_health_reader_secret_id(host: srv4_onboarding_plan.host) == "bmc-srv4-health-reader"
+    && srv4_onboarding_plan.bmc.host == "192.168.1.195"
 }
