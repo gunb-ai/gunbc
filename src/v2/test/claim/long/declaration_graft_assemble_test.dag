@@ -158,6 +158,18 @@ test fn declaration_graft_record_type_only_reason_is_unbound() -> Bool {
   declaration_graft_assemble_reason(src: src_g_type_only) == "resolve_reason_unbound_symbol"
 }
 
+test fn declaration_graft_record_type_only_reason_is_dissolved() -> Bool {
+  declaration_graft_assemble_reason(src: src_g_type_only) == "namespace_graft_body_dissolved_refused"
+}
+
+test fn declaration_graft_record_type_only_reason_is_dual_position() -> Bool {
+  declaration_graft_assemble_reason(src: src_g_type_only) == "namespace_graft_dual_position_refused"
+}
+
+test fn declaration_graft_record_type_only_reason_is_qn_invalid() -> Bool {
+  declaration_graft_assemble_reason(src: src_g_type_only) == "qualified_name_structure_invalid"
+}
+
 test fn declaration_graft_record_type_only_box_and_n_are_named() -> Bool {
   declaration_graft_named_reachable(src: src_g_type_only, lexeme: "Rec")
     && declaration_graft_named_reachable(src: src_g_type_only, lexeme: "n")

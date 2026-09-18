@@ -608,12 +608,14 @@ fn namespace_graft_decl_edges_from_node(node: Node) -> List<Edge> {
 // (the type shell was dropped). Neither arm is a refusal. Rehome type/data onto
 // Named containment first; reconstruct remains only when nothing first-class
 // survived (import-only and the lost-forest refusal still sit on that empty path).
-fn namespace_graft_subtree_has_arrow(node: Node) -> Bool {
+fn namespace_graft_is_declaration_target(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
+    TypeNode { connective: Conj } => true
+    TypeNode { connective: Disj } => true
     _ =>
       fold(node.children, init: false, f: fn(found, e) {
-        found || namespace_graft_subtree_has_arrow(node: e.target)
+        found || namespace_graft_is_declaration_target(node: e.target)
       })
   }
 }
@@ -628,7 +630,7 @@ fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
       } else if namespace_graft_is_machinery_symbol(sym: sym) {
         false
       } else {
-        namespace_graft_subtree_has_arrow(node: edge.target)
+        namespace_graft_is_declaration_target(node: edge.target)
       }
     Positional => false
   }
