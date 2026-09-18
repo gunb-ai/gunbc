@@ -211,8 +211,9 @@ fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Archite
   }
 }
 
-// Client firmware class as measured. UefiPxe is not authored here: that upstream variant
-// requires a TFTP root this service does not serve.
+// Client firmware class as measured on the wire (RFC 4578 option 93). The join admits exactly one
+// class this slice, UefiArm64 (code 11, UEFI PXE), served over the site edge TFTP root; every other
+// measured class is a located NetworkBootDeliveryClientModeRefused, not an absent row.
 type ObservedDhcpPxeClient {
   vendor_class: NonEmptyStr
   arch: DhcpProcessorArchitecture
