@@ -395,9 +395,11 @@ fn authorize<Subject>(
 //
 // The claim slot is keyed by escalation id, so every attempt that could claim one grant addresses
 // exactly one slot. Keying it by attempt instead would give each racer its own slot and exclude
-// nothing, which is the shape of the race rather than its resolution. The store root already
-// namespaces the domain, so the key is the escalation id itself -- a slash-prefixed path is not
-// slot-addressable in gunbc.durable_cas_file_store.
+// nothing, which is the shape of the race rather than its resolution. The key is the escalation
+// id itself -- a slash-prefixed path is not slot-addressable in gunbc.durable_cas_file_store.
+// `authorization_claim_store_root` is one shared authorization-claim domain (srv3 boot-once and
+// Mt. Collins boot both publish there); the root does not per-workflow-namespace the key, so
+// callers mint globally unique escalation ids rather than relying on a path prefix.
 fn authorization_claim_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
   escalation_id
 }
