@@ -56,6 +56,12 @@ type NetworkBootRequirementEvidence {
 // request.
 type NetworkBootDeliveryEstablishment {
   target: BootDeliveryTarget
+  fleet: FleetBootServiceReceipt
+  site: SitePxeEdgeReceipt
+  client: ObservedClientBootModeReceipt
+  boot_control: NetworkBootBootControlReceipt
+  manifest: SignedBootManifestIdentity
+  trust: BootstrapTrustStanding
   boot_source_override: NetworkBootRequirementEvidence
   client_boot_mode: NetworkBootRequirementEvidence
   serving_infrastructure: NetworkBootRequirementEvidence
@@ -72,6 +78,7 @@ type NetworkBootDeliveryStanding
   | NetworkBootDeliveryTargetMismatch { axis: NetworkBootRequirement }
   | NetworkBootDeliveryManifestRefused { cause: NetworkBootManifestRefusal }
   | NetworkBootDeliverySiteUnestablished
+  | NetworkBootDeliverySiteMismatch { expected: SiteIdentity, observed: SiteIdentity }
   | NetworkBootDeliveryTrustUnestablished
 
 // A computed rejection of an observed ticket. Missing means no ticket was presented.
@@ -220,6 +227,7 @@ type ObservedDhcpPxeClient {
 
 type ObservedClientBootModeReceipt {
   target: BootDeliveryTarget
+  site: SiteIdentity
   client: ObservedDhcpPxeClient
   observation: DeclarationRef
   observed_at: EpochMs
@@ -304,6 +312,7 @@ fn bootstrap_trust_standing(firmware_https_or_secure_boot: Bool, isolated_onboar
 
 type NetworkBootJoinInputs {
   target: BootDeliveryTarget
+  expected_site: SiteIdentity
   artifact_digest: ContentHash
   trust: BootstrapTrustStanding
   fleet: FleetBootServiceStanding
@@ -343,6 +352,9 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
         SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } =>
           NetworkBootDeliveryArchitectureRefused { cause: ChainloaderMismatch { client: c, chainloader: l } }
         SitePxeEdgeEstablished { receipt: site } =>
+          if (site.edge.site as String) != (inputs.expected_site as String) {
+            NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: site.edge.site }
+          } else {
           match inputs.client {
             ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
             ClientBootModePredecessor { observation: o } =>
@@ -356,6 +368,9 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                 UefiArm64 =>
                   if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
                     NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
+                  } else {
+                  if (client.site as String) != (inputs.expected_site as String) {
+                    NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: client.site }
                   } else {
                     match inputs.boot_control {
                       BootControlUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
@@ -388,7 +403,9 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                         }
                     }
                   }
+                  }
               }
+          }
           }
       }
   }
@@ -468,6 +485,12 @@ fn join_verified_ticket_after_trust(
                           NetworkBootDeliveryEstablished {
                             evidence: NetworkBootDeliveryEstablishment {
                               target: inputs.target,
+                              fleet: fleet,
+                              site: site,
+                              client: client,
+                              boot_control: control,
+                              manifest: id,
+                              trust: inputs.trust,
                               boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
                               client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
                               serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),

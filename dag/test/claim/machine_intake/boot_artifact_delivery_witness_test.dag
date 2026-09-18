@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.external_authority { ExternalAuthority }
@@ -117,9 +118,15 @@ import gunbc.install_transport_qualification {
   UsbGadgetFrameworkPresent,
   target_bound_reinstall_path,
 }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, SiteIdentity }
 import gunbc.network_boot_delivery {
+  ArchitectureChainloader,
+  ControlledNetworkBootstrap,
+  DhcpFilenameHint,
+  FleetBootServiceReceipt,
+  GlobalHttpsEndpointReachable,
   NetworkBootBootArtifacts,
+  NetworkBootBootControlReceipt,
   NetworkBootBootSourceOverride,
   NetworkBootClientBootMode,
   NetworkBootDeliveryEstablished,
@@ -129,6 +136,13 @@ import gunbc.network_boot_delivery {
   NetworkBootRequirement,
   NetworkBootRequirementEvidence,
   NetworkBootServingInfrastructure,
+  ObservedClientBootModeReceipt,
+  ObservedDhcpPxeClient,
+  SignedBootManifestIdentity,
+  SiteNativeDhcp,
+  SitePxeEdge,
+  SitePxeEdgeReceipt,
+  first_slice_admitted_architectures,
   network_boot_requirements_all,
 }
 import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
@@ -1116,9 +1130,68 @@ fn control_network_boot_axis(requirement: NetworkBootRequirement) -> NetworkBoot
 }
 
 fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> NetworkBootDeliveryStanding {
+  let obs = DeclarationRef {
+    module_path: "test.claim.boot_artifact_delivery_witness_test",
+    decl_name: "established_network_boot_for",
+    field: WholeDeclaration,
+  }
+  let site = "onboarding-segment" as SiteIdentity
   NetworkBootDeliveryEstablished {
     evidence: NetworkBootDeliveryEstablishment {
       target: t,
+      fleet: FleetBootServiceReceipt {
+        https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
+        origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
+        signing_key_identity: "boot-manifest-key-0",
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      site: SitePxeEdgeReceipt {
+        edge: SitePxeEdge {
+          site: site,
+          admitted_architectures: first_slice_admitted_architectures,
+          discovery: SiteNativeDhcp,
+          bootstrap_transport: ArchitectureChainloader {
+            architecture: Aarch64,
+            filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+            chainloader_digest: digest,
+          },
+          global_endpoint_reachability: GlobalHttpsEndpointReachable { observation: obs, observed_at: 1788000000000 },
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      client: ObservedClientBootModeReceipt {
+        target: t,
+        site: site,
+        client: ObservedDhcpPxeClient {
+          vendor_class: "PXEClient:Arch:00011:UNDI:003016",
+          arch: UefiArm64,
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      boot_control: NetworkBootBootControlReceipt {
+        target: t,
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+      manifest: SignedBootManifestIdentity {
+        target_unit: t.subject.subject.unit_key,
+        attempt_id: t.subject.attempt_id,
+        nonce: "nonce-boot-artifact",
+        architecture: Aarch64,
+        chainloader_digest: digest,
+        kernel_digest: digest,
+        initrd_digest: digest,
+        root_digest: digest,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      trust: ControlledNetworkBootstrap,
       boot_source_override: control_network_boot_axis(requirement: NetworkBootBootSourceOverride),
       client_boot_mode: control_network_boot_axis(requirement: NetworkBootClientBootMode),
       serving_infrastructure: control_network_boot_axis(requirement: NetworkBootServingInfrastructure),
