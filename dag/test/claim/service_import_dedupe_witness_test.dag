@@ -1,0 +1,45 @@
+module test.claim.service_import_dedupe_witness_test
+
+// EXECUTING evidence that a service import an authored import already binds is emitted ONCE
+// (gunbc.recurring_failure_mode service_import_emitted_beside_its_authored_binding).
+//
+// THE RED. A module imports a service by name -- `import extdeps.filesystem.filesystem_io
+// { Filesystem }` -- and calls it through that bare name, so its function demands the service and
+// v1.compiler.emit_rust assembles two use lines for one item: the authored import renders as
+// `pub use crate::extdeps_filesystem_filesystem_io::{Filesystem};` and the per-module service import
+// as `pub use crate::extdeps_filesystem_filesystem_io::Filesystem;`. rustc refuses that pair with
+// E0252 (the name is defined multiple times). The fixture's closure does not contain `std.resources`,
+// which is the condition that exposes it: with that module present the bare name `Filesystem` had
+// two candidate providers and the authored line was declined, masking the duplicate.
+//
+// THE CONTROL SAYS WHAT THE DEDUPE MUST NOT SWALLOW. A service reached through a MODULE import
+// (`import extdeps.tools.diffutils`, then `shell.Diff.Recursive(...)`) has no authored line binding
+// its emitted name -- the module import renders as a glob, and the dotted service name is emitted
+// as `ShellDiff`, which no reference-derived line binds -- so its service import is the only thing
+// that brings `ShellDiff` into scope, and it must still be emitted.
+//
+// These rows read the emitted module TEXT. The compile of the deduped crate under `-D warnings`, and
+// the E0252 refusal of the pre-dedupe crate, were executed when this landed and are recorded in the
+// failure-mode row; a text row that forbids the second line is the part a regression flips.
+
+data sid_authored_service_source: String = "module sid_authored_service\n\nimport std.types \{ String }\nimport extdeps.filesystem.filesystem_io \{ Filesystem }\n\nfn sid_probe(path: String) -> String \{\n  let read = Filesystem.Read(path: path)\n  read.content\n}\n"
+
+data sid_module_imported_service_source: String = "module sid_module_imported_service\n\nimport std.types \{ FilePath }\nimport extdeps.tools.diffutils\n\nfn sid_same(left: FilePath, right: FilePath) -> Bool \{\n  let d = shell.Diff.Recursive(left: left, right: right)\n  d.identical\n}\n"
+
+test fn an_authored_service_import_is_not_emitted_a_second_time() -> Bool {
+  compile_dag_rust_emit_check(
+    sid_authored_service_source,
+    "src/sid_authored_service.rs",
+    ["pub use crate::extdeps_filesystem_filesystem_io::\{Filesystem};", "filesystem: &Filesystem"],
+    ["pub use crate::extdeps_filesystem_filesystem_io::Filesystem;"]
+  )
+}
+
+test fn a_service_import_no_authored_line_binds_is_still_emitted() -> Bool {
+  compile_dag_rust_emit_check(
+    sid_module_imported_service_source,
+    "src/sid_module_imported_service.rs",
+    ["pub use crate::extdeps_tools_diffutils::ShellDiff;", "shell_diff: &ShellDiff"],
+    []
+  )
+}
