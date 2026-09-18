@@ -1,0 +1,304 @@
+module std.bignat
+
+import std.types { Int, List, String, Bool }
+import std.integer { UInt8 }
+
+// A MULTI-LIMB UNSIGNED NATURAL over the substrate's 64-bit Int, which refuses on overflow.
+//
+// LIMB WIDTH IS 24 BITS, and the reason is the product bound, not taste: a limb is below 2^24, so a
+// limb product is below 2^48, and a step that adds a product, a limb and a carry stays below 2^49 --
+// fourteen bits of headroom under 2^63, so no step can reach the overflow refusal. 32-bit limbs
+// would overflow on a single product; 31 would leave one bit. 24 is also exactly three octets, so
+// octet and hex conversion is slicing rather than bit shuffling. A 256-bit value is 11 limbs.
+//
+// Limbs are least significant first. A BigNat may carry high zero limbs; every operation below is
+// correct for any lengths, and fixed-width users (the Montgomery context) pad to their width.
+type BigNat {
+  limbs: List<Int>
+}
+
+data bignat_base: Int = 16777216
+
+fn bignat_zero() -> BigNat {
+  BigNat { limbs: [] }
+}
+
+fn bignat_small(n: Int) -> BigNat {
+  BigNat { limbs: [n % bignat_base, (n / bignat_base) % bignat_base, n / (bignat_base * bignat_base)] }
+}
+
+// ── Octets and hex (big-endian on the wire) ──────────────────────────────────────────────────
+type BignatOctetFold {
+  limbs: List<Int>
+  limb: Int
+  place: Int
+}
+
+// Big-endian octets to limbs: walk the octets from the least significant end.
+fn bignat_from_octets(octets: List<UInt8>) -> BigNat {
+  let r = fold(reverse(octets), init: BignatOctetFold { limbs: [], limb: 0, place: 1 }, f: (acc, o) =>
+    if acc.place == 65536 {
+      BignatOctetFold { limbs: acc.limbs |> list_push(acc.limb + o * 65536), limb: 0, place: 1 }
+    } else {
+      BignatOctetFold { limbs: acc.limbs, limb: acc.limb + o * acc.place, place: acc.place * 256 }
+    })
+  if r.place == 1 { BigNat { limbs: r.limbs } } else { BigNat { limbs: r.limbs |> list_push(r.limb) } }
+}
+
+fn bignat_limb_octets(limb: Int) -> List<UInt8> {
+  [limb / 65536, (limb / 256) % 256, limb % 256]
+}
+
+// Exactly `width` big-endian octets. A value that does not fit answers Absent rather than truncating.
+fn bignat_to_octets(a: BigNat, width: Int) -> List<UInt8>? {
+  let all = fold(reverse(a.limbs), init: [], f: (acc, limb) => fold(bignat_limb_octets(limb: limb), init: acc, f: (acc2, o) => acc2 |> list_push(o)))
+  bignat_fit_octets(octets: all, width: width)
+}
+
+fn bignat_fit_octets(octets: List<UInt8>, width: Int) -> List<UInt8>? {
+  let n = count(octets)
+  if n == width {
+    Present { value: octets }
+  } else if n < width {
+    Present { value: bignat_pad_front(octets: octets, zeros: width - n) }
+  } else {
+    match octets {
+      Empty => none
+      Cons { head: h, tail: t } => if h == 0 { bignat_fit_octets(octets: t, width: width) } else { none }
+    }
+  }
+}
+
+fn bignat_pad_front(octets: List<UInt8>, zeros: Int) -> List<UInt8> {
+  if zeros <= 0 { octets } else { bignat_pad_front(octets: fold(octets, init: [0], f: (acc, o) => acc |> list_push(o)), zeros: zeros - 1) }
+}
+
+// ── Comparison ───────────────────────────────────────────────────────────────────────────────
+// -1, 0 or 1. Walks both limb lists from the least significant end; the most significant
+// difference decides, and missing limbs are zero.
+fn bignat_compare(a: BigNat, b: BigNat) -> Int {
+  bignat_compare_limbs(a: a.limbs, b: b.limbs, decided: 0)
+}
+
+fn bignat_compare_limbs(a: List<Int>, b: List<Int>, decided: Int) -> Int {
+  match a {
+    Empty =>
+      match b {
+        Empty => decided
+        Cons { head: y, tail: bt } => bignat_compare_limbs(a: [], b: bt, decided: if y > 0 { -1 } else { decided })
+      }
+    Cons { head: x, tail: at } =>
+      match b {
+        Empty => bignat_compare_limbs(a: at, b: [], decided: if x > 0 { 1 } else { decided })
+        Cons { head: y, tail: bt } =>
+          bignat_compare_limbs(a: at, b: bt, decided: if x > y { 1 } else if x < y { -1 } else { decided })
+      }
+  }
+}
+
+fn bignat_is_zero(a: BigNat) -> Bool {
+  fold(a.limbs, init: true, f: (acc, x) => acc && x == 0)
+}
+
+// ── Addition and subtraction ─────────────────────────────────────────────────────────────────
+fn bignat_add(a: BigNat, b: BigNat) -> BigNat {
+  BigNat { limbs: bignat_add_limbs(a: a.limbs, b: b.limbs, carry: 0, acc: []) }
+}
+
+fn bignat_add_limbs(a: List<Int>, b: List<Int>, carry: Int, acc: List<Int>) -> List<Int> {
+  match a {
+    Empty =>
+      match b {
+        Empty => if carry > 0 { acc |> list_push(carry) } else { acc }
+        Cons { head: y, tail: bt } => bignat_add_limbs(a: [], b: bt, carry: (y + carry) / bignat_base, acc: acc |> list_push((y + carry) % bignat_base))
+      }
+    Cons { head: x, tail: at } =>
+      match b {
+        Empty => bignat_add_limbs(a: at, b: [], carry: (x + carry) / bignat_base, acc: acc |> list_push((x + carry) % bignat_base))
+        Cons { head: y, tail: bt } => bignat_add_limbs(a: at, b: bt, carry: (x + y + carry) / bignat_base, acc: acc |> list_push((x + y + carry) % bignat_base))
+      }
+  }
+}
+
+// a - b, or Absent when b > a: a natural has no negative to answer with.
+fn bignat_sub(a: BigNat, b: BigNat) -> BigNat? {
+  if bignat_compare(a: a, b: b) < 0 { none } else { Present { value: BigNat { limbs: bignat_sub_limbs(a: a.limbs, b: b.limbs, borrow: 0, acc: []) } } }
+}
+
+// Called only with a >= b, so the final borrow is zero.
+fn bignat_sub_limbs(a: List<Int>, b: List<Int>, borrow: Int, acc: List<Int>) -> List<Int> {
+  match a {
+    Empty => acc
+    Cons { head: x, tail: at } =>
+      match b {
+        Empty => {
+          let d = x - borrow
+          if d < 0 { bignat_sub_limbs(a: at, b: [], borrow: 1, acc: acc |> list_push(d + bignat_base)) } else { bignat_sub_limbs(a: at, b: [], borrow: 0, acc: acc |> list_push(d)) }
+        }
+        Cons { head: y, tail: bt } => {
+          let d = x - y - borrow
+          if d < 0 { bignat_sub_limbs(a: at, b: bt, borrow: 1, acc: acc |> list_push(d + bignat_base)) } else { bignat_sub_limbs(a: at, b: bt, borrow: 0, acc: acc |> list_push(d)) }
+        }
+      }
+  }
+}
+
+// ── Bits ─────────────────────────────────────────────────────────────────────────────────────
+// Bit i of a (0 = least significant), as 0 or 1.
+fn bignat_limb_bits(limb: Int, remaining: Int, acc: List<Int>) -> List<Int> {
+  if remaining <= 0 { acc } else { bignat_limb_bits(limb: limb / 2, remaining: remaining - 1, acc: acc |> list_push(limb % 2)) }
+}
+
+// All bits, least significant first: 24 per limb.
+fn bignat_bits(a: BigNat) -> List<Int> {
+  fold(a.limbs, init: [], f: (acc, limb) => bignat_limb_bits(limb: limb, remaining: 24, acc: acc))
+}
+
+// ── Montgomery arithmetic modulo an odd m ────────────────────────────────────────────────────
+// Values are held as a·R mod m with R = 2^(24·width). mont_mul(a, b) = a·b·R⁻¹ mod m by the
+// coarsely integrated operand scanning method (Koç, Acar and Kaliski, "Analyzing and Comparing
+// Montgomery Multiplication Algorithms", 1996): for each limb a_i, t ← (t + a_i·b + q·m) / 2^24 with
+// q = (t_0 + a_i·b_0)·(−m⁻¹) mod 2^24, which makes the division exact. Every step is one product plus
+// a limb plus a carry, inside the 2^49 bound stated at the top.
+type MontgomeryModulus {
+  modulus: BigNat
+  width: Int
+  neg_inverse: Int
+  r_squared: BigNat
+}
+
+// −m⁻¹ mod 2^24 from the lowest limb, by Newton's iteration x ← x(2 − m₀x), which doubles the
+// number of correct low bits each step: 1 → 2 → 4 → 8 → 16 → 32 ≥ 24 after five steps. Each product
+// is reduced mod 2^24 before the next multiplication, so nothing exceeds 2^48.
+fn montgomery_neg_inverse(m0: Int) -> Int {
+  let x1 = montgomery_newton(m0: m0, x: 1)
+  let x2 = montgomery_newton(m0: m0, x: x1)
+  let x3 = montgomery_newton(m0: m0, x: x2)
+  let x4 = montgomery_newton(m0: m0, x: x3)
+  let x5 = montgomery_newton(m0: m0, x: x4)
+  (bignat_base - x5) % bignat_base
+}
+
+fn montgomery_newton(m0: Int, x: Int) -> Int {
+  let mx = (m0 * x) % bignat_base
+  (x * ((2 + bignat_base - mx) % bignat_base)) % bignat_base
+}
+
+fn bignat_pad(limbs: List<Int>, width: Int) -> List<Int> {
+  let n = count(limbs)
+  if n >= width { limbs } else { bignat_pad(limbs: limbs |> list_push(0), width: width) }
+}
+
+fn bignat_lowest(limbs: List<Int>) -> Int {
+  match limbs {
+    Empty => 0
+    Cons { head: h, tail: _ } => h
+  }
+}
+
+fn bignat_drop_lowest(limbs: List<Int>) -> List<Int> {
+  match limbs {
+    Empty => []
+    Cons { head: _, tail: t } => t
+  }
+}
+
+// t + k·x, as limbs, where t has at least as many limbs as x.
+fn bignat_add_scaled(t: List<Int>, x: List<Int>, k: Int, carry: Int, acc: List<Int>) -> List<Int> {
+  match t {
+    Empty => if carry > 0 { acc |> list_push(carry) } else { acc }
+    Cons { head: tj, tail: tt } =>
+      match x {
+        Empty => bignat_add_scaled(t: tt, x: [], k: k, carry: (tj + carry) / bignat_base, acc: acc |> list_push((tj + carry) % bignat_base))
+        Cons { head: xj, tail: xt } => {
+          let v = tj + k * xj + carry
+          bignat_add_scaled(t: tt, x: xt, k: k, carry: v / bignat_base, acc: acc |> list_push(v % bignat_base))
+        }
+      }
+  }
+}
+
+fn montgomery_step(ctx: MontgomeryModulus, t: List<Int>, ai: Int, b: List<Int>) -> List<Int> {
+  let u = bignat_add_scaled(t: t, x: b, k: ai, carry: 0, acc: [])
+  let q = (bignat_lowest(limbs: u) * ctx.neg_inverse) % bignat_base
+  bignat_pad(limbs: bignat_drop_lowest(limbs: bignat_add_scaled(t: u, x: ctx.modulus.limbs, k: q, carry: 0, acc: [])), width: ctx.width + 1)
+}
+
+// a·b·R⁻¹ mod m, for a, b < m. The loop result is below 2m, so one conditional subtraction finishes.
+fn montgomery_mul(ctx: MontgomeryModulus, a: BigNat, b: BigNat) -> BigNat {
+  let t = fold(bignat_pad(limbs: a.limbs, width: ctx.width), init: bignat_pad(limbs: [], width: ctx.width + 1), f: (acc, ai) => montgomery_step(ctx: ctx, t: acc, ai: ai, b: b.limbs))
+  montgomery_reduce_once(ctx: ctx, a: BigNat { limbs: t })
+}
+
+fn montgomery_reduce_once(ctx: MontgomeryModulus, a: BigNat) -> BigNat {
+  match bignat_sub(a: a, b: ctx.modulus) {
+    Present { value: d } => BigNat { limbs: bignat_truncate(limbs: d.limbs, width: ctx.width) }
+    Absent => BigNat { limbs: bignat_truncate(limbs: a.limbs, width: ctx.width) }
+  }
+}
+
+// Keep the low `width` limbs. Used only where the dropped limbs are known to be zero.
+fn bignat_truncate(limbs: List<Int>, width: Int) -> List<Int> {
+  fold(limbs, init: [], f: (acc, x) => if count(acc) < width { acc |> list_push(x) } else { acc })
+}
+
+// R² mod m by doubling 1 modulo m, 2·24·width times, each doubling followed by a conditional
+// subtraction. Derived from the modulus; never a transcribed constant.
+fn montgomery_r_squared(m: BigNat, width: Int) -> BigNat {
+  montgomery_double_times(m: m, a: bignat_small(n: 1), times: 48 * width)
+}
+
+fn montgomery_double_times(m: BigNat, a: BigNat, times: Int) -> BigNat {
+  if times <= 0 { a } else {
+    let d = bignat_add(a: a, b: a)
+    montgomery_double_times(m: m, a: match bignat_sub(a: d, b: m) { Present { value: r } => r Absent => d }, times: times - 1)
+  }
+}
+
+// The context for an odd modulus of `width` limbs.
+fn montgomery_modulus(m: BigNat, width: Int) -> MontgomeryModulus {
+  MontgomeryModulus {
+    modulus: BigNat { limbs: bignat_pad(limbs: m.limbs, width: width) },
+    width: width,
+    neg_inverse: montgomery_neg_inverse(m0: bignat_lowest(limbs: m.limbs)),
+    r_squared: montgomery_r_squared(m: m, width: width),
+  }
+}
+
+fn montgomery_to(ctx: MontgomeryModulus, a: BigNat) -> BigNat {
+  montgomery_mul(ctx: ctx, a: a, b: ctx.r_squared)
+}
+
+fn montgomery_from(ctx: MontgomeryModulus, a: BigNat) -> BigNat {
+  montgomery_mul(ctx: ctx, a: a, b: bignat_small(n: 1))
+}
+
+// Modular addition and subtraction of RESIDUES: both operands below m, which every montgomery_*
+// producer guarantees. Under that invariant m - b is a natural, so it is computed directly and no
+// arm exists for an impossible negative to be answered with a made-up value.
+fn montgomery_add(ctx: MontgomeryModulus, a: BigNat, b: BigNat) -> BigNat {
+  montgomery_reduce_once(ctx: ctx, a: bignat_add(a: a, b: b))
+}
+
+fn montgomery_negate(ctx: MontgomeryModulus, b: BigNat) -> BigNat {
+  BigNat { limbs: bignat_sub_limbs(a: ctx.modulus.limbs, b: b.limbs, borrow: 0, acc: []) }
+}
+
+fn montgomery_sub(ctx: MontgomeryModulus, a: BigNat, b: BigNat) -> BigNat {
+  montgomery_reduce_once(ctx: ctx, a: bignat_add(a: a, b: montgomery_negate(ctx: ctx, b: b)))
+}
+
+// a^e in Montgomery form, left to right over e's bits. `one` is R mod m (1 in Montgomery form).
+fn montgomery_pow(ctx: MontgomeryModulus, a: BigNat, e: BigNat) -> BigNat {
+  let one = montgomery_to(ctx: ctx, a: bignat_small(n: 1))
+  fold(reverse(bignat_bits(a: e)), init: one, f: (acc, bit) => {
+    let sq = montgomery_mul(ctx: ctx, a: acc, b: acc)
+    if bit == 1 { montgomery_mul(ctx: ctx, a: sq, b: a) } else { sq }
+  })
+}
+
+// The inverse of a nonzero a modulo a prime m, by Fermat: a^(m−2). Montgomery form in and out.
+// m is an odd prime, so m ≥ 3 and m − 2 is a natural.
+fn montgomery_inverse_prime(ctx: MontgomeryModulus, a: BigNat) -> BigNat {
+  montgomery_pow(ctx: ctx, a: a, e: BigNat { limbs: bignat_sub_limbs(a: ctx.modulus.limbs, b: [2], borrow: 0, acc: []) })
+}
