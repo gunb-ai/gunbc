@@ -1,6 +1,6 @@
 module gunbc.network_boot_delivery
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String, Present, Absent }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
@@ -12,8 +12,9 @@ import extdeps.provisioning.dhcp_client_arch {
   BiosX86,
   HttpBootX86_64,
   HttpBootArm64,
+  dhcp_client_processor_architecture,
 }
-import extdeps.provisioning.network_boot { DhcpBootDirection }
+import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
@@ -111,6 +112,7 @@ type NetworkBootManifestRefusal
   | ManifestJoinWrongAttempt
   | ManifestJoinWrongSigningKey
   | ManifestJoinChainloaderDigestDisagrees
+  | ManifestJoinWrongFirmwareClass
 
 type NetworkBootArchitectureRefusal
   = ClientArchitectureNotAdmitted { architecture: Architecture }
@@ -259,6 +261,7 @@ type SignedBootManifestIdentity {
   attempt_id: IntakeAttemptId
   nonce: NonEmptyStr
   architecture: Architecture
+  boot_mode: ClientNetworkBootMode
   chainloader_digest: ContentHash
   kernel_digest: ContentHash
   initrd_digest: ContentHash
@@ -485,6 +488,12 @@ fn join_verified_ticket_after_trust(
                         if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
                           NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
                         } else {
+                          match dhcp_client_processor_architecture(arch: id.architecture, mode: id.boot_mode) {
+                            Absent => NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongFirmwareClass }
+                            Present { value: ticket_dhcp } =>
+                              if ticket_dhcp != client.client.arch {
+                                NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongFirmwareClass }
+                              } else {
                           NetworkBootDeliveryEstablished {
                             evidence: NetworkBootDeliveryEstablishment {
                               target: inputs.target,
@@ -500,6 +509,8 @@ fn join_verified_ticket_after_trust(
                               boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
                               artifact_digest: inputs.artifact_digest,
                             },
+                          }
+                              }
                           }
                         }
                       }

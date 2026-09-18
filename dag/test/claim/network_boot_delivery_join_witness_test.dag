@@ -4,10 +4,10 @@ import std.types { Bool, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, Tftp }
 import extdeps.toolchain.types { Aarch64, X86_64, Wasm32 }
 import extdeps.provisioning.dhcp_client_arch { HttpBootArm64, UefiArm64 }
-import extdeps.provisioning.network_boot { NativeDhcpBootOptions }
+import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiHttpBoot, UefiPxe }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_subject {
@@ -78,6 +78,7 @@ import gunbc.network_boot_delivery {
   SiteDiscoveryUnobserved,
   ManifestJoinChainloaderDigestDisagrees,
   ManifestJoinWrongSigningKey,
+  ManifestJoinWrongFirmwareClass,
   SitePxeEdge,
   SitePxeEdgeClientArchitectureNotAdmitted,
   SitePxeEdgeChainloaderMismatch,
@@ -126,6 +127,9 @@ data other_target: BootDeliveryTarget = BootDeliveryTarget {
 data onboarding_site: SiteIdentity = "onboarding-segment" as SiteIdentity
 
 data foreign_site: SiteIdentity = "other-site" as SiteIdentity
+
+data edge_tftp: Uri = Uri { scheme: Tftp, locator: "192.0.2.10/snponly.efi" }
+
 data artifact: ContentHash = content_hash_of_value(value: "pxe-fabric-root-fixture")
 
 data obs: DeclarationRef = DeclarationRef {
@@ -201,6 +205,7 @@ fn manifest_ok() -> SignedBootManifestStanding {
       attempt_id: attempt,
       nonce: "nonce-0a",
       architecture: Aarch64,
+      boot_mode: UefiPxe { tftp_root: edge_tftp },
       chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
       kernel_digest: content_hash_of_value(value: "kernel-fixture"),
       initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -463,6 +468,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -532,6 +538,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -609,6 +616,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -841,6 +849,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Wasm32,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -892,6 +901,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-other-bytes"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -937,6 +947,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
         attempt_id: attempt,
         nonce: "nonce-0a",
         architecture: Aarch64,
+        boot_mode: UefiPxe { tftp_root: edge_tftp },
         chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
         kernel_digest: content_hash_of_value(value: "kernel-fixture"),
         initrd_digest: content_hash_of_value(value: "initrd-fixture"),
@@ -1110,6 +1121,52 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
+    NetworkBootDeliveryTrustUnestablished => false
+  }
+}
+
+test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    expected_site: onboarding_site,
+    artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        boot_mode: UefiHttpBoot,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongFirmwareClass } => true
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
