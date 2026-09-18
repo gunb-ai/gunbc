@@ -15,8 +15,9 @@ held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors
 | `Config/Team.xcconfig` | operator-filled: `DEVELOPMENT_TEAM`, `APPROVE_SERVER_HOST` (srv1 tailnet host), `APNS_ENVIRONMENT`, `APP_ATTEST_ENVIRONMENT` |
 | `Approve/Protocol.swift` | `framed` (the injective `<n>:<field>,` rendering), `enrolment_transcript`, `device_redemption_signing_input`, `device_read_client_data`, the protocol records |
 | `Approve/Wire.swift` | the ONE file that knows routes, envelopes and the read-auth headers; `URLSession` over the tailnet |
-| `Approve/DeviceKeys.swift` | enclave decision key (`[.privateKeyUsage, .biometryCurrentSet]` at creation) and App Attest |
-| `Approve/AppState.swift` | enrolment → inbox → redemption flow |
+| `Approve/DeviceKeys.swift` | enclave decision key (`[.privateKeyUsage, .biometryCurrentSet]` at creation), App Attest, and the one keychain item shape |
+| `Approve/EnrolmentState.swift` | the durable enrolment state machine: Unenrolled → Prepared → SubmissionUnknown → Enrolled → KeyInvalidated / Revoked, persisted before every remote call |
+| `Approve/AppState.swift` | transitions, APNs token forwarding, authenticated reads, redemption |
 | `Approve/ApproveApp.swift` | entry point, APNs token delivery, push wakes the list |
 | `Approve/Views.swift` | Enrol, Inbox, Detail |
 | `ApproveTests/ProtocolVectorTests.swift` | byte builders vs the emitted vectors; absence of the fixture FAILS |
@@ -42,12 +43,23 @@ fixes on first build.
 ## Flow
 
 - **Enrol**: type the one-time code printed by the enrol command the operator runs over SSH on srv1 (it is the challenge identifier; it is not shown on the dashboard) → refuse unless App Attest is
-  supported → create the enclave key → generate the App Attest key → attest with
-  `clientDataHash = SHA256(enrolment_transcript)` → register for APNs → `POST /approve/device/enrol`.
+  supported → create the enclave key and the App Attest key, fix the transcript, PERSIST as `Prepared` →
+  attest with `clientDataHash = SHA256(enrolment_transcript)` (kept, so a retry re-sends the same
+  attestation over the same hash) → register for APNs → `POST /approve/device/enrol`. A lost answer
+  moves to `SubmissionUnknown`, which re-reads before generating anything new; the attest key id is
+  recorded as enrolled only after the server verified it.
+- **Push token**: registered on every enrolled launch; a token that arrives before state is installed
+  is buffered; a rotated token is forwarded once through the push-registration update route.
+- **Two routes the wire does not carry yet** — enrolment readback and push-registration update —
+  REFUSE with `WireError.unmodeled` rather than an invented envelope; the states that need them show
+  that refusal. They become mechanical mirrors when `gunbc.auth.approval_device_wire` models them.
 - **Inbox**: `GET /approve/device/pending` on open, pull-to-refresh, and on push, authenticated by an App Attest assertion over `device_read_client_data` (headers `X-Approval-Assertion`, `X-Approval-Enrollment`, `X-Approval-Requested-At`; 60 s skew). The push carries only
   `notification_id`; nothing from it is displayed as the request.
 - **Detail**: `GET /approve/device/requests/<escalation_id>` returns the stored request byte for byte
-  plus a stateless `RedemptionChallenge` and both verbs' capabilities; the app shows that text, then Approve/Deny signs with the chosen verb's capability:
+  plus a stateless `RedemptionChallenge` and both verbs' capabilities. The screen renders `purpose` and
+  `destructive` from the stored request's existing fields (typed `ApprovalTarget` and the access lifetime
+  arrive with `approval_target_frontier`), labels the deadline as the LINK expiry, and shows the exact
+  signed text; then Approve/Deny signs with the chosen verb's capability:
   `device_redemption_signing_input` with the enclave key (Face ID is the enclave's own prompt — there
   is no `LAContext` pre-check), generates an App Attest assertion over the same bytes, and
   `POST /approve/device/redeem`s the `SignedRedemption`. The server's `{outcome, message}` is rendered as is.
