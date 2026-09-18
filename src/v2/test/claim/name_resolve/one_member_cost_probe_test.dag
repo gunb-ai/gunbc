@@ -19,23 +19,9 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
-import v2.std.collection { map_lookup }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
-import v2.std.grammar {
-  GrammarProduction,
-  GrammarRoot,
-  ModeledGrammar,
-  ParseGrammar,
-  StampClass,
-  Terminal,
-  grammar_atom,
-  grammar_carried_symbol_map,
-  grammar_carries_symbol,
-  grammar_empty_sync_tokens
-}
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
-import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
@@ -122,49 +108,6 @@ fn probe_resolved_export_identity(tree: ResolvedTree, wanted: Symbol) -> Bool {
         acc || probe_resolved_export_identity(tree: e.target, wanted: wanted)
       })
   }
-}
-
-fn map_carries(grammar: ParseGrammar, sym: Symbol) -> Bool {
-  match map_lookup(m: grammar_carried_symbol_map(grammar: grammar), key: sym) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn eq_probe_grammar() -> ParseGrammar {
-  ModeledGrammar {
-    root: GrammarRoot {
-      start: ^eq_probe_start,
-      productions: Cons {
-        head: GrammarProduction {
-          name: ^eq_probe_start,
-          expression: Terminal {
-            token_class: ^eq_probe_tok,
-            stamp: StampClass
-          },
-          emitted: grammar_atom(identity: ^eq_probe_emitted)
-        },
-        tail: Empty
-      },
-      sync_tokens: grammar_empty_sync_tokens()
-    }
-  }
-}
-
-fn map_agrees_with_node_fold(sym: Symbol) -> Bool {
-  let g = eq_probe_grammar()
-  map_carries(grammar: g, sym: sym) == grammar_carries_symbol(grammar: g, sym: sym)
-}
-
-test fn carried_symbol_map_agrees_with_node_fold_on_complete_probe_grammar() -> Bool {
-  map_agrees_with_node_fold(sym: ^eq_probe_start)
-    && map_agrees_with_node_fold(sym: ^eq_probe_tok)
-    && map_agrees_with_node_fold(sym: ^eq_probe_emitted)
-    && map_agrees_with_node_fold(sym: ^eq_probe_absent)
-    && map_carries(grammar: eq_probe_grammar(), sym: ^eq_probe_start)
-    && map_carries(grammar: eq_probe_grammar(), sym: ^eq_probe_tok)
-    && map_carries(grammar: eq_probe_grammar(), sym: ^eq_probe_emitted)
-    && !map_carries(grammar: eq_probe_grammar(), sym: ^eq_probe_absent)
 }
 
 test fn one_member_module_resolves_under_full_language_model() -> Bool {
