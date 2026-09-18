@@ -350,10 +350,3 @@ fn scan_outcome(receipt: ScanReceipt, hits: List<CodeSearchHit>) -> ScanOutcome 
     ScanNotAPopulation { receipt: receipt }
   }
 }
-
-fn scan_outcome_receipt(o: ScanOutcome) -> ScanReceipt {
-  match o {
-    ScanDeclaredPopulation { receipt: r, hits: _ } => r
-    ScanNotAPopulation { receipt: r } => r
-  }
-}
