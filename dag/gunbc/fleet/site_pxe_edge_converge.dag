@@ -378,15 +378,6 @@ type SitePxeEdgeRun {
   unit_active: SitePxeEdgeProbe
 }
 
-fn site_pxe_edge_file_needs_write(standing: SitePxeEdgeFileStanding) -> Bool {
-  match standing {
-    EdgeFileIdentical => false
-    EdgeFileDiffers => true
-    EdgeFileAbsent => true
-    EdgeFileUnobservable { reason: _ } => false
-  }
-}
-
 fn site_pxe_edge_file_outcome_settled(outcome: SitePxeEdgeFileOutcome) -> Bool {
   match outcome {
     EdgeFileLeftInPlace => true
