@@ -3,6 +3,7 @@ module extdeps.crypto.signature
 import std.types { NonEmptyStr, String, Int }
 import std.encoding { base64_decode, UrlSafe }
 import std.logic { Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -29,19 +30,13 @@ data verification_key_cannot_sign_note: NonEmptyStr = "An ECDSA public key verif
 type SignatureSuite =
   | EcdsaP256Sha256
 
-fn signature_suite_name(s: SignatureSuite) -> NonEmptyStr {
-  match s {
-    EcdsaP256Sha256 => "ECDSA-P256-SHA256" as NonEmptyStr
-  }
-}
-
 // THE PUBLIC KEY SPELLING IS SEC 1 §2.3.3 UNCOMPRESSED POINT: 0x04 || X || Y, 65 octets for P-256.
 // It is also ANSI X9.63's spelling, which is the name Apple's CryptoKit exposes it under
 // (x963Representation). One spelling on the wire, so a key cannot be enrolled under one encoding
 // and compared under another.
-fn signature_suite_public_key_octets(s: SignatureSuite) -> Int {
+fn signature_suite_public_key_size(s: SignatureSuite) -> ByteSize {
   match s {
-    EcdsaP256Sha256 => 65
+    EcdsaP256Sha256 => byte_size(count: 65)
   }
 }
 
@@ -49,9 +44,9 @@ fn signature_suite_public_key_octets(s: SignatureSuite) -> Int {
 // rawRepresentation). DER (CryptoKit derRepresentation) is the other common spelling; it is not
 // admitted, because a verifier that accepts two encodings of one signature has a malleability
 // surface it did not need.
-fn signature_suite_signature_octets(s: SignatureSuite) -> Int {
+fn signature_suite_signature_size(s: SignatureSuite) -> ByteSize {
   match s {
-    EcdsaP256Sha256 => 64
+    EcdsaP256Sha256 => byte_size(count: 64)
   }
 }
 
@@ -87,25 +82,12 @@ type SignedMessage sole_constructor {
 type SignatureVerification
   = SignatureVerified { verified: SignedMessage }
   | SignatureInvalid { suite: SignatureSuite }
-  | SignatureMalformed { octets_declared: Int, octets_expected: Int }
-  | VerifyingKeyMalformed { octets_declared: Int, octets_expected: Int }
+  | SignatureMalformed { declared: ByteSize, expected: ByteSize }
+  | VerifyingKeyMalformed { declared: ByteSize, expected: ByteSize }
   | SignatureSuiteMismatch { key_suite: SignatureSuite, signature_suite: SignatureSuite }
   | VerifyingKeyUndecodable { suite: SignatureSuite }
   | SignatureUndecodable { suite: SignatureSuite }
   | SignatureEncodingRefused { suite: SignatureSuite }
-
-fn signature_verification_succeeded(v: SignatureVerification) -> Bool {
-  match v {
-    SignatureVerified { verified: _ } => true
-    SignatureInvalid { suite: _ } => false
-    SignatureMalformed { octets_declared: _, octets_expected: _ } => false
-    VerifyingKeyMalformed { octets_declared: _, octets_expected: _ } => false
-    SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => false
-    VerifyingKeyUndecodable { suite: _ } => false
-    SignatureUndecodable { suite: _ } => false
-    SignatureEncodingRefused { suite: _ } => false
-  }
-}
 
 // ── The realization seam ─────────────────────────────────────────────────────────────────────
 // Same boundary as mac_verification_from_implementation, stated the same way: evidence cannot exist
@@ -115,28 +97,22 @@ fn signature_verification_succeeded(v: SignatureVerification) -> Bool {
 // facts of the suite and not of the curve arithmetic.
 fn signature_verification_from_implementation(
   key: VerifyingKey,
-  key_octets: Int,
+  key_size: ByteSize,
   signature: SignatureBytes,
-  signature_octets: Int,
+  signature_size: ByteSize,
   message: NonEmptyStr,
   implementation_verified: Bool,
 ) -> SignatureVerification {
   if key.suite != signature.suite {
     SignatureSuiteMismatch { key_suite: key.suite, signature_suite: signature.suite }
+  } else if byte_size_count(b: key_size) != byte_size_count(b: signature_suite_public_key_size(s: key.suite)) {
+    VerifyingKeyMalformed { declared: key_size, expected: signature_suite_public_key_size(s: key.suite) }
+  } else if byte_size_count(b: signature_size) != byte_size_count(b: signature_suite_signature_size(s: signature.suite)) {
+    SignatureMalformed { declared: signature_size, expected: signature_suite_signature_size(s: signature.suite) }
+  } else if implementation_verified {
+    SignatureVerified { verified: SignedMessage { key: key, message: message } }
   } else {
-    if key_octets != signature_suite_public_key_octets(s: key.suite) {
-      VerifyingKeyMalformed { octets_declared: key_octets, octets_expected: signature_suite_public_key_octets(s: key.suite) }
-    } else {
-      if signature_octets != signature_suite_signature_octets(s: signature.suite) {
-        SignatureMalformed { octets_declared: signature_octets, octets_expected: signature_suite_signature_octets(s: signature.suite) }
-      } else {
-        if implementation_verified {
-          SignatureVerified { verified: SignedMessage { key: key, message: message } }
-        } else {
-          SignatureInvalid { suite: signature.suite }
-        }
-      }
-    }
+    SignatureInvalid { suite: signature.suite }
   }
 }
 
@@ -165,18 +141,18 @@ fn p256_ecdsa_verify(key: VerifyingKey, signature: SignatureBytes, message: NonE
                 Present { value: verified } =>
                   signature_verification_from_implementation(
                     key: key,
-                    key_octets: count(key_octets),
+                    key_size: byte_size(count: count(key_octets)),
                     signature: signature,
-                    signature_octets: count(signature_octets),
+                    signature_size: byte_size(count: count(signature_octets)),
                     message: message,
                     implementation_verified: verified,
                   )
                 Absent =>
                   encoding_refusal(v: signature_verification_from_implementation(
                     key: key,
-                    key_octets: count(key_octets),
+                    key_size: byte_size(count: count(key_octets)),
                     signature: signature,
-                    signature_octets: count(signature_octets),
+                    signature_size: byte_size(count: count(signature_octets)),
                     message: message,
                     implementation_verified: false,
                   ))

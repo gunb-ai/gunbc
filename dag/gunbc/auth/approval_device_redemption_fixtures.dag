@@ -1,0 +1,134 @@
+module gunbc.auth.approval_device_redemption_fixtures
+
+import std.types { NonEmptyStr, String, Timestamp, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
+import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
+import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
+import gunbc.auth.approval_device_redemption {
+  DeviceRedemptionSigningInput, RedemptionChallenge, MobilePlatform, MobileIos, MobileAndroid,
+  device_redemption_signing_input, enrolment_transcript, platform_wire, approval_device_audience,
+}
+
+// ── The cross-language byte contract ─────────────────────────────────────────────────────────
+// The iOS app builds the signing input and the enrolment transcript in Swift; the server builds
+// them here. The two must agree BYTE FOR BYTE or every signature fails. The contract is not
+// re-typed in Swift tests: this module renders each vector's EXPECTED bytes through the very
+// functions the server verifies against, and the app's XCTest reads the emitted file. A change to
+// field order or separator on this side changes the file; `agree` refuses a stale commit, and the
+// app's test refuses the new bytes until its builder follows.
+data approval_device_vectors_path: String = "dag/test/fixture/approval_device_redemption/vectors.json"
+
+type RedemptionVector {
+  name: NonEmptyStr
+  input: DeviceRedemptionSigningInput
+}
+
+type EnrolmentVector {
+  name: NonEmptyStr
+  code: NonEmptyStr
+  platform: MobilePlatform
+  point_b64url: NonEmptyStr
+}
+
+// The stored-request texts are real store renderings in shape, and deliberately carry the
+// characters a hand-built Swift string gets wrong: quotes, a backslash, non-ASCII, and a newline.
+fn redemption_vector(name: NonEmptyStr, decision: ProposedDecision, stored_request_text: NonEmptyStr) -> RedemptionVector {
+  RedemptionVector {
+    name: name,
+    input: DeviceRedemptionSigningInput {
+      audience: approval_device_audience,
+      enrollment_id: "enr-7f3a",
+      challenge: RedemptionChallenge {
+        expires_at: "2026-09-18T12:05:00Z" as Timestamp,
+        nonce_hex: "9c1d2e3f4a5b6c7d8e9fa0b1c2d3e4f5061728394a5b6c7d8e9fa0b1c2d3e4f5",
+      },
+      escalation_id: "esc-mtc1-boot-1",
+      request_revision: "sha256:abababababababababababababababababababababababababababababababab",
+      stored_request_text: stored_request_text,
+      decision: decision,
+      capability_text: join(["gunbc.approval-capability.v1", "gunbc.roadmap_serve", "gunbc.auth.approval_broker"], signing_field_separator) as NonEmptyStr,
+      capability_tag_hex: "d1f1f1034370302f1405bd0bcd71e907c079ead5bf912da095cbe110d7876663",
+    },
+  }
+}
+
+data redemption_vectors: List<RedemptionVector> = [
+  redemption_vector(name: "approve-plain", decision: ProposeApprove, stored_request_text: "{\"kind\":\"request\",\"escalation_id\":\"esc-mtc1-boot-1\",\"destructive\":true}"),
+  redemption_vector(name: "deny-plain", decision: ProposeDeny, stored_request_text: "{\"kind\":\"request\",\"escalation_id\":\"esc-mtc1-boot-1\",\"destructive\":true}"),
+  redemption_vector(name: "approve-escapes", decision: ProposeApprove, stored_request_text: "{\"purpose\":\"Boot Mt. Collins \\\\ unit 1 — été\nline two\"}"),
+]
+
+data enrolment_vectors: List<EnrolmentVector> = [
+  EnrolmentVector { name: "ios", code: "482913", platform: MobileIos, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
+  EnrolmentVector { name: "android", code: "482913", platform: MobileAndroid, point_b64url: "BHt2Zm9vYmFyYmF6cXV4" },
+]
+
+fn enrolment_expected(v: EnrolmentVector) -> NonEmptyStr {
+  enrolment_transcript(
+    code: v.code,
+    decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: v.point_b64url },
+    platform: v.platform,
+  )
+}
+
+fn redemption_vector_json(v: RedemptionVector) -> JsonValue {
+  let i = v.input
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "input", value: json_object(members: [
+      json_kv(key: "audience", value: json_string(s: i.audience as String)),
+      json_kv(key: "enrollment_id", value: json_string(s: i.enrollment_id as String)),
+      json_kv(key: "challenge_expires_at", value: json_string(s: i.challenge.expires_at)),
+      json_kv(key: "nonce_hex", value: json_string(s: i.challenge.nonce_hex as String)),
+      json_kv(key: "escalation_id", value: json_string(s: i.escalation_id as String)),
+      json_kv(key: "request_revision", value: json_string(s: i.request_revision as String)),
+      json_kv(key: "stored_request_text", value: json_string(s: i.stored_request_text as String)),
+      json_kv(key: "decision", value: json_string(s: proposed_decision_name(d: i.decision) as String)),
+      json_kv(key: "capability_text", value: json_string(s: i.capability_text as String)),
+      json_kv(key: "capability_tag_hex", value: json_string(s: i.capability_tag_hex as String)),
+    ])),
+    json_kv(key: "expected", value: json_string(s: device_redemption_signing_input(i: i) as String)),
+  ])
+}
+
+fn enrolment_vector_json(v: EnrolmentVector) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "input", value: json_object(members: [
+      json_kv(key: "code", value: json_string(s: v.code as String)),
+      json_kv(key: "platform", value: json_string(s: platform_wire(p: v.platform) as String)),
+      json_kv(key: "point_b64url", value: json_string(s: v.point_b64url as String)),
+    ])),
+    json_kv(key: "expected", value: json_string(s: enrolment_expected(v: v) as String)),
+  ])
+}
+
+fn approval_device_vectors_json() -> String {
+  concat(
+    serialize_json(v: json_object(members: [
+      json_kv(key: "framing", value: json_string(s: "each field as <code point count>:<field>, concatenated")),
+      json_kv(key: "redemption", value: json_array(elements: map(redemption_vectors, v => redemption_vector_json(v: v)))),
+      json_kv(key: "enrolment", value: json_array(elements: map(enrolment_vectors, v => enrolment_vector_json(v: v)))),
+    ])),
+    "\n",
+  )
+}
+
+// Writes the projection. Run from the repository root.
+fn regen() -> ProcessExit {
+  let w = Filesystem.Write(path: approval_device_vectors_path, content: approval_device_vectors_json())
+  if w.success { ExitSuccess } else { exit_failure(reason: concat("write failed: ", w.error)) }
+}
+
+// Refuses a committed file that is not exactly the projection.
+fn agree() -> ProcessExit {
+  let r = Filesystem.Read(path: approval_device_vectors_path)
+  match filesystem_read_outcome(content: r.content, success: r.success, error: r.error) {
+    FilesystemReadRefused { error } => exit_failure(reason: concat("vectors.json unreadable: ", error))
+    FilesystemReadSucceeded { content } =>
+      if content == approval_device_vectors_json() { ExitSuccess }
+      else { exit_failure(reason: "vectors.json is stale; run gunbc.auth.approval_device_redemption_fixtures regen") }
+  }
+}

@@ -1,7 +1,6 @@
 module extdeps.apple.secure_enclave
 
 import std.types { NonEmptyStr }
-import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256, PublicKeyEncoding, Sec1Uncompressed, SignatureEncoding, P1363FixedWidth }
@@ -43,22 +42,6 @@ type EnclaveKeyAccessPolicy
 // property wanted here: someone who adds their face to the operator's unlocked phone does not inherit
 // the ability to approve. The cost is that re-enrolling Face ID requires re-enrolling the device.
 data approval_key_access_policy_note: NonEmptyStr = "BiometryCurrentSet binds the key to the biometric set enrolled at key creation: adding or removing a face or finger invalidates it. BiometryAny survives such a change; UserPresence also admits the device passcode. For a key whose signature names the operator, BiometryCurrentSet is the only arm under which a changed biometric set cannot silently inherit the operator's authority."
-
-fn enclave_policy_admits_passcode(p: EnclaveKeyAccessPolicy) -> Bool {
-  match p {
-    BiometryCurrentSet => false
-    BiometryAny => false
-    UserPresence => true
-  }
-}
-
-fn enclave_policy_survives_biometric_change(p: EnclaveKeyAccessPolicy) -> Bool {
-  match p {
-    BiometryCurrentSet => false
-    BiometryAny => true
-    UserPresence => true
-  }
-}
 
 // THE SIGNED INPUT IS HASHED BY CRYPTOKIT, NOT BY THE CALLER. PrivateKey.signature(for: Data) hashes
 // the data with SHA-256 and signs the digest, which is the verify side's expectation under

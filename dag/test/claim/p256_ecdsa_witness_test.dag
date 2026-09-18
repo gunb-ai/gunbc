@@ -2,6 +2,7 @@ module test.claim.p256_ecdsa_witness_test
 
 import std.logic { Bool }
 import std.types { NonEmptyStr, Secret }
+import std.measure { byte_size_count }
 import extdeps.crypto.signature {
   VerifyingKey, SignatureBytes, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
   SignatureVerification, SignatureVerified, SignatureInvalid, VerifyingKeyMalformed,
@@ -65,7 +66,7 @@ test fn the_wrong_key_is_invalid() -> Bool {
 test fn the_compressed_spelling_of_the_right_key_is_malformed_at_its_decoded_length() -> Bool {
   let compressed = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "A3_Nzidw9sRdQYPL7m_bS3tYBzM1e-nvE7rPbjx70VRF" }
   match p256_ecdsa_verify(key: compressed, signature: rfc7515_signature, message: rfc7515_input) {
-    VerifyingKeyMalformed { octets_declared, octets_expected } => octets_declared == 33 && octets_expected == 65
+    VerifyingKeyMalformed { declared, expected } => byte_size_count(b: declared) == 33 && byte_size_count(b: expected) == 65
     _ => false
   }
 }
