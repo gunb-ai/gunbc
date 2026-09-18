@@ -20,7 +20,7 @@ import v2.std.resolution_policy {
   default_name_resolution_policy
 }
 import v2.extdeps.languages.dag {
-  dag_canonical_symbols,
+  dag_resolution_canonical_symbols,
   dag_surface_module_header_metadata_edge,
   namespace_graft_already_grafted,
   namespace_graft_spine_segment_edge_optional,
@@ -129,7 +129,7 @@ fn resolution_context(
             index: empty_symbol_index(),
             roots: normalized_tree_roots_to_nodes(roots: validated_roots.roots)
           ),
-          canonical_symbols: dag_canonical_symbols()
+          canonical_symbols: dag_resolution_canonical_symbols(lm: lm)
         },
         diagnostics: d
       }

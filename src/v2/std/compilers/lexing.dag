@@ -226,6 +226,17 @@ fn lex_artifact_new(tokens: TokenStream, annotations: List<UnboundSourceAnnotati
   LexArtifact { tokens: tokens, annotations: annotations }
 }
 
+fn lex_rules_insert_token_classes(
+  m: Map<Symbol, Bool>,
+  rules: LexRules
+) -> Map<Symbol, Bool> {
+  match rules {
+    VoidLexRules => m
+    ModeledLexRules { root: root } =>
+      lex_rule_set_insert_token_classes(m: m, rules: root)
+  }
+}
+
 fn lex_rule_set_insert_token_classes(
   m: Map<Symbol, Bool>,
   rules: LexRuleSet
