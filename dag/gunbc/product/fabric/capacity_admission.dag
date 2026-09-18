@@ -17,7 +17,7 @@ import product.fabric.offer_route {
   OfferRouteModeled, OfferRouteNotModeled, OfferRouteAmbiguous, OfferRouteFactsNameAnotherRoute,
 }
 import product.fabric.supply {
-  SupplierOffer, OfferEvidence, ObservedSupply, QuotedSupply, UnobservedSupply,
+  SupplierOffer, ObservedSupply, QuotedSupply, UnobservedSupply,
   OfferFungibility, offer_fungibility_for,
   Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
 }
@@ -71,7 +71,6 @@ type AdmittedCapacity<P> sole_constructor {
   requirements: ExecutionRequirements
   permit: ProviderUsePermit<P>
   exercise: RouteExercise
-  evidence: OfferEvidence
 }
 
 // ONE ARM PER SCREEN THAT CAN REFUSE, each naming a different thing to go and do: model the route,
@@ -108,7 +107,6 @@ type RouteExercisePlacement<P> sole_constructor {
   requirements: ExecutionRequirements
   permit: ProviderUsePermit<P>
   route: ProviderRoute
-  evidence: OfferEvidence
 }
 
 type CapacityAdmission<P>
@@ -244,7 +242,6 @@ fn admit_use_for<P>(
                     requirements: requirements,
                     permit: permit,
                     exercise: e,
-                    evidence: offer.evidence,
                   },
                 }
               Absent =>
@@ -256,7 +253,6 @@ fn admit_use_for<P>(
                     requirements: requirements,
                     permit: permit,
                     route: facts.route,
-                    evidence: offer.evidence,
                   },
                 }
             }
