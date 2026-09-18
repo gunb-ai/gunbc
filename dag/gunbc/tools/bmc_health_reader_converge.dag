@@ -3,21 +3,6 @@ module gunbc.tools.bmc_health_reader_converge
 import extdeps.bmc.http
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.cloud.gcp.secret_manager {
-  decode_sm_access_version_secret_wire,
-  SmAccessVersionSecretDecoded,
-  SmAccessVersionSecretDecodeRefused,
-}
-import extdeps.transports.rest {
-  classify_rest_outcome,
-  RestExchangeCommitAmbiguous,
-  RestExchangePerformance,
-  RestExchangeStatusRefused,
-  RestExchangeSucceeded,
-  RestExchangeUndecodable,
-  RestExchangeUnreached,
-  RestReadExchange,
-}
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 import gunbc.bmc_onboarding {
   BmcOnboardingPlan,
@@ -44,10 +29,13 @@ import gunbc.bmc_health_reader {
   reader_listed_in_accounts,
 }
 import gunbc.tools.bmc_onboard {
+  CustodyCredentialAbsent,
+  CustodyCredentialHeld,
+  CustodyCredentialUnreadable,
+  bmc_custody_credential,
   BmcCustodyEstablished,
   BmcCustodyRefused,
   bmc_onboard_netrc_path,
-  bmc_stored_credential_read_succeeded,
   bmc_store_credential_verified,
   mint_bmc_credential,
   netrc_failure_reason,
@@ -88,45 +76,6 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 // converging at once must not share it) and a failed removal refuses whatever the POST answered.
 fn bmc_health_reader_body_path(host_name: NonEmptyStr) -> NonEmptyStr {
   concat("/tmp/bmc_health_reader_body_", host_name as String, ".json") as NonEmptyStr
-}
-
-// THREE ANSWERS, NOT A MAYBE. A 404 is the store saying the secret does not exist; a refused status,
-// an unreached call or an undecodable payload says nothing about existence and is carried as the
-// read failure it is (review 67836). Collapsing them would tell an operator to create a secret that
-// may be sitting there behind a permission they lack.
-type CustodyCredentialRead
-  = CustodyCredentialHeld { password: String }
-  | CustodyCredentialAbsent
-  | CustodyCredentialUnreadable { cause: String }
-
-fn custody_read_refusal_cause(performance: RestExchangePerformance) -> CustodyCredentialRead {
-  match performance {
-    RestExchangeSucceeded => CustodyCredentialUnreadable { cause: "the read succeeded but its payload did not decode" }
-    RestExchangeStatusRefused { status: status, body: body } =>
-      if status == 404 { CustodyCredentialAbsent } else { CustodyCredentialUnreadable { cause: concat("Secret Manager refused the read: ", body) } }
-    RestExchangeCommitAmbiguous { detail: d } => CustodyCredentialUnreadable { cause: d as String }
-    RestExchangeUnreached { cause: c } => CustodyCredentialUnreadable { cause: c as String }
-    RestExchangeUndecodable { status: _, cause: c } => CustodyCredentialUnreadable { cause: c as String }
-  }
-}
-
-fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> CustodyCredentialRead
-  uses net: Network
-{
-  resp = gcp.SecretManager.AccessVersion(
-    access_token: token,
-    project_id: fleet_secrets_gcp_project,
-    secret: secret_id,
-    version: "latest"
-  )
-  let performance = classify_rest_outcome(standing: RestReadExchange { rest: resp.outcome })
-  if !bmc_stored_credential_read_succeeded(performance: performance) {
-    return custody_read_refusal_cause(performance: performance)
-  }
-  return match decode_sm_access_version_secret_wire(data_b64: resp.data_b64) {
-    SmAccessVersionSecretDecoded { credential: c } => CustodyCredentialHeld { password: c as String }
-    SmAccessVersionSecretDecodeRefused { cause: _ } => CustodyCredentialUnreadable { cause: "the custody payload did not decode" }
-  }
 }
 
 // A LOGIN THAT NEVER REACHED THE BMC IS NOT A REJECTED PASSWORD. A netrc that could not be written --

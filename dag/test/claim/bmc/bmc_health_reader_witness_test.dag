@@ -20,12 +20,10 @@ import gunbc.bmc_health_reader {
 import gunbc.tools.bmc_health_reader_converge {
   BmcLoginNotAttempted,
   BmcLoginRejected,
-  CustodyCredentialAbsent,
-  CustodyCredentialUnreadable,
   bmc_health_reader_body_path,
-  custody_read_refusal_cause,
   reader_login_exit,
 }
+import gunbc.tools.bmc_onboard { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
 import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeUnreached }
 import std.process { ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -85,7 +83,8 @@ test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool 
 }
 
 // Only a 404 says the secret is absent; a refused status or an unreached call is a read failure
-// that says nothing about existence (review 67836).
+// that says nothing about existence (reviews 67836, 67848). The administrator probe and the reader
+// flow both read custody through this one classifier.
 test fn only_a_404_reads_as_absent_custody() -> Bool {
   let absent = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 404, body: "not found" }) { CustodyCredentialAbsent => true _ => false }
   let denied = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 403, body: "denied" }) { CustodyCredentialUnreadable { cause: _ } => true _ => false }

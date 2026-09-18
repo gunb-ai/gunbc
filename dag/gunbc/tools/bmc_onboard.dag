@@ -436,6 +436,46 @@ fn bmc_stored_credential_read_succeeded(performance: RestExchangePerformance) ->
   }
 }
 
+// THREE ANSWERS, NOT A MAYBE. A 404 is the store saying the secret does not exist; a refused status,
+// an unreached call or an undecodable payload says nothing about existence and is carried as the
+// read failure it is (reviews 67836, 67848). Collapsing them would tell an operator to create a secret that
+// may be sitting there behind a permission they lack.
+type CustodyCredentialRead
+  = CustodyCredentialHeld { password: String }
+  | CustodyCredentialAbsent
+  | CustodyCredentialUnreadable { cause: String }
+
+fn custody_read_refusal_cause(performance: RestExchangePerformance) -> CustodyCredentialRead {
+  match performance {
+    RestExchangeSucceeded => CustodyCredentialUnreadable { cause: "the read succeeded but its payload did not decode" }
+    RestExchangeStatusRefused { status: status, body: body } =>
+      if status == 404 { CustodyCredentialAbsent } else { CustodyCredentialUnreadable { cause: concat("Secret Manager refused the read: ", body) } }
+    RestExchangeCommitAmbiguous { detail: d } => CustodyCredentialUnreadable { cause: d as String }
+    RestExchangeUnreached { cause: c } => CustodyCredentialUnreadable { cause: c as String }
+    RestExchangeUndecodable { status: _, cause: c } => CustodyCredentialUnreadable { cause: c as String }
+  }
+}
+
+fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> CustodyCredentialRead
+  uses net: Network
+{
+  resp = gcp.SecretManager.AccessVersion(
+    access_token: token,
+    project_id: fleet_secrets_gcp_project,
+    secret: secret_id,
+    version: "latest"
+  )
+  let performance = classify_rest_outcome(standing: RestReadExchange { rest: resp.outcome })
+  if !bmc_stored_credential_read_succeeded(performance: performance) {
+    return custody_read_refusal_cause(performance: performance)
+  }
+  return match decode_sm_access_version_secret_wire(data_b64: resp.data_b64) {
+    SmAccessVersionSecretDecoded { credential: c } => CustodyCredentialHeld { password: c as String }
+    SmAccessVersionSecretDecodeRefused { cause: _ } => CustodyCredentialUnreadable { cause: "the custody payload did not decode" }
+  }
+}
+
+
 fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
   uses net: Network
 {
@@ -460,18 +500,13 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
     AccessTokenEnsureRefused { reason: reason } =>
       return CredentialEnsureRefused { reason: reason }
     AccessTokenReady { token: token } => {
-      secret_resp = gcp.SecretManager.AccessVersion(
-        access_token: token,
-        project_id: fleet_secrets_gcp_project,
-        secret: onboarding_secret_id(plan: plan),
-        version: "latest"
-      )
-      if !bmc_stored_credential_read_succeeded(performance: classify_rest_outcome(standing: RestReadExchange { rest: secret_resp.outcome })) {
-        return CredentialStateUnknown { reason: "the factory credential was refused and no stored credential could be read from custody" }
-      }
-      match decode_sm_access_version_secret_wire(data_b64: secret_resp.data_b64) {
-        SmAccessVersionSecretDecoded { credential: password } => {
-          let stored_w = write_netrc_outcome(host: host, account: account, password: password as String)
+      match bmc_custody_credential(secret_id: onboarding_secret_id(plan: plan), token: token) {
+        CustodyCredentialAbsent =>
+          return CredentialStateUnknown { reason: "the factory credential was refused and custody holds no stored credential (404)" }
+        CustodyCredentialUnreadable { cause: c } =>
+          return CredentialStateUnknown { reason: concat("the factory credential was refused and the stored credential could not be read from custody: ", c) }
+        CustodyCredentialHeld { password: password } => {
+          let stored_w = write_netrc_outcome(host: host, account: account, password: password)
           if netrc_write_succeeded(outcome: stored_w) == false {
             return CredentialStateUnknown { reason: netrc_failure_reason(outcome: stored_w, stage: "stored credential probe") }
           }
@@ -485,8 +520,6 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
             CredentialStateUnknown { reason: "stored credential rejected by BMC" }
           }
         }
-        SmAccessVersionSecretDecodeRefused { cause: _ } =>
-          CredentialStateUnknown { reason: "stored credential payload refused by wire decoder" }
       }
     }
   }
