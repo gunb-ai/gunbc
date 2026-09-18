@@ -34,10 +34,21 @@ import gunbc.spark.collective_memory_path_standing {
 // capability fold over two replies, the NCCL log line reader, and the join that decides whether a
 // staged path is a defect.
 //
-// THE PAIRING OBLIGATION. Every supplied input here is a reply shape that a real producer emits, and
-// the producer is named beside it: `cuda_device_attribute_program` renders the query whose stdout
-// these strings imitate, and `gunbc.spark.spark_gpu_direct_capability` carries the reading actually
-// taken from spark-0c75. The row below over that real reading is the inhabitance claim.
+// THE PAIRING OBLIGATION IS NOT HELD HERE, AND THIS PARAGRAPH SAYS SO RATHER THAN CLAIMING IT. Every
+// input in this suite is SUPPLIED: reply strings shaped like the stdout `cuda_device_attribute_program`
+// renders, and NCCL lines shaped like NCCL's own format string. No claim executes the real producer.
+// An earlier revision named a transcribed spark-0c75 reading as this suite's inhabitance row; that
+// row was deleted as a transcribed instrument output (review 67496), and nothing replaced it here.
+//
+// WHERE THE REAL PATH RUNS, AND WHERE IT DOES NOT. The live acquisition leg -- docker exec of the probe
+// in a rank's container, then these folds -- executes only in gunbc.spark.glm_group_b_relaunch_cli
+// glm_group_b_observe_wet, against a running Group B arm, and writes its receipt to
+// glm_group_b_observe_receipt_path. No CI lane runs it, because no runner has a GB10 container. So
+// the fold is established by these claims and the route's inhabitance is NOT: a change to what the
+// probe prints that these strings no longer match would stay green here.
+// TRIGGER: a recorded fixture of the two probe replies and one captured NCCL log from a live observe
+// run, replayed through observe_rank_report by a hermetic claim. SUFFICIENT FOR: a claim that fails
+// when the real producer's output stops inhabiting the shapes supplied below.
 
 // ── 1. THE REPLY PARSER ───────────────────────────────────────────────────────────────────────
 test fn w_a_well_formed_reply_parses_to_its_value() -> Bool {
