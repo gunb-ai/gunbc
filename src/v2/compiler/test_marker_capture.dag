@@ -33,9 +33,10 @@ import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissi
 // would make a marked declaration read as unmarked, which is the absent-reads-as-false class the
 // channel exists to close.
 //
-// CONSUMER, a declared frontier: the refusal of references to test code at name resolution
-// (v2.compiler.name_resolve) lands in the next change and reads this channel. Until then the only
-// executing reader is v2.test.claim.parse.test_marker_channel.
+// CONSUMER, a declared frontier. The consumer is the refusal of references to test code at name
+// resolution (v2.compiler.resolve resolve_atom_bound), reached through v2.compiler.normalize, which
+// seals this channel beside the normalized root. TRIGGER: gunbc#11580 merging, the change that wires
+// both. Until then the only executing reader is v2.test.claim.parse.test_marker_channel.
 fn test_marker_capture(artifact: ParseArtifact) -> Outcome<TestMarkerChannel> {
   let no_rows: List<TestMarkedDeclaration> = []
   match test_marker_capture_walk(n: artifact.tree, acc: outcome_accepted(value: no_rows)) {
