@@ -1,7 +1,10 @@
 module gunbc.site_uefi_arm64_pxe_edge
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.network.mac { Eui48Address, MacParseResult, parse_mac_address, render_mac_address }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import product.placement_supply { SiteIdentity }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
@@ -159,7 +162,7 @@ fn global_https_reachability_from_boot_network(obs: BootNetworkReachabilityObser
 // against it, never the source of it); any other code is carried as read and refused -- it is never
 // guessed onto an Architecture.
 type EdgeClientRequest {
-  mac: NonEmptyStr
+  mac: Eui48Address
   arch_code: Int
 }
 
@@ -173,31 +176,24 @@ type SiteEdgeRoster {
   site: SiteIdentity
   admitted_architectures: List<Architecture>
   bootstrap_transport: SiteBootstrapTransport
-  known_client_macs: List<NonEmptyStr>
+  known_client_macs: List<Eui48Address>
   offer: SiteDhcpOfferObservation
   reachability: BootNetworkReachabilityObservation
   observation: DeclarationRef
   observed_at: EpochMs
 }
 
-// CONSUMER AND FRONTIER (§3c). The admission verdict's consumer is the binder of
-// gunbc.network_boot_delivery NetworkBootJoinInputs.site for a real unit: an Admitted verdict
-// carries the SitePxeEdgeStanding that field takes. That binder does not exist in 0C, because the
-// join also needs fleet, client, boot-control and manifest receipts that no 0C route produces.
-// TRIGGER: the first boot offer observed from the converged srv4 edge (PXE-FABRIC 0C follow-up,
-// gunbc.site_pxe_edge_converge) is minted as a SiteDhcpOfferObservation and bound through this
-// function into NetworkBootJoinInputs.site.
 type SiteEdgeClientAdmission
   = SiteEdgeClientAdmitted { standing: SitePxeEdgeStanding }
-  | SiteEdgeUnknownMachineRefused { mac: NonEmptyStr }
+  | SiteEdgeUnknownMachineRefused { mac: Eui48Address }
   | SiteEdgeUnknownArchitectureRefused { arch_code: Int }
   | SiteEdgeClientArchitectureNotAdmitted { architecture: Architecture }
   | SiteEdgeChainloaderMismatch { client: Architecture, chainloader: Architecture }
   | SiteEdgeDiscoveryRefused { refusal: SiteDiscoveryRefusal }
   | SiteEdgeNotEstablished { standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityDeficit> }
 
-fn client_is_known(roster: SiteEdgeRoster, mac: NonEmptyStr) -> Bool {
-  roster.known_client_macs |> any(m => m as String == mac as String)
+fn client_is_known(roster: SiteEdgeRoster, mac: Eui48Address) -> Bool {
+  roster.known_client_macs |> any(m => m == mac)
 }
 
 fn observed_edge(roster: SiteEdgeRoster, discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
@@ -253,7 +249,7 @@ data site_edge_arm64_tag: String = "efi-arm64"
 
 data site_edge_known_tag: String = "onboarding-known"
 
-fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>) -> List<DnsmasqDirective> {
+fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, filename: NonEmptyStr, known_client_macs: List<Eui48Address>) -> List<DnsmasqDirective> {
   concat(
     [
       DnsmasqComment { text: join(["gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only: iPXE ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String, " per ", ipxe_chainloading_authority.uri.locator], "") },
@@ -262,18 +258,36 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, filename: NonEm
       DnsmasqDhcpMatchSet { tag: site_edge_arm64_tag, option: "option:client-arch", value: to_string(uefi_arm64_client_arch_code) },
     ],
     concat(
-      map(known_client_macs, m => DnsmasqDhcpHostSetTag { mac: m as String, tag: site_edge_known_tag }),
+      map(known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
       [DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: filename as String }],
     ),
   )
 }
 
-// CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to
-// srv4 as the edge daemon's config. That route lands in the 0C follow-up stacked on this change;
-// TRIGGER: that change merging. Until then its only reader is the witness.
-fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>) -> String {
+fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, filename: NonEmptyStr, known_client_macs: List<Eui48Address>) -> String {
   serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, filename: filename, known_client_macs: known_client_macs))
 }
 
-// The first onboarding segment's roster, and its only known client today.
-data first_onboarding_known_client_macs: List<NonEmptyStr> = [mtcollins1_host_nic_mac]
+// The first onboarding segment's only known client, parsed from the measured observation's wire text
+// rather than re-authored as octets, so the roster and the observation cannot disagree. A parse
+// failure is a MacParseFailed every consumer must refuse on, never an empty roster.
+data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text: mtcollins1_host_nic_mac as String)
+
+// The two production routes this module provides and nothing in this change executes, as counted
+// rows (enrolled in gunbc.census_closure_frontier) rather than prose.
+data site_uefi_arm64_pxe_edge_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_client_admission"),
+    reason: "no route binds an observed srv4 boot offer into gunbc.network_boot_delivery NetworkBootJoinInputs.site; the admission verdict is constructed only by witnesses over supplied rosters",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the first boot offer observed from the converged srv4 edge is minted as a SiteDhcpOfferObservation and bound through site_edge_client_admission into NetworkBootJoinInputs.site on a real boot attempt; a witness over supplied offers does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.site_uefi_arm64_pxe_edge", decl_name: "site_edge_proxy_dhcp_config"),
+    reason: "no production route writes the rendered ProxyDHCP config to the edge host in this change",
+    dissolution: unbound_dissolution(
+      description: "dissolves when gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to srv4 through the fleet-converge site_pxe_edge_converge mode (PXE-FABRIC 0C follow-up)"
+    )
+  ),
+]
