@@ -131,6 +131,8 @@ data src_g_type_only: String = "module p\n\ntype Rec { n: Int }\n"
 data src_dag_user_fn: String = "module p\n\nfn dag_user(x: Int) -> Int { x }\n"
 data src_flag_and_rec: String = "module p\n\ntype Flag = On | Off\ntype Rec { n: Int }\n"
 
+data src_flag_and_fn: String = "module p\n\ntype Flag = On | Off\nfn f(x: Int) -> Int { x }\n"
+
 test fn declaration_graft_empty_module_accepts() -> Bool {
   declaration_graft_assemble_accepts(src: src_a)
 }
@@ -169,6 +171,17 @@ test fn declaration_graft_match_variants_accepts() -> Bool {
 
 test fn declaration_graft_dag_prefix_user_fn_is_named() -> Bool {
   declaration_graft_named_reachable(src: src_dag_user_fn, lexeme: "dag_user")
+}
+
+// Partial graft must not drop a sibling fn: Flag Named and f Named on the same
+// Accepted assemble. Rejected is not agreement.
+test fn declaration_graft_coproduct_beside_fn_keeps_both() -> Bool {
+  match declaration_graft_assemble_for(src: src_flag_and_fn) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: root, diagnostics: _ } =>
+      declaration_graft_label_present(root: root, lexeme: "Flag")
+        && declaration_graft_label_present(root: root, lexeme: "f")
+  }
 }
 
 // Fail-closed on Rec erasure beside a graftable coproduct: Rec must remain in a

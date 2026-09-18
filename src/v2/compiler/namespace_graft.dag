@@ -20,14 +20,12 @@ import v2.std.node {
   Atom,
   Cardinality,
   Conj,
-  Disj,
   Edge,
   Named,
   Node,
   Positional,
   Symbol,
   TypeNode,
-  node_subtree_nodes,
 }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.compilers.lexing { symbol_lexeme }
@@ -126,16 +124,21 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
   }
 }
 
-fn namespace_graft_is_partitioned_decl_unit(node: Node) -> Bool {
+fn namespace_graft_is_top_level_item_unit_node(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
-      (id == ^dag_surface_type_decl) || (id == ^dag_surface_data_decl)
+      (id == ^dag_surface_import_decl)
+        || (id == ^dag_surface_alias_decl)
+        || (id == ^dag_surface_type_decl)
+        || (id == ^dag_surface_data_decl)
+        || (id == ^dag_surface_fn_decl)
+        || (id == ^dag_surface_test_fn_decl)
     Absent => false
   }
 }
 
 fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
-  if namespace_graft_is_partitioned_decl_unit(node: edge.target) {
+  if namespace_graft_is_top_level_item_unit_node(node: edge.target) {
     acc
   } else {
   match edge.label {
@@ -164,7 +167,7 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
 }
 
 fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
-  if namespace_graft_is_partitioned_decl_unit(node: node) {
+  if namespace_graft_is_top_level_item_unit_node(node: node) {
     []
   } else {
     fold(node.children, init: [], f: fn(acc, edge) {
@@ -317,25 +320,19 @@ fn namespace_graft_is_machinery_symbol(productions: List<GrammarProduction>, sym
     || namespace_graft_symbol_is_grammar_machinery(productions: productions, sym: sym)
 }
 
-fn namespace_graft_type_decl_target(root: Node) -> Node {
-  fold(
-    node_subtree_nodes(root: root),
-    init: root,
-    f: fn(acc, n) {
-      match acc.kind {
-        TypeNode { connective: Disj } => acc
-        _ =>
-          match n.kind {
-            TypeNode { connective: Disj } => n
-            _ => acc
-          }
-      }
-    }
-  )
-}
-
 fn namespace_graft_unit_captured(unit: Node) -> Node? {
   parse_production_captured_child_optional(node: unit)
+}
+
+fn namespace_graft_type_decl_target(root: Node) -> Node {
+  match parse_subtree_locate_production(root: root, emitted: ^dag_surface_type_alias_rhs) {
+    Present { value: rhs } => rhs
+    Absent =>
+      match namespace_graft_unit_captured(unit: root) {
+        Present { value: captured } => captured
+        Absent => root
+      }
+  }
 }
 
 // Any type_decl that still locates dag_surface_field_decl_block is residual,
@@ -360,20 +357,35 @@ fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
   }
 }
 
-fn namespace_graft_data_decl_named_edge(unit: Node) -> Edge? {
+fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
   match namespace_graft_unit_captured(unit: unit) {
     Absent => optional_absent()
     Present { value: captured } =>
       match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => optional_absent()
-        Present { value: data_name } =>
+        Present { value: name } =>
           optional_present(
             value: Edge {
-              label: Named { name: data_name },
+              label: Named { name: name },
               target: captured
             }
           )
       }
+  }
+}
+
+fn namespace_graft_data_decl_named_edge(unit: Node) -> Edge? {
+  namespace_graft_kw_ident_named_edge(unit: unit)
+}
+
+fn namespace_graft_fn_decl_named_edge(unit: Node) -> Edge? {
+  namespace_graft_kw_ident_named_edge(unit: unit)
+}
+
+fn namespace_graft_test_fn_named_edge(unit: Node) -> Edge? {
+  match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_fn_decl) {
+    Present { value: fn_unit } => namespace_graft_fn_decl_named_edge(unit: fn_unit)
+    Absent => optional_absent()
   }
 }
 
@@ -401,6 +413,29 @@ fn namespace_graft_partition_from_named_opt(
   }
 }
 
+fn namespace_graft_named_edge_for_unit(unit: Node, id: Symbol) -> Edge? {
+  match id == ^dag_surface_type_decl {
+    true => namespace_graft_type_decl_named_edge(unit: unit)
+    false =>
+      match id == ^dag_surface_data_decl {
+        true => namespace_graft_data_decl_named_edge(unit: unit)
+        false =>
+          match id == ^dag_surface_fn_decl {
+            true => namespace_graft_fn_decl_named_edge(unit: unit)
+            false =>
+              match id == ^dag_surface_test_fn_decl {
+                true => namespace_graft_test_fn_named_edge(unit: unit)
+                false =>
+                  match id == ^dag_surface_alias_decl {
+                    true => namespace_graft_kw_ident_named_edge(unit: unit)
+                    false => optional_absent()
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDeclPartition {
   fold(
     units,
@@ -408,25 +443,17 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
     f: fn(acc, unit) {
       match parse_production_emitted_identity_optional(node: unit) {
         Present { value: id } =>
-          match id == ^dag_surface_type_decl {
-            true =>
-              namespace_graft_partition_from_named_opt(
-                acc: acc,
-                unit: unit,
-                named: namespace_graft_type_decl_named_edge(unit: unit)
-              )
-            false =>
-              match id == ^dag_surface_data_decl {
-                true =>
-                  namespace_graft_partition_from_named_opt(
-                    acc: acc,
-                    unit: unit,
-                    named: namespace_graft_data_decl_named_edge(unit: unit)
-                  )
-                false => acc
-              }
-          }
-        Absent => acc
+          namespace_graft_partition_from_named_opt(
+            acc: acc,
+            unit: unit,
+            named: namespace_graft_named_edge_for_unit(unit: unit, id: id)
+          )
+        Absent =>
+          namespace_graft_partition_from_named_opt(
+            acc: acc,
+            unit: unit,
+            named: optional_absent()
+          )
       }
     }
   )
