@@ -434,6 +434,99 @@ test fn absence_under_both_markers_still_creates() -> Bool {
   }
 }
 
+// THE DECLARED ID DOES NOT OVERRIDE A DISAGREEING POSITIVE FIND. This is the arm review 67779
+// found missing: current marker absent, superseded search naming A, declaration naming B. The first
+// cut patched B and answered MigratedAndVerified while A stayed on the superseded marker and went
+// dark with success reported -- silent wrongness, and the same identity split the failure-mode row
+// in this PR describes.
+test fn a_declared_id_disagreeing_with_the_superseded_find_refuses() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-A")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "declared-B" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "legacy-A")
+        && string_contains(s: r as String, pattern: "declared-B")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// A REFUSING CURRENT SEARCH STOPS THE LINE BEFORE ANY WRITE. The declared id used to bypass these
+// arms entirely, so a patch could land while it was still unknown whether a current-marked sheet
+// existed -- which is how a second one gets minted.
+test fn a_declared_id_does_not_bypass_an_unreadable_current_search() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList { files: none, incompleteSearch: Present { value: false }, nextPageToken: none }
+    ),
+    superseded: SupersededNotConsulted,
+    declaration: DeclaredLegacySheetId {
+      file_id: "declared-B" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "could not be read")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE AGREEMENT CONTROL, without which a fold that refused every declared id would satisfy both
+// claims above while making the id route dead.
+test fn a_declared_id_agreeing_with_the_superseded_find_migrates() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-A")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "legacy-A" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Apply { plan: p } =>
+      match p {
+        SpreadsheetMigrateMarker { migrate: m } => (m.file_id as String) == "legacy-A"
+        SpreadsheetCreate { create: _ } => false
+      }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
 // AN UNREADABLE DECLARATION REFUSES AND NEVER DEGRADES TO THE WEAKER ONE. A file that exists and
 // cannot be read says something unknown, not nothing; the first cut of this reader fell through to
 // the absence file and would have created beside the very sheet the operator declared by id.

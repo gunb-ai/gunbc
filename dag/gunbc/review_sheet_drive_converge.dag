@@ -529,24 +529,10 @@ fn ensure_review_spreadsheet_with_declaration(
 ) -> UpsertDecision<SpreadsheetPlan> {
   match declaration {
     DeclaredLegacySheetId { file_id: id, basis: _ } =>
-      match policy {
-        EnsureObserveOnly =>
-          Refuse {
-            reason: join(
-              ["an operator declared the legacy sheet ", id as String, " for adoption and policy is observe-only; adopting it means writing the current marker onto it"],
-              "",
-            ) as NonEmptyStr,
-          }
-        EnsureMayApply =>
-          Apply {
-            plan: SpreadsheetMigrateMarker {
-              migrate: SpreadsheetMarkerMigrationPlan {
-                file_id: id,
-                marker_property_value: marker_value,
-              }
-            }
-          }
-      }
+      decide_with_declared_id(
+        policy: policy, observed: observed, superseded: superseded,
+        declared_id: id, drive_id: drive_id, marker_value: marker_value,
+      )
     DeclarationUnreadable { path: p, cause: c } =>
       Refuse {
         reason: join(
@@ -570,6 +556,115 @@ fn ensure_review_spreadsheet_with_declaration(
         policy: policy, observed: observed, superseded: superseded,
         drive_id: drive_id, sheet_name: sheet_name, marker_value: marker_value,
       )
+  }
+}
+
+// THE DECLARED ID IS AN ANSWER TO IGNORANCE, NOT AN OVERRIDE OF KNOWLEDGE, and the first cut had it
+// as an override. It applied the migration without reading either search, which review 67779 showed
+// is silent wrongness rather than a shortcut: current marker absent, superseded search naming file
+// A, declaration naming B -- the fold patches B, verify_marker_migration sees only B and answers
+// MigratedAndVerified, and A stays on the superseded marker and GOES DARK with success reported.
+// It also bypassed the current search's own refusal arms, so a write could land before the
+// unreadable, incomplete, paged and duplicated line-stops had a chance to fire.
+//
+// THE RULE THAT KEEPS BOTH PROPERTIES: the id is honoured unless a search POSITIVELY NAMES A
+// DIFFERENT FILE. Absence, unreadability and partial listings are exactly the ignorance the id was
+// supplied to compensate for, so they do not veto it. A positive find that disagrees is two files
+// answering for one identity, which only an operator can resolve -- and a duplicated superseded
+// find is that same question, so the declared id must be ONE OF the named files or the disagreement
+// stands.
+fn decide_with_declared_id(
+  policy: EnsurePolicy,
+  observed: ReviewSpreadsheetObservation,
+  superseded: SupersededSearchReading,
+  declared_id: NonEmptyStr,
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetPlan> {
+  match observed {
+    SheetObservedOne { file_id: found } =>
+      if (found as String) == (declared_id as String) {
+        Noop
+      } else {
+        Refuse {
+          reason: join(
+            [
+              "the current marker already reaches ", found as String, " in ", drive_id as String,
+              " while an operator declared ", declared_id as String,
+              " for adoption; two files answer for one identity and only an operator can say which is real",
+            ], "",
+          ) as NonEmptyStr,
+        }
+      }
+    SheetSearchUnreadable { reason: r } =>
+      Refuse {
+        reason: join(["an operator declared ", declared_id as String, " for adoption, but the current-marker search could not be read, so whether a current-marked sheet already exists is unknown and a write here could mint a second one: ", r as String], "") as NonEmptyStr,
+      }
+    SheetSearchIncomplete =>
+      Refuse {
+        reason: join(["an operator declared ", declared_id as String, " for adoption, but Drive reported incompleteSearch for the current marker, so a current-marked sheet may exist unseen"], "") as NonEmptyStr,
+      }
+    SheetPageIncomplete { next_page_token: _ } =>
+      Refuse {
+        reason: join(["an operator declared ", declared_id as String, " for adoption, but the current-marker listing is one page of several, so a current-marked sheet may sit unread on a later page"], "") as NonEmptyStr,
+      }
+    SheetDuplicated { file_ids: ids } =>
+      Refuse {
+        reason: join(["two or more files already carry the CURRENT marker in ", drive_id as String, " (", join(ids, ", "), "); adopting ", declared_id as String, " would add a third lineage"], "") as NonEmptyStr,
+      }
+    SheetAbsent =>
+      match superseded {
+        SupersededNotConsulted => plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
+        SupersededRead { observation: o, visibility: _ } =>
+          match o {
+            SheetObservedOne { file_id: legacy } =>
+              if (legacy as String) == (declared_id as String) {
+                plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
+              } else {
+                Refuse {
+                  reason: join(
+                    [
+                      "the superseded-marker search names ", legacy as String,
+                      " while an operator declared ", declared_id as String,
+                      "; migrating the declared one would leave ", legacy as String,
+                      " on the superseded marker and invisible to every later run, so the disagreement is an operator's to settle",
+                    ], "",
+                  ) as NonEmptyStr,
+                }
+              }
+            SheetDuplicated { file_ids: ids } =>
+              if any(ids, i => i == (declared_id as String)) {
+                plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
+              } else {
+                Refuse {
+                  reason: join(["the superseded-marker search names ", join(ids, ", "), " and an operator declared ", declared_id as String, ", which is none of them"], "") as NonEmptyStr,
+                }
+              }
+            SheetAbsent => plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
+            SheetSearchUnreadable { reason: _ } => plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
+            SheetSearchIncomplete => plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
+            SheetPageIncomplete { next_page_token: _ } => plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
+          }
+      }
+  }
+}
+
+fn plan_declared_migration(
+  policy: EnsurePolicy,
+  declared_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetPlan> {
+  match policy {
+    EnsureObserveOnly =>
+      Refuse {
+        reason: join(["an operator declared the legacy sheet ", declared_id as String, " for adoption and policy is observe-only; adopting it means writing the current marker onto it"], "") as NonEmptyStr,
+      }
+    EnsureMayApply =>
+      Apply {
+        plan: SpreadsheetMigrateMarker {
+          migrate: SpreadsheetMarkerMigrationPlan { file_id: declared_id, marker_property_value: marker_value }
+        }
+      }
   }
 }
 

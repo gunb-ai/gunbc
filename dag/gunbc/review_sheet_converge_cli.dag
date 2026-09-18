@@ -8,6 +8,16 @@ import gunbc.review_sheet_format_actuator {
   format_converge_is_converged,
 }
 import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
+import gunbc.review_sheet_spreadsheet_actuator { read_superseded_declaration }
+import gunbc.review_sheet_drive_converge {
+  SupersededMarkerDeclaration,
+  NoDeclaration,
+  DeclaredNoLegacySheet,
+  DeclaredLegacySheetId,
+  DeclarationUnreadable,
+  review_sheet_legacy_sheet_id_declaration_path,
+  review_sheet_no_legacy_sheet_declaration_path,
+}
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -461,3 +471,34 @@ data review_sheet_whole_estate_consumer_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
   )
 ]
+
+
+// THE EXECUTING CONSUMER OF THE DECLARATION READER, and it exists because a CLAIM CANNOT DISCHARGE
+// THIS PAIRING. Review 67779 is right that the witnesses construct SupersededMarkerDeclaration
+// directly and never call read_superseded_declaration -- but claims in this corpus are pure, so no
+// claim can call a function that performs a filesystem read. The honest discharge is an entry point
+// that runs it, which is the same shape gunbc.instruments.github_app_acquire uses for its own custody
+// reads rather than asserting them in prose.
+//
+// IT IS ARGV-FREE AND READ-ONLY. It performs the two reads the converge performs and reports what
+// they said; it takes no parameter, touches no network, and writes nothing -- so an operator can run
+// it before a converge to see which declaration is in force, and deleting the reader reds it.
+fn declaration_text(d: SupersededMarkerDeclaration) -> String {
+  match d {
+    NoDeclaration =>
+      join(["no declaration: neither ", review_sheet_legacy_sheet_id_declaration_path, " nor ", review_sheet_no_legacy_sheet_declaration_path, " is present"], "")
+    DeclaredNoLegacySheet { basis: b } => join(["declared: this drive holds no superseded-marked sheet (", b as String, ")"], "")
+    DeclaredLegacySheetId { file_id: f, basis: b } => join(["declared: adopt ", f as String, " (", b as String, ")"], "")
+    DeclarationUnreadable { path: p, cause: c } => join(["REFUSING: the declaration at ", p, " could not be read: ", c as String], "")
+  }
+}
+
+fn review_sheet_declaration_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+  let d = read_superseded_declaration()
+  match d {
+    DeclarationUnreadable { path: _, cause: _ } => exit_failure(reason: declaration_text(d: d))
+    NoDeclaration => ExitSuccess
+    DeclaredNoLegacySheet { basis: _ } => ExitSuccess
+    DeclaredLegacySheetId { file_id: _, basis: _ } => ExitSuccess
+  }
+}
