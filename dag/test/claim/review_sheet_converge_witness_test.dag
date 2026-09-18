@@ -2003,7 +2003,7 @@ fn w_generic_operator_schema() -> ReviewSheetSchema {
   }
 }
 
-test fn buyer_review_projection_classify_does_not_write_operator_columns() -> Bool {
+test fn classify_review_sheet_append_does_not_write_operator_columns() -> Bool {
   let schema = w_generic_operator_schema()
   let projection = ReviewSheetProjection {
     schema: schema,
