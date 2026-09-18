@@ -21,6 +21,7 @@ type GeneratedArtifact
   | FleetDesiredAdmissionYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
+  | CargoConfigArtifact
   | RoadmapArtifact
   | DesignArtifact
   | DesignFailureModesArtifact
@@ -49,7 +50,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact],
+      [WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact, GitignoreArtifact, GitattributesArtifact, CargoConfigArtifact, RoadmapArtifact, DesignArtifact, DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact, SeedRetentionFrontierGeneratedRsArtifact, V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact, CouponCadQueryProgramArtifact, Fci1BoundedExecutionContextArtifact, FileTransportRealizationGeneratedRsArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact, ApprovalDeviceVectorsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_intent_known_hosts, h => RunnerHostSudoersArtifact { host: h.identity })
@@ -59,11 +60,14 @@ data generated_artifact_registry: List<GeneratedArtifact> = concat(
 
 // CompilerRunInput: the compiler reads the file as a declared input at arm time, before any source
 // resolves (gunbc.whole_corpus_compile_demand_projection).
+// CargoToolchain: cargo itself reads the file, discovered from the invocation's directory, before
+// any target is built (gunbc.cargo_config_emit).
 // CrossLanguageClientTest: a client written in another language reads the file as its test oracle
 // for bytes this tree defines (gunbc.auth.approval_device_redemption_fixtures, read by the iOS
 // app's XCTest), so a stale commit fails the drift gate here rather than silently passing there.
 type RepoConsumer
   = GitProtocol
+  | CargoToolchain
   | GithubActionsWorkflow
   | ProjectDocumentation
   | HostReconciler
@@ -183,6 +187,7 @@ fn artifact_location(a: GeneratedArtifact) -> ArtifactLocation {
     FleetDesiredAdmissionYamlArtifact => ArtifactLocation { directory: ".github/workflows", name: "fleet-desired.yml" }
     GitignoreArtifact => ArtifactLocation { directory: ".", name: ".gitignore" }
     GitattributesArtifact => ArtifactLocation { directory: ".", name: ".gitattributes" }
+    CargoConfigArtifact => ArtifactLocation { directory: ".cargo", name: "config.toml" }
     RoadmapArtifact => ArtifactLocation { directory: ".", name: "ROADMAP.md" }
     DesignArtifact => ArtifactLocation { directory: ".", name: "DESIGN.md" }
     DesignFailureModesArtifact => ArtifactLocation { directory: "docs", name: "design-failure-modes.md" }
@@ -255,6 +260,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
   match a {
     GitignoreArtifact => CommitRequired { consumer: GitProtocol }
     GitattributesArtifact => CommitRequired { consumer: GitProtocol }
+    CargoConfigArtifact => CommitRequired { consumer: CargoToolchain }
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
     GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
@@ -319,6 +325,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     FleetDesiredAdmissionYamlArtifact => match b { FleetDesiredAdmissionYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
+    CargoConfigArtifact => match b { CargoConfigArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }
     DesignFailureModesArtifact => match b { DesignFailureModesArtifact => true  _ => false }
@@ -388,6 +395,7 @@ fn artifact_producer(a: GeneratedArtifact) -> DeclarationRef {
     FleetDesiredAdmissionYamlArtifact => decl_ref(module_path: "gunbc.fleet_desired_admission_workflow", decl_name: "expected_fleet_desired_yml")
     GitignoreArtifact => decl_ref(module_path: "gunbc.gitignore_emit", decl_name: "expected_gitignore")
     GitattributesArtifact => decl_ref(module_path: "gunbc.gitattributes_emit", decl_name: "expected_gitattributes")
+    CargoConfigArtifact => decl_ref(module_path: "gunbc.cargo_config_emit", decl_name: "expected_cargo_config_toml")
     RoadmapArtifact => decl_ref(module_path: "gunbc.roadmap_authority", decl_name: "expected_roadmap_md")
     DesignArtifact => decl_ref(module_path: "gunbc.design_document", decl_name: "expected_design_md")
     DesignFailureModesArtifact => decl_ref(module_path: "gunbc.design_ledgers", decl_name: "expected_design_failure_modes_md")

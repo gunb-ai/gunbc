@@ -10,6 +10,7 @@
 # follow the stage0 glob. Transposed, they are inert and a hand-maintained file silently
 # acquires the driver.
 
+.cargo/config.toml merge=generated-artifact
 .gitattributes merge=generated-artifact
 .githooks/generated-artifact-merge merge=generated-artifact
 .githooks/pre-commit merge=generated-artifact
