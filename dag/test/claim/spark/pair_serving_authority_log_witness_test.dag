@@ -45,7 +45,7 @@ fn w_all_arms(h: ContentHash) -> List<PairServingGroupAuthority> {
   [
     w_active_unestablished(),
     PairServingActive { group: FabricGroupA, exact_realization: PairRealizationKeyed { key: h } },
-    SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: w_lease(h: h, inaccessible: false) },
+    SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: w_lease(h: h, inaccessible: false) },
     SuspendedForAuthorizedSuccessor {
       group: FabricGroupA, authorization: "auth-1" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h },
       lease: w_lease(h: h, inaccessible: true), cleanup: QuiescentReservedBaseline,
@@ -101,11 +101,11 @@ test fn the_wire_distinguishes_arms_and_fields_but_not_the_lease_observation() -
     length(arms) == 6
       && !any(arms, a => any(arms, b => (authority_wire(a: a) != authority_wire(a: b)) && authority_eq(a: a, b: b)))
       && authority_eq(
-           a: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: live },
-           b: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: dead })
+           a: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: live },
+           b: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: dead })
       && !authority_eq(
-           a: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: live },
-           b: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-2" as NonEmptyStr, lease: live })
+           a: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: live },
+           b: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-2" as NonEmptyStr, authorization_binding: h, lease: live })
       && !authority_eq(a: w_active_unestablished(), b: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } })
   })
 }
@@ -133,7 +133,7 @@ fn env(id: String, e: ChainEvent<PairAuthorityEvent>) -> ChainEnvelope<PairAutho
 test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
   with_hash(scenario: fn(h) {
     let resting = w_active_unestablished()
-    let pending = SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: w_lease(h: h, inaccessible: false) }
+    let pending = SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: w_lease(h: h, inaccessible: false) }
     let fenced = FencedRefusal { group: FabricGroupA, cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr }
     let chain = [env(id: "e1", e: w_event(previous: resting, next: pending, parent: none)), env(id: "e2", e: w_event(previous: pending, next: fenced, parent: Present { value: "e1" as EventId }))]
     (match authority_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) {
@@ -152,7 +152,7 @@ test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
 test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -> Bool {
   with_hash(scenario: fn(h) {
     let resting = w_active_unestablished()
-    let pending = SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: w_lease(h: h, inaccessible: false) }
+    let pending = SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: w_lease(h: h, inaccessible: false) }
     let fenced = FencedRefusal { group: FabricGroupA, cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr }
     let chain = [env(id: "e1", e: w_event(previous: pending, next: fenced, parent: none))]
     match authority_fold(resting: resting, oldest_first: chain) {

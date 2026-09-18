@@ -8,13 +8,13 @@ import extdeps.shell
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitWorktreeAt }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
-import std.temporal_effect { held_lease, held_lease_with_observed, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale }
-import product.capacity.lease { LeaseGrant, LeasePolicy, FencedResource, lease_grant, lease_fence_of }
-import product.capacity.event_chain { EventId }
-import product.capacity.event_chain { HeadAbsent, HeadAt }
+import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
+import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lease_grant, lease_fence_of }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import product.capacity.event_chain { EventId, HeadAbsent, HeadAt }
 import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
-import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, PairRealizationUnestablished, pair_serving_authority_for }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
   AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
@@ -54,22 +54,25 @@ fn with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 
 fn w_pending(h: ContentHash) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
-    group: FabricGroupA, transaction: "tx-real" as NonEmptyStr,
-    lease: held_lease(epoch: LeaseEpoch { lease_key: "witness-lease" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
+    group: FabricGroupA, transaction: "tx-real" as NonEmptyStr, authorization_binding: h,
+    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
   }
 }
 
-// The grant the pending state is held under: granted at 1000 for 1000 seconds, so a read at
-// 1000 sees the lease running as expected and a read at 2500 sees it stale -- the join between
-// product.capacity.lease's term and std.temporal_effect's observed state, derived at the read.
-fn w_grant() -> LeaseGrant {
-  lease_grant(reference: "tx-real" as NonEmptyStr, fence: lease_fence_of(admitting_event: "witness-admitting-event" as EventId, generation: 1), granted_at: 1000, policy: LeasePolicy { maximum_duration_seconds: 1000, release_law: FencedResource })
+// THE GRANT IS MINTED FROM THE ADMITTING WRITE, as the D0 transaction mints it: reference = the
+// transaction, fence = (the event that landed the pending state, the pending generation), a
+// 1000-second term from 1000 -- so a read at 1000 sees the lease running and a read at 2500
+// sees it stale. A grant whose fence names another event, or another transaction, is refused
+// BEFORE anything is appended.
+fn w_grant(admitting: EventId, reference: NonEmptyStr, generation: Int) -> LeaseGrant {
+  lease_grant(reference: reference, fence: lease_fence_of(admitting_event: admitting, generation: generation), granted_at: 1000, policy: LeasePolicy { maximum_duration_seconds: 1000, release_law: QuiescenceRequired })
 }
 
-fn w_pending_stale(h: ContentHash) -> PairServingGroupAuthority {
-  match w_pending(h: h) {
-    SuspensionPendingReconciliation { group: g, transaction: t, lease: l } => SuspensionPendingReconciliation { group: g, transaction: t, lease: held_lease_with_observed(lease: l, observed: LeaseRunningStale) }
-    _ => w_pending(h: h)
+fn w_suspended(h: ContentHash) -> PairServingGroupAuthority {
+  SuspendedForAuthorizedSuccessor {
+    group: FabricGroupA, authorization: "esc-real" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h },
+    lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
+    cleanup: QuiescentReservedBaseline,
   }
 }
 
@@ -80,9 +83,18 @@ fn current_is(c: CurrentAuthority, expected: PairServingGroupAuthority, generati
   }
 }
 
-// The whole route: empty log reads the resting row at 0; a transition from it appends and reads
-// back at 1 with its lease running; the same read after the grant's expiry sees the lease stale;
-// a second transition still expecting the resting row is stale and names the current.
+fn current_may_launch(c: CurrentAuthority) -> Bool {
+  match c {
+    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _ } => pair_serving_successor_may_launch(a: a)
+    CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
+  }
+}
+
+// The whole route: empty log reads the resting row at 0; the pending transition appends without a
+// grant and reads back at 1; the settling transition carries the grant minted from that admitting
+// write and reads back at 2 with the lease running, and stale after its expiry; a grant fenced on
+// another event, or naming another transaction, is refused before any append; a transition still
+// expecting the resting row is stale and names the current.
 test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution() -> Bool {
   with_hash(scenario: fn(h) {
     with_temp_dir(scenario: fn(dir) {
@@ -92,19 +104,32 @@ test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_exec
         Present { value: resting } =>
           witness_remote_ready(dir: dir)
             && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000), expected: resting, generation: 0)
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: w_pending(h: h), transaction: "tx-real" as NonEmptyStr, grant: Present { value: w_grant() }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
-                  AuthorityTransitionAppended { id: _, generation: g, next: n } => g == 1 && authority_eq(a: n, b: w_pending(h: h))
-                  AuthorityTransitionStale { expected: _, current: _ } => false
-                  AuthorityTransitionRefused { group: _, step: _, reason: _ } => false
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: w_pending(h: h), transaction: "tx-real" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
+                  AuthorityTransitionAppended { id: admitting, generation: g1, next: _ } =>
+                    g1 == 1
+                      && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000), expected: w_pending(h: h), generation: 1)
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: w_pending(h: h), next: w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, grant: Present { value: w_grant(admitting: "not-the-admitting-event" as EventId, reference: "tx-real" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                            AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "grant"
+                            _ => false
+                          })
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: w_pending(h: h), next: w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, grant: Present { value: w_grant(admitting: admitting, reference: "tx-other" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                            AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "grant"
+                            _ => false
+                          })
+                      && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001), expected: w_pending(h: h), generation: 1)
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: w_pending(h: h), next: w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, grant: Present { value: w_grant(admitting: admitting, reference: "tx-real" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                            AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2
+                            _ => false
+                          })
+                      && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001), expected: w_suspended(h: h), generation: 2)
+                      && current_may_launch(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001))
+                      && !current_may_launch(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500))
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: w_pending(h: h), transaction: "tx-late" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 2600) {
+                            AuthorityTransitionStale { expected: _, current: c } => authority_eq(a: c, b: w_suspended(h: h))
+                            _ => false
+                          })
+                  _ => false
                 })
-            && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000), expected: w_pending(h: h), generation: 1)
-            && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500), expected: w_pending_stale(h: h), generation: 1)
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: w_pending(h: h), transaction: "tx-late" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
-                  AuthorityTransitionStale { expected: _, current: c } => authority_eq(a: c, b: w_pending(h: h))
-                  AuthorityTransitionAppended { id: _, generation: _, next: _ } => false
-                  AuthorityTransitionRefused { group: _, step: _, reason: _ } => false
-                })
-            && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000), expected: w_pending(h: h), generation: 1)
       }
     })
   })

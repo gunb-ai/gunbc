@@ -5,10 +5,14 @@ import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
-import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.temporal_effect { HeldLease, LeaseEpoch, held_lease, LeaseRunningExpected }
-import std.scoped_authorization { OperatorGrant, grant_not_expired_at }
-import product.capacity.lease { LeaseGrant, LeasePolicy, lease_grant, lease_fence_of }
+import std.scoped_authorization {
+  OperatorGrant, ScopedAuthorization, AuthorizationGranted, AuthorizationRequest, AuthorizationScope, AttemptIdentity, AuthorizedAction,
+  AuthorizationPermitted, AuthorizationRefused, AuthorizationRefusalCause, authorize,
+}
+import std.effect_grant { Write, NamespacePosition, CodeNameTree }
+import product.capacity.lease { LeaseGrant, LeasePolicy, ReleaseLaw, QuiescenceRequired, lease_grant, lease_fence_of }
 import product.capacity.event_chain { EventId, HeadAbsent, HeadAt }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -21,7 +25,7 @@ import gunbc.fleet_ssh_locus { fleet_locus_ssh_target, FleetSshContextReady, Fle
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, parse_fabric_group }
 import gunbc.serving.serving_enrollment { ServingRouteResolved, ServingRouteUnresolved, serving_route }
-import gunbc.harness.harness_backend { harness_bounded_get, harness_metrics_url, harness_launch_from_body }
+import gunbc.harness.harness_backend { harness_bounded_get, harness_metrics_url, harness_models_url, harness_launch_from_body }
 import gunbc.serving.serving_enrollment { serving_route_endpoint_wire }
 import gunbc.spark.vllm_endpoint_process_launch { LaunchObserved, LaunchUnobserved }
 import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, read_unit_occupancy, serving_incarnation_refusal_text }
@@ -32,10 +36,10 @@ import gunbc.spark.pair_incumbent_identity {
   DeclaredPairRealization, DeclaredRankUnit, DeclaredPairRealizationStanding, DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization,
   observe_pair_realization, PairRealizationAgreement, PairRealizationEstablished, pair_realization_agreement, pair_realization_agreement_lines,
 }
-import gunbc.spark.released_baseline { ReleasedBaselineSpec }
+import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline, released_baseline_wire }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
-  PairRealizationKeyed,
+  PairRealizationKeyed, pair_serving_authority_for,
 }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, authority_wire,
@@ -103,50 +107,127 @@ import gunbc.spark.pair_serving_authority_log {
 // ── THE AUTHORIZATION ──────────────────────────────────────────────────────────────────────────
 //
 // What an operator authorizes D0 over: the group, the KEYED successor, the cleanup baseline the
-// hosts are owed afterwards, and the lease term the successor may start under. The term is part
-// of the authorized operation, not a constant beside it: an author changing it changes what a
-// successor may start, and that is the operator's to change.
+// hosts are owed afterwards, and the lease TERM the successor may start under. The release law is
+// NOT the operator's to choose: a pair-serving rank is a process resource with no generation fence
+// on its touches, so an expired holder's running engine is not rejected by anything -- expiry
+// removes the right to START, and capacity is free only once stale use is observed quiescent.
+// That is product.capacity.lease QuiescenceRequired, derived here for every D0 grant.
 type D0Subject {
   group: FabricGroup
   successor: ContentHash
   cleanup: ReleasedBaselineSpec
-  policy: LeasePolicy
+  term_seconds: Nat
+}
+
+data pair_serving_release_law: ReleaseLaw = QuiescenceRequired
+
+fn d0_lease_policy(subject: D0Subject) -> LeasePolicy {
+  LeasePolicy { maximum_duration_seconds: subject.term_seconds, release_law: pair_serving_release_law }
+}
+
+// THE OPERATION THE GRANT MUST COVER: a write over the pair-serving authority, action "suspend".
+// The scope is the enforcing fact (std.scoped_authorization): a grant over the same subject with
+// a read scope, or another action, does not authorize this transaction.
+data d0_authorized_action: AuthorizedAction = "suspend-pair-serving-authority" as AuthorizedAction
+
+fn d0_required_scope() -> AuthorizationScope {
+  AuthorizationScope { verb: Write, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_authority"] }, action: d0_authorized_action }
+}
+
+fn d0_subject_wire(subject: D0Subject) -> String {
+  join([
+    "group=", fabric_group_wire(g: subject.group) as String,
+    " successor=", serialize_content_hash(hash: subject.successor) as String,
+    " cleanup=", released_baseline_wire(s: subject.cleanup) as String,
+    " term=", to_string(subject.term_seconds),
+  ], "")
+}
+
+// THE INTENT IS THE EXACT OPERATION: this subject, this group, this transaction. A grant whose
+// intent hash was minted over anything else does not authorize this run.
+fn d0_intent_hash(subject: D0Subject, group: FabricGroup, transaction: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: join(["pair-serving-d0 ", fabric_group_wire(g: group) as String, " ", transaction as String, " ", d0_subject_wire(subject: subject)], "") as NonEmptyStr)
+}
+
+// The request D0 makes of a grant: the escalation the caller names, the required scope, the
+// grant's own subject (what is being checked is that the grant agrees with itself and with this
+// run), the transaction as the attempt, and the intent over the exact operation. Destructive.
+fn d0_request(escalation_id: NonEmptyStr, subject: D0Subject, group: FabricGroup, transaction: NonEmptyStr) -> AuthorizationRequest<D0Subject> {
+  AuthorizationRequest {
+    escalation_id: escalation_id,
+    scopes: [d0_required_scope()],
+    subject: subject,
+    purpose: "suspend the pair-serving authority for a bounded successor transaction (Cut D D0)" as NonEmptyStr,
+    attempt: (transaction as String) as AttemptIdentity,
+    intent_hash: d0_intent_hash(subject: subject, group: group, transaction: transaction),
+    destructive: true,
+  }
+}
+
+// AN ADMITTED GRANT, AND THE BINDING THE PENDING STATE CARRIES. Sole-constructed: the only way to
+// hold one is admit_d0_grant, which runs std.scoped_authorization's decision procedure --
+// escalation, attempt, intent, scope, expiry, claim state -- and checks the subject is this group.
+// The binding digests everything a resume must agree on (escalation, attempt, intent, subject,
+// executor), so a pending state written under one grant cannot be settled under another.
+type AdmittedD0Grant sole_constructor {
+  grant: OperatorGrant<D0Subject>
+  binding: ContentHash
+}
+
+fn d0_binding(grant: OperatorGrant<D0Subject>, executor: NonEmptyStr) -> ContentHash {
+  content_hash_of_value(value: join([
+    "escalation=", grant.escalation_id as String,
+    " attempt=", grant.attempt as String,
+    " intent=", serialize_content_hash(hash: grant.intent_hash) as String,
+    " ", d0_subject_wire(subject: grant.subject),
+    " executor=", executor as String,
+  ], "") as NonEmptyStr)
+}
+
+type D0GrantAdmission
+  = D0GrantAdmitted { admitted: AdmittedD0Grant }
+  | D0GrantForAnotherGroup { granted: FabricGroup }
+  | D0GrantRefused { cause: AuthorizationRefusalCause }
+
+fn admit_d0_grant(authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr, at: String) -> D0GrantAdmission {
+  match authorization {
+    AuthorizationGranted { grant: g, claim: _ } =>
+      if (fabric_group_wire(g: g.subject.group) as String) != (fabric_group_wire(g: group) as String) {
+        D0GrantForAnotherGroup { granted: g.subject.group }
+      } else {
+        match authorize(authorization: authorization, request: d0_request(escalation_id: escalation_id, subject: g.subject, group: group, transaction: transaction), observed_at: at) {
+          AuthorizationRefused { cause: c } => D0GrantRefused { cause: c }
+          AuthorizationPermitted { grant: permitted } => D0GrantAdmitted { admitted: AdmittedD0Grant { grant: permitted, binding: d0_binding(grant: permitted, executor: executor) } }
+        }
+      }
+    _ =>
+      match authorize(authorization: authorization, request: d0_request(escalation_id: escalation_id, subject: D0Subject { group: group, successor: content_hash_of_value(value: "unauthorized" as NonEmptyStr), cleanup: QuiescentReservedBaseline, term_seconds: 0 }, group: group, transaction: transaction), observed_at: at) {
+        AuthorizationRefused { cause: c } => D0GrantRefused { cause: c }
+        AuthorizationPermitted { grant: permitted } => D0GrantAdmitted { admitted: AdmittedD0Grant { grant: permitted, binding: d0_binding(grant: permitted, executor: executor) } }
+      }
+  }
 }
 
 type D0AuthorizationStanding
-  = D0Authorized { grant: OperatorGrant<D0Subject> }
+  = D0AuthorizationResolved { authorization: ScopedAuthorization<D0Subject> }
   | D0AuthorizationUnestablished { obligation: NonEmptyStr }
 
 // THE PRODUCTION RESOLVER, AND WHY IT REFUSES. An authorization id is a reference to an operator
-// decision; the grant it names has to be produced by joining the escalation to a decision over
-// THIS subject, and the subject needs a keyed candidate. Neither producer exists at this head, so
-// the resolver refuses with what would ground it, and the entry refuses before its first write.
-// TRIGGER: Cut 0 keys the V4.1 candidate (produced runtime image, closed weight and tokenizer
-// manifests, four rank-store identities) and an escalation-to-OperatorGrant<D0Subject> producer
-// lands. SUFFICIENT FOR: this fn answers D0Authorized for a real escalation id, and the wet entry
-// admits exactly the operations that grant names.
+// decision; the ScopedAuthorization it names has to be produced by joining the escalation to a
+// decision over THIS subject, and the subject needs a keyed candidate. Neither producer exists at
+// this head, so the resolver refuses with what would ground it, and the entry refuses before its
+// first write. TRIGGER: Cut 0 keys the V4.1 candidate (produced runtime image, closed weight and
+// tokenizer manifests, four rank-store identities) and an escalation-to-ScopedAuthorization<D0Subject>
+// producer lands whose grant carries the write scope over the pair-serving authority, the
+// transaction as attempt and the intent hash over the exact operation. SUFFICIENT FOR: this fn
+// answers D0AuthorizationResolved for a real escalation id, admit_d0_grant decides it under
+// std.scoped_authorization, and the wet entry admits exactly the operation that grant names.
 fn resolve_d0_authorization(group: FabricGroup, authorization: String) -> D0AuthorizationStanding {
   D0AuthorizationUnestablished {
     obligation: join([
       "authorization `", authorization, "` over ", fabric_group_wire(g: group) as String,
-      " cannot be resolved: no producer joins an escalation id to an OperatorGrant over D0Subject, and the V4.1 candidate is not keyed (Cut 0), so the successor has no exact identity to authorize",
+      " cannot be resolved: no producer joins an escalation id to a ScopedAuthorization over D0Subject, and the V4.1 candidate is not keyed (Cut 0), so the successor has no exact identity to authorize",
     ], "") as NonEmptyStr,
-  }
-}
-
-// A grant is admitted for THIS group at THIS instant or refused with the first thing wrong.
-type D0GrantAdmission
-  = D0GrantAdmitted
-  | D0GrantForAnotherGroup { granted: FabricGroup }
-  | D0GrantExpired { expires_at: String }
-
-fn admit_d0_grant(grant: OperatorGrant<D0Subject>, group: FabricGroup, at: String) -> D0GrantAdmission {
-  if (fabric_group_wire(g: grant.subject.group) as String) != (fabric_group_wire(g: group) as String) {
-    D0GrantForAnotherGroup { granted: grant.subject.group }
-  } else if !grant_not_expired_at(observed_at: at, expires_at: grant.expires_at) {
-    D0GrantExpired { expires_at: grant.expires_at }
-  } else {
-    D0GrantAdmitted
   }
 }
 
@@ -296,12 +377,21 @@ fn fence(group: FabricGroup, cause: D0Cause) -> D0Decision {
 // THE PURE DECISION over supplied readings. The successor's lease is the one the pending state
 // holds, re-read so its observed state is the read's; the candidate realization is what the
 // caller was authorized for, Unestablished until Cut 0 keys it.
+// THE RESTORE DOES NOT MINT A KEY. When the answering incumbent is the declared realization on
+// every rank, restoration is shown safe -- but gunbc.spark.pair_incumbent_identity carries the
+// running IMAGE as observed-and-uncompared (no produced-image digest exists to compare it to), so
+// "established" there is rank-and-unit agreement, not an exact realization. A rebuilt image under
+// the same reference with unchanged unit bytes passes it. So the authority returns to the exact
+// state it was in, unchanged; PairRealizationKeyed is minted only once the image axis is compared
+// (the produced-image receipt names that trigger on the agreement's own arm).
 fn d0_decide(
   declared: DeclaredPairRealizationStanding,
   observation: D0Observation,
+  active: PairServingGroupAuthority,
   lease: HeldLease,
-  grant: OperatorGrant<D0Subject>,
+  admitted: AdmittedD0Grant,
 ) -> D0Decision {
+  let grant = admitted.grant
   let authorization = grant.escalation_id
   let candidate = PairRealizationKeyed { key: grant.subject.successor }
   let cleanup = grant.subject.cleanup
@@ -315,7 +405,7 @@ fn d0_decide(
         IncumbentAnswered { agreement: a } =>
           match a {
             PairRealizationEstablished { key: k, declared: _, observed: _, image: _ } =>
-              D0DecidedRestore { next: PairServingActive { group: group, exact_realization: PairRealizationKeyed { key: k } }, key: k }
+              D0DecidedRestore { next: active, key: k }
             _ => fence(group: group, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
           }
         IncumbentDidNotAnswer { receipt: _ } =>
@@ -428,19 +518,30 @@ fn observe_ranks(context: FleetSshExecutionContext, group: FabricGroup) -> List<
   }
 }
 
+// THE FRONT DOOR DECIDES PRESENCE; METRICS ONLY IDENTIFIES. A live incumbent can serve /v1/models
+// and requests while /metrics is disabled, proxied elsewhere or malformed, so a failed metrics
+// read establishes nothing about presence. The enrolled serving front door is read first, within
+// the bound; only its silence is absence. When it answers, metrics may name the incarnation -- and
+// when they cannot, the incumbent is answering and unidentified, which fences.
 fn observe_incumbent(context: FleetSshExecutionContext, group: FabricGroup, declared: DeclaredPairRealizationStanding) -> IncumbentReading {
   match serving_route(group: group) {
     ServingRouteUnresolved { group: _, obligation: o } => IncumbentRouteUnread { cause: o }
     ServingRouteResolved { endpoint: endpoint, ceiling: _ } => {
-      let url = harness_metrics_url(endpoint: endpoint)
-      let read = harness_bounded_get(url: url)
-      if !read.success {
-        IncumbentDidNotAnswer { receipt: join(["the metrics endpoint at ", url, " did not answer within the front-door bound"], "") as NonEmptyStr }
+      let front_door = harness_models_url(endpoint: endpoint)
+      let door = harness_bounded_get(url: front_door)
+      if !door.success {
+        IncumbentDidNotAnswer { receipt: join(["the serving front door at ", front_door, " did not answer within the front-door bound"], "") as NonEmptyStr }
       } else {
-        match harness_launch_from_body(group: group, address: serving_route_endpoint_wire(e: endpoint) as String, body: read.body) {
-          LaunchUnobserved { group: _, obligation: o } => IncumbentAnsweredUnread { cause: o }
-          LaunchObserved { launch: launch, receipt: _ } =>
-            IncumbentAnswered { agreement: pair_realization_agreement(declared: declared, observed: observe_pair_realization(context: context, group: group, endpoint: launch)) }
+        let url = harness_metrics_url(endpoint: endpoint)
+        let read = harness_bounded_get(url: url)
+        if !read.success {
+          IncumbentAnsweredUnread { cause: join(["the front door at ", front_door, " answered but the metrics endpoint at ", url, " did not, so the answering launch cannot be named"], "") as NonEmptyStr }
+        } else {
+          match harness_launch_from_body(group: group, address: serving_route_endpoint_wire(e: endpoint) as String, body: read.body) {
+            LaunchUnobserved { group: _, obligation: o } => IncumbentAnsweredUnread { cause: o }
+            LaunchObserved { launch: launch, receipt: _ } =>
+              IncumbentAnswered { agreement: pair_realization_agreement(declared: declared, observed: observe_pair_realization(context: context, group: group, endpoint: launch)) }
+          }
         }
       }
     }
@@ -460,6 +561,24 @@ fn refuse(reason: String) -> ProcessExit {
 type D0Outcome
   = D0Settled { decision: D0Decision, generation: Nat, receipt_path: String, entry_state: ContentHash }
   | D0Refused { cause: String }
+
+// THE STATE A RESUMED TRANSACTION RESTORES TO. The first write's `previous` is the Active state the
+// transaction left; on a resume the process that read it is gone, so the restore target is the
+// resting row -- which is what the log folds Active to at generation 0 -- and NOT a Keyed mint.
+fn d0_restore_target(group: FabricGroup) -> PairServingGroupAuthority {
+  match pair_serving_authority_for(group: group) {
+    Present { value: a } => a
+    Absent => FencedRefusal { group: group, cause: "no resting authority row claims this group" as NonEmptyStr, disposition_authority: d0_disposition_authority }
+  }
+}
+
+fn hashes_agree(l: ContentHash, r: ContentHash) -> Bool {
+  match compare_content_hash(left: l, right: r) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
 
 fn d0_outcome_is_eligible(o: D0Outcome) -> Bool {
   match o {
@@ -487,9 +606,9 @@ fn transition_text(t: AuthorityTransition) -> String {
 // THE SETTLE: readings taken under the pending state, decided, the receipt written and digested,
 // then ONE compare-and-set naming the receipt. The exit is decided from the transition ARM, never
 // from its rendered text.
-fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, lease: HeldLease, grant: OperatorGrant<D0Subject>, admitting: EventId, pending_generation: Nat, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, declared: DeclaredPairRealizationStanding, observation: D0Observation) -> D0Outcome {
+fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, active: PairServingGroupAuthority, lease: HeldLease, admitted: AdmittedD0Grant, admitting: EventId, pending_generation: Nat, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, declared: DeclaredPairRealizationStanding, observation: D0Observation) -> D0Outcome {
   let group = observation.group
-  let decision = d0_decide(declared: declared, observation: observation, lease: lease, grant: grant)
+  let decision = d0_decide(declared: declared, observation: observation, active: active, lease: lease, admitted: admitted)
   let receipt = EntryStateReceipt { group: group, transaction: transaction, at: now, observation: observation, decision: decision }
   let body = entry_state_receipt_body(r: receipt)
   let path = entry_state_receipt_path(transaction: transaction)
@@ -498,7 +617,7 @@ fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, lease: 
     D0Refused { cause: join(["the entry-state receipt could not be written before settling, so the authority was not moved: ", wr.error], "") }
   } else {
     let digest = entry_state_digest(body: body)
-    let term = lease_grant(reference: transaction, fence: lease_fence_of(admitting_event: admitting, generation: pending_generation), granted_at: at, policy: grant.subject.policy)
+    let term = lease_grant(reference: transaction, fence: lease_fence_of(admitting_event: admitting, generation: pending_generation), granted_at: at, policy: d0_lease_policy(subject: admitted.grant.subject))
     match pair_serving_authority_transition(layout: layout, group: group, expected: pending, next: d0_decision_next(d: decision), transaction: transaction, grant: Present { value: term }, entry_state: Present { value: digest }, actor: executor, at: at) {
       AuthorityTransitionAppended { id: _, generation: g, next: _ } => D0Settled { decision: decision, generation: g, receipt_path: path, entry_state: digest }
       AuthorityTransitionStale { expected: e, current: c } => D0Refused { cause: join(["the settling write did not land; the authority is as the log says: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c })], "") }
@@ -511,29 +630,31 @@ fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, lease: 
 // the fleet under the pending state; the wet entry supplies the fleet observer, its real-execution
 // witness supplies a fixture. Active takes the claim; pending under the SAME transaction resumes
 // from the readings; anything else refuses without a write.
-fn d0_transaction(layout: EventLogLayout, group: FabricGroup, grant: OperatorGrant<D0Subject>, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> D0Outcome {
+fn d0_transaction(layout: EventLogLayout, group: FabricGroup, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> D0Outcome {
   match current_pair_serving_authority(layout: layout, group: group, at: at) {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => D0Refused { cause: join(["authority unread at ", st, ": ", why], "") }
     CurrentAuthorityRead { authority: cur, head: head, generation: gen, grant: _, entry_state: _ } =>
       match cur {
         PairServingActive { group: _, exact_realization: _ } => {
           let lease = d0_held_lease(group: group, transaction: transaction, executor: executor, generation: gen + 1)
-          let pending = SuspensionPendingReconciliation { group: group, transaction: transaction, lease: lease }
+          let pending = SuspensionPendingReconciliation { group: group, transaction: transaction, authorization_binding: admitted.binding, lease: lease }
           match pair_serving_authority_transition(layout: layout, group: group, expected: cur, next: pending, transaction: transaction, grant: none, entry_state: none, actor: executor, at: at) {
             AuthorityTransitionAppended { id: admitting, generation: pending_generation, next: _ } =>
-              d0_settle(layout: layout, pending: pending, lease: lease, grant: grant, admitting: admitting, pending_generation: pending_generation, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
+              d0_settle(layout: layout, pending: pending, active: cur, lease: lease, admitted: admitted, admitting: admitting, pending_generation: pending_generation, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
             AuthorityTransitionStale { expected: e, current: c } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c })], "") }
             AuthorityTransitionRefused { group: gr, step: st, reason: why } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionRefused { group: gr, step: st, reason: why })], "") }
           }
         }
-        SuspensionPendingReconciliation { group: _, transaction: pending_tx, lease: lease } =>
+        SuspensionPendingReconciliation { group: _, transaction: pending_tx, authorization_binding: pending_binding, lease: lease } =>
           if (pending_tx as String) != (transaction as String) {
             D0Refused { cause: join(["the group is pending under transaction ", pending_tx as String, ", which only that transaction may settle"], "") }
+          } else if !hashes_agree(l: pending_binding, r: admitted.binding) {
+            D0Refused { cause: "the group is pending under this transaction but under a different authorization (escalation, attempt, intent, subject or executor differ), so this run may not settle it" }
           } else {
             match head {
               HeadAbsent => D0Refused { cause: "the group is pending but the partition has no head, so the admitting event cannot be named" }
               HeadAt { id: admitting } =>
-                d0_settle(layout: layout, pending: cur, lease: lease, grant: grant, admitting: admitting, pending_generation: gen, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
+                d0_settle(layout: layout, pending: cur, active: d0_restore_target(group: group), lease: lease, admitted: admitted, admitting: admitting, pending_generation: gen, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
             }
           }
         _ => D0Refused { cause: join(["the authority is neither active nor pending under this transaction, so there is nothing to suspend or settle: ", authority_wire(a: cur)], "") }
@@ -558,14 +679,14 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
       } else {
         match resolve_d0_authorization(group: g, authorization: authorization) {
           D0AuthorizationUnestablished { obligation: o } => refuse(reason: o as String)
-          D0Authorized { grant: grant } =>
-            match admit_d0_grant(grant: grant, group: g, at: now) {
-              D0GrantForAnotherGroup { granted: og } => refuse(reason: join(["the grant authorizes ", fabric_group_wire(g: og) as String, ", not ", group], ""))
-              D0GrantExpired { expires_at: e } => refuse(reason: join(["the grant expired at ", e], ""))
-              D0GrantAdmitted =>
+          D0AuthorizationResolved { authorization: scoped } =>
                 match observe_executor_reach() {
                   ExecutorReachUnknown { cause: c } => refuse(reason: c)
                   ExecutorReachKnown { short_hostname: executor, path: _ } =>
+            match admit_d0_grant(authorization: scoped, escalation_id: authorization as NonEmptyStr, group: g, transaction: transaction as NonEmptyStr, executor: executor as NonEmptyStr, at: now) {
+              D0GrantForAnotherGroup { granted: og } => refuse(reason: join(["the grant authorizes ", fabric_group_wire(g: og) as String, ", not ", group], ""))
+              D0GrantRefused { cause: _ } => refuse(reason: "the authorization does not permit this operation (std.scoped_authorization refused: escalation, attempt, intent, scope, expiry or claim)")
+              D0GrantAdmitted { admitted: admitted } =>
                     match event_log_layout_for_host(short_hostname: executor) {
                       HostLayoutRefused { detail: d } => refuse(reason: d)
                       HostLayoutResolved { layout: layout, executor: _ } =>
@@ -576,7 +697,7 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
                               FleetSshContextRefused { cause: c } => refuse(reason: join(["no fleet ssh context, so nothing is read and nothing is moved: ", c], ""))
                               FleetSshContextReady { context: context, receipt: _ } => {
                                 let outcome = d0_transaction(
-                                  layout: layout, group: g, grant: grant, transaction: transaction as NonEmptyStr, executor: executor as NonEmptyStr, at: at, now: now,
+                                  layout: layout, group: g, admitted: admitted, transaction: transaction as NonEmptyStr, executor: executor as NonEmptyStr, at: at, now: now,
                                   observe: fn(og) { observe_d0(context: context, group: og, declared: declared_pair_realization(group: og)) },
                                 )
                                 if d0_outcome_is_eligible(o: outcome) { ExitSuccess } else { exit_failure(reason: d0_outcome_text(o: outcome)) }

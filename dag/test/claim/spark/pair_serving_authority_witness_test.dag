@@ -62,6 +62,7 @@ fn w_pending(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
     group: FabricGroupA,
     transaction: "witness-transaction" as NonEmptyStr,
+    authorization_binding: h,
     lease: w_lease(h: h, observed_stale: stale),
   }
 }

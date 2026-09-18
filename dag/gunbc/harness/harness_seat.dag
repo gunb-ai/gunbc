@@ -61,6 +61,8 @@ import gunbc.spark.pair_serving_realization {
 import gunbc.spark.glm_canary_converge { glm_canary_declared_unit_artifact_obligation }
 import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, endpoint_incarnation_standing }
 import gunbc.spark.pair_serving_desired { spark_pair_group_head_host }
+import gunbc.spark.pair_serving_authority { pair_serving_authority_for, pair_serving_apply_admits }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, authority_wire }
 import gunbc.fleet_ssh_locus { FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
@@ -1024,7 +1026,43 @@ fn harness_fence_grant(candidate: HarnessCandidate, class: ServingCoTenancyClass
 }
 
 
+// A SEAT IS MINTED ONLY UNDER AN ACTIVE PAIR-SERVING AUTHORITY, READ AT ACQUIRE TIME. The Cut D
+// transaction's first write (gunbc.spark.pair_serving_d0) suspends a group's authority so that
+// nothing starts on its hosts while it is read and settled; a seat is new work admitted to the
+// answering engine, so it is one of the things that must not start. The offer was observed
+// under whatever authority stood when the route was read; the authority is read AGAIN here, at
+// the acquire, so a suspension that lands between observing the offer and taking the seat
+// refuses the seat rather than using stale offer evidence. A group the pair-serving authority
+// does not claim (the canary) is not governed by it and is not gated here; a claimed group whose
+// authority cannot be read is refused -- unreadability is never permission.
+type SeatAuthorityGate
+  = SeatAuthorityUngoverned
+  | SeatAuthorityAdmits
+  | SeatAuthorityRefuses { cause: String }
+
+fn harness_seat_authority_gate(layout: EventLogLayout, group: FabricGroup, now: EpochSecs) -> SeatAuthorityGate {
+  match pair_serving_authority_for(group: group) {
+    Absent => SeatAuthorityUngoverned
+    Present { value: _ } =>
+      match current_pair_serving_authority(layout: layout, group: group, at: now) {
+        CurrentAuthorityUnread { group: _, step: st, reason: why } =>
+          SeatAuthorityRefuses { cause: join(["the pair-serving authority could not be read at ", st, ", so no seat is minted: ", why], "") }
+        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _ } =>
+          if pair_serving_apply_admits(a: a) { SeatAuthorityAdmits }
+          else { SeatAuthorityRefuses { cause: join(["the pair-serving authority does not admit new work: ", authority_wire(a: a)], "") } }
+      }
+  }
+}
+
 fn harness_acquire_on(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
+  match harness_seat_authority_gate(layout: layout, group: candidate.group, now: now) {
+    SeatAuthorityRefuses { cause: why } => AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: why) }
+    SeatAuthorityUngoverned => harness_acquire_under_authority(candidate: candidate, class: class, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round)
+    SeatAuthorityAdmits => harness_acquire_under_authority(candidate: candidate, class: class, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round)
+  }
+}
+
+fn harness_acquire_under_authority(candidate: HarnessCandidate, class: ServingCoTenancyClass, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat) -> HarnessAcquisition {
   match harness_seat_capacity(group: candidate.group, class: class) {
     AdmissionCeilingUnestablished { group: _, cause: why } =>
       AcquisitionRefused { detail: seat_bind_detail(group: candidate.group, text: why as String) }

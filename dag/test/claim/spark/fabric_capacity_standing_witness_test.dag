@@ -351,6 +351,7 @@ fn w_suspended_authority(h: ContentHash) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
     group: FabricGroupA,
     transaction: "witness-transaction" as NonEmptyStr,
+    authorization_binding: h,
     lease: held_lease(
       epoch: LeaseEpoch {
         lease_key: "witness-lease" as NonEmptyStr,

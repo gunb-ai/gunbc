@@ -48,6 +48,7 @@ type PairServingGroupAuthority
   | SuspensionPendingReconciliation {
       group: FabricGroup
       transaction: NonEmptyStr
+      authorization_binding: ContentHash
       lease: HeldLease
     }
   | SuspendedForAuthorizedSuccessor {
@@ -75,7 +76,7 @@ type PairServingGroupAuthority
 fn pair_serving_authority_group(a: PairServingGroupAuthority) -> FabricGroup {
   match a {
     PairServingActive { group: g, exact_realization: _ } => g
-    SuspensionPendingReconciliation { group: g, transaction: _, lease: _ } => g
+    SuspensionPendingReconciliation { group: g, transaction: _, authorization_binding: _, lease: _ } => g
     SuspendedForAuthorizedSuccessor { group: g, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => g
     FencedRefusal { group: g, cause: _, disposition_authority: _ } => g
     ReleasedToFleet { group: g, release_receipt: _ } => g
@@ -90,7 +91,7 @@ fn pair_serving_authority_group(a: PairServingGroupAuthority) -> FabricGroup {
 fn pair_serving_apply_admits(a: PairServingGroupAuthority) -> Bool {
   match a {
     PairServingActive { group: _, exact_realization: _ } => true
-    SuspensionPendingReconciliation { group: _, transaction: _, lease: _ } => false
+    SuspensionPendingReconciliation { group: _, transaction: _, authorization_binding: _, lease: _ } => false
     SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => false
     FencedRefusal { group: _, cause: _, disposition_authority: _ } => false
     ReleasedToFleet { group: _, release_receipt: _ } => false
@@ -106,7 +107,7 @@ fn pair_serving_apply_admits(a: PairServingGroupAuthority) -> Bool {
 fn pair_serving_commits_hosts(a: PairServingGroupAuthority) -> Bool {
   match a {
     PairServingActive { group: _, exact_realization: _ } => true
-    SuspensionPendingReconciliation { group: _, transaction: _, lease: _ } => true
+    SuspensionPendingReconciliation { group: _, transaction: _, authorization_binding: _, lease: _ } => true
     SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => true
     FencedRefusal { group: _, cause: _, disposition_authority: _ } => true
     ReleasedToFleet { group: _, release_receipt: _ } => false
@@ -138,7 +139,7 @@ type PairServingCapacitySubject
 fn pair_serving_capacity_subject(a: PairServingGroupAuthority) -> PairServingCapacitySubject {
   match a {
     PairServingActive { group: g, exact_realization: _ } => CapacityOrdinarySubject { group: g }
-    SuspensionPendingReconciliation { group: g, transaction: t, lease: _ } =>
+    SuspensionPendingReconciliation { group: g, transaction: t, authorization_binding: _, lease: _ } =>
       CapacitySuspendedSubject { group: g, reason: t }
     SuspendedForAuthorizedSuccessor { group: g, authorization: au, exact_candidate_realization: _, lease: _, cleanup: _ } =>
       CapacitySuspendedSubject { group: g, reason: au }
@@ -192,7 +193,7 @@ fn pair_serving_lease_is_live(o: HeldLeaseObservedState) -> Bool {
 fn pair_serving_successor_may_launch(a: PairServingGroupAuthority) -> Bool {
   match a {
     PairServingActive { group: _, exact_realization: _ } => false
-    SuspensionPendingReconciliation { group: _, transaction: _, lease: _ } => false
+    SuspensionPendingReconciliation { group: _, transaction: _, authorization_binding: _, lease: _ } => false
     SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: l, cleanup: _ } =>
       pair_serving_lease_is_live(o: l.observed)
     FencedRefusal { group: _, cause: _, disposition_authority: _ } => false
@@ -209,7 +210,7 @@ fn pair_serving_successor_may_launch(a: PairServingGroupAuthority) -> Bool {
 fn pair_serving_may_finish(a: PairServingGroupAuthority) -> Bool {
   match a {
     PairServingActive { group: _, exact_realization: _ } => false
-    SuspensionPendingReconciliation { group: _, transaction: _, lease: _ } => true
+    SuspensionPendingReconciliation { group: _, transaction: _, authorization_binding: _, lease: _ } => true
     SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => true
     FencedRefusal { group: _, cause: _, disposition_authority: _ } => true
     ReleasedToFleet { group: _, release_receipt: _ } => false
