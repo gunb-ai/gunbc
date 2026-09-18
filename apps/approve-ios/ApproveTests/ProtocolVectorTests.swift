@@ -16,7 +16,7 @@ struct Vectors: Decodable {
             var stored_request_text: String
             var decision: String
             var capability_text: String
-            var capability_tag_hex: String
+            var capability_tag_b64url: String
         }
         var name: String
         var input: Input
@@ -32,9 +32,20 @@ struct Vectors: Decodable {
         var input: Input
         var expected: String
     }
+    struct Read: Decodable {
+        struct Input: Decodable {
+            var path: String
+            var enrollment_id: String
+            var requested_at: String
+        }
+        var name: String
+        var input: Input
+        var expected: String
+    }
     var framing: String
     var redemption: [Redemption]
     var enrolment: [Enrolment]
+    var read: [Read]
 }
 
 final class ProtocolVectorTests: XCTestCase {
@@ -45,6 +56,7 @@ final class ProtocolVectorTests: XCTestCase {
         let v = try JSONDecoder().decode(Vectors.self, from: Data(contentsOf: url))
         XCTAssertFalse(v.redemption.isEmpty, "no redemption vectors")
         XCTAssertFalse(v.enrolment.isEmpty, "no enrolment vectors")
+        XCTAssertFalse(v.read.isEmpty, "no read vectors")
         return v
     }
 
@@ -69,7 +81,7 @@ final class ProtocolVectorTests: XCTestCase {
                 stored_request_text: v.input.stored_request_text,
                 decision: decision,
                 capability_text: v.input.capability_text,
-                capability_tag_hex: v.input.capability_tag_hex
+                capability_tag_b64url: v.input.capability_tag_b64url
             )
             XCTAssertEqual(deviceRedemptionSigningInput(input), Data(v.expected.utf8), v.name)
         }
@@ -93,10 +105,10 @@ final class ProtocolVectorTests: XCTestCase {
         let input = DeviceRedemptionSigningInput(
             audience: "a", enrollment_id: "e", challenge: RedemptionChallenge(expires_at: "x", nonce_hex: "n"),
             escalation_id: "s", request_revision: "r", stored_request_text: "t", decision: .deny,
-            capability_text: "c", capability_tag_hex: "g")
+            capability_text: "c", capability_tag_b64url: "g")
         let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(input)) as? [String: Any]
         XCTAssertEqual(Set(json?.keys ?? []), ["audience", "enrollment_id", "challenge_expires_at", "nonce_hex",
-            "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_hex"])
+            "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"])
         XCTAssertEqual(try JSONDecoder().decode(DeviceRedemptionSigningInput.self, from: JSONEncoder().encode(input)), input)
     }
 
@@ -106,15 +118,17 @@ final class ProtocolVectorTests: XCTestCase {
         let base = DeviceRedemptionSigningInput(
             audience: "a", enrollment_id: "e", challenge: RedemptionChallenge(expires_at: "x", nonce_hex: "n"),
             escalation_id: "s", request_revision: "r", stored_request_text: "t", decision: .approve,
-            capability_text: "c", capability_tag_hex: "g")
+            capability_text: "c", capability_tag_b64url: "g")
         var denied = base; denied.decision = .deny
         XCTAssertNotEqual(deviceRedemptionSigningInput(base), deviceRedemptionSigningInput(denied))
         XCTAssertNotEqual(Protocol.framed(["a,b"]), Protocol.framed(["a", "b"]))
         XCTAssertNotEqual(Protocol.framed(["1:a,"]), Protocol.framed(["a"]))
     }
 
-    func testReadClientDataMatchesTheFrame() {
-        XCTAssertEqual(deviceReadClientData(path: "/approve/device/pending", enrollmentId: "e", requestedAt: "2026-09-18T12:00:00Z"),
-                       Data("29:gunbc.approval-device-read.v1,23:/approve/device/pending,1:e,20:2026-09-18T12:00:00Z,".utf8))
+    func testReadClientDataMatchesEveryVector() throws {
+        for v in try load().read {
+            let got = deviceReadClientData(path: v.input.path, enrollmentId: v.input.enrollment_id, requestedAt: v.input.requested_at)
+            XCTAssertEqual(got, Data(v.expected.utf8), v.name)
+        }
     }
 }

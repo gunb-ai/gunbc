@@ -124,7 +124,7 @@ final class AppState: ObservableObject {
             stored_request_text: r.stored_request_text,
             decision: decision,
             capability_text: cap.capability_text,
-            capability_tag_hex: cap.capability_tag_hex
+            capability_tag_b64url: cap.capability_tag_b64url
         )
         let bytes = deviceRedemptionSigningInput(input)
         let signature = try DecisionKey.sign(key, bytes)

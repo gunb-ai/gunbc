@@ -70,10 +70,11 @@ struct PendingApproval: Codable, Identifiable, Hashable {
     var id: String { escalation_id }
 }
 
-/// The capability one verb redeems: approval_capability_signing_input text and its tag.
+/// The capability one verb redeems: approval_capability_signing_input text and its canonical
+/// base64url tag exactly as issued — sent back as the server returned it, never re-encoded.
 struct VerbCapability: Codable, Equatable {
     var capability_text: String
-    var capability_tag_hex: String
+    var capability_tag_b64url: String
 }
 
 /// GET /approve/device/requests/<escalation_id>: the stored request as the server returns it, byte

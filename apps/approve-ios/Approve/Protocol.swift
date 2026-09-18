@@ -80,20 +80,20 @@ struct DeviceRedemptionSigningInput: Codable, Equatable {
     var stored_request_text: String
     var decision: ProposedDecision
     var capability_text: String
-    var capability_tag_hex: String
+    var capability_tag_b64url: String
 
     enum CodingKeys: String, CodingKey {
         case audience, enrollment_id, challenge_expires_at, nonce_hex, escalation_id, request_revision
-        case stored_request_text, decision, capability_text, capability_tag_hex
+        case stored_request_text, decision, capability_text, capability_tag_b64url
     }
 
     init(audience: String, enrollment_id: String, challenge: RedemptionChallenge, escalation_id: String,
          request_revision: String, stored_request_text: String, decision: ProposedDecision,
-         capability_text: String, capability_tag_hex: String) {
+         capability_text: String, capability_tag_b64url: String) {
         self.audience = audience; self.enrollment_id = enrollment_id; self.challenge = challenge
         self.escalation_id = escalation_id; self.request_revision = request_revision
         self.stored_request_text = stored_request_text; self.decision = decision
-        self.capability_text = capability_text; self.capability_tag_hex = capability_tag_hex
+        self.capability_text = capability_text; self.capability_tag_b64url = capability_tag_b64url
     }
 
     init(from decoder: Decoder) throws {
@@ -107,7 +107,7 @@ struct DeviceRedemptionSigningInput: Codable, Equatable {
         stored_request_text = try c.decode(String.self, forKey: .stored_request_text)
         decision = try c.decode(ProposedDecision.self, forKey: .decision)
         capability_text = try c.decode(String.self, forKey: .capability_text)
-        capability_tag_hex = try c.decode(String.self, forKey: .capability_tag_hex)
+        capability_tag_b64url = try c.decode(String.self, forKey: .capability_tag_b64url)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -121,7 +121,7 @@ struct DeviceRedemptionSigningInput: Codable, Equatable {
         try c.encode(stored_request_text, forKey: .stored_request_text)
         try c.encode(decision, forKey: .decision)
         try c.encode(capability_text, forKey: .capability_text)
-        try c.encode(capability_tag_hex, forKey: .capability_tag_hex)
+        try c.encode(capability_tag_b64url, forKey: .capability_tag_b64url)
     }
 }
 
@@ -139,7 +139,7 @@ func deviceRedemptionSigningInput(_ i: DeviceRedemptionSigningInput) -> Data {
         i.stored_request_text,
         i.decision.rawValue,
         i.capability_text,
-        i.capability_tag_hex,
+        i.capability_tag_b64url,
     ])
 }
 
