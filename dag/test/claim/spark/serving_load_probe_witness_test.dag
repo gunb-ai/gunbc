@@ -50,18 +50,13 @@ import gunbc.spark.serving_load_probe {
   glm_native_wiring_smoke_protocol, glm_native_contended_sweep_c1, glm_native_contended_sweep_c2,
   glm_native_contended_sweep_c16, glm_native_contended_sweep_points,
   glm_native_contended_elasticity_steps, elasticity_still_buying_throughput,
-  glm_native_ttft_binds_concurrency, TtftWouldBindConcurrency,
+  glm_native_wet_smoke_itl_is_contention_tail_receipt, glm_native_wet_smoke_peak_proves_shared_window,
+  glm_native_wet_smoke_is_not_sweep_c1_protocol, glm_native_wet_smoke_rate_is_output_tokens,
+  glm_native_ttft_would_bind_on_this_sweep,
   glm_native_window_standing_specimen, window_standing_gap_is_operator_traffic,
   pinned_load_protocol_matches, bench_output_len, glm_native_sweep_num_prompts,
   glm_native_holistic_execution, LongContextModelledOnly, LongContextRunnable,
   glm_native_elasticity_8_to_16,
-  glm_native_wet_smoke_client_latency, glm_native_wet_smoke_itl, ItlMeanMedianP99, ItlTailUnread,
-  itl_p99_is_contention_tail, glm_native_wet_smoke_peak_concurrency, PeakConcurrencyObserved, PeakConcurrencyUnread,
-  peak_concurrency_proves_shared_window, foreign_in_flight_at_peak,
-  glm_native_client_rate_denomination, RateDenominatedInCompletedOutputTokens,
-  RateDenominatedInTotalTokensIncludingPrefill,
-  glm_native_wet_smoke_prefill_versus_decode, total_token_throughput_is_not_the_probe_rate,
-  glm_native_wet_smoke_rate, glm_native_wet_smoke_client_output,
 }
 
 data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
@@ -340,47 +335,19 @@ test fn a_64_out_wiring_receipt_is_not_the_128_out_sweep_protocol() -> Bool {
 }
 
 test fn wet_smoke_itl_p99_is_the_contention_tail() -> Bool {
-  match glm_native_wet_smoke_itl {
-    ItlMeanMedianP99 { mean_milli: mean, median_milli: med, p99_milli: p99 } =>
-      mean == 83 && med == 82 && p99 == 165 && itl_p99_is_contention_tail(t: glm_native_wet_smoke_itl)
-    ItlTailUnread { cause: _ } => false
-  }
+  glm_native_wet_smoke_itl_is_contention_tail_receipt()
 }
 
 test fn peak_concurrency_above_the_client_cap_proves_a_shared_window() -> Bool {
-  match glm_native_wet_smoke_peak_concurrency {
-    PeakConcurrencyObserved { client_max_concurrency: c, engine_peak_concurrent_requests: e } =>
-      c == 2 && e == 4 && peak_concurrency_proves_shared_window(p: glm_native_wet_smoke_peak_concurrency)
-        && match foreign_in_flight_at_peak(p: glm_native_wet_smoke_peak_concurrency) {
-          Absent => false
-          Present { value: n } => n == 2
-        }
-    PeakConcurrencyUnread { cause: _ } => false
-  }
+  glm_native_wet_smoke_peak_proves_shared_window()
 }
 
 test fn wet_smoke_tpot_is_not_a_protocol_match_to_sweep_c1() -> Bool {
-  !pinned_load_protocol_matches(a: glm_native_smoke_protocol, b: glm_native_contended_sweep_c1.protocol)
-    && match glm_native_wet_smoke_client_latency {
-      ClientBenchLatencyReported { output_throughput_milli_tok_per_s: th, tpot_milli: tpot, itl_milli: _, ttft_milli: _, contended: k, standing: _ } =>
-        k && th == 22510 && tpot == 82
-      ClientBenchLatencyUnread { cause: _ } => false
-    }
+  glm_native_wet_smoke_is_not_sweep_c1_protocol()
 }
 
 test fn the_probe_rate_is_completed_output_tokens_not_total_including_prefill() -> Bool {
-  match glm_native_client_rate_denomination {
-    RateDenominatedInCompletedOutputTokens { because: _ } =>
-      total_token_throughput_is_not_the_probe_rate(r: glm_native_wet_smoke_prefill_versus_decode)
-        && glm_native_wet_smoke_prefill_versus_decode.output_tokens == 512
-        && glm_native_wet_smoke_prefill_versus_decode.input_tokens == 1072
-        && match glm_native_wet_smoke_rate() {
-          RateFromClientOutputTokens { tokens: t, scrape_millis: ms } => t == 512 && ms == 22750
-          RateUndenominable { because: _ } => false
-          RateUnreadable { because: _ } => false
-        }
-    RateDenominatedInTotalTokensIncludingPrefill { because: _ } => false
-  }
+  glm_native_wet_smoke_rate_is_output_tokens()
 }
 
 test fn the_contended_sweep_is_five_shared_window_client_points() -> Bool {
@@ -401,22 +368,7 @@ test fn scaling_elasticity_is_a_shape_still_buying_at_16() -> Bool {
 }
 
 test fn ttft_would_bind_concurrency_before_throughput_on_this_sweep() -> Bool {
-  match glm_native_ttft_binds_concurrency {
-    TtftWouldBindConcurrency {
-      from_concurrency: a,
-      to_concurrency: b,
-      tpot_rise_milli_percent: tpot,
-      throughput_rise_milli_percent: thr,
-      ttft_from_milli: _,
-      ttft_to_milli: ttft,
-      standing: _,
-    } =>
-      a == 8 && b == 16 && tpot == 45 && thr == 630 && ttft == 5218
-        && match glm_native_contended_sweep_c16.latency {
-          ClientBenchLatencyReported { output_throughput_milli_tok_per_s: _, tpot_milli: _, itl_milli: _, ttft_milli: t, contended: _, standing: _ } => t == 5218
-          ClientBenchLatencyUnread { cause: _ } => false
-        }
-  }
+  glm_native_ttft_would_bind_on_this_sweep()
 }
 
 test fn the_49_vs_81_ms_gap_is_why_window_standing_is_a_field() -> Bool {

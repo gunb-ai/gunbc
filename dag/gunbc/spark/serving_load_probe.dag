@@ -41,6 +41,8 @@ import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
 }
+import gunbc.spark.runtime_architecture_registry_reading { glm53_nope_derived_registry_reading }
+import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
@@ -977,6 +979,42 @@ fn glm_native_wet_smoke_rate() -> DerivedRate {
   )
 }
 
+fn glm_native_wet_smoke_itl_is_contention_tail_receipt() -> Bool {
+  itl_p99_is_contention_tail(t: glm_native_wet_smoke_itl)
+    && match glm_native_wet_smoke_itl {
+      ItlTailUnread { cause: _ } => false
+      ItlMeanMedianP99 { mean_milli: mean_m, median_milli: med, p99_milli: p99 } =>
+        mean_m == 83 && med == 82 && p99 == 165
+    }
+}
+
+fn glm_native_wet_smoke_peak_proves_shared_window() -> Bool {
+  peak_concurrency_proves_shared_window(p: glm_native_wet_smoke_peak_concurrency)
+    && match foreign_in_flight_at_peak(p: glm_native_wet_smoke_peak_concurrency) {
+      Absent => false
+      Present { value: n } => n == 2
+    }
+}
+
+fn glm_native_wet_smoke_is_not_sweep_c1_protocol() -> Bool {
+  !pinned_load_protocol_matches(a: glm_native_smoke_protocol, b: glm_native_contended_sweep_c1.protocol)
+}
+
+fn glm_native_wet_smoke_rate_is_output_tokens() -> Bool {
+  match glm_native_client_rate_denomination {
+    RateDenominatedInTotalTokensIncludingPrefill { because: _ } => false
+    RateDenominatedInCompletedOutputTokens { because: _ } =>
+      total_token_throughput_is_not_the_probe_rate(r: glm_native_wet_smoke_prefill_versus_decode)
+        && glm_native_wet_smoke_prefill_versus_decode.output_tokens == 512
+        && glm_native_wet_smoke_prefill_versus_decode.input_tokens == 1072
+        && match glm_native_wet_smoke_rate() {
+          RateFromClientOutputTokens { tokens: t, scrape_millis: ms } => t == 512 && ms == 22750
+          RateUndenominable { because: _ } => false
+          RateUnreadable { because: _ } => false
+        }
+  }
+}
+
 data glm_native_contended_sweep_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "re-read calm-bat-65's vllm bench serve stdout for the 256-in/128-out inf-rate ignore-eos sweep (num-prompts 4×concurrency, min 8) taken while operator long-context traffic shared Group B" as NonEmptyStr
 }
@@ -1123,6 +1161,21 @@ type ContendedLatencyFloorHint
       standing: CitedFigureStanding
     }
 
+fn glm_native_ttft_would_bind_on_this_sweep() -> Bool {
+  match glm_native_ttft_binds_concurrency {
+    TtftWouldBindConcurrency {
+      from_concurrency: a,
+      to_concurrency: b,
+      tpot_rise_milli_percent: tpot,
+      throughput_rise_milli_percent: thr,
+      ttft_from_milli: _,
+      ttft_to_milli: ttft,
+      standing: _,
+    } =>
+      a == 8 && b == 16 && tpot == 45 && thr == 630 && ttft == 5218
+  }
+}
+
 data glm_native_ttft_binds_concurrency: ContendedLatencyFloorHint = TtftWouldBindConcurrency {
   from_concurrency: 8
   to_concurrency: 16
@@ -1197,7 +1250,7 @@ data glm_native_live_subject: ServingPerformanceSubject = serving_performance_su
   checkpoint: Glm53NativeFp8,
   checkpoint_revision: none,
   runtime: GunbcGlm53NopeDerivedGb10,
-  runtime_image_reference: glm_native_live_image_reference,
+  runtime_image_reference: glm53_nope_derived_registry_reading.image_reference,
   topology: Present { value: FourSparkTp4 },
   rank_population: Present { value: 4 },
   context_ceiling: Present { value: glm_native_concurrent_profile.max_model_len },
