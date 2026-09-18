@@ -28,6 +28,7 @@ import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict,
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
 }
+import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
 import gunbc.spark.rendezvous_participation {
   rendezvous_epoch, GroupRanksAdrift, GroupAtRendezvous, GroupParticipationUnobserved,
   RankDetached, RankAtRendezvous,
@@ -551,11 +552,17 @@ fn t_incarnation() -> VllmServingLaunch {
   )
 }
 
+// THE FIXTURE ENV CARRIES THE DISABLE ASSIGNMENT, because the offer's route standing now feeds the
+// telemetry reading from the same observation: an observed incarnation whose effective environment
+// does not disable the reporter resolves the telemetry path as ENABLED, which is a different route
+// fact than these claims exist to pin. The assignment is spelled by upstream's own row
+// (extdeps.vllm.usage_stats), never re-typed here.
 fn t_observed(endpoint: VllmEndpointProcessLaunch, launch: VllmServingLaunch) -> EndpointIncarnationStanding {
   EndpointIncarnationObserved {
     observation: endpoint_incarnation_observation(
       endpoint: endpoint,
       launch: launch,
+      container_env: [vllm_usage_stats_disable_assignment_wire()],
       receipt: "test.claim.spark.spark_serving_offer_route_witness_test fixture" as ObservationReceiptRef,
     ),
   }

@@ -348,6 +348,75 @@ fn docker_inspect_nonempty_string_member(obj: JsonValue, key: String) -> String?
   }
 }
 
+// THE EFFECTIVE ENVIRONMENT IS A SEPARATE, NAMED DISCLOSURE. The identity reader above takes .Id
+// and .Image and nothing else; this reader takes .Config.Env -- the assignment list docker exec
+// hands the container's process -- because the serving route's telemetry obligation
+// (gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation) is
+// dischargeable only by a reading of the environment of the container that ANSWERED, and the
+// inspect leg already returns this document under the same per-container grant. The disclosure is
+// stated here rather than hidden in a generic parse: Config.Env can carry secrets in the general
+// case, so this reader is for containers whose environment this repository itself declares, and it
+// returns the assignments as opaque NAME=value strings -- classification of any one of them is the
+// consumer's cited reading (extdeps.vllm.usage_stats vllm_usage_stats_assignment_disables), not
+// this module's guess.
+type DockerContainerInspectEnvRead
+  = DockerContainerInspectEnv { assignments: List<String> }
+  | DockerContainerInspectEnvUnreadable { cause: String }
+
+// A null Env is docker's spelling of an empty one (the daemon emits "Env": null when a container
+// was created with no environment), so null reads as the empty list rather than as unreadable.
+fn docker_inspect_string_list_member(obj: JsonValue, key: String) -> List<String>? {
+  match json_object_unique_member(v: obj, key: key) {
+    JsonMemberAbsent => none
+    JsonMemberNotAnObject => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonNull => Present { value: [] as List<String> }
+        JsonArray { elements: es } =>
+          if all(es, e => match e {
+            JsonString { value: _ } => true
+            JsonNull => false
+            JsonBool { value: _ } => false
+            JsonNumber { lexeme: _ } => false
+            JsonArray { elements: _ } => false
+            JsonObject { members: _ } => false
+          }) {
+            Present { value: map(es, e => json_string_value_or_empty(v: e)) }
+          } else {
+            none
+          }
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonString { value: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn docker_container_inspect_env_from_stdout(stdout: String) -> DockerContainerInspectEnvRead {
+  match parse_json_document(s: trim(s: stdout)) {
+    JsonDocumentUnreadable { gap: g } =>
+      DockerContainerInspectEnvUnreadable { cause: json_document_gap_text(gap: g) }
+    JsonDocumentParsed { value: v } =>
+      match docker_inspect_json_first_of_one(v: v) {
+        Absent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON is not a one-element array" }
+        Present { value: obj } =>
+          match json_object_unique_member(v: obj, key: "Config") {
+            JsonMemberAbsent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON names no Config" }
+            JsonMemberNotAnObject => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON element is not an object" }
+            JsonMemberDuplicated { count: n } =>
+              DockerContainerInspectEnvUnreadable { cause: join(["docker container inspect JSON names Config ", to_string(n), " times"], "") }
+            JsonMemberFound { value: config } =>
+              match docker_inspect_string_list_member(obj: config, key: "Env") {
+                Absent => DockerContainerInspectEnvUnreadable { cause: "docker container inspect JSON Config.Env is not a string list" }
+                Present { value: assignments } => DockerContainerInspectEnv { assignments: assignments }
+              }
+          }
+      }
+  }
+}
+
 fn docker_container_inspect_identity_from_stdout(stdout: String) -> DockerContainerInspectIdentityRead {
   match parse_json_document(s: trim(s: stdout)) {
     JsonDocumentUnreadable { gap: g } =>

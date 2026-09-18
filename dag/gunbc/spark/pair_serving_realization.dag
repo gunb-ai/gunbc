@@ -8,6 +8,7 @@ import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.vllm.engine_args { VllmEngineArgs, vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire, vllm_memory_request_argv, vllm_prefix_caching_argv, ChunkedPrefillRequested, ChunkedPrefillNotRequested }
+import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }
 import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory_name }
 import gunbc.spark.model_snapshot_acquisition {
   ModelSnapshotDesired, ModelSnapshotPinned, ModelSnapshotUnpinned,
@@ -247,6 +248,16 @@ fn spark_pair_container_env(lane: FabricLaneObserved) -> List<DockerEnvAssignmen
     DockerEnvAssignment { name: "VLLM_HOST_IP" as NonEmptyStr, value: rail_ip },
     DockerEnvAssignment { name: "RAY_memory_monitor_refresh_ms" as NonEmptyStr, value: to_string(millisecond_count(m: first_pair_ray_head.memory_monitor_refresh)) },
     DockerEnvAssignment { name: "VLLM_ALLOW_LONG_MAX_MODEL_LEN" as NonEmptyStr, value: "1" },
+    // THE USAGE-STATS REPORTER IS DECLARED OFF, spelled from the same extdeps.vllm.usage_stats row
+    // the route's telemetry reading folds, so the declaration and the reading share one authority.
+    // The declaration alone admits nothing -- the route is discharged by the READING of the
+    // answering container's effective environment (gunbc.spark.first_party_serving
+    // spark_serving_usage_stats_standing); this assignment is what makes that reading come out
+    // disabled.
+    DockerEnvAssignment {
+      name: vllm_usage_stats_no_usage_stats_term.variable,
+      value: vllm_usage_stats_no_usage_stats_term.disabling_value as String,
+    },
   ], transport_plan_env(p: spark_pair_transport_plan(lane: lane)))
 }
 

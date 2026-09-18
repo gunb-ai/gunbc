@@ -16,6 +16,7 @@ import extdeps.systemd.unit_file {
 }
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire, vllm_prefix_caching_argv, vllm_kv_cache_dtype_wire }
+import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_tool_call_parser, glm_5_3_flash_vllm_reasoning_parser,
   glm_5_3_flash_vllm_engine_ready_timeout_seconds, glm_5_3_flash_gb10_sparse_indexer_max_logits_mb,
@@ -193,6 +194,10 @@ fn glm_native_container_argv(lane: FabricLaneObserved, rank: Nat, ranks: Nat, ma
     [
       "-e", "NCCL_DEBUG=INFO",
       "-e", "NCCL_DEBUG_SUBSYS=INIT,NET",
+      // THE USAGE-STATS REPORTER IS DECLARED OFF, spelled from the same extdeps.vllm.usage_stats
+      // row the route's telemetry reading folds (see the pair route's env for the full note); the
+      // reading of the answering container's effective environment is what discharges the route.
+      "-e", vllm_usage_stats_disable_assignment_wire(),
       "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String], ""),
       "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
       "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),

@@ -3,6 +3,7 @@ module test.claim.spark.spark_pair_serving_realization_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.docker { DockerMount, BindMount, VolumeMount, TmpfsMount }
 import extdeps.docker.cli { DockerEnvAssignment }
+import extdeps.vllm.usage_stats { vllm_usage_stats_no_usage_stats_term }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_baked_interface_env_names, sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names, sparkrun_vllm_ds4_gb10_digest_sha256_hex, gunbc_spark_pair_runtime_dockerfile }
 import gunbc.spark.pair_serving_realization {
   SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
@@ -222,6 +223,17 @@ test fn the_container_env_overrides_every_baked_interface_name_from_the_fabric()
       && any(h.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.110.14")
       && any(ws, w => any(w.container.env, e => (e.name as String) == "VLLM_HOST_IP" && e.value == "192.168.110.11"))
       && any(h.container.env, e => (e.name as String) == "RAY_memory_monitor_refresh_ms" && e.value == "0")
+  })
+}
+
+// THE USAGE-STATS REPORTER IS DECLARED OFF ON HEAD AND WORKERS, spelled from the same
+// extdeps.vllm.usage_stats row the route's telemetry reading folds. The declaration admits nothing
+// by itself -- the reading of the answering container's effective environment discharges the route
+// -- but this row is what makes that reading come out disabled after a converge.
+test fn the_container_env_declares_the_usage_stats_reporter_off() -> Bool {
+  w_realized(f: fn(h, ws) {
+    all([h.container.env], env => any(env, e => (e.name as String) == (vllm_usage_stats_no_usage_stats_term.variable as String) && e.value == (vllm_usage_stats_no_usage_stats_term.disabling_value as String)))
+      && all(ws, w => any(w.container.env, e => (e.name as String) == (vllm_usage_stats_no_usage_stats_term.variable as String) && e.value == (vllm_usage_stats_no_usage_stats_term.disabling_value as String)))
   })
 }
 

@@ -13,6 +13,7 @@ import gunbc.spark.native_serving_realization {
 }
 import gunbc.spark.native_serving_apply { spark_native_transport_gate_script, spark_native_apply_plans }
 import product.placement_supply { host_identity_eq }
+import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
 
 // THE 2026-09-17 CORRECTNESS RULING, ENROLLED. The GLM native arm ran every rank on TCP sockets
 // for days -- `NET/IB : No device found.` then `Using network Socket` -- because its container was
@@ -96,9 +97,23 @@ test fn w_the_native_apply_plans_the_whole_arm_head_first() -> Bool {
   }
 }
 
+// ── THE TELEMETRY REPORTER IS DECLARED OFF, SPELLED BY UPSTREAM'S ROW ─────────────────────────
+//
+// The route's telemetry standing is discharged by the READING of the answering container's
+// effective environment; this row pins the declaration half, so the reading the offer makes after
+// converge comes out disabled. The word is derived from extdeps.vllm.usage_stats, never re-typed.
+test fn w_the_container_argv_declares_the_reporter_off() -> Bool {
+  let lane = srv9_lane()
+  argv_has(
+    argv: glm_native_container_argv(lane: lane, rank: 0, ranks: 4, master: fabric_rail_address_of(o: lane)),
+    word: vllm_usage_stats_disable_assignment_wire(),
+  )
+}
+
 test fn w_all_native_roce_transport_claims_hold() -> Bool {
   w_the_native_plan_is_the_roce_arm_keyed_by_the_lane()
     && w_the_container_argv_carries_the_roce_projections()
     && w_the_gate_script_refuses_socket_and_requires_ib()
     && w_the_native_apply_plans_the_whole_arm_head_first()
+    && w_the_container_argv_declares_the_reporter_off()
 }

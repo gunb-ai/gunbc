@@ -21,6 +21,8 @@ import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_man
 import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
 import extdeps.docker.cli {
   DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable,
+  DockerContainerInspectEnvRead, DockerContainerInspectEnv, DockerContainerInspectEnvUnreadable,
+  docker_container_inspect_env_from_stdout,
   docker_container_inspect_identity_from_stdout, docker_image_id_sha256_hex,
 }
 import extdeps.docker.cgroup { DockerContainerScope, NotADockerContainerCgroup, docker_cgroup_membership }
@@ -108,6 +110,7 @@ type ServingIncarnationRefusal
   | InspectLegDidNotRun { container: NonEmptyStr, cause: String }
   | InspectCommandFailed { container: NonEmptyStr, exit_code: Int, stderr: String }
   | InspectIdentityUnreadable { container: NonEmptyStr, cause: String }
+  | InspectEnvUnreadable { container: NonEmptyStr, cause: String }
   | InspectedContainerIsNotTheAnsweringOne { by_name: NonEmptyStr, answering: NonEmptyStr }
   | IncarnationImageIdNotSha256 { image_id: NonEmptyStr }
   | IncarnationStartBeforeEpoch { seconds: Int }
@@ -150,6 +153,8 @@ fn serving_incarnation_refusal_text(r: ServingIncarnationRefusal) -> String {
       join(["the inspect command for ", c as String, " exited ", to_string(code), ", so the image the answering container was created from is unread -- this is where a not-held InspectServingContainer grant (sudo denies) surfaces, but a removed or renamed container answers the same way, so the exit and stderr are carried rather than a cause asserted: ", trim(s: err)], "")
     InspectIdentityUnreadable { container: c, cause: why } =>
       join(["the inspect object of ", c as String, " did not yield an id and image: ", why], "")
+    InspectEnvUnreadable { container: c, cause: why } =>
+      join(["the inspect object of ", c as String, " did not yield Config.Env, so the effective environment of the answering container is unread and the telemetry standing cannot be discharged: ", why], "")
     InspectedContainerIsNotTheAnsweringOne { by_name: n, answering: a } =>
       join(["the container holding the name is ", n as String, " but the answering process runs in ", a as String], "")
     IncarnationImageIdNotSha256 { image_id: i } =>
@@ -323,20 +328,26 @@ fn incarnation_after_container(
                   match sha256_hex_digest(hex: hex) {
                     Absent => IncarnationRefused { refusal: IncarnationImageIdNotSha256 { image_id: image_id } }
                     Present { value: digest } =>
-                      IncarnationObserved {
-                        observation: endpoint_incarnation_observation(
-                          endpoint: endpoint,
-                          launch: vllm_serving_launch(
-                            group: group,
-                            head: head,
-                            systemd_invocation: invocation,
-                            container_id: container_id,
-                            executable_digest: Sha256Hash(digest),
-                            unit_digest: unit_digest,
-                            started_at: started_at,
-                          ),
-                          receipt: serving_incarnation_receipt,
-                        ),
+                      match docker_container_inspect_env_from_stdout(stdout: r.stdout) {
+                        DockerContainerInspectEnvUnreadable { cause: why } =>
+                          IncarnationRefused { refusal: InspectEnvUnreadable { container: names.container_name, cause: why } }
+                        DockerContainerInspectEnv { assignments: env } =>
+                          IncarnationObserved {
+                            observation: endpoint_incarnation_observation(
+                              endpoint: endpoint,
+                              launch: vllm_serving_launch(
+                                group: group,
+                                head: head,
+                                systemd_invocation: invocation,
+                                container_id: container_id,
+                                executable_digest: Sha256Hash(digest),
+                                unit_digest: unit_digest,
+                                started_at: started_at,
+                              ),
+                              container_env: env,
+                              receipt: serving_incarnation_receipt,
+                            ),
+                          }
                       }
                   }
               }
