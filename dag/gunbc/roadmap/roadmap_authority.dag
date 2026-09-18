@@ -5,7 +5,7 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Set }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.roadmap_model {
@@ -3461,12 +3461,18 @@ fn withheld_node_ids_from_carrier_text(text: String) -> WithheldNodeIdsProjectio
   }
 }
 
+fn roadmap_node_id_set(ids: List<RoadmapNodeId>) -> Set<RoadmapNodeId> {
+  ids |> fold(init: empty_set(), f: (acc, id) => set_insert(acc, id))
+}
+
 fn active_roadmap_nodes_for_accepted(
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> List<RoadmapNode> {
+  let accepted_set = roadmap_node_id_set(ids: accepted)
+  let withheld_set = roadmap_node_id_set(ids: withheld)
   declared_roadmap_nodes() |> filter(n =>
-    !(accepted |> any(a => a == n.node)) && !(withheld |> any(w => w == n.node))
+    !set_contains(accepted_set, n.node) && !set_contains(withheld_set, n.node)
   )
 }
 
@@ -3802,11 +3808,14 @@ fn active_roadmap_edges_for_accepted(
   accepted: List<RoadmapNodeId>,
   withheld: List<RoadmapNodeId>,
 ) -> List<RoadmapEdge> {
+  let accepted_set = roadmap_node_id_set(ids: accepted)
+  let withheld_set = roadmap_node_id_set(ids: withheld)
   declared_roadmap_edges() |> filter(e =>
-    !(accepted |> any(a => a == e.child))
-      && !(accepted |> any(a => a == e.parent))
-      && !(withheld |> any(w => w == e.child))
-      && !(withheld |> any(w => w == e.parent)))
+    !set_contains(accepted_set, e.child)
+      && !set_contains(accepted_set, e.parent)
+      && !set_contains(withheld_set, e.child)
+      && !set_contains(withheld_set, e.parent)
+  )
 }
 
 fn preamble() -> List<MarkdownBlock> {
