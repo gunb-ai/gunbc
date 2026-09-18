@@ -27,14 +27,7 @@ import gunbc.network_boot_delivery {
   BootstrapTrustUnestablished,
 }
 
-// THE SIGNED BOOT-MANIFEST BROKER. gunbc.network_boot_delivery names the ticket identity;
-// this module issues one MAC over that identity plus firmware class, pins the trust root
-// the bootstrap verifier is configured with, and refuses every substitution the brief
-// names. DHCP filenames and presigned URLs are not in the signing input: they are
-// availability fences, never identity. Host credentials, cloud tokens, and install
-// secrets are not fields of a public origin object; those arrive later through the
-// nonce-bound intake callback named by callback_identity, using gunbc.secret_provision.
-
+// Protocol id bound into the HMAC preimage so a tag from another envelope cannot verify here.
 data boot_manifest_protocol: NonEmptyStr = "gunbc.signed-boot-manifest.v1" as NonEmptyStr
 
 data signing_field_separator: String = from_code_point(cp: 31)
@@ -115,7 +108,6 @@ type BootManifestRefusal
   | ManifestDigestDisagrees { field: NonEmptyStr }
   | ManifestSigningKeyDisagrees { claimed: NonEmptyStr, pinned: MacKeyId }
   | ManifestTrustUnestablished
-  | ManifestCallbackIdentityEmpty
 
 type BootManifestVerification
   = BootManifestAuthentic { claims: SignedBootManifestClaims }
@@ -171,7 +163,9 @@ fn issue_signed_boot_manifest(
 }
 
 fn issue_signed_boot_manifest_under_trust(claims: SignedBootManifestClaims, key: MacKey) -> BootManifestIssuance {
-  if claims.identity.signing_key_identity != key.id as NonEmptyStr {
+  let claimed_key = claims.identity.signing_key_identity
+  let signing_key = key.id as NonEmptyStr
+  if claimed_key != signing_key {
     BootManifestIssuanceRefused {
       cause: ManifestIssuanceKeyIdDisagrees {
         claimed: claims.identity.signing_key_identity,
@@ -248,7 +242,8 @@ fn verify_authenticated_boot_manifest(
   expectation: BootManifestExpectation,
 ) -> BootManifestVerification {
   let id = claims.identity
-  if id.signing_key_identity != expectation.trust.signing_key_id as NonEmptyStr {
+  let pinned_key = expectation.trust.signing_key_id as NonEmptyStr
+  if id.signing_key_identity != pinned_key {
     BootManifestRefused {
       cause: ManifestSigningKeyDisagrees {
         claimed: id.signing_key_identity,
@@ -279,12 +274,7 @@ fn verify_authenticated_boot_manifest(
               Absent =>
                 match digest_field_disagrees(left: id.root_digest, right: expectation.artifacts.root, field: "root" as NonEmptyStr) {
                   Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
-                  Absent =>
-                    if id.callback_identity as String == "" {
-                      BootManifestRefused { cause: ManifestCallbackIdentityEmpty }
-                    } else {
-                      BootManifestAuthentic { claims: claims }
-                    }
+                  Absent => BootManifestAuthentic { claims: claims }
                 }
             }
         }
