@@ -48,8 +48,10 @@ type ServiceMethodResult {
   op_params: List<Node>
 }
 
-// THE JUDGMENT IS READ, NOT RE-DERIVED. service_spine_projection resolved this occurrence against
-// the service registry and stamped ServiceValueBinding on the result; this fn asks for that stamp
+// THE JUDGMENT IS READ, NOT RE-DERIVED. Resolution stamped ServiceValueBinding on the receiver --
+// service_spine_projection for a dotted occurrence (`shell.Exec`), and
+// v1.compiler.infer infer_var_binding_kind for a service reached through its bare name
+// (`Filesystem`), both deciding against the one service registry -- and this fn asks for that stamp
 // and nothing else. It cannot be wrong about a name it does not read.
 //
 // WHY NOT CONSULT THE REGISTRY HERE, which is the obvious alternative: the emitters cannot reach
@@ -64,6 +66,19 @@ type ServiceMethodResult {
 // admitted bare namespace roots like `cargo`, which are not services at all. Requiring a dot
 // reproduced the previous behaviour exactly and was still a semantic fact inferred from a
 // character. The stamp ends the sequence rather than adding a fourth spelling to it.
+//
+// THE BARE-NAME STAMP IS NOT THE REJECTED SECOND SHAPE, though it reaches the same `Filesystem`
+// outcome, and the difference is the whole point. That shape decided by a spelling property -- a
+// name equal to its own resolved type name -- which is why it admitted `cargo`. The bare-name arm
+// decides by the REGISTRY: infer_var_binding_kind stamps a local only when the service registry
+// holds that exact name AND the local's resolved type is the nominal reference the scope fold
+// inserted for it (local_is_service_root_binding). The registry is keyed on each service's authored
+// name while the root locals are keyed on its namespace root, so `shell` (root of `shell.Exec`)
+// misses the registry and stays a local, and `Filesystem` (a service declared bare) hits it. And the
+// refusal that shape deleted is no longer owed for this case: the fn it protected is effectful by
+// derivation once the call is seen, so signature and call site agree and the realized arm is correct
+// (v1.compiler.emit_rust rust_unrealized_service_op_refusal records this, and
+// gunbc.recurring_failure_mode bare_imported_service_invisible_to_derived_demand the defect).
 // THE VARIANT IS MATCHED IN ITS OWN match RATHER THAN NESTED IN THE OUTER PATTERN, and that is an
 // emission constraint rather than a style choice: spelling it as
 // `ExprVar { binding_kind: Present { value: ServiceValueBinding } }` emits Rust that matches a bare
