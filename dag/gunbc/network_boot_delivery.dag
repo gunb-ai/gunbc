@@ -350,3 +350,34 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
       }
   }
 }
+
+// 0WET subject is a PARAMETER, not a UnitKey. Operator 2026-09-18: not Mt. Collins until its
+// CD boot lands; no other ARM64 unit was named, so the first candidate is Mt. Jade (arriving,
+// barebones, no drives) and Mt. Collins post-CD is the fallback. Minting a fleet key here
+// would fabricate an identity the operator did not bind.
+type WetAcceptanceCandidate
+  = MtJadeArrivingBarebones
+  | MtCollinsAfterCdBoot
+
+type WetAcceptanceSubjectStanding
+  = WetAcceptanceSubjectUnbound {
+      proposed_first: WetAcceptanceCandidate
+      fallback: WetAcceptanceCandidate
+    }
+
+fn wet_acceptance_subject() -> WetAcceptanceSubjectStanding {
+  WetAcceptanceSubjectUnbound {
+    proposed_first: MtJadeArrivingBarebones,
+    fallback: MtCollinsAfterCdBoot,
+  }
+}
+
+fn wet_acceptance_binds_mt_collins_now(standing: WetAcceptanceSubjectStanding) -> Bool {
+  match standing {
+    WetAcceptanceSubjectUnbound { proposed_first: first, fallback: _ } =>
+      match first {
+        MtCollinsAfterCdBoot => true
+        MtJadeArrivingBarebones => false
+      }
+  }
+}

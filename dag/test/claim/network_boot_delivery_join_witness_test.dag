@@ -61,6 +61,11 @@ import gunbc.network_boot_delivery {
   first_slice_admitted_architectures,
   join_network_boot_delivery,
   site_pxe_edge_standing,
+  wet_acceptance_binds_mt_collins_now,
+  wet_acceptance_subject,
+  WetAcceptanceSubjectUnbound,
+  MtJadeArrivingBarebones,
+  MtCollinsAfterCdBoot,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -396,5 +401,19 @@ test fn neither_trust_input_is_unestablished() -> Bool {
     BootstrapTrustUnestablished => true
     ProductionTrustedBootstrap => false
     ControlledNetworkBootstrap => false
+  }
+}
+
+test fn wet_acceptance_subject_is_unbound_and_not_mt_collins_now() -> Bool {
+  match wet_acceptance_subject() {
+    WetAcceptanceSubjectUnbound { proposed_first: first, fallback: fallback } =>
+      match first {
+        MtJadeArrivingBarebones =>
+          match fallback {
+            MtCollinsAfterCdBoot => wet_acceptance_binds_mt_collins_now(standing: wet_acceptance_subject()) == false
+            MtJadeArrivingBarebones => false
+          }
+        MtCollinsAfterCdBoot => false
+      }
   }
 }
