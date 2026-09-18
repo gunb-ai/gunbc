@@ -4,6 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, Timestamp, EpochSecs }
 import std.nat { Nat }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.algebra { trim }
+import v2.std.algebra { filter }
 import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { Second, second, second_count }
@@ -554,6 +555,17 @@ fn harness_observe_engine_at(endpoint: ServingRouteEndpoint, at: EpochSecs) -> H
       progress: harness_progress_sample(body: read.body, at: at),
     }
   }
+}
+
+fn line_is_sudo_password_prompt(line: String) -> Bool {
+  match first(split(s: trim(s: line), delimiter: "[sudo] password for")) {
+    Absent => false
+    Present { value: prefix } => prefix == ""
+  }
+}
+
+fn text_without_sudo_prompt(body: String) -> String {
+  join(filter(xs: split(s: body, delimiter: "\n"), predicate: fn(line) { !line_is_sudo_password_prompt(line: line) }), "\n")
 }
 
 fn text_labeled_field(body: String, label: String) -> String? {

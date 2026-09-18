@@ -16,7 +16,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.vllm_endpoint_process_launch {
   vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
-import gunbc.harness.harness_backend { harness_queue_from_body }
+import extdeps.vllm.metrics { InterTokenLatencySeconds }
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, RandomDatasetSpec, OpenaiChat, SendAllImmediately, PoissonProcess,
   vllm_bench_serve_request, vllm_bench_serve_arguments, vllm_bench_serve_uses_poisson_idle_gaps,
@@ -35,7 +35,9 @@ import gunbc.spark.serving_load_probe {
   TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, generation_token_delta, generation_token_delta_scoped,
   derive_rate_honest, serving_load_observation, ServingLoadObservation, tokens_per_observation_second,
   saturation_from_one_run, observation_rate_is_stored_separately,
-  foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread,
+  foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread, ForeignWorkContradiction,
+  ClientRateUnqualified, ClientRateQualified,
+  occupancy_from_body, histogram_delta, HistogramDeltaRead, HistogramDeltaUnread, HistogramCounterReset,
   CapacityClaimUnavailable,
   glm_native_holistic_protocol, holistic_protocol_is_session_shaped,
   glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
@@ -325,6 +327,7 @@ test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Boo
         match foreign_work_bound(generation: TokenDeltaRead { tokens: 200 }, client_output: ClientOutputTokensObserved { tokens: 128 }) {
           ForeignWorkBounded { engine_generation: g, client_output: c, surplus: s } => g == 200 && c == 128 && s == 72
           ForeignWorkUnread { because: _ } => false
+          ForeignWorkContradiction { engine_generation: _, client_output: _, because: _ } => false
         }
     RateUnreadable { because: _ } => false
     RateUndenominable { because: _ } => false
@@ -361,6 +364,48 @@ test fn one_run_does_not_decide_saturation() -> Bool {
     && match obs.capacity_claim {
       CapacityClaimUnavailable { because: _ } => true
     }
+    && match obs.qualified_rate {
+      ClientRateUnqualified { because: _ } => true
+      ClientRateQualified { tokens: _, scrape_millis: _ } => false
+    }
+}
+
+test fn client_output_exceeding_engine_generation_is_a_contradiction() -> Bool {
+  match foreign_work_bound(generation: TokenDeltaRead { tokens: 100 }, client_output: ClientOutputTokensObserved { tokens: 512 }) {
+    ForeignWorkContradiction { engine_generation: g, client_output: c, because: _ } => g == 100 && c == 512
+    ForeignWorkBounded { engine_generation: _, client_output: _, surplus: _ } => false
+    ForeignWorkUnread { because: _ } => false
+  }
+}
+
+test fn occupancy_reads_prompt_tokens_that_are_not_an_integer_lexeme() -> Bool {
+  match occupancy_from_body(body: fx_idle) {
+    Absent => false
+    Present { value: s } => s.running == 0 && s.prompt_tokens == 0
+  }
+}
+
+test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10.1234567", itl_count: "100.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "12.1234567", itl_count: "200.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  match histogram_delta(before_body: before, after_body: after, metric: InterTokenLatencySeconds) {
+    HistogramDeltaRead { sum_milli: ds, count: dc } => ds == 2000 && dc == 100
+    HistogramDeltaUnread { cause: _ } => false
+    HistogramCounterReset { cause: _ } => false
+  }
+}
+
+test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
+  let body = join(["[sudo] password for briansrls:\n", fx_bench_stdout], "")
+  match ledger_from_bench_stdout(body: body, offered: token_count_value(t: token_count(count: 4))) {
+    LedgerClosed { offered: o, completed: c, failed: f, failed_after_tokens: t } =>
+      o == 4 && c == 4 && f == 0 && t == 0
+        && match client_output_from_bench_stdout(body: body) {
+          ClientOutputTokensObserved { tokens: n } => n == 512
+          ClientOutputTokensUnread { cause: _ } => false
+        }
+    LedgerIncomplete { because: _ } => false
+  }
 }
 
 test fn the_holistic_protocol_does_not_corroborate_the_single_stream_bound() -> Bool {
