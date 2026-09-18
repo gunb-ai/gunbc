@@ -41,6 +41,7 @@ import gunbc.fleet_converge_plan {
   ApplyScopeMismatch,
   ApplyMemberSetMismatch,
   ApplyAllocationStorePrestateMismatch,
+  ApplyAwaitingCapability,
 }
 
 fn allocation_store_absent_fixture() -> Optional<AllocationStoreSubstratePrestate> {
@@ -260,6 +261,7 @@ fn allocation_store_changed_admission_is_located(
     ApplyScopeUndecodable { cause: _ } => false
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
+    ApplyAwaitingCapability { capability: _ } => false
   }
 }
 
