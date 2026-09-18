@@ -7,7 +7,7 @@ import extdeps.apple.app_attest {
   AttestationVerification, AttestationVerified, AttestationRefused,
   AttestationChainUntrusted, AttestationNonceMismatch, AttestationKeyIdMismatch,
   AttestationAppIdMismatch, AttestationEnvironmentUnexpected, AttestationUndecodable,
-  AttestationValidationCategoryAbsent, AttestationValidationCategoryRefused,
+  AttestationValidationCategoryAbsent, AttestationValidationCategoryRefused, AttestationBundleVersionRefused,
   AssertionVerification, AssertionVerified, AssertionRefused,
   AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionCounterNotIncreasing,
   app_attest_verify, app_attest_verify_under, app_attest_verify_assertion_of,
@@ -34,9 +34,10 @@ data genuine_prefix: AppIdPrefix = "6MURL8TA57" as AppIdPrefix
 data genuine_bundle_id: NonEmptyStr = "de.vincent-haupert.apple-appattest-poc"
 data captured_at: Int = 1611404013
 data development_categories: List<Int> = [2, 3]
+data distributed_versions: List<NonEmptyStr> = ["1.0"]
 
 fn genuine(client_data: NonEmptyStr, key_id: AttestKeyId, bundle_id: NonEmptyStr, environment: AppAttestEnvironment, now: Int) -> AttestationVerification {
-  app_attest_verify(prefix: genuine_prefix, bundle_id: bundle_id, environment: environment, admitted_categories: development_categories, attestation_b64: genuine_attestation, client_data: client_data, key_id: key_id, now_epoch: now)
+  app_attest_verify(prefix: genuine_prefix, bundle_id: bundle_id, environment: environment, admitted_categories: development_categories, admitted_bundle_versions: distributed_versions, attestation_b64: genuine_attestation, client_data: client_data, key_id: key_id, now_epoch: now)
 }
 
 test fn the_genuine_attestation_passes_steps_one_to_eight_and_stops_at_the_absent_category() -> Bool {
@@ -82,7 +83,7 @@ test fn the_genuine_attestation_is_refused_after_its_certificate_expires() -> Bo
 }
 
 test fn an_attestation_that_is_not_base64_is_undecodable() -> Bool {
-  match app_attest_verify(prefix: genuine_prefix, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, admitted_categories: development_categories, attestation_b64: "not base64!", client_data: genuine_client_data, key_id: genuine_key_id, now_epoch: captured_at) {
+  match app_attest_verify(prefix: genuine_prefix, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, admitted_categories: development_categories, admitted_bundle_versions: distributed_versions, attestation_b64: "not base64!", client_data: genuine_client_data, key_id: genuine_key_id, now_epoch: captured_at) {
     AttestationRefused { cause: AttestationUndecodable { cause: _ } } => true
     _ => false
   }
@@ -149,12 +150,12 @@ data test_root: AppAttestTrustAnchor = AppAttestTrustAnchor {
   root_pem: "-----BEGIN CERTIFICATE-----\nMIICHTCCAaKgAwIBAgIUXywxeFKcvzUHUeEZ8SPpDw2UeIMwCgYIKoZIzj0EAwMw\nPDElMCMGA1UEAwwcVGVzdCBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UE\nCgwKZ3VuYmMgdGVzdDAgFw0yNjA5MTgwNjU4MDBaGA8yMTI2MDgyNTA2NTgwMFow\nPDElMCMGA1UEAwwcVGVzdCBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UE\nCgwKZ3VuYmMgdGVzdDB2MBAGByqGSM49AgEGBSuBBAAiA2IABDozjM/UMa4nLWc+\n0H+GPsJbWH9D395PCEW3ghK99L1zcUDBwiD/7BeJUkRHf59mtZ9nSI8KrFfEsQlc\nW6S+0eqKJreCJrRCc+pI8NseKJCiEr/UJHGe2ZGUIl5bkbradqNjMGEwHQYDVR0O\nBBYEFBji7l7Z2FYJinAIYCMIu/EAAPDYMB8GA1UdIwQYMBaAFBji7l7Z2FYJinAI\nYCMIu/EAAPDYMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgIEMAoGCCqG\nSM49BAMDA2kAMGYCMQDBk1aptnKz0ZxMQaXMEyL7dvT3aUV0hmxVo/UrcFy8afJ2\nMlCGIRa39790MbEIcckCMQCtYHlG8LdR2byQVklL/YQvVNaqu8ko7gZGZAe9JSis\nphtXsgtFOWBbzM8iTHmRjuM=\n-----END CERTIFICATE-----\n",
 }
 
-fn forged_under(anchor: AppAttestTrustAnchor, admitted: List<Int>) -> AttestationVerification {
-  app_attest_verify_under(anchor: anchor, prefix: genuine_prefix, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, admitted_categories: admitted, attestation_b64: forged_attestation, client_data: "forged", key_id: forged_key_id, now_epoch: forged_now)
+fn forged_under(anchor: AppAttestTrustAnchor, admitted: List<Int>, versions: List<NonEmptyStr>) -> AttestationVerification {
+  app_attest_verify_under(anchor: anchor, prefix: genuine_prefix, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, admitted_categories: admitted, admitted_bundle_versions: versions, attestation_b64: forged_attestation, client_data: "forged", key_id: forged_key_id, now_epoch: forged_now)
 }
 
 test fn the_forged_chain_verifies_under_its_own_test_root() -> Bool {
-  match forged_under(anchor: test_root, admitted: development_categories) {
+  match forged_under(anchor: test_root, admitted: development_categories, versions: distributed_versions) {
     AttestationVerified { verified } =>
       verified.key_id == forged_key_id
         && verified.public_key_point_b64url as String == "BFIuggVA-y3RU_usJbYfvChlz-Mpq7yvbf0d60JkajVGfprBR8p3eq6QzcDEBZGY2BoW6a-aFMjRjmGipHdFPss"
@@ -166,15 +167,23 @@ test fn the_forged_chain_verifies_under_its_own_test_root() -> Bool {
 
 // Category 3 (development signing) presented to a policy that admits only App Store (4).
 test fn a_category_outside_the_admitted_set_is_refused() -> Bool {
-  match forged_under(anchor: test_root, admitted: [4]) {
+  match forged_under(anchor: test_root, admitted: [4], versions: distributed_versions) {
     AttestationRefused { cause: AttestationValidationCategoryRefused { category } } => category == 3
     _ => false
   }
 }
 
 test fn the_forged_chain_is_refused_under_the_pinned_apple_root() -> Bool {
-  match app_attest_verify(prefix: genuine_prefix, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, admitted_categories: development_categories, attestation_b64: forged_attestation, client_data: "forged", key_id: forged_key_id, now_epoch: forged_now) {
+  match app_attest_verify(prefix: genuine_prefix, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, admitted_categories: development_categories, admitted_bundle_versions: distributed_versions, attestation_b64: forged_attestation, client_data: "forged", key_id: forged_key_id, now_epoch: forged_now) {
     AttestationRefused { cause: AttestationChainUntrusted { detail } } => detail.contains("Apple App Attestation Root CA")
+    _ => false
+  }
+}
+
+// Step 10: the attested app reports version "1.0", and the caller distributes only "2.0".
+test fn a_bundle_version_outside_the_distributed_set_is_refused() -> Bool {
+  match forged_under(anchor: test_root, admitted: development_categories, versions: ["2.0"]) {
+    AttestationRefused { cause: AttestationBundleVersionRefused { version } } => version as String == "1.0"
     _ => false
   }
 }

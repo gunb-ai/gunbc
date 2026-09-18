@@ -1,6 +1,6 @@
 module extdeps.apple.app_attest
 
-import std.types { NonEmptyStr, String, Int, List }
+import std.types { NonEmptyStr, String, Int, List, EpochSecs }
 import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -66,6 +66,7 @@ type AttestationRefusal
   | AttestationValidationCategoryRefused { category: Int }
   | AttestationValidationCategoryAbsent
   | AttestationBundleVersionAbsent
+  | AttestationBundleVersionRefused { version: NonEmptyStr }
   | AttestationUndecodable { cause: String }
 
 data apple_app_attest_root_ca_note: NonEmptyStr = "The trust anchor is Apple's App Attestation Root CA, published at www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem. It is pinned by the verifier's configuration, never taken from the attestation's own x5c."
@@ -194,17 +195,19 @@ type AssertionImplementationAnswer
 //
 // WHICH LAUNCH CATEGORIES ARE ADMITTED IS THE CALLER'S POLICY (Apple's table: 2 TestFlight, 3
 // development signing, 4 App Store, 5 enterprise / ad-hoc, 6 Developer ID, 0 and 7-10 not
-// appropriate), so it arrives as a parameter. The implementation reports the category; this module
-// judges it.
+// appropriate), so it arrives as a parameter. So does step 10's: Apple asks the server to verify
+// apple_bundle_version_01 against the distributed app version, and which versions are distributed
+// is the caller's fact. The implementation reports both values; this module judges them.
 fn app_attest_verify(
   prefix: AppIdPrefix,
   bundle_id: NonEmptyStr,
   environment: AppAttestEnvironment,
   admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
   attestation_b64: NonEmptyStr,
   client_data: NonEmptyStr,
   key_id: AttestKeyId,
-  now_epoch: Int,
+  now_epoch: EpochSecs,
 ) -> AttestationVerification {
   app_attest_verify_under(
     anchor: apple_app_attestation_root_ca,
@@ -212,6 +215,7 @@ fn app_attest_verify(
     bundle_id: bundle_id,
     environment: environment,
     admitted_categories: admitted_categories,
+    admitted_bundle_versions: admitted_bundle_versions,
     attestation_b64: attestation_b64,
     client_data: client_data,
     key_id: key_id,
@@ -228,10 +232,11 @@ fn app_attest_verify_under(
   bundle_id: NonEmptyStr,
   environment: AppAttestEnvironment,
   admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
   attestation_b64: NonEmptyStr,
   client_data: NonEmptyStr,
   key_id: AttestKeyId,
-  now_epoch: Int,
+  now_epoch: EpochSecs,
 ) -> AttestationVerification {
   let app_id = app_attest_app_id(prefix: prefix, bundle_id: bundle_id)
   app_attest_attestation_of(
@@ -242,12 +247,13 @@ fn app_attest_verify_under(
       app_id as String,
       app_attest_is_production(e: environment),
       anchor.root_pem as String,
-      now_epoch,
+      now_epoch as Int,
     ),
     key_id: key_id,
     environment: environment,
     client_data: client_data,
     admitted_categories: admitted_categories,
+    admitted_bundle_versions: admitted_bundle_versions,
   )
 }
 
@@ -262,23 +268,49 @@ fn app_attest_category_admitted(admitted: List<Int>, category: Int) -> Bool {
   fold(admitted, init: false, f: (acc, c) => acc || c == category)
 }
 
+fn app_attest_bundle_version_admitted(admitted: List<NonEmptyStr>, version: NonEmptyStr) -> Bool {
+  fold(admitted, init: false, f: (acc, v) => acc || v == version)
+}
+
+// Steps 9 and 10 judged in Apple's order, both against the caller's policy.
+fn app_attest_policy_refusal(
+  admitted_categories: List<Int>,
+  category: Int,
+  admitted_bundle_versions: List<NonEmptyStr>,
+  bundle_version: NonEmptyStr,
+) -> AttestationRefusal? {
+  if !app_attest_category_admitted(admitted: admitted_categories, category: category) {
+    Present { value: AttestationValidationCategoryRefused { category: category } }
+  } else if !app_attest_bundle_version_admitted(admitted: admitted_bundle_versions, version: bundle_version) {
+    Present { value: AttestationBundleVersionRefused { version: bundle_version } }
+  } else {
+    none
+  }
+}
+
 fn app_attest_attestation_of(
   answer: AttestationImplementationAnswer,
   key_id: AttestKeyId,
   environment: AppAttestEnvironment,
   client_data: NonEmptyStr,
   admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
 ) -> AttestationVerification {
   match answer {
     AttestationImplementationRefused { cause } => AttestationRefused { cause: cause }
-    AttestationImplementationVerified { public_key_point_b64url, validation_category, receipt_b64, bundle_version: _ } =>
+    AttestationImplementationVerified { public_key_point_b64url, validation_category, receipt_b64, bundle_version } =>
       attestation_verification_from_implementation(
         key_id: key_id,
         public_key_point_b64url: public_key_point_b64url,
         receipt_b64: receipt_b64,
         environment: environment,
         client_data: client_data,
-        refusal: if app_attest_category_admitted(admitted: admitted_categories, category: validation_category) { none } else { Present { value: AttestationValidationCategoryRefused { category: validation_category } } },
+        refusal: app_attest_policy_refusal(
+          admitted_categories: admitted_categories,
+          category: validation_category,
+          admitted_bundle_versions: admitted_bundle_versions,
+          bundle_version: bundle_version,
+        ),
       )
   }
 }
