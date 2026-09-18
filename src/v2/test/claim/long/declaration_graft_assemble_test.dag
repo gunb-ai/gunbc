@@ -18,7 +18,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Named, Node, Positional, node_subtree_nodes }
-import v2.std.text { String }
+import v2.std.text { String, starts_with }
 import v2.std.compilers.lexing { symbol_lexeme }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -70,6 +70,10 @@ fn declaration_graft_assemble_reason(src: String) -> String {
     Accepted { value: _, diagnostics: _ } => "ACCEPTED"
     Rejected { diagnostics: d } => symbol_lexeme(sym: d.head.reason)
   }
+}
+
+fn declaration_graft_reason_prefix(src: String, prefix: String) -> Bool {
+  starts_with(s: declaration_graft_assemble_reason(src: src), prefix: prefix)
 }
 
 fn declaration_graft_label_present(root: Node, lexeme: String) -> Bool {
@@ -168,6 +172,38 @@ test fn declaration_graft_record_type_only_reason_is_dual_position() -> Bool {
 
 test fn declaration_graft_record_type_only_reason_is_qn_invalid() -> Bool {
   declaration_graft_assemble_reason(src: src_g_type_only) == "qualified_name_structure_invalid"
+}
+
+test fn declaration_graft_record_reason_prefix_resolve() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "resolve")
+}
+
+test fn declaration_graft_record_reason_prefix_namespace() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "namespace")
+}
+
+test fn declaration_graft_record_reason_prefix_type() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "type")
+}
+
+test fn declaration_graft_record_reason_prefix_well() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "well")
+}
+
+test fn declaration_graft_record_reason_prefix_parse() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "parse")
+}
+
+test fn declaration_graft_record_reason_prefix_body() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "body")
+}
+
+test fn declaration_graft_record_reason_prefix_lower() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "lower")
+}
+
+test fn declaration_graft_record_reason_prefix_graft() -> Bool {
+  declaration_graft_reason_prefix(src: src_g_type_only, prefix: "graft")
 }
 
 test fn declaration_graft_record_type_only_box_and_n_are_named() -> Bool {
