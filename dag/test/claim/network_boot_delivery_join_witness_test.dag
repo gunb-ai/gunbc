@@ -67,6 +67,8 @@ import gunbc.network_boot_delivery {
   ObservedClientBootModeReceipt,
   ObservedDhcpPxeClient,
   ProductionTrustedBootstrap,
+  BootstrapTrustObservation,
+  BootstrapTrustStanding,
   SignedBootManifestAbsent,
   SignedBootManifestIdentified,
   SignedBootManifestVerificationRefused,
@@ -198,6 +200,26 @@ fn control_ok() -> BootControlObserved {
   }
 }
 
+fn trust_obs() -> BootstrapTrustObservation {
+  BootstrapTrustObservation { observation: obs, observed_at: 1788000000000 }
+}
+
+fn production_trust() -> BootstrapTrustStanding {
+  bootstrap_trust_standing(
+    firmware_https: Present { value: trust_obs() },
+    secure_boot_chainloader: Absent,
+    isolated_onboarding_network: Absent,
+  )
+}
+
+fn controlled_trust() -> BootstrapTrustStanding {
+  bootstrap_trust_standing(
+    firmware_https: Absent,
+    secure_boot_chainloader: Absent,
+    isolated_onboarding_network: Present { value: trust_obs() },
+  )
+}
+
 fn manifest_ok() -> SignedBootManifestStanding {
   SignedBootManifestVerified {
     identity: SignedBootManifestIdentity {
@@ -226,7 +248,7 @@ fn complete_inputs() -> NetworkBootJoinInputs {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -243,8 +265,17 @@ test fn four_receipts_join_to_established() -> Bool {
       && (e.fleet.signing_key_identity as String) == "boot-manifest-key-0"
       && (e.manifest.kernel_cmdline as String) == "console=ttyAMA0"
       && match e.trust {
-        ProductionTrustedBootstrap => true
-        ControlledNetworkBootstrap => false
+        ProductionTrustedBootstrap { firmware_https: h, secure_boot_chainloader: sb } =>
+          match h {
+            Present { value: https } =>
+              (https.observation.decl_name as String) == (obs.decl_name as String)
+              && match sb {
+                Absent => true
+                Present { value: _ } => false
+              }
+            Absent => false
+          }
+        ControlledNetworkBootstrap { evidence: _ } => false
         BootstrapTrustUnestablished => false
       }
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -264,7 +295,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: FleetBootServiceUnestablished,
     site: site_ok(),
     client: client_ok(),
@@ -290,7 +321,7 @@ test fn missing_site_is_not_missing_fleet_serving() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeUnestablished,
     client: client_ok(),
@@ -360,7 +391,7 @@ test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site,
     client: client_ok(),
@@ -425,7 +456,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -457,7 +488,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -500,7 +531,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -527,7 +558,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -573,7 +604,7 @@ test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -605,7 +636,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -651,7 +682,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: ClientBootModeUnobserved,
@@ -677,7 +708,7 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: ClientBootModeObserved {
@@ -711,23 +742,64 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
 }
 
 test fn controlled_network_is_not_production_trust() -> Bool {
-  match bootstrap_trust_standing(firmware_https_or_secure_boot: false, isolated_onboarding_network: true) {
-    ControlledNetworkBootstrap =>
-      match bootstrap_trust_standing(firmware_https_or_secure_boot: true, isolated_onboarding_network: true) {
-        ProductionTrustedBootstrap => true
-        ControlledNetworkBootstrap => false
+  match controlled_trust() {
+    ControlledNetworkBootstrap { evidence: e } =>
+      (e.observation.decl_name as String) == (obs.decl_name as String)
+      && match production_trust() {
+        ProductionTrustedBootstrap { firmware_https: h, secure_boot_chainloader: _ } =>
+          match h {
+            Present { value: _ } => true
+            Absent => false
+          }
+        ControlledNetworkBootstrap { evidence: _ } => false
         BootstrapTrustUnestablished => false
       }
-    ProductionTrustedBootstrap => false
+    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => false
     BootstrapTrustUnestablished => false
   }
 }
 
 test fn neither_trust_input_is_unestablished() -> Bool {
-  match bootstrap_trust_standing(firmware_https_or_secure_boot: false, isolated_onboarding_network: false) {
+  match bootstrap_trust_standing(
+    firmware_https: Absent,
+    secure_boot_chainloader: Absent,
+    isolated_onboarding_network: Absent,
+  ) {
     BootstrapTrustUnestablished => true
-    ProductionTrustedBootstrap => false
-    ControlledNetworkBootstrap => false
+    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => false
+    ControlledNetworkBootstrap { evidence: _ } => false
+  }
+}
+
+test fn firmware_https_is_production_even_on_isolated_network() -> Bool {
+  match bootstrap_trust_standing(
+    firmware_https: Present { value: trust_obs() },
+    secure_boot_chainloader: Absent,
+    isolated_onboarding_network: Present { value: trust_obs() },
+  ) {
+    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => true
+    ControlledNetworkBootstrap { evidence: _ } => false
+    BootstrapTrustUnestablished => false
+  }
+}
+
+test fn secure_boot_ground_is_not_https_ground() -> Bool {
+  match bootstrap_trust_standing(
+    firmware_https: Absent,
+    secure_boot_chainloader: Present { value: trust_obs() },
+    isolated_onboarding_network: Absent,
+  ) {
+    ProductionTrustedBootstrap { firmware_https: h, secure_boot_chainloader: sb } =>
+      match h {
+        Absent =>
+          match sb {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Present { value: _ } => false
+      }
+    ControlledNetworkBootstrap { evidence: _ } => false
+    BootstrapTrustUnestablished => false
   }
 }
 
@@ -736,7 +808,7 @@ test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
@@ -779,7 +851,7 @@ test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
@@ -822,7 +894,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
@@ -884,7 +956,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
@@ -936,7 +1008,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -1008,7 +1080,7 @@ test fn controlled_network_trust_can_establish() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ControlledNetworkBootstrap,
+    trust: controlled_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -1018,8 +1090,10 @@ test fn controlled_network_trust_can_establish() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryEstablished { evidence: e } =>
       match e.trust {
-        ControlledNetworkBootstrap => (e.manifest.callback_identity as String) == "intake-callback-0"
-        ProductionTrustedBootstrap => false
+        ControlledNetworkBootstrap { evidence: ev } =>
+          (ev.observation.decl_name as String) == (obs.decl_name as String)
+          && (e.manifest.callback_identity as String) == "intake-callback-0"
+        ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => false
         BootstrapTrustUnestablished => false
       }
     NetworkBootDeliveryUnestablished { missing: _ } => false
@@ -1039,7 +1113,7 @@ test fn foreign_site_edge_does_not_join() -> Bool {
     target: target,
     expected_site: foreign_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),
@@ -1072,7 +1146,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client,
@@ -1105,7 +1179,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet,
     site: site_ok(),
     client: client_ok(),
@@ -1132,7 +1206,7 @@ test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool {
     target: target,
     expected_site: onboarding_site,
     artifact_digest: artifact,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
     fleet: fleet_ok(),
     site: site_ok(),
     client: client_ok(),

@@ -1,6 +1,6 @@
 module gunbc.network_boot_delivery
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, String, Present, Absent }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
@@ -294,24 +294,52 @@ type SignedBootManifestStanding
     }
   | SignedBootManifestAbsent
 
+type BootstrapTrustObservation {
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
 type BootstrapTrustStanding
-  = ProductionTrustedBootstrap
-  | ControlledNetworkBootstrap
+  = ProductionTrustedBootstrap {
+      firmware_https: BootstrapTrustObservation?
+      secure_boot_chainloader: BootstrapTrustObservation?
+    }
+  | ControlledNetworkBootstrap { evidence: BootstrapTrustObservation }
   | BootstrapTrustUnestablished
 
-// ProductionTrustedBootstrap and ControlledNetworkBootstrap are never the same
-// standing. The join consumes this fold: Unestablished cannot mint
-// NetworkBootDeliveryEstablished. 0C discovery refusals stay on
-// SiteEdgeClientAdmission; an unbound site is NetworkBootDeliverySiteUnestablished,
-// not missing fleet serving.
-fn bootstrap_trust_standing(firmware_https_or_secure_boot: Bool, isolated_onboarding_network: Bool) -> BootstrapTrustStanding {
-  if firmware_https_or_secure_boot {
-    ProductionTrustedBootstrap
+fn production_trust_ground_observed(o: BootstrapTrustObservation?) -> Bool {
+  match o {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// HTTPS firmware trust and Secure-Boot-verified chainloader are independently
+// observed. Production is minted when at least one ground is present; the
+// established receipt keeps both observations so a later reader can tell which
+// held. Isolated onboarding is Controlled only when neither firmware ground is
+// present — the two production arms are never the same standing as Controlled.
+fn bootstrap_trust_standing(
+  firmware_https: BootstrapTrustObservation?,
+  secure_boot_chainloader: BootstrapTrustObservation?,
+  isolated_onboarding_network: BootstrapTrustObservation?,
+) -> BootstrapTrustStanding {
+  if production_trust_ground_observed(o: firmware_https) {
+    ProductionTrustedBootstrap {
+      firmware_https: firmware_https,
+      secure_boot_chainloader: secure_boot_chainloader,
+    }
   } else {
-    if isolated_onboarding_network {
-      ControlledNetworkBootstrap
+    if production_trust_ground_observed(o: secure_boot_chainloader) {
+      ProductionTrustedBootstrap {
+        firmware_https: firmware_https,
+        secure_boot_chainloader: secure_boot_chainloader,
+      }
     } else {
-      BootstrapTrustUnestablished
+      match isolated_onboarding_network {
+        Present { value: e } => ControlledNetworkBootstrap { evidence: e }
+        Absent => BootstrapTrustUnestablished
+      }
     }
   }
 }
@@ -433,10 +461,10 @@ fn join_verified_ticket(
 ) -> NetworkBootDeliveryStanding {
   match inputs.trust {
     BootstrapTrustUnestablished => NetworkBootDeliveryTrustUnestablished
-    ProductionTrustedBootstrap => join_verified_ticket_after_trust(
+    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => join_verified_ticket_after_trust(
       inputs: inputs, fleet: fleet, site: site, client: client, control: control, id: id, manifest_obs: manifest_obs, manifest_at: manifest_at,
     )
-    ControlledNetworkBootstrap => join_verified_ticket_after_trust(
+    ControlledNetworkBootstrap { evidence: _ } => join_verified_ticket_after_trust(
       inputs: inputs, fleet: fleet, site: site, client: client, control: control, id: id, manifest_obs: manifest_obs, manifest_at: manifest_at,
     )
   }
