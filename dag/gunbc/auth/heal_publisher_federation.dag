@@ -101,12 +101,24 @@ data heal_publisher_wif_event_name: String = "workflow_run"
 
 data heal_publisher_wif_runner_environment: String = "github-hosted"
 
+// job_workflow_ref IS DELIBERATELY NOT PINNED, AND ITS EARLIER PRESENCE WAS A DEFECT THAT WOULD HAVE
+// REFUSED THE VERY JOB THIS ADMITS. GitHub documents that claim as "For jobs using a reusable
+// workflow, the ref path to the reusable workflow" -- heal-publish declares an ordinary job directly,
+// so the claim is ABSENT from its token and a condition requiring it can never be satisfied.
+//
+// THE READBACK THAT "VERIFIED" THIS DID NOT CATCH IT, which is the transferable part: reading the
+// provider back confirms what condition is STORED, not that the condition ADMITS anything. A stored
+// condition and an admitting condition are different facts, and only a real token exchange
+// distinguishes them. The wet vertical is what establishes this route, not the provisioning readback.
+//
+// WHAT STILL PINS THE JOB: repository and owner by numeric id, workflow_ref (the workflow file AND
+// the ref it runs from), event_name, and a GitHub-hosted runner. A pull request cannot cause a
+// workflow_run event on refs/heads/main from this file.
 fn heal_publisher_wif_attribute_condition() -> String {
   join([
     "assertion.repository_id == '", to_string(gunbc_repository_numeric_identity.repository_id), "'",
     " && assertion.repository_owner_id == '", to_string(gunbc_repository_numeric_identity.owner_id), "'",
     " && assertion.workflow_ref == '", heal_publisher_workflow_ref(), "'",
-    " && assertion.job_workflow_ref == '", heal_publisher_workflow_ref(), "'",
     " && assertion.ref == 'refs/heads/", gunbc_default_branch_name, "'",
     " && assertion.event_name == '", heal_publisher_wif_event_name, "'",
     " && assertion.runner_environment == '", heal_publisher_wif_runner_environment, "'"

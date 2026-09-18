@@ -241,11 +241,12 @@ type DriftPopulation
 // lost convenience rather than a lowered rung. The predicate is imported from extdeps.github.effect,
 // which owns what a workflow path IS, so the producer and the publisher cannot disagree about the
 // population.
+fn proposable_paths_of(paths: List<String>) -> List<String> {
+  filter(paths, p => !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
+}
+
 fn candidate_proposable_paths() -> List<String> {
-  filter(
-    committed_generated_artifact_paths(),
-    p => !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr })
-  )
+  proposable_paths_of(paths: committed_generated_artifact_paths())
 }
 
 fn observe_drift_population(paths: List<String>) -> DriftPopulation {

@@ -166,27 +166,36 @@ test fn witness_an_unreadable_base_refuses_rather_than_adding() -> Bool {
 
 // ── which paths the candidate is willing to propose ─────────────────────────────────────────
 
-// THE PRODUCER PROPOSES NO PATH THE PUBLISHER STRUCTURALLY REFUSES. publisher_path_admission rejects
-// a workflow projection with PathRequiresAuthorCommit, and that refusal rejects the WHOLE candidate,
-// so one drifted workflow beside five ordinary artifacts would publish nothing. One edit to
-// gunbc.ci_spec regenerates witnesses.yml and docs/design-rung-drops.md together, so that shape is
-// ordinary rather than exotic.
-//
-// THE CLAIM ASKS ONLY THE HALF THAT CAN BE FALSE. An earlier revision ran the full
-// publisher_path_admission over every proposable path, passing the registry as the admitted set --
-// 51,169 eval steps and 102ms, quadratic, and half of it TAUTOLOGICAL: candidate_proposable_paths is
-// a filter OF that registry, so "every proposable path is admitted" cannot fail. What can fail is the
-// workflow exclusion, and that is linear. The tautological half was not just expensive, it was
-// noise -- a claim that cannot go red for one of the two reasons it appears to check.
-test fn witness_no_proposable_path_is_a_workflow_projection() -> Bool {
-  all(candidate_proposable_paths(), p =>
-    !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
+// THE UNIVERSAL PROPERTY IS WITNESSED OVER SUPPLIED PATHS, because asserting it over the real
+// registry costs 44,281 eval steps and 103ms -- it folds is_workflow_projection_path over every
+// registered artifact at roughly a thousand steps each -- and the required floor REFUSED it at
+// enrolment against the 302ms margin. The property itself is what matters and it does not need the
+// real list to be established: given a list containing a workflow projection and an ordinary
+// artifact, the filter must drop the former and keep the latter.
+test fn witness_the_filter_drops_workflow_paths_and_keeps_others() -> Bool {
+  let supplied = [".github/workflows/heal.yml", "DESIGN.md", ".github/workflows/witnesses.yml", "ROADMAP.md"]
+  let kept = proposable_paths_of(paths: supplied)
+  count(kept) == 2
+    && all(kept, p => !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
+    && any(kept, p => p == "DESIGN.md")
+    && any(kept, p => p == "ROADMAP.md")
 }
 
-// THE DISCRIMINATOR. If the registry carried no workflow projection at all, the claim above would
-// pass on an unfiltered list and establish nothing -- so the filter must actually remove something.
-test fn witness_the_filter_removes_a_path_the_registry_carries() -> Bool {
-  count(candidate_proposable_paths()) < count(committed_generated_artifact_paths())
-    && any(committed_generated_artifact_paths(), p =>
-         is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
-}
+// NO CLAIM HERE TOUCHES THE REAL REGISTRY, AND THE REASON IS MEASURED RATHER THAN ASSUMED.
+// committed_generated_artifact_paths() costs ~43,000 eval steps and ~119ms to produce AT ALL -- the
+// cost is the registry fold itself, not the per-path predicate, so `any` short-circuiting on the
+// first match does not help and neither does any other formulation. The required floor refused a
+// 44,281-step sibling of exactly this shape at the 302ms enrolment margin; shipping a 43,066-step
+// one would repeat it.
+//
+// TWO EARLIER READINGS WERE WRONG AND ARE RECORDED SO THE NEXT AUTHOR DOES NOT REDERIVE THEM. A
+// version of this claim once measured 3,232 steps -- borrowed, not earned: a more expensive sibling
+// had already computed the same fold and cross-claim sharing reused it, so deleting the sibling made
+// the "cheap" claim cost 44,097. And the cost was attributed to is_workflow_projection_path at
+// roughly a thousand steps per path, which the short-circuit experiment falsified.
+//
+// WHAT IS LOST IS LESS THAN IT LOOKS. The claim above establishes what the filter DOES, and
+// gunbc.heal_candidate calls that same function on the real registry. If the registry happened to
+// carry no workflow projection the filter would be a no-op and the property would hold vacuously,
+// which is the harmless direction. The direction that matters -- a workflow path reaching the
+// candidate and refusing the whole publication -- is exactly what the supplied-path claim forbids.
