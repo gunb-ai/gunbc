@@ -10,6 +10,7 @@ import extdeps.crypto.mac {
   HmacSha256,
   MacVerification,
   MacVerified,
+  VerifiedMessage,
   MacSigning,
   MacSigned,
   MacKeyMaterialNotHex,
@@ -107,6 +108,8 @@ type BootManifestRefusal
   | ManifestAttemptReplayed { attempt_id: IntakeAttemptId, nonce: NonEmptyStr }
   | ManifestDigestDisagrees { field: NonEmptyStr }
   | ManifestSigningKeyDisagrees { claimed: NonEmptyStr, pinned: MacKeyId }
+  | ManifestVerifiedKeyDisagrees { verified: MacKeyId, pinned: MacKeyId }
+  | ManifestSuiteUnexpected { expected: MacSuite, verified_under: MacSuite }
   | ManifestTrustUnestablished
 
 type BootManifestVerification
@@ -231,9 +234,33 @@ fn verify_signed_boot_manifest_under_trust(
           },
         }
       } else {
-        verify_authenticated_boot_manifest(claims: ticket.claims, expectation: expectation)
+        join_verified_mac(ticket: ticket, expectation: expectation, verified: v)
       }
     _ => BootManifestRefused { cause: ManifestMacRefused { verification: mac_result } }
+  }
+}
+
+fn join_verified_mac(
+  ticket: SignedBootManifestTicket,
+  expectation: BootManifestExpectation,
+  verified: VerifiedMessage,
+) -> BootManifestVerification {
+  if verified.suite != boot_manifest_mac_suite {
+    BootManifestRefused {
+      cause: ManifestSuiteUnexpected {
+        expected: boot_manifest_mac_suite,
+        verified_under: verified.suite,
+      },
+    }
+  } else if verified.key_id != expectation.trust.signing_key_id {
+    BootManifestRefused {
+      cause: ManifestVerifiedKeyDisagrees {
+        verified: verified.key_id,
+        pinned: expectation.trust.signing_key_id,
+      },
+    }
+  } else {
+    verify_authenticated_boot_manifest(claims: ticket.claims, expectation: expectation)
   }
 }
 
@@ -317,13 +344,5 @@ fn discovery_hint_is_not_identity(hint: BootDiscoveryHint, unit: UnitKey) -> Boo
   match hint {
     DhcpFilenameHint { filename: f } => f as String != unit as String
     PresignedUrlAvailabilityFence { uri: u } => u.locator != unit as String
-  }
-}
-
-fn controlled_network_is_not_production_trust(standing: BootstrapTrustStanding) -> Bool {
-  match standing {
-    ControlledNetworkBootstrap => true
-    ProductionTrustedBootstrap => false
-    BootstrapTrustUnestablished => false
   }
 }
