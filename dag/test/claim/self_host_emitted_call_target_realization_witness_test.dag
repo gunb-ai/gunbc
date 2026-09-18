@@ -698,15 +698,30 @@ test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
 // the same predicate and realizes the call against that binding. So the row flips from the refusal to
 // the realized arm's positive control, which its note recorded as not authorable until now, and it
 // still discriminates: before the repair this exact source emitted the refusal this row excludes.
-// The refusal it used to pin has no source-authorable input left -- a service operation's receiver is
-// always the service's own name, and both the qualified and the bare path now stamp it -- which
-// v1.compiler.emit_rust rust_unrealized_service_op_refusal records.
+// The refusal it used to pin keeps a source-authorable input, and the next row enrolls it.
 test fn w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.service_op_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String { let read = Filesystem.Read(path: path)\n read.content }\n",
     "src/test_claim_service_op_probe.rs",
     ["pub async fn probe(", "filesystem: &Filesystem", "filesystem.read(path.clone()).await?"],
     ["unrealized host seam"]
+  )
+}
+
+// THE REFUSAL ARM'S DISCRIMINATING RED, still authorable and so still enrolled (DESIGN 4b). The stamp
+// follows the service's NAME: a bare `Filesystem` is its registered root local and is stamped, but
+// `let fs = Filesystem` copies the nominal service TYPE onto a different name, and `fs.Read(...)`
+// then carries service method semantics (read from the receiver's type) through a receiver that is
+// an ordinary local. Derived demand does not see that call, so the fn is judged service-free and the
+// method-call arm, asking the same predicate as the signature, declines to realize it and emits the
+// refusal body -- a loud, located refusal, never an unbound `.await?`. The row asserts exactly that,
+// so an emitter that realized the call against a binding the signature never made would turn it red.
+test fn w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.service_alias_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String {\n  let fs = Filesystem\n  let read = fs.Read(path: path)\n  read.content\n}\n",
+    "src/test_claim_service_alias_probe.rs",
+    ["unrealized host seam: service op Filesystem.Read"],
+    [".await?"]
   )
 }
 
