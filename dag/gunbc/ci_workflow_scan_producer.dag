@@ -3,7 +3,7 @@ module gunbc.ci_workflow_scan_producer
 import std.types { NonEmptyStr, String, Int, Bool, List, Secret }
 import std.nat { Nat, nat_range_inclusive }
 import std.resources { Network }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import std.content_hash { Fnv1a64Structural }
 import extdeps.github.code_search {
   CodeSearchPage,
   CodeSearchHit,
@@ -22,6 +22,8 @@ import gunbc.github_observation_record {
   GithubObservation,
   GithubObservationRequest,
   CodeSearchPageRequest,
+  ObservationDigestStanding,
+  digest_unobservable,
   ObservationCompleteness,
   ObservationComplete,
   ObservationTruncatedUpstream,
@@ -186,7 +188,7 @@ fn scan_observation(
     request: CodeSearchPageRequest { query: query, per_page: per_page, page: page },
     observed_at: observed_at,
     api_version: api_version,
-    body_digest: content_hash_atom(value: query),
+    body_digest: digest_unobservable(),
     completeness: completeness,
     budget: budget_unobservable(),
   )
@@ -291,7 +293,7 @@ fn scan_partition(
   per_page: Int,
   observed_at: NonEmptyStr,
   api_version: NonEmptyStr,
-) -> ScanReceipt uses net: Network {
+) -> ScanOutcome uses net: Network {
   let bound = deepest_retrievable_page(per_page: per_page)
   let walked = fold(
     nat_range_inclusive(1, bound as Nat),
@@ -308,30 +310,50 @@ fn scan_partition(
       )
     },
   )
-  ScanReceipt {
-    query: query,
-    per_page: per_page,
-    page_bound: bound,
-    pages_read: walked.pages_read,
-    hits_read: count(walked.hits),
-    enumerability: partition_enumerability(
-      total_count_seen: walked.total_count_seen,
+  scan_outcome(
+    receipt: ScanReceipt {
+      query: query,
+      per_page: per_page,
+      page_bound: bound,
       pages_read: walked.pages_read,
-    ),
-    stop: walk_stop_or_bound(state: walked),
-    records: walked.records,
+      hits_read: count(walked.hits),
+      enumerability: partition_enumerability(
+        total_count_seen: walked.total_count_seen,
+        pages_read: walked.pages_read,
+      ),
+      stop: walk_stop_or_bound(state: walked),
+      records: walked.records,
+    },
+    hits: walked.hits,
+  )
+}
+
+// THE HITS AND THE STANDING TRAVEL AS ONE VALUE, AND AN EARLIER REVISION GOT THIS EXACTLY BACKWARDS.
+// It kept the hits off the receipt and offered scan_hits_if_declared_population(receipt, hits) to
+// gate them -- reasoning that a reader handed a bare list cannot see the standing, which is a real
+// concern and the right one. But scan_partition returned the receipt ALONE and dropped walked.hits,
+// so no caller could obtain the list the gate wanted, and the one function that existed to hand out
+// a population was uninvokable: a wall nothing could reach, guarding a product nothing could get.
+//
+// The concern is better served by construction than by a gate (DESIGN section 5). A coproduct makes
+// the standing the THING YOU MATCH ON to reach the hits, so a caller cannot hold the population
+// without having passed through the arm that says it is one -- and the failing arm still carries the
+// receipt, because a caller that got no population needs to know why.
+type ScanOutcome
+  = ScanDeclaredPopulation { receipt: ScanReceipt, hits: List<CodeSearchHit> }
+  | ScanNotAPopulation { receipt: ScanReceipt }
+
+fn scan_outcome(receipt: ScanReceipt, hits: List<CodeSearchHit>) -> ScanOutcome {
+  if scan_is_a_declared_population(receipt: receipt) {
+    ScanDeclaredPopulation { receipt: receipt, hits: hits }
+  } else {
+    ScanNotAPopulation { receipt: receipt }
   }
 }
 
-// THE HITS A CONSUMER MAY ACT ON, and it is deliberately not a field on the receipt. A reader
-// holding the receipt can see the standing and the hits together; a reader handed only a list
-// cannot, and this lane has already shipped one figure that was a lower bound presented as a total.
-// Reading hits out requires passing the receipt, so the standing is always in reach of the hand
-// that takes the population.
-fn scan_hits_if_declared_population(receipt: ScanReceipt, hits: List<CodeSearchHit>) -> List<CodeSearchHit> {
-  if scan_is_a_declared_population(receipt: receipt) {
-    hits
-  } else {
-    []
+fn scan_outcome_receipt(o: ScanOutcome) -> ScanReceipt {
+  match o {
+    ScanDeclaredPopulation { receipt: r, hits: _ } => r
+    ScanNotAPopulation { receipt: r } => r
   }
 }
