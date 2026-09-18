@@ -113,6 +113,17 @@ struct WireObject {
         guard try string(key) == admitted else { throw WireError.refused(at: path(key), cause: cause) }
     }
 
+    /// A sum: the "kind" member selects the arm, and the object then admits exactly THAT arm's
+    /// members — a member of another arm is refused (decode per arm, never per union).
+    static func sum(_ v: Any?, at: String, arms: [String: [String]]) throws -> (kind: String, object: WireObject) {
+        guard let o = v as? [String: Any] else { throw WireError.refused(at: at, cause: "not an object") }
+        let path = at == "$" ? "kind" : at + ".kind"
+        guard let k = o["kind"] else { throw WireError.refused(at: path, cause: "missing") }
+        guard let kind = k as? String, !kind.isEmpty else { throw WireError.refused(at: path, cause: "not a string") }
+        guard let allowed = arms[kind] else { throw WireError.refused(at: path, cause: "not an admitted kind") }
+        return (kind, try WireObject(v, at: at, allowed: ["kind"] + allowed))
+    }
+
     static func document(_ data: Data, allowed: [String]) throws -> WireObject {
         let v: Any
         do { v = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) }
@@ -194,18 +205,20 @@ enum WireDecode {
         try o.expect("encoding", SignatureBytes.encoding, "not the admitted encoding")
         return SignatureBytes(b64url: try o.string("b64url"))
     }
-    static func push(_ o: WireObject) throws -> ApnsRegistration {
-        try o.expect("kind", "apns", "not an admitted push provider")
+    /// Android's arm is modeled and encodable upstream; the app refuses it as the server does.
+    static func push(_ v: Any?, at: String) throws -> ApnsRegistration {
+        let (kind, o) = try WireObject.sum(v, at: at, arms: ["apns": ["environment", "topic", "token"]])
+        guard kind == "apns" else { throw WireError.refused(at: at + ".kind", cause: "not an admitted push provider") }
         let env = try o.string("environment")
         guard env == "production" || env == "development" else { throw WireError.refused(at: "push.environment", cause: "not an APNs environment") }
         return ApnsRegistration(environment: env, topic: try o.string("topic"), token: try o.string("token"))
     }
-    static func evidence(_ o: WireObject) throws -> IosAppAttestBoundDecisionKey {
-        try o.expect("kind", "ios_app_attest", "not an admitted evidence kind")
+    static func evidence(_ v: Any?, at: String) throws -> IosAppAttestBoundDecisionKey {
+        let (_, o) = try WireObject.sum(v, at: at, arms: ["ios_app_attest": ["attest_key_id", "attestation_b64"]])
         return IosAppAttestBoundDecisionKey(attest_key_id: try o.string("attest_key_id"), attestation_b64: try o.string("attestation_b64"))
     }
-    static func proof(_ o: WireObject) throws -> IosAppAttestAssertion {
-        try o.expect("kind", "ios_app_attest_assertion", "not an admitted proof kind")
+    static func proof(_ v: Any?, at: String) throws -> IosAppAttestAssertion {
+        let (_, o) = try WireObject.sum(v, at: at, arms: ["ios_app_attest_assertion": ["assertion_b64"]])
         return IosAppAttestAssertion(assertion_b64: try o.string("assertion_b64"))
     }
     static func challenge(_ o: WireObject) throws -> RedemptionChallenge {
@@ -236,18 +249,21 @@ enum WireDecode {
         return EnrolmentRequest(
             code: try o.string("code"), platform: .ios,
             decision_key: try verifyingKey(o.object("decision_key", allowed: ["suite", "encoding", "point_b64url"])),
-            evidence: try evidence(o.object("evidence", allowed: ["kind", "attest_key_id", "attestation_b64", "certificates_der_b64"])),
-            push: try push(o.object("push", allowed: ["kind", "environment", "topic", "token", "project"])))
+            evidence: try evidence(o.members["evidence"], at: "evidence"),
+            push: try push(o.members["push"], at: "push"))
     }
     static func signedRedemption(_ data: Data) throws -> SignedRedemption {
         let o = try WireObject.document(data, allowed: ["signing_input", "signature", "platform_proof"])
         return SignedRedemption(
             signing_input: try signingInput(o.object("signing_input", allowed: ["audience", "enrollment_id", "challenge", "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"])),
             signature: try signature(o.object("signature", allowed: ["suite", "encoding", "b64url"])),
-            platform_proof: try proof(o.object("platform_proof", allowed: ["kind", "assertion_b64"])))
+            platform_proof: try proof(o.members["platform_proof"], at: "platform_proof"))
     }
     static func pushUpdate(_ data: Data) throws -> ApnsRegistration {
-        try push(WireObject.document(data, allowed: ["kind", "environment", "topic", "token", "project"]))
+        let v: Any
+        do { v = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) }
+        catch { throw WireError.refused(at: "$", cause: error.localizedDescription) }
+        return try push(v, at: "$")
     }
 
     // Responses.

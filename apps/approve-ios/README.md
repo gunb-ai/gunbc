@@ -50,7 +50,7 @@ fixes on first build.
   recorded as enrolled only after the server verified it.
 - **Push token**: registered on every enrolled launch; a token that arrives before state is installed
   is buffered; a rotated token is forwarded once through the push-registration update route.
-- **Readback**: `GET /approve/device/enrollments/<enrollment_id>` under the App Attest key just attested, after a lost enrolment answer; the operator supplies the enrollment id the enrol command printed.
+- **Readback**: `GET /approve/device/enrollments/<enrollment_id>` under the App Attest key just attested, after a lost enrolment answer; the id is `enrollment_id_for_code` over the persisted code, so nothing is asked for.
 - **Wire.swift** is a mechanical mirror of `gunbc.auth.approval_device_wire` "The HTTP wire": an ordered emitter matching `serialize_json` byte for byte, strict readers (unknown/missing/empty member and unadmitted `kind` refuse at their path), path segments restricted to the RFC 3986 unreserved alphabet. `ApproveTests` round-trips every request envelope in `vectors.json` through decoder → encoder and matches the bytes.
 - **Inbox**: `GET /approve/device/pending` on open, pull-to-refresh, and on push, authenticated by an App Attest assertion over `device_read_client_data` (headers `X-Approval-Assertion`, `X-Approval-Enrollment`, `X-Approval-Requested-At`; 60 s skew). The push carries only
   `notification_id`; nothing from it is displayed as the request.

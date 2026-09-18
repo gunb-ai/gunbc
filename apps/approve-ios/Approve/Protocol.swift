@@ -67,6 +67,10 @@ func enrolmentTranscript(code: String, decisionKey: VerifyingKey, platform: Mobi
     ])
 }
 
+/// gunbc.auth.approval_device_wire enrollment_id_for_code: the enrolment an accepted code produces is
+/// named by the code, so a lost enrolment answer costs nothing the app cannot re-derive.
+func enrollmentIdForCode(_ code: String) -> String { "enr-" + code }
+
 /// gunbc.auth.approval_device_wire RedemptionChallenge: stateless. nonce_hex is the server's
 /// MAC over redemption_challenge_message(escalation_id, request_revision, enrollment_id, expires_at);
 /// the app carries both back untouched.

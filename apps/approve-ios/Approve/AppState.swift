@@ -149,13 +149,13 @@ final class AppState: ObservableObject {
 
     /// After an ambiguous POST: re-read before generating anything new, via
     /// GET /approve/device/enrollments/<enrollment_id> under the App Attest key just attested. The
-    /// route is keyed by enrollment_id, which a lost answer never delivered: the operator supplies it
-    /// (the enrol command on srv1 prints it beside the code). An absent id refuses; nothing is guessed.
-    func resolveUnknownSubmission(enrollmentId: String) async {
+    /// id is enrollment_id_for_code over the code persisted in Prepared, so nothing is asked for.
+    func resolveUnknownSubmission() async {
         lastError = nil
         guard case .submissionUnknown(let p) = state else { return }
         do {
             let client = try requireClient()
+            let enrollmentId = enrollmentIdForCode(p.code)
             let path = try Route.enrollment(enrollmentId)
             let probe = EnrolledDevice(enrollment_id: enrollmentId, decision_key_blob: p.decision_key_blob,
                                        attest_key_id: p.attest_key_id, forwarded_apns_token: nil)

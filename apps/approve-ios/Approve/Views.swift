@@ -44,7 +44,6 @@ struct EnrolView: View {
 struct EnrolmentPendingView: View {
     @EnvironmentObject var state: AppState
     @State private var busy = false
-    @State private var enrollmentId = ""
 
     var body: some View {
         Form {
@@ -56,9 +55,8 @@ struct EnrolmentPendingView: View {
                 }
             case .submissionUnknown:
                 Section("Submission outcome unknown") {
-                    Text("The server may or may not have accepted this enrolment. Re-read before generating anything new: enter the enrollment id the enrol command printed.")
-                    TextField("enrollment id", text: $enrollmentId).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Button("Re-read enrolment") { run { await state.resolveUnknownSubmission(enrollmentId: enrollmentId) } }.disabled(busy || enrollmentId.isEmpty)
+                    Text("The server may or may not have accepted this enrolment. Re-read before generating anything new.")
+                    Button("Re-read enrolment") { run { await state.resolveUnknownSubmission() } }.disabled(busy)
                     Button("Retry the same submission") { run { await state.retrySubmission() } }.disabled(busy)
                 }
             default:

@@ -157,11 +157,19 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertFalse(try WireDecode.redemptionResponse(Data(try envelope("redemption_response").utf8)).outcome.isEmpty)
     }
 
-    /// The strict reader refuses an unknown member, an empty string and an unadmitted kind.
+    /// The strict reader refuses an unknown member, an empty string, an unadmitted kind, and a
+    /// member that belongs to ANOTHER arm of the same sum (decoded per arm, never per union).
     func testStrictReaderRefusesUnknownAndEmptyMembers() {
         XCTAssertThrowsError(try WireDecode.enrolmentGrant(Data(#"{"enrollment_id": "e", "extra": 1}"#.utf8)))
         XCTAssertThrowsError(try WireDecode.enrolmentGrant(Data(#"{"enrollment_id": ""}"#.utf8)))
         XCTAssertThrowsError(try WireDecode.pushUpdate(Data(#"{"kind": "fcm", "project": "p", "token": "t"}"#.utf8)))
+        XCTAssertThrowsError(try WireDecode.pushUpdate(Data(#"{"kind": "apns", "environment": "production", "topic": "t", "token": "k", "project": "p"}"#.utf8)))
+    }
+
+    /// enrollment_id_for_code, pinned by the envelope vector over the enrolment vectors' code.
+    func testEnrollmentIdForCodeMatchesTheFixture() throws {
+        let code = try XCTUnwrap(try load().enrolment.first).input.code
+        XCTAssertEqual(enrollmentIdForCode(code), try envelope("enrollment_id_for_code_" + code))
     }
 
     /// device_push_update_client_data frames the exact push body; the enrolment id and time are the
