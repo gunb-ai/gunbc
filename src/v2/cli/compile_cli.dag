@@ -10,9 +10,9 @@ import v2.compiler.self_host.compiler_closure_emit {
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.algebra { fold_list, length, list_reverse }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.lens_verdict { lens_verdict_diagnostic_locus_module }
 import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Extent, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, Rejected, SourcePortLocus, Textual, WholeFile }
 import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
@@ -256,11 +256,15 @@ type CliRunOutcome
 // boundary. Measured on the built binary at gunbc#11507's head -- three different entries
 // (`v2.std.text`, this module, `v2.compiler.compile`) all refused with the same nine words.
 //
-// THE LOCUS PROJECTION IS BORROWED RATHER THAN RECOPIED. `v2.std.lens_verdict`
-// `lens_verdict_diagnostic_locus_module` is already the Locus -> module-name fold over all four
-// arms; its name says lens because that is where it was first needed, not because the projection is
-// lens-specific, and authoring a second `match d.at` here would be the fork (DESIGN section 3)
-// rather than the reuse.
+// THE LOCUS PROJECTION IS AUTHORED HERE RATHER THAN BORROWED, AND THAT IS A REVERSAL.
+// `v2.std.lens_verdict` `lens_verdict_diagnostic_locus_module` was consumed here while the module
+// name was all this refusal rendered, and reusing it was right for that question. It answers the
+// MODULE and discards the extent -- correct for a lens verdict, and exactly the half a parse
+// refusal cannot lose, because `parse_g0_tokens_remain` is only actionable at the byte where the
+// parse stopped. So this is not a second answer to one question (DESIGN section 3) but a different
+// question: lens_verdict projects Locus -> module, this projects Locus -> located position. If a
+// third consumer ever wants the second projection, it moves to a shared home then; one consumer is
+// not yet a fork.
 // THE EMPTY INGEST IS A REFUSAL AND NOT AN EMPTY PROGRAM, and this arm is the whole reason
 // `v2_cli_run` does not call the emitter first and ask questions after.
 // `emit_compiler_import_closure_from_ingest` is TOTAL over whatever ingest it is handed -- its
@@ -269,6 +273,61 @@ type CliRunOutcome
 // typo, would otherwise print an empty emission and exit 0. That is bottom-as-answer conflated with
 // bottom-as-ignorance, and it is the exact shape the closure-emit driver was written to close; this
 // door owes the same refusal at its own boundary.
+// THE WHOLE ORDERED CHAIN, BECAUSE THE HEAD IS NOT THE CAUSE. A refusal from this fold arrives as
+// `NonEmptyDiagnostics` -- one head and a tail -- and rendering only the head answers
+// `parse_grammar_choice_overlap_residue` for every entry tried, which is a grammar-global ADVISORY
+// head over a large population and is never the fatal reason there. A reader given only that head
+// dispatches a repair against a diagnostic that was never going to be the wall. So the refusal
+// carries every reason in order, and the fatal one is somewhere in it rather than nowhere.
+//
+// THIS DELIBERATELY DOES NOT CONSUME THE MASKED-CAUSE AUTHORITY.
+// `v2.compiler.self_host.frontier_probe_assemble_detail`
+// `frontier_probe_assemble_located_reason_from_diagnostics` is the fold that SELECTS the cause
+// behind an overlap residue, and consuming it here was built, measured and rolled back: it widens
+// this closure into a region that does not emit (measured at gunbc#11518 -- 166 files to 182, and
+// 92 rustc errors), so the door that would report the cause stops being buildable. Printing the
+// chain needs no such authority: an ordered list of reasons lets the READER apply the selection
+// that this closure cannot yet contain, and it costs one fold over a list already in hand.
+// THE FATAL DIAGNOSTIC IS THE LAST ONE, AND ITS LOCUS IS THE ONE WORTH RENDERING. The head's locus
+// is an `InvariantPortLocus` -- a port and an invariant name, no file -- which is why rendering the
+// head's locus printed nothing at all. `parse_g0_tokens_remain_diagnostic` builds its locus from the
+// FIRST REMAINING TOKEN (`v2.compiler.parse` -- `source_port_locus(file: token.file, extent:
+// ByteRange { start: token.start, end: token.end })`), so the fatal arm carries the file and the
+// byte offset at which the parse stopped consuming. That is the difference between "the corpus does
+// not parse" and "the corpus stops parsing HERE", and only the second names a grammar gap a repair
+// can be scoped against.
+fn cli_locus_text(d: Diagnostic) -> String {
+  match d.at {
+    Textual { file: f, extent: e } => concat(concat(symbol_lexeme(sym: f), " "), cli_extent_text(e: e))
+    SourcePortLocus { anchor: _, file: f, extent: e } => concat(concat(symbol_lexeme(sym: f), " "), cli_extent_text(e: e))
+    NodeLocus { anchor: _ } => "<node locus, no file>"
+    InvariantPortLocus { anchor: _, invariant: inv } => concat("<invariant ", concat(symbol_lexeme(sym: inv), ">"))
+  }
+}
+
+fn cli_extent_text(e: Extent) -> String {
+  match e {
+    WholeFile => "(whole file)"
+    ByteRange { start: st, end: en } =>
+      concat(
+        concat("bytes ", integer_int_to_decimal_string(value: st)),
+        concat("..", integer_int_to_decimal_string(value: en))
+      )
+  }
+}
+
+fn cli_fatal_diagnostic(d: NonEmptyDiagnostics) -> Diagnostic {
+  fold_list(xs: d.tail, empty: d.head, cons: fn(acc, diag) { diag })
+}
+
+fn cli_diagnostic_chain(d: NonEmptyDiagnostics) -> String {
+  fold_list(
+    xs: d.tail,
+    empty: symbol_lexeme(sym: d.head.reason),
+    cons: fn(acc, diag) { concat(concat(acc, " -> "), symbol_lexeme(sym: diag.reason)) }
+  )
+}
+
 fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
   match plan {
     CliPlanRefused { reason: reason, detail: detail } =>
@@ -298,8 +357,8 @@ fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
                 CliRunRefused {
                   reason: d.head.reason,
                   detail: concat(
-                    concat("the closure did not emit: ", symbol_lexeme(sym: d.head.reason)),
-                    concat(" at ", lens_verdict_diagnostic_locus_module(d: d.head))
+                    concat("the closure did not emit; diagnostic chain: ", cli_diagnostic_chain(d: d)),
+                    concat(" | FATAL AT ", cli_locus_text(d: cli_fatal_diagnostic(d: d)))
                   )
                 }
             }
