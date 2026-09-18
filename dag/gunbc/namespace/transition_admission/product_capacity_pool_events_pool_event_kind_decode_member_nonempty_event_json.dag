@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, List }
 import std.integer { UInt32 }
 import std.decl_ref { decl_ref }
 import gunbc.compiler_frontend_program_interlock { TargetChanged }
-import gunbc.namespace.transition_admission { TransitionAdmission, Binding, NotAuthored }
+import gunbc.namespace.transition_admission { TransitionAdmission, Binding, PullRequest }
 
 data product_capacity_pool_events_pool_event_kind_decode_member_nonempty_event_json: TransitionAdmission = TransitionAdmission {
   label: "Cut D 2a: the chain-envelope JSON codec moves to product.capacity.event_json; pool_events consumes member_nonempty from there" as NonEmptyStr,
@@ -14,6 +14,6 @@ data product_capacity_pool_events_pool_event_kind_decode_member_nonempty_event_j
     expected_candidates: [decl_ref("product.capacity.event_json", "member_nonempty")],
   },
   disposition: TargetChanged,
-  deletion_follow_up: NotAuthored,
+  deletion_follow_up: PullRequest { number: 11555 as UInt32 },
   owner_pull_request: 11550 as UInt32,
 }
