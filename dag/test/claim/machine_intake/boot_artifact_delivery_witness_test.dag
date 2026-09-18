@@ -124,7 +124,7 @@ import gunbc.network_boot_delivery {
   ArchitectureChainloader,
   ControlledNetworkTrustObservation,
   BootBundleAvailabilityReceipt,
-  ControlledNetworkBootstrap,
+  EstablishedControlledNetwork,
   DhcpFilenameHint,
   FleetBootServiceReceipt,
   GlobalHttpsEndpointReachable,
@@ -1201,7 +1201,7 @@ fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> N
         publication_observation: obs,
         readback_observation: obs,
       },
-      trust: ControlledNetworkBootstrap {
+      trust: EstablishedControlledNetwork {
         evidence: ControlledNetworkTrustObservation { site: site, observation: obs, observed_at: 1788000000000 },
       },
     },
