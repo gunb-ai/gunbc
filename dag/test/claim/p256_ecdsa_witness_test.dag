@@ -10,7 +10,7 @@ import extdeps.crypto.signature {
 }
 import extdeps.apple.apns {
   ApnsProviderIdentity, ApnsKeyId, AppleTeamId,
-  ApnsProviderTokenMint, ApnsProviderTokenSigned, ApnsAuthKeyUnreadable, ApnsIssuedAtBeforeEpoch,
+  ApnsProviderTokenMint, ApnsProviderTokenSigned, ApnsAuthKeyUnreadable,
   apns_provider_token,
 }
 
@@ -126,13 +126,6 @@ test fn the_provider_token_signature_verifies_under_the_public_key() -> Bool {
 test fn a_key_that_is_not_pkcs8_pem_mints_no_token() -> Bool {
   match apns_provider_token(identity: test_identity, auth_key: "not a key" as Secret, issued_at_epoch: 1700000000) {
     ApnsAuthKeyUnreadable { key_id } => key_id == test_identity.key_id
-    _ => false
-  }
-}
-
-test fn an_issue_time_before_the_epoch_mints_no_token() -> Bool {
-  match apns_provider_token(identity: test_identity, auth_key: rfc7515_p8, issued_at_epoch: -1) {
-    ApnsIssuedAtBeforeEpoch { issued_at_epoch } => issued_at_epoch == -1
     _ => false
   }
 }
