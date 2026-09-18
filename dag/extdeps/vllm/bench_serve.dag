@@ -74,6 +74,7 @@ type VllmBenchServeRequest {
   backend: VllmBenchBackend
   base_url: NonEmptyStr
   model: NonEmptyStr
+  tokenizer: NonEmptyStr
   dataset: RandomDatasetSpec
   num_prompts: Nat
   arrival: BenchArrival
@@ -85,6 +86,7 @@ fn vllm_bench_serve_request(
   backend: VllmBenchBackend,
   base_url: NonEmptyStr,
   model: NonEmptyStr,
+  tokenizer: NonEmptyStr,
   dataset: RandomDatasetSpec,
   num_prompts: Nat,
   arrival: BenchArrival,
@@ -95,6 +97,7 @@ fn vllm_bench_serve_request(
     backend: backend,
     base_url: base_url,
     model: model,
+    tokenizer: tokenizer,
     dataset: dataset,
     num_prompts: num_prompts,
     arrival: arrival,
@@ -132,6 +135,9 @@ fn vllm_bench_eos_words(ignore: Bool) -> List<String> {
 
 // THE ARGV IS DERIVED FROM THE REQUEST, so a protocol that asked for Poisson arrivals cannot
 // silently render `inf`, and a protocol that named a shared prefix cannot drop `--random-prefix-len`.
+// SERVED NAME AND TOKENIZER IDENTITY ARE DIFFERENT FACTS. --model is what the OpenAI route answers;
+// --tokenizer is the tree the client actually loads. A protocol that carries only the served alias
+// tries HuggingFace and cannot be replayed against this engine.
 fn vllm_bench_serve_arguments(req: VllmBenchServeRequest) -> List<String> {
   concat(
     [
@@ -139,6 +145,7 @@ fn vllm_bench_serve_arguments(req: VllmBenchServeRequest) -> List<String> {
       "--backend", vllm_bench_backend_wire(b: req.backend) as String,
       "--base-url", req.base_url as String,
       "--model", req.model as String,
+      "--tokenizer", req.tokenizer as String,
       "--endpoint", vllm_route_path(r: vllm_bench_backend_route(b: req.backend)) as String,
       "--dataset-name", "random",
       "--random-input-len", to_string(token_count_value(t: req.dataset.input_len)),

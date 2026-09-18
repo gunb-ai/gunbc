@@ -33,7 +33,10 @@ import gunbc.spark.vllm_endpoint_process_launch {
 }
 import gunbc.spark.serving_arm {
   Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4, glm_native_concurrent_profile,
+  glm53_native_fp8_row,
 }
+import gunbc.spark.serving_arm_launch { glm_native_weights_container_dir }
+import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCachePlacement }
 import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
@@ -478,6 +481,10 @@ fn decode_corroboration_for_protocol(req: VllmBenchServeRequest) -> DecodeCorrob
   }
 }
 
+type ProbeProvenance
+  = SamePrincipal { principal: NonEmptyStr }
+  | DriverObserverSplit { driver: NonEmptyStr, observer: NonEmptyStr }
+
 type ServingLoadObservation {
   subject: ServingPerformanceSubjectStanding
   protocol: VllmBenchServeRequest
@@ -494,6 +501,7 @@ type ServingLoadObservation {
   ledger: OperationLedger
   admission: AdmissionCost
   corroboration: DecodeCorroboration
+  provenance: ProbeProvenance
   rate: DerivedRate
   raw_before: NonEmptyStr
   raw_after: NonEmptyStr
@@ -533,6 +541,7 @@ fn serving_load_observation(
     ledger: ledger,
     admission: glm_native_workload_admission,
     corroboration: decode_corroboration_for_protocol(req: protocol),
+    provenance: glm_native_live_probe_provenance,
     rate: derive_rate_honest(
       ledger: ledger,
       continuity: continuity,
@@ -567,9 +576,18 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "ledger: ", ledger_text(l: o.ledger), "\n",
     "admission: ", admission_text(a: o.admission), "\n",
     "corroboration: ", corroboration_text(c: o.corroboration), "\n",
+    "provenance: ", provenance_text(p: o.provenance), "\n",
     "rate: ", rate_text(r: o.rate), "\n",
     "saturation decided from this run: ", if saturation_from_one_run(obs: o) { "yes" } else { "no" }, "\n",
   ], "")
+}
+
+fn provenance_text(p: ProbeProvenance) -> String {
+  match p {
+    SamePrincipal { principal: w } => join(["same-principal ", w as String], "")
+    DriverObserverSplit { driver: d, observer: o } =>
+      join(["driver-observer-split driver=", d as String, " observer=", o as String], "")
+  }
 }
 
 fn corroboration_text(c: DecodeCorroboration) -> String {
@@ -702,16 +720,28 @@ data glm_native_holistic_dataset: RandomDatasetSpec = RandomDatasetSpec {
   prefix_len: token_count(count: 100000),
 }
 
+data glm_native_engine_tokenizer_path: NonEmptyStr = snapshot_install_path(
+  placement: HubCachePlacement { cache_root: glm_native_weights_container_dir },
+  repo: glm53_native_fp8_row.repo,
+  revision: glm53_native_fp8_row.revision,
+)
+
 data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
   backend: OpenaiChat,
   base_url: "http://127.0.0.1:30000" as NonEmptyStr,
   model: glm_native_concurrent_profile.served_alias,
+  tokenizer: glm_native_engine_tokenizer_path,
   dataset: glm_native_holistic_dataset,
   num_prompts: 4,
   arrival: PoissonProcess { millirequests_per_second: 50, burstiness_milli: 1000 },
   max_concurrency: Present { value: 2 },
   ignore_eos: true,
 )
+
+data glm_native_live_probe_provenance: ProbeProvenance = DriverObserverSplit {
+  driver: "calm-bat-65 via srv1 docker exec of vllm bench serve" as NonEmptyStr,
+  observer: "deep-otter-201 HTTP scrape of 192.168.1.236:30000/metrics" as NonEmptyStr,
+}
 
 data glm_native_declared_shared_traffic: NonEmptyStr = "gunbc.harness.harness_cli harness_probe_cli may POST a turn, and proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers on these ranks; drain snapshot is not exclusion" as NonEmptyStr
 
@@ -752,6 +782,7 @@ fn holistic_protocol_is_session_shaped(req: VllmBenchServeRequest) -> Bool {
   vllm_bench_serve_uses_poisson_idle_gaps(req: req)
     && token_count_at_least(t: req.dataset.prefix_len, n: 100000)
     && token_count_at_least(t: req.dataset.input_len, n: 10000)
+    && (req.model as String) != (req.tokenizer as String)
 }
 
 fn token_count_at_least(t: TokenCount, n: Nat) -> Bool {

@@ -38,6 +38,8 @@ import gunbc.spark.serving_load_probe {
   glm_native_declared_shared_traffic,
   glm_native_single_stream_decode_bound_millis,
   glm_native_single_stream_decode_bound_standing,
+  glm_native_engine_tokenizer_path,
+  glm_native_live_probe_provenance, DriverObserverSplit, SamePrincipal,
   decode_corroboration_for_protocol, CorroborationNotApplicable, CorroborationUnread,
 }
 
@@ -303,6 +305,7 @@ test fn the_holistic_protocol_is_poisson_with_session_context_and_prefix() -> Bo
       backend: OpenaiChat,
       base_url: "http://127.0.0.1:30000" as NonEmptyStr,
       model: "m" as NonEmptyStr,
+      tokenizer: "m" as NonEmptyStr,
       dataset: RandomDatasetSpec { input_len: token_count(count: 128), output_len: token_count(count: 128), prefix_len: token_count(count: 0) },
       num_prompts: 4,
       arrival: SendAllImmediately,
@@ -322,6 +325,17 @@ test fn the_rendered_argv_carries_the_prefix_and_a_finite_rate() -> Bool {
     && words_contain(words: words, needle: "--request-rate")
     && words_contain(words: words, needle: "0.050")
     && !words_contain(words: words, needle: "inf")
+    && words_contain(words: words, needle: "--tokenizer")
+    && words_contain(words: words, needle: glm_native_engine_tokenizer_path as String)
+    && words_contain(words: words, needle: "--model")
+    && (glm_native_holistic_protocol.model as String) != (glm_native_holistic_protocol.tokenizer as String)
+}
+
+test fn this_reading_names_a_split_driver_and_observer() -> Bool {
+  match glm_native_live_probe_provenance {
+    DriverObserverSplit { driver: _, observer: _ } => true
+    SamePrincipal { principal: _ } => false
+  }
 }
 
 test fn exporter_restart_breaks_counter_continuity() -> Bool {
