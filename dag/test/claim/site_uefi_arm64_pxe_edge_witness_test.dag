@@ -39,7 +39,8 @@ import gunbc.site_uefi_arm64_pxe_edge {
   SiteEdgeUnknownMachineRefused,
   SiteEdgeUnknownArchitectureRefused,
   SiteEdgeNotEstablished,
-  SiteEdgeArchitectureRefusedByEdge,
+  SiteEdgeClientArchitectureNotAdmitted,
+  SiteEdgeChainloaderMismatch,
   SiteEdgeDiscoveryRefused,
   AddressOnlyOffer,
   OfferedFilenameMismatch,
@@ -104,7 +105,8 @@ fn arm64_request(mac: NonEmptyStr) -> EdgeClientRequest {
 fn not_established_with(admission: SiteEdgeClientAdmission, expected: List<BootNetworkReachabilityAxis>) -> Bool {
   match admission {
     SiteEdgeNotEstablished { standing: _, unreachable: u } => u == expected
-    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SiteEdgeDiscoveryRefused { refusal: _ } => false
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
@@ -119,7 +121,8 @@ test fn known_arm64_client_on_observed_proxy_edge_is_admitted() -> Bool {
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
-    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SiteEdgeDiscoveryRefused { refusal: _ } => false
   }
 }
@@ -132,7 +135,8 @@ test fn relay_offer_is_admitted_as_relay() -> Bool {
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
-    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SiteEdgeDiscoveryRefused { refusal: _ } => false
   }
 }
@@ -143,7 +147,8 @@ test fn unknown_machine_gets_no_boot() -> Bool {
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
-    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SiteEdgeDiscoveryRefused { refusal: _ } => false
   }
 }
@@ -154,7 +159,8 @@ test fn unknown_architecture_gets_no_boot_even_when_known() -> Bool {
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
-    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SiteEdgeDiscoveryRefused { refusal: _ } => false
   }
 }
@@ -182,7 +188,8 @@ test fn offer_with_other_filename_is_refused_with_the_offered_name() -> Bool {
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
-    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
   }
 }
@@ -201,7 +208,8 @@ test fn mtcollins1_on_its_measured_segment_is_not_yet_admitted() -> Bool {
     SiteEdgeDiscoveryRefused { refusal: AddressOnlyOffer { observation: _, observed_at: t } } => t == 1788620040000
     SiteEdgeDiscoveryRefused { refusal: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
-    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
@@ -238,7 +246,33 @@ test fn a_non_arm64_chainloader_is_refused_by_architecture() -> Bool {
     observed_at: r.observed_at,
   }
   match site_edge_client_admission(roster: x86, request: arm64_request(mac: known_mac)) {
-    SiteEdgeArchitectureRefusedByEdge { architecture: a } => a == X86_64
+    SiteEdgeChainloaderMismatch { client: c, chainloader: l } => c == Aarch64 && l == X86_64
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+  }
+}
+
+// THE OTHER ARCHITECTURE REFUSAL, located on its own subject: an edge that admits no aarch64 client
+// refuses the client's architecture, not the chainloader's.
+test fn an_edge_admitting_no_arm64_refuses_the_client_architecture() -> Bool {
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
+  let closed = SiteEdgeRoster {
+    site: r.site,
+    admitted_architectures: [X86_64],
+    bootstrap_transport: r.bootstrap_transport,
+    known_client_macs: r.known_client_macs,
+    offer: r.offer,
+    reachability: r.reachability,
+    observation: r.observation,
+    observed_at: r.observed_at,
+  }
+  match site_edge_client_admission(roster: closed, request: arm64_request(mac: known_mac)) {
+    SiteEdgeClientArchitectureNotAdmitted { architecture: a } => a == Aarch64
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SiteEdgeDiscoveryRefused { refusal: _ } => false
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
