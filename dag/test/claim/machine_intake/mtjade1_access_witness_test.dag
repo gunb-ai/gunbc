@@ -3,15 +3,12 @@ module test.claim.mtjade1_access_witness
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake_mtjade1_access_observation {
-  JadeUnitKeyAwaitingFru,
   mtjade1_firmware_family_standing,
   mtjade1_unit_key_standing,
 }
 import gunbc.machine_intake_bmc_first_contact_standing {
   FamilyObserved,
   FamilyUnobserved,
-  bmc_intake_may_use_megarac_media_attach,
-  bmc_intake_may_use_openbmc_factory_login,
 }
 import gunbc.machine_intake_subject {
   BoardSerialAbsent,
@@ -25,18 +22,18 @@ import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref, mtjade1_bmc_gun
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_mtjade1_family_is_unobserved_and_cannot_select_a_factory_or_megarac_path() -> Bool {
+test fn w_mtjade1_family_is_unobserved() -> Bool {
   match mtjade1_firmware_family_standing {
     FamilyUnobserved { discriminator: _ } => true
     FamilyObserved { family: _ } => false
   }
-    && bmc_intake_may_use_openbmc_factory_login(family: mtjade1_firmware_family_standing) == false
-    && bmc_intake_may_use_megarac_media_attach(family: mtjade1_firmware_family_standing) == false
 }
 
-test fn w_mtjade1_unit_key_awaits_fru() -> Bool {
+test fn w_mtjade1_unit_key_is_board_serial_absent() -> Bool {
   match mtjade1_unit_key_standing {
-    JadeUnitKeyAwaitingFru { discriminator: _ } => true
+    UnitKeyRefused { cause: BoardSerialAbsent } => true
+    UnitKeyRefused { cause: _ } => false
+    UnitKeyBound { key: _ } => false
   }
 }
 

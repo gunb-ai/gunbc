@@ -1,24 +1,26 @@
 module gunbc.machine_intake_mtjade1_access_observation
 
-import std.types { NonEmptyStr }
 import gunbc.machine_intake_bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
   FamilyUnobserved,
 }
+import gunbc.machine_intake_subject {
+  BoardSerialAbsent,
+  UnitKeyRefused,
+  UnitKeyStanding,
+}
 
 // MT. JADE UNIT 1 BMC ACCESS, AND NOTHING HERE IS A LIVE READING. The operator has AC and a BMC
 // in standby; this module does not invent a host, serial, firmware family, or BaseboardModel arm.
-// Identity stays on extdeps.ocp.mt_jade until a FRU/SMBIOS join is captured. The unit key uses the
-// same bind_unit_key fold as Mt. Collins once FRU bytes exist; until then there is no
-// UnitIdentityInputs row, because that type requires a host and we do not have one.
-
-type MtJade1UnitKeyStanding
-  = JadeUnitKeyAwaitingFru { discriminator: NonEmptyStr }
+// Identity stays on extdeps.ocp.mt_jade until a FRU/SMBIOS join is captured. There is no
+// UnitIdentityInputs row, because that type requires a host and we do not have one. The standing
+// is the same UnitKeyStanding bind_unit_key returns for an empty observation list
+// (BoardSerialAbsent) — not a Jade-only one-arm type (review 67792).
 
 data mtjade1_firmware_family_standing: BmcFirmwareFamilyStanding = FamilyUnobserved {
   discriminator: "Wiwynn SV328R / OCP Mt. Jade cites MegaRAC or OpenBMC. This unit has no bound mc-info, Redfish Manager, or OEM fingerprint capture.",
 }
 
-data mtjade1_unit_key_standing: MtJade1UnitKeyStanding = JadeUnitKeyAwaitingFru {
-  discriminator: "No FRU board serial is bound. Discriminator: ipmitool fru print (or Redfish equivalent) in a first-contact evidence blob.",
+data mtjade1_unit_key_standing: UnitKeyStanding = UnitKeyRefused {
+  cause: BoardSerialAbsent,
 }
