@@ -72,9 +72,9 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // are in the restoration trigger for that reason.
 // SHRINK LOG. 2026-09-18 — 4 entries
 // (src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag [whole],
-// src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag [partial],
+// src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag [whole],
 // src/v2/test/claim/long/door_real_module_probe_test.dag [partial],
-// src/v2/test/claim/execution/long/pick_ingested_probe_test.dag [partial]), 13 identities,
+// src/v2/test/claim/execution/long/pick_ingested_probe_test.dag [partial]), 15 identities,
 // DELETED as duplicate coverage, not migrated and not exempted: each body was only a call to
 // another test fn (owner ruling 2026-09-16/17: no code may reference a test fn), so it asserted
 // nothing its target did not already assert. The targets keep the facts:
@@ -88,7 +88,14 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // pick_ingested_structural_lowering pick_ingested_normalized_arrow_has_branch_body_holds, and
 // pick_probe_normalized_branch_holds asserted the same Branch body over the same source through a
 // private arrow finder; wave1_gate1_ingested_add_normalize_resolves_holds is implied by its sibling
-// wave1_gate1_ingested_add_resolved_arrow_transform_holds, which is true only when resolve accepts. 2026-08-26 — 3 entries
+// wave1_gate1_ingested_add_resolved_arrow_transform_holds, which is true only when resolve accepts.
+// The last two, wave1_gate1_ingested_add_{normalize_yields_arrow_transform,resolved_arrow_transform}_holds,
+// are DELETED WITHOUT REPLACEMENT (parent ruling on this change): they were red on main (the add
+// helpers still read normalize's result as a bare Node after it became NormalizedTree, and the file
+// did not resolve), so they executed nowhere and coverage is unchanged. Repaired, they measured
+// 100k and 164k eval steps against the 72.3k new-witness line. The helper repair stays. OWED: the
+// add-lowering fact (real ingest lowers add to Arrow+Transform) has no floor claim; a cheaper claim
+// at one interface is the gap's filler. The file deletes whole. 2026-08-26 — 3 entries
 // (src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag [partial],
 // src/v2/test/claim/execution/emit_ingest_grammar_relation_round_trip_test.dag [partial],
 // src/v2/test/claim/execution/self_host_candidate_generation_test.dag [partial]), 5 identities,
@@ -1187,13 +1194,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/wave1_gate1_c1_copied_port_derivation_witness_test.dag", functions: ["wave1_gate1_c1_derived_registry_execution_witness_holds"] },
-  FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag",
-    functions: [
-      "wave1_gate1_ingested_add_normalize_yields_arrow_transform_holds",
-      "wave1_gate1_ingested_add_resolved_arrow_transform_holds"
-    ]
-  },
   FrozenPathDeferral {
     entry: "src/v2/test/claim/manual/emit_source_store_test.dag",
     functions: [
