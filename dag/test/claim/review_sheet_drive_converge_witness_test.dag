@@ -39,6 +39,9 @@ import gunbc.review_sheet_drive_converge {
   SpreadsheetMigrateMarker,
   SupersededNotConsulted,
   SupersededRead,
+  SupersededMarkerVisibility,
+  SupersededFieldVisibleToThisClient,
+  superseded_visibility_unobservable,
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
@@ -272,7 +275,8 @@ test fn complete_search_with_no_files_creates() -> Bool {
           incompleteSearch: Present { value: false },
           nextPageToken: none
         }
-      )
+      ),
+      visibility: w_visible(),
     },
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
@@ -344,6 +348,14 @@ test fn duplicate_matches_refuse_and_name_both() -> Bool {
 // no longer authorizes a create by itself, because that is exactly the state gunbc#11485 produced
 // on a drive already holding a review sheet, and a create there minted a duplicate beside live data.
 
+// The basis a real caller would have to supply: evidence that THIS OAuth client wrote the superseded
+// marker, which this repository cannot currently observe. Supplied here because the claim's subject
+// is the decision, not the observation -- and the claim immediately below is the control proving the
+// decision refuses when that basis is absent.
+fn w_visible() -> SupersededMarkerVisibility {
+  SupersededFieldVisibleToThisClient { basis: "fixture: this client is the writer of the superseded marker" as NonEmptyStr }
+}
+
 fn w_absent_page() -> DriveFileList {
   DriveFileList { files: Present { value: [] }, incompleteSearch: Present { value: false }, nextPageToken: none }
 }
@@ -371,7 +383,8 @@ test fn superseded_marked_file_migrates_rather_than_creating() -> Bool {
           incompleteSearch: Present { value: false },
           nextPageToken: none
         }
-      )
+      ),
+      visibility: superseded_visibility_unobservable(),
     }
   ) {
     Apply { plan: p } =>
@@ -392,7 +405,10 @@ test fn superseded_marked_file_migrates_rather_than_creating() -> Bool {
 // unable to ever mint the first sheet.
 test fn absence_under_both_markers_still_creates() -> Bool {
   match w_ensure_absent(
-    superseded: SupersededRead { observation: spreadsheet_from_file_list(list: w_absent_page()) }
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: w_visible(),
+    }
   ) {
     Apply { plan: p } =>
       match p {
@@ -401,6 +417,25 @@ test fn absence_under_both_markers_still_creates() -> Bool {
       }
     Noop => false
     Refuse { reason: _ } => false
+  }
+}
+
+// THE WALL THE FIRST REVISION OF THIS CHANGE DID NOT HAVE, AND ITS ABSENCE MADE THE FIX REPRODUCE
+// THE DEFECT. Both markers answer absent, and the superseded one was read under a client whose
+// identity this repository cannot observe. extdeps.google.drive already establishes that
+// appProperties are private to the CREATING application, so an empty result there has two preimages
+// -- no legacy sheet, or a legacy sheet this client cannot see -- and the response cannot tell them
+// apart. Creating on that is the same duplicate this whole change exists to prevent.
+test fn absence_under_an_unobservable_superseded_client_refuses_the_create() -> Bool {
+  match w_ensure_absent(
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    }
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "cannot establish absence")
+    Noop => false
+    Apply { plan: _ } => false
   }
 }
 
@@ -423,7 +458,8 @@ test fn unreadable_superseded_search_refuses_the_create() -> Bool {
     superseded: SupersededRead {
       observation: spreadsheet_from_file_list(
         list: DriveFileList { files: none, incompleteSearch: Present { value: false }, nextPageToken: none }
-      )
+      ),
+      visibility: superseded_visibility_unobservable(),
     }
   ) {
     Refuse { reason: r } => string_contains(s: r as String, pattern: "absence is not established")
@@ -443,7 +479,8 @@ test fn duplicate_superseded_matches_refuse_and_name_both() -> Bool {
           incompleteSearch: Present { value: false },
           nextPageToken: none
         }
-      )
+      ),
+      visibility: superseded_visibility_unobservable(),
     }
   ) {
     Refuse { reason: r } =>
@@ -467,7 +504,8 @@ test fn observe_only_refuses_the_marker_migration() -> Bool {
           incompleteSearch: Present { value: false },
           nextPageToken: none
         }
-      )
+      ),
+      visibility: superseded_visibility_unobservable(),
     },
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,

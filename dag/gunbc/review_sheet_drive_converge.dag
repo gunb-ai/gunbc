@@ -378,9 +378,37 @@ type SpreadsheetPlan
 // files.list it issued before this change. The arm below exists so that "we did not look" can never
 // arrive at the decision wearing the same shape as "we looked and found nothing": the create arm is
 // unreachable from SupersededNotConsulted, so a caller that skips the read cannot mint a file.
+// AN APP-PRIVATE FIELD READ UNDER AN UNOBSERVED CLIENT CANNOT ESTABLISH ABSENCE, AND THE FIRST
+// REVISION OF THIS CHANGE GOT THAT WRONG IN THE ONE CASE IT WAS WRITTEN FOR. extdeps.google.drive
+// already states the governing fact: appProperties are private to the CREATING application, so a
+// property written by one OAuth client is invisible to a search issued by another -- which is the
+// whole reason gunbc#11485 moved the marker to `properties`. The superseded search queries the
+// app-private field, and this repository never observes which OAuth client its token belongs to.
+//
+// So an EMPTY superseded result has two preimages that the response cannot tell apart: no legacy
+// file exists, or a legacy file exists and this client cannot see its marker. Treating that as
+// absence and creating is the rostered class absent_reads_identically_to_never_looked -- and it is
+// the SAME duplicate this change exists to prevent, reached one layer in.
+//
+// A POSITIVE FIND NEEDS NO SUCH CAVEAT, and keeping that asymmetry is what stops this from becoming
+// an over-prohibition (DESIGN section 4d): seeing the file IS the proof it was visible. Only the
+// absent arm is conditioned.
+type SupersededMarkerVisibility
+  = SupersededFieldVisibilityUnobservable { reason: NonEmptyStr }
+  | SupersededFieldVisibleToThisClient { basis: NonEmptyStr }
+
+data superseded_marker_visibility_unobservable_reason: NonEmptyStr = "appProperties are private to the OAuth client that wrote them and this repository never observes the client its token belongs to, so an empty superseded-marker search cannot distinguish a drive with no legacy sheet from a legacy sheet whose marker this client cannot see"
+
+fn superseded_visibility_unobservable() -> SupersededMarkerVisibility {
+  SupersededFieldVisibilityUnobservable { reason: superseded_marker_visibility_unobservable_reason }
+}
+
 type SupersededSearchReading
   = SupersededNotConsulted
-  | SupersededRead { observation: ReviewSpreadsheetObservation }
+  | SupersededRead {
+      observation: ReviewSpreadsheetObservation,
+      visibility: SupersededMarkerVisibility,
+    }
 
 // incompleteSearch true is its own arm, and this is the subtle one: Drive answering "I could not
 // search everything" alongside an empty list is NOT an observation of absence. Folding it to
@@ -508,7 +536,7 @@ fn decide_over_superseded_marker(
           "",
         ) as NonEmptyStr,
       }
-    SupersededRead { observation: o } =>
+    SupersededRead { observation: o, visibility: v } =>
       match o {
         SheetObservedOne { file_id: id } =>
           match policy {
@@ -570,24 +598,60 @@ fn decide_over_superseded_marker(
             ) as NonEmptyStr,
           }
         SheetAbsent =>
-          match policy {
-            EnsureObserveOnly =>
-              Refuse {
-                reason: join(
-                  ["no review spreadsheet in ", drive_id as String, " under either marker and policy is observe-only"],
-                  "",
-                ) as NonEmptyStr,
+          decide_over_absent_superseded_marker(
+            policy: policy,
+            visibility: v,
+            drive_id: drive_id,
+            sheet_name: sheet_name,
+            marker_value: marker_value,
+          )
+      }
+  }
+}
+
+// THE ONLY ARM THAT MAY MINT A FILE, AND THE ONE THE VISIBILITY CAVEAT ACTUALLY BINDS. Reaching
+// here means neither marker found anything; whether that is an empty drive or an invisible marker
+// is decided by the visibility standing, not by the response, because the response is identical
+// either way.
+fn decide_over_absent_superseded_marker(
+  policy: EnsurePolicy,
+  visibility: SupersededMarkerVisibility,
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetPlan> {
+  match visibility {
+    SupersededFieldVisibilityUnobservable { reason: r } =>
+      Refuse {
+        reason: join(
+          [
+            "neither marker found a review sheet in ",
+            drive_id as String,
+            ", and the superseded search cannot establish absence: ",
+            r as String,
+            ". Creating here is how a duplicate gets minted beside a live sheet. Either establish that this client wrote the superseded marker, or adopt the existing sheet by supplying its file id",
+          ],
+          "",
+        ) as NonEmptyStr,
+      }
+    SupersededFieldVisibleToThisClient { basis: _ } =>
+      match policy {
+        EnsureObserveOnly =>
+          Refuse {
+            reason: join(
+              ["no review spreadsheet in ", drive_id as String, " under either marker and policy is observe-only"],
+              "",
+            ) as NonEmptyStr,
+          }
+        EnsureMayApply =>
+          Apply {
+            plan: SpreadsheetCreate {
+              create: SpreadsheetCreatePlan {
+                drive_id: drive_id,
+                name: sheet_name,
+                marker_property_value: marker_value,
               }
-            EnsureMayApply =>
-              Apply {
-                plan: SpreadsheetCreate {
-                  create: SpreadsheetCreatePlan {
-                    drive_id: drive_id,
-                    name: sheet_name,
-                    marker_property_value: marker_value,
-                  }
-                }
-              }
+            }
           }
       }
   }

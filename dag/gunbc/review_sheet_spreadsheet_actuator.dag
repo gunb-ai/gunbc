@@ -32,6 +32,8 @@ import gunbc.review_sheet_drive_converge {
   SupersededSearchReading,
   SupersededNotConsulted,
   SupersededRead,
+  SupersededMarkerVisibility,
+  superseded_visibility_unobservable,
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
@@ -289,7 +291,8 @@ fn read_superseded_marker(
         observation: read_spreadsheet(
           drive_id: drive_id,
           query: review_sheet_superseded_search_query(marker_value: marker_value),
-        )
+        ),
+        visibility: superseded_visibility_unobservable(),
       }
     SheetObservedOne { file_id: _ } => SupersededNotConsulted
     SheetDuplicated { file_ids: _ } => SupersededNotConsulted
