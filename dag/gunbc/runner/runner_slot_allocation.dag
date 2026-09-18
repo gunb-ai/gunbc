@@ -315,8 +315,10 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // a cycle -- today they sit in `gunbc.ci_floor_measurement` and `gunbc.ci_runner_placement`, both
 // of which import this one -- at which point the envelope is computed from them and this authored
 // row deletes rather than being kept beside a derivation of the same number.
-// THE ENVELOPE IS DERIVED FROM THE HOST, AND AN UNESTABLISHED INPUT REFUSES RATHER THAN RETURNING
-// ZERO (operator direction 2026-09-18: "we can't assume a uniform fleet, i would just derive as
+// THE ENVELOPE IS DERIVED FROM THE HOST, AND AN UNESTABLISHED INPUT REFUSES IN THE RESOLUTION
+// BELOW -- though host_runner_memory_envelope_bytes still flattens that refusal to zero for its
+// existing callers, which is stated exactly at that function and is NOT closed by this change
+// (operator direction 2026-09-18: "we can't assume a uniform fleet, i would just derive as
 // much as possible from the actual state of the machines here"). What stood here was one authored
 // literal per host and an `else` arm of 0, which is the conflation DESIGN 5 forbids at its most
 // consequential: a host measured to have no runner memory and a host nobody wrote a row for
@@ -408,6 +410,26 @@ fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, contr
   }
 }
 
+// WHERE THE CLASS HAS *NOT* CLIMBED, SAID HERE RATHER THAN LEFT FOR A READER TO DISCOVER (DESIGN
+// 4b(1), rung honesty; review 67854). The resolution above carries the distinction between a host
+// with no runner memory and a host whose inputs nobody established. THIS SHIM THEN DISCARDS IT: the
+// unestablished arm becomes 0, host_memory_admitted_width divides that 0, and the consumer sees the
+// same Int it saw before. So the conflation is closed AT THE RESOLUTION and is still open AT THIS
+// SEAM, and any reading of the annotation above as "an unestablished host can no longer be read as
+// a number" is wrong at this line.
+//
+// WHY THE SHIM SURVIVES THIS CHANGE rather than being propagated now: host_memory_admitted_width has
+// 32 references across seven modules, so the typed standing is a sweep with its own blast radius,
+// not a rider on an envelope repair. The module note above already names that construction fix --
+// replace the Int API with MemoryWidthDerived / MemoryWidthUnestablished -- and the deploy seam
+// already performs it, so gunbc.runner_host_deploy RunnerHostDeployAdmission constructs no
+// operational row for an unestablished host and the zero cannot reach a deployment.
+//
+// NEXT-RUNG TRIGGER, naming the capability and not an artifact: host_memory_admitted_width and this
+// function return a typed standing, so that no caller anywhere in the corpus can obtain an Int for a
+// host whose envelope was never established. Until then the zero is bounded by the deploy-seam
+// admission and by nothing else, and that is the honest rung -- mechanically preventable at the
+// boundary, not structurally impossible at the type.
 fn host_runner_memory_envelope_bytes(host: HostIdentity) -> Int {
   match host_runner_memory_envelope_resolution(host: host) {
     RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)

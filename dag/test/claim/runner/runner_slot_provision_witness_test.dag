@@ -399,14 +399,24 @@ test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
 // have proposed installing a GitHub Actions runner over srv3's fabric execution slot -- and
 // reconcile would have seen it as an ordinary missing member, so apply would have done it with no
 // refusal anywhere. The width says how many slots exist; it does not say what they are for.
-test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
+// srv3-07 MOVED SIDES (2026-09-18) AND THAT IS WHY THIS ROW IS EDITED RATHER THAN LEFT ALONE. It was
+// the positive control here -- the index just above the canary, asserted PRESENT to prove the row
+// excludes the fabric member specifically rather than truncating the desired set. srv3-07 is now the
+// second fabric member, so it must be absent for exactly the reason srv3-06 is, and the control
+// moves up to srv3-08.
+//
+// THE CONTROL IS STILL LOAD-BEARING and must not be dropped just because there are two exclusions
+// now: without an index asserted PRESENT above the excluded ones, a desired set that simply stopped
+// at srv3-05 would satisfy every other clause.
+test fn the_fabric_slots_are_not_provisioning_targets() -> Bool {
   let names = map(
     desired_runner_slot_members(deploy: wt_srv3_deploy()),
     m => runner_slot_member_key(m: m) as String,
   )
   (any(names, n => n == "srv3-06") == false)
+    && (any(names, n => n == "srv3-07") == false)
     && any(names, n => n == "srv3-05")
-    && any(names, n => n == "srv3-07")
+    && any(names, n => n == "srv3-08")
 }
 
 // THE POSITIVE CONTROL AND THE ARITHMETIC, without which the row above is satisfied by a desired set
