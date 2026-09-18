@@ -1,0 +1,76 @@
+module test.claim.mtcollins1_connectx4lx_observation_witness_test
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.ethernet.link_mode { ieee_25gbase_cr, link_mode_eq }
+import extdeps.linux.mlx5_core { mlx5_core_module_name }
+import extdeps.mikrotik.crs812 { NoLaneSpeedForMode }
+import product.cable_order_admission { OrderRefused, OrderCodingUndeclared, LegCodingUndeclared }
+import product.placement_supply { host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_expansion_candidates { expansion_candidates, InstalledUnobserved }
+import gunbc.machine_intake_mtcollins1_connectx4lx_observation {
+  connectx4lx_host_observation, Connectx4LxHostUnobserved, Connectx4LxHostObserved,
+  seated_transceiver_observation, SeatedTransceiverUnobserved, SeatedTransceiverObserved,
+  mtcollins1_to_crs812_link_plan, MediaUnchosen, sfp56_group_publishes_25g,
+  mtcollins1_crs812_cable_order_today, mtcollins1_crs812_cable_order_with,
+  mtcollins1_connectx4lx_fleet_intent, NicIntentUndeclared, NicIntentDeclared,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn the_seated_card_is_the_nvidia_opn_not_the_ibm_fru() -> Bool {
+  fold(expansion_candidates, init: false, f: (hit, c) =>
+    hit || match c.context {
+      InstalledUnobserved { ordered: _, ordered_bracket: _, arrived: _, host: _, relay_message: _ } =>
+        c.catalog_scope.subject.declaration.module_path == "extdeps.network.mcx4121a_acat"
+      _ => false
+    })
+}
+
+test fn host_observation_stays_unobserved_until_the_boot_run() -> Bool {
+  match connectx4lx_host_observation {
+    Connectx4LxHostUnobserved { seated_report: _, pcie_read_obligation: _, driver_read_obligation: drv, discharges_at: _ } =>
+      string_contains(s: drv as String, pattern: mlx5_core_module_name as String)
+    Connectx4LxHostObserved { pcie_identity: _, bound_module: _ } => false
+  }
+}
+
+test fn seated_transceiver_identity_is_unobserved() -> Bool {
+  match seated_transceiver_observation {
+    SeatedTransceiverUnobserved { read_obligation: o } =>
+      string_contains(s: o as String, pattern: "fs_145681")
+    SeatedTransceiverObserved { identity: _ } => false
+  }
+}
+
+test fn crs812_sfp56_publishes_25g_but_has_no_25gbase_cr_wire() -> Bool {
+  sfp56_group_publishes_25g()
+    && mtcollins1_to_crs812_link_plan.nic_port_connector == "SFP28"
+    && mtcollins1_to_crs812_link_plan.switch_port_connector == "SFP56"
+    && match mtcollins1_to_crs812_link_plan.switch_lane_speed_for_dac {
+      NoLaneSpeedForMode { mode: m } => link_mode_eq(a: m, b: ieee_25gbase_cr)
+      _ => false
+    }
+    && match mtcollins1_to_crs812_link_plan.media {
+      MediaUnchosen { reason: r } => r != ""
+      _ => false
+    }
+}
+
+test fn undeclared_cable_coding_refuses_the_purchase() -> Bool {
+  match mtcollins1_crs812_cable_order_today {
+    OrderRefused { reason: OrderCodingUndeclared { required: r } } => link_mode_eq(a: r, b: ieee_25gbase_cr)
+    _ => false
+  } && match mtcollins1_crs812_cable_order_with(evidence: LegCodingUndeclared) {
+    OrderRefused { reason: OrderCodingUndeclared { required: r } } => link_mode_eq(a: r, b: ieee_25gbase_cr)
+    _ => false
+  }
+}
+
+test fn fleet_intent_is_undeclared_not_invented() -> Bool {
+  match mtcollins1_connectx4lx_fleet_intent {
+    NicIntentUndeclared { host: h, asked_of: _ } => host_identity_eq(a: h, b: operator_host_mtcollins1)
+    NicIntentDeclared { host: _, purpose: _ } => false
+  }
+}

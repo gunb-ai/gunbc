@@ -23,6 +23,7 @@ import v2.std.qualified_name {
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.extdeps.languages.dag {
+  dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_surface_module_header_metadata_edge,
   namespace_graft_spine_segment_edge_optional,
@@ -209,6 +210,8 @@ fn reference_sites_in_node(
       match node.kind {
         TypeNode { connective: Atom { identity: sym } } =>
           if dag_node_is_int_literal_atom(node: node) {
+            acc
+          } else if dag_node_is_float_literal_atom(node: node) {
             acc
           } else {
             collection_snoc_site(
