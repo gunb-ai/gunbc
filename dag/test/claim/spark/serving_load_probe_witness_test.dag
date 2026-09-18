@@ -70,16 +70,16 @@ fn fx_launch() -> VllmEndpointProcessLaunchObservation {
 
 fn metrics_body(running: String, waiting: String, capacity: String, preempt: String, itl_sum: String, itl_count: String, itok_sum: String, itok_count: String, gen: String, start: String) -> String {
   join([
-    "vllm:num_requests_waiting{model_name=\"glm\"} ", waiting, "\n",
-    "vllm:num_requests_running{model_name=\"glm\"} ", running, "\n",
-    "vllm:num_requests_waiting_by_reason{model_name=\"glm\",reason=\"capacity\"} ", capacity, "\n",
-    "vllm:num_preemptions_total{model_name=\"glm\"} ", preempt, "\n",
-    "vllm:prompt_tokens_total{model_name=\"glm\"} 0.0\n",
-    "vllm:generation_tokens_total{model_name=\"glm\"} ", gen, "\n",
-    "vllm:inter_token_latency_seconds_sum{model_name=\"glm\"} ", itl_sum, "\n",
-    "vllm:inter_token_latency_seconds_count{model_name=\"glm\"} ", itl_count, "\n",
-    "vllm:iteration_tokens_total_sum{model_name=\"glm\"} ", itok_sum, "\n",
-    "vllm:iteration_tokens_total_count{model_name=\"glm\"} ", itok_count, "\n",
+    "vllm:num_requests_waiting{", "model_name=\"glm\"} ", waiting, "\n",
+    "vllm:num_requests_running{", "model_name=\"glm\"} ", running, "\n",
+    "vllm:num_requests_waiting_by_reason{", "model_name=\"glm\",reason=\"capacity\"} ", capacity, "\n",
+    "vllm:num_preemptions_total{", "model_name=\"glm\"} ", preempt, "\n",
+    "vllm:prompt_tokens_total{", "model_name=\"glm\"} 0.0\n",
+    "vllm:generation_tokens_total{", "model_name=\"glm\"} ", gen, "\n",
+    "vllm:inter_token_latency_seconds_sum{", "model_name=\"glm\"} ", itl_sum, "\n",
+    "vllm:inter_token_latency_seconds_count{", "model_name=\"glm\"} ", itl_count, "\n",
+    "vllm:iteration_tokens_total_sum{", "model_name=\"glm\"} ", itok_sum, "\n",
+    "vllm:iteration_tokens_total_count{", "model_name=\"glm\"} ", itok_count, "\n",
     "process_start_time_seconds ", start, "\n",
   ], "")
 }
