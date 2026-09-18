@@ -21,7 +21,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // public and type-level; the DESCRIPTION -- what we process under it, where, for what purpose,
 // under which basis, with what ratification standing -- is gunbc-private strategy.data_map, whose
 // rows cite these declarations by DeclarationRef { module_path: "product.data_category", decl_name }.
-// The eight markers below are one per description row, under the same names that lane authors.
+// The markers below are one per description row, under the same names that lane authors, and this
+// sentence deliberately carries NO COUNT: an earlier revision said EIGHT here and the private lane then
+// split one description row in two, leaving a number in this tree that was wrong about a tree it cannot
+// see. The declarations are the census (DESIGN 4c).
 // The join is walled on the citing side, by a cited-declaration-exists witness; nothing here copies
 // that lane's names.
 //
@@ -34,6 +37,17 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 type PersonalIdentity
 type SourceAndBuildInput
 type BuildOutput
+
+// THE WORK PRODUCT AND THE RECORD OF THE RUN ARE TWO HANDLING CLASSES, NOT ONE. Added 2026-09-18 for
+// gunbc-private strategy.data_map's split of category_build_outputs into category_build_artifacts and
+// category_execution_receipts (operator ruling 2026-09-14: "they are outputs at different layers in our
+// model, the build doesn't need to know about the receipt at all"). THE REASON IT MUST REACH THIS TREE
+// rather than staying a private distinction: product.data_class admit_data_effect unions every row whose
+// category reference matches, so two description rows sharing ONE marker would let an artifact be stored
+// under the obligation-bounded retention and the MeterAndBill purpose that only receipts carry -- the
+// exact conflation the split dissolved, silently re-made one layer down. A marker is added by adding a
+// declaration and its private description row, which is what the open-by-row shape above is for.
+type ExecutionReceipt
 type CiSecret
 type JobLog
 type MeteringTelemetry
@@ -64,6 +78,7 @@ data data_category_module_path: String = "product.data_category"
 
 fn personal_identity_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "PersonalIdentity") }
 fn build_output_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "BuildOutput") }
+fn execution_receipt_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "ExecutionReceipt") }
 fn source_and_build_input_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "SourceAndBuildInput") }
 fn ci_secret_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "CiSecret") }
 fn job_log_ref() -> DeclarationRef { decl_ref(module_path: data_category_module_path, decl_name: "JobLog") }
@@ -94,8 +109,9 @@ data data_category_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
     "job_log_ref" as NonEmptyStr,
     "support_communication_ref" as NonEmptyStr,
     "abuse_and_sanctions_record_ref" as NonEmptyStr,
+    "execution_receipt_ref" as NonEmptyStr,
   ],
-  reason: "no public call site. THREE OF THE ORIGINAL SIX WERE WRONG TO BE HERE and are gone from this list: source_and_build_input_ref, metering_telemetry_ref and ci_secret_ref are now CALLED, by product.data_class's own frontier rows, which had been re-spelling this module's path the long way beside the functions that name it. Review 66072 caught that, and it caught the worse half: minting a second spelling beside an existing one is the DESIGN 3 nicknaming fork, and this PR CREATED it rather than cutting over -- while the annotation above claims these are the only spellings, which the tree then contradicted at three sites. The remaining three are genuinely uncalled in public: their consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The functions exist ahead of that binding so those rows import one spelling instead of re-spelling this module's path, which is the fork DESIGN 3 forbids. ONE REASON RATHER THAN THREE: they share a single fact -- no public caller, one private consumer -- and review 65976 refused an earlier revision that copied this sentence per name.",
+  reason: "no public call site. THREE OF THE ORIGINAL SIX WERE WRONG TO BE HERE and are gone from this list: source_and_build_input_ref, metering_telemetry_ref and ci_secret_ref are now CALLED, by product.data_class's own frontier rows, which had been re-spelling this module's path the long way beside the functions that name it. Review 66072 caught that, and it caught the worse half: minting a second spelling beside an existing one is the DESIGN 3 nicknaming fork, and this PR CREATED it rather than cutting over -- while the annotation above claims these are the only spellings, which the tree then contradicted at three sites. The remaining names -- the three above plus execution_receipt_ref, added 2026-09-18 with the ExecutionReceipt marker and listed here for the SAME single fact rather than a reason of its own -- are genuinely uncalled in public: their consumers are the private description rows of gunbc-private strategy.data_map, which this tree cannot see. The functions exist ahead of that binding so those rows import one spelling instead of re-spelling this module's path, which is the fork DESIGN 3 forbids. ONE REASON RATHER THAN ONE PER NAME: they share a single fact -- no public caller, one private consumer -- and review 65976 refused an earlier revision that copied this sentence per name.",
   dissolution: unbound_dissolution(
     description: "NAMED CONSUMER: gunbc-private strategy.data_map handling_rows_for_category, which binds one marker per description row and hands it to product.data_class admit_data_effect, the fold that compares marker identity rather than the type argument. TRIGGER, STATED AS THE CAPABILITY AND NOT A VEHICLE: gunbc-private strategy.data_map's handling rows IMPORT these names from this module as it stands on public main. Any change carrying that import satisfies it; no particular PR is named, deliberately. THE PREVIOUS WORDING NAMED A VEHICLE AND THE VEHICLE HAS SAILED: it required the binding to land on gunbc-private#118 from eea5674, but #118 merged at 3406db44c WITHOUT the binding and eea5674 is preserved as a WIP side-branch commit marked DO NOT MERGE. A trigger pointing at an artifact that cannot land is a dissolution that can never fire, and the frontier would have sat here forever reading as tracked. That is DESIGN section 4b(3)'s rule -- a trigger must name the CAPABILITY, not an artifact that would contribute to one -- read in the direction where the named artifact is not merely insufficient but impossible. READ OBLIGATION: whoever lands that import names its change here at that time, rather than this row guessing the vehicle in advance a second time. SUFFICIENT FOR deleting a name from the list above; the roster empties when every name in it is imported. NOT satisfied by a public witness calling one of them, which would prove the function evaluates and not that anything consumes the identity it names.",
   ),
