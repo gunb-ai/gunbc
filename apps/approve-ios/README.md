@@ -29,14 +29,14 @@ fixes on first build.
 
 1. `brew install xcodegen`
 2. Fill `Config/Team.xcconfig` (team id, `APPROVE_SERVER_HOST`). Keep the team id out of commits.
-4. `cd apps/approve-ios && xcodegen generate && open Approve.xcodeproj`
-5. In Signing & Capabilities confirm Push Notifications and App Attest are on the App ID (the
+3. `cd apps/approve-ios && xcodegen generate && open Approve.xcodeproj`
+4. In Signing & Capabilities confirm Push Notifications and App Attest are on the App ID (the
    entitlements file declares `aps-environment` and `com.apple.developer.devicecheck.appattest-environment`).
-6. Run `ApproveTests` (⌘U). `testRedemptionSigningInputMatchesEveryVector` and
+5. Run `ApproveTests` (⌘U). `testRedemptionSigningInputMatchesEveryVector` and
    `testEnrolmentTranscriptMatchesEveryVector` are the equivalence evidence with the `.dag` folds.
-7. Run on a PHYSICAL device: App Attest `isSupported` is false in the Simulator and the app refuses
+6. Run on a PHYSICAL device: App Attest `isSupported` is false in the Simulator and the app refuses
    enrolment there by design (`app_attest_unavailable_in_simulator_note`).
-8. For a distribution (TestFlight) build set `APNS_ENVIRONMENT = production` and
+7. For a distribution (TestFlight) build set `APNS_ENVIRONMENT = production` and
    `APP_ATTEST_ENVIRONMENT = production` (`testflight_is_production_note`).
 
 ## Flow
