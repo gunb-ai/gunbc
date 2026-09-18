@@ -332,6 +332,40 @@ fn posted_standing(
   }
 }
 
+// HOW A FAMILY WOULD ACTUALLY REACH THE CEILING, MODELED RATHER THAN ASSERTED AS A BOOLEAN.
+//
+// An earlier revision took `family_has_converge_route: Bool`, which is the flattening this type
+// exists to undo: it recorded THAT a route exists and nothing about what it is, so the refusal it
+// produced could not tell a reader where to go next, and no reviewer could check the claim. Worse,
+// a Bool is exactly what a caller guesses at - and guessing `true` there silently promotes an
+// unenforceable ceiling into an enforceable one.
+//
+// THE ROUTE IS SUPPLIED BY THE HOST'S POLICY LAYER, never enumerated here, for the same reason the
+// family authority is: enumerating families in this module is the §3 fork the whole standing is
+// shaped to avoid. A host module names its own family's route, and a third family adds a module.
+//
+// THE BOUND ARM CITES SYMBOLS AND NOT PROSE (§3 standing rule). It carries the fold that writes the
+// duty and the transport it writes over, as DeclarationRefs, so the claim "this family can be
+// converged" is checkable by resolving two names rather than by believing a sentence.
+type FanDutyConvergeRoute
+  = ConvergeRouteBound {
+      authority: FanPolicyAuthority
+      write_operation: DeclarationRef
+      transport: DeclarationRef
+      readback: DeclarationRef
+    }
+  | ConvergeRouteUnbound {
+      authority: FanPolicyAuthority
+      read_obligation: NonEmptyStr
+    }
+
+fn converge_route_obligation(route: FanDutyConvergeRoute) -> NonEmptyStr? {
+  match route {
+    ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } => Absent
+    ConvergeRouteUnbound { authority: _, read_obligation: o } => Present { value: o }
+  }
+}
+
 // THE SITE CEILING AS A BOUND ON THE STANDING, WITH THE REFUSAL THE BRIEF ASKED FOR.
 //
 // Two of the four standings are bounded by the ceiling and they are bounded differently, which is
@@ -340,11 +374,17 @@ fn posted_standing(
 // own contract requires - a controller with no thermal sensors may not be quiet and safe at once -
 // so a failsafe over the ceiling is not a defect to converge away but a DURATION to bound.
 //
-// FanPolicyCeilingUnenforceable is the typed refusal. It fires when the family has no modeled route
-// to a duty at all, which today is the MegaRAC case: extdeps.bmc.megarac_fan_policy carries its
-// policy as an uncited bet with a read obligation, so there is nothing to converge against. Reading
-// that as 'within ceiling' would be the fabricated-plausible-output failure at the one place the
-// operator's own room is the subject.
+// FanPolicyCeilingUnenforceable is the typed refusal, and it now CARRIES THE OBLIGATION rather than
+// a fixed sentence: the refusal tells its reader what would have to be read or bound for the
+// question to become answerable. It fires when the family has no modeled route to a duty at all,
+// which today is the MegaRAC case - extdeps.bmc.megarac_fan_policy carries its policy as an uncited
+// bet, so there is nothing to converge against. Reading that as 'within ceiling' would be the
+// fabricated-plausible-output failure at the one place the operator's own room is the subject.
+//
+// The OpenBMC side is the contrasting case and it is bound rather than hypothetical: that family's
+// duty is written by extdeps.bmc.openbmc_fan_control's fan-config projection, uploaded over
+// extdeps.ssh.password_session, and read back by its own verify fold - three real declarations, so
+// a ConvergeRouteBound for it cites symbols that resolve.
 type FanPolicyCeilingVerdict
   = FanPolicyWithinSiteCeiling
   | FanPolicySteadyCurveOverCeiling { comparison: AcousticComparison }
@@ -356,14 +396,17 @@ fn fan_policy_against_ceiling(
   standing: FanPolicyStanding,
   ceiling: AcousticCeiling,
   level_at_drive: AWeightedSoundPressureLevel?,
-  family_has_converge_route: Bool,
+  route: FanDutyConvergeRoute,
 ) -> FanPolicyCeilingVerdict {
-  if !family_has_converge_route {
-    FanPolicyCeilingUnenforceable {
-      cause: "this family carries no modeled route from a target duty to the controller, so no ceiling can be honoured or refused against it; bind the family's fan-mode surface before asking this question",
+  match converge_route_obligation(route: route) {
+    Present { value: obligation } => FanPolicyCeilingUnenforceable {
+      cause: join([
+        "this family carries no modeled route from a target duty to the controller, so no ceiling can be honoured or refused against it. What would bind it: ",
+        obligation as String,
+      ], "") as NonEmptyStr,
     }
-  } else {
-    match level_at_drive {
+    Absent => {
+      match level_at_drive {
       Absent => FanPolicyCeilingUnderdetermined {
         cause: "no published acoustic level for the observed drive point: the fan's datasheet publishes no level there and this substrate refuses to interpolate one",
       }
@@ -391,6 +434,7 @@ fn fan_policy_against_ceiling(
               FanPolicyCeilingUnderdetermined { cause: c }
           }
         }
+      }
       }
     }
   }

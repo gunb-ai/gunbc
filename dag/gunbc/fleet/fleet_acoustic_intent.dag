@@ -72,9 +72,11 @@ fn residence_duty_verdict(standing: FanPolicyStanding) -> FanDutyCeilingVerdict 
 // TWO FOLDS WAIT ON THE SAME MISSING FACT: product.acoustic_ceiling duty_ceiling_for_fan, which
 // derives a duty bound from a fan's published table under a stated dB(A) ceiling, and
 // product.fan_policy_standing fan_policy_against_ceiling, which bounds a standing by that ceiling
-// and carries the typed refusal for a family with no converge route. Both are executed by witnesses
-// against a catalogued fan and a real standing today; neither has a production consumer, because
-// this site has no dB(A) ceiling to state. They share one trigger because they wait on one fact.
+// and carries the typed refusal for a family whose converge route is unbound. Both are executed by
+// witnesses - against a catalogued fan, a real standing, and both family routes, the OpenBMC one
+// citing extdeps.bmc.openbmc_fan_control declarations that resolve - and neither has a production
+// consumer, because this site has no dB(A) ceiling to state. They share one trigger because they
+// wait on one fact.
 //
 // TRIGGER, stated as the CAPABILITY and not as an artifact: a stated-or-measured dB(A) ceiling for
 // this site at a named reference position, TOGETHER WITH a modeled fan part for the host being
