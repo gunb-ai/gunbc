@@ -426,7 +426,9 @@ fn filed_status_of_slot(slot: EscalationSlot) -> FiledApprovalStatus {
 fn escalation_status_of(slot: EscalationSlot) -> EscalationStatus {
   match slot {
     EscalationUnreadable { detail: _ } => EscalationStatus { status: 503, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
-    _ => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationNotFiled => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationPending { request: _ } => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
+    EscalationDecided { decision: _ } => EscalationStatus { status: 200, body: filed_approval_status_text(status: filed_status_of_slot(slot: slot)) }
   }
 }
 
