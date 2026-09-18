@@ -4,24 +4,29 @@ import std.types { Bool, NonEmptyStr, String }
 import extdeps.ethernet.link_mode { ieee_25gbase_cr, link_mode_eq }
 import extdeps.linux.mlx5_core { mlx5_core_module_name }
 import extdeps.mikrotik.crs812 { NoLaneSpeedForMode }
-import extdeps.network.mcx4121a_acat { mcx4121a_acat }
 import product.cable_order_admission { OrderRefused, OrderCodingUndeclared, LegCodingUndeclared }
+import product.placement_supply { host_identity_eq }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import gunbc.machine_intake_mtcollins1_expansion_candidates { expansion_candidates, InstalledUnobserved }
 import gunbc.machine_intake_mtcollins1_connectx4lx_observation {
   connectx4lx_host_observation, Connectx4LxHostUnobserved, Connectx4LxHostObserved,
   seated_transceiver_observation, SeatedTransceiverUnobserved, SeatedTransceiverObserved,
   mtcollins1_to_crs812_link_plan, MediaUnchosen,
   crs812_has_no_25gbase_cr_lane_speed, sfp56_group_publishes_25g,
   mtcollins1_crs812_cable_order_today, mtcollins1_crs812_cable_order_with,
-  mtcollins1_connectx4lx_fleet_intent, NicIntentUndeclared,
+  mtcollins1_connectx4lx_fleet_intent, NicIntentUndeclared, NicIntentDeclared,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn the_seated_card_is_the_nvidia_opn_not_the_ibm_fru() -> Bool {
-  mcx4121a_acat.opn == "MCX4121A-ACAT"
-    && mcx4121a_acat.port_count == 2
-    && mcx4121a_acat.port_connector == "SFP28"
+  fold(expansion_candidates, init: false, f: (hit, c) =>
+    hit || match c.context {
+      InstalledUnobserved { ordered: _, ordered_bracket: _, arrived: _, host: _, relay_message: _ } =>
+        c.catalog_scope.subject.declaration.module_path == "extdeps.network.mcx4121a_acat"
+      _ => false
+    })
 }
 
 test fn host_observation_stays_unobserved_until_the_boot_run() -> Bool {
@@ -68,7 +73,7 @@ test fn undeclared_cable_coding_refuses_the_purchase() -> Bool {
 
 test fn fleet_intent_is_undeclared_not_invented() -> Bool {
   match mtcollins1_connectx4lx_fleet_intent {
-    NicIntentUndeclared { host: h, asked_of: q } => h == "mtcollins1" && q != ""
-    _ => false
+    NicIntentUndeclared { host: h, asked_of: _ } => host_identity_eq(a: h, b: operator_host_mtcollins1)
+    NicIntentDeclared { host: _, purpose: _ } => false
   }
 }

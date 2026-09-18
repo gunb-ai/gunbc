@@ -7,6 +7,8 @@ import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.linux.mlx5_core { mlx5_core_module_name }
 import extdeps.mikrotik.crs812 { crs812_lane_speed_for_link_mode, Crs812LaneSpeedForMode, NoLaneSpeedForMode }
 import extdeps.network.mcx4121a_acat { mcx4121a_acat }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import extdeps.network.mikrotik_crs812 { crs812_catalog }
 import product.cable_order_admission {
   CableLegCodingEvidence, CableLinkRequirement, CableOrderAdmission,
@@ -102,10 +104,12 @@ data mtcollins1_crs812_cable_order_today: CableOrderAdmission = mtcollins1_crs81
 
 // fleet_intent_network names mtcollins1 without executor enrollment. The 1U brief states i350 1 GbE
 // onboard and 10G only via the OCP 3.0 slot. Neither declares why this PCIe 25G card is fitted.
+// NicIntentDeclared is the defect: inventing a purpose the operator has not stated.
 type NicFleetIntentStanding
-  = NicIntentUndeclared { host: NonEmptyStr, asked_of: NonEmptyStr }
+  = NicIntentUndeclared { host: HostIdentity, asked_of: NonEmptyStr }
+  | NicIntentDeclared { host: HostIdentity, purpose: NonEmptyStr }
 
 data mtcollins1_connectx4lx_fleet_intent: NicFleetIntentStanding = NicIntentUndeclared {
-  host: "mtcollins1",
+  host: operator_host_mtcollins1,
   asked_of: "eager-owl-205 / operator: which declared fleet intent this seated MCX4121A-ACAT serves",
 }
