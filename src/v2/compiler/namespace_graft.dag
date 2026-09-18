@@ -484,12 +484,13 @@ fn namespace_graft_data_decl_named_edge(unit: Node) -> Edge? {
 fn namespace_graft_named_edge_from_unit(unit: Node) -> Edge? {
   match parse_production_emitted_identity_optional(node: unit) {
     Present { value: id } =>
-      if id == ^dag_surface_type_decl {
-        namespace_graft_type_decl_named_edge(unit: unit)
-      } else if id == ^dag_surface_data_decl {
-        namespace_graft_data_decl_named_edge(unit: unit)
-      } else {
-        optional_absent()
+      match id == ^dag_surface_type_decl {
+        true => namespace_graft_type_decl_named_edge(unit: unit)
+        false =>
+          match id == ^dag_surface_data_decl {
+            true => namespace_graft_data_decl_named_edge(unit: unit)
+            false => optional_absent()
+          }
       }
     Absent => optional_absent()
   }
