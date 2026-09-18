@@ -1,6 +1,6 @@
 module extdeps.apple.apns
 
-import std.types { NonEmptyStr, String, Int, Bool }
+import std.types { NonEmptyStr, String, Int, Bool, Secret }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.signature { SignatureSuite, EcdsaP256Sha256 }
@@ -53,6 +53,44 @@ data apns_provider_token_min_refresh_seconds: Int = 1200
 type ApnsProviderIdentity {
   team_id: AppleTeamId
   key_id: ApnsKeyId
+}
+
+// THE TOKEN, and what it names. The JWT is the bearer credential sent as `authorization: bearer
+// <jwt>`; it carries its identity and issue time beside it so a cache can decide the refresh window
+// (the two bounds above) without decoding its own output.
+type ApnsProviderToken {
+  identity: ApnsProviderIdentity
+  issued_at_epoch: Int
+  jwt: NonEmptyStr
+}
+
+// Minting refuses rather than fabricating. The bound implementation can see two malformed inputs: a
+// key that is not a P-256 PKCS #8 PEM (an APNs .p8 is exactly that), and an issue time before the
+// epoch. The second is checked here, so the implementation's absence means the first.
+type ApnsProviderTokenMint
+  = ApnsProviderTokenSigned { token: ApnsProviderToken }
+  | ApnsAuthKeyUnreadable { key_id: ApnsKeyId }
+  | ApnsIssuedAtBeforeEpoch { issued_at_epoch: Int }
+
+// `es256_jwt_sign` is a host primitive over RustCrypto's p256 SigningKey (RFC 6979 deterministic
+// nonces, so one input has one token and no RNG is consulted): header {"alg":"ES256","kid"},
+// claims {"iss","iat"}, unpadded base64url segments, JOSE r || s signature (RFC 7518 §3.4). The key
+// travels as a Secret and never appears in an argv (gunbc.credential_argv_exposure), which is why
+// this is a primitive and not a shell transport. The suite match is total so a second
+// SignatureSuite arm cannot reach the ES256 implementation without an authored arm.
+fn apns_provider_token(identity: ApnsProviderIdentity, auth_key: Secret, issued_at_epoch: Int) -> ApnsProviderTokenMint {
+  if issued_at_epoch < 0 {
+    ApnsIssuedAtBeforeEpoch { issued_at_epoch: issued_at_epoch }
+  } else {
+    match apns_provider_token_suite {
+      EcdsaP256Sha256 =>
+        match es256_jwt_sign(auth_key as String, identity.key_id as String, identity.team_id as String, issued_at_epoch) {
+          Absent => ApnsAuthKeyUnreadable { key_id: identity.key_id }
+          Present { value: jwt } =>
+            ApnsProviderTokenSigned { token: ApnsProviderToken { identity: identity, issued_at_epoch: issued_at_epoch, jwt: jwt as NonEmptyStr } }
+        }
+    }
+  }
 }
 
 // ── Request headers ──────────────────────────────────────────────────────────────────────────

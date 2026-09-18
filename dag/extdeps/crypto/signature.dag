@@ -1,6 +1,7 @@
 module extdeps.crypto.signature
 
 import std.types { NonEmptyStr, String, Int }
+import std.encoding { base64_decode, UrlSafe }
 import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -89,6 +90,9 @@ type SignatureVerification
   | SignatureMalformed { octets_declared: Int, octets_expected: Int }
   | VerifyingKeyMalformed { octets_declared: Int, octets_expected: Int }
   | SignatureSuiteMismatch { key_suite: SignatureSuite, signature_suite: SignatureSuite }
+  | VerifyingKeyUndecodable { suite: SignatureSuite }
+  | SignatureUndecodable { suite: SignatureSuite }
+  | SignatureEncodingRefused { suite: SignatureSuite }
 
 fn signature_verification_succeeded(v: SignatureVerification) -> Bool {
   match v {
@@ -97,15 +101,12 @@ fn signature_verification_succeeded(v: SignatureVerification) -> Bool {
     SignatureMalformed { octets_declared: _, octets_expected: _ } => false
     VerifyingKeyMalformed { octets_declared: _, octets_expected: _ } => false
     SignatureSuiteMismatch { key_suite: _, signature_suite: _ } => false
+    VerifyingKeyUndecodable { suite: _ } => false
+    SignatureUndecodable { suite: _ } => false
+    SignatureEncodingRefused { suite: _ } => false
   }
 }
 
-// NO BOUND IMPLEMENTATION YET, and that is declared rather than papered: extdeps.crypto.mac binds
-// RustCrypto's hmac through a host primitive; the ECDSA twin (RustCrypto p256 VerifyingKey::verify)
-// has no host primitive in this tree. The consumer that needs it is the /approve route's device
-// signature check (gunbc.auth.approval_push); until the primitive lands no route may mint
-// SignatureVerified from anything, so no redemption can claim a device.
-//
 // ── The realization seam ─────────────────────────────────────────────────────────────────────
 // Same boundary as mac_verification_from_implementation, stated the same way: evidence cannot exist
 // without naming its message and key (structural), and whether the bound implementation actually ran
@@ -136,5 +137,60 @@ fn signature_verification_from_implementation(
         }
       }
     }
+  }
+}
+
+// ── The bound implementation ─────────────────────────────────────────────────────────────────
+// `p256_ecdsa_verify_b64url` is a host primitive backed by RustCrypto's p256 VerifyingKey::verify,
+// which SHA-256-hashes the message itself: nothing here hands the implementation a digest. The octet
+// lengths the seam checks are the DECODED lengths, so a 64-octet key or a 71-octet DER signature is
+// named as such rather than collapsed into a mismatch.
+//
+// Absence from the primitive is not a mismatch either. When the seam's own checks pass (so the
+// answer with a false bit would be SignatureInvalid) and the primitive still answers absent, the
+// bytes had the right lengths and are not an admitted encoding -- a point off the curve, a scalar out
+// of range, a prefix other than 0x04, a non-canonical base64url spelling -- and that is
+// SignatureEncodingRefused, never SignatureInvalid: an invalid signature is a statement about a
+// well-formed one.
+fn p256_ecdsa_verify(key: VerifyingKey, signature: SignatureBytes, message: NonEmptyStr) -> SignatureVerification {
+  match base64_decode(s: key.point_b64url as String, variant: UrlSafe) {
+    Absent => VerifyingKeyUndecodable { suite: key.suite }
+    Present { value: key_octets } =>
+      match base64_decode(s: signature.b64url as String, variant: UrlSafe) {
+        Absent => SignatureUndecodable { suite: signature.suite }
+        Present { value: signature_octets } =>
+          match key.suite {
+            EcdsaP256Sha256 =>
+              match p256_ecdsa_verify_b64url(key.point_b64url as String, signature.b64url as String, message as String) {
+                Present { value: verified } =>
+                  signature_verification_from_implementation(
+                    key: key,
+                    key_octets: count(key_octets),
+                    signature: signature,
+                    signature_octets: count(signature_octets),
+                    message: message,
+                    implementation_verified: verified,
+                  )
+                Absent =>
+                  encoding_refusal(v: signature_verification_from_implementation(
+                    key: key,
+                    key_octets: count(key_octets),
+                    signature: signature,
+                    signature_octets: count(signature_octets),
+                    message: message,
+                    implementation_verified: false,
+                  ))
+              }
+          }
+      }
+  }
+}
+
+// The seam's structural refusals stand; only the arm that would claim a well-formed invalid
+// signature is re-read as an encoding refusal.
+fn encoding_refusal(v: SignatureVerification) -> SignatureVerification {
+  match v {
+    SignatureInvalid { suite: s } => SignatureEncodingRefused { suite: s }
+    _ => v
   }
 }
