@@ -4,7 +4,7 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef }
 import extdeps.toolchain.types { Architecture, Aarch64 }
 import product.placement_supply { SiteIdentity }
-import extdeps.firmware.ipxe { ipxe_chainloading_authority }
+import extdeps.firmware.ipxe { ipxe_chainloading_authority, ipxe_arm64_efi_snponly, ipxe_build_target_path }
 import extdeps.formats.dnsmasq {
   DnsmasqDirective,
   DnsmasqComment,
@@ -212,7 +212,7 @@ data site_edge_known_tag: String = "onboarding-known"
 fn site_edge_proxy_dhcp_directives(network_address: NonEmptyStr, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>) -> List<DnsmasqDirective> {
   concat(
     [
-      DnsmasqComment { text: concat("gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only, per ", ipxe_chainloading_authority.uri.locator) },
+      DnsmasqComment { text: join(["gunbc.site_uefi_arm64_pxe_edge: ProxyDHCP, UEFI ARM64 chainloader only: iPXE ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String, " per ", ipxe_chainloading_authority.uri.locator], "") },
       DnsmasqPort { value: 0 },
       DnsmasqDhcpRangeProxy { network_address: network_address as String },
       DnsmasqDhcpMatchSet { tag: site_edge_arm64_tag, option: "option:client-arch", value: to_string(uefi_arm64_client_arch_code) },

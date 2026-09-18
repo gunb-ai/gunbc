@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64, X86_64, Wasm32 }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_subject {
@@ -61,11 +62,6 @@ import gunbc.network_boot_delivery {
   first_slice_admitted_architectures,
   join_network_boot_delivery,
   site_pxe_edge_standing,
-  wet_acceptance_binds_mt_collins_now,
-  wet_acceptance_subject,
-  WetAcceptanceSubjectUnbound,
-  MtJadeArrivingBarebones,
-  MtCollinsAfterCdBoot,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -148,7 +144,7 @@ fn client_ok() -> ClientBootModeObserved {
       target: target,
       client: ObservedDhcpPxeClient {
         vendor_class: "PXEClient:Arch:00011:UNDI:003016",
-        arch_code: 11,
+        arch: UefiArm64,
       },
       observation: obs,
       observed_at: 1788000000000,
@@ -404,17 +400,35 @@ test fn neither_trust_input_is_unestablished() -> Bool {
   }
 }
 
-test fn wet_acceptance_subject_is_unbound_and_not_mt_collins_now() -> Bool {
-  match wet_acceptance_subject() {
-    WetAcceptanceSubjectUnbound { proposed_first: first, fallback: fallback } =>
-      match first {
-        MtJadeArrivingBarebones =>
-          match fallback {
-            MtCollinsAfterCdBoot => wet_acceptance_binds_mt_collins_now(standing: wet_acceptance_subject()) == false
-            MtJadeArrivingBarebones => false
-          }
-        MtCollinsAfterCdBoot => false
-      }
+test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
+  let frozen = DeclarationRef {
+    module_path: "gunbc.bmc_netboot_serve",
+    decl_name: "srv4_bmc_netboot_serve_plan",
+    field: WholeDeclaration,
+  }
+  let client = ClientBootModeObserved {
+    receipt: ObservedClientBootModeReceipt {
+      target: target,
+      client: ObservedDhcpPxeClient {
+        vendor_class: "PXEClient:Arch:00011:UNDI:003016",
+        arch: UefiArm64,
+      },
+      observation: frozen,
+      observed_at: 1788000000000,
+    },
+  }
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client,
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootClientBootMode)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
   }
 }
 
