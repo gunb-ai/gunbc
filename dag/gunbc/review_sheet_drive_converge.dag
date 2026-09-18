@@ -60,10 +60,21 @@ data review_sheet_marker_property_key: NonEmptyStr = "gunbcReviewSheet"
 // it, so it is stable exactly because it is invisible.
 data ci_prospect_sheet_marker_value: NonEmptyStr = "ci-prospect-sheet"
 
-fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
+// THE FIELD IS WHERE THE MARKER LIVES, AND IT IS A PARAMETER BECAUSE IT HAS MOVED ONCE ALREADY.
+// An earlier revision of this change authored the superseded query as a second copy of the whole
+// query shape differing in one token, and a reviewer was right to refuse it: two sources for one
+// fact means an edit to either clause silently diverges the other, and "identical except the field"
+// is precisely the relation the migration decision rests on. Worse, having built the relation twice
+// the obvious next move was to TEST that the two agree -- which is validation standing exactly where
+// construction was available, and the test that got written was vacuous.
+//
+// Built from one fold, the relation is not asserted anywhere because it cannot be false: there is
+// one query shape and the field is the only thing either caller supplies.
+fn review_sheet_marker_query(marker_field: NonEmptyStr, marker_value: NonEmptyStr) -> String {
   join(
     [
-      "properties has { key='",
+      marker_field as String,
+      " has { key='",
       review_sheet_marker_property_key as String,
       "' and value='",
       marker_value as String,
@@ -72,6 +83,15 @@ fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
       "' and trashed=false",
     ],
     "",
+  )
+}
+
+data review_sheet_current_marker_property_field: NonEmptyStr = "properties"
+
+fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
+  review_sheet_marker_query(
+    marker_field: review_sheet_current_marker_property_field,
+    marker_value: marker_value,
   )
 }
 
@@ -97,18 +117,9 @@ fn review_sheet_search_query(marker_value: NonEmptyStr) -> String {
 data review_sheet_superseded_marker_property_field: NonEmptyStr = "appProperties"
 
 fn review_sheet_superseded_search_query(marker_value: NonEmptyStr) -> String {
-  join(
-    [
-      review_sheet_superseded_marker_property_field as String,
-      " has { key='",
-      review_sheet_marker_property_key as String,
-      "' and value='",
-      marker_value as String,
-      "' } and mimeType='",
-      google_sheet_mime_type as String,
-      "' and trashed=false",
-    ],
-    "",
+  review_sheet_marker_query(
+    marker_field: review_sheet_superseded_marker_property_field,
+    marker_value: marker_value,
   )
 }
 

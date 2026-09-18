@@ -43,6 +43,9 @@ import gunbc.review_sheet_drive_converge {
   ensure_review_spreadsheet,
   review_sheet_search_query,
   review_sheet_superseded_search_query,
+  review_sheet_marker_query,
+  review_sheet_current_marker_property_field,
+  review_sheet_superseded_marker_property_field,
   review_sheet_marker_property_key,
 }
 
@@ -476,18 +479,56 @@ test fn observe_only_refuses_the_marker_migration() -> Bool {
   }
 }
 
-// THE TWO QUERIES DIFFER IN THE FIELD AND IN NOTHING ELSE. Same key, same value, same mime type,
-// same trashed exclusion -- so a file is reachable by exactly one of them according to where its
-// marker lives, which is the property the migration decision rests on.
-test fn superseded_query_differs_only_in_the_field() -> Bool {
-  let current = review_sheet_search_query(marker_value: "ci-prospect-sheet" as NonEmptyStr)
+// THE "DIFFER ONLY IN THE FIELD" RELATION IS NO LONGER ASSERTED HERE, BECAUSE IT IS NOW BUILT.
+// Both queries come from review_sheet_marker_query and the field is the only thing either caller
+// supplies, so there is no state in which they could differ elsewhere for a claim to discover. An
+// earlier revision authored the relation twice and then tested that the two copies agreed; that
+// test was worse than absent -- its final conjunct compared the lowercase pattern "properties has
+// { key" against a string containing "appProperties has { key", where the P is capital, so the
+// substring never matched, the negation was permanently true, and the `||` short-circuited before
+// the other query was ever inspected. It was green by construction while its own annotation cited
+// it as establishing the property the migration decision rests on (DESIGN section 4b: ask whether
+// the check's RED is authorable before writing the check).
+//
+// WHAT REPLACES IT IS THE PART THAT CAN STILL GO RED. Two things remain falsifiable after the
+// construction: a wrapper drifting from the shared builder, and the two field declarations being
+// set to the same spelling -- which would make the superseded search a second copy of the current
+// one, find nothing, and return this converge to the behaviour that minted the duplicate.
+test fn each_marker_query_is_the_shared_builder_at_its_declared_field() -> Bool {
+  let v = "ci-prospect-sheet" as NonEmptyStr
+  (review_sheet_search_query(marker_value: v)
+    == review_sheet_marker_query(
+         marker_field: review_sheet_current_marker_property_field,
+         marker_value: v,
+       ))
+    && (review_sheet_superseded_search_query(marker_value: v)
+      == review_sheet_marker_query(
+           marker_field: review_sheet_superseded_marker_property_field,
+           marker_value: v,
+         ))
+}
+
+// THE TWO LOCATIONS MUST BE DIFFERENT LOCATIONS. If the superseded field were edited to the current
+// spelling the second search would ask the first question again, answer absent for the same reason,
+// and the create arm would open over a drive holding a legacy-marked sheet -- the original defect,
+// reached through the mechanism built to prevent it.
+test fn the_superseded_field_is_not_the_current_one() -> Bool {
+  let v = "ci-prospect-sheet" as NonEmptyStr
+  (! ((review_sheet_superseded_marker_property_field as String)
+        == (review_sheet_current_marker_property_field as String)))
+    && (! (review_sheet_superseded_search_query(marker_value: v)
+            == review_sheet_search_query(marker_value: v)))
+}
+
+// The superseded query names Drive's appProperties, keys on the declared marker property, and
+// excludes trashed files for the same reason the current one does: a sheet the operator threw away
+// is not a sheet to adopt, and adopting one would write into a file they have already discarded.
+test fn superseded_query_names_the_old_field_and_excludes_trashed() -> Bool {
   let legacy = review_sheet_superseded_search_query(marker_value: "ci-prospect-sheet" as NonEmptyStr)
   string_contains(s: legacy, pattern: "appProperties has {")
     && string_contains(s: legacy, pattern: review_sheet_marker_property_key as String)
     && string_contains(s: legacy, pattern: "trashed=false")
     && string_contains(s: legacy, pattern: google_sheet_mime_type as String)
-    && (! string_contains(s: legacy, pattern: "properties has { key")
-        || ! string_contains(s: current, pattern: "appProperties"))
 }
 
 test fn absent_files_field_is_unreadable_not_absent() -> Bool {
