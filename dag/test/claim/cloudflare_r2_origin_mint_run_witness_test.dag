@@ -52,6 +52,7 @@ import gunbc.cloudflare.r2_origin {
   fabric_durable_origin_write_secret_id,
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
+  DigestKeyedBootArtifacts,
   OriginCredentialStanding,
   OriginCredentialPinned,
   OriginCredentialUnminted,
@@ -348,6 +349,7 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
         && (bucket.bucket_name as String) == (declared_bucket_name())
         && match bucket.admits {
              FabricCommitManifestsAndContentAddressedOutputs {} => true
+             DigestKeyedBootArtifacts {} => false
            }
   }
 }

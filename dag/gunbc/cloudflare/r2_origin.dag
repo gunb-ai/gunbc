@@ -84,6 +84,7 @@ fn fleet_cloudflare_account_standing() -> FleetCloudflareAccountStanding {
 // visibility a bucket that quietly became a general dumping ground would not have.
 type DurableOriginAdmission
   = FabricCommitManifestsAndContentAddressedOutputs {}
+  | DigestKeyedBootArtifacts {}
 
 // A CREDENTIAL FOR THE ORIGIN IS TWO FACTS AND A STANDING. The S3 access key id IS the Cloudflare
 // token id (extdeps.cloudflare.r2 R2S3AccessPair, cited) and is not a secret: it is what the
@@ -137,8 +138,13 @@ type DurableOriginBucket {
 // constructor that admits a repeated key on either axis. The authored list below remains a fallible
 // ingress that refuses loudly; that residual, and its own next-rung trigger, are stated once in
 // std.allocation_roster rather than restated here.
+// THE BOOT ORIGIN IS A SECOND PURPOSE, NOT A WIDENING OF THE FIRST (gunbc.network_boot_predecessor_census
+// DurableOriginNotBootOrigin). The durable origin is private and byte-owning for commit readback; the
+// boot origin is read by machines over a public custom domain. Admitting boot bytes into the durable
+// bucket would make it public, and the durable origin's read token would become a boot reader's.
 type BucketPurpose
   = FabricDurableOrigin {}
+  | FabricBootOrigin {}
 
 type R2BucketAllocation {
   purpose: BucketPurpose
@@ -148,6 +154,16 @@ type R2BucketAllocation {
 fn bucket_purpose_key(purpose: BucketPurpose) -> String {
   match purpose {
     FabricDurableOrigin {} => "fabric-durable-origin"
+    FabricBootOrigin {} => "fabric-boot-origin"
+  }
+}
+
+// PUBLIC READ IS A PROPERTY OF THE PURPOSE, decided by an exhaustive match so a new purpose must
+// state it. Only the boot origin is ever attached to a custom domain.
+fn bucket_purpose_admits_public_read(purpose: BucketPurpose) -> Bool {
+  match purpose {
+    FabricDurableOrigin {} => false
+    FabricBootOrigin {} => true
   }
 }
 
@@ -167,6 +183,10 @@ data gunbc_fleet_r2_bucket_allocations: List<R2BucketAllocation> = [
   R2BucketAllocation {
     purpose: FabricDurableOrigin {},
     bucket_name: "gunbai-fabric-origin",
+  },
+  R2BucketAllocation {
+    purpose: FabricBootOrigin {},
+    bucket_name: "gunbai-fabric-boot",
   },
 ]
 
@@ -301,5 +321,36 @@ fn fleet_cloudflare_bootstrap_custody() -> BootstrapCustodyStanding {
       version: cloudflare_bootstrap_custody_version,
       hash_state: HashPending,
     }
+  }
+}
+
+// THE BOOT ORIGIN'S TWO CUSTODY LOCI, disjoint from the durable origin's and from each other. The
+// read token is held by whatever verifies publication; the write token only by the publisher. Neither
+// is minted yet: gunbc.cloudflare.r2_token_mint_run mints per R2OriginTokenProfile against the durable
+// bucket only, so until it is parameterized by BucketPurpose both arms are Unminted and every boot
+// PUT refuses at the standing, before any network call. Accessor rows in
+// gunbc.auth.fleet_secret_accessor_roster land with the minted versions, never before: a row whose
+// secret does not exist would stop that roster's fold for every other lane.
+data fabric_boot_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin-read-token"
+
+data fabric_boot_origin_write_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin-write-token"
+
+fn fabric_boot_origin_standing() -> DurableOriginStanding {
+  match allocated_bucket_name(purpose: FabricBootOrigin {}) {
+    Absent => DurableOriginUnallocated { purpose: FabricBootOrigin {} }
+    Present { value: name } =>
+      DurableOriginAllocated {
+        bucket: DurableOriginBucket {
+          bucket_name: name,
+          jurisdiction: R2JurisdictionDefault,
+          admits: DigestKeyedBootArtifacts {},
+          read_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_read_secret_id"),
+          },
+          write_credential: OriginCredentialUnminted {
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_write_secret_id"),
+          },
+        }
+      }
   }
 }

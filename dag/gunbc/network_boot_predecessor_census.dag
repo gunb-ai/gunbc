@@ -87,7 +87,7 @@ fn predecessor_disposition_of(module_path: String, decl_name: String) -> Network
         Present { value: _ } => acc
         Absent =>
           if predecessor_row_matches(row: row, module_path: module_path, decl_name: decl_name) {
-            some(row.disposition)
+            Present { value: row.disposition }
           } else {
             none
           }

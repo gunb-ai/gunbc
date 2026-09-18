@@ -69,7 +69,7 @@ data r2_get_bucket_authority: ExternalAuthority = ExternalAuthority {
 data r2_custom_domains_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "developers.cloudflare.com/r2/buckets/public-buckets/#custom-domains"
+    locator: "developers.cloudflare.com/r2/buckets/public-buckets/"
   }
 }
 
@@ -487,7 +487,7 @@ fn r2_published_location_citations() -> List<FactCitation> {
   ]
 }
 
-data r2_custom_domain_reading: NonEmptyStr = "Connect a custom domain to your R2 bucket to serve objects from a hostname you control. The r2.dev subdomain is intended for testing and is rate-limited; it is not a production origin. A custom domain is the machine-facing HTTPS hostname for public object reads. Read 2026-09-18."
+data r2_custom_domain_reading: NonEmptyStr = "Public access through r2.dev subdomains is rate-limited and should only be used for development purposes. Domain access through a custom domain allows you to use Cloudflare Cache to accelerate access to your R2 bucket. Last updated Jun 16, 2026. Read 2026-09-18."
 
 data r2_custom_domain_citation: FactCitation = FactCitation {
   fact: DeclarationRef {

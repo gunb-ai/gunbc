@@ -1,0 +1,205 @@
+module test.claim.cloudflare_boot_origin_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.uri { Uri, Https }
+import gunbc.network_boot_delivery { FleetBootServiceReceipt }
+import gunbc.cloudflare.r2_origin {
+  fabric_boot_origin_standing,
+  fabric_durable_origin_standing,
+  DurableOriginAllocated,
+  DurableOriginUnallocated,
+  OriginCredentialPinned,
+  OriginCredentialUnminted,
+  DigestKeyedBootArtifacts,
+  FabricCommitManifestsAndContentAddressedOutputs,
+  fabric_boot_origin_read_secret_id,
+  fabric_boot_origin_write_secret_id,
+  fabric_durable_origin_read_secret_id,
+  fabric_durable_origin_write_secret_id,
+}
+import gunbc.cloudflare.boot_origin {
+  BootBundleObject,
+  BootKernel,
+  BootPutCreated,
+  BootPutKeyOccupied,
+  BootPutFailed,
+  BootObjectPublished,
+  BootObjectAlreadyIdentical,
+  BootObjectOccupiedByDifferentBytes,
+  BootObjectPublishFailed,
+  classify_boot_publish,
+  admit_boot_object_key,
+  BootObjectKeyAdmitted,
+  BootObjectKeyRefusedHashFamily,
+  boot_object_key,
+  boot_readback_locator,
+  BootReadbackAt,
+  BootReadbackRefusedR2Dev,
+  BootReadbackRefusedNotHttps,
+  classify_boot_readback,
+  BootReadbackServed,
+  BootReadbackUnserved,
+  BootObjectReadBackConfirmed,
+  BootObjectReadBackMismatch,
+  BootObjectReadBackUnavailable,
+  boot_origin_hostname_standing,
+  BootOriginHostnameAllocated,
+  BootOriginHostnameUnallocated,
+  boot_origin_is_separate_from_durable_origin,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data digest_a_hex: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data digest_b_hex: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn digest(hex: String) -> Sha256Digest {
+  Sha256Digest { hex: hex as Sha256DigestHex }
+}
+
+fn kernel_a() -> BootBundleObject {
+  BootBundleObject { member: BootKernel, digest: digest(hex: digest_a_hex) }
+}
+
+fn receipt_at(domain: Uri) -> FleetBootServiceReceipt {
+  FleetBootServiceReceipt {
+    https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test" },
+    origin_custom_domain: domain,
+    signing_key_identity: "fixture-key",
+    observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "receipt_at"),
+    observed_at: 0,
+  }
+}
+
+test fn key_is_the_sha256_digest_and_nothing_mutable() -> Bool {
+  (boot_object_key(digest: digest(hex: digest_a_hex)) as String) == join(["sha256/", digest_a_hex], "")
+    && match admit_boot_object_key(hash: Sha256Hash(digest(hex: digest_a_hex))) {
+         BootObjectKeyAdmitted { key: k } => (k as String) == join(["sha256/", digest_a_hex], "")
+         BootObjectKeyRefusedHashFamily {} => false
+       }
+}
+
+test fn non_sha256_digest_refuses_a_key() -> Bool {
+  match admit_boot_object_key(hash: Sha1Hash(Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Sha1DigestHex })) {
+    BootObjectKeyAdmitted { key: _ } => false
+    BootObjectKeyRefusedHashFamily {} => true
+  }
+}
+
+test fn create_only_put_publishes() -> Bool {
+  match classify_boot_publish(object: kernel_a(), answer: BootPutCreated {}) {
+    BootObjectPublished { key: _ } => true
+    BootObjectAlreadyIdentical { key: _ } => false
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } => false
+    BootObjectPublishFailed { key: _, cause: _ } => false
+  }
+}
+
+test fn occupied_key_with_same_bytes_is_idempotent() -> Bool {
+  match classify_boot_publish(object: kernel_a(), answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_a_hex) }) {
+    BootObjectPublished { key: _ } => false
+    BootObjectAlreadyIdentical { key: _ } => true
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } => false
+    BootObjectPublishFailed { key: _, cause: _ } => false
+  }
+}
+
+test fn occupied_key_with_different_bytes_refuses() -> Bool {
+  match classify_boot_publish(object: kernel_a(), answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_b_hex) }) {
+    BootObjectPublished { key: _ } => false
+    BootObjectAlreadyIdentical { key: _ } => false
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: o } => (o.hex as String) == digest_b_hex
+    BootObjectPublishFailed { key: _, cause: _ } => false
+  }
+}
+
+test fn failed_put_is_not_success() -> Bool {
+  match classify_boot_publish(object: kernel_a(), answer: BootPutFailed { cause: "503" }) {
+    BootObjectPublished { key: _ } => false
+    BootObjectAlreadyIdentical { key: _ } => false
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } => false
+    BootObjectPublishFailed { key: _, cause: _ } => true
+  }
+}
+
+test fn readback_addresses_the_receipt_custom_domain() -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: Uri { scheme: Https, locator: "boot-origin.example.test" }), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: u } => (u.locator as String) == join(["boot-origin.example.test/sha256/", digest_a_hex], "")
+    BootReadbackRefusedR2Dev { locator: _ } => false
+    BootReadbackRefusedNotHttps {} => false
+  }
+}
+
+test fn readback_refuses_r2_dev() -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: Uri { scheme: Https, locator: "pub-0123.r2.dev" }), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: _ } => false
+    BootReadbackRefusedR2Dev { locator: _ } => true
+    BootReadbackRefusedNotHttps {} => false
+  }
+}
+
+test fn readback_refuses_plain_http() -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: Uri { scheme: Http, locator: "boot-origin.example.test" }), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: _ } => false
+    BootReadbackRefusedR2Dev { locator: _ } => false
+    BootReadbackRefusedNotHttps {} => true
+  }
+}
+
+test fn readback_confirms_only_the_published_digest() -> Bool {
+  let ok = match classify_boot_readback(object: kernel_a(), observation: BootReadbackServed { served_digest: digest(hex: digest_a_hex) }) {
+    BootObjectReadBackConfirmed { key: _ } => true
+    BootObjectReadBackMismatch { key: _, served: _ } => false
+    BootObjectReadBackUnavailable { key: _, cause: _ } => false
+  }
+  let stale = match classify_boot_readback(object: kernel_a(), observation: BootReadbackServed { served_digest: digest(hex: digest_b_hex) }) {
+    BootObjectReadBackConfirmed { key: _ } => false
+    BootObjectReadBackMismatch { key: _, served: _ } => true
+    BootObjectReadBackUnavailable { key: _, cause: _ } => false
+  }
+  let gone = match classify_boot_readback(object: kernel_a(), observation: BootReadbackUnserved { cause: "404" }) {
+    BootObjectReadBackConfirmed { key: _ } => false
+    BootObjectReadBackMismatch { key: _, served: _ } => false
+    BootObjectReadBackUnavailable { key: _, cause: _ } => true
+  }
+  ok && stale && gone
+}
+
+test fn hostname_is_unallocated_until_the_operator_records_it() -> Bool {
+  match boot_origin_hostname_standing() {
+    BootOriginHostnameAllocated { zone: _, fqdn: _ } => false
+    BootOriginHostnameUnallocated { intervention: _ } => true
+  }
+}
+
+test fn boot_origin_is_a_separate_bucket_from_the_durable_origin() -> Bool {
+  boot_origin_is_separate_from_durable_origin()
+}
+
+test fn boot_origin_credentials_are_disjoint_and_unminted() -> Bool {
+  let disjoint = (fabric_boot_origin_read_secret_id as String) != (fabric_boot_origin_write_secret_id as String)
+    && !((fabric_boot_origin_read_secret_id as String) == (fabric_durable_origin_read_secret_id as String))
+    && !((fabric_boot_origin_write_secret_id as String) == (fabric_durable_origin_write_secret_id as String))
+  let standing = match fabric_boot_origin_standing() {
+    DurableOriginUnallocated { purpose: _ } => false
+    DurableOriginAllocated { bucket: b } =>
+      (b.bucket_name as String) == "gunbai-fabric-boot"
+        && match b.admits {
+             FabricCommitManifestsAndContentAddressedOutputs {} => false
+             DigestKeyedBootArtifacts {} => true
+           }
+        && match b.write_credential {
+             OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+             OriginCredentialUnminted { mint_entry: _ } => true
+           }
+  }
+  disjoint && standing
+}
+
+test fn probe_tmp() -> Bool {
+  let u = Uri { scheme: Https, locator: "x" }
+  (u.locator as String) == "x"
+}
