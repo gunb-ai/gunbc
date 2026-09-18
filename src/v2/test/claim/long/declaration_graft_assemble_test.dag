@@ -160,8 +160,8 @@ test fn declaration_graft_record_type_only_box_and_n_are_named() -> Bool {
     && declaration_graft_named_reachable(src: src_g_type_only, lexeme: "n")
 }
 
-test fn declaration_graft_record_construct_reason_is_unbound() -> Bool {
-  declaration_graft_assemble_reason(src: src_g) == "resolve_reason_unbound_symbol"
+test fn declaration_graft_record_construct_accepts() -> Bool {
+  declaration_graft_assemble_accepts(src: src_g)
 }
 
 test fn declaration_graft_record_fields_are_named() -> Bool {
