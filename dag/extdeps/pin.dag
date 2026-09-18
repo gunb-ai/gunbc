@@ -94,19 +94,21 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // tools, when the corpus already contains other pinnable subjects that are not CliTool at all:
 // extdeps.cache.sccache SccacheBinaryArtifact (release x published musl arch — NOT
 // SccacheBinaryRelease, which carries two digests per row and is ambiguous at Pin grain),
-// extdeps/github ActionRef, extdeps/docker and extdeps/container/docker_ce images, apt packages,
+// extdeps.github.action_release ActionRelease, extdeps/docker and extdeps/container/docker_ce images, apt packages,
 // GitHub releases. A type per pinnable thing is the same mistake as ten hand-rolled integer types
 // before Compose<Int, MachineWidth<N>> — N types where there is one axis. (3) Naming the type after
 // its first consumer is how the grain got fixed too narrow, and the general shape was available
 // from the start. So Pin is parameterized by its SUBJECT, following the Vendor<Domain> precedent
 // (dag/extdeps/vendor.dag): the subject is a type argument, the pin is one concept at every
-// breadth. Pin<CliTool>, Pin<SccacheBinaryArtifact>, Pin<ActionRef>, Pin<ContainerImage> are
+// breadth. Pin<CliTool>, Pin<SccacheBinaryArtifact>, Pin<ActionTagCoordinate>, Pin<ContainerImage> are
 // instantiations, not siblings.
 
 // review 44850, and the reviewer found a real defect in the previous version of this proof. THE
 // SOUNDNESS CONDITION ON THE DIMENSION, sharpened after review 44999 and deep-eagle-728 oracle
 // msg_fac61885. Two subject cases, two carriers, one axis — duplication unwritable rather than
-// forbidden-after-the-fact. (1) Subject does NOT carry content identity (CliTool, ActionRef):
+// forbidden-after-the-fact. (1) Subject does NOT carry content identity (CliTool, and the tag
+// coordinate test.claim.tool_pin_witness ActionTagCoordinate -- an ActionRelease is NOT this case,
+// since its commit is its identity, so it is case (2) or needs no pin at all):
 // Pin<Subject> with required version and expected_identity — the pin SUPPLIES identity the subject
 // lacks; expected_identity is new information with one home. (2) Subject fully determines cited
 // digest identity for its grain (SccacheBinaryArtifact — release x published musl arch, not the
@@ -333,7 +335,7 @@ fn pin_currency_gap<Subject>(pin: Pin<Subject>) -> CurrencyGap {
 // of being silently assumed complete. Subjects that fully determine cited digest identity use
 // SubjectProjectedPin instead (no second writable expected_identity field); review 44999 and
 // deep-eagle-728 oracle msg_36c1fcf1 — a PinRestatesSubjectMismatch validation arm had no live
-// producer for shipped CliTool/ActionRef subjects and would have been coverage-by-illusion.
+// producer for shipped CliTool and tag-coordinate subjects and would have been coverage-by-illusion.
 
 type PinRefusalCause
   = ConstraintIsNotIdentity { constraint: VersionConstraint }
