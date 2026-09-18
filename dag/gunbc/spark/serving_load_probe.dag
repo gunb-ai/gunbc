@@ -43,7 +43,9 @@ import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
 }
-import gunbc.spark.runtime_architecture_registry_reading { glm53_nope_derived_registry_reading }
+import gunbc.spark.serving_rank_observe {
+  ObservedRankIncarnation, observed_rank_incarnations_agree, observed_rank_incarnation_text,
+}
 import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
@@ -331,6 +333,34 @@ fn generation_token_delta(before_body: String, after_body: String) -> TokenDelta
   }
 }
 
+fn generation_token_delta_scoped(
+  before_incarnation: ObservedRankIncarnation?,
+  after_incarnation: ObservedRankIncarnation?,
+  before_body: String,
+  after_body: String,
+) -> TokenDelta {
+  match before_incarnation {
+    Absent => TokenDeltaUnread { cause: "generation_tokens_total is not scoped: the before scrape has no ObservedRankIncarnation" as NonEmptyStr }
+    Present { value: b } =>
+      match after_incarnation {
+        Absent => TokenDeltaUnread { cause: "generation_tokens_total is not scoped: the after scrape has no ObservedRankIncarnation" as NonEmptyStr }
+        Present { value: a } =>
+          if !observed_rank_incarnations_agree(a: b, b: a) {
+            TokenDeltaUnread {
+              cause: join([
+                "generation_tokens_total is not comparable across incarnations: before ",
+                observed_rank_incarnation_text(i: b),
+                " after ",
+                observed_rank_incarnation_text(i: a),
+              ], "") as NonEmptyStr
+            }
+          } else {
+            generation_token_delta(before_body: before_body, after_body: after_body)
+          }
+      }
+  }
+}
+
 fn scrape_interval_millis(before_at: EpochSecs, after_at: EpochSecs) -> Nat? {
   if after_at <= before_at {
     none
@@ -573,12 +603,19 @@ fn serving_load_observation(
   scrape_millis: Nat?,
   before_body: String,
   after_body: String,
+  before_incarnation: ObservedRankIncarnation?,
+  after_incarnation: ObservedRankIncarnation?,
   ledger: OperationLedger,
   client_latency: ClientBenchLatency,
 ) -> ServingLoadObservation {
   let before_p = preemption_count(body: before_body)
   let after_p = preemption_count(body: after_body)
-  let generation = generation_token_delta(before_body: before_body, after_body: after_body)
+  let generation = generation_token_delta_scoped(
+    before_incarnation: before_incarnation,
+    after_incarnation: after_incarnation,
+    before_body: before_body,
+    after_body: after_body,
+  )
   let agreement = ledger_counter_agreement(ledger: ledger, generation: generation, client_output: client_output)
   ServingLoadObservation {
     subject: subject,

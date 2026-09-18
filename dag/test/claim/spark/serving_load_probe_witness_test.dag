@@ -7,6 +7,10 @@ import v2.std.optional { Present, Absent }
 import std.measure { token_count, token_count_value }
 import product.capacity.lease { LeaseGrant, lease_fence_of, lease_grant, LeasePolicy, FencedResource }
 import product.capacity.event_chain { EventId }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.serving_rank_observe {
+  container_incarnation_id, ObservedRankIncarnation,
+}
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.vllm_endpoint_process_launch {
@@ -28,7 +32,7 @@ import gunbc.spark.serving_load_probe {
   OperationLedger, LedgerClosed, LedgerIncomplete, ledger_admits_token_denomination,
   RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
   ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
-  TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, generation_token_delta,
+  TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, generation_token_delta, generation_token_delta_scoped,
   derive_rate_honest, serving_load_observation, ServingLoadObservation, tokens_per_observation_second,
   saturation_from_one_run, observation_rate_is_stored_separately,
   foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread,
@@ -209,6 +213,44 @@ test fn a_generation_counter_reset_is_not_a_rate() -> Bool {
   }
 }
 
+test fn generation_tokens_are_unread_across_distinct_incarnations() -> Bool {
+  match generation_token_delta_scoped(
+    before_incarnation: fx_incarnation(id: "0f3a9c1d2e4b"),
+    after_incarnation: fx_incarnation(id: "7b2e5a90c813"),
+    before_body: fx_idle,
+    after_body: fx_after,
+  ) {
+    TokenDeltaUnread { cause: _ } => true
+    TokenDeltaRead { tokens: _ } => false
+    TokenDeltaReset { cause: _ } => false
+  }
+}
+
+test fn generation_tokens_are_unread_without_an_incarnation() -> Bool {
+  match generation_token_delta_scoped(
+    before_incarnation: none,
+    after_incarnation: fx_same_incarnation(),
+    before_body: fx_idle,
+    after_body: fx_after,
+  ) {
+    TokenDeltaUnread { cause: _ } => true
+    TokenDeltaRead { tokens: _ } => false
+    TokenDeltaReset { cause: _ } => false
+  }
+}
+
+fn fx_incarnation(id: String) -> ObservedRankIncarnation? {
+  match container_incarnation_id(id: id) {
+    Absent => none
+    Present { value: cid } =>
+      Present { value: ObservedRankIncarnation { host: operator_host_srv9, container: cid, node_rank: token_count_value(t: token_count(count: 0)) } }
+  }
+}
+
+fn fx_same_incarnation() -> ObservedRankIncarnation? {
+  fx_incarnation(id: "0f3a9c1d2e4b")
+}
+
 fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
   serving_load_observation(
     subject: glm_native_live_subject_standing(),
@@ -221,6 +263,8 @@ fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
     scrape_millis: Present { value: 2000 },
     before_body: fx_idle,
     after_body: fx_after,
+    before_incarnation: fx_same_incarnation(),
+    after_incarnation: fx_same_incarnation(),
     ledger: ledger,
     client_latency: ClientBenchLatencyUnread { cause: "fixture has no bench stdout" as NonEmptyStr },
   )

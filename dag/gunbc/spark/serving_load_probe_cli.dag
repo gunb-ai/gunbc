@@ -14,6 +14,10 @@ import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
+import gunbc.spark.serving_rank_observe {
+  observed_rank_subject, observe_rank_container, RankInspected, RankInspectRefused,
+  observed_rank_incarnation, ObservedRankIncarnation,
+}
 import gunbc.spark.glm_group_b_relaunch_cli { with_group_b_access, rank_context }
 import gunbc.spark.serving_arm { glm_native_concurrent_profile }
 import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_from_body }
@@ -78,6 +82,16 @@ fn body_is_failure(body: String) -> Bool {
   starts_with(s: body, prefix: "UNREACHABLE ") || starts_with(s: body, prefix: "FAILED ")
 }
 
+fn inspect_incarnation(ctx: SparkMaterializeContext) -> ObservedRankIncarnation?
+  uses net: Network
+{
+  let subject = observed_rank_subject(host: operator_host_srv9, container: glm_native_container_name)
+  match observe_rank_container(ctx: ctx, subject: subject) {
+    RankInspectRefused { refusal: _ } => none
+    RankInspected { subject: s, container: c } => observed_rank_incarnation(subject: s, c: c)
+  }
+}
+
 fn glm_native_serving_load_wet() -> ProcessExit
   uses net: Network
 {
@@ -96,11 +110,13 @@ fn glm_native_serving_load_wet() -> ProcessExit
         WindowIsolationUnread { cause: c, drain: _ } => exit_failure(reason: c as String)
         WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => exit_failure(reason: "an isolated window is not this arm's inhabitance path")
         WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => {
+      let before_incarnation = inspect_incarnation(ctx: ctx)
       let bench = spark_remote_run(ctx: ctx, argv: bench_exec_argv())
       let after = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-after")
       if body_is_failure(body: after) {
         exit_failure(reason: after)
       } else {
+            let after_incarnation = inspect_incarnation(ctx: ctx)
             let bench_ok = match bench {
               RemoteUnreachable { cause: _ } => false
               RemoteRan { exit_code: code, stdout: _, stderr: _ } => code == 0
@@ -131,6 +147,8 @@ fn glm_native_serving_load_wet() -> ProcessExit
               scrape_millis: scrape_millis_from_bench_stdout(body: bench_text),
               before_body: before,
               after_body: after,
+              before_incarnation: before_incarnation,
+              after_incarnation: after_incarnation,
               ledger: ledger,
               client_latency: client_latency_from_bench_stdout(body: bench_text, contended: true),
             )
