@@ -68,7 +68,13 @@ fn gpu_direct_rdma_standing(reading: CudaDeviceAttributeReading) -> GpuDirectRdm
         if v == 0 {
           GpuDirectRdmaUnsupported
         } else {
-          GpuDirectRdmaSupported
+          if v == 1 {
+            GpuDirectRdmaSupported
+          } else {
+            GpuDirectRdmaUnread {
+              because: "cudaDevAttrGPUDirectRDMASupported returned a value other than the documented 0 or 1; that is malformed, not supported" as NonEmptyStr,
+            }
+          }
         }
       CudaDevAttrConcurrentManagedAccess => GpuDirectRdmaUnread {
         because: "the supplied reading is cudaDevAttrConcurrentManagedAccess, not GPUDirect RDMA" as NonEmptyStr,
