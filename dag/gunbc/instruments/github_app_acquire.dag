@@ -398,9 +398,46 @@ type IssuedCredentialCustody
   | CredentialPersistRefused { path: String, cause: String }
   | CredentialNameUnsafe { name: NonEmptyStr }
 
-fn write_secret_file(path: String, value: Secret) -> String {
+// THE WRITE'S OWN success FACT IS THE AUTHORITY AND IS CARRIED, NOT RE-DERIVED FROM ITS TEXT. An
+// earlier cut returned "" for success and wrote.error otherwise, then read success back as
+// error != "" -- so a failed write that reported an EMPTY error string was read as a successful
+// handoff, returning CredentialsHandedOff and printing "the credentials are on disk" while the pem
+// no endpoint reissues was gone. That is a heuristic standing where an observation existed, at the
+// one call in this flow whose failure destroys the subject (review 67588, DESIGN 5: prefer the single
+// authority the realization derives from over a check that flags the bad state afterwards). The
+// filesystem module refuses the same move one screen earlier in its own annotation.
+type SecretFileWrite
+  = SecretFileWritten
+  | SecretFileWriteRefused { path: String, cause: String }
+
+fn write_secret_file(path: String, value: Secret) -> SecretFileWrite {
   let wrote = Filesystem.WriteOwnerOnly(path: path, content: value as String)
-  if wrote.success { "" } else { wrote.error }
+  if wrote.success {
+    SecretFileWritten
+  } else {
+    SecretFileWriteRefused { path: path, cause: wrote.error }
+  }
+}
+
+fn write_optional_secret_file(path: String, value: Secret?) -> SecretFileWrite {
+  match value {
+    Absent => SecretFileWritten
+    Present { value: v } => write_secret_file(path: path, value: v)
+  }
+}
+
+fn then_write_secret(prior: SecretFileWrite, path: String, value: Secret) -> SecretFileWrite {
+  match prior {
+    SecretFileWriteRefused { path: p, cause: c } => SecretFileWriteRefused { path: p, cause: c }
+    SecretFileWritten => write_secret_file(path: path, value: value)
+  }
+}
+
+fn then_write_optional_secret(prior: SecretFileWrite, path: String, value: Secret?) -> SecretFileWrite {
+  match prior {
+    SecretFileWriteRefused { path: p, cause: c } => SecretFileWriteRefused { path: p, cause: c }
+    SecretFileWritten => write_optional_secret_file(path: path, value: value)
+  }
 }
 
 fn persist_issued_credentials(
@@ -413,35 +450,30 @@ fn persist_issued_credentials(
     CredentialIssuedOnce { app_id: _, slug: _, pem: pem, webhook_secret: hook, client_id: _, client_secret: client } =>
       match custody_handoff_addressing(name: custody_name) {
         CustodyNameNotPathSafe { name: s } => CredentialNameUnsafe { name: s }
-        CustodyAddressed { paths: paths } => {
-          let pem_error = write_secret_file(path: paths.pem, value: pem)
-          if pem_error != "" {
-            CredentialPersistRefused { path: paths.pem, cause: pem_error }
-          } else {
-            let client_error = write_secret_file(path: paths.client_secret, value: client)
-            if client_error != "" {
-              CredentialPersistRefused { path: paths.client_secret, cause: client_error }
-            } else {
-              let hook_error = match hook {
-                Absent => ""
-                Present { value: h } => write_secret_file(path: paths.webhook_secret, value: h)
-              }
-              if hook_error != "" {
-                CredentialPersistRefused { path: paths.webhook_secret, cause: hook_error }
+        CustodyAddressed { paths: paths } =>
+          match then_write_optional_secret(
+            prior: then_write_secret(
+              prior: write_secret_file(path: paths.pem, value: pem),
+              path: paths.client_secret,
+              value: client,
+            ),
+            path: paths.webhook_secret,
+            value: hook,
+          ) {
+            SecretFileWriteRefused { path: p, cause: c } =>
+              CredentialPersistRefused { path: p, cause: c }
+            SecretFileWritten => {
+              let identity = Filesystem.Write(
+                path: paths.identity,
+                content: custody_identity_document(issuance: issuance),
+              )
+              if identity.success {
+                CredentialsHandedOff { paths: paths }
               } else {
-                let identity = Filesystem.Write(
-                  path: paths.identity,
-                  content: custody_identity_document(issuance: issuance),
-                )
-                if identity.success {
-                  CredentialsHandedOff { paths: paths }
-                } else {
-                  CredentialPersistRefused { path: paths.identity, cause: identity.error }
-                }
+                CredentialPersistRefused { path: paths.identity, cause: identity.error }
               }
             }
           }
-        }
       }
   }
 }
