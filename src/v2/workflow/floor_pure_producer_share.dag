@@ -479,6 +479,16 @@ import v2.std.collection { List }
 // claims are about what normalize EMITS, and sharing does not hand them their answer: the shared
 // value is the real producer's output, and each claim still computes its own verdict from it (a
 // content-hash comparison against the supplied fixture, and a channel read).
+//
+// v2.test.manual.body_lowering_normalize_add body_lowering_normalized_module IS THE SAME SHAPE, at
+// scale: one tokenize, parse and normalize of the `add` module that thirteen claims in that file
+// re-derive per claim. It was measured when the test-code wall (which adds a required marker channel
+// to admit_normalized_tree) touched body_lowering_normalized_arrow_root_resolves, a cost-debt row.
+// That claim is roughly three quarters this producer and one quarter its own resolve, so serving the
+// producer brings it under the new-witness budget and its debt row is released in the same change.
+// Re-derive with claim_batch --entry on that file: [witness] eval_steps for a claim that only forces
+// the producer, against the arrow-root claim. The value is Optional<NormalizedTree>, portable to the
+// bottom.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -508,7 +518,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
-  "v2.test.name_resolve.test_code_reference_wall.inhabitance_normalized"
+  "v2.test.name_resolve.test_code_reference_wall.inhabitance_normalized",
+  "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_module"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
