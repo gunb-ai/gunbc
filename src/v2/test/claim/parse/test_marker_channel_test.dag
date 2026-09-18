@@ -23,7 +23,7 @@ fn test_marker_parsed(src: String, file: Symbol) -> Outcome<ParseArtifact> {
 fn test_marker_capture_of(src: String, file: Symbol) -> Outcome<TestMarkerChannel> {
   match test_marker_parsed(src: src, file: file) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: artifact, diagnostics: _ } => test_marker_capture(artifact: artifact)
+    Accepted { value: artifact, diagnostics: _ } => test_marker_capture(tree: artifact.tree)
   }
 }
 

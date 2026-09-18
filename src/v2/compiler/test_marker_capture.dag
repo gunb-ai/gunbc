@@ -1,7 +1,6 @@
 module v2.compiler.test_marker_capture
 
 import std.occurrence_identity { OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic }
-import v2.compiler.parse { ParseArtifact }
 import v2.extdeps.languages.dag {
   dag_binding_branded_atom_identity,
   parse_production_captured_child_optional,
@@ -33,12 +32,11 @@ import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissi
 // would make a marked declaration read as unmarked, which is the absent-reads-as-false class the
 // channel exists to close.
 //
-// CONSUMER, a declared frontier: the refusal of references to test code at name resolution
-// (v2.compiler.name_resolve) lands in the next change and reads this channel. Until then the only
-// executing reader is v2.test.claim.parse.test_marker_channel.
-fn test_marker_capture(artifact: ParseArtifact) -> Outcome<TestMarkerChannel> {
+// CONSUMER: v2.compiler.normalize runs it over the same parse tree it lowers and seals the result
+// beside the root in NormalizedTree, where name resolution reads it.
+fn test_marker_capture(tree: Node) -> Outcome<TestMarkerChannel> {
   let no_rows: List<TestMarkedDeclaration> = []
-  match test_marker_capture_walk(n: artifact.tree, acc: outcome_accepted(value: no_rows)) {
+  match test_marker_capture_walk(n: tree, acc: outcome_accepted(value: no_rows)) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: rows, diagnostics: d } =>
       Accepted { value: TestMarkerChannel { marked: rows }, diagnostics: d }
