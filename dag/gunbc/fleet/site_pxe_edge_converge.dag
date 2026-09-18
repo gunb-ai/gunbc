@@ -68,7 +68,8 @@ import gunbc.network_boot_delivery {
   DhcpFilenameHint,
 }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly, ipxe_build_target_path }
-import gunbc.site_uefi_arm64_pxe_edge { site_edge_proxy_dhcp_config, first_onboarding_known_client_macs }
+import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed }
+import gunbc.site_uefi_arm64_pxe_edge { site_edge_proxy_dhcp_config, first_onboarding_known_client_mac }
 
 // THE FIRST ONBOARDING SEGMENT'S EDGE, CONVERGED ON srv4 THROUGH THE FLEET-CONVERGE WORKFLOW.
 // Operator ruling (PXE-FABRIC 0C, via sleek-carp-159): the serving host is a converged executor on
@@ -124,7 +125,7 @@ fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEd
     SitePxeEdgeChainloaderUnpinned { obligation: _ } => Absent
     SitePxeEdgeChainloaderPinned { transport: t } =>
       match t {
-        ArchitectureChainloader { architecture: _, filename_hint: hint, chainloader_digest: d } =>
+        ArchitectureChainloader { architecture: _, filename_hint: hint, chainloader_digest: d, tftp_root: _ } =>
           match hint {
             DhcpFilenameHint { filename: f } => Present { value: SitePxeEdgeChainloaderTarget { filename: f, digest: d } }
           }
@@ -144,14 +145,14 @@ type SitePxeEdgeFile {
   content: String
 }
 
-fn site_pxe_edge_config_file(target: SitePxeEdgeChainloaderTarget) -> SitePxeEdgeFile {
+fn site_pxe_edge_config_file(target: SitePxeEdgeChainloaderTarget, known_client_macs: List<Eui48Address>) -> SitePxeEdgeFile {
   SitePxeEdgeFile {
     subject: "dnsmasq-proxy-dhcp-config",
     path: site_pxe_edge_config_path,
     content: site_edge_proxy_dhcp_config(
       network_address: site_pxe_edge_segment_network,
       filename: target.filename,
-      known_client_macs: first_onboarding_known_client_macs,
+      known_client_macs: known_client_macs,
       tftp_root: site_pxe_edge_tftp_root,
     ),
   }
@@ -179,8 +180,8 @@ fn site_pxe_edge_unit_file() -> SitePxeEdgeFile {
   }
 }
 
-fn site_pxe_edge_desired_files(target: SitePxeEdgeChainloaderTarget) -> List<SitePxeEdgeFile> {
-  [site_pxe_edge_config_file(target: target), site_pxe_edge_unit_file()]
+fn site_pxe_edge_desired_files(target: SitePxeEdgeChainloaderTarget, known_client_macs: List<Eui48Address>) -> List<SitePxeEdgeFile> {
+  [site_pxe_edge_config_file(target: target, known_client_macs: known_client_macs), site_pxe_edge_unit_file()]
 }
 
 // ── The gate (pure) ──────────────────────────────────────────────────────────────────────────────
@@ -197,12 +198,16 @@ type SitePxeEdgeChainloaderObservation
 // TFTP root cannot serve, or a digest nobody pinned, is an edge that answers wrongly; so any cause
 // here closes the gate and nothing is written or started.
 fn site_pxe_edge_gate_causes(
+  roster: MacParseResult,
   pin: SitePxeEdgeChainloaderPin,
   chainloader: SitePxeEdgeChainloaderObservation,
   dnsmasq_binary: SitePxeEdgeProbe,
   privilege: SitePxeEdgeProbe,
 ) -> List<String> {
-  concat(
+  (match roster {
+    MacParsed { address: _ } => []
+    MacParseFailed { error: _ } => ["known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"]
+  }) + concat(
     concat(
       match site_pxe_edge_chainloader_target(pin: pin) {
         Absent => [concat("chainloader-unpinned: ", site_pxe_edge_pin_obligation(pin: pin))]
@@ -468,10 +473,14 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   let privilege = site_pxe_edge_argv_probe(target: target, context: context, argv: elevated_argv(command: ["true"]), what: "non-interactive sudo")
   let binary = site_pxe_edge_argv_probe(target: target, context: context, argv: ["test", "-x", site_pxe_edge_dnsmasq_binary as String], what: "test -x dnsmasq")
   let chainloader = observe_site_pxe_edge_chainloader(target: target, context: context, pin: pin)
-  let causes = site_pxe_edge_gate_causes(pin: pin, chainloader: chainloader, dnsmasq_binary: binary, privilege: privilege)
+  let causes = site_pxe_edge_gate_causes(roster: first_onboarding_known_client_mac, pin: pin, chainloader: chainloader, dnsmasq_binary: binary, privilege: privilege)
   let files = match site_pxe_edge_chainloader_target(pin: pin) {
     Absent => [site_pxe_edge_unit_file()]
-    Present { value: c } => site_pxe_edge_desired_files(target: c)
+    Present { value: c } =>
+      match first_onboarding_known_client_mac {
+        MacParsed { address: a } => site_pxe_edge_desired_files(target: c, known_client_macs: [a])
+        MacParseFailed { error: _ } => [site_pxe_edge_unit_file()]
+      }
   }
   let results = site_pxe_edge_file_results(target: target, context: context, mode: mode, gate_open: length(causes) == 0, files: files)
   let activation = match mode {

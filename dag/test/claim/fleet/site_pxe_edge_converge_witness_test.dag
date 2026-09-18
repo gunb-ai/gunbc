@@ -7,6 +7,9 @@ import extdeps.toolchain.types { Aarch64 }
 import product.placement_supply { HostIdentity }
 import gunbc.network_boot_delivery { ArchitectureChainloader, DhcpFilenameHint }
 import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
+import extdeps.uri { Uri, Tftp }
+import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, MacWrongOctetCount }
 import gunbc.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
   SitePxeEdgeChainloaderPinned,
@@ -46,7 +49,15 @@ fn pinned_as(filename: NonEmptyStr, digest: ContentHash) -> SitePxeEdgeChainload
       architecture: Aarch64,
       filename_hint: DhcpFilenameHint { filename: filename },
       chainloader_digest: digest,
+      tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
     },
+  }
+}
+
+fn known_macs() -> List<Eui48Address> {
+  match first_onboarding_known_client_mac {
+    MacParsed { address: a } => [a]
+    MacParseFailed { error: _ } => []
   }
 }
 
@@ -59,6 +70,7 @@ fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget {
 
 test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
   length(site_pxe_edge_gate_causes(
+    roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
     dnsmasq_binary: SitePxeEdgeProbeHeld,
@@ -70,6 +82,7 @@ test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
 // file present and every other probe held.
 test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
   let causes = site_pxe_edge_gate_causes(
+    roster: first_onboarding_known_client_mac,
     pin: site_pxe_edge_chainloader_pin,
     chainloader: ChainloaderDigestObserved { digest: digest_a },
     dnsmasq_binary: SitePxeEdgeProbeHeld,
@@ -83,6 +96,7 @@ test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
 
 test fn mismatched_digest_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
+    roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_b },
     dnsmasq_binary: SitePxeEdgeProbeHeld,
@@ -92,6 +106,7 @@ test fn mismatched_digest_closes_the_gate() -> Bool {
 
 test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool {
   site_pxe_edge_gate_causes(
+    roster: first_onboarding_known_client_mac,
     pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a),
     chainloader: ChainloaderDigestObserved { digest: digest_a },
     dnsmasq_binary: SitePxeEdgeProbeHeld,
@@ -101,6 +116,7 @@ test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool
 
 test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
   site_pxe_edge_gate_causes(
+    roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestUnobservable { reason: "no such file" },
     dnsmasq_binary: SitePxeEdgeProbeRefused { reason: "absent" },
@@ -124,7 +140,7 @@ test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool {
 
 test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool {
   let t = target_of(pin: pinned(digest: digest_a))
-  match site_pxe_edge_desired_files(target: t).first() {
+  match site_pxe_edge_desired_files(target: t, known_client_macs: known_macs()).first() {
     Absent => false
     Present { value: cfg } =>
       cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
@@ -152,4 +168,14 @@ test fn only_srv4_is_the_edge_host() -> Bool {
     SitePxeEdgeSubjectAdmitted { target: t } => t.principal as String == "ubuntu"
     SitePxeEdgeSubjectRefused { cause: _ } => false
   })
+}
+
+test fn an_unparseable_roster_closes_the_gate() -> Bool {
+  site_pxe_edge_gate_causes(
+    roster: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } },
+    pin: pinned(digest: digest_a),
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  ) == ["known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"]
 }

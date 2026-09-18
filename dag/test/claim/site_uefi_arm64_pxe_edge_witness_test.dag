@@ -2,7 +2,9 @@ module test.claim.site_uefi_arm64_pxe_edge_witness
 
 import extdeps.network.ipv4 { ipv4_address }
 import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, mac_address }
 import std.content_hash { content_hash_of_value }
+import extdeps.uri { Uri, Https, Tftp }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64, X86_64 }
@@ -18,7 +20,6 @@ import gunbc.network_boot_delivery {
   first_slice_admitted_architectures
 }
 import gunbc.machine_intake_mtcollins1_netboot_client_observation {
-  mtcollins1_host_nic_mac,
   mtcollins1_pxe_arch_code
 }
 import gunbc.site_uefi_arm64_pxe_edge {
@@ -49,7 +50,7 @@ import gunbc.site_uefi_arm64_pxe_edge {
   SiteEdgeDiscoveryRefused,
   AddressOnlyOffer,
   OfferedFilenameMismatch,
-  first_onboarding_known_client_macs,
+  first_onboarding_known_client_mac,
   site_edge_client_admission,
   site_edge_proxy_dhcp_config
 }
@@ -64,7 +65,9 @@ data obs: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-data known_mac: NonEmptyStr = "02:00:00:00:0c:01"
+data known_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 12, octet6: 1)
+
+data unknown_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 12, octet6: 255)
 
 data chainloader_filename: NonEmptyStr = "snponly.efi"
 
@@ -77,14 +80,14 @@ fn failed() -> BootNetworkProbe {
 }
 
 fn reach(dns: BootNetworkProbe, route: BootNetworkProbe, https: BootNetworkProbe) -> BootNetworkReachabilityObservation {
-  BootNetworkReachabilityObservation { dns_resolution: dns, default_route: route, global_https_fetch: https }
+  BootNetworkReachabilityObservation { broker_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" }, artifact_origin: Uri { scheme: Https, locator: "boot-origin.example.test" }, dns_resolution: dns, default_route: route, global_https_fetch: https }
 }
 
 fn boot_offer(mode: SiteBootstrapDiscovery, filename: NonEmptyStr) -> SiteDhcpOfferObservation {
   BootOfferObserved { mode: mode, offered_filename: filename, observation: obs, observed_at: 1788000000000 }
 }
 
-fn roster(macs: List<NonEmptyStr>, offer: SiteDhcpOfferObservation, reachability: BootNetworkReachabilityObservation) -> SiteEdgeRoster {
+fn roster(macs: List<Eui48Address>, offer: SiteDhcpOfferObservation, reachability: BootNetworkReachabilityObservation) -> SiteEdgeRoster {
   SiteEdgeRoster {
     site: "onboarding-segment-0c" as SiteIdentity,
     admitted_architectures: first_slice_admitted_architectures,
@@ -92,6 +95,7 @@ fn roster(macs: List<NonEmptyStr>, offer: SiteDhcpOfferObservation, reachability
       architecture: Aarch64,
       filename_hint: DhcpFilenameHint { filename: chainloader_filename },
       chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+      tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
     },
     known_client_macs: macs,
     offer: offer,
@@ -105,7 +109,7 @@ fn healthy_roster() -> SiteEdgeRoster {
   roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
 }
 
-fn arm64_request(mac: NonEmptyStr) -> EdgeClientRequest {
+fn arm64_request(mac: Eui48Address) -> EdgeClientRequest {
   EdgeClientRequest { mac: mac, arch_code: 11 }
 }
 
@@ -149,8 +153,8 @@ test fn relay_offer_is_admitted_as_relay() -> Bool {
 }
 
 test fn unknown_machine_gets_no_boot() -> Bool {
-  match site_edge_client_admission(roster: healthy_roster(), request: arm64_request(mac: "02:00:00:00:0c:ff")) {
-    SiteEdgeUnknownMachineRefused { mac: m } => m as String == "02:00:00:00:0c:ff"
+  match site_edge_client_admission(roster: healthy_roster(), request: arm64_request(mac: unknown_mac)) {
+    SiteEdgeUnknownMachineRefused { mac: m } => m == unknown_mac
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
@@ -206,20 +210,33 @@ test fn offer_with_other_filename_is_refused_with_the_offered_name() -> Bool {
 // so the known ARM64 client is refused as an ADDRESS-ONLY OFFER carrying that observation -- on
 // discovery, not on identity or architecture.
 test fn mtcollins1_on_its_measured_segment_is_not_yet_admitted() -> Bool {
-  let r = roster(
-    macs: first_onboarding_known_client_macs,
-    offer: AddressOnlyOfferObserved { observation: obs, observed_at: 1788620040000 },
-    reachability: reach(dns: ok(), route: ok(), https: ok()),
-  )
-  match site_edge_client_admission(roster: r, request: EdgeClientRequest { mac: mtcollins1_host_nic_mac, arch_code: mtcollins1_pxe_arch_code }) {
-    SiteEdgeDiscoveryRefused { refusal: AddressOnlyOffer { observation: _, observed_at: t } } => t == 1788620040000
-    SiteEdgeDiscoveryRefused { refusal: _ } => false
-    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
-    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
-    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
-    SiteEdgeClientAdmitted { standing: _ } => false
-    SiteEdgeUnknownMachineRefused { mac: _ } => false
-    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+  match first_onboarding_known_client_mac {
+    MacParseFailed { error: _ } => false
+    MacParsed { address: host } => {
+      let r = roster(
+        macs: [host],
+        offer: AddressOnlyOfferObserved { observation: obs, observed_at: 1788620040000 },
+        reachability: reach(dns: ok(), route: ok(), https: ok()),
+      )
+      match site_edge_client_admission(roster: r, request: EdgeClientRequest { mac: host, arch_code: mtcollins1_pxe_arch_code }) {
+        SiteEdgeDiscoveryRefused { refusal: AddressOnlyOffer { observation: _, observed_at: t } } => t == 1788620040000
+        SiteEdgeDiscoveryRefused { refusal: _ } => false
+        SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+        SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+        SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
+        SiteEdgeClientAdmitted { standing: _ } => false
+        SiteEdgeUnknownMachineRefused { mac: _ } => false
+        SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+      }
+    }
+  }
+}
+
+// THE ROSTER IS THE MEASURED HOST NIC, PARSED: 28:c1:3c:8a:d6:4a, not re-authored octets.
+test fn the_landed_roster_parses_to_the_measured_host_nic() -> Bool {
+  match first_onboarding_known_client_mac {
+    MacParseFailed { error: _ } => false
+    MacParsed { address: a } => a == mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 74)
   }
 }
 
@@ -247,6 +264,7 @@ test fn a_non_arm64_chainloader_is_refused_by_architecture() -> Bool {
       architecture: X86_64,
       filename_hint: DhcpFilenameHint { filename: chainloader_filename },
       chainloader_digest: content_hash_of_value(value: "ipxe-x86-fixture"),
+      tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
     },
     known_client_macs: r.known_client_macs,
     offer: r.offer,

@@ -1,7 +1,9 @@
 module gunbc.network_boot_delivery
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -12,9 +14,10 @@ import extdeps.provisioning.dhcp_client_arch {
   BiosX86,
   HttpBootX86_64,
   HttpBootArm64,
+  dhcp_client_processor_architecture,
 }
-import extdeps.provisioning.network_boot { DhcpBootDirection }
-import product.placement_supply { SiteIdentity }
+import extdeps.provisioning.network_boot { ClientNetworkBootMode, DhcpBootDirection, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
+import product.placement_supply { SiteIdentity, site_identity_eq }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
 
@@ -41,34 +44,38 @@ type NetworkBootRequirement
   | NetworkBootServingInfrastructure
   | NetworkBootBootArtifacts
 
-// One observation per requirement axis. A single DeclarationRef standing for all four was the
-// same substitution this carrier exists to forbid, one level in: it let an authored plan satisfy
-// axes nobody observed. Establishing the delivery now requires naming an observation for each
-// axis, so a false claim has to be told four times rather than once.
-type NetworkBootRequirementEvidence {
-  requirement: NetworkBootRequirement
-  observation: DeclarationRef
-  observed_at: EpochMs
-}
-
-// The establishment names the TARGET it was established for (ruling 4 §1): four
-// observations and a digest bind an artifact, not a host, so without the
-// target a network boot established on one unit could authorize another's
-// request.
+// The establishment names the TARGET it was established for (ruling 4 §1): the
+// receipts bind an artifact, not a host, so without the target a network boot
+// established on one unit could authorize another's request. Each receipt IS
+// the per-axis observation — carrying a projected (observation, observed_at)
+// row beside it would be a second writable source for one fact (DESIGN §2/§3),
+// and the digest a reader wants is manifest.root_digest, which the join has
+// already proved equal to the requested one.
 type NetworkBootDeliveryEstablishment {
   target: BootDeliveryTarget
   fleet: FleetBootServiceReceipt
   site: SitePxeEdgeReceipt
   client: ObservedClientBootModeReceipt
   boot_control: NetworkBootBootControlReceipt
-  manifest: SignedBootManifestIdentity
+  manifest: SignedBootManifestReceipt
+  bundle: BootBundleAvailabilityReceipt
   trust: BootstrapTrustStanding
-  boot_source_override: NetworkBootRequirementEvidence
-  client_boot_mode: NetworkBootRequirementEvidence
-  serving_infrastructure: NetworkBootRequirementEvidence
-  boot_artifacts: NetworkBootRequirementEvidence
-  artifact_digest: ContentHash
 }
+
+// The verified manifest as observed, the fifth axis receipt beside fleet, site, client and
+// boot control: the identity the join adjudicated plus the observation and instant it was
+// verified at, so the established evidence names where its manifest reading came from.
+type SignedBootManifestReceipt {
+  identity: SignedBootManifestIdentity
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+// Which observation disagreed with the expected site. The edge and the client each carry a
+// site; a mismatch on one is a different defect from a mismatch on the other.
+type NetworkBootSiteAxis
+  = SiteEdgeSite
+  | ClientObservationSite
 
 type NetworkBootDeliveryStanding
   = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
@@ -79,8 +86,10 @@ type NetworkBootDeliveryStanding
   | NetworkBootDeliveryTargetMismatch { axis: NetworkBootRequirement }
   | NetworkBootDeliveryManifestRefused { cause: NetworkBootManifestRefusal }
   | NetworkBootDeliverySiteUnestablished
-  | NetworkBootDeliverySiteMismatch { expected: SiteIdentity, observed: SiteIdentity }
+  | NetworkBootDeliverySiteMismatch { axis: NetworkBootSiteAxis, expected: SiteIdentity, observed: SiteIdentity }
   | NetworkBootDeliveryTrustUnestablished
+  | NetworkBootDeliveryTrustRefused { cause: NetworkBootTrustRefusal }
+  | NetworkBootDeliveryRouteMismatch { axis: NetworkBootRouteAxis, expected: Uri, observed: Uri }
 
 // A computed rejection of an observed ticket. Missing means no ticket was presented.
 type NetworkBootManifestVerificationClass
@@ -111,6 +120,8 @@ type NetworkBootManifestRefusal
   | ManifestJoinWrongAttempt
   | ManifestJoinWrongSigningKey
   | ManifestJoinChainloaderDigestDisagrees
+  | ManifestJoinWrongFirmwareClass
+  | ManifestJoinBundleDigestDisagrees { member: BootBundleMember }
 
 type NetworkBootArchitectureRefusal
   = ClientArchitectureNotAdmitted { architecture: Architecture }
@@ -155,15 +166,26 @@ type SiteBootstrapDiscovery
   | SiteDhcpRelay
   | SiteDiscoveryUnobserved
 
+// tftp_root is the TFTP endpoint the edge was observed serving the chainloader from. It is
+// route identity, not a hint: the join requires it to equal the manifest's UefiPxe tftp_root.
 type SiteBootstrapTransport
   = ArchitectureChainloader {
       architecture: Architecture
       filename_hint: BootDiscoveryHint
       chainloader_digest: ContentHash
+      tftp_root: Uri
     }
 
+// Reachability names WHICH endpoints the site reached. An observation that some HTTPS endpoint
+// answered is not evidence that the fleet's broker or origin did: the join requires
+// broker_endpoint == fleet.https_boot_endpoint and artifact_origin == fleet.origin_custom_domain.
 type GlobalHttpsReachability
-  = GlobalHttpsEndpointReachable { observation: DeclarationRef, observed_at: EpochMs }
+  = GlobalHttpsEndpointReachable {
+      broker_endpoint: Uri
+      artifact_origin: Uri
+      observation: DeclarationRef
+      observed_at: EpochMs
+    }
   | GlobalHttpsEndpointUnreachable
 
 type SitePxeEdge {
@@ -203,9 +225,9 @@ fn site_pxe_edge_standing(edge: SitePxeEdge, client_architecture: Architecture, 
 fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Architecture, observation: DeclarationRef, observed_at: EpochMs) -> SitePxeEdgeStanding {
   match edge.global_endpoint_reachability {
     GlobalHttpsEndpointUnreachable => SitePxeEdgeUnestablished
-    GlobalHttpsEndpointReachable { observation: _, observed_at: _ } =>
+    GlobalHttpsEndpointReachable { broker_endpoint: _, artifact_origin: _, observation: _, observed_at: _ } =>
       match edge.bootstrap_transport {
-        ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: _ } =>
+        ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: _, tftp_root: _ } =>
           if architecture_admitted_on_edge(arch: client_architecture, admitted: edge.admitted_architectures) == false {
             SitePxeEdgeClientArchitectureNotAdmitted { architecture: client_architecture }
           } else {
@@ -221,8 +243,9 @@ fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Archite
   }
 }
 
-// Client firmware class as measured. UefiPxe is not authored here: that upstream variant
-// requires a TFTP root this service does not serve.
+// Client firmware class as measured on the wire (RFC 4578 option 93). The join admits exactly one
+// class this slice, UefiArm64 (code 11, UEFI PXE), served over the site edge TFTP root; every other
+// measured class is a located NetworkBootDeliveryClientModeRefused, not an absent row.
 type ObservedDhcpPxeClient {
   vendor_class: NonEmptyStr
   arch: DhcpProcessorArchitecture
@@ -259,6 +282,7 @@ type SignedBootManifestIdentity {
   attempt_id: IntakeAttemptId
   nonce: NonEmptyStr
   architecture: Architecture
+  boot_mode: ClientNetworkBootMode
   chainloader_digest: ContentHash
   kernel_digest: ContentHash
   initrd_digest: ContentHash
@@ -291,27 +315,173 @@ type SignedBootManifestStanding
     }
   | SignedBootManifestAbsent
 
+// EACH TRUST GROUND NAMES ITS SUBJECT. An observation with no subject proves that something was
+// trusted, not that this delivery was: firmware HTTPS trust authenticates one route, a
+// Secure-Boot-verified chainloader is one binary on one target, and a controlled onboarding
+// network is one site. The join compares each subject to the delivery it would ground.
+type FirmwareHttpsTrustObservation {
+  endpoint: Uri
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type SecureBootChainloaderTrustObservation {
+  target: BootDeliveryTarget
+  chainloader_digest: ContentHash
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+type ControlledNetworkTrustObservation {
+  site: SiteIdentity
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+// Production trust is grounded, and WHICH ground held is the fact a later
+// reader needs. A record of two independent optionals admits the both-absent
+// state — a ProductionTrustedBootstrap with no observation behind it — so the
+// grounds are a coproduct of the three inhabited combinations instead: the
+// ungrounded state has no constructor (DESIGN §4b rung 4).
+type ProductionTrustGrounds
+  = FirmwareHttpsTrusted { firmware_https: FirmwareHttpsTrustObservation }
+  | SecureBootChainloaderTrusted { secure_boot_chainloader: SecureBootChainloaderTrustObservation }
+  | FirmwareHttpsAndSecureBootTrusted {
+      firmware_https: FirmwareHttpsTrustObservation
+      secure_boot_chainloader: SecureBootChainloaderTrustObservation
+    }
+
 type BootstrapTrustStanding
-  = ProductionTrustedBootstrap
-  | ControlledNetworkBootstrap
+  = ProductionTrustedBootstrap { grounds: ProductionTrustGrounds }
+  | ControlledNetworkBootstrap { evidence: ControlledNetworkTrustObservation }
   | BootstrapTrustUnestablished
 
-// ProductionTrustedBootstrap and ControlledNetworkBootstrap are never the same
-// standing. The join consumes this fold: Unestablished cannot mint
-// NetworkBootDeliveryEstablished. 0C discovery refusals stay on
-// SiteEdgeClientAdmission; an unbound site is NetworkBootDeliverySiteUnestablished,
-// not missing fleet serving.
-fn bootstrap_trust_standing(firmware_https_or_secure_boot: Bool, isolated_onboarding_network: Bool) -> BootstrapTrustStanding {
-  if firmware_https_or_secure_boot {
-    ProductionTrustedBootstrap
+// Why a minted trust standing does not ground THIS delivery. Firmware HTTPS trust authenticates
+// an HTTPS route; it says nothing about a chainloader fetched over TFTP, so a PXE boot mode needs
+// the Secure Boot ground. The remaining causes are subject disagreements.
+type NetworkBootTrustRefusal
+  = FirmwareHttpsDoesNotAuthenticateTftpChainloader
+  | FirmwareHttpsTrustForOtherEndpoint { expected: Uri, observed: Uri }
+  | SecureBootTrustForOtherTarget
+  | SecureBootTrustForOtherChainloader
+  | ControlledNetworkTrustForOtherSite { expected: SiteIdentity, observed: SiteIdentity }
+
+// HTTPS firmware trust and Secure-Boot-verified chainloader are independently
+// observed. Production is minted when at least one ground is present, and the
+// grounds arm names WHICH held, so a later reader reads the ground rather than
+// two optionals. Isolated onboarding is Controlled only when neither firmware ground is
+// present — the two production arms are never the same standing as Controlled.
+// Minting does not decide admission: whether a ground covers a boot mode and subject is
+// network_boot_trust_refusal, applied by the join against the ticket it would ground.
+fn bootstrap_trust_standing(
+  firmware_https: FirmwareHttpsTrustObservation?,
+  secure_boot_chainloader: SecureBootChainloaderTrustObservation?,
+  isolated_onboarding_network: ControlledNetworkTrustObservation?,
+) -> BootstrapTrustStanding {
+  match firmware_https {
+    Present { value: https } =>
+      match secure_boot_chainloader {
+        Present { value: chainloader } =>
+          ProductionTrustedBootstrap {
+            grounds: FirmwareHttpsAndSecureBootTrusted {
+              firmware_https: https,
+              secure_boot_chainloader: chainloader,
+            },
+          }
+        Absent => ProductionTrustedBootstrap { grounds: FirmwareHttpsTrusted { firmware_https: https } }
+      }
+    Absent =>
+      match secure_boot_chainloader {
+        Present { value: chainloader } =>
+          ProductionTrustedBootstrap {
+            grounds: SecureBootChainloaderTrusted { secure_boot_chainloader: chainloader },
+          }
+        Absent =>
+          match isolated_onboarding_network {
+            Present { value: e } => ControlledNetworkBootstrap { evidence: e }
+            Absent => BootstrapTrustUnestablished
+          }
+      }
+  }
+}
+
+fn firmware_https_trust_refusal(https: FirmwareHttpsTrustObservation, fleet: FleetBootServiceReceipt) -> NetworkBootTrustRefusal? {
+  if https.endpoint == fleet.https_boot_endpoint {
+    Absent
   } else {
-    if isolated_onboarding_network {
-      ControlledNetworkBootstrap
+    Present { value: FirmwareHttpsTrustForOtherEndpoint { expected: fleet.https_boot_endpoint, observed: https.endpoint } }
+  }
+}
+
+fn secure_boot_trust_refusal(chainloader: SecureBootChainloaderTrustObservation, target: BootDeliveryTarget, id: SignedBootManifestIdentity) -> NetworkBootTrustRefusal? {
+  if same_boot_delivery_target(left: chainloader.target, right: target) == false {
+    Present { value: SecureBootTrustForOtherTarget }
+  } else {
+    if content_hash_equal(left: chainloader.chainloader_digest, right: id.chainloader_digest) == false {
+      Present { value: SecureBootTrustForOtherChainloader }
     } else {
-      BootstrapTrustUnestablished
+      Absent
     }
   }
 }
+
+// Whether production grounds cover THIS ticket; Absent means every ground present holds for it.
+// Only UefiHttpBoot fetches its loader over the HTTPS route firmware trust authenticates; both
+// PXE modes fetch it over TFTP, so a FirmwareHttpsTrusted ground alone is refused for them.
+// Every ground present is checked against its subject, including the HTTPS ground of a
+// combined standing.
+fn production_trust_refusal(
+  grounds: ProductionTrustGrounds,
+  target: BootDeliveryTarget,
+  fleet: FleetBootServiceReceipt,
+  id: SignedBootManifestIdentity,
+) -> NetworkBootTrustRefusal? {
+  match grounds {
+    FirmwareHttpsTrusted { firmware_https: https } =>
+      match id.boot_mode {
+        UefiHttpBoot => firmware_https_trust_refusal(https: https, fleet: fleet)
+        UefiPxe { tftp_root: _ } => Present { value: FirmwareHttpsDoesNotAuthenticateTftpChainloader }
+        LegacyBiosPxe { tftp_root: _ } => Present { value: FirmwareHttpsDoesNotAuthenticateTftpChainloader }
+      }
+    SecureBootChainloaderTrusted { secure_boot_chainloader: chainloader } =>
+      secure_boot_trust_refusal(chainloader: chainloader, target: target, id: id)
+    FirmwareHttpsAndSecureBootTrusted { firmware_https: https, secure_boot_chainloader: chainloader } =>
+      match firmware_https_trust_refusal(https: https, fleet: fleet) {
+        Present { value: r } => Present { value: r }
+        Absent => secure_boot_trust_refusal(chainloader: chainloader, target: target, id: id)
+      }
+  }
+}
+
+// BOOT BUNDLE AVAILABILITY: the kernel, initrd and root objects a verified manifest names, as
+// published to and read back from the boot origin. A signed manifest naming objects that were
+// never published would otherwise establish delivery of nothing. 0B produces this receipt; the
+// chainloader digest is not a member, because the chainloader is served by the site edge (0C).
+type BootBundleAvailabilityReceipt {
+  kernel_digest: ContentHash
+  initrd_digest: ContentHash
+  root_digest: ContentHash
+  served_from: Uri
+  publication_observation: DeclarationRef
+  readback_observation: DeclarationRef
+}
+
+type BootBundleAvailabilityStanding
+  = BootBundleAvailable { receipt: BootBundleAvailabilityReceipt }
+  | BootBundleUnobserved
+
+// Which bundle member disagrees with the manifest, so a refusal names the object to republish.
+type BootBundleMember
+  = BootBundleKernel
+  | BootBundleInitrd
+  | BootBundleRoot
+
+// Which route observation disagrees with the endpoint the delivery depends on.
+type NetworkBootRouteAxis
+  = RouteTftpRoot
+  | RouteBrokerEndpoint
+  | RouteArtifactOrigin
+  | RouteBundleServedFrom
 
 type NetworkBootJoinInputs {
   target: BootDeliveryTarget
@@ -323,25 +493,15 @@ type NetworkBootJoinInputs {
   client: ObservedClientBootModeStanding
   boot_control: BootControlReceiptStanding
   manifest: SignedBootManifestStanding
-}
-
-fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRef, observed_at: EpochMs) -> NetworkBootRequirementEvidence {
-  NetworkBootRequirementEvidence {
-    requirement: requirement,
-    observation: observation,
-    observed_at: observed_at,
-  }
+  bundle: BootBundleAvailabilityStanding
 }
 
 // 0WET stays unbound this slice: operator 2026-09-18 named Mt. Jade (arriving,
 // barebones) as first candidate and Mt. Collins after CD as fallback. No UnitKey
 // is minted here.
-// Production consumer of this join: BoundBootDeliveryEvidence.network_boot, read
-// by gunbc.boot_artifact_delivery pxe_chain_candidate. 0C does not call this
-// function: it owns only the site edge and binds NetworkBootJoinInputs.site
-// when the first boot offer is observed from the srv4 edge. 0B/0D likewise own
-// one receipt family. The mint is the intake assembler that holds fleet + site
-// + client + control + SignedBootManifestVerified together.
+// 0C does not call this function: it owns only the site edge. 0B/0D likewise own
+// one receipt family each. Its unexecuted production route is the typed frontier
+// row network_boot_delivery_frontier_rows, not this annotation.
 fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliveryStanding {
   match inputs.fleet {
     FleetBootServiceUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
@@ -355,8 +515,8 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
         SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } =>
           NetworkBootDeliveryArchitectureRefused { cause: ChainloaderMismatch { client: c, chainloader: l } }
         SitePxeEdgeEstablished { receipt: site } =>
-          if (site.edge.site as String) != (inputs.expected_site as String) {
-            NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: site.edge.site }
+          if !site_identity_eq(a: site.edge.site, b: inputs.expected_site) {
+            NetworkBootDeliverySiteMismatch { axis: SiteEdgeSite, expected: inputs.expected_site, observed: site.edge.site }
           } else {
           match inputs.client {
             ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
@@ -372,8 +532,8 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                   if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
                     NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
                   } else {
-                  if (client.site as String) != (inputs.expected_site as String) {
-                    NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: client.site }
+                  if !site_identity_eq(a: client.site, b: inputs.expected_site) {
+                    NetworkBootDeliverySiteMismatch { axis: ClientObservationSite, expected: inputs.expected_site, observed: client.site }
                   } else {
                     match inputs.boot_control {
                       BootControlUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
@@ -430,12 +590,23 @@ fn join_verified_ticket(
 ) -> NetworkBootDeliveryStanding {
   match inputs.trust {
     BootstrapTrustUnestablished => NetworkBootDeliveryTrustUnestablished
-    ProductionTrustedBootstrap => join_verified_ticket_after_trust(
-      inputs: inputs, fleet: fleet, site: site, client: client, control: control, id: id, manifest_obs: manifest_obs, manifest_at: manifest_at,
-    )
-    ControlledNetworkBootstrap => join_verified_ticket_after_trust(
-      inputs: inputs, fleet: fleet, site: site, client: client, control: control, id: id, manifest_obs: manifest_obs, manifest_at: manifest_at,
-    )
+    ProductionTrustedBootstrap { grounds: g } =>
+      match production_trust_refusal(grounds: g, target: inputs.target, fleet: fleet, id: id) {
+        Present { value: r } => NetworkBootDeliveryTrustRefused { cause: r }
+        Absent => join_verified_ticket_after_trust(
+          inputs: inputs, fleet: fleet, site: site, client: client, control: control, id: id, manifest_obs: manifest_obs, manifest_at: manifest_at,
+        )
+      }
+    ControlledNetworkBootstrap { evidence: e } =>
+      if !site_identity_eq(a: e.site, b: inputs.expected_site) {
+        NetworkBootDeliveryTrustRefused {
+          cause: ControlledNetworkTrustForOtherSite { expected: inputs.expected_site, observed: e.site },
+        }
+      } else {
+        join_verified_ticket_after_trust(
+          inputs: inputs, fleet: fleet, site: site, client: client, control: control, id: id, manifest_obs: manifest_obs, manifest_at: manifest_at,
+        )
+      }
   }
 }
 
@@ -450,7 +621,7 @@ fn join_verified_ticket_after_trust(
   manifest_at: EpochMs,
 ) -> NetworkBootDeliveryStanding {
   match site.edge.bootstrap_transport {
-    ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: loader_digest } =>
+    ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: loader_digest, tftp_root: edge_tftp } =>
       if architecture_admitted_on_edge(arch: loader_arch, admitted: first_slice_admitted_architectures) == false {
         NetworkBootDeliveryArchitectureRefused { cause: LoaderNotAdmittedOnSlice { architecture: loader_arch } }
       } else {
@@ -485,21 +656,22 @@ fn join_verified_ticket_after_trust(
                         if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
                           NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
                         } else {
-                          NetworkBootDeliveryEstablished {
-                            evidence: NetworkBootDeliveryEstablishment {
-                              target: inputs.target,
-                              fleet: fleet,
-                              site: site,
-                              client: client,
-                              boot_control: control,
-                              manifest: id,
-                              trust: inputs.trust,
-                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
-                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
-                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
-                              boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
-                              artifact_digest: inputs.artifact_digest,
-                            },
+                          match dhcp_client_processor_architecture(arch: id.architecture, mode: id.boot_mode) {
+                            Absent => NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongFirmwareClass }
+                            Present { value: ticket_dhcp } =>
+                              if ticket_dhcp != client.client.arch {
+                                NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongFirmwareClass }
+                              } else {
+                                join_bound_routes(
+                                  inputs: inputs,
+                                  fleet: fleet,
+                                  site: site,
+                                  client: client,
+                                  control: control,
+                                  edge_tftp: edge_tftp,
+                                  manifest: SignedBootManifestReceipt { identity: id, observation: manifest_obs, observed_at: manifest_at },
+                                )
+                              }
                           }
                         }
                       }
@@ -513,3 +685,98 @@ fn join_verified_ticket_after_trust(
       }
   }
 }
+
+// ROUTE IDENTITY. The ticket, the edge and the fleet each name an endpoint, and a delivery is
+// established only when they name the SAME ones: the TFTP root the edge was observed serving is
+// the one the signed ticket directs firmware to, and the HTTPS broker and artifact origin the
+// site reached are the fleet's. A site that reached some other HTTPS endpoint proved reachability
+// of that endpoint, not of this service.
+fn join_bound_routes(
+  inputs: NetworkBootJoinInputs,
+  fleet: FleetBootServiceReceipt,
+  site: SitePxeEdgeReceipt,
+  client: ObservedClientBootModeReceipt,
+  control: NetworkBootBootControlReceipt,
+  edge_tftp: Uri,
+  manifest: SignedBootManifestReceipt,
+) -> NetworkBootDeliveryStanding {
+  match manifest.identity.boot_mode {
+    UefiHttpBoot => NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongFirmwareClass }
+    LegacyBiosPxe { tftp_root: _ } => NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongFirmwareClass }
+    UefiPxe { tftp_root: ticket_tftp } =>
+      if ticket_tftp != edge_tftp {
+        NetworkBootDeliveryRouteMismatch { axis: RouteTftpRoot, expected: ticket_tftp, observed: edge_tftp }
+      } else {
+        match site.edge.global_endpoint_reachability {
+          GlobalHttpsEndpointUnreachable => NetworkBootDeliverySiteUnestablished
+          GlobalHttpsEndpointReachable { broker_endpoint: broker, artifact_origin: origin, observation: _, observed_at: _ } =>
+            if broker != fleet.https_boot_endpoint {
+              NetworkBootDeliveryRouteMismatch { axis: RouteBrokerEndpoint, expected: fleet.https_boot_endpoint, observed: broker }
+            } else {
+              if origin != fleet.origin_custom_domain {
+                NetworkBootDeliveryRouteMismatch { axis: RouteArtifactOrigin, expected: fleet.origin_custom_domain, observed: origin }
+              } else {
+                match inputs.bundle {
+                  BootBundleUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                  BootBundleAvailable { receipt: bundle } =>
+                    join_available_bundle(
+                      inputs: inputs, fleet: fleet, site: site, client: client, control: control, manifest: manifest, bundle: bundle,
+                    )
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+// OBJECTS EXIST. The bundle receipt is read back from the fleet origin, and each member the
+// manifest names must be the object that was read back; a mismatch names the member.
+fn join_available_bundle(
+  inputs: NetworkBootJoinInputs,
+  fleet: FleetBootServiceReceipt,
+  site: SitePxeEdgeReceipt,
+  client: ObservedClientBootModeReceipt,
+  control: NetworkBootBootControlReceipt,
+  manifest: SignedBootManifestReceipt,
+  bundle: BootBundleAvailabilityReceipt,
+) -> NetworkBootDeliveryStanding {
+  if bundle.served_from != fleet.origin_custom_domain {
+    NetworkBootDeliveryRouteMismatch { axis: RouteBundleServedFrom, expected: fleet.origin_custom_domain, observed: bundle.served_from }
+  } else {
+    if content_hash_equal(left: bundle.kernel_digest, right: manifest.identity.kernel_digest) == false {
+      NetworkBootDeliveryManifestRefused { cause: ManifestJoinBundleDigestDisagrees { member: BootBundleKernel } }
+    } else {
+      if content_hash_equal(left: bundle.initrd_digest, right: manifest.identity.initrd_digest) == false {
+        NetworkBootDeliveryManifestRefused { cause: ManifestJoinBundleDigestDisagrees { member: BootBundleInitrd } }
+      } else {
+        if content_hash_equal(left: bundle.root_digest, right: manifest.identity.root_digest) == false {
+          NetworkBootDeliveryManifestRefused { cause: ManifestJoinBundleDigestDisagrees { member: BootBundleRoot } }
+        } else {
+          NetworkBootDeliveryEstablished {
+            evidence: NetworkBootDeliveryEstablishment {
+              target: inputs.target,
+              fleet: fleet,
+              site: site,
+              client: client,
+              boot_control: control,
+              manifest: manifest,
+              bundle: bundle,
+              trust: inputs.trust,
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+data network_boot_delivery_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery"),
+    reason: "no intake assembler calls join_network_boot_delivery yet; BoundBootDeliveryEvidence.network_boot, read by gunbc.boot_artifact_delivery pxe_chain_candidate, is constructed only by witnesses over supplied inputs",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the machine-intake assembler holding the fleet receipt, the site edge standing observed from the srv4 edge, the client, the control, SignedBootManifestVerified and the 0B BootBundleAvailabilityReceipt calls join_network_boot_delivery and binds its standing into BoundBootDeliveryEvidence.network_boot on a real boot attempt; a witness over supplied answers does not fire this"
+    )
+  ),
+]
