@@ -16,10 +16,3 @@ data ipxe_chainloading_authority: ExternalAuthority = ExternalAuthority {
     locator: "ipxe.org/howto/chainloading"
   }
 }
-
-data ipxe_https_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "ipxe.org/crypto"
-  }
-}

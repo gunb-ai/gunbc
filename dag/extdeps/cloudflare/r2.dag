@@ -66,13 +66,6 @@ data r2_get_bucket_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data r2_custom_domains_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "developers.cloudflare.com/r2/buckets/public-buckets/#custom-domains"
-  }
-}
-
 data r2_tokens_doc_as_of: Timestamp = "2026-08-18"
 
 // THE READ ID IS THE ONE PERMISSION GROUP ID THIS MODULE PINS, AND THE WRITE ID IS DELIBERATELY NOT
@@ -486,18 +479,6 @@ fn r2_published_location_citations() -> List<FactCitation> {
     r2_get_bucket_location_citation,
   ]
 }
-
-data r2_custom_domain_reading: NonEmptyStr = "Connect a custom domain to your R2 bucket to serve objects from a hostname you control. The r2.dev subdomain is intended for testing and is rate-limited; it is not a production origin. A custom domain is the machine-facing HTTPS hostname for public object reads. Read 2026-09-18."
-
-data r2_custom_domain_citation: FactCitation = FactCitation {
-  fact: DeclarationRef {
-    module_path: "extdeps.cloudflare.r2",
-    decl_name: "r2_custom_domain_reading",
-    field: WholeDeclaration
-  },
-  authority: r2_custom_domains_authority,
-}
-
 
 // THE r2_s3_endpoint_url ROW IS RETIRED: gunbc.cloudflare.r2_origin_object reaches it through
 // r2_object_url on the executing put_origin_object and fetch_origin_object entries, which is the
