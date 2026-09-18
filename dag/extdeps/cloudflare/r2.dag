@@ -487,7 +487,6 @@ fn r2_published_location_citations() -> List<FactCitation> {
   ]
 }
 
-<<<<<<< HEAD
 data r2_custom_domain_reading: NonEmptyStr = "Public access through r2.dev subdomains is rate-limited and should only be used for development purposes. Domain access through a custom domain allows you to use Cloudflare Cache to accelerate access to your R2 bucket. Last updated Jun 16, 2026. Read 2026-09-18."
 
 data r2_custom_domain_citation: FactCitation = FactCitation {
@@ -499,8 +498,6 @@ data r2_custom_domain_citation: FactCitation = FactCitation {
   authority: r2_custom_domains_authority,
 }
 
-=======
->>>>>>> 6d5ad44
 
 // THE r2_s3_endpoint_url ROW IS RETIRED: gunbc.cloudflare.r2_origin_object reaches it through
 // r2_object_url on the executing put_origin_object and fetch_origin_object entries, which is the

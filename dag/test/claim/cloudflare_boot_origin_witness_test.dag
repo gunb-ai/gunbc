@@ -5,7 +5,15 @@ import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.uri { Uri, uri_http, uri_https }
-import gunbc.network_boot_delivery { FleetBootServiceReceipt }
+import gunbc.network_boot_delivery {
+  FleetBootServiceReceipt,
+  BootBundleKernel,
+  BootBundleInitrd,
+  BootBundleRoot,
+  BootBundleMember,
+  BootBundleAvailable,
+  BootBundleUnobserved,
+}
 import gunbc.cloudflare.r2_origin {
   fabric_boot_origin_standing,
   fabric_durable_origin_standing,
@@ -25,7 +33,7 @@ import gunbc.cloudflare.r2_origin {
 import gunbc.cloudflare.boot_origin {
   BootBundleObject,
   BootPublicationCandidate,
-  BootKernel,
+  BootPutAnswer,
   BootPutCreated,
   BootPutKeyOccupied,
   BootPutFailed,
@@ -54,6 +62,8 @@ import gunbc.cloudflare.boot_origin {
   BootOriginHostnameUnallocated,
   boot_origin_is_separate_from_durable_origin,
   admit_boot_publication,
+  boot_bundle_availability,
+  BootBundleMemberEvidence,
   CandidateBootArtifact,
   CandidateHostCredential,
   CandidateCloudToken,
@@ -72,7 +82,7 @@ fn digest(hex: String) -> Sha256Digest {
 }
 
 fn kernel_a() -> BootBundleObject {
-  BootBundleObject { member: BootKernel, digest: digest(hex: digest_a_hex) }
+  BootBundleObject { member: BootBundleKernel, digest: digest(hex: digest_a_hex) }
 }
 
 fn receipt_at(domain: Uri) -> FleetBootServiceReceipt {
@@ -258,4 +268,64 @@ test fn readback_refuses_r2_dev_in_any_case() -> Bool {
     BootReadbackRefusedNotHttps {} => false
     BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
   }
+}
+
+fn member_evidence(slot: BootBundleMember, hex: String, publish_answer: BootPutAnswer, served_hex: String) -> BootBundleMemberEvidence {
+  let object = BootBundleObject { member: slot, digest: digest(hex: hex) }
+  BootBundleMemberEvidence {
+    object: object,
+    publish: classify_boot_publish(object: object, answer: publish_answer),
+    readback: classify_boot_readback(object: object, observation: BootReadbackServed { served_digest: digest(hex: served_hex) }),
+  }
+}
+
+data digest_c_hex: String = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+fn fleet_at_origin() -> FleetBootServiceReceipt {
+  receipt_at(domain: uri_https(locator: "boot-origin.example.test"))
+}
+
+fn availability(kernel: BootBundleMemberEvidence, initrd: BootBundleMemberEvidence, root: BootBundleMemberEvidence) -> Bool {
+  match boot_bundle_availability(
+    fleet: fleet_at_origin(),
+    kernel: kernel,
+    initrd: initrd,
+    root: root,
+    publication_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
+    readback_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
+  ) {
+    BootBundleAvailable { receipt: _ } => true
+    BootBundleUnobserved => false
+  }
+}
+
+// All three members published (or found identical) and read back at their digest: available, with the
+// receipt's served_from being the fleet receipt's custom domain.
+test fn bundle_available_when_every_member_is_published_and_read_back() -> Bool {
+  let k = member_evidence(slot: BootBundleKernel, hex: digest_a_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
+  let i = member_evidence(slot: BootBundleInitrd, hex: digest_b_hex, publish_answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_b_hex) }, served_hex: digest_b_hex)
+  let r = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
+  let served_ok = match boot_bundle_availability(
+    fleet: fleet_at_origin(), kernel: k, initrd: i, root: r,
+    publication_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
+    readback_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
+  ) {
+    BootBundleAvailable { receipt: rc } => (rc.served_from.locator as String) == "boot-origin.example.test"
+    BootBundleUnobserved => false
+  }
+  served_ok
+}
+
+// Each way one member can fall short leaves the whole bundle Unobserved.
+test fn bundle_unobserved_when_any_member_falls_short() -> Bool {
+  let k = member_evidence(slot: BootBundleKernel, hex: digest_a_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
+  let i = member_evidence(slot: BootBundleInitrd, hex: digest_b_hex, publish_answer: BootPutCreated {}, served_hex: digest_b_hex)
+  let r = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
+  let stale_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
+  let occupied_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_a_hex) }, served_hex: digest_c_hex)
+  let swapped = member_evidence(slot: BootBundleInitrd, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
+  availability(kernel: k, initrd: i, root: r)
+    && !availability(kernel: k, initrd: i, root: stale_root)
+    && !availability(kernel: k, initrd: i, root: occupied_root)
+    && !availability(kernel: k, initrd: i, root: swapped)
 }

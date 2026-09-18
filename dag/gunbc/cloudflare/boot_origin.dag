@@ -11,11 +11,21 @@ import std.human_intervention {
 import extdeps.external_authority { FactCitation }
 import extdeps.cloudflare.r2 { r2_custom_domain_citation }
 import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name, domain_name_wire }
-import std.decl_ref { decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import extdeps.uri { Uri, uri_https, uri_scheme_is_https }
-import gunbc.network_boot_delivery { FleetBootServiceReceipt }
+import gunbc.network_boot_delivery {
+  FleetBootServiceReceipt,
+  BootBundleMember,
+  BootBundleKernel,
+  BootBundleInitrd,
+  BootBundleRoot,
+  BootBundleAvailabilityReceipt,
+  BootBundleAvailabilityStanding,
+  BootBundleAvailable,
+  BootBundleUnobserved,
+}
 import gunbc.cloudflare.r2_origin {
   FabricDurableOrigin,
   FabricBootOrigin,
@@ -28,13 +38,9 @@ import gunbc.cloudflare.r2_origin {
 // gunbc.cloudflare.r2_origin allocates the two purposes two buckets and admits public read to
 // exactly one.
 
-// THE ARM64 BUNDLE IS KERNEL + INITRD + ROOTFS IMAGE (parent lane ruling). The chainloader is not a
-// member: it lives at the site edge and only its digest is on the signed manifest.
-type BootBundleMember
-  = BootKernel
-  | BootInitrd
-  | BootRootImage
-
+// THE ARM64 BUNDLE IS KERNEL + INITRD + ROOT IMAGE (parent lane ruling). The member vocabulary is
+// gunbc.network_boot_delivery BootBundleMember, consumed rather than restated. The chainloader is not
+// a member: it lives at the site edge and only its digest is on the signed manifest.
 type BootBundleObject {
   member: BootBundleMember
   digest: Sha256Digest
@@ -220,6 +226,67 @@ fn boot_origin_is_separate_from_durable_origin() -> Bool {
     && !bucket_purpose_admits_public_read(purpose: FabricDurableOrigin {})
 }
 
+// THE AVAILABILITY RECEIPT IS PRODUCED HERE AND DECLARED IN 0A (gunbc.network_boot_delivery
+// BootBundleAvailabilityReceipt). A member counts only when its create-only PUT published it or found
+// the same bytes already there, AND its readback through the custom domain served that digest, AND it
+// sits in the slot it claims. served_from is the fleet receipt's origin_custom_domain itself, so it
+// cannot disagree with the endpoint the join requires. Any member short of that leaves the bundle
+// Unobserved: a partial bundle is not a smaller available one.
+type BootBundleMemberEvidence {
+  object: BootBundleObject
+  publish: BootPublishVerdict
+  readback: BootReadbackVerdict
+}
+
+fn boot_publish_holds(verdict: BootPublishVerdict) -> Bool {
+  match verdict {
+    BootObjectPublished { key: _ } => true
+    BootObjectAlreadyIdentical { key: _ } => true
+    BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } => false
+    BootObjectPublishFailed { key: _, cause: _ } => false
+  }
+}
+
+fn boot_readback_holds(verdict: BootReadbackVerdict) -> Bool {
+  match verdict {
+    BootObjectReadBackConfirmed { key: _ } => true
+    BootObjectReadBackMismatch { key: _, served: _ } => false
+    BootObjectReadBackUnavailable { key: _, cause: _ } => false
+  }
+}
+
+fn boot_member_evidence_holds(evidence: BootBundleMemberEvidence, slot: BootBundleMember) -> Bool {
+  evidence.object.member == slot
+    && boot_publish_holds(verdict: evidence.publish)
+    && boot_readback_holds(verdict: evidence.readback)
+}
+
+fn boot_bundle_availability(
+  fleet: FleetBootServiceReceipt,
+  kernel: BootBundleMemberEvidence,
+  initrd: BootBundleMemberEvidence,
+  root: BootBundleMemberEvidence,
+  publication_observation: DeclarationRef,
+  readback_observation: DeclarationRef,
+) -> BootBundleAvailabilityStanding {
+  if boot_member_evidence_holds(evidence: kernel, slot: BootBundleKernel)
+    && boot_member_evidence_holds(evidence: initrd, slot: BootBundleInitrd)
+    && boot_member_evidence_holds(evidence: root, slot: BootBundleRoot) {
+    BootBundleAvailable {
+      receipt: BootBundleAvailabilityReceipt {
+        kernel_digest: Sha256Hash(kernel.object.digest),
+        initrd_digest: Sha256Hash(initrd.object.digest),
+        root_digest: Sha256Hash(root.object.digest),
+        served_from: fleet.origin_custom_domain,
+        publication_observation: publication_observation,
+        readback_observation: readback_observation,
+      }
+    }
+  } else {
+    BootBundleUnobserved
+  }
+}
+
 // NO EXECUTOR REACHES THESE FOLDS YET, and that is a declared frontier rather than silence (DESIGN
 // section 3c). The PUT/GET route is gunbc.cloudflare.r2_origin_object put_origin_object and
 // fetch_origin_object, bound to the durable bucket today; the boot route is the same executor
@@ -235,9 +302,9 @@ data cloudflare_boot_origin_frontier_rows: List<FrontierRow> = [
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.cloudflare.boot_origin", decl_name: "boot_readback_locator"),
-    reason: "readback folds (boot_readback_locator, classify_boot_readback) have no executing GET over the custom domain; the hostname standing is Unallocated",
+    reason: "readback folds (boot_readback_locator, classify_boot_readback, boot_bundle_availability) have no executing GET over the custom domain; the hostname standing is Unallocated",
     dissolution: unbound_dissolution(
-      description: "dissolves when boot_origin_hostname_standing is Allocated and a boot readback entry fetches every published key through boot_readback_locator and classifies it with classify_boot_readback"
+      description: "dissolves when boot_origin_hostname_standing is Allocated and a boot readback entry fetches every published key through boot_readback_locator and classifies it with classify_boot_readback, then mints boot_bundle_availability from those verdicts"
     )
   ),
   frontier_row_decl(
