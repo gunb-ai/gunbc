@@ -87,6 +87,7 @@ import v2.std.compilers.lexing {
   WhitespaceChar,
   lex_rule_set_insert_token_classes,
   lex_rule_set_token_class_map,
+  lex_rule_set_token_class_member,
   lex_rules_insert_token_classes
 }
 import v2.std.node {
@@ -2365,7 +2366,10 @@ fn dag_language_model_canonical_symbols(lm: LanguageModel) -> PointwisePower<Sym
 }
 
 fn dag_lex_token_symbol(sym: Symbol) -> Bool {
-  dag_symbol_map_has(m: lex_rule_set_token_class_map(rules: dag_lex_rules()), sym: sym)
+  lex_rule_set_token_class_member(
+    rules: dag_lex_rules(),
+    token_class: sym
+  )
 }
 
 fn dag_sync_tokens() -> List<Symbol> {
