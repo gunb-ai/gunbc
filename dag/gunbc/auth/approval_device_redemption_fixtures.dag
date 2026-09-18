@@ -9,13 +9,14 @@ import gunbc.auth.approval_device_wire {
   device_redemption_signing_input, enrolment_transcript, platform_wire, approval_device_audience,
   device_read_client_data, approval_device_pending_path, approval_device_request_path_prefix,
   EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion,
-  EnrolmentGrant, PendingApproval, VerbCapability, FetchedRequest, EnrolmentReadback, EnrolmentStandingActive, RedemptionResponse,
+  EnrolmentGrant, PendingApproval, VerbCapability, FetchedRequest, EnrolmentReadback, EnrolmentStandingActive,
   enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
   fetched_request_json, enrolment_readback_json, redemption_response_json, device_push_update_client_data,
   device_request_path, device_enrollment_path, enrollment_id_for_code,
 }
 import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
 import extdeps.apple.apns { ApnsProduction }
+import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest }
 
 // ── The cross-language byte contract ─────────────────────────────────────────────────────────
 // The iOS app builds the signing input and the enrolment transcript in Swift; the server builds
@@ -173,7 +174,9 @@ data envelope_vectors: List<EnvelopeVector> = [
     deny: VerbCapability { capability_text: "deny-text", capability_tag_b64url: "DfEI-CJIvDgDxhGnedEBCKWBrsxopGkEpUqVsl6enGg=" },
   }) },
   EnvelopeVector { name: "enrolment_readback", body: enrolment_readback_json(r: EnrolmentReadback { enrollment_id: "enr-482913", standing: EnrolmentStandingActive }) },
-  EnvelopeVector { name: "redemption_response", body: redemption_response_json(r: RedemptionResponse { outcome: "DeviceRedeemed", message: "approved and recorded" }) },
+  EnvelopeVector { name: "redemption_response_lost_the_race", body: redemption_response_json(r: redemption_response_of(o: DeviceLostTheRace)) },
+  EnvelopeVector { name: "redemption_response_challenge_expired", body: redemption_response_json(r: redemption_response_of(o: DeviceChallengeExpired { expires_at: "2026-09-18T12:05:00Z" as Timestamp, observed_at: "2026-09-18T12:06:00Z" as Timestamp })) },
+  EnvelopeVector { name: "redemption_response_signed_for_another_request", body: redemption_response_json(r: redemption_response_of(o: DeviceSignedForAnotherRequest { field: "stored_request_text" })) },
   EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String },
   EnvelopeVector { name: "request_path", body: match device_request_path(escalation_id: "esc-mtc1-boot-1") { Present { value: p } => p as String  Absent => "refused" } },
   EnvelopeVector { name: "enrollment_id_for_code_482913", body: enrollment_id_for_code(code: "482913") as String },

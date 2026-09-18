@@ -30,7 +30,7 @@ import gunbc.auth.approval_decision_store {
   approval_capability_expectation, approval_operator_login, json_field_string,
 }
 import gunbc.auth.approval_device_wire {
-  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, enrollment_id_for_code, DeviceRedemptionSigningInput,
+  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, enrollment_id_for_code, RedemptionResponse, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
 import gunbc.durable_cas_file_store {
@@ -249,6 +249,39 @@ type DeviceRedemptionOutcome
   | DevicePlatformUnrealized
   | DeviceLostTheRace
   | DeviceCommitRefused { detail: NonEmptyStr }
+
+// THE OUTCOME'S WIRE NAME, one total match over the sum: the app branches on this word, so it is
+// derived from the arm and never typed beside it -- renaming or splitting an arm changes the word
+// here, and the envelope fixture built through redemption_response_of changes with it.
+fn device_redemption_outcome_wire(o: DeviceRedemptionOutcome) -> NonEmptyStr {
+  match o {
+    DeviceRedeemed { decision: _ } => "DeviceRedeemed" as NonEmptyStr
+    DeviceAlreadyDecided { decision: _ } => "DeviceAlreadyDecided" as NonEmptyStr
+    DeviceEnrollmentUnknown => "DeviceEnrollmentUnknown" as NonEmptyStr
+    DeviceEnrollmentRevoked { enrollment_id: _ } => "DeviceEnrollmentRevoked" as NonEmptyStr
+    DeviceEnrollmentForAnotherOperator { enrolled: _, expected: _ } => "DeviceEnrollmentForAnotherOperator" as NonEmptyStr
+    DeviceEscalationNotFiled { escalation_id: _ } => "DeviceEscalationNotFiled" as NonEmptyStr
+    DeviceStoreUnreadable { detail: _ } => "DeviceStoreUnreadable" as NonEmptyStr
+    DeviceKeyringUnavailable { cause: _ } => "DeviceKeyringUnavailable" as NonEmptyStr
+    DeviceSignedForAnotherRequest { field: _ } => "DeviceSignedForAnotherRequest" as NonEmptyStr
+    DeviceChallengeExpired { expires_at: _, observed_at: _ } => "DeviceChallengeExpired" as NonEmptyStr
+    DeviceChallengeNotIssuedHere => "DeviceChallengeNotIssuedHere" as NonEmptyStr
+    DeviceCapabilityTagMalformed => "DeviceCapabilityTagMalformed" as NonEmptyStr
+    DeviceCapabilityRefused { cause: _ } => "DeviceCapabilityRefused" as NonEmptyStr
+    DeviceSignatureRefused { verification: _ } => "DeviceSignatureRefused" as NonEmptyStr
+    DevicePlatformProofRefused { cause: _ } => "DevicePlatformProofRefused" as NonEmptyStr
+    DevicePlatformProofForOtherBytes => "DevicePlatformProofForOtherBytes" as NonEmptyStr
+    DevicePlatformProofWrongKey => "DevicePlatformProofWrongKey" as NonEmptyStr
+    DevicePlatformUnrealized => "DevicePlatformUnrealized" as NonEmptyStr
+    DeviceLostTheRace => "DeviceLostTheRace" as NonEmptyStr
+    DeviceCommitRefused { detail: _ } => "DeviceCommitRefused" as NonEmptyStr
+  }
+}
+
+// The redeem route's answer, built from the outcome and nothing else.
+fn redemption_response_of(o: DeviceRedemptionOutcome) -> RedemptionResponse {
+  RedemptionResponse { outcome: device_redemption_outcome_wire(o: o), message: device_redemption_reason(o: o) }
+}
 
 fn device_redemption_reason(o: DeviceRedemptionOutcome) -> NonEmptyStr {
   match o {

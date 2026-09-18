@@ -726,8 +726,9 @@ type EnrolmentReadback {
   standing: EnrolmentStandingWire
 }
 
-// The redeem answer names its outcome by the server's DeviceRedemptionOutcome arm name and carries
-// the operator-facing reason; the app renders the reason and branches only on the name.
+// The redeem answer names its outcome by gunbc.auth.approval_device_redemption
+// device_redemption_outcome_wire and carries the operator-facing reason (redemption_response_of builds
+// it); the app renders the reason and branches only on the name.
 type RedemptionResponse {
   outcome: NonEmptyStr
   message: NonEmptyStr
