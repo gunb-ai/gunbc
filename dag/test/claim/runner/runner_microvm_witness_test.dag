@@ -221,9 +221,9 @@ test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
   )
 }
 
-// THE POSITIVE CONTROL. Same VM, same transport, cgroup-reaching teardown: admitted. Without this
+// THE POSITIVE CONTROL. Same VM, same transport, the declared intent (ExitType=main, KillMode=control-group): admitted. Without this
 // arm the refusal above would be satisfied by an admission that refuses everything.
-test fn cgroup_teardown_admits_the_same_microvm() -> Bool {
+test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
