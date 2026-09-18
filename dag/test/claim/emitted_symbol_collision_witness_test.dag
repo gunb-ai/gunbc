@@ -28,9 +28,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the emitter wall, not a rename of that module. The fixture is isolated so the RED is
 // attributable and does not depend on emitting the live git closure.
 
-data collide_source: String = "module esc.probe\nimport std.types { Int, Bool }\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Worktree {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+// NO `std.types` IMPORT IN EITHER FIXTURE SOURCE, AND THAT IS LOAD-BEARING RATHER THAN TERSENESS.
+// `compile_fixture` compiles the supplied manifest with NO corpus roots, so `import std.types`
+// names a module the subject does not contain and refuses the WHOLE compile with
+// `UnresolvedImport` -- which is interpreter-blocking, so `emittable_graph` answers none and emit
+// never runs. Emit is where `EmittedSymbolCollision` is produced, so with that import present the
+// class-specific RED cannot observe its subject and the positive control cannot reach its
+// `count(rows) == 0`. `Int` and `Bool` need no import: both are in the kernel type set and every
+// module sees them. The same constraint is recorded at
+// `test.claim.bare_name_ambiguity_wall_witness` and asserted as a control by
+// `test.claim.multi_module_compile_fixture_witness` `no_default_corpus_roots_are_loaded`.
+data collide_source: String = "module esc.probe\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Worktree {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
 
-data distinct_source: String = "module esc.probe\nimport std.types { Int, Bool }\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Other {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
+data distinct_source: String = "module esc.probe\n\ntype GitWorktree {\n  n: Int\n}\n\nservice git.Other {\n  operation Add {\n    input { n: Int }\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n"
 
 fn collision_run() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
