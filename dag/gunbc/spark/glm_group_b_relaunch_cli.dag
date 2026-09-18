@@ -319,12 +319,15 @@ fn rank_memory_path_text(r: RankMemoryPathReading) -> String {
     RankMemoryPathLogNotFromIncarnation { log_from: f } =>
       join(["PROVENANCE MISMATCH: the log was captured from ", observed_rank_subject_text(s: f), ", not from the inspected incarnation"], "")
     RankMemoryPathRead { facet: f } =>
-      match f.defect {
-        DefectEstablished { cause: c } => join(["DEFECT: ", c as String], "")
-        EvidenceContradicts { cause: c } => join(["CONTRADICTION: ", c as String], "")
-        DefectStandingUnread { cause: c } => join(["unread: ", c as String], "")
-        NoDefectEstablished { because: _ } => memory_path_standing_text(s: f.standing) as String
-      }
+      join([
+        "memory path on ", observed_rank_incarnation_text(i: f.from), ": ",
+        match f.defect {
+          DefectEstablished { cause: c } => join(["DEFECT: ", c as String], "")
+          EvidenceContradicts { cause: c } => join(["CONTRADICTION: ", c as String], "")
+          DefectStandingUnread { cause: c } => join(["unread: ", c as String], "")
+          NoDefectEstablished { because: _ } => memory_path_standing_text(s: f.standing) as String
+        },
+      ], "")
   }
 }
 
