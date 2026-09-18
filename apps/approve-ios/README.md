@@ -20,7 +20,7 @@ held to the `.dag` folds by `dag/test/fixture/approval_device_redemption/vectors
 | `Approve/ApproveApp.swift` | entry point, APNs token delivery, push wakes the list |
 | `Approve/Views.swift` | Enrol, Inbox, Detail |
 | `ApproveTests/ProtocolVectorTests.swift` | byte builders vs the emitted vectors; absence of the fixture FAILS |
-| `Approve/Assets.xcassets/AppIcon.appiconset/` | 1024 slot; the PNG is a generation-step output, not committed here |
+| `Approve/Assets.xcassets/AppIcon.appiconset/` | the generated 1024 PNG (script projection of the mark.svg geometry) |
 
 ## What the operator builds on the MacBook
 
@@ -29,7 +29,6 @@ fixes on first build.
 
 1. `brew install xcodegen`
 2. Fill `Config/Team.xcconfig` (team id, `APPROVE_SERVER_HOST`). Keep the team id out of commits.
-3. Drop the generated `AppIcon-1024.png` into `Approve/Assets.xcassets/AppIcon.appiconset/`.
 4. `cd apps/approve-ios && xcodegen generate && open Approve.xcodeproj`
 5. In Signing & Capabilities confirm Push Notifications and App Attest are on the App ID (the
    entitlements file declares `aps-environment` and `com.apple.developer.devicecheck.appattest-environment`).
