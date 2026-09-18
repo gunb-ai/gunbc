@@ -21,10 +21,13 @@ data function_value_source: String = "module wall.fixture.value\nimport std.type
 
 data clean_source: String = "module wall.fixture.clean\nimport std.types { Bool }\nfn helper() -> Bool { true }\ntest fn uses_helper() -> Bool { helper() }\n"
 
-// A module that carries a ledger row, compiled with none of its references: the paid-down
-// direction of the equality budget. It names a real row, so it moves when that row is paid down,
-// and it retires with the ledger's last row, when the mismatch arm has nothing left to count.
-data paid_down_source: String = "module test.claim.host_build_cache_provision_design\nimport std.types { Bool }\nfn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool { true }\n"
+// THE PAID-DOWN ARM's fixture. It names `wall.fixture.paid_down`, a module that exists only here and
+// in the wall's own control row (v1.compiler.compile test_reference_debt): a fixture that reproduced
+// a real corpus module would collide with the loaded corpus on the floor and the census would refuse
+// rather than answer, which is how the first spelling of this row failed in CI while passing locally.
+// The row declares one reference; this source has none, so the equality budget refuses in the
+// paid-down direction.
+data paid_down_source: String = "module wall.fixture.paid_down\nimport std.types { Bool }\nfn reader() -> Bool { true }\n"
 
 // DISCRIMINATING RED: a test that calls a test refuses, at the calling test.
 test fn a_test_calling_a_test_is_refused() -> Bool {
