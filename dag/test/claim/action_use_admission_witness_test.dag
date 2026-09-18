@@ -21,7 +21,8 @@ import gunbc.action_use_admission {
   WorkflowActionUsesAdmission, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused,
   action_use_admitted, admit_action_release, admit_action_release_against, admit_realized_action_use,
   admit_workflow_action_uses, realized_workflow_action_uses,
-  upload_artifact_action, checkout_action,
+  upload_artifact_action, checkout_action, github_script_action,
+  realized_use_is_a_repository_selection,
 }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
 
@@ -255,7 +256,7 @@ fn census_one_file(acc: RealizedCensus, path: String) -> RealizedCensus {
       RealizedCensus { files: acc.files + 1, uses: acc.uses, refused: concat(acc.refused, [join([p, ": unreadable: ", r], "")]), admitted_texts: acc.admitted_texts }
     RealizedWorkflowUses { workflow_path: p, uses: us } =>
       fold(us, init: RealizedCensus { files: acc.files + 1, uses: acc.uses, refused: acc.refused, admitted_texts: acc.admitted_texts }, f: fn(c, u) {
-        if action_use_admitted(a: admit_realized_action_use(u: u)) {
+        if action_use_admitted(a: admit_realized_action_use(u: u)) && realized_use_is_a_repository_selection(uses_text: u.uses_text) {
           RealizedCensus { files: c.files, uses: c.uses + 1, refused: c.refused, admitted_texts: concat(c.admitted_texts, [u.uses_text]) }
         } else {
           RealizedCensus { files: c.files, uses: c.uses + 1, refused: concat(c.refused, [join([p, " job ", u.job_id, ": ", u.uses_text], "")]), admitted_texts: c.admitted_texts }
@@ -283,7 +284,9 @@ fn realized_census() -> RealizedCensus {
 }
 
 // ZERO forced substitutions, ZERO unmodeled uses, ZERO unresolved producers, ZERO unreadable
-// workflows -- over a population that is not empty, and that demonstrably reached the real
+// workflows, and every use IS a repository selection (gunbc.action_use_admission
+// repository_action_selections) -- so a hand-authored file cannot pin an admitted commit the
+// selection rows do not choose, -- over a population that is not empty, and that demonstrably reached the real
 // artifact step: the selected upload-artifact release is among the admitted uses, so the join ran
 // over witnesses.yml's actual lines and not over nothing.
 test fn every_realized_workflow_action_use_is_modeled_and_executed_exactly() -> Bool {
@@ -293,4 +296,13 @@ test fn every_realized_workflow_action_use_is_modeled_and_executed_exactly() -> 
     && c.uses > 0
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: github_script_action))
+}
+
+// ADMITTED IS NOT SELECTED. Swatinem/rust-cache v2.9.1 declares node24 and is admitted exactly, but
+// no selection row chooses it -- only setup-rust-toolchain's composite runs it -- so a workflow step
+// pinning it directly is refused by the census.
+test fn red_admitted_but_unselected_release_is_not_a_repository_selection() -> Bool {
+  realized_use_is_a_repository_selection(uses_text: action_release_uses_text(action_release: upload_artifact_action))
+    && !realized_use_is_a_repository_selection(uses_text: action_release_uses_text(action_release: rust_cache_v2_9_1))
 }

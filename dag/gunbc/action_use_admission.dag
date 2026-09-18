@@ -77,6 +77,23 @@ data upload_artifact_action: ActionRelease = upload_artifact_v6_0_0
 data download_artifact_action: ActionRelease = download_artifact_v7_0_0
 data github_script_action: ActionRelease = github_script_v8_0_0
 
+// THE SELECTIONS AS ONE ROSTER, so the realized-file census can require every `uses:` in
+// .github/workflows to BE a selected release, not merely an admitted one. Without that, a
+// hand-authored file could pin any admitted commit and drift from the row that claims to choose it.
+data repository_action_selections: List<ActionRelease> = [
+  checkout_action,
+  setup_rust_action,
+  cache_action,
+  google_auth_action,
+  upload_artifact_action,
+  download_artifact_action,
+  github_script_action,
+]
+
+fn realized_use_is_a_repository_selection(uses_text: String) -> Bool {
+  any(repository_action_selections, r => action_release_uses_text(action_release: r) == uses_text)
+}
+
 // ---------------------------------------------------------------------------------------------
 // ADMISSION
 // ---------------------------------------------------------------------------------------------
