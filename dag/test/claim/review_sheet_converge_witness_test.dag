@@ -68,6 +68,15 @@ import gunbc.review_sheet_projection {
 import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
   review_sheet_ensure,
+  review_sheet_ensure_assess,
+  review_sheet_ensure_decide,
+  ReviewSheetEnsureAssessment,
+  ReviewSheetRequestRejected,
+  ReviewSheetReadbackRejected,
+  ReviewSheetProjectionClassified,
+  SheetRequestCause,
+  BoundedRequest,
+  ColumnBoundedRequest,
   value_ranges_from_write_plan,
   value_range_includes_column_letter,
   TabBoundWritePlan,
@@ -243,6 +252,120 @@ fn w_value_range(rows: List<List<String>>) -> ValueRange {
 
 fn w_open_request(tab: NonEmptyStr) -> SheetA1Range {
   review_sheet_get_values_request(tab: tab)
+}
+
+fn w_bounded_request(tab: NonEmptyStr) -> SheetA1Range {
+  SheetA1Range {
+    tab: tab,
+    origin: a1_origin_cell(),
+    end: A1EndClosed { cell: A1Cell { column: A1Column { letter: "E" as NonEmptyStr }, row: 9 } },
+  }
+}
+
+fn w_column_bounded_request(tab: NonEmptyStr) -> SheetA1Range {
+  SheetA1Range {
+    tab: tab,
+    origin: a1_origin_cell(),
+    end: A1EndOpen { column: A1Column { letter: "E" as NonEmptyStr } },
+  }
+}
+
+fn w_2b_projection() -> ReviewSheetProjection {
+  w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
+}
+
+fn assessment_tag(a: ReviewSheetEnsureAssessment) -> String {
+  match a {
+    ReviewSheetRequestRejected { cause: c } => match c {
+      BoundedRequest { range: _ } => "request:bounded"
+      ColumnBoundedRequest { range: _ } => "request:column-bounded"
+    }
+    ReviewSheetReadbackRejected { reason: _ } => "readback"
+    ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => "classified"
+  }
+}
+
+fn assess_2b(requested: SheetA1Range, range: ValueRange) -> ReviewSheetEnsureAssessment {
+  review_sheet_ensure_assess(
+    requested: requested,
+    range: range,
+    projection: w_2b_projection(),
+    erasures: [],
+  )
+}
+
+test fn assess_refuses_each_request_shape_under_its_own_cause_before_reading() -> Bool {
+  let good = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "", ""]])
+  assessment_tag(a: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: good)) == "request:bounded"
+    && assessment_tag(a: assess_2b(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr), range: good)) == "request:column-bounded"
+    && assessment_tag(a: assess_2b(requested: w_open_request(tab: "Review" as NonEmptyStr), range: good)) == "classified"
+}
+
+test fn assess_carries_the_refused_range_in_the_request_cause() -> Bool {
+  match assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: w_value_range(rows: [])) {
+    ReviewSheetRequestRejected { cause: c } => match c {
+      BoundedRequest { range: r } => (r.tab as String) == "Review"
+      ColumnBoundedRequest { range: _ } => false
+    }
+    ReviewSheetReadbackRejected { reason: _ } => false
+    ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => false
+  }
+}
+
+test fn assess_refuses_a_foreign_readback_tab() -> Bool {
+  assessment_tag(a: assess_2b(
+    requested: w_open_request(tab: "Other" as NonEmptyStr),
+    range: w_value_range(rows: [["L1", "alpha", w_standing_observed(), "", ""]]),
+  )) == "readback"
+}
+
+test fn decide_applies_policy_and_assess_never_does() -> Bool {
+  let needs_write = assess_2b(
+    requested: w_open_request(tab: "Review" as NonEmptyStr),
+    range: w_value_range(rows: []),
+  )
+  match review_sheet_ensure_decide(policy: EnsureObserveOnly, assessment: needs_write) {
+    Refuse { reason: _ } =>
+      match review_sheet_ensure_decide(policy: EnsureMayApply, assessment: needs_write) {
+        Apply { plan: _ } => true
+        Noop => false
+        Refuse { reason: _ } => false
+      }
+    Apply { plan: _ } => false
+    Noop => false
+  }
+}
+
+fn decision_tag_2b(d: UpsertDecision<TabBoundWritePlan>) -> String {
+  match d {
+    Noop => "noop"
+    Apply { plan: p } => concat("apply:", concat(p.tab as String, concat(":", to_string(p.plan.appends |> count))))
+    Refuse { reason: r } => concat("refuse:", r as String)
+  }
+}
+
+fn ensure_equals_composition(policy: EnsurePolicy, requested: SheetA1Range, range: ValueRange) -> Bool {
+  decision_tag_2b(d: review_sheet_ensure(
+    policy: policy,
+    requested: requested,
+    range: range,
+    projection: w_2b_projection(),
+    erasures: [],
+  )) == decision_tag_2b(d: review_sheet_ensure_decide(
+    policy: policy,
+    assessment: assess_2b(requested: requested, range: range),
+  ))
+}
+
+test fn ensure_is_exactly_decide_of_assess_on_every_arm() -> Bool {
+  let empty = w_value_range(rows: [])
+  let converged = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "", ""]])
+  ensure_equals_composition(policy: EnsureMayApply, requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: empty)
+    && ensure_equals_composition(policy: EnsureMayApply, requested: w_column_bounded_request(tab: "Review" as NonEmptyStr), range: empty)
+    && ensure_equals_composition(policy: EnsureMayApply, requested: w_open_request(tab: "Other" as NonEmptyStr), range: converged)
+    && ensure_equals_composition(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: empty)
+    && ensure_equals_composition(policy: EnsureObserveOnly, requested: w_open_request(tab: "Review" as NonEmptyStr), range: empty)
+    && ensure_equals_composition(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: converged)
 }
 
 test fn converge_twice_unchanged_is_noop() -> Bool {
