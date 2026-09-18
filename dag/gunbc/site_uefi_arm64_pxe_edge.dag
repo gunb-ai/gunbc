@@ -36,10 +36,8 @@ import gunbc.network_boot_delivery {
   GlobalHttpsEndpointUnreachable,
   site_pxe_edge_standing
 }
-import gunbc.machine_intake_mtcollins1_netboot_client_observation {
-  mtcollins1_host_nic_mac,
-  mtcollins1_pxe_arch_code
-}
+import extdeps.provisioning.dhcp_client_arch { UefiArm64, dhcp_processor_architecture_code }
+import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
 // THE SITE DISCOVERY EDGE for the first onboarding segment, UEFI ARM64 only. It consumes
 // gunbc.network_boot_delivery site_pxe_edge_standing and adds the three things that function
@@ -131,14 +129,15 @@ fn global_https_reachability_from_boot_network(obs: BootNetworkReachabilityObser
 }
 
 // THE CLIENT AS IT DESCRIBED ITSELF: the MAC it sent from and its DHCP option 93 architecture
-// code. Only code 11 (EFI ARM64, the code mtcollins1 presented) is recognized; any other code is
-// carried as read and refused -- it is never guessed onto an Architecture.
+// code. Only the RFC 4578 UEFI ARM64 code is recognized (the code mtcollins1 presented is COMPARED
+// against it, never the source of it); any other code is carried as read and refused -- it is never
+// guessed onto an Architecture.
 type EdgeClientRequest {
   mac: NonEmptyStr
   arch_code: Int
 }
 
-data uefi_arm64_client_arch_code: Int = mtcollins1_pxe_arch_code
+data uefi_arm64_client_arch_code: Int = dhcp_processor_architecture_code(a: UefiArm64)
 
 // Known machines are named by the edge, not inferred from reaching it: a client absent from
 // this list gets no admitted boot even with the right architecture. The roster carries only
