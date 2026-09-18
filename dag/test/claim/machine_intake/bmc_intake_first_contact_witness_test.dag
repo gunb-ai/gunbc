@@ -1,0 +1,38 @@
+module test.claim.bmc_intake_first_contact_witness
+
+import std.types { Bool, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.tools.curl { curl_http_code_write_out_format }
+import gunbc.tools.bmc_intake_first_contact {
+  HostUnreachable,
+  RedfishHttpSurface,
+  WriteOutUnreadable,
+  classify_intake_probe,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_intake_probe_404_is_a_captured_surface_not_a_failed_login() -> Bool {
+  (curl_http_code_write_out_format as String) == "%\{http_code\}"
+    && match classify_intake_probe(reached_host: true, blob: "{}404") {
+      RedfishHttpSurface { status: s, blob: b } => s == 404 && b == "{}404"
+      HostUnreachable { diagnostic: _ } => false
+      WriteOutUnreadable { blob: _, cause: _ } => false
+    }
+}
+
+test fn w_intake_probe_unreachable_host_is_not_a_surface() -> Bool {
+  match classify_intake_probe(reached_host: false, blob: "curl: (7) Failed to connect") {
+    HostUnreachable { diagnostic: d } => string_contains(s: d, pattern: "Failed to connect")
+    RedfishHttpSurface { status: _, blob: _ } => false
+    WriteOutUnreadable { blob: _, cause: _ } => false
+  }
+}
+
+test fn w_intake_probe_success_without_write_out_digits_is_unreadable() -> Bool {
+  match classify_intake_probe(reached_host: true, blob: "{\"RedfishVersion\":\"1.0.0\"}") {
+    WriteOutUnreadable { blob: b, cause: _ } => string_contains(s: b, pattern: "RedfishVersion")
+    RedfishHttpSurface { status: _, blob: _ } => false
+    HostUnreachable { diagnostic: _ } => false
+  }
+}

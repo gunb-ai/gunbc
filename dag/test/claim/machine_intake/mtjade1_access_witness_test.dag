@@ -3,12 +3,8 @@ module test.claim.mtjade1_access_witness
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake_mtjade1_access_observation {
-  mtjade1_firmware_family_standing,
+  mtjade1_bmc_ethernet,
   mtjade1_unit_key_standing,
-}
-import gunbc.machine_intake_bmc_first_contact_standing {
-  FamilyObserved,
-  FamilyUnobserved,
 }
 import gunbc.machine_intake_subject {
   BoardSerialAbsent,
@@ -17,16 +13,23 @@ import gunbc.machine_intake_subject {
   UnitKeyRefused,
   bind_unit_key,
 }
+import extdeps.ampere.mt_jade_getting_started_guide.chassis {
+  GsgUnstated,
+  NamedOnRearPanel,
+  mt_jade_gsg_bmc_ethernet_phy,
+}
 import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref, mtjade1_bmc_gunbc_secret_ref }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_mtjade1_family_is_unobserved() -> Bool {
-  match mtjade1_firmware_family_standing {
-    FamilyUnobserved { discriminator: _ } => true
-    FamilyObserved { family: _ } => false
+test fn w_mtjade1_bmc_ethernet_is_rear_panel_and_phy_unstated() -> Bool {
+  match mtjade1_bmc_ethernet {
+    NamedOnRearPanel { figure_or_table: _ } => true
   }
+    && match mt_jade_gsg_bmc_ethernet_phy {
+      GsgUnstated { topic: _ } => true
+    }
 }
 
 test fn w_mtjade1_unit_key_is_board_serial_absent() -> Bool {

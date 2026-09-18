@@ -65,7 +65,10 @@ data mt_jade_gsg_socket1_one_dpc_slot_labels: List<Nat> = [17, 19, 21, 23, 25, 2
 
 data mt_jade_gsg_one_dpc_empty_slot_labels: List<Nat> = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]
 
-data mt_jade_gsg_slot_label_prefix: NonEmptyStr = "#"
+type MtJadeGsgSlotLabelKind
+  = HashNumberPrefix
+
+data mt_jade_gsg_slot_label_kind: MtJadeGsgSlotLabelKind = HashNumberPrefix
 
 data mt_jade_gsg_population_2s2p_16_dimms_citation: FactCitation = FactCitation {
   fact: DeclarationRef {

@@ -9,6 +9,10 @@ import gunbc.machine_intake_subject {
   UnitKeyRefused,
   UnitKeyStanding,
 }
+import extdeps.ampere.mt_jade_getting_started_guide.chassis {
+  GsgRearManagementEthernet,
+  mt_jade_gsg_bmc_ethernet_port,
+}
 
 // MT. JADE UNIT 1 BMC ACCESS, AND NOTHING HERE IS A LIVE READING. The operator has AC and a BMC
 // in standby; this module does not invent a host, serial, firmware family, or BaseboardModel arm.
@@ -24,3 +28,5 @@ data mtjade1_firmware_family_standing: BmcFirmwareFamilyStanding = FamilyUnobser
 data mtjade1_unit_key_standing: UnitKeyStanding = UnitKeyRefused {
   cause: BoardSerialAbsent,
 }
+
+data mtjade1_bmc_ethernet: GsgRearManagementEthernet = mt_jade_gsg_bmc_ethernet_port

@@ -1,27 +1,53 @@
 module gunbc.tools.bmc_intake_first_contact
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ExitSuccess, exit_failure }
+import std.types { Bool, HttpStatus, NonEmptyStr, String }
 import extdeps.bmc.http
 import extdeps.shell
+import extdeps.tools.curl {
+  CurlWroteHttpStatus,
+  CurlWroteNoHttpStatus,
+  classify_curl_write_out_stdout,
+  curl_http_code_write_out_format,
+}
+import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
 import gunbc.tools.bmc_first_contact { bmc_first_contact_host }
 
 // THE INTAKE PROBE DOES NOT AUTHENTICATE. It reuses BMC_HOST and ProbeServiceRoot so a 404 is a
 // captured surface rather than a failed OpenBMC login. It does not write openbmc_factory_login.
 // Family classification is gunbc.machine_intake_bmc_first_contact_standing, and it refuses to
-// mint a family from this probe's HTTP code.
+// mint a family from this probe's HTTP code. The write-out format is extdeps.tools.curl's.
 //
 // Run: BMC_HOST=<addr> gunbc run --source-root dag --source-root src/v2 \
 //   --entry dag/gunbc/tools/bmc_intake_first_contact.dag --function bmc_intake_first_contact
 
-fn bmc_intake_first_contact() -> ProcessExit
+type IntakeRedfishSurface
+  = HostUnreachable { diagnostic: String }
+  | RedfishHttpSurface { status: HttpStatus, blob: String }
+  | WriteOutUnreadable { blob: String, cause: NonEmptyStr }
+
+fn classify_intake_probe(reached_host: Bool, blob: String) -> IntakeRedfishSurface {
+  match reached_host {
+    false => HostUnreachable { diagnostic: blob }
+    true => match classify_curl_write_out_stdout(stdout: blob) {
+      CurlWroteHttpStatus { status: status } => RedfishHttpSurface { status: status, blob: blob }
+      CurlWroteNoHttpStatus { cause: cause } => WriteOutUnreadable { blob: blob, cause: cause }
+    }
+  }
+}
+
+fn bmc_intake_first_contact() -> CliWireResponse
   uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)
-  resp = redfish.Http.ProbeServiceRoot(bmc_host: bmc)
-  if resp.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: resp.body)
+  resp = redfish.Http.ProbeServiceRoot(bmc_host: bmc, write_out: curl_http_code_write_out_format)
+  match classify_intake_probe(reached_host: resp.success, blob: resp.body) {
+    HostUnreachable { diagnostic: d } =>
+      CliWirePrintable { bytes: d, exit: exit_failure(reason: d) }
+    RedfishHttpSurface { status: _, blob: b } =>
+      CliWirePrintable { bytes: b, exit: ExitSuccess }
+    WriteOutUnreadable { blob: b, cause: c } =>
+      CliWirePrintable { bytes: b, exit: exit_failure(reason: c as String) }
   }
 }

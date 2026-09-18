@@ -1,7 +1,8 @@
 module test.claim.mtjade1_first_dpc_population_plan_witness
 
-import std.types { Bool, String, list_length }
+import std.types { Bool, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.ampere.mt_jade_getting_started_guide.memory_population { HashNumberPrefix }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { DimmSlot0 }
 import extdeps.memory.types { DualDiePackage, MonolithicDie, ThreeDimensionalStacked }
 import extdeps.ocp.mt_jade.platform { MasterSocket, SlaveSocket }
@@ -83,7 +84,7 @@ test fn w_jade_first_dpc_modules_are_uniform_and_ddp_is_a_class_not_a_bogus_2rx4
 
 test fn w_jade_first_dpc_silk_is_gsg_table11_hash_numbers() -> Bool {
   match jade_first_dpc_silk_standing {
-    ConnectorSilkFromGsgTable11 { socket0: a, socket1: b } =>
+    ConnectorSilkFromGsgTable11 { prefix: HashNumberPrefix, socket0: a, socket1: b } =>
       list_length(a) == 8
         && list_length(b) == 8
         && list_length(jade_first_dpc_printed_slot_labels) == 16

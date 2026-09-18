@@ -42,7 +42,16 @@ data mt_jade_gsg_rail_kit_part_number: GsgUnstated = GsgUnstated {
   topic: "Rail kit vendor part number. Table 5 quantity is 1 with description Rail Kit only.",
 }
 
-data mt_jade_gsg_bmc_ethernet_port_present: NonEmptyStr = "BMC Ethernet Port / Management Ethernet on the rear panel (Table 6 / Figure 1). PHY and controller SKUs are not named."
+type GsgRearManagementEthernet
+  = NamedOnRearPanel { figure_or_table: NonEmptyStr }
+
+data mt_jade_gsg_bmc_ethernet_port: GsgRearManagementEthernet = NamedOnRearPanel {
+  figure_or_table: "Table 6 / Figure 1",
+}
+
+data mt_jade_gsg_bmc_ethernet_phy: GsgUnstated = GsgUnstated {
+  topic: "PHY and controller SKU. Table 6 names BMC Ethernet Port / Management Ethernet and does not name the PHY.",
+}
 
 // Appendix E, 2S1P / 2S2P-as-forced-1P without the 1P BMC image: "Fan will run at 100% speed".
 // That is a documented MegaRAC-package behaviour on this GSG, not a phosphor-pid-control row and

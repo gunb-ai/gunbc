@@ -1,6 +1,7 @@
 module extdeps.tools.curl
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, HttpStatus, http_status_of }
+import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
@@ -160,6 +161,42 @@ fn curl_aws_sigv4_s3_provider(region: NonEmptyStr) -> String {
 // directory behaviour curl_ftps_upload_command warns about is avoided the same way, by never
 // emitting a URL that ends in "/".
 data curl_http_code_write_out_format: String = "%\{http_code\}"
+
+type CurlWriteOutHttpStatus
+  = CurlWroteHttpStatus { status: HttpStatus }
+  | CurlWroteNoHttpStatus { cause: NonEmptyStr }
+
+fn classify_curl_write_out_stdout(stdout: String) -> CurlWriteOutHttpStatus {
+  let code = trim(s: stdout)
+  match parse_int(s: code) {
+    Present { value: n } => match http_status_of(n: n) {
+      Present { value: status } => CurlWroteHttpStatus { status: status }
+      Absent => CurlWroteNoHttpStatus {
+        cause: "curl write-out printed a status outside HTTP's range" as NonEmptyStr,
+      }
+    }
+    Absent => {
+      let n = string_length(s: code)
+      if n < 3 {
+        CurlWroteNoHttpStatus {
+          cause: "curl write-out was shorter than three digits" as NonEmptyStr,
+        }
+      } else {
+        match parse_int(s: substring(s: code, start: n - 3, end: n)) {
+          Absent => CurlWroteNoHttpStatus {
+            cause: "curl write-out trailing token was not an HTTP status" as NonEmptyStr,
+          }
+          Present { value: trailing } => match http_status_of(n: trailing) {
+            Present { value: status } => CurlWroteHttpStatus { status: status }
+            Absent => CurlWroteNoHttpStatus {
+              cause: "curl write-out trailing token was outside HTTP's range" as NonEmptyStr,
+            }
+          }
+        }
+      }
+    }
+  }
+}
 
 data curl_if_none_match_any_header: String = "If-None-Match: *"
 

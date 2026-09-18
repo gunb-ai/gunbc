@@ -3,8 +3,10 @@ module gunbc.machine_intake_mtjade1_first_dpc_population_plan
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
+  MtJadeGsgSlotLabelKind,
   mt_jade_gsg_one_dpc_empty_slot_labels,
   mt_jade_gsg_population_2s2p_16_dimms,
+  mt_jade_gsg_slot_label_kind,
   mt_jade_gsg_socket0_one_dpc_slot_labels,
   mt_jade_gsg_socket1_one_dpc_slot_labels,
 }
@@ -46,7 +48,11 @@ type JadeFirstDpcSlot {
 }
 
 type JadeFirstDpcSilkStanding
-  = ConnectorSilkFromGsgTable11 { socket0: List<Nat>, socket1: List<Nat> }
+  = ConnectorSilkFromGsgTable11 {
+      prefix: MtJadeGsgSlotLabelKind
+      socket0: List<Nat>
+      socket1: List<Nat>
+    }
 
 type JadeFirstDpcModuleClass
   = UniformMonolithicRdimm
@@ -98,6 +104,7 @@ data jade_first_dpc_slots: List<JadeFirstDpcSlot> = [
 ]
 
 data jade_first_dpc_silk_standing: JadeFirstDpcSilkStanding = ConnectorSilkFromGsgTable11 {
+  prefix: mt_jade_gsg_slot_label_kind,
   socket0: mt_jade_gsg_socket0_one_dpc_slot_labels,
   socket1: mt_jade_gsg_socket1_one_dpc_slot_labels,
 }
@@ -110,7 +117,7 @@ data jade_first_dpc_empty_slot_labels: List<Nat> = mt_jade_gsg_one_dpc_empty_slo
 // (TBD). First fill therefore uses sixteen identical modules: one rank, one width, one density,
 // one speed, one vendor, one die-stacking class.
 fn jade_first_dpc_same_channel_mixing_is_engaged() -> Bool {
-  false
+  dimms_per_channel_count(topology: OneDimmPerChannel) > 1
 }
 
 fn jade_first_dpc_cross_channel_1r_2r_is_undetermined() -> Bool {

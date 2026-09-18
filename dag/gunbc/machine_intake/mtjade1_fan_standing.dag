@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtjade1_fan_standing
 
-import std.types { Bool, NonEmptyStr }
+import std.types { NonEmptyStr }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import gunbc.machine_intake_bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
@@ -32,10 +32,6 @@ type FailsafeWindowClose
   = ChassisHostPowerOff
 
 data mtjade1_failsafe_window_close: FailsafeWindowClose = ChassisHostPowerOff
-
-fn mtjade1_non_posting_host_may_run_failsafe_indefinitely() -> Bool {
-  false
-}
 
 type HostThermalTelemetry
   = HostThermalAbsentBeforePost
