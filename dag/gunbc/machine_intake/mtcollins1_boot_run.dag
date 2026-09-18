@@ -165,49 +165,6 @@ fn mtcollins1_boot_sol_held_from_observations(
   }
 }
 
-fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
-  if pid_path == "" {
-    mtcollins1_boot_sol_held_from_observations(
-      pid_path: pid_path,
-      pid_file_ok: false,
-      pid_file_content: "",
-      cmdline_ok: false,
-      cmdline_content: "",
-    )
-  } else {
-    let pid_read = Filesystem.Read(path: pid_path)
-    if !pid_read.success {
-      mtcollins1_boot_sol_held_from_observations(
-        pid_path: pid_path,
-        pid_file_ok: false,
-        pid_file_content: pid_read.content,
-        cmdline_ok: false,
-        cmdline_content: "",
-      )
-    } else {
-      let pid = trim(s: pid_read.content)
-      if pid == "" {
-        mtcollins1_boot_sol_held_from_observations(
-          pid_path: pid_path,
-          pid_file_ok: true,
-          pid_file_content: pid_read.content,
-          cmdline_ok: false,
-          cmdline_content: "",
-        )
-      } else {
-        let cmdline = Filesystem.Read(path: concat("/proc/", concat(pid, "/cmdline")))
-        mtcollins1_boot_sol_held_from_observations(
-          pid_path: pid_path,
-          pid_file_ok: true,
-          pid_file_content: pid_read.content,
-          cmdline_ok: cmdline.success,
-          cmdline_content: cmdline.content,
-        )
-      }
-    }
-  }
-}
-
 fn mtcollins1_sol_observed_from_collector(
   pid_path_set: Bool,
   pid_file_ok: Bool,
@@ -223,6 +180,71 @@ fn mtcollins1_sol_observed_from_collector(
   } else {
     LeaseAbsent
   }
+}
+
+// ONE pid-file read, then the cmdline read that depends on it, then both the
+// held-Bool and the lease state from that same observation. Two independent
+// Filesystem.Read of the pid file can disagree on a mutable path and feed
+// held_lease_observed_verdict a collector_held that does not match pid_file_ok.
+fn mtcollins1_sol_observed_from_pid_path(pid_path: String) -> HeldLeaseObservedState {
+  if pid_path == "" {
+    mtcollins1_sol_observed_from_collector(
+      pid_path_set: false,
+      pid_file_ok: false,
+      pid_file_content: "",
+      collector_held: false,
+    )
+  } else {
+    let pid_read = Filesystem.Read(path: pid_path)
+    if !pid_read.success {
+      mtcollins1_sol_observed_from_collector(
+        pid_path_set: true,
+        pid_file_ok: false,
+        pid_file_content: pid_read.content,
+        collector_held: mtcollins1_boot_sol_held_from_observations(
+          pid_path: pid_path,
+          pid_file_ok: false,
+          pid_file_content: pid_read.content,
+          cmdline_ok: false,
+          cmdline_content: "",
+        ),
+      )
+    } else {
+      let pid = trim(s: pid_read.content)
+      if pid == "" {
+        mtcollins1_sol_observed_from_collector(
+          pid_path_set: true,
+          pid_file_ok: true,
+          pid_file_content: pid_read.content,
+          collector_held: mtcollins1_boot_sol_held_from_observations(
+            pid_path: pid_path,
+            pid_file_ok: true,
+            pid_file_content: pid_read.content,
+            cmdline_ok: false,
+            cmdline_content: "",
+          ),
+        )
+      } else {
+        let cmdline = Filesystem.Read(path: concat("/proc/", concat(pid, "/cmdline")))
+        mtcollins1_sol_observed_from_collector(
+          pid_path_set: true,
+          pid_file_ok: true,
+          pid_file_content: pid_read.content,
+          collector_held: mtcollins1_boot_sol_held_from_observations(
+            pid_path: pid_path,
+            pid_file_ok: true,
+            pid_file_content: pid_read.content,
+            cmdline_ok: cmdline.success,
+            cmdline_content: cmdline.content,
+          ),
+        )
+      }
+    }
+  }
+}
+
+fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
+  mtcollins1_sol_observed_from_pid_path(pid_path: pid_path) == LeaseRunningExpected
 }
 
 fn mtcollins1_sol_release(
@@ -253,15 +275,8 @@ fn mtcollins1_sol_acquire_after_grant(
       if pid_path == "" {
         exit_failure(reason: "mtcollins1 boot: SOL pid path unset; cannot observe a collector we hold")
       } else {
-        let held = mtcollins1_boot_sol_is_held(pid_path: pid_path)
-        let pid_read = Filesystem.Read(path: pid_path)
         match held_lease_observed_verdict(
-          observed: mtcollins1_sol_observed_from_collector(
-            pid_path_set: true,
-            pid_file_ok: pid_read.success,
-            pid_file_content: pid_read.content,
-            collector_held: held,
-          ),
+          observed: mtcollins1_sol_observed_from_pid_path(pid_path: pid_path),
         ) {
           Conflict =>
             exit_failure(reason: "mtcollins1 boot: refusing live foreign SOL; not deactivating a session we do not hold")
