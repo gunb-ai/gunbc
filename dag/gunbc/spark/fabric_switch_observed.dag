@@ -243,26 +243,44 @@ data srv10_fabric_link_observed: Bool = true
 // agree is DERIVED by comparing rows, never assumed by storing one -- and they now DISAGREE
 // (spark-a3ee re-read post-recode to 0x40, spark-ac79 still at its last pre-recode 0x0B), which is
 // exactly the divergence this per-row shape exists to keep representable.
+//
+// AND A READING'S CURRENT STANDING IS TYPED, NOT ASSUMED FROM THE FACT THAT A ROW EXISTS. A leg that
+// was re-flashed after its last read has a KNOWN-INVALIDATED reading -- the mutation happened, so the
+// stored coding is no longer the leg's current coding, and answering it as a live reading is silent
+// wrongness on the plant path (§5). That is a different state from "never read", and it must not
+// collapse into either "current" or "never looked". So each acquisition carries an
+// EepromAcquisitionStanding: AcquisitionCurrent for a reading taken (or re-taken) after the last
+// mutation, AcquisitionInvalidatedByReflash for a reading a later re-flash invalidated and which was
+// not re-taken. The full append-only acquisition history is still G12; this is the minimum standing
+// the LIVE plant needs so it never promotes an invalidated reading to a current one.
+type EepromAcquisitionStanding
+  = AcquisitionCurrent
+  | AcquisitionInvalidatedByReflash { invalidating_event: NonEmptyStr }
+
 type FabricLegEepromObservation {
   host: NonEmptyStr
   vendor_serial: NonEmptyStr
   date_code: NonEmptyStr
   coding: CableLegObservation
+  acquisition: EepromAcquisitionStanding
 }
 
 // Each row states what ITS dump returned, written out rather than pointing at a shared value.
 //
-// ONE LEG RE-READ POST-RECODE, ONE NOT -- exactly the state this model was built to represent.
 // spark-a3ee carries the POST-RECODE dump (`ethtool -m raw on` after the 2026-09-17 re-flash):
-// byte 192 = 0x40 = 64 (attests 100GBASE-CR2), date_code 260914. Because .first() is the LIVE plant
-// reading (FabricLegEepromObservation has no acquisition timestamp), this row IS re-valued to the
-// current coding rather than left false behind a comment -- a stale LegReadingTaken would be silent
-// wrongness on the plant path (§5), which a `//` note cannot discharge (§4c). spark-ac79 keeps its
-// last ACTUAL reading (byte 192 = 0x0B = 11, date_code 260728): the operator re-flashed it too, but
-// it was not re-read, so re-valuing it would fabricate an observation nobody took. The two legs
-// therefore now DISAGREE by coding, which the distinct-serial witness exists to keep representable.
-// When gap G12's event model lands (PR-1), each leg carries dated acquisitions and a re-read of
-// ac79 appends a row rather than overwriting this one.
+// byte 192 = 0x40 = 64 (attests 100GBASE-CR2), date_code 260914, acquisition AcquisitionCurrent --
+// re-read after the mutation, so it IS the current coding and the plant reads it as one.
+//
+// spark-ac79 was ALSO re-flashed but NOT re-read. Its last actual dump is byte 192 = 0x0B = 11
+// (date_code 260728), and that reading is now INVALIDATED: the re-flash changed the leg, so 0x0B is
+// no longer ac79's current coding, and its current coding is UNKNOWN. So its acquisition is
+// AcquisitionInvalidatedByReflash, and fabric_leg_reading projects that to LegNeverRead rather than
+// LegReadingTaken(0x0B) -- the plant answers "unknown", not a stale value it would be silent
+// wrongness to present as live (§5). The last observation and the invalidating event are retained on
+// the row (not fabricated away), so a re-read appends the current value under G12 rather than
+// overwriting this record. Re-valuing ac79 to a guessed current coding would fabricate an
+// observation nobody took; leaving it as a live 0x0B reading would answer a known-false present
+// state. The typed standing is the only honest arm.
 data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
   FabricLegEepromObservation {
     host: "spark-a3ee" as NonEmptyStr,
@@ -275,6 +293,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-ac79" as NonEmptyStr,
@@ -287,6 +306,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionInvalidatedByReflash { invalidating_event: "FS BOX V4 re-flash 2026-09-17, leg not re-read" as NonEmptyStr },
   },
 ]
 
@@ -297,10 +317,20 @@ fn fabric_leg_observation_for(o: FabricLaneObserved) -> List<FabricLegEepromObse
 // MEMBERSHIP IS DERIVED FROM THE RECEIPTS, never from a parallel roster of which hosts were dumped.
 // A second list would be a second answer to "was this leg read", and the two would disagree the
 // first time a receipt was added without updating it.
+// A LEG'S PLANT READING IS ITS CURRENT CODING OR NOTHING. An AcquisitionCurrent row is a live
+// reading; an AcquisitionInvalidatedByReflash row is projected to LegNeverRead, because the leg's
+// current coding is unknown after the re-flash and presenting the invalidated value as a live reading
+// is the silent wrongness §5 forbids. The invalidated last-observation is not lost -- it stays on the
+// eeprom row -- it is simply not promoted to the plant.
 fn fabric_leg_reading(o: FabricLaneObserved) -> CableLegReading {
   match fabric_leg_observation_for(o: o).first() {
     Present { value: r } =>
-      LegReadingTaken { endpoint: fabric_lane_interface(o: o), observation: r.coding }
+      match r.acquisition {
+        AcquisitionCurrent =>
+          LegReadingTaken { endpoint: fabric_lane_interface(o: o), observation: r.coding }
+        AcquisitionInvalidatedByReflash { invalidating_event: _ } =>
+          LegNeverRead { endpoint: fabric_lane_interface(o: o) }
+      }
     Absent => LegNeverRead { endpoint: fabric_lane_interface(o: o) }
   }
 }

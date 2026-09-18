@@ -139,7 +139,6 @@ data type_reference_decl_file_classes: List<OccurrenceClass> = [
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "render_variant_payload_type"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_method_call"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_data_def"),
-      decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_cli_param_type_node"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_default_value"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "needs_box_wrapping"),
       decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "is_rust_value_type"),

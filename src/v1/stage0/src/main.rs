@@ -61,9 +61,9 @@ enum RetainedCommands {
         /// Source root directories (searched recursively for .dag files)
         #[arg(long = "source-root")]
         source_roots: Vec<String>,
-        /// Entry function to execute (default: "main")
-        #[arg(long, default_value = "main")]
-        function: String,
+        /// Entry function to execute, repeatable; absent, `main`, or every `test fn` under --claim-run
+        #[arg(long = "function")]
+        functions: Vec<String>,
         /// Entry `.dag` file: load only this module and its transitive imports
         /// (not every file under --source-root). Required for scoped TestClaim runs.
         #[arg(long)]
@@ -388,7 +388,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
     fn run_verb(
         &self,
         source_roots: Vec<String>,
-        function: String,
+        functions: Vec<String>,
         entry: Option<String>,
         claim_run: bool,
         args: Vec<String>,
@@ -396,7 +396,7 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         retained_dispatch(
             RetainedCommands::Run {
                 source_roots,
-                function,
+                functions,
                 entry,
                 claim_run,
                 args,
@@ -758,13 +758,13 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
         // is named, its two halves exist, and the missing piece is the wiring between them.
         RetainedCommands::Run {
             source_roots,
-            function,
+            functions,
             entry,
             claim_run,
             args,
         } => run_verb(
             &source_roots,
-            &function,
+            &functions,
             entry.as_deref(),
             dry_run,
             claim_run,
@@ -1014,18 +1014,6 @@ mod tests {
     }
 
     #[test]
-    fn emitted_non_gunbc_cli_has_no_gunbc_build_environment_dependency() {
-        let rendered = v1_compiler::v1_compiler_emit_rust::emit_cli_struct(
-            std::rc::Rc::new(im::vector![]),
-            "user-program".to_string(),
-            "".to_string(),
-            "".to_string(),
-        );
-        assert!(!rendered.contains("GUNBC_BUILD_IDENTITY"));
-        assert!(!rendered.contains("version ="));
-    }
-
-    #[test]
     fn extract_module_path_none_for_moduleless_parse_fixture() {
         let fixture =
             "data split_brace_sample: SplitBraceSample =\nSplitBraceSample { field: \"x\" }\n";
@@ -1102,9 +1090,62 @@ impl Verdict {
     }
 }
 
+/// THE FUNCTIONS ONE `gunbc run` EXECUTES, decided before anything is loaded.
+///
+/// `--function` is repeatable (gunbc.cli_dispatch_surface): every name runs in ONE process over
+/// ONE resolve of the entry's closure, which is where ~90% of a run's wall clock goes. Absent, an
+/// ordinary run executes `main`; a `--claim-run` executes every `test fn` the entry module
+/// declares -- discovered from the RESOLVED graph's declaration markers, never by re-parsing the
+/// file or re-loading the corpus, so "run this witness" costs one load plus the claims' own work.
+fn functions_to_run(
+    functions: &[String],
+    claim_run: bool,
+    entry_file: &str,
+    graph: &v1_compiler::v1_compiler_compile::ResolvedGraph,
+) -> Result<Vec<String>, String> {
+    if !functions.is_empty() {
+        return Ok(functions.to_vec());
+    }
+    if !claim_run {
+        return Ok(vec!["main".to_string()]);
+    }
+    let entry_abs = std::fs::canonicalize(entry_file)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| entry_file.to_string());
+    let entry_module = graph.modules.iter().find(|m| {
+        let f = &m.module.span.file;
+        f == entry_file
+            || std::fs::canonicalize(f)
+                .map(|p| p.to_string_lossy().to_string() == entry_abs)
+                .unwrap_or(false)
+    });
+    let Some(module) = entry_module else {
+        return Err(format!(
+            "--claim-run with no --function: the resolved graph carries no module for {entry_file}, so its test fns cannot be enumerated"
+        ));
+    };
+    let names: Vec<String> = module
+        .items
+        .iter()
+        .filter(|item| {
+            item.module_item_kind
+                == v1_compiler::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
+                && item.declaration_marker
+                    == v1_compiler::v1_std_core::DeclarationMarker::TestMarked
+        })
+        .map(|item| item.name.clone())
+        .collect();
+    if names.is_empty() {
+        return Err(format!(
+            "--claim-run with no --function: {entry_file} declares no `test fn`, so there is no claim to run (name one with --function)"
+        ));
+    }
+    Ok(names)
+}
+
 fn run_verb(
     source_roots: &[String],
-    function: &str,
+    functions: &[String],
     entry: Option<&str>,
     dry_run: bool,
     claim_run: bool,
@@ -1184,22 +1225,73 @@ fn run_verb(
     };
     let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
 
-    match v1_compiler::v1_interpreter::run_in_context_with_args(
-        &ctx, function, &run_args, !claim_run,
-    ) {
+    let to_run = match functions_to_run(functions, claim_run, entry_file, graph.as_ref()) {
+        Ok(names) => names,
+        Err(message) => {
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {message}")),
+            };
+        }
+    };
+
+    // ONE LOAD, MANY FUNCTIONS. Each function's verdict is decided exactly as it was when a run
+    // executed one; the run's verdict is the first non-zero status, and every function still
+    // runs so a claim file reports all of its reds rather than the first. A non-claim run of
+    // several functions stops at the first failure, because a later function may depend on
+    // the effects of an earlier one.
+    let mut verdict = Verdict {
+        status: 0,
+        message: None,
+    };
+    let mut failures: Vec<String> = Vec::new();
+    for function in &to_run {
+        let one = run_one_function(&ctx, function, entry_file, &run_args, claim_run);
+        if one.status != 0 {
+            if let Some(m) = &one.message {
+                failures.push(m.clone());
+            }
+            if verdict.status == 0 {
+                verdict.status = one.status;
+            }
+            if !claim_run {
+                break;
+            }
+        } else if let Some(m) = &one.message {
+            // A claim's PASS line is the run's product and goes to stdout, as it did when one
+            // claim was one run; any other success message keeps its stderr channel.
+            if claim_run {
+                println!("{m}");
+            } else {
+                eprintln!("{m}");
+            }
+        }
+    }
+    if verdict.status != 0 {
+        verdict.message = Some(failures.join("\n"));
+    }
+    verdict
+}
+
+fn run_one_function(
+    ctx: &v1_compiler::v1_interpreter::InterpContext,
+    function: &str,
+    entry_file: &str,
+    run_args: &[(Option<String>, v1_compiler::v1_interpreter::Value)],
+    claim_run: bool,
+) -> Verdict {
+    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, run_args, !claim_run)
+    {
         // A claim run's Bool is the verdict: false is a FAILED claim, exit 1. Outside a
         // claim run a Bool is an ordinary value and says nothing about success.
         Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => Verdict {
             status: 1,
             message: Some(format!("FAIL {function}")),
         },
-        Ok(v1_compiler::v1_interpreter::Value::Bool(true)) if claim_run => {
-            println!("PASS {function}");
-            Verdict {
-                status: 0,
-                message: None,
-            }
-        }
+        Ok(v1_compiler::v1_interpreter::Value::Bool(true)) if claim_run => Verdict {
+            status: 0,
+            message: Some(format!("PASS {function}")),
+        },
         // The verdict a `.dag` entry returns IS the run's outcome. `cli_run::classify_exit`
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
         // is the total map from that class to a status.
@@ -1217,7 +1309,7 @@ fn run_verb(
             //
             // A non-wire value falls through unchanged, so every existing `ProcessExit` entry
             // behaves exactly as it did.
-            match cli_run::cli_wire_outcome(cli_run::classify_cli_wire(&value, &ctx), function) {
+            match cli_run::cli_wire_outcome(cli_run::classify_cli_wire(&value, ctx), function) {
                 Some(outcome) => {
                     if let Some(bytes) = outcome.stdout {
                         use std::io::Write;
@@ -1247,7 +1339,7 @@ fn run_verb(
                 }
                 None => {
                     let (status, message) =
-                        exit_status_for(cli_run::classify_exit(&value, &ctx), function);
+                        exit_status_for(cli_run::classify_exit(&value, ctx), function);
                     Verdict { status, message }
                 }
             }

@@ -1,0 +1,248 @@
+module test.claim.toml_emission
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.toml.types {
+  TomlDocument, TomlTable, TomlEntry, TomlKeyValue,
+  TomlString, TomlInteger, TomlBool, TomlArray, TomlInlineTable,
+  toml_entry, toml_entry_noted, toml_entry_trailing, toml_strings
+}
+import extdeps.languages.toml.emit {
+  serialize_toml, toml_render_value, toml_escape_basic_string, toml_render_key, toml_render_comment,
+  toml_render_entry
+}
+import extdeps.cargo_config {
+  CargoConfigEnvVar, CargoAnnotatedEnvVar, CargoBuildConfig, CargoBuildAnnotations,
+  cargo_config_env_value, cargo_config_document, cargo_config_rustflags_key
+}
+import gunbc.repo_self_warning_policy { repo_self_warning_denial }
+import gunbc.cargo_config_emit { expected_cargo_config_toml }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SERIALIZER IS THE ONLY PLACE TOML PUNCTUATION EXISTS, so these claims are about the medium
+// at that one boundary: each value kind the corpus writes, and the escaping rule whose ORDER is
+// the part that can be silently wrong. Each supplies its input rather than computing it, and the
+// inhabitance claim beneath them is `the_repository_config_is_rendered_by_this_serializer`, which
+// runs the real projection end to end.
+
+test fn every_modeled_value_kind_renders() -> Bool {
+  (toml_render_value(v: TomlString { value: "warnings" }) == "\"warnings\"")
+    && (toml_render_value(v: TomlInteger { value: 2 }) == "2")
+    && (toml_render_value(v: TomlBool { value: false }) == "false")
+    && (toml_render_value(v: TomlBool { value: true }) == "true")
+    && (toml_render_value(v: toml_strings(values: ["-D", "warnings"])) == "[\"-D\", \"warnings\"]")
+    && (toml_render_value(v: TomlArray { elements: [] }) == "[]")
+    && (toml_render_value(v: TomlInlineTable { entries: [
+         TomlKeyValue { key: "value", value: TomlString { value: "1" } },
+         TomlKeyValue { key: "force", value: TomlBool { value: false } }
+       ] }) == "{ value = \"1\", force = false }")
+}
+
+// THE ORDER OF THE TWO REPLACEMENTS IS THE WHOLE CLAIM. Escaping the quote first and the backslash
+// second turns `"` into `\\"` -- a backslash followed by an unescaped terminator -- so a string
+// carrying both characters is the input that discriminates a correct implementation from the
+// plausible wrong one. A test over a quote alone passes under either order and establishes nothing.
+test fn basic_string_escaping_handles_quote_and_backslash_together() -> Bool {
+  (toml_escape_basic_string(s: "a\"b") == "a\\\"b")
+    && (toml_escape_basic_string(s: "a\\b") == "a\\\\b")
+    && (toml_escape_basic_string(s: "a\\\"b") == "a\\\\\\\"b")
+    && (toml_render_value(v: TomlString { value: "a\"b" }) == "\"a\\\"b\"")
+}
+
+test fn comments_and_tables_render_at_their_declared_positions() -> Bool {
+  let doc = TomlDocument {
+    preamble_comments: ["top"],
+    tables: [
+      TomlTable {
+        name: Present { value: "build" },
+        leading_comments: [],
+        entries: [
+          toml_entry_trailing(key: "jobs", value: TomlInteger { value: 2 }, trailing_comment: "why"),
+          toml_entry_noted(key: "flag", value: TomlBool { value: true }, leading_comments: ["note"])
+        ]
+      },
+      TomlTable {
+        name: Present { value: "env" },
+        leading_comments: [],
+        entries: [toml_entry(key: "K", value: TomlString { value: "v" })]
+      }
+    ]
+  }
+  serialize_toml(doc: doc) ==
+    "# top\n\n[build]\njobs = 2  # why\n# note\nflag = true\n\n[env]\nK = \"v\"\n"
+}
+
+// A document with no preamble must not open on a blank line: the separator is emitted BECAUSE a
+// preamble exists, not unconditionally.
+test fn a_document_without_a_preamble_opens_on_its_first_table() -> Bool {
+  serialize_toml(doc: TomlDocument {
+    preamble_comments: [],
+    tables: [TomlTable {
+      name: Present { value: "build" },
+      leading_comments: [],
+      entries: [toml_entry(key: "jobs", value: TomlInteger { value: 1 })]
+    }]
+  }) == "[build]\njobs = 1\n"
+}
+
+// CARGO'S SCHEMA IS ASSERTED AS A RELATION, not as a key and a value that happen to be correct
+// separately. The discriminating content is WHICH VALUE STANDS UNDER WHICH KEY: an implementation
+// that swapped them would satisfy any claim that `"jobs"` is the jobs key and that an integer
+// renders as an integer. The mis-paired document is not merely absent from this claim -- it has no
+// constructor, because `CargoBuildConfig` takes the job count as an `Int` and the flags as a
+// `List<String>` and the caller never names a key at all.
+test fn cargo_binds_each_key_to_its_own_value_shape() -> Bool {
+  serialize_toml(doc: cargo_config_document(
+    preamble_comments: [],
+    build: CargoBuildConfig { jobs: Present { value: 4 }, rustflags: ["-D", "warnings"] },
+    build_annotations: CargoBuildAnnotations { jobs_comment: none, rustflags_comments: [] },
+    env: []
+  )) == "[build]\njobs = 4\nrustflags = [\"-D\", \"warnings\"]\n"
+}
+
+// An absent job count is cargo's own default and must not be written as a fabricated zero, and an
+// empty flag list must not emit an empty array that overrides an inherited value with nothing.
+test fn absent_build_facts_omit_their_keys() -> Bool {
+  serialize_toml(doc: cargo_config_document(
+    preamble_comments: [],
+    build: CargoBuildConfig { jobs: none, rustflags: [] },
+    build_annotations: CargoBuildAnnotations { jobs_comment: none, rustflags_comments: [] },
+    env: []
+  )) == "[build]\n"
+}
+
+// An env row is an inline table carrying value and force, and it lands in `[env]` -- a table a
+// caller cannot choose, because `cargo_config_document` takes env rows as their own argument.
+test fn env_rows_render_as_cargos_inline_table_in_the_env_section() -> Bool {
+  (toml_render_value(v: cargo_config_env_value(var: CargoConfigEnvVar {
+     name: "RUST_MIN_STACK", value: "16777216", force: false
+   })) == "{ value = \"16777216\", force = false }")
+    && (serialize_toml(doc: cargo_config_document(
+         preamble_comments: [],
+         build: CargoBuildConfig { jobs: none, rustflags: [] },
+         build_annotations: CargoBuildAnnotations { jobs_comment: none, rustflags_comments: [] },
+         env: [CargoAnnotatedEnvVar {
+           var: CargoConfigEnvVar { name: "K", value: "v", force: true },
+           leading_comments: [],
+           trailing_comment: none
+         }]
+       )) == "[build]\n\n[env]\nK = { value = \"v\", force = true }\n")
+}
+
+// THE RUSTFLAGS VALUE FOLLOWS ITS INPUT rather than being a constant that happens to agree with the
+// policy row today. A renderer that ignored its argument and returned the repository's own denial
+// would pass every claim above; this is the one it fails.
+test fn the_rustflags_value_follows_the_flags_it_is_given() -> Bool {
+  serialize_toml(doc: cargo_config_document(
+    preamble_comments: [],
+    build: CargoBuildConfig { jobs: none, rustflags: ["-A", "dead_code"] },
+    build_annotations: CargoBuildAnnotations { jobs_comment: none, rustflags_comments: [] },
+    env: []
+  )) == "[build]\nrustflags = [\"-A\", \"dead_code\"]\n"
+}
+
+// THE ADMITTED INPUT DOMAIN, closed rather than assumed. The model accepts any `String` for a
+// value, a key, a table name or a comment line, so each of these is a document the type system
+// permits and a serializer that rendered it verbatim would emit invalid or DIFFERENT TOML.
+test fn control_bearing_strings_stay_inside_their_basic_string() -> Bool {
+  (toml_render_value(v: TomlString { value: "a\nb" }) == "\"a\\nb\"")
+    && (toml_render_value(v: TomlString { value: "a\rb" }) == "\"a\\rb\"")
+    && (toml_render_value(v: TomlString { value: "a\tb" }) == "\"a\\tb\"")
+    && (toml_render_value(v: TomlString { value: "a\u{1}b" }) == "\"a\\u0001b\"")
+    && (toml_render_value(v: TomlString { value: "a\u{1f}b" }) == "\"a\\u001Fb\"")
+}
+
+// U+007F IS THE BOUNDARY THE OBVIOUS TEST MISSES. DELETE sits ABOVE the C0 block, so a
+// `point < 32` guard renders it verbatim while the spec requires it escaped -- and a control
+// witness that stops at U+001F passes over exactly that character. The quoted-key case is here
+// because keys, table names and values share one escaping route, and a claim over values alone
+// would not establish the other two.
+test fn delete_is_escaped_on_every_route_that_shares_the_escaper() -> Bool {
+  (toml_render_value(v: TomlString { value: "a\u{7f}b" }) == "\"a\\u007Fb\"")
+    && (toml_escape_basic_string(s: "\u{7f}") == "\\u007F")
+    && (toml_render_key(key: "a\u{7f}b") == "\"a\\u007Fb\"")
+    && (serialize_toml(doc: TomlDocument {
+         preamble_comments: [],
+         tables: [TomlTable {
+           name: Present { value: "a\u{7f}b" },
+           leading_comments: [],
+           entries: []
+         }]
+       }) == "[\"a\\u007Fb\"]\n")
+}
+
+// A key that is not a BARE key must be quoted, and `a.b` is the case that matters most: written
+// bare it is a dotted path naming a nested table, so quoting is what preserves the caller's
+// meaning rather than a cosmetic choice.
+test fn non_bare_keys_are_quoted_rather_than_written_as_paths() -> Bool {
+  (toml_render_key(key: "jobs") == "jobs")
+    && (toml_render_key(key: "RUST_MIN_STACK") == "RUST_MIN_STACK")
+    && (toml_render_key(key: "a-b") == "a-b")
+    && (toml_render_key(key: "a b") == "\"a b\"")
+    && (toml_render_key(key: "a.b") == "\"a.b\"")
+    && (toml_render_key(key: "") == "\"\"")
+    && (toml_render_key(key: "a\"b") == "\"a\\\"b\"")
+}
+
+// A comment carrying a newline would otherwise be prefixed ONCE, leaving its second line live TOML.
+test fn a_multi_line_comment_cannot_escape_into_live_toml() -> Bool {
+  (toml_render_comment(text: "one\ntwo") == "# one\n# two\n")
+    && (toml_render_comment(text: "one\r\ntwo") == "# one\n# two\n")
+    && (toml_render_comment(text: "plain") == "# plain\n")
+}
+
+// A STANDALONE CR IS NOT A NEWLINE AND MUST NOT VANISH. TOML's newline is LF or CRLF, so the PAIR
+// is a line break while a lone CR is a prohibited control inside comment content. Stripping every
+// CR before sanitizing -- which is what this implementation did until the input was tested --
+// passes every other comment claim while silently DELETING authored content, so the discriminating
+// pair is the two cases side by side: the CRLF splits, the lone CR survives as visible text. The
+// trailing case is here for the route discipline that caught the injection defect.
+test fn a_standalone_carriage_return_survives_as_text_rather_than_vanishing() -> Bool {
+  (toml_render_comment(text: "one\rtwo") == "# one\\u000Dtwo\n")
+    && (toml_render_comment(text: "one\r\ntwo") == "# one\n# two\n")
+    && (toml_render_entry(e: toml_entry_trailing(
+         key: "k", value: TomlInteger { value: 1 }, trailing_comment: "one\rtwo"
+       )) == "k = 1  # one\\u000Dtwo\n")
+}
+
+// THE TRAILING COMMENT IS ITS OWN ROUTE AND WAS THE ONE LEFT OPEN. It is the only comment position
+// that follows a value on the same line, and an earlier revision appended it raw -- so a newline in
+// it rendered its second line as a real assignment. Asserting `toml_render_comment` alone never
+// touches this path, which is why this claim goes through a whole ENTRY.
+test fn a_trailing_comment_cannot_inject_an_assignment() -> Bool {
+  (toml_render_entry(e: toml_entry_trailing(
+     key: "jobs", value: TomlInteger { value: 2 }, trailing_comment: "one\ninjected = 2"
+   )) == "jobs = 2  # one\n# injected = 2\n")
+    && (toml_render_entry(e: toml_entry_trailing(
+         key: "jobs", value: TomlInteger { value: 2 }, trailing_comment: "plain"
+       )) == "jobs = 2  # plain\n")
+}
+
+// TOML admits only TAB among the controls inside a comment; the rest of C0 and U+007F are
+// prohibited. A comment carries no escape sequences -- its content is raw -- so a prohibited
+// character is rendered as its `\uXXXX` TEXT rather than carried through as an invalid byte.
+test fn comment_content_carries_no_prohibited_control() -> Bool {
+  (toml_render_comment(text: "a\u{1}b") == "# a\\u0001b\n")
+    && (toml_render_comment(text: "a\u{7f}b") == "# a\\u007Fb\n")
+    && (toml_render_comment(text: "a\tb") == "# a\tb\n")
+    && (toml_render_entry(e: toml_entry_trailing(
+         key: "k", value: TomlInteger { value: 1 }, trailing_comment: "a\u{7f}b"
+       )) == "k = 1  # a\\u007Fb\n")
+}
+
+// INHABITANCE: the real projection, run for real, carrying the real policy row. The claims above
+// supply their inputs at one boundary; this one asserts that the repository's own configuration is
+// produced by THIS serializer from THAT row, so deleting the derivation cannot leave them green.
+// Byte identity against the committed file is adjudicated by the generated-artifact drift gate,
+// which owns comparing an emitted projection to its committed bytes; this claim owns the ROUTE.
+test fn the_repository_config_is_rendered_by_this_serializer() -> Bool {
+  let rendered = expected_cargo_config_toml()
+  let denial_line = concat(
+    concat(cargo_config_rustflags_key, " = "),
+    toml_render_value(v: TomlArray { elements: repo_self_warning_denial |> map(f => TomlString { value: f }) })
+  )
+  string_contains(s: rendered, pattern: denial_line)
+    && string_contains(s: rendered, pattern: "[build]\n")
+    && string_contains(s: rendered, pattern: "[env]\n")
+    && string_contains(s: rendered, pattern: "RUST_MIN_STACK = { value = \"16777216\", force = false }")
+}
