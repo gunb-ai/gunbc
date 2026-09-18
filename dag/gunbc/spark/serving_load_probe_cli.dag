@@ -1,7 +1,6 @@
 module gunbc.spark.serving_load_probe_cli
 
 import std.types { Bool, List, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -24,25 +23,25 @@ import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_f
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.serving_load_probe {
   glm_native_live_subject_standing,
-  glm_native_declared_shared_traffic, glm_native_smoke_protocol,
+  glm_native_smoke_protocol,
   serving_load_observation, serving_load_observation_text,
   drain_from_queue, window_from_drain, counter_continuity,
   occupancy_trace_from_endpoint_scrapes,
-  ledger_from_bench_stdout, client_output_from_bench_stdout, scrape_millis_from_bench_stdout,
-  client_latency_from_bench_stdout, arrival_from_protocol,
-  client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout,
+  bench_serve_observation_receipt, BenchServeExited, BenchServeUnreachable,
+  bench_serve_bucket_peak, bench_serve_itl,
   client_second_bucket_peak_establishes_foreign_work, itl_tail_cause_is_unestablished,
-  ClientConcurrencyUnread,
-  WindowSharedWithDeclaredTraffic, WindowIsolated, WindowIsolationUnread,
+  WindowIsolated, WindowIsolationNotEstablished,
+  ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread,
+  DrainObservedIdle, DrainNotIdle, DrainUnread,
   RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
 }
 
 // ── THE INHABITANCE ROUTE ─────────────────────────────────────────────────────────────────────
 //
-// Witnesses supply metric bodies. This function is the one that drives `vllm bench serve` against
-// the live native GLM head and folds receipts. A non-idle drain REFUSES the start. An idle start
-// is still WindowSharedWithDeclaredTraffic because operator/harness/nccl traffic may arrive during
-// the run. The rate is parsed from bench duration and Total generated tokens, not from exit_ok.
+// Witnesses supply metric bodies. This function drives `vllm bench serve` against the live native
+// GLM head. A non-idle drain REFUSES the start. An idle start is WindowIsolationNotEstablished:
+// glm_native_exclusion_warning names actors who might arrive, and is not a traffic observation.
+// Client facts are derived from one BenchServeObservationReceipt.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/spark/serving_load_probe_cli.dag --function glm_native_serving_load_wet
@@ -102,14 +101,20 @@ fn glm_native_serving_load_wet() -> ProcessExit
       exit_failure(reason: before)
     } else {
       let drain = drain_from_queue(q: harness_queue_from_body(body: before))
-      let window = window_from_drain(
-        drain: drain,
-        traffic_receipt: glm_native_declared_shared_traffic,
-      )
+      let window = window_from_drain(drain: drain)
       match window {
-        WindowIsolationUnread { cause: c, drain: _ } => exit_failure(reason: c as String)
-        WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => exit_failure(reason: "an isolated window is not this arm's inhabitance path")
-        WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => {
+        WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } =>
+          exit_failure(reason: "an isolated window is not this arm's inhabitance path")
+        ForeignTrafficObserved { attributed_receipt: _, drain: _ } =>
+          exit_failure(reason: "attributed foreign traffic is not this arm's inhabitance path")
+        ForeignTrafficNotObserved { drain: _ } =>
+          exit_failure(reason: "foreign-traffic-not-observed is not this arm's inhabitance path")
+        ForeignTrafficUnread { cause: c, drain: _ } => exit_failure(reason: c as String)
+        WindowIsolationNotEstablished { cause: c, drain: d } =>
+          match d {
+            DrainNotIdle { running: _ } => exit_failure(reason: c as String)
+            DrainUnread { cause: u } => exit_failure(reason: u as String)
+            DrainObservedIdle => {
       let before_incarnation = inspect_incarnation(ctx: ctx)
       let bench = spark_remote_run(ctx: ctx, argv: bench_exec_argv())
       let after = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-after")
@@ -117,47 +122,50 @@ fn glm_native_serving_load_wet() -> ProcessExit
         exit_failure(reason: after)
       } else {
             let after_incarnation = inspect_incarnation(ctx: ctx)
-            let bench_ok = match bench {
-              RemoteUnreachable { cause: _ } => false
-              RemoteRan { exit_code: code, stdout: _, stderr: _ } => code == 0
+            let outcome = match bench {
+              RemoteUnreachable { cause: c } => BenchServeUnreachable { cause: c as NonEmptyStr }
+              RemoteRan { exit_code: code, stdout: _, stderr: _ } => BenchServeExited { exit_code: code }
             }
-            let bench_text = match bench {
-              RemoteUnreachable { cause: c } => join(["bench unreachable: ", c], "")
-              RemoteRan { exit_code: code, stdout: out, stderr: err } =>
-                join(["bench exit=", to_string(code), "\n", out, "\n", err], "")
+            let stdout = match bench {
+              RemoteUnreachable { cause: c } => c
+              RemoteRan { exit_code: _, stdout: out, stderr: _ } => out
+            }
+            let stderr = match bench {
+              RemoteUnreachable { cause: _ } => ""
+              RemoteRan { exit_code: _, stdout: _, stderr: err } => err
+            }
+            let receipt = bench_serve_observation_receipt(
+              protocol: glm_native_smoke_protocol,
+              process_outcome: outcome,
+              raw_stdout: stdout,
+              raw_stderr: stderr,
+            )
+            let bench_ok = match outcome {
+              BenchServeUnreachable { cause: _ } => false
+              BenchServeExited { exit_code: code } => code == 0
             }
             let before_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: before)
             let after_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: after)
             let occ = occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after)
-            let ledger = ledger_from_bench_stdout(body: bench_text, offered: glm_native_smoke_protocol.num_prompts)
-            let client_output = client_output_from_bench_stdout(body: bench_text)
-            let bucket = match glm_native_smoke_protocol.max_concurrency {
-              Absent => ClientConcurrencyUnread { cause: "the smoke protocol did not declare max-concurrency" as NonEmptyStr }
-              Present { value: c } => client_bucket_peak_from_bench_stdout(body: bench_text, client_max_concurrency: c)
-            }
-            let itl = client_itl_from_bench_stdout(body: bench_text)
+            let bucket = bench_serve_bucket_peak(r: receipt)
+            let itl = bench_serve_itl(r: receipt)
             let obs = serving_load_observation(
               subject: glm_native_live_subject_standing(),
-              protocol: glm_native_smoke_protocol,
               window: window,
               continuity: counter_continuity(before: before_launch, after: after_launch),
-              arrival: arrival_from_protocol(req: glm_native_smoke_protocol),
               occupancy: occ,
-              client_output: client_output,
-              scrape_millis: scrape_millis_from_bench_stdout(body: bench_text),
               before_body: before,
               after_body: after,
               before_incarnation: before_incarnation,
               after_incarnation: after_incarnation,
-              ledger: ledger,
-              client_latency: client_latency_from_bench_stdout(body: bench_text, contended: true),
+              bench: receipt,
             )
             let body = join([
               "glm native serving-load wet at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
               serving_load_observation_text(o: obs),
               "\nbucket_peak_establishes_foreign_work=", if client_second_bucket_peak_establishes_foreign_work(p: bucket) { "yes" } else { "no" }, "\n",
               "itl_tail_cause_unestablished=", if itl_tail_cause_is_unestablished(d: itl) { "yes" } else { "no" }, "\n",
-              "\n--- bench ---\n", bench_text, "\n",
+              "\n--- bench ---\n", stdout, "\n", stderr, "\n",
             ], "")
             let w = Filesystem.Write(path: glm_native_serving_load_receipt_path, content: body)
             if !w.success {
@@ -172,7 +180,8 @@ fn glm_native_serving_load_wet() -> ProcessExit
               }
             }
       }
-        }
+            }
+          }
       }
     }
   }, attempt_raw: glm_native_serving_load_attempt_raw, credential_file_name: "gunbc-glm-native-serving-load-admin-password" as NonEmptyStr)

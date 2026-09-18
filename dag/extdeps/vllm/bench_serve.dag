@@ -6,7 +6,7 @@ import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { fixed_point_wire }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmRoute, vllm_route_chat_completions, vllm_route_completions, vllm_route_path }
 
@@ -36,7 +36,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // A second load generator in this repository would be a fork of that driver. This module names
 // the request the CLI actually takes and renders the argv; it does not invent a client.
 
-data vllm_bench_serve_program: NonEmptyStr = "vllm" as NonEmptyStr
+data vllm_bench_serve_source_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "bind this argv model to the serve.py file digest inside the running image; citing github.com/vllm-project/vllm/blob/main/vllm/benchmarks/serve.py is not the installed revision" as NonEmptyStr
+}
 
 type VllmBenchBackend
   = OpenaiCompletions
@@ -80,6 +82,7 @@ type VllmBenchServeRequest {
   arrival: BenchArrival
   max_concurrency: Nat?
   ignore_eos: Bool
+  seed: Nat
 }
 
 fn vllm_bench_serve_request(
@@ -92,6 +95,7 @@ fn vllm_bench_serve_request(
   arrival: BenchArrival,
   max_concurrency: Nat?,
   ignore_eos: Bool,
+  seed: Nat,
 ) -> VllmBenchServeRequest {
   VllmBenchServeRequest {
     backend: backend,
@@ -103,6 +107,7 @@ fn vllm_bench_serve_request(
     arrival: arrival,
     max_concurrency: max_concurrency,
     ignore_eos: ignore_eos,
+    seed: seed,
   }
 }
 
@@ -157,6 +162,7 @@ fn vllm_bench_serve_identity_matches(a: VllmBenchServeRequest, b: VllmBenchServe
     && (a.model as String) == (b.model as String)
     && (a.tokenizer as String) == (b.tokenizer as String)
     && vllm_bench_arrival_eq(a: a.arrival, b: b.arrival)
+    && a.seed == b.seed
 }
 
 // THE ARGV IS DERIVED FROM THE REQUEST, so a protocol that asked for Poisson arrivals cannot
@@ -178,6 +184,7 @@ fn vllm_bench_serve_arguments(req: VllmBenchServeRequest) -> List<String> {
       "--random-output-len", to_string(token_count_value(t: req.dataset.output_len)),
       "--random-prefix-len", to_string(token_count_value(t: req.dataset.prefix_len)),
       "--num-prompts", to_string(req.num_prompts),
+      "--seed", to_string(req.seed),
       "--request-rate", vllm_bench_arrival_rate_wire(a: req.arrival),
     ],
     concat(

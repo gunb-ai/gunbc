@@ -16,6 +16,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.vllm_endpoint_process_launch {
   vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
+import gunbc.harness.harness_backend { harness_queue_from_body }
 import extdeps.vllm.metrics { InterTokenLatencySeconds }
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, RandomDatasetSpec, OpenaiChat, SendAllImmediately, PoissonProcess,
@@ -27,7 +28,8 @@ import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import gunbc.spark.serving_load_probe {
   DrainObservedIdle, DrainNotIdle,
   ExclusionNotEstablished, ExclusionEstablished,
-  WindowIsolated, WindowSharedWithDeclaredTraffic, WindowIsolationUnread,
+  WindowIsolated, WindowIsolationNotEstablished,
+  ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread,
   window_from_drain, isolated_window, drain_from_queue,
   ArmInService, ArmOutOfService,
   OperationLedger, LedgerClosed, LedgerIncomplete, ledger_admits_token_denomination,
@@ -38,15 +40,21 @@ import gunbc.spark.serving_load_probe {
   saturation_from_one_run, observation_rate_is_stored_separately,
   foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread, ForeignWorkContradiction,
   ClientRateUnqualified, ClientRateQualified,
-  occupancy_from_body, histogram_delta, HistogramDeltaRead, HistogramDeltaUnread, HistogramCounterReset,
+  occupancy_from_body, occupancy_trace_from_endpoint_scrapes, histogram_delta, HistogramDeltaRead, HistogramDeltaUnread, HistogramCounterReset,
   CapacityClaimUnavailable,
   glm_native_holistic_protocol, holistic_protocol_is_session_shaped,
   glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
-  OccupancySampled, OccupancyUnsampled, OccupancySample,
+  OccupancyBoundariesRead, OccupancyBoundariesUnread, OccupancySample,
+  occupancy_does_not_count_positively, qualify_client_rate,
+  send_all_without_start_events_is_not_zero_skew,
+  bench_serve_observation_receipt, BenchServeObservationReceipt, BenchServeExited, mixed_run_client_facts_cannot_be_written,
+  bench_serve_interval, bench_serve_ledger,
+  glm_native_exclusion_warning,
+  glm_native_sweep_ttft_c8, glm_native_sweep_ttft_c16,
   ClientOutputTokensUnread, ClientOutputTokensObserved,
   ClientBenchLatencyUnread, ClientBenchLatencyReported,
   glm_native_workload_admission,
-  glm_native_declared_shared_traffic,
+  glm_native_exclusion_warning,
   glm_native_single_stream_decode_bound_millis,
   glm_native_single_stream_decode_bound_standing,
   glm_native_engine_tokenizer_path,
@@ -58,7 +66,6 @@ import gunbc.spark.serving_load_probe {
   glm_native_contended_sweep_c16, glm_native_contended_sweep_points,
   glm_native_contended_sweep_elasticity, elasticity_is_off_the_uncontrolled_series,
   glm_native_wet_smoke_is_not_sweep_c1_protocol, glm_native_wet_smoke_rate_is_output_tokens,
-  glm_native_ttft_would_bind_on_this_sweep,
   glm_native_window_standing_specimen, window_standing_gap_is_unattributed,
   cap_2_bucket_peak_4_is_not_foreign_work, SuccessfulClientRequestSecondBucketPeak,
   ClientItlDistributionObserved, ClientItlDistributionUnread, itl_tail_cause_is_unestablished,
@@ -99,47 +106,47 @@ data fx_after: String = metrics_body(running: "0.0", waiting: "0.0", capacity: "
 data fx_reset: String = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "10.0", itok_count: "1.0", gen: "10.0", start: "1789300000.12")
 data fx_busy: String = metrics_body(running: "3.0", waiting: "2.0", capacity: "2.0", preempt: "1.0", itl_sum: "10.0", itl_count: "100.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
 
-fn tight_arrival() -> ArrivalSkewObserved {
-  ArrivalSkewObserved { max_stagger_millis: 0 }
-}
-
 fn closed_ok() -> OperationLedger {
-  LedgerClosed { offered: 4, completed: 4, failed: 0, failed_after_tokens: 0 }
+  LedgerClosed { offered: 4, completed: 4, failed: 0 }
 }
 
-fn closed_failed_after_tokens() -> OperationLedger {
-  LedgerClosed { offered: 4, completed: 3, failed: 0, failed_after_tokens: 1 }
+fn incomplete_failed_summary() -> OperationLedger {
+  LedgerIncomplete { because: "failed requests in the aggregate summary" as NonEmptyStr }
 }
 
 test fn a_busy_drain_refuses_the_window() -> Bool {
   let d = drain_from_queue(q: harness_queue_from_body(body: fx_busy))
-  match window_from_drain(drain: d, traffic_receipt: "fx" as NonEmptyStr) {
-    WindowIsolationUnread { cause: _, drain: DrainNotIdle { running: n } } => n == 3
-    WindowIsolationUnread { cause: _, drain: _ } => false
+  match window_from_drain(drain: d) {
+    WindowIsolationNotEstablished { cause: _, drain: DrainNotIdle { running: n } } => n == 3
+    WindowIsolationNotEstablished { cause: _, drain: _ } => false
     WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
-    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
+    ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
+    ForeignTrafficNotObserved { drain: _ } => false
+    ForeignTrafficUnread { cause: _, drain: _ } => false
   }
 }
 
 test fn a_quiet_drain_is_not_an_isolated_window() -> Bool {
   let d = drain_from_queue(q: harness_queue_from_body(body: fx_idle))
-  let w = window_from_drain(drain: d, traffic_receipt: "coordinated with parent; no exclusion receipt" as NonEmptyStr)
+  let w = window_from_drain(drain: d)
   match w {
     WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
-    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: DrainObservedIdle } => true
-    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
-    WindowIsolationUnread { cause: _, drain: _ } => false
+    WindowIsolationNotEstablished { cause: _, drain: DrainObservedIdle } => true
+    WindowIsolationNotEstablished { cause: _, drain: _ } => false
+    ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
+    ForeignTrafficNotObserved { drain: _ } => false
+    ForeignTrafficUnread { cause: _, drain: _ } => false
   }
 }
 
-test fn declared_shared_traffic_names_the_harness_probe_and_nccl_tests() -> Bool {
-  string_contains(s: glm_native_declared_shared_traffic as String, pattern: "harness_probe_cli")
-    && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "nccl-tests")
-    && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "operator")
-    && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "70-110k")
+test fn exclusion_warning_names_actors_who_might_arrive() -> Bool {
+  string_contains(s: glm_native_exclusion_warning as String, pattern: "harness_probe_cli")
+    && string_contains(s: glm_native_exclusion_warning as String, pattern: "nccl-tests")
+    && string_contains(s: glm_native_exclusion_warning as String, pattern: "operator")
+    && string_contains(s: glm_native_exclusion_warning as String, pattern: "70-110k")
 }
 
-test fn isolated_window_refuses_while_the_arm_is_in_service() -> Bool {
+test fn isolated_window_requires_exclusion_and_idle_drain() -> Bool {
   let grant = lease_grant(
     reference: "probe" as NonEmptyStr,
     fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
@@ -151,12 +158,12 @@ test fn isolated_window_refuses_while_the_arm_is_in_service() -> Bool {
     deadline: 61,
     drain: DrainObservedIdle,
     exclusion: ExclusionEstablished { how: "named" as NonEmptyStr },
-    service: glm_native_arm_service,
   ) {
-    WindowIsolationUnread { cause: _, drain: DrainObservedIdle } => true
-    WindowIsolationUnread { cause: _, drain: _ } => false
-    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
-    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
+    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => true
+    WindowIsolationNotEstablished { cause: _, drain: _ } => false
+    ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
+    ForeignTrafficNotObserved { drain: _ } => false
+    ForeignTrafficUnread { cause: _, drain: _ } => false
   }
 }
 
@@ -167,16 +174,18 @@ test fn isolated_window_refuses_without_exclusion() -> Bool {
     granted_at: 1,
     policy: LeasePolicy { maximum_duration_seconds: 60, release_law: FencedResource },
   )
-  match isolated_window(grant: grant, deadline: 61, drain: DrainObservedIdle, exclusion: ExclusionNotEstablished { cause: "route was not withdrawn" as NonEmptyStr }, service: ArmInService { because: "operator interactive" as NonEmptyStr }) {
-    WindowIsolationUnread { cause: _, drain: DrainObservedIdle } => true
-    WindowIsolationUnread { cause: _, drain: _ } => false
+  match isolated_window(grant: grant, deadline: 61, drain: DrainObservedIdle, exclusion: ExclusionNotEstablished { cause: "route was not withdrawn" as NonEmptyStr }) {
+    WindowIsolationNotEstablished { cause: _, drain: DrainObservedIdle } => true
+    WindowIsolationNotEstablished { cause: _, drain: _ } => false
     WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
-    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
+    ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
+    ForeignTrafficNotObserved { drain: _ } => false
+    ForeignTrafficUnread { cause: _, drain: _ } => false
   }
 }
 
 test fn a_request_that_emitted_then_failed_cannot_be_denominated_in_tokens() -> Bool {
-  !ledger_admits_token_denomination(l: closed_failed_after_tokens())
+  !ledger_admits_token_denomination(l: incomplete_failed_summary())
     && ledger_admits_token_denomination(l: closed_ok())
 }
 
@@ -272,42 +281,38 @@ fn fx_same_incarnation() -> ObservedRankIncarnation? {
   fx_incarnation(id: "0f3a9c1d2e4b")
 }
 
-fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
+fn fx_bench_receipt(stdout: String) -> BenchServeObservationReceipt {
+  bench_serve_observation_receipt(
+    protocol: glm_native_smoke_protocol,
+    process_outcome: BenchServeExited { exit_code: 0 },
+    raw_stdout: stdout,
+    raw_stderr: "",
+  )
+}
+
+fn fx_obs() -> ServingLoadObservation {
   serving_load_observation(
     subject: glm_native_live_subject_standing(),
-    protocol: glm_native_holistic_protocol,
-    window: window_from_drain(drain: DrainObservedIdle, traffic_receipt: "fx" as NonEmptyStr),
+    window: window_from_drain(drain: DrainObservedIdle),
     continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
-    arrival: tight_arrival(),
-    occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0, prompt_tokens: 0 }] },
-    client_output: ClientOutputTokensUnread { cause: "fixture has no client token total" as NonEmptyStr },
-    scrape_millis: Present { value: 2000 },
+    occupancy: occupancy_trace_from_endpoint_scrapes(before_body: fx_idle, after_body: fx_after),
     before_body: fx_idle,
     after_body: fx_after,
     before_incarnation: fx_same_incarnation(),
     after_incarnation: fx_same_incarnation(),
-    ledger: ledger,
-    client_latency: ClientBenchLatencyUnread { cause: "fixture has no bench stdout" as NonEmptyStr },
+    bench: fx_bench_receipt(stdout: fx_bench_stdout),
   )
-}
-
-test fn failed_after_tokens_makes_the_observation_rate_undenominable() -> Bool {
-  match fx_obs(ledger: closed_failed_after_tokens()).rate {
-    RateUndenominable { because: _ } => true
-    RateFromClientOutputTokens { tokens: _, scrape_millis: _ } => false
-    RateUnreadable { because: _ } => false
-  }
 }
 
 test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool {
   match derive_rate_honest(
-    ledger: LedgerClosed { offered: 4, completed: 0, failed: 4, failed_after_tokens: 0 },
+    ledger: LedgerClosed { offered: 4, completed: 0, failed: 4 },
     scrape_millis: Present { value: 2000 },
     client_output: ClientOutputTokensUnread { cause: "none" as NonEmptyStr },
   ) {
-    RateUnreadable { because: _ } => true
+    RateUndenominable { because: _ } => true
     RateFromClientOutputTokens { tokens: _, scrape_millis: _ } => false
-    RateUndenominable { because: _ } => false
+    RateUnreadable { because: _ } => false
   }
 }
 
@@ -368,7 +373,7 @@ test fn unsampled_occupancy_does_not_refuse_the_client_rate() -> Bool {
 test fn a_long_context_protocol_does_not_mint_an_admission_ceiling() -> Bool {
   match glm_native_workload_admission {
     AdmissionCostUnestablished { cause: _ } =>
-      match fx_obs(ledger: closed_ok()).admission {
+      match fx_obs().admission {
         AdmissionCostUnestablished { cause: _ } => true
         AdmissionCostBlocks { blocks: _ } => false
       }
@@ -377,7 +382,7 @@ test fn a_long_context_protocol_does_not_mint_an_admission_ceiling() -> Bool {
 }
 
 test fn one_run_does_not_decide_saturation() -> Bool {
-  let obs = fx_obs(ledger: closed_ok())
+  let obs = fx_obs()
   !saturation_from_one_run(obs: obs)
     && !observation_rate_is_stored_separately(obs: obs)
     && match obs.capacity_claim {
@@ -417,8 +422,8 @@ test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() ->
 test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
   let body = join(["[sudo] password for briansrls:\n", fx_bench_stdout], "")
   match ledger_from_bench_stdout(body: body, offered: token_count_value(t: token_count(count: 4))) {
-    LedgerClosed { offered: o, completed: c, failed: f, failed_after_tokens: t } =>
-      o == 4 && c == 4 && f == 0 && t == 0
+    LedgerClosed { offered: o, completed: c, failed: f } =>
+      o == 4 && c == 4 && f == 0
         && match client_output_from_bench_stdout(body: body) {
           ClientOutputTokensObserved { tokens: n } => n == 512
           ClientOutputTokensUnread { cause: _ } => false
@@ -442,11 +447,7 @@ test fn the_holistic_protocol_does_not_corroborate_the_single_stream_bound() -> 
 test fn the_smoke_protocol_is_not_the_holistic_envelope() -> Bool {
   !holistic_protocol_is_session_shaped(req: glm_native_smoke_protocol)
     && !vllm_bench_serve_uses_poisson_idle_gaps(req: glm_native_smoke_protocol)
-    && match glm_native_smoke_client_latency {
-      ClientBenchLatencyReported { output_throughput_milli_tok_per_s: _, tpot_milli: tpot, itl_milli: _, ttft_milli: _, contended: k, standing: _ } =>
-        k && tpot == 82
-      ClientBenchLatencyUnread { cause: _ } => false
-    }
+    && glm_native_smoke_client_latency.tpot_milli == 82
 }
 
 test fn a_64_out_wiring_receipt_is_not_the_128_out_sweep_protocol() -> Bool {
@@ -481,6 +482,14 @@ data fx_bench_stdout: String = join([
   "P99 ITL (ms):                            165.00\n",
 ], "")
 
+data fx_bench_stdout_short: String = join([
+  "============ Serving Benchmark Result ============\n",
+  "Successful requests:                     4\n",
+  "Failed requests:                         0\n",
+  "Benchmark duration (s):                  10.00\n",
+  "Total generated tokens:                  512\n",
+], "")
+
 test fn a_cap_2_second_bucket_peak_4_does_not_establish_foreign_work() -> Bool {
   cap_2_bucket_peak_4_is_not_foreign_work(p: SuccessfulClientRequestSecondBucketPeak {
     client_max_concurrency: token_count_value(t: token_count(count: 2)),
@@ -499,8 +508,8 @@ test fn parsed_itl_distribution_does_not_establish_a_cause() -> Bool {
 
 test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
   match ledger_from_bench_stdout(body: fx_bench_stdout, offered: token_count_value(t: token_count(count: 4))) {
-    LedgerClosed { offered: o, completed: c, failed: f, failed_after_tokens: t } =>
-      o == 4 && c == 4 && f == 0 && t == 0
+    LedgerClosed { offered: o, completed: c, failed: f } =>
+      o == 4 && c == 4 && f == 0
         && match client_output_from_bench_stdout(body: fx_bench_stdout) {
           ClientOutputTokensUnread { cause: _ } => false
           ClientOutputTokensObserved { tokens: n } =>
@@ -527,19 +536,18 @@ test fn the_contended_sweep_is_five_shared_window_client_points() -> Bool {
     && glm_native_sweep_num_prompts(concurrency: 1) == 8
     && glm_native_sweep_num_prompts(concurrency: 2) == 8
     && glm_native_sweep_num_prompts(concurrency: 4) == 16
-    && match glm_native_contended_sweep_c1.latency {
-      ClientBenchLatencyReported { output_throughput_milli_tok_per_s: th, tpot_milli: tpot, itl_milli: _, ttft_milli: ttft, contended: k, standing: _ } =>
-        k && th == 10860 && tpot == 81 && ttft == 1542 && glm_native_contended_sweep_c1.concurrency == 1
-      ClientBenchLatencyUnread { cause: _ } => false
-    }
+    && glm_native_contended_sweep_c1.latency.output_throughput_milli_tok_per_s == 10860
+    && glm_native_contended_sweep_c1.latency.tpot_milli == 81
+    && glm_native_contended_sweep_c1.latency.ttft_milli == 1542
+    && glm_native_contended_sweep_c1.concurrency == 1
 }
 
 test fn scaling_elasticity_is_off_the_uncontrolled_series() -> Bool {
   elasticity_is_off_the_uncontrolled_series(s: glm_native_contended_sweep_elasticity)
 }
 
-test fn ttft_would_bind_concurrency_before_throughput_on_this_sweep() -> Bool {
-  glm_native_ttft_would_bind_on_this_sweep()
+test fn ttft_c8_and_c16_remain_primitive_observations() -> Bool {
+  glm_native_sweep_ttft_c8() == 2602 && glm_native_sweep_ttft_c16() == 5218
 }
 
 test fn the_49_vs_81_ms_gap_is_why_window_standing_is_a_field() -> Bool {
@@ -548,9 +556,10 @@ test fn the_49_vs_81_ms_gap_is_why_window_standing_is_a_field() -> Bool {
     && window_standing_gap_is_unattributed(s: glm_native_window_standing_specimen)
 }
 
-test fn long_context_stays_modelled_until_the_arm_is_out_of_service() -> Bool {
+test fn long_context_stays_a_prototype_until_the_qualification_window() -> Bool {
   match glm_native_holistic_execution {
-    LongContextLoadProtocolPrototype { until: _ } => true
+    LongContextLoadProtocolPrototype { until: u } =>
+      string_contains(s: u as String, pattern: "qualification-window")
     LongContextRunnable { because: _ } => false
   }
 }
@@ -568,6 +577,7 @@ test fn the_holistic_protocol_is_poisson_with_session_context_and_prefix() -> Bo
       arrival: SendAllImmediately,
       max_concurrency: Absent,
       ignore_eos: true,
+      seed: 20260918,
     ))
 }
 
@@ -585,6 +595,8 @@ test fn the_rendered_argv_carries_the_prefix_and_a_finite_rate() -> Bool {
     && words_contain(words: words, needle: "--tokenizer")
     && words_contain(words: words, needle: glm_native_engine_tokenizer_path as String)
     && words_contain(words: words, needle: "--model")
+    && words_contain(words: words, needle: "--seed")
+    && words_contain(words: words, needle: "20260918")
     && (glm_native_holistic_protocol.model as String) != (glm_native_holistic_protocol.tokenizer as String)
 }
 
@@ -604,5 +616,30 @@ test fn exporter_restart_breaks_counter_continuity() -> Bool {
     ExporterChanged { before: _, after: _ } => true
     SameExporter { start_field: _ } => false
     ContinuityUnread { cause: _ } => false
+  }
+}
+
+test fn mixing_two_bench_stdout_bodies_cannot_write_one_receipt() -> Bool {
+  mixed_run_client_facts_cannot_be_written(
+    a: fx_bench_receipt(stdout: fx_bench_stdout),
+    b: fx_bench_receipt(stdout: fx_bench_stdout_short),
+  )
+}
+
+test fn send_all_at_cap_2_with_no_start_events_is_not_zero_skew() -> Bool {
+  send_all_without_start_events_is_not_zero_skew(
+    num_prompts: token_count_value(t: token_count(count: 4)),
+    cap: token_count_value(t: token_count(count: 2)),
+    start_event_count: 0,
+  )
+}
+
+test fn qualify_client_rate_refuses_two_boundary_occupancy() -> Bool {
+  match occupancy_does_not_count_positively(occupancy: OccupancyBoundariesRead {
+    before: OccupancySample { running: 0, waiting: 0, capacity_waiting: 0, preemptions: 0, prompt_tokens: 0 },
+    after: OccupancySample { running: 0, waiting: 0, capacity_waiting: 0, preemptions: 0, prompt_tokens: 1 },
+  }) {
+    ClientRateUnqualified { because: _ } => true
+    ClientRateQualified { tokens: _, scrape_millis: _ } => false
   }
 }

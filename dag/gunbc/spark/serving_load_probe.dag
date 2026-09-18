@@ -4,7 +4,6 @@ import std.types { Bool, String, NonEmptyStr, List, EpochSecs, Int }
 import std.nat { Nat }
 import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
-import v2.std.algebra { list_map }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import product.capacity.lease { LeaseGrant }
@@ -74,8 +73,10 @@ type ExclusionReceipt
 
 type ProbeWindowStanding
   = WindowIsolated { grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt }
-  | WindowSharedWithDeclaredTraffic { traffic_receipt: NonEmptyStr, drain: DrainReceipt }
-  | WindowIsolationUnread { cause: NonEmptyStr, drain: DrainReceipt }
+  | WindowIsolationNotEstablished { cause: NonEmptyStr, drain: DrainReceipt }
+  | ForeignTrafficObserved { attributed_receipt: NonEmptyStr, drain: DrainReceipt }
+  | ForeignTrafficNotObserved { drain: DrainReceipt }
+  | ForeignTrafficUnread { cause: NonEmptyStr, drain: DrainReceipt }
 
 fn window_isolated_requires_exclusion(s: ProbeWindowStanding) -> Bool {
   match s {
@@ -84,8 +85,10 @@ fn window_isolated_requires_exclusion(s: ProbeWindowStanding) -> Bool {
         ExclusionEstablished { how: _ } => true
         ExclusionNotEstablished { cause: _ } => false
       }
-    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
-    WindowIsolationUnread { cause: _, drain: _ } => false
+    WindowIsolationNotEstablished { cause: _, drain: _ } => false
+    ForeignTrafficObserved { attributed_receipt: _, drain: _ } => false
+    ForeignTrafficNotObserved { drain: _ } => false
+    ForeignTrafficUnread { cause: _, drain: _ } => false
   }
 }
 
@@ -103,38 +106,36 @@ type ArmServiceStanding
 
 // A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT, not exclusion. The probe still refuses to START on a
 // non-idle queue: that would mix already-running foreign requests into the client window without a
-// join. An idle start under declared operator/harness/nccl traffic remains
-// WindowSharedWithDeclaredTraffic, because arrivals during the run are still possible.
-fn window_from_drain(drain: DrainReceipt, traffic_receipt: NonEmptyStr) -> ProbeWindowStanding {
+// join. An idle start without lease/exclusion/protected subject is WindowIsolationNotEstablished.
+// A prose list of actors who might arrive is glm_native_exclusion_warning, not a traffic observation.
+fn window_from_drain(drain: DrainReceipt) -> ProbeWindowStanding {
   match drain {
-    DrainUnread { cause: c } => WindowIsolationUnread { cause: c, drain: drain }
+    DrainUnread { cause: c } => WindowIsolationNotEstablished { cause: c, drain: drain }
     DrainNotIdle { running: n } =>
-      WindowIsolationUnread {
+      WindowIsolationNotEstablished {
         cause: join(["the engine already had ", to_string(n), " running requests; the probe refuses a non-idle start"], "") as NonEmptyStr,
         drain: drain,
       }
     DrainObservedIdle =>
-      WindowSharedWithDeclaredTraffic { traffic_receipt: traffic_receipt, drain: drain }
+      WindowIsolationNotEstablished {
+        cause: "idle drain is not exclusion; isolation requires an exact lease, exclusion, idle drain, and protected subject" as NonEmptyStr,
+        drain: drain,
+      }
   }
 }
 
-fn isolated_window(grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt, service: ArmServiceStanding) -> ProbeWindowStanding {
-  match service {
-    ArmInService { because: c } =>
-      WindowIsolationUnread { cause: c, drain: drain }
-    ArmOutOfService { how: _ } =>
-      match exclusion {
-        ExclusionNotEstablished { cause: c } =>
-          WindowIsolationUnread { cause: c, drain: drain }
-        ExclusionEstablished { how: _ } =>
-          match drain {
-            DrainObservedIdle =>
-              WindowIsolated { grant: grant, deadline: deadline, drain: drain, exclusion: exclusion }
-            DrainNotIdle { running: _ } =>
-              WindowIsolationUnread { cause: "exclusion was named but the drain snapshot was not idle" as NonEmptyStr, drain: drain }
-            DrainUnread { cause: c } =>
-              WindowIsolationUnread { cause: c, drain: drain }
-          }
+fn isolated_window(grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt) -> ProbeWindowStanding {
+  match exclusion {
+    ExclusionNotEstablished { cause: c } =>
+      WindowIsolationNotEstablished { cause: c, drain: drain }
+    ExclusionEstablished { how: _ } =>
+      match drain {
+        DrainObservedIdle =>
+          WindowIsolated { grant: grant, deadline: deadline, drain: drain, exclusion: exclusion }
+        DrainNotIdle { running: _ } =>
+          WindowIsolationNotEstablished { cause: "exclusion was named but the drain snapshot was not idle" as NonEmptyStr, drain: drain }
+        DrainUnread { cause: c } =>
+          WindowIsolationNotEstablished { cause: c, drain: drain }
       }
   }
 }
@@ -291,14 +292,14 @@ fn preemption_count(body: String) -> Nat? {
 }
 
 type OperationLedger
-  = LedgerClosed { offered: Nat, completed: Nat, failed: Nat, failed_after_tokens: Nat }
+  = LedgerClosed { offered: Nat, completed: Nat, failed: Nat }
   | LedgerIncomplete { because: NonEmptyStr }
 
 fn ledger_admits_token_denomination(l: OperationLedger) -> Bool {
   match l {
     LedgerIncomplete { because: _ } => false
-    LedgerClosed { offered: o, completed: c, failed: f, failed_after_tokens: t } =>
-      t == 0 && (c + f) == o
+    LedgerClosed { offered: o, completed: c, failed: f } =>
+      c == o && f == 0
   }
 }
 
@@ -390,6 +391,37 @@ type ArrivalSkew
   = ArrivalSkewObserved { max_stagger_millis: Nat }
   | ArrivalSkewUnread { cause: NonEmptyStr }
 
+type ArrivalPolicy
+  = ArrivalPolicySendAll
+  | ArrivalPolicyPoisson { millirequests_per_second: Nat, burstiness_milli: Nat }
+
+fn arrival_policy_from_request(req: VllmBenchServeRequest) -> ArrivalPolicy {
+  match req.arrival {
+    SendAllImmediately => ArrivalPolicySendAll
+    PoissonProcess { millirequests_per_second: n, burstiness_milli: b } =>
+      ArrivalPolicyPoisson { millirequests_per_second: n, burstiness_milli: b }
+  }
+}
+
+fn arrival_from_protocol(req: VllmBenchServeRequest) -> ArrivalSkew {
+  match arrival_policy_from_request(req: req) {
+    ArrivalPolicySendAll =>
+      ArrivalSkewUnread { cause: "ArrivalPolicySendAll is input policy, not observed skew; vLLM's max_concurrency semaphore can run prompts in waves, and per-request start times were not retained" as NonEmptyStr }
+    ArrivalPolicyPoisson { millirequests_per_second: _, burstiness_milli: _ } =>
+      ArrivalSkewUnread { cause: "Poisson starts are not parsed from vllm bench serve stdout until per-request start_times are retained" as NonEmptyStr }
+  }
+}
+
+fn send_all_without_start_events_is_not_zero_skew(num_prompts: Nat, cap: Nat, start_event_count: Nat) -> Bool {
+  num_prompts == 4
+    && cap == 2
+    && start_event_count == 0
+    && match arrival_from_protocol(req: glm_native_smoke_protocol) {
+      ArrivalSkewUnread { cause: _ } => true
+      ArrivalSkewObserved { max_stagger_millis: _ } => false
+    }
+}
+
 data arrival_skew_comparison_bound_millis: Nat = 250
 
 fn arrival_admits_rate_comparison(s: ArrivalSkew) -> Bool {
@@ -407,9 +439,9 @@ type OccupancySample {
   prompt_tokens: Nat
 }
 
-type OccupancyTrace
-  = OccupancySampled { samples: List<OccupancySample> }
-  | OccupancyUnsampled { cause: NonEmptyStr }
+type BoundaryOccupancyReceipt
+  = OccupancyBoundariesUnread { cause: NonEmptyStr }
+  | OccupancyBoundariesRead { before: OccupancySample, after: OccupancySample }
 
 fn metric_token_count(body: String, metric: VllmServingMetric) -> Nat? {
   match harness_gauge_value(body: body, metric: metric) {
@@ -450,13 +482,13 @@ fn metric_count(body: String, metric: VllmServingMetric) -> Nat? {
   }
 }
 
-fn occupancy_trace_from_endpoint_scrapes(before_body: String, after_body: String) -> OccupancyTrace {
+fn occupancy_trace_from_endpoint_scrapes(before_body: String, after_body: String) -> BoundaryOccupancyReceipt {
   match occupancy_from_body(body: before_body) {
-    Absent => OccupancyUnsampled { cause: "a bound scrape could not yield running/waiting/prompt_tokens" as NonEmptyStr }
+    Absent => OccupancyBoundariesUnread { cause: "a bound scrape could not yield running/waiting/prompt_tokens on the before body" as NonEmptyStr }
     Present { value: a } =>
       match occupancy_from_body(body: after_body) {
-        Absent => OccupancySampled { samples: [a] }
-        Present { value: b } => OccupancySampled { samples: [a, b] }
+        Absent => OccupancyBoundariesUnread { cause: "a bound scrape could not yield running/waiting/prompt_tokens on the after body; one boundary is not a series" as NonEmptyStr }
+        Present { value: b } => OccupancyBoundariesRead { before: a, after: b }
       }
   }
 }
@@ -488,7 +520,7 @@ fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, cli
     Present { value: g } =>
       match ledger {
         LedgerIncomplete { because: c } => AgreementUnread { because: c }
-        LedgerClosed { offered: _, completed: n, failed: _, failed_after_tokens: _ } =>
+        LedgerClosed { offered: _, completed: n, failed: _ } =>
           if g > 0 && n == 0 {
             LedgerCounterDisagree { because: "generation_tokens_total advanced while the client ledger completed zero requests; foreign load is the remaining explanation" as NonEmptyStr }
           } else {
@@ -545,10 +577,14 @@ fn capacity_claim_for_window(window: ProbeWindowStanding) -> CapacityClaim {
   match window {
     WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } =>
       CapacityClaimUnavailable { because: "one run does not decide saturation even under isolation" as NonEmptyStr }
-    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } =>
-      CapacityClaimUnavailable { because: "this arm has no exclusive window; a latency distribution beside foreign load is real, an aggregate capacity claim is not" as NonEmptyStr }
-    WindowIsolationUnread { cause: _, drain: _ } =>
-      CapacityClaimUnavailable { because: "window isolation is unread, so no capacity claim is available" as NonEmptyStr }
+    WindowIsolationNotEstablished { cause: _, drain: _ } =>
+      CapacityClaimUnavailable { because: "this arm has no exclusive window; a latency distribution beside unattributed load is real, an aggregate capacity claim is not" as NonEmptyStr }
+    ForeignTrafficObserved { attributed_receipt: _, drain: _ } =>
+      CapacityClaimUnavailable { because: "foreign traffic was attributed on this window, so an aggregate capacity claim is not available" as NonEmptyStr }
+    ForeignTrafficNotObserved { drain: _ } =>
+      CapacityClaimUnavailable { because: "one run does not decide saturation even when foreign traffic was not observed" as NonEmptyStr }
+    ForeignTrafficUnread { cause: _, drain: _ } =>
+      CapacityClaimUnavailable { because: "foreign-traffic standing is unread, so no capacity claim is available" as NonEmptyStr }
   }
 }
 
@@ -589,13 +625,21 @@ type QualifiedClientRate
   = ClientRateQualified { tokens: Nat, scrape_millis: Nat }
   | ClientRateUnqualified { because: NonEmptyStr }
 
+fn occupancy_does_not_count_positively(occupancy: BoundaryOccupancyReceipt) -> QualifiedClientRate {
+  match occupancy {
+    OccupancyBoundariesUnread { cause: c } => ClientRateUnqualified { because: c }
+    OccupancyBoundariesRead { before: _, after: _ } =>
+      ClientRateUnqualified { because: "boundary occupancy is two scrapes, not a time-series over the interval; it cannot count positively toward a qualified rate" as NonEmptyStr }
+  }
+}
+
 fn qualify_client_rate(
   subject: ServingPerformanceSubjectStanding,
   continuity: CounterContinuity,
   arrival: ArrivalSkew,
   window: ProbeWindowStanding,
   agreement: LedgerCounterAgreement,
-  occupancy: OccupancyTrace,
+  occupancy: BoundaryOccupancyReceipt,
   foreign_work: ForeignWorkBound,
   rate: DerivedRate,
 ) -> QualifiedClientRate {
@@ -616,25 +660,23 @@ fn qualify_client_rate(
                 ClientRateUnqualified { because: "arrival standing does not admit a rate comparison" as NonEmptyStr }
               } else {
                 match window {
-                  WindowIsolationUnread { cause: c, drain: _ } => ClientRateUnqualified { because: c }
-                  WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } =>
-                    ClientRateUnqualified { because: "a shared-window client rate is telemetry, not a qualified comparable observation" as NonEmptyStr }
+                  WindowIsolationNotEstablished { cause: c, drain: _ } => ClientRateUnqualified { because: c }
+                  ForeignTrafficObserved { attributed_receipt: _, drain: _ } =>
+                    ClientRateUnqualified { because: "foreign traffic was attributed on this window, so the client rate is not a qualified comparable observation" as NonEmptyStr }
+                  ForeignTrafficUnread { cause: c, drain: _ } => ClientRateUnqualified { because: c }
+                  ForeignTrafficNotObserved { drain: _ } =>
+                    match agreement {
+                      AgreementUnread { because: c } => ClientRateUnqualified { because: c }
+                      LedgerCounterDisagree { because: c } => ClientRateUnqualified { because: c }
+                      LedgerAndCounterAgree { generation_tokens: _, completed_requests: _ } =>
+                        occupancy_does_not_count_positively(occupancy: occupancy)
+                    }
                   WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } =>
                     match agreement {
                       AgreementUnread { because: c } => ClientRateUnqualified { because: c }
                       LedgerCounterDisagree { because: c } => ClientRateUnqualified { because: c }
                       LedgerAndCounterAgree { generation_tokens: _, completed_requests: _ } =>
-                        match occupancy {
-                          OccupancyUnsampled { cause: c } => ClientRateUnqualified { because: c }
-                          OccupancySampled { samples: _ } =>
-                            match foreign_work {
-                              ForeignWorkUnread { because: c } => ClientRateUnqualified { because: c }
-                              ForeignWorkContradiction { engine_generation: _, client_output: _, because: c } =>
-                                ClientRateUnqualified { because: c }
-                              ForeignWorkBounded { engine_generation: _, client_output: _, surplus: _ } =>
-                                ClientRateQualified { tokens: t, scrape_millis: ms }
-                            }
-                        }
+                        occupancy_does_not_count_positively(occupancy: occupancy)
                     }
                 }
               }
@@ -665,8 +707,7 @@ type ClientBenchLatency
       tpot_milli: Nat
       itl_milli: Nat?
       ttft_milli: Nat
-      contended: Bool
-      standing: CitedFigureStanding
+      window: ProbeWindowStanding
     }
 
 type ProbeProvenance
@@ -679,7 +720,7 @@ type ServingLoadObservation {
   window: ProbeWindowStanding
   continuity: CounterContinuity
   arrival: ArrivalSkew
-  occupancy: OccupancyTrace
+  occupancy: BoundaryOccupancyReceipt
   agreement: LedgerCounterAgreement
   before_backlog: BacklogStanding
   after_backlog: BacklogStanding
@@ -701,19 +742,14 @@ type ServingLoadObservation {
 
 fn serving_load_observation(
   subject: ServingPerformanceSubjectStanding,
-  protocol: VllmBenchServeRequest,
   window: ProbeWindowStanding,
   continuity: CounterContinuity,
-  arrival: ArrivalSkew,
-  occupancy: OccupancyTrace,
-  client_output: ClientOutputTokens,
-  scrape_millis: Nat?,
+  occupancy: BoundaryOccupancyReceipt,
   before_body: String,
   after_body: String,
   before_incarnation: ObservedRankIncarnation?,
   after_incarnation: ObservedRankIncarnation?,
-  ledger: OperationLedger,
-  client_latency: ClientBenchLatency,
+  bench: BenchServeObservationReceipt,
 ) -> ServingLoadObservation {
   let before_p = preemption_count(body: before_body)
   let after_p = preemption_count(body: after_body)
@@ -723,16 +759,19 @@ fn serving_load_observation(
     before_body: before_body,
     after_body: after_body,
   )
+  let ledger = bench_serve_ledger(r: bench)
+  let client_output = bench_serve_completed_output(r: bench)
   let agreement = ledger_counter_agreement(ledger: ledger, generation: generation, client_output: client_output)
   let foreign = foreign_work_bound(generation: generation, client_output: client_output)
   let rate = derive_rate_honest(
     ledger: ledger,
-    scrape_millis: scrape_millis,
+    scrape_millis: bench_serve_interval(r: bench),
     client_output: client_output,
   )
+  let arrival = arrival_from_protocol(req: bench.protocol)
   ServingLoadObservation {
     subject: subject,
-    protocol: protocol,
+    protocol: bench.protocol,
     window: window,
     continuity: continuity,
     arrival: arrival,
@@ -745,9 +784,9 @@ fn serving_load_observation(
     iteration_tokens_booked: histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal),
     ledger: ledger,
     admission: glm_native_workload_admission,
-    corroboration: decode_corroboration_for_protocol(req: protocol),
+    corroboration: decode_corroboration_for_protocol(req: bench.protocol),
     provenance: glm_native_live_probe_provenance,
-    client_latency: client_latency,
+    client_latency: bench_serve_latency(r: bench, window: window),
     foreign_work: foreign,
     capacity_claim: capacity_claim_for_window(window: window),
     rate: rate,
@@ -826,7 +865,7 @@ fn capacity_claim_text(c: CapacityClaim) -> String {
 fn client_latency_text(c: ClientBenchLatency) -> String {
   match c {
     ClientBenchLatencyUnread { cause: x } => join(["unread ", x as String], "")
-    ClientBenchLatencyReported { output_throughput_milli_tok_per_s: th, tpot_milli: tpot, itl_milli: itl, ttft_milli: ttft, contended: k, standing: _ } =>
+    ClientBenchLatencyReported { output_throughput_milli_tok_per_s: th, tpot_milli: tpot, itl_milli: itl, ttft_milli: ttft, window: w } =>
       join([
         "bench-serve throughput_milli_tok_s=", to_string(th),
         " tpot_ms=", to_string(tpot),
@@ -836,7 +875,7 @@ fn client_latency_text(c: ClientBenchLatency) -> String {
           Present { value: n } => to_string(n)
         },
         " ttft_ms=", to_string(ttft),
-        " contended=", if k { "yes" } else { "no" },
+        " window=", window_text(s: w),
       ], "")
   }
 }
@@ -865,11 +904,11 @@ fn occupancy_sample_text(s: OccupancySample) -> String {
   ], "")
 }
 
-fn occupancy_text(t: OccupancyTrace) -> String {
+fn occupancy_text(t: BoundaryOccupancyReceipt) -> String {
   match t {
-    OccupancyUnsampled { cause: c } => join(["unsampled ", c as String], "")
-    OccupancySampled { samples: ss } =>
-      join(["samples=", to_string(length(ss)), " ", join(list_map(xs: ss, f: occupancy_sample_text), " | ")], "")
+    OccupancyBoundariesUnread { cause: c } => join(["unread ", c as String], "")
+    OccupancyBoundariesRead { before: a, after: b } =>
+      join(["boundaries before=", occupancy_sample_text(s: a), " after=", occupancy_sample_text(s: b)], "")
   }
 }
 
@@ -892,10 +931,14 @@ fn admission_text(a: AdmissionCost) -> String {
 fn window_text(s: ProbeWindowStanding) -> String {
   match s {
     WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => "isolated"
-    WindowSharedWithDeclaredTraffic { traffic_receipt: t, drain: d } =>
-      join(["shared-with-declared-traffic drain=", drain_text(d: d), " traffic=", t as String], "")
-    WindowIsolationUnread { cause: c, drain: d } =>
-      join(["unread drain=", drain_text(d: d), " cause=", c as String], "")
+    WindowIsolationNotEstablished { cause: c, drain: d } =>
+      join(["isolation-not-established drain=", drain_text(d: d), " cause=", c as String], "")
+    ForeignTrafficObserved { attributed_receipt: t, drain: d } =>
+      join(["foreign-traffic-observed drain=", drain_text(d: d), " attributed=", t as String], "")
+    ForeignTrafficNotObserved { drain: d } =>
+      join(["foreign-traffic-not-observed drain=", drain_text(d: d)], "")
+    ForeignTrafficUnread { cause: c, drain: d } =>
+      join(["foreign-traffic-unread drain=", drain_text(d: d), " cause=", c as String], "")
   }
 }
 
@@ -937,8 +980,8 @@ fn histogram_text(d: HistogramDelta) -> String {
 fn ledger_text(l: OperationLedger) -> String {
   match l {
     LedgerIncomplete { because: c } => join(["incomplete ", c as String], "")
-    LedgerClosed { offered: o, completed: c, failed: f, failed_after_tokens: t } =>
-      join(["closed offered=", to_string(o), " completed=", to_string(c), " failed=", to_string(f), " failed_after_tokens=", to_string(t)], "")
+    LedgerClosed { offered: o, completed: c, failed: f } =>
+      join(["aggregate-summary closed offered=", to_string(o), " completed=", to_string(c), " failed=", to_string(f)], "")
   }
 }
 
@@ -1013,6 +1056,8 @@ data glm_native_sweep_dataset: RandomDatasetSpec = RandomDatasetSpec {
   prefix_len: token_count(count: 0),
 }
 
+data glm_native_bench_seed: Nat = 20260918
+
 data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
   backend: OpenaiChat,
   base_url: "http://127.0.0.1:30000" as NonEmptyStr,
@@ -1023,6 +1068,7 @@ data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request
   arrival: SendAllImmediately,
   max_concurrency: Present { value: 2 },
   ignore_eos: true,
+  seed: glm_native_bench_seed,
 )
 
 data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
@@ -1035,6 +1081,7 @@ data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_requ
   arrival: PoissonProcess { millirequests_per_second: 50, burstiness_milli: 1000 },
   max_concurrency: Present { value: 2 },
   ignore_eos: true,
+  seed: glm_native_bench_seed,
 )
 
 data glm_native_live_probe_provenance: ProbeProvenance = DriverObserverSplit {
@@ -1042,7 +1089,7 @@ data glm_native_live_probe_provenance: ProbeProvenance = DriverObserverSplit {
   observer: "deep-otter-201 HTTP scrape of 192.168.1.236:30000/metrics" as NonEmptyStr,
 }
 
-data glm_native_declared_shared_traffic: NonEmptyStr = "operator interactive long-context sessions (70-110k prompt jumps) share Group B as production traffic with no exclusive window; gunbc.harness.harness_cli harness_probe_cli may POST a turn; proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers; a drain snapshot is not exclusion and is not out-of-service" as NonEmptyStr
+data glm_native_exclusion_warning: NonEmptyStr = "operator interactive long-context sessions (70-110k prompt jumps) share Group B as production traffic with no exclusive window; gunbc.harness.harness_cli harness_probe_cli may POST a turn; proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers; a drain snapshot is not exclusion and is not out-of-service" as NonEmptyStr
 
 data glm_native_arm_service: ArmServiceStanding = ArmInService {
   because: "the operator serves interactive work on this arm; WindowIsolated requires an out-of-service receipt that has not been issued" as NonEmptyStr
@@ -1058,31 +1105,38 @@ data glm_native_wiring_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_
   arrival: SendAllImmediately,
   max_concurrency: Present { value: 2 },
   ignore_eos: true,
+  seed: glm_native_bench_seed,
 )
 
 // Client TTFT/TPOT/ITL from vllm bench serve stdout, transcribed from the 2026-09-18 wiring
 // smoke (256/64, inf rate, c=2, 4/4 ok). Contended. Not the 256/128 sweep protocol.
-data glm_native_smoke_client_latency: ClientBenchLatency = ClientBenchLatencyReported {
+type TranscribedClientLatency {
+  output_throughput_milli_tok_per_s: Nat
+  tpot_milli: Nat
+  itl_milli: Nat?
+  ttft_milli: Nat
+  standing: CitedFigureStanding
+}
+
+data glm_native_smoke_client_latency: TranscribedClientLatency = TranscribedClientLatency {
   output_throughput_milli_tok_per_s: 17390
   tpot_milli: 82
   itl_milli: Present { value: 82 }
   ttft_milli: 2185
-  contended: true
   standing: TranscribedUncited {
     read_obligation: "re-read vllm bench serve stdout for the 256-in/64-out wiring argv; the 17.39 tok/s / 82.1 ms TPOT / 81.8 ms ITL / 2185 ms TTFT figures were transcribed from calm-bat-65's docker-exec receipt" as NonEmptyStr
   }
 }
 
 data glm_native_wet_smoke_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "re-read calm-bat-65 docker-exec stdout for glm_native_smoke_protocol (256-in/128-out/prefix 0/4 prompts/inf/c=2/ignore-eos) on 192.168.1.236 under WindowSharedWithDeclaredTraffic" as NonEmptyStr
+  read_obligation: "re-read calm-bat-65 docker-exec stdout for glm_native_smoke_protocol (256-in/128-out/prefix 0/4 prompts/inf/c=2/ignore-eos) on 192.168.1.236" as NonEmptyStr
 }
 
-data glm_native_wet_smoke_client_latency: ClientBenchLatency = ClientBenchLatencyReported {
+data glm_native_wet_smoke_client_latency: TranscribedClientLatency = TranscribedClientLatency {
   output_throughput_milli_tok_per_s: 22510
   tpot_milli: 82
   itl_milli: Present { value: 83 }
   ttft_milli: 996
-  contended: true
   standing: glm_native_wet_smoke_standing
 }
 
@@ -1141,17 +1195,15 @@ fn bench_labeled_whole_milli(body: String, label: String) -> Nat? {
 
 fn ledger_from_bench_stdout(body: String, offered: Nat) -> OperationLedger {
   match bench_labeled_nat(body: body, label: "Successful requests") {
-    Absent => LedgerIncomplete { because: "vllm bench serve stdout carried no unique Successful requests line" as NonEmptyStr }
+    Absent => LedgerIncomplete { because: "vllm bench serve stdout carried no unique Successful requests aggregate-summary line" as NonEmptyStr }
     Present { value: completed } =>
       match bench_labeled_nat(body: body, label: "Failed requests") {
-        Absent => LedgerIncomplete { because: "vllm bench serve stdout carried no unique Failed requests line, so failed-after-tokens standing is unknown" as NonEmptyStr }
+        Absent => LedgerIncomplete { because: "vllm bench serve stdout carried no unique Failed requests aggregate-summary line" as NonEmptyStr }
         Present { value: failed } =>
-          if (completed + failed) != offered {
-            LedgerIncomplete { because: "successful plus failed requests did not equal the offered prompt count" as NonEmptyStr }
-          } else if failed == 0 {
-            LedgerClosed { offered: offered, completed: completed, failed: failed, failed_after_tokens: 0 }
+          if completed == offered && failed == 0 {
+            LedgerClosed { offered: offered, completed: completed, failed: failed }
           } else {
-            LedgerIncomplete { because: "failed requests were reported and the summary does not distinguish failed-after-tokens from failed-with-no-tokens" as NonEmptyStr }
+            LedgerIncomplete { because: "the aggregate summary is not a per-request ledger; closed standing requires completed == offered and failed == 0" as NonEmptyStr }
           }
       }
   }
@@ -1192,15 +1244,7 @@ fn client_bucket_peak_from_bench_stdout(body: String, client_max_concurrency: Na
   }
 }
 
-fn arrival_from_protocol(req: VllmBenchServeRequest) -> ArrivalSkew {
-  match req.arrival {
-    SendAllImmediately => ArrivalSkewObserved { max_stagger_millis: 0 }
-    PoissonProcess { millirequests_per_second: _, burstiness_milli: _ } =>
-      ArrivalSkewUnread { cause: "Poisson starts are not parsed from vllm bench serve stdout until per-request start_times are retained" as NonEmptyStr }
-  }
-}
-
-fn client_latency_from_bench_stdout(body: String, contended: Bool) -> ClientBenchLatency {
+fn client_latency_from_bench_stdout(body: String, window: ProbeWindowStanding) -> ClientBenchLatency {
   match bench_labeled_milli_from_seconds(body: body, label: "Output token throughput (tok/s)") {
     Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Output token throughput (tok/s) line" as NonEmptyStr }
     Present { value: th } =>
@@ -1215,12 +1259,76 @@ fn client_latency_from_bench_stdout(body: String, contended: Bool) -> ClientBenc
                 tpot_milli: tpot,
                 itl_milli: bench_labeled_whole_milli(body: body, label: "Mean ITL (ms)"),
                 ttft_milli: ttft,
-                contended: contended,
-                standing: TranscribedUncited {
-                  read_obligation: "this arm is a live parse of vllm bench serve stdout, not a transcribed figure; re-run glm_native_serving_load_wet to re-derive" as NonEmptyStr
-                },
+                window: window,
               }
           }
+      }
+  }
+}
+
+type BenchServeProcessOutcome
+  = BenchServeExited { exit_code: Nat }
+  | BenchServeUnreachable { cause: NonEmptyStr }
+
+type BenchServeObservationReceipt sole_constructor {
+  protocol: VllmBenchServeRequest
+  process_outcome: BenchServeProcessOutcome
+  raw_stdout: String
+  raw_stderr: String
+}
+
+fn bench_serve_observation_receipt(
+  protocol: VllmBenchServeRequest,
+  process_outcome: BenchServeProcessOutcome,
+  raw_stdout: String,
+  raw_stderr: String,
+) -> BenchServeObservationReceipt {
+  BenchServeObservationReceipt {
+    protocol: protocol,
+    process_outcome: process_outcome,
+    raw_stdout: raw_stdout,
+    raw_stderr: raw_stderr,
+  }
+}
+
+fn bench_serve_parse_body(r: BenchServeObservationReceipt) -> String {
+  join([r.raw_stdout, "\n", r.raw_stderr], "")
+}
+
+fn bench_serve_ledger(r: BenchServeObservationReceipt) -> OperationLedger {
+  ledger_from_bench_stdout(body: bench_serve_parse_body(r: r), offered: r.protocol.num_prompts)
+}
+
+fn bench_serve_completed_output(r: BenchServeObservationReceipt) -> ClientOutputTokens {
+  client_output_from_bench_stdout(body: bench_serve_parse_body(r: r))
+}
+
+fn bench_serve_interval(r: BenchServeObservationReceipt) -> Nat? {
+  scrape_millis_from_bench_stdout(body: bench_serve_parse_body(r: r))
+}
+
+fn bench_serve_latency(r: BenchServeObservationReceipt, window: ProbeWindowStanding) -> ClientBenchLatency {
+  client_latency_from_bench_stdout(body: bench_serve_parse_body(r: r), window: window)
+}
+
+fn bench_serve_itl(r: BenchServeObservationReceipt) -> ClientItlDistribution {
+  client_itl_from_bench_stdout(body: bench_serve_parse_body(r: r))
+}
+
+fn bench_serve_bucket_peak(r: BenchServeObservationReceipt) -> ClientRequestConcurrencyStanding {
+  match r.protocol.max_concurrency {
+    Absent => ClientConcurrencyUnread { cause: "the protocol did not declare max-concurrency" as NonEmptyStr }
+    Present { value: c } => client_bucket_peak_from_bench_stdout(body: bench_serve_parse_body(r: r), client_max_concurrency: c)
+  }
+}
+
+fn mixed_run_client_facts_cannot_be_written(a: BenchServeObservationReceipt, b: BenchServeObservationReceipt) -> Bool {
+  match bench_serve_interval(r: a) {
+    Absent => false
+    Present { value: ia } =>
+      match bench_serve_interval(r: b) {
+        Absent => false
+        Present { value: ib } => ia != ib
       }
   }
 }
@@ -1256,7 +1364,7 @@ data glm_native_wet_smoke_duration_millis: Nat = 22750
 
 fn glm_native_wet_smoke_rate() -> DerivedRate {
   derive_rate_honest(
-    ledger: LedgerClosed { offered: 4, completed: 4, failed: 0, failed_after_tokens: 0 },
+    ledger: LedgerClosed { offered: 4, completed: 4, failed: 0 },
     scrape_millis: Present { value: glm_native_wet_smoke_duration_millis },
     client_output: glm_native_wet_smoke_client_output,
   )
@@ -1302,6 +1410,7 @@ fn glm_native_contended_sweep_protocol(concurrency: Nat) -> VllmBenchServeReques
     arrival: SendAllImmediately,
     max_concurrency: Present { value: concurrency },
     ignore_eos: true,
+    seed: glm_native_bench_seed,
   )
 }
 
@@ -1309,13 +1418,12 @@ fn glm_native_contended_client_latency(
   throughput_milli_tok_per_s: Nat,
   tpot_milli: Nat,
   ttft_milli: Nat,
-) -> ClientBenchLatency {
-  ClientBenchLatencyReported {
+) -> TranscribedClientLatency {
+  TranscribedClientLatency {
     output_throughput_milli_tok_per_s: throughput_milli_tok_per_s,
     tpot_milli: tpot_milli,
     itl_milli: none,
     ttft_milli: ttft_milli,
-    contended: true,
     standing: glm_native_contended_sweep_standing,
   }
 }
@@ -1323,7 +1431,7 @@ fn glm_native_contended_client_latency(
 type ContendedSweepPoint {
   concurrency: Nat
   protocol: VllmBenchServeRequest
-  latency: ClientBenchLatency
+  latency: TranscribedClientLatency
 }
 
 fn glm_native_contended_sweep_point(
@@ -1367,14 +1475,14 @@ data glm_native_contended_sweep_points: List<ContendedSweepPoint> = [
   glm_native_contended_sweep_c16,
 ]
 
-// ABSOLUTE tok/s ARE NOT A CAPACITY under WindowSharedWithDeclaredTraffic. Elasticity
+// ABSOLUTE tok/s ARE NOT A CAPACITY without an exclusive window. Elasticity
 // log(throughput ratio)/log(concurrency ratio) is a SHAPE that requires a controlled series.
 // The five contended points are shared-window client latency; they are not that series.
 type UncontrolledSeriesElasticity
   = ElasticityNotOnUncontrolledSeries { because: NonEmptyStr }
 
 data glm_native_contended_sweep_elasticity: UncontrolledSeriesElasticity = ElasticityNotOnUncontrolledSeries {
-  because: "glm_native_contended_sweep_points were taken under WindowSharedWithDeclaredTraffic; log(throughput ratio)/log(concurrency ratio) on that series is not a scaling elasticity" as NonEmptyStr
+  because: "glm_native_contended_sweep_points were taken without an exclusive window; log(throughput ratio)/log(concurrency ratio) on that series is not a scaling elasticity" as NonEmptyStr
 }
 
 fn elasticity_is_off_the_uncontrolled_series(s: UncontrolledSeriesElasticity) -> Bool {
@@ -1383,45 +1491,12 @@ fn elasticity_is_off_the_uncontrolled_series(s: UncontrolledSeriesElasticity) ->
   }
 }
 
-// TPOT 8→16 is nearly flat while throughput still rises; TTFT at 16 is the sharp move.
-// This is not a realization selection and not a capacity claim. It is the observation that a
-// latency floor, if one entered policy, would bind on TTFT here rather than on throughput.
-type ContendedLatencyFloorHint
-  = TtftWouldBindConcurrency {
-      from_concurrency: Nat
-      to_concurrency: Nat
-      tpot_rise_milli_percent: Nat
-      throughput_rise_milli_percent: Nat
-      ttft_from_milli: Nat
-      ttft_to_milli: Nat
-      standing: CitedFigureStanding
-    }
-
-fn glm_native_ttft_would_bind_on_this_sweep() -> Bool {
-  match glm_native_ttft_binds_concurrency {
-    TtftWouldBindConcurrency {
-      from_concurrency: a,
-      to_concurrency: b,
-      tpot_rise_milli_percent: tpot,
-      throughput_rise_milli_percent: thr,
-      ttft_from_milli: _,
-      ttft_to_milli: ttft,
-      standing: _,
-    } =>
-      a == 8 && b == 16 && tpot == 45 && thr == 630 && ttft == 5218
-  }
+fn glm_native_sweep_ttft_c8() -> Nat {
+  glm_native_contended_sweep_c8.latency.ttft_milli
 }
 
-data glm_native_ttft_binds_concurrency: ContendedLatencyFloorHint = TtftWouldBindConcurrency {
-  from_concurrency: 8
-  to_concurrency: 16
-  tpot_rise_milli_percent: 45
-  throughput_rise_milli_percent: 630
-  ttft_from_milli: 2602
-  ttft_to_milli: 5218
-  standing: TranscribedUncited {
-    read_obligation: "re-read glm_native_contended_sweep_c8 and glm_native_contended_sweep_c16 for TPOT 189.6→198.2 ms (+4.5%) and throughput 38.36→62.53 tok/s (+63%) with TTFT 2602→5218 ms" as NonEmptyStr
-  }
+fn glm_native_sweep_ttft_c16() -> Nat {
+  glm_native_contended_sweep_c16.latency.ttft_milli
 }
 
 type WindowStandingGapSpecimen {
@@ -1471,7 +1546,7 @@ type LongContextExecutionStanding
   | LongContextRunnable { because: NonEmptyStr }
 
 data glm_native_holistic_execution: LongContextExecutionStanding = LongContextLoadProtocolPrototype {
-  until: "the arm carries an ArmOutOfService receipt; a 100k-prefix protocol is not executed on an in-service operator arm" as NonEmptyStr
+  until: "the qualification-window law holds: exact lease and exclusion, idle drain, and a protected subject; a 100k-prefix protocol stays a prototype until that window can be established" as NonEmptyStr
 }
 
 // TRANSCRIBED BOUND, NOT A READING. Parent derived ~10.7 GB active weights / ~9-11 ms memory-bandwidth
