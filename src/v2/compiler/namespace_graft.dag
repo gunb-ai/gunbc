@@ -18,6 +18,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.node {
+  Arrow,
   Atom,
   Cardinality,
   Conj,
@@ -440,20 +441,27 @@ fn namespace_graft_unit_captured(unit: Node) -> Node? {
   parse_production_captured_child_optional(node: unit)
 }
 
-fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
+fn namespace_graft_type_decl_name(unit: Node) -> Symbol? {
   match namespace_graft_unit_captured(unit: unit) {
-    Absent => optional_absent()
     Present { value: captured } =>
-      match list_head(xs: namespace_graft_collect_user_atom_idents(node: captured)) {
-        HeadAbsent => optional_absent()
-        HeadFound { value: type_name } =>
-          optional_present(
-            value: Edge {
-              label: Named { name: type_name },
-              target: namespace_graft_type_decl_target(captured: captured)
-            }
-          )
+      match namespace_graft_kw_then_ident(captured: captured) {
+        Present { value: name } => optional_present(value: name)
+        Absent => namespace_graft_ident_from_node(node: unit)
       }
+    Absent => namespace_graft_ident_from_node(node: unit)
+  }
+}
+
+fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
+  match namespace_graft_type_decl_name(unit: unit) {
+    Absent => optional_absent()
+    Present { value: type_name } =>
+      optional_present(
+        value: Edge {
+          label: Named { name: type_name },
+          target: namespace_graft_type_decl_target(captured: unit)
+        }
+      )
   }
 }
 
@@ -510,6 +518,35 @@ fn namespace_graft_decl_walk_init() -> NamespaceGraftDeclWalk {
   }
 }
 
+fn namespace_graft_bind_pending_field_block(
+  acc: NamespaceGraftDeclWalk,
+  node: Node
+) -> NamespaceGraftDeclWalk? {
+  match acc.pending {
+    Absent => optional_absent()
+    Present { value: type_name } =>
+      match namespace_graft_find_emitted(node: node, emitted: ^dag_surface_field_decl_block) {
+        Absent => optional_absent()
+        Present { value: block } =>
+          optional_present(
+            value: NamespaceGraftDeclWalk {
+              pending: optional_absent(),
+              edges: list_snoc_item(
+                xs: acc.edges,
+                item: Edge {
+                  label: Named { name: type_name },
+                  target: node_synthetic(
+                    kind: TypeNode { connective: Conj },
+                    children: namespace_graft_collect_field_edges(node: block)
+                  )
+                }
+              )
+            }
+          )
+      }
+  }
+}
+
 fn namespace_graft_decl_walk_step(
   acc: NamespaceGraftDeclWalk,
   node: Node
@@ -517,57 +554,37 @@ fn namespace_graft_decl_walk_step(
   if namespace_graft_is_module_header_subtree(node: node) {
     acc
   } else {
-  match namespace_graft_named_edge_from_unit(unit: node) {
-    Present { value: edge } =>
-      NamespaceGraftDeclWalk {
-        pending: optional_absent(),
-        edges: list_snoc_item(xs: acc.edges, item: edge)
-      }
-    Absent =>
-      match parse_production_emitted_identity_optional(node: node) {
-        Present { value: id } =>
-          match id == ^dag_surface_field_decl_block {
-            true =>
-              match acc.pending {
-                Absent =>
-                  NamespaceGraftDeclWalk {
-                    pending: optional_absent(),
-                    edges: acc.edges
-                  }
-                Present { value: type_name } =>
-                  NamespaceGraftDeclWalk {
-                    pending: optional_absent(),
-                    edges: list_snoc_item(
-                      xs: acc.edges,
-                      item: Edge {
-                        label: Named { name: type_name },
-                        target: node_synthetic(
-                          kind: TypeNode { connective: Conj },
-                          children: namespace_graft_collect_field_edges(node: node)
-                        )
-                      }
-                    )
-                  }
-              }
-            false => namespace_graft_decl_walk_children(acc: acc, node: node)
-          }
-        Absent =>
-          match namespace_graft_user_atom_ident(node: node) {
-            Present { value: ident } =>
-              match acc.pending {
-                Present { value: _ } => namespace_graft_decl_walk_children(acc: acc, node: node)
-                Absent =>
-                  namespace_graft_decl_walk_children(
-                    acc: NamespaceGraftDeclWalk {
-                      pending: optional_present(value: ident),
-                      edges: acc.edges
-                    },
-                    node: node
-                  )
-              }
-            Absent => namespace_graft_decl_walk_children(acc: acc, node: node)
-          }
-      }
+    match namespace_graft_named_edge_from_unit(unit: node) {
+      Present { value: edge } =>
+        NamespaceGraftDeclWalk {
+          pending: optional_absent(),
+          edges: list_snoc_item(xs: acc.edges, item: edge)
+        }
+      Absent =>
+        match namespace_graft_bind_pending_field_block(acc: acc, node: node) {
+          Present { value: bound } => bound
+          Absent =>
+            match namespace_graft_ident_from_node(node: node) {
+              Present { value: ident } =>
+                match acc.pending {
+                  Present { value: _ } => namespace_graft_decl_walk_children(acc: acc, node: node)
+                  Absent =>
+                    if namespace_graft_is_machinery_symbol(sym: ident) {
+                      namespace_graft_decl_walk_children(acc: acc, node: node)
+                    } else {
+                      namespace_graft_decl_walk_children(
+                        acc: NamespaceGraftDeclWalk {
+                          pending: optional_present(value: ident),
+                          edges: acc.edges
+                        },
+                        node: node
+                      )
+                    }
+                }
+              Absent => namespace_graft_decl_walk_children(acc: acc, node: node)
+            }
+        }
+    }
   }
 }
 
@@ -591,6 +608,16 @@ fn namespace_graft_decl_edges_from_node(node: Node) -> List<Edge> {
 // (the type shell was dropped). Neither arm is a refusal. Rehome type/data onto
 // Named containment first; reconstruct remains only when nothing first-class
 // survived (import-only and the lost-forest refusal still sit on that empty path).
+fn namespace_graft_subtree_has_arrow(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Arrow } => true
+    _ =>
+      fold(node.children, init: false, f: fn(found, e) {
+        found || namespace_graft_subtree_has_arrow(node: e.target)
+      })
+  }
+}
+
 fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
     Named { name: sym } =>
@@ -598,8 +625,10 @@ fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
         false
       } else if namespace_graft_is_metadata_edge(name: sym) {
         false
+      } else if namespace_graft_is_machinery_symbol(sym: sym) {
+        false
       } else {
-        !namespace_graft_is_machinery_symbol(sym: sym)
+        namespace_graft_subtree_has_arrow(node: edge.target)
       }
     Positional => false
   }
