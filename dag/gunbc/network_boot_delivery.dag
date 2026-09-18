@@ -68,6 +68,37 @@ type NetworkBootDeliveryStanding
   | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
   | NetworkBootDeliveryEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
   | NetworkBootDeliveryArchitectureRefused { architecture: Architecture }
+  | NetworkBootDeliveryClientModeRefused { arch: DhcpProcessorArchitecture }
+  | NetworkBootDeliveryTargetMismatch { axis: NetworkBootRequirement }
+  | NetworkBootDeliveryManifestRefused { cause: NetworkBootManifestRefusal }
+
+// A computed rejection of an observed ticket. Missing means no ticket was presented.
+type NetworkBootManifestVerificationClass
+  = ManifestVerificationMac
+  | ManifestVerificationWrongMessage
+  | ManifestVerificationWrongTarget
+  | ManifestVerificationWrongArchitecture
+  | ManifestVerificationExpired
+  | ManifestVerificationNotYetValid
+  | ManifestVerificationReplay
+  | ManifestVerificationDigest
+  | ManifestVerificationSigningKey
+  | ManifestVerificationVerifiedKey
+  | ManifestVerificationSuite
+  | ManifestVerificationTrust
+
+type NetworkBootManifestRefusal
+  = ManifestUnsignedIdentity
+  | ManifestVerificationRefused {
+      class: NetworkBootManifestVerificationClass
+      observation: DeclarationRef
+    }
+  | ManifestJoinWrongArchitecture { architecture: Architecture }
+  | ManifestJoinDigestDisagrees
+  | ManifestJoinNotYetValid { not_before: EpochMs, observed_at: EpochMs }
+  | ManifestJoinExpired { expiry: EpochMs, observed_at: EpochMs }
+  | ManifestJoinWrongTarget
+  | ManifestJoinWrongAttempt
 
 // An authored plan cannot inhabit MeasuredNetworkBootFact. The class travels on
 // the receipt so an unrostered DeclarationRef cannot silently establish.
@@ -239,7 +270,11 @@ type SignedBootManifestStanding
       observation: DeclarationRef
       observed_at: EpochMs
     }
-  | SignedBootManifestVerificationRefused { observation: DeclarationRef, observed_at: EpochMs }
+  | SignedBootManifestVerificationRefused {
+      observation: DeclarationRef
+      observed_at: EpochMs
+      class: NetworkBootManifestVerificationClass
+    }
   | SignedBootManifestAbsent
 
 type BootstrapTrustStanding
@@ -308,13 +343,13 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                       NetworkBootDeliveryEvidenceRefused { axis: NetworkBootClientBootMode, observation: client.observation }
                     MeasuredNetworkBootFact =>
                       match client.client.arch {
-                        UefiX86_64 => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
-                        BiosX86 => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
-                        HttpBootX86_64 => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
-                        HttpBootArm64 => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
+                        UefiX86_64 => NetworkBootDeliveryClientModeRefused { arch: UefiX86_64 }
+                        BiosX86 => NetworkBootDeliveryClientModeRefused { arch: BiosX86 }
+                        HttpBootX86_64 => NetworkBootDeliveryClientModeRefused { arch: HttpBootX86_64 }
+                        HttpBootArm64 => NetworkBootDeliveryClientModeRefused { arch: HttpBootArm64 }
                         UefiArm64 =>
                           if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
-                            NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
+                            NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
                           } else {
                             match inputs.boot_control {
                               BootControlUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
@@ -324,36 +359,42 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                                     NetworkBootDeliveryEvidenceRefused { axis: NetworkBootBootSourceOverride, observation: control.observation }
                                   MeasuredNetworkBootFact =>
                                     if same_boot_delivery_target(left: control.target, right: inputs.target) == false {
-                                      NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
+                                      NetworkBootDeliveryTargetMismatch { axis: NetworkBootBootSourceOverride }
                                     } else {
                                       match inputs.manifest {
                                         SignedBootManifestAbsent => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
                                         SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } =>
-                                          NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
-                                        SignedBootManifestVerificationRefused { observation: refused_obs, observed_at: _ } =>
-                                          NetworkBootDeliveryEvidenceRefused { axis: NetworkBootBootArtifacts, observation: refused_obs }
+                                          NetworkBootDeliveryManifestRefused { cause: ManifestUnsignedIdentity }
+                                        SignedBootManifestVerificationRefused { observation: refused_obs, observed_at: _, class: vclass } =>
+                                          NetworkBootDeliveryManifestRefused {
+                                            cause: ManifestVerificationRefused { class: vclass, observation: refused_obs },
+                                          }
                                         SignedBootManifestVerified { identity: id, evidence_class: man_class, observation: manifest_obs, observed_at: manifest_at } =>
                                           match man_class {
                                             NonEstablishingNetworkBootPredecessor =>
                                               NetworkBootDeliveryEvidenceRefused { axis: NetworkBootBootArtifacts, observation: manifest_obs }
                                             MeasuredNetworkBootFact =>
                                               if architecture_is_aarch64(a: id.architecture) == false {
-                                                NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                                NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongArchitecture { architecture: id.architecture } }
                                               } else {
                                                 if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
-                                                  NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                                  NetworkBootDeliveryManifestRefused { cause: ManifestJoinDigestDisagrees }
                                                 } else {
                                                   if manifest_at < id.not_before {
-                                                    NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                                    NetworkBootDeliveryManifestRefused {
+                                                      cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
+                                                    }
                                                   } else {
                                                     if manifest_at >= id.expiry {
-                                                      NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                                      NetworkBootDeliveryManifestRefused {
+                                                        cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
+                                                      }
                                                     } else {
                                                       if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
-                                                        NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                                        NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
                                                       } else {
                                                         if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
-                                                          NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                                          NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
                                                         } else {
                                                           NetworkBootDeliveryEstablished {
                                                             evidence: NetworkBootDeliveryEstablishment {
