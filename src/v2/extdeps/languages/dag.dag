@@ -85,8 +85,8 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   WhitespaceChar,
+  lex_rule_set_insert_token_classes,
   lex_rule_set_token_class_map,
-  lex_rule_set_token_class_member,
   symbol_intern_lexeme
 }
 import v2.std.node {
@@ -2275,20 +2275,6 @@ fn dag_surface_sugar_symbol_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
   )
 }
 
-fn dag_lex_token_class_insert(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
-  fold_list(
-    xs: dag_lex_rules().rules,
-    empty: m,
-    cons: fn(acc, rule) {
-      match rule {
-        TokenRule { token_class: c, pattern: _ } => dag_symbol_map_put(m: acc, sym: c)
-        TriviaRule { pattern: _ } => acc
-        AnnotationRule { annotation_class: _, pattern: _ } => acc
-      }
-    }
-  )
-}
-
 fn dag_language_model_surface_prelude_map() -> Map<Symbol, Bool> {
   dag_surface_sugar_symbol_map(m: lex_rule_set_token_class_map(rules: dag_lex_rules()))
 }
@@ -2342,15 +2328,12 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
   )
 }
 
-fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
-  dag_symbol_map_has(m: dag_language_model_binding_canonical_map(m: empty_map()), sym: sym)
-}
-
 fn dag_canonical_symbol_map() -> Map<Symbol, Bool> {
   dag_language_model_binding_canonical_map(
     m: dag_surface_sugar_symbol_map(
-      m: dag_lex_token_class_insert(
-        m: grammar_carried_symbol_map(grammar: dag_grammar())
+      m: lex_rule_set_insert_token_classes(
+        m: grammar_carried_symbol_map(grammar: dag_grammar()),
+        rules: dag_lex_rules()
       )
     )
   )
