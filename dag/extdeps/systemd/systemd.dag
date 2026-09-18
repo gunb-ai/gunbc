@@ -68,7 +68,6 @@ type SystemdUnitProperty
   | SubState
   | Result
   | ExecMainStatus
-  | SubState
   | ExecStartProperty
   | User
   | WorkingDirectoryProperty
@@ -81,6 +80,11 @@ type SystemdUnitProperty
   | IdProperty
   | KillModeProperty
   | ExitTypeProperty
+  | EnvironmentProperty
+  | AfterProperty
+  | WantsProperty
+  | InvocationIDProperty
+  | FragmentPathProperty
 
 fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
   match property {
@@ -103,7 +107,6 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     SubState => "SubState" as NonEmptyStr
     Result => "Result" as NonEmptyStr
     ExecMainStatus => "ExecMainStatus" as NonEmptyStr
-    SubState => "SubState" as NonEmptyStr
     ExecStartProperty => "ExecStart" as NonEmptyStr
     User => "User" as NonEmptyStr
     WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr
@@ -116,6 +119,11 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     IdProperty => "Id" as NonEmptyStr
     KillModeProperty => "KillMode" as NonEmptyStr
     ExitTypeProperty => "ExitType" as NonEmptyStr
+    EnvironmentProperty => "Environment" as NonEmptyStr
+    AfterProperty => "After" as NonEmptyStr
+    WantsProperty => "Wants" as NonEmptyStr
+    InvocationIDProperty => "InvocationID" as NonEmptyStr
+    FragmentPathProperty => "FragmentPath" as NonEmptyStr
   }
 }
 

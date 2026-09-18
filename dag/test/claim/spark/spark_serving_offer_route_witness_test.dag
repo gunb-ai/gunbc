@@ -8,25 +8,168 @@ import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
 import product.placement_supply { HostIdentity }
+import gunbc.spark.first_party_serving {
+  SparkServingRealization, spark_realization_identity, SparkRealizationIdentity,
+  RealizationMatchesPairServingConfiguration, RealizationReportedPathDiffers,
+  RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
+}
+import v2.std.optional { Present, Absent }
+import gunbc.spark.vllm_observed {
+  ModelsRouteDocumentUnreadable, ModelsRouteRead, vllm_models_route_readback,
+}
+import gunbc.spark.pair_serving_realization {
+  spark_pair_model_path_in_container, spark_pair_desired_snapshot, spark_pair_head_unit_name,
+  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+  spark_pair_declared_head_digest,
+}
+import std.measure { token_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict, FrontDoorAnswered, serving_availability_bracketing_read }
 import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunch, vllm_endpoint_process_launch,
 }
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused,
-  SparkServingReadiness, ServingObserved,
+  ServingObserved,
   SparkServingRoute, ServingRouteObserved, ServingRouteOperatorAsserted, ServingRouteRegionUnobserved,
+  ServingRouteServiceUnidentified,
   spark_serving_route_standing, spark_serving_route_region_obligation,
-  spark_serving_route_hosts_unreadable_obligation,
+  spark_serving_route_hosts_unreadable_obligation, spark_serving_route_service_identity_obligation,
+  spark_realization_identity_cause,
   bind_spark_serving_offer,
+  SparkServiceIdentityCause, ServiceIncarnationUnobserved, ServiceObservationNamesAnotherEndpoint,
+  ServiceIncarnationOutsideRealization, ServiceDeclaredUnitDigestUnavailable,
+  ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
+  spark_serving_incarnation_unobserved_obligation,
 }
+import gunbc.spark.vllm_serving_launch {
+  VllmServingLaunch, vllm_serving_launch, endpoint_incarnation_observation,
+  EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
+  LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
+}
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
+import gunbc.harness.harness_seat { harness_serving_route }
+import gunbc.spark.first_party_serving { spark_first_party_route }
 
-// THE ROUTE OBLIGATION, EXECUTED. spark_serving_route_standing refuses today because nothing
-// observes which region a serving host sits in, and these rows are what stop that refusal from
+// THE ROUTE OBLIGATION, EXECUTED. The standing has two independently evidenced halves. Host
+// membership is checked against the operator's allocation and can establish the region. The readback
+// bears on the service-identity diagnosis but does not establish the service; with current evidence,
+// covered hosts therefore produce ServingRouteServiceUnidentified, while absent or out-of-allocation
+// host evidence produces ServingRouteRegionUnobserved. These rows are what stop those refusals from
 // being a claim in a comment. The pair is deliberate: without the observed control below, "the
 // offer did not bind" would be satisfied by a binder that never binds for any reason at all, and
 // the refusal row would assert nothing about the route.
+
+// THE STANDING'S SUBJECT IS THE REALIZATION THAT ANSWERED, AND IT READS BOTH OF ITS FIELDS. An
+// earlier spelling of this block said the standing "never consults" the readback and held it at an
+// unresolved value on purpose, which was true and was the defect: a route has two halves established
+// by different evidence, and reading only the hosts meant an unreadable readback on covered hosts
+// still received gunbc.spark.pair_serving_desired as its SERVICE. The hosts decide the REGION, which
+// the operator's dated allocation establishes independently of whatever answered. The readback bears
+// on the SERVICE-IDENTITY DIAGNOSIS and does NOT decide the service -- that is this change's whole
+// point, since even a readback matching the declared configuration cannot name which deployment
+// answered. This sentence survived the rewrite that narrates the correction above it: the edit fixed
+// what it was looking at and left a claim in the same paragraph that the same change had falsified.
+// So these rows now vary both, and the fixtures below are named for which half they exercise.
+// THE DECLARED PATH COMES FROM THE PRODUCER THE MODULE COMPARES AGAINST, never a literal, so this
+// fixture cannot drift into agreeing with itself when the pinned snapshot moves.
+fn t_declared_path() -> String {
+  match spark_pair_model_path_in_container(snapshot: spark_pair_desired_snapshot) {
+    Present { value: p } => p
+    Absent => ""
+  }
+}
+
+// THE REALIZATION WHOSE REPORTED CONFIGURATION MATCHES, which is NOT the same as one whose service
+// is established -- an earlier spelling of this comment said it was, and that sentence is the defect
+// in one line. The engine reports exactly the path the pair-serving launch is declared to serve, so
+// the identity join answers RealizationMatchesPairServingConfiguration; that is configuration agreement, and a second
+// deployment configured the same way reports the same string. This fixture therefore drives the
+// MOTIVATING case rather than a happy path: the one where everything a consumer might mistake for
+// identity is present and the service still may not be named.
+fn t_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: hosts,
+    readback: ModelsRouteRead {
+      readback: vllm_models_route_readback(
+        served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
+        configured_model_path: t_declared_path() as NonEmptyStr,
+        max_model_len: token_count(count: 1048576)),
+    },
+    endpoint: t_launch(),
+    incarnation: t_incarnation_unobserved(),
+  }
+}
+
+// THE READBACK THAT AGREES WITH A DIFFERENT DECLARATION: same hosts, same site coverage, and a
+// process reporting a model path that is not the one this launch is declared to serve. The service
+// half must refuse this too, and for a DIFFERENT stated reason than the undecodable case -- which is
+// the whole point of typing the cause.
+fn t_foreign_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: hosts,
+    readback: ModelsRouteRead {
+      readback: vllm_models_route_readback(
+        served_model_id: "glm-5.3-flash:native" as NonEmptyStr,
+        configured_model_path: "/weights/models--zai-org--GLM-5.3-Flash/snapshots/eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+        max_model_len: token_count(count: 1048576)),
+    },
+    endpoint: t_launch(),
+    incarnation: t_incarnation_unobserved(),
+  }
+}
+
+// THE READBACK THAT DOES NOT EVEN AGREE: same hosts, same site coverage, and a document this
+// repository could not decode. Both fixtures refuse the service; they differ in the DIAGNOSIS the
+// refusal carries, which is what the two rows below discriminate on.
+fn t_unreadable_realization(hosts: List<HostIdentity>) -> SparkServingRealization {
+  SparkServingRealization {
+    hosts: hosts,
+    readback: ModelsRouteDocumentUnreadable { cause: "the fixture supplies an undecodable models document, which is the case the service half must refuse on" as NonEmptyStr },
+    endpoint: t_launch(),
+    incarnation: t_incarnation_unobserved(),
+  }
+}
+
+
+// ── THE INCARNATION EVIDENCE, AND WHICH OF IT PRODUCTION HAS ─────────────────────────────────────
+//
+// The fixtures above carry EndpointIncarnationUnobserved, the standing production carries when its
+// producer -- gunbc.spark.serving_incarnation_observe, wired through harness_serving_realization --
+// returns no observation on a bind. The rows at the end of this file build an
+// EndpointIncarnationObservation through its sole constructor as FIXTURE EVIDENCE so the positive arm
+// can be driven without a live host; production reaches that same arm through the producer when the
+// observation is obtained, which the_production_route_consumes_an_observed_incarnation exercises.
+fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
+  EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
+}
+
+data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production reaches this arm when the head unit does not render or the digest leg fails, at gunbc.spark.pair_serving_realization spark_pair_declared_head_digest" as NonEmptyStr
+
+fn t_unit_unavailable() -> DeclaredUnitDigestStanding {
+  DeclaredUnitDigestUnavailable { obligation: t_declared_unit_unavailable_obligation }
+}
+
+// The standing under test here carries a fixture digest, because the declared unit is refused
+// BEFORE the incarnation is consulted: an unavailable digest would answer every row below with
+// ServiceDeclaredUnitDigestUnavailable and the incarnation and region arms they exist to exercise
+// would never be reached. the_declared_unit_is_refused_before_the_incarnation is the row for that.
+fn t_standing(realization: SparkServingRealization) -> SparkServingRoute {
+  spark_serving_route_standing(realization: realization, declared_unit: t_declared())
+}
+
+fn t_unobserved_configuration(cause: SparkServiceIdentityCause) -> SparkRealizationIdentity? {
+  match cause {
+    ServiceIncarnationUnobserved { configuration: c, obligation: _ } => Present { value: c }
+    ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } => none
+    ServiceIncarnationOutsideRealization { incarnation: _ } => none
+    ServiceDeclaredUnitDigestUnavailable { obligation: _ } => none
+    ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => none
+    ServiceConfigurationDisagrees { configuration: _ } => none
+  }
+}
 
 fn t_launch() -> VllmEndpointProcessLaunch {
   vllm_endpoint_process_launch(
@@ -44,11 +187,16 @@ fn t_observed_route() -> ProviderRoute {
   }
 }
 
-fn t_ready() -> SparkServingReadiness {
-  ServingObserved {
-    ready_at: "2026-09-09T00:00:00Z",
-    receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef,
-  }
+// READINESS IS NOT A VALUE THIS TEST MAY WRITE. The binder accepts only a sealed availability verdict, so
+// the fixture obtains one the way production does: a launch read naming the offered launch.
+fn t_ready() -> ServingFrontDoorAvailabilityVerdict {
+  serving_availability_bracketing_read(
+    endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "10.0.0.1" as NonEmptyStr, port: 8000 },
+    before: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef },
+    front_door: FrontDoorAnswered,
+    after: LaunchObserved { launch: t_launch(), receipt: "gunbc.test.spark-serving-offer-route" as ObservationReceiptRef },
+    now: "2026-09-09T00:00:00Z",
+  )
 }
 
 fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
@@ -56,11 +204,11 @@ fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
     principal: "gunbc" as NonEmptyStr,
     executor: "spark-a" as NonEmptyStr,
     launch: t_launch(),
-    model: "test-model" as NonEmptyStr,
+    served_model: "test-model" as NonEmptyStr,
     trust_domain: "gunbc.trust.spark" as TrustDomainRef,
     isolation: IsolationProfile { guarantees: [] },
     seats: 1,
-    readiness: t_ready(),
+    availability: t_ready(),
     route: route,
   )
 }
@@ -68,11 +216,17 @@ fn t_bind(route: SparkServingRoute) -> SparkOfferBinding<NonEmptyStr> {
 // POSITIVE CONTROL, AND IT CARRIES THE EXACT ROUTE RATHER THAN MERELY BINDING. A binder that
 // bound while dropping the route on the floor would satisfy "it bound" and leave the offer in the
 // state this whole change exists to make unwritable.
+// THE SERVICE CONJUNCT IS THE ONE THAT WAS MISSING, AND ITS ABSENCE WAS THE WORST PLACE FOR IT. This
+// row compared region and provider and never the SERVICE -- two of the route's three fields -- while
+// the service is the exact field this whole change is about. So the accepting branch of the binder
+// was controlled by a test that was silent on the thing under review, and the row's own name
+// promised "the offer carries the route" while establishing something narrower.
 test fn an_observed_route_binds_and_the_offer_carries_it() -> Bool {
   match t_bind(route: ServingRouteObserved { route: t_observed_route() }) {
     SparkOfferBound { bound: p } =>
       (p.offer.route.region as String) == (t_observed_route().region as String)
         && (p.offer.route.provider as String) == (t_observed_route().provider as String)
+        && (p.offer.route.service as String) == (t_observed_route().service as String)
     SparkOfferBindingRefused { group_wire: _, cause: _ } => false
   }
 }
@@ -88,28 +242,165 @@ test fn an_unobserved_region_refuses_naming_its_obligation() -> Bool {
   }
 }
 
-// THE STANDING THE PRODUCTION CALLER ACTUALLY PASSES, AND THIS ROW HAS FLIPPED (DESIGN 4b(4)). It
-// used to assert the refusal and predicted its own red: "when a region observer lands, this row goes
-// red and must be replaced by one asserting the observed route". The trigger fired on 2026-09-11
-// through the arm nobody predicted -- not an observer, but the operator's dated assertion of where
-// the units sit, which for hardware he owns and holds is the only kind of fact available. So the row
-// is replaced rather than deleted, and it is now the permanent regression control that the live path
-// carries a route.
+// HISTORY OF THIS ROW, PAST TENSE THROUGHOUT, because two superseded descriptions of it stood here
+// in the present tense and a reader met them before the correction below. It began as a refusal
+// control predicting its own red -- "when a region observer lands, this row goes red and must be
+// replaced by one asserting the observed route" -- and the trigger fired on 2026-09-11 through the
+// arm nobody predicted: not an observer, but the operator's dated assertion of where the units sit,
+// which for hardware he owns and holds is the only kind of fact available. It then asserted the
+// operator-asserted ARM specifically, which required a complete route. Neither description is true
+// of the row now, and both are recorded here rather than left standing above the correction.
 //
-// IT ASSERTS THE ASSERTED ARM SPECIFICALLY, and that is the point of the assertion rather than a
-// detail of it: a standing that came back as ServingRouteObserved would mean an allocation had been
-// relabelled as a measurement, which is precisely what the third arm exists to make unwritable. The
-// region it carries must be the allocation, because a region citing the bare site row would name a
-// place while dropping who said the units are there and when.
-test fn the_standing_the_harness_passes_is_operator_asserted_with_its_allocation() -> Bool {
-  match spark_serving_route_standing(hosts: [operator_host_srv5, operator_host_srv6]) {
+// WHAT SURVIVES FROM THAT HISTORY, because it is still the reason this row exists: a standing that
+// came back as ServingRouteObserved would mean an allocation had been relabelled as a measurement,
+// and the region must cite the ALLOCATION rather than the bare site row, which would name a place
+// while dropping who said the units are there and when. Both are still asserted -- on the refusing
+// arm, where the allocation now lives.
+//
+// THE ALLOCATION SURVIVES A SERVICE REFUSAL, AND THAT IS WHAT THIS ROW NOW PROVES. It used to
+// require the route-bearing arm and explicitly reject ServingRouteServiceUnidentified -- so a green
+// here PRESERVED the unsupported answer it was meant to guard, by insisting on a complete route
+// nothing establishes. The operator's dated assertion is still the thing under test: it is what
+// makes the REGION knowable for hardware he owns and holds, where no observer exists. What changed
+// is that the region no longer arrives bundled with a service claim, so the row asserts the
+// allocation where it now lives -- on the refusing arm -- rather than demanding an answer that would
+// have to be unsupported to exist.
+test fn the_allocation_survives_a_service_refusal_with_its_date() -> Bool {
+  match t_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
     ServingRouteRegionUnobserved { obligation: _ } => false
     ServingRouteObserved { route: _ } => false
-    ServingRouteOperatorAsserted { route: r, allocation: a } =>
-      declaration_ref_eq(a: r.region, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "spark_fleet_site_allocation"))
-        && declaration_ref_eq(a: r.provider, b: decl_ref(module_path: "gunbc.spark.first_party_serving", decl_name: "gunbc_first_party_serving_provider"))
-        && (a.decided_on as String) == "2026-09-11"
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteServiceUnidentified { allocation: a, cause: _, obligation: o } =>
+      (a.decided_on as String) == "2026-09-11"
+        && string_contains(s: o as String, pattern: "the REGION is established")
   }
+}
+
+// RED -- THE MOTIVATING CASE, AND THE ONE THE FIRST SPELLING OF THIS REPAIR LET THROUGH. The engine
+// reports EXACTLY the path this launch is declared to serve, every host is covered, and the service
+// is still refused. Refusing the unreadable and different-path readbacks was never the fix: those
+// are the easy cases. Two deployments sharing a configuration report the same string, and
+// spark_realization_identity says in its own annotation that the comparison establishes
+// configuration agreement rather than identity -- so a consumer that named the specific declared
+// deployment on the strength of a match was reading it as identity.
+//
+// IT ASSERTS THE DIAGNOSIS, NOT MERELY THE ARM. A refusal that said "unreadable" here would be the
+// wrong reason and would hide that the match was the case being refused, so this pins the obligation
+// to the configuration-agreement sentence.
+// TWO CHECKS, AND NEITHER IS REDUNDANT -- READ THIS BEFORE DELETING ONE. The typed helper asks
+// spark_realization_identity -- the join the service refusal itself consumes -- what the case is; the string comparison asks whether the REFUSAL THIS STANDING
+// RETURNED actually carries that cause's diagnosis. An earlier spelling had only the first, and it
+// was a coverage regression rather than an improvement: both helpers computed the cause from
+// spark_serving_usage_stats_unread_cause independently, joined to the route standing by nothing but
+// a shared realization argument. The decisive counterexample needs no execution -- delete the
+// diagnostic suffix from the obligation spark_serving_route_standing builds, and every assertion
+// still passed, because the helpers were never looking at the returned value. A correct result from
+// a NEIGHBOURING producer does not establish that the CONSUMER carried it.
+//
+// WHY THE EXPECTED TEXT IS NOT A LITERAL: it is spark_realization_identity_cause's own output for
+// the same realization, so this compares the standing's obligation against the renderer that is
+// supposed to have populated it -- two producers, a real join -- rather than against a copy of the
+// sentence, which would agree with itself through any rewording. ServingRouteServiceUnidentified
+// transports its diagnosis as text, so the output boundary is where this can be checked at all; a
+// THE ARM NOW CARRIES THE TYPED CAUSE, so these helpers read a VALUE the standing handed them rather
+// than grepping the sentence it rendered. An earlier spelling of this note said a typed diagnosis
+// field "is the shape to reach for if this needs to get stronger" -- naming the right construction
+// and then not building it, with no trigger and no owner, which is how a conceded gap becomes
+// permanent. It cost nothing: spark_realization_identity was already computed on that path.
+//
+// WHAT EACH CHECK IS FOR, since they are no longer interchangeable. The variant match says WHICH
+// situation the standing found. The obligation comparison says the refusal it RETURNED actually
+// carries that situation's rendered diagnosis -- a join against spark_realization_identity_cause's
+// own output, so it fails if the renderer and the arm ever disagree. Dropping the first leaves you
+// grepping prose; dropping the second leaves you trusting a neighbouring producer.
+//
+// THE TYPED HELPER STAYS because it pins WHICH cause obtained without depending on wording, and the
+// string join stays because it pins that the refusal actually reported it. Fragile-about-wording and
+// silent-about-the-object are different weaknesses, and dropping either one reintroduces the other.
+//
+// THE DIAGNOSIS IS ASSERTED ON THE TYPED CAUSE, not by grepping the refusal sentence. The telemetry
+// causes were typed for exactly this reason and the route rows were left grepping prose, which is
+// the same asymmetry one seam over -- a sentence can be reworded without the arm changing, and a
+// case mismatch in that pattern already cost a floor run on this branch. What still uses a substring
+// is the SERVICE-IDENTITY obligation itself, and that is compared against the producer's own row
+// rather than a literal, so it cannot drift into agreeing with a copy of itself.
+
+fn t_cause_is_matched_configuration(cause: SparkServiceIdentityCause) -> Bool {
+  match t_unobserved_configuration(cause: cause) {
+    Absent => false
+    Present { value: identity } => match identity {
+    RealizationMatchesPairServingConfiguration { configured_model_path: p } => (p as String) == t_declared_path()
+    RealizationReportedPathDiffers { reported: _, declared: _ } => false
+    RealizationDeclaredPathUnpinned => false
+    RealizationReadbackUnresolved => false
+  }
+  }
+}
+
+fn t_cause_is_unresolved_readback(cause: SparkServiceIdentityCause) -> Bool {
+  match t_unobserved_configuration(cause: cause) {
+    Absent => false
+    Present { value: identity } => match identity {
+    RealizationReadbackUnresolved => true
+    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => false
+    RealizationReportedPathDiffers { reported: _, declared: _ } => false
+    RealizationDeclaredPathUnpinned => false
+  }
+  }
+}
+
+fn t_cause_is_reported_path_differs(cause: SparkServiceIdentityCause) -> Bool {
+  match t_unobserved_configuration(cause: cause) {
+    Absent => false
+    Present { value: identity } => match identity {
+    RealizationReportedPathDiffers { reported: rep, declared: dec } =>
+      (dec as String) == t_declared_path() && (rep as String) != t_declared_path()
+    RealizationMatchesPairServingConfiguration { configured_model_path: _ } => false
+    RealizationDeclaredPathUnpinned => false
+    RealizationReadbackUnresolved => false
+  }
+  }
+}
+
+test fn a_matching_configuration_does_not_establish_the_specific_service() -> Bool {
+  match t_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+    ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: o } =>
+      t_cause_is_matched_configuration(cause: c)
+        && string_contains(s: o as String, pattern: spark_serving_route_service_identity_obligation as String)
+        && string_contains(
+             s: o as String,
+             pattern: spark_realization_identity_cause(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6])) as String,
+           )
+  }
+}
+
+// RED -- AND THAT REFUSAL SURVIVES THE BINDER, which is where it would otherwise be ignored.
+// THE BINDER REFUSAL IS COMPARED AGAINST THE STANDING'S OWN OBLIGATION, not against a substring.
+// SparkOfferBindingRefused carries cause as a NonEmptyStr and the binder forwards the standing's
+// obligation verbatim, so a region refusal and a service refusal are the SAME SHAPE and only their
+// text differs. An earlier spelling discriminated them with string_contains "The SERVICE is not",
+// which is a literal a rewording silently defeats -- and a case mismatch in exactly that pattern
+// already cost a floor run on this branch. Comparing the forwarded cause to the obligation the
+// standing produced FOR THE SAME REALIZATION is a join between two producers: it fails if the binder
+// forwards a different refusal, and it cannot drift into agreeing with a copy of itself.
+fn t_service_refusal_cause_matches_the_standing(realization: SparkServingRealization) -> Bool {
+  match t_standing(realization: realization) {
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: o } =>
+      match t_bind(route: t_standing(realization: realization)) {
+        SparkOfferBound { bound: _ } => false
+        SparkOfferBindingRefused { group_wire: _, cause: c } => (c as String) == (o as String)
+      }
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+  }
+}
+
+test fn a_matching_configuration_does_not_bind_an_offer() -> Bool {
+  t_service_refusal_cause_matches_the_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv6]))
 }
 
 
@@ -118,9 +409,10 @@ test fn the_standing_the_harness_passes_is_operator_asserted_with_its_allocation
 // standing refuses. Without this row the eight-unit roster in the allocation would be decorative:
 // nothing else in the corpus compares a host to it (review 63995).
 test fn a_host_outside_the_allocation_refuses_and_names_it() -> Bool {
-  match spark_serving_route_standing(hosts: [operator_host_srv5, operator_host_srv1]) {
+  match t_standing(realization: t_realization(hosts: [operator_host_srv5, operator_host_srv1])) {
     ServingRouteObserved { route: _ } => false
-    ServingRouteOperatorAsserted { route: _, allocation: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
     ServingRouteRegionUnobserved { obligation: o } =>
       string_contains(s: o as String, pattern: "srv1")
         && !string_contains(s: o as String, pattern: "srv5")
@@ -132,10 +424,382 @@ test fn a_host_outside_the_allocation_refuses_and_names_it() -> Bool {
 // be TRUE for the empty list, so a group whose membership could not be read would have been
 // admitted by the check that exists to constrain it -- cleanest exactly where it knows least.
 test fn an_unreadable_group_membership_refuses() -> Bool {
-  match spark_serving_route_standing(hosts: [] as List<HostIdentity>) {
+  match t_standing(realization: t_realization(hosts: [] as List<HostIdentity>)) {
     ServingRouteObserved { route: _ } => false
-    ServingRouteOperatorAsserted { route: _, allocation: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
     ServingRouteRegionUnobserved { obligation: o } =>
       (o as String) == (spark_serving_route_hosts_unreadable_obligation as String)
+  }
+}
+
+
+// RED -- COVERED HOSTS DO NOT ESTABLISH WHICH DEPLOYMENT ANSWERED. This is the service half of the
+// realization join, and its absence was a live defect at 3bcf3d80128: the standing read only the
+// hosts, so this exact input -- every host inside the operator's allocation, a readback the
+// repository could not decode -- returned the route-bearing arm naming
+// gunbc.spark.pair_serving_desired spark_pair_serving_desired as the SERVICE. A declaration stood in
+// for a realization in the one half nobody had looked at.
+//
+// IT ASSERTS THAT THE REGION SURVIVES, WHICH IS THE WHOLE POINT OF A SEPARATE ARM. The refusal must
+// not throw away what the allocation does establish: the operator's dated assertion places these
+// units, and that is true whatever answered on them. So the arm carries the allocation, and this row
+// asserts both halves -- the allocation is present with its date, and the service is refused for the
+// readback's own reason rather than for a host-coverage reason that would belong to another row.
+test fn covered_hosts_with_an_unreadable_readback_refuse_the_service_and_keep_the_region() -> Bool {
+  match t_standing(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+    ServingRouteServiceUnidentified { allocation: a, cause: c, obligation: o } =>
+      (a.decided_on as String) == "2026-09-11"
+        && string_contains(s: o as String, pattern: "the REGION is established")
+        && t_cause_is_unresolved_readback(cause: c)
+        && string_contains(
+             s: o as String,
+             pattern: spark_realization_identity_cause(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6])) as String,
+           )
+        && !string_contains(s: o as String, pattern: "srv5")
+  }
+}
+
+// RED -- AND THE SERVICE REFUSAL REACHES THE BINDER RATHER THAN STOPPING AT THE STANDING. An offer
+// whose service cannot be identified must not bind, for the same reason an uncovered region must
+// not: the refusal is only worth its type if something downstream acts on it.
+test fn an_unidentified_service_does_not_bind_an_offer() -> Bool {
+  t_service_refusal_cause_matches_the_standing(realization: t_unreadable_realization(hosts: [operator_host_srv5, operator_host_srv6]))
+}
+
+// RED -- A DIFFERENT REPORTED PATH REFUSES THE SERVICE, AND FOR ITS OWN REASON. The foreign case was
+// exercised only on the TELEMETRY side until now, so the service route had no control for the third
+// of its three readback situations. It is here because the operator's finding names an unreadable OR
+// foreign readback, and covering one of the two at this seam left the other resting on a neighbouring
+// producer -- which is precisely the "a correct result from a neighbouring producer does not
+// establish that the consumer carried it" defect this file already records against itself.
+//
+// IT PINS THE DIAGNOSIS, NOT JUST THE ARM, and the diagnosis it pins is the one that must NOT
+// overclaim: a reported path differing from the declaration establishes that THIS READBACK DOES NOT
+// ESTABLISH THE SERVICE, and does not establish that the process is a different launch -- a process
+// that IS the intended launch running with drifted configuration reports exactly this way. So this
+// row asserts the refusal reports non-establishment, and asserts it does NOT claim the stronger
+// thing, which is the same wall this module applies to every other inference.
+test fn a_different_reported_path_refuses_the_service_without_claiming_a_different_launch() -> Bool {
+  match t_standing(realization: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6])) {
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+    ServingRouteServiceUnidentified { allocation: a, cause: c, obligation: o } =>
+      (a.decided_on as String) == "2026-09-11"
+        && t_cause_is_reported_path_differs(cause: c)
+        && string_contains(s: o as String, pattern: "the REGION is established")
+        && string_contains(s: o as String, pattern: "does not establish the specific service")
+  }
+}
+
+// RED -- AND THAT REFUSAL REACHES THE BINDER, joined to the standing's own obligation rather than to
+// a literal, so the binder cannot forward a different refusal and still pass.
+test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
+  t_service_refusal_cause_matches_the_standing(realization: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]))
+}
+
+
+// ── ACCEPTANCE ROWS FOR THE INCARNATION JOIN ────────────────────────────────────────────────────
+//
+// Production's harness_serving_route takes a declared-unit standing. This file supplies a fixture
+// DeclaredUnitDigested so the incarnation arms of spark_serving_route_standing are reachable;
+// an unavailable digest is refused first (the_declared_unit_is_refused_before_the_incarnation).
+// The mint and the bind wire are executed on the wet lane
+// (test.claim.spark.spark_pair_head_unit_digest_witness, test.claim.serving.serving_availability_bind_wet_witness).
+// The standing's incarnation-unobserved refusal stays enrolled below
+// (an_agreeing_unit_digest_without_an_observation_refuses).
+
+// PRODUCTION ROUTE. This drives gunbc.harness.harness_seat harness_serving_route, the function
+// harness_bind_candidate calls, with the incarnation standing production passes when the observer
+// refuses, and asserts the constructor that yields. If the harness could not reach the refusal arms
+// this change adds, the join would be dangling.
+test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Bool {
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_incarnation_unobserved(), declared_unit: t_declared()) {
+    ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
+      match c {
+        ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
+          (o as String) == (spark_serving_incarnation_unobserved_obligation as String)
+        ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } => false
+        ServiceIncarnationOutsideRealization { incarnation: _ } => false
+        ServiceDeclaredUnitDigestUnavailable { obligation: _ } => false
+        ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => false
+        ServiceConfigurationDisagrees { configuration: _ } => false
+      }
+    ServingRouteObserved { route: _ } => false
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+  }
+}
+
+
+fn t_sha256(hex: String) -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
+}
+
+// THE DECLARED SIDE COMES FROM THE PRODUCTION MINT, AND THIS FILE COULD NOT AUTHOR IT IF IT WANTED
+// TO. DeclaredUnitDigestEvidence is a sole_constructor record whose only constructor in the corpus
+// is spark_pair_declared_head_digest(group), which renders the CURRENT Group A declaration and
+// hashes it. There is no byte-level door: spark_pair_rendered_unit_digest returns the UNSEALED
+// RenderedUnitDigestStanding, so no amount of fixture text produces a DeclaredUnitDigested. Hence
+// this file executes a real DigestStdin over the production declaration and lives on the required
+// floor's local-repo wet lane.
+//
+// THE OBSERVED SIDE IS ORDINARY AND IS WHERE THE DISCRIMINATION LIVES. VllmServingLaunch is freely
+// constructible, so the agreeing rows build their launch's unit_digest FROM the minted evidence's
+// digest, and the disagreeing rows use a fixed foreign hex instead. That keeps every arm
+// discriminating without an alternate mint: what varies across the rows is the OBSERVATION, which is
+// exactly the fact the route is deciding about.
+// DECLARED DIVERGENCE FROM DESIGN SECTION 3's SUPPLIED-INPUT RULE, STATED HERE RATHER THAN ONLY IN
+// REVIEW (DESIGN 3b: a divergence with a stated reason is admitted; an UNSTATED one is the fork that
+// gets consolidated later at interest). Review 67089 is RIGHT on the rule: a witness discriminates at
+// one interface, its inputs belong there as SUPPLIED VALUES, and deriving them re-executes
+// production the claim is not about -- once per claim. The subject of the rows below is
+// spark_serving_route_standing's ARM SELECTION (region, incarnation, provenance, configuration), not
+// the mint, so by the letter of that rule the declared standing should be handed in.
+//
+// WHY IT IS NOT, AND WHY NO THIRD OPTION EXISTS HERE. A supplied value must be AUTHORABLE, and this
+// one is not: DeclaredUnitDigestEvidence is a sole_constructor record whose only corpus constructor
+// is spark_pair_declared_head_digest(group). That seal is not incidental -- it is the repair for
+// gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress, whose receipt on
+// THIS carrier is that an earlier revision exported a mint taking SparkPairUnitRender and so let any
+// module aim the declared digest with bytes of its choosing. Re-opening an authorable standing for
+// the witnesses' convenience would re-open exactly that hole, because a sole_constructor wall cannot
+// tell a fixture from production. The other arm, DeclaredUnitDigestUnavailable, IS freely
+// constructible and is supplied where it fits (t_unit_unavailable), but it refuses BEFORE the
+// incarnation is consulted, so it cannot serve the rows whose subject lies past that gate --
+// the declared-unit-before-incarnation ordering is itself required.
+//
+// THE COST, NAMED SO IT IS COUNTABLE: every row below reaching a digested standing executes one real
+// Sha256.DigestStdin, which is why this file is excluded from hermetic discovery and enrolled per
+// function on the local-repo wet lane (gunbc.ci.ci_layer_roots
+// excl_local_repo_wet_declared_unit_digest_reason, v2.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule, v2.workflow.floor_route_gap). It is a subprocess per row, not a fabric
+// effect. What DESIGN section 3 demands and this file does NOT skip is the pairing obligation's real
+// half: the mint's own inhabitance is executed separately and once, by
+// test.claim.spark.spark_pair_head_unit_digest_witness and
+// test.claim.serving.serving_availability_bind_wet_witness.
+//
+// DISSOLUTION, THE SAME TRIGGER THE EXCLUSION ROW NAMES: mock_response coverage for
+// extdeps.tools.sha256sum Sha256.DigestStdin sufficient to replay a digest over caller-supplied
+// stdin bytes. On that day these rows stop reaching a host effect, drop off the wet schedule and the
+// route-gap roster, and this divergence retires -- without unsealing anything.
+
+data t_other_unit_hex: String = "6666666666666666666666666666666666666666666666666666666666666666"
+data t_image_hex: String = "7777777777777777777777777777777777777777777777777777777777777777"
+
+fn t_declared() -> DeclaredUnitDigestStanding {
+  spark_pair_declared_head_digest(group: FabricGroupA)
+}
+
+// THE UNAVAILABLE ARM YIELDS A STRUCTURAL FINGERPRINT ON PURPOSE. If the production mint ever stops
+// producing evidence, the observed fixtures below carry an Fnv1a64 digest against a SHA-256 declared
+// one, which is INCOMPARABLE -- so the agreeing rows go red rather than green on a fabricated match.
+// This arm is fail-closed, not a fallback answer (DESIGN section 5).
+fn t_declared_digest() -> ContentHash {
+  match t_declared() {
+    DeclaredUnitDigested { evidence: e } => e.digest
+    DeclaredUnitDigestUnavailable { obligation: _ } =>
+      content_hash_of_value(value: "fixture: the declared-unit mint returned no evidence" as NonEmptyStr)
+  }
+}
+
+fn t_launch_with_unit(unit: ContentHash) -> VllmServingLaunch {
+  vllm_serving_launch(
+    group: FabricGroupA,
+    head: operator_host_srv5,
+    systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
+    container_id: "fixture-container-1" as NonEmptyStr,
+    executable_digest: t_sha256(hex: t_image_hex),
+    unit_digest: unit,
+    started_at: 1788907506,
+  )
+}
+
+fn t_incarnation() -> VllmServingLaunch {
+  t_launch_with_unit(unit: t_declared_digest())
+}
+
+fn t_observed(endpoint: VllmEndpointProcessLaunch, launch: VllmServingLaunch) -> EndpointIncarnationStanding {
+  EndpointIncarnationObserved {
+    observation: endpoint_incarnation_observation(
+      endpoint: endpoint,
+      launch: launch,
+      receipt: "test.claim.spark.spark_serving_offer_route_witness_test fixture" as ObservationReceiptRef,
+    ),
+  }
+}
+
+fn t_with_incarnation(base: SparkServingRealization, incarnation: EndpointIncarnationStanding) -> SparkServingRealization {
+  SparkServingRealization { hosts: base.hosts, readback: base.readback, endpoint: base.endpoint, incarnation: incarnation }
+}
+
+fn t_cause(route: SparkServingRoute) -> SparkServiceIdentityCause? {
+  match route {
+    ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } => Present { value: c }
+    ServingRouteObserved { route: _ } => none
+    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => none
+    ServingRouteRegionUnobserved { obligation: _ } => none
+  }
+}
+
+fn t_covered_matching() -> SparkServingRealization {
+  t_realization(hosts: [operator_host_srv5, operator_host_srv6])
+}
+
+// POSITIVE CONTROL, FIXTURE EVIDENCE. All three facts hold: the observation binds this endpoint to an
+// incarnation on these hosts, that incarnation's unit digest equals the declared one, and the
+// readback agrees. The route names the first-party service and carries the observation it rests on.
+test fn fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation() -> Bool {
+  match spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
+    declared_unit: t_declared(),
+  ) {
+    ServingRouteOperatorAsserted { route: r, allocation: a, answered_by: obs } =>
+      (r.service as String) == (spark_first_party_route().service as String)
+        && (a.decided_on as String) == "2026-09-11"
+        && (obs.launch.container_id as String) == "fixture-container-1"
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
+    ServingRouteObserved { route: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
+  }
+}
+
+// AND IT BINDS, so the positive arm reaches the binder rather than stopping at the standing.
+test fn fixture_evidence_of_all_three_facts_binds_an_offer() -> Bool {
+  match t_bind(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
+    declared_unit: t_declared(),
+  )) {
+    SparkOfferBound { bound: _ } => true
+    SparkOfferBindingRefused { group_wire: _, cause: _ } => false
+  }
+}
+
+// RED -- LAUNCHED FROM THE DECLARED UNIT DOES NOT MEAN IT ANSWERED. The declared digest agrees and the
+// configuration matches, and with no incarnation observation the service is still refused, for the
+// observation's reason. This is the row that keeps a declaration-side fact from satisfying the
+// answering-side one.
+test fn an_agreeing_unit_digest_without_an_observation_refuses() -> Bool {
+  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_declared())) {
+    Present { value: ServiceIncarnationUnobserved { configuration: _, obligation: _ } } => true
+    _ => false
+  }
+}
+
+// RED -- AN OBSERVATION ABOUT ANOTHER ENDPOINT PROCESS. Same group and endpoint, a different exporter
+// start: the process was replaced, and the observation is about its predecessor.
+test fn an_observation_about_a_replaced_endpoint_process_refuses() -> Bool {
+  let replaced = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "2" as NonEmptyStr)
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: replaced, launch: t_incarnation())),
+    declared_unit: t_declared(),
+  )) {
+    Present { value: ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } } => true
+    _ => false
+  }
+}
+
+// RED -- AN INCARNATION ON A HOST OUTSIDE THE REALIZATION.
+test fn an_incarnation_on_another_host_refuses() -> Bool {
+  let elsewhere = vllm_serving_launch(
+    group: FabricGroupA, head: operator_host_srv1,
+    systemd_invocation: "fixture-invocation-1" as NonEmptyStr, container_id: "fixture-container-1" as NonEmptyStr,
+    executable_digest: t_sha256(hex: t_image_hex), unit_digest: t_declared_digest(), started_at: 1788907506,
+  )
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: elsewhere)),
+    declared_unit: t_declared(),
+  )) {
+    Present { value: ServiceIncarnationOutsideRealization { incarnation: _ } } => true
+    _ => false
+  }
+}
+
+// RED, AND THE ORDER IS THE CLAIM. With the incarnation unobserved AND the declared digest
+// unavailable, the digest is the refusal reported: it is decidable with no observation, and it is
+// what lets a harness wire that drops the digest between mint and fold go red today rather than
+// after an incarnation observer lands. The same realization with a fixture digest reports the
+// incarnation instead (an_agreeing_unit_digest_without_an_observation_refuses).
+test fn the_declared_unit_is_refused_before_the_incarnation() -> Bool {
+  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_unit_unavailable())) {
+    Present { value: ServiceDeclaredUnitDigestUnavailable { obligation: _ } } => true
+    _ => false
+  }
+}
+
+// RED -- THE DECLARED UNIT DIGEST IS UNAVAILABLE, with the incarnation observed.
+test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool {
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
+    declared_unit: t_unit_unavailable(),
+  )) {
+    Present { value: ServiceDeclaredUnitDigestUnavailable { obligation: _ } } => true
+    _ => false
+  }
+}
+
+// RED -- THE INCARNATION WAS LAUNCHED FROM A DIFFERENT UNIT.
+test fn an_incarnation_from_a_different_unit_refuses() -> Bool {
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_launch_with_unit(unit: t_sha256(hex: t_other_unit_hex)))),
+    declared_unit: t_declared(),
+  )) {
+    Present { value: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: _, declared: _ } } } => true
+    _ => false
+  }
+}
+
+// RED -- AN OBSERVED UNIT DIGEST IN ANOTHER HASH FAMILY IS INCOMPARABLE, NOT AGREEMENT. This is the
+// structural-fingerprint shortcut the comparison refuses to take.
+//
+// THE SUBJECT MOVED FROM THE DECLARED SIDE TO THE OBSERVED SIDE, and that is a CLIMB, not a lost
+// control. The declared side can no longer be in another family AT ALL: DeclaredUnitDigestEvidence
+// is sole_constructor and its only mint is DigestStdin, so the digest inside it is Sha256Hash by
+// construction and no fixture can author an Fnv1a64 one. DESIGN section 4b: a check whose RED is not
+// authorable anywhere it could run is a decoration, so that row is deleted rather than kept green by
+// construction. The observed digest is a HOST READING and remains free to be any family, so the
+// incomparable arm of the comparison is still reachable and is still walled here.
+test fn an_observed_digest_in_another_family_is_incomparable_and_refuses() -> Bool {
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(
+      base: t_covered_matching(),
+      incarnation: t_observed(endpoint: t_launch(), launch: t_launch_with_unit(
+        unit: content_hash_of_value(value: "fixture: a structural fingerprint is the wrong family" as NonEmptyStr),
+      )),
+    ),
+    declared_unit: t_declared(),
+  )) {
+    Present { value: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable } } => true
+    _ => false
+  }
+}
+
+// RED -- EVERYTHING ELSE HOLDS AND THE READBACK DISAGREES.
+test fn an_observed_declared_incarnation_with_a_disagreeing_readback_refuses() -> Bool {
+  match t_cause(route: spark_serving_route_standing(
+    realization: t_with_incarnation(base: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
+    declared_unit: t_declared(),
+  )) {
+    Present { value: ServiceConfigurationDisagrees { configuration: _ } } => true
+    _ => false
+  }
+}
+
+// THE HARNESS CONSUMES THE INCARNATION IT IS HANDED. With a fixture digested unit and an observed
+// fixture incarnation on the answering endpoint, the production route moves past the incarnation
+// refusal to the same asserted-route arm the standing's own fixture evidence row already holds.
+// RED: a harness that ignored its incarnation argument would return ServiceIncarnationUnobserved
+// here, because the digest is supplied and that arm is reachable.
+test fn the_production_route_consumes_an_observed_incarnation() -> Bool {
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared()) {
+    ServingRouteOperatorAsserted { route: r, allocation: _, answered_by: _ } =>
+      (r.service as String) == (spark_first_party_route().service as String)
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
+    ServingRouteObserved { route: _ } => false
+    ServingRouteRegionUnobserved { obligation: _ } => false
   }
 }

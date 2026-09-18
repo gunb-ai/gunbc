@@ -32,6 +32,14 @@ import extdeps.languages.bash.invocation { bash_program_command }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands, process_outcome_admitted }
 import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
 import gunbc.runner_unit { runner_unit_dropin_dir }
+import gunbc.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  transition_retirement_admission,
+  observe_transition_retirement_evidence,
+  srv4_transition_interruption_authorization,
+}
 import gunbc.runner_slot_provision {
   runner_slot_member_observed,
   runner_slot_name_in_host_grammar,
@@ -131,6 +139,7 @@ import gunbc.fleet_converge_plan {
   FullHost,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  LiveDeploy,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_matches,
   LaunchEnvironment,
@@ -153,7 +162,9 @@ import gunbc.fleet_converge_plan {
 }
 import extdeps.git
 import gunbc.live_deploy.apply { live_deploy_apply_srv1_operator_local_wet }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_host_identity }
+import gunbc.live_deploy.spec { deployment_plan_host_identity }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.fleet_request { live_deploy_host_only_request_refusal_reason }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.repository { gunbc_repository }
 import gunbc.running_release_identity { release_revision_text_valid }
@@ -199,7 +210,7 @@ data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converg
 // bytes -- not that those bytes name a host.
 // The effective principal, read the same way the hostname is: a typed observation that is Absent
 // when the probe did not succeed, never an empty name.
-func observe_effective_user_wet() -> NonEmptyStr?
+fn observe_effective_user_wet() -> NonEmptyStr?
   uses net: Network
 {
   match run_shell_command_capture(command: whoami_command(), transport: LocalExec) {
@@ -210,7 +221,7 @@ func observe_effective_user_wet() -> NonEmptyStr?
   }
 }
 
-func observe_host_short_wet() -> NonEmptyStr?
+fn observe_host_short_wet() -> NonEmptyStr?
   uses net: Network
 {
   match run_shell_command_capture(
@@ -231,7 +242,7 @@ func observe_host_short_wet() -> NonEmptyStr?
 // The read reports what it saw; what an absent or unreadable store MEANS is decided one layer up
 // (gunbc.fleet_converge_plan fleet_converge_generation_admission), so this function has no arm
 // that invents a number.
-func observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
+fn observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmission
   uses net: Network
 {
   let read = Filesystem.Read(path: fleet_converge_generation_store_path(subject_host: subject_host))
@@ -244,7 +255,7 @@ func observe_generation_store_wet(subject_host: NonEmptyStr) -> GenerationAdmiss
   )
 }
 
-func observe_timer_members_wet() -> List<TimerRetirementMember>
+fn observe_timer_members_wet() -> List<TimerRetirementMember>
   uses net: Network
 {
   let legacy = timer_retirement_observed_legacy_srv1()
@@ -290,7 +301,7 @@ fn cap_members_observation(reads: List<CapMemberRead>) -> CapMembersObservation 
   })
 }
 
-func observe_cap_members_wet() -> CapMembersObservation
+fn observe_cap_members_wet() -> CapMembersObservation
   uses net: Network
 {
   let listed = Filesystem.List(path: runner_unit_dropin_dir as String)
@@ -340,7 +351,7 @@ type FleetConvergeRequestObservation
 // (see the excess-field measurement in gunbc.fleet_converge_plan above FleetConvergeScope, and the
 // compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
 // is what the site census and the non-interference matrix actually execute.
-func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
+fn observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
   uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope_wire) {
@@ -370,6 +381,10 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
         observed_timers: observe_timer_members_wet(),
       },
     }
+    ScopeDecoded { scope: LiveDeploy } =>
+      FleetConvergeRequestUnobserved {
+        reason: live_deploy_host_only_request_refusal_reason(),
+      }
     ScopeDecoded { scope: FullHost } =>
           match observe_runner_slot_members_with_provenance_wet(host: host) {
             RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }
@@ -387,6 +402,7 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
                     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
                     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                     observed_unit_standings: observe_runner_unit_standings_wet(host: host),
+                    observed_retirement: observe_slot_retirement_evidence_wet(host: host),
                   },
                 }
                 CapMembersObserved { members: observed_caps } => FleetConvergeRequestObserved {
@@ -398,10 +414,60 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
                     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
                     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
                     observed_unit_standings: observe_runner_unit_standings_wet(host: host),
+                    observed_retirement: observe_slot_retirement_evidence_wet(host: host),
                   },
                 }
               }
           }
+  }
+}
+
+// THE RETIREMENT HALF OF THE HOST OBSERVATION TRANSACTION, TAKEN WHERE EVERY OTHER HOST FACT IS.
+//
+// This is the seam the branch was missing, and its absence is why a correct remover, a correct
+// realization and a correct obligation still could not retire anything: the request carried no
+// retirement evidence, so `runner_slot_provision_plan` was always handed
+// `SlotRetirementEvidenceAbsent` and rendered withheld lines forever.
+//
+// IT OBSERVES AND DOES NOT ACTUATE. The `mask --now` for a slot that is required, permitted and not
+// yet retired is RENDERED by `runner_slot_provision_plan` into `retirement_scripts` and executed only
+// by fleet apply, after apply has reobserved this same subject and compared it with the reviewed
+// artifact. An effectful retirement performed HERE would mutate the host while the plan describing it
+// was still being built, which is why the actuator drafted in `gunbc.runner_slot_retirement` was
+// deleted rather than called from this function.
+//
+// PERMISSION IS DECIDED BEFORE ANY READ. A transition whose required retirees are not fully covered by
+// the operator's interruption authorization yields evidence-absent with the uncovered units named, so
+// the plan renders refusals rather than masks. Reading standings first and checking coverage later
+// would make the refusal a property of what the host happened to report.
+//
+// AN UNMODELED HOST OBSERVES AS EVIDENCE-ABSENT RATHER THAN AS A PERMITTED EMPTY TRANSITION, because
+// a host with no deploy row has no transition and nothing here may speak for it.
+fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvidence
+  uses net: Network
+{
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: h } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([h as String, " has no runner host deploy row, so it has no width transition and no retirement was observed"], ""),
+      }
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      SlotRetirementEvidenceAbsent {
+        cause: join([h as String, " is refused as a runner host (", c, "), so no retirement was observed and none may be assumed"], ""),
+      }
+    RunnerHostDeployFound { deploy: _ } =>
+      match transition_retirement_admission(
+        host: host as HostIdentity,
+        auth: srv4_transition_interruption_authorization,
+      ) {
+        SlotRetirementEvidenceAbsent { cause: c } => SlotRetirementEvidenceAbsent { cause: c }
+        SlotRetirementEvidencePresent { authorization: auth, standings: _ } =>
+          observe_transition_retirement_evidence(
+            transport: LocalShell,
+            host: host as HostIdentity,
+            auth: auth,
+          )
+      }
   }
 }
 
@@ -414,7 +480,7 @@ type RunnerUnitStandingRead
   = UnitStandingRead { standing: RunnerUnitStanding }
   | UnitStandingRefused { reason: NonEmptyStr }
 
-func observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
+fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
   uses net: Network
 {
   match read_unit_property(unit: unit, property: ActiveState) {
@@ -436,10 +502,14 @@ func observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRe
   }
 }
 
-func observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
+fn observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
   uses net: Network
 {
   match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployRefused { host: h, cause: c } =>
+      UnitStandingsUnobserved {
+        reason: join([h as String, " is refused as a runner host (", c, "), so it desires no units and no standing was read"], "") as NonEmptyStr,
+      }
     RunnerHostDeployUnmodeled { host: h } =>
       UnitStandingsUnobserved {
         reason: join([h as String, " has no runner host deploy row, so it desires no units and no standing was read"], "") as NonEmptyStr,
@@ -464,7 +534,7 @@ func observe_runner_unit_standings_wet(host: NonEmptyStr) -> RunnerUnitStandings
   }
 }
 
-func write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -> ProcessExit
+fn write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact) -> ProcessExit
   uses net: Network
 {
   match fleet_converge_plan_bundle_digest_hex(
@@ -517,7 +587,7 @@ func write_fleet_converge_plan_artifact_wet(artifact: FleetConvergePlanArtifact)
   }
 }
 
-func fleet_converge_allocation_store_plan_wet() -> ProcessExit
+fn fleet_converge_allocation_store_plan_wet() -> ProcessExit
   uses net: Network
 {
   match observe_host_short_wet() {
@@ -543,7 +613,7 @@ func fleet_converge_allocation_store_plan_wet() -> ProcessExit
   }
 }
 
-func observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObservation {
+fn observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObservation {
   let spec = fabric_allocation_store_substrate_spec()
   if !allocation_store_presence_coordinates_match_path(spec: spec) {
     AllocationStoreSubstrateObservationRefused {
@@ -582,7 +652,7 @@ func observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObserva
   }
 }
 
-func observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) -> AllocationStoreSubstrateObservation {
+fn observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) -> AllocationStoreSubstrateObservation {
   let parent = allocation_store_presence_parent(spec: spec)
   let contents = Filesystem.List(path: parent as String)
   if !contents.success {
@@ -611,7 +681,7 @@ func observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) 
   }
 }
 
-func observe_allocation_store_under_namespace_wet(
+fn observe_allocation_store_under_namespace_wet(
   spec: AllocationStoreSubstrateSpec,
   namespace: AllocationStoreDirectoryPrestate,
   entries: String,
@@ -684,7 +754,7 @@ func observe_allocation_store_under_namespace_wet(
 // admission, the expected-host admission, the generation lease and the receipt mint are obligations
 // of PLANNING, not of any one resource family, so a second copy of them beside this one would be a
 // parallel authority for whether a plan run is admissible at all.
-func fleet_converge_plan_wet() -> ProcessExit
+fn fleet_converge_plan_wet() -> ProcessExit
   uses net: Network
 {
   fleet_converge_scoped_plan_wet(scope: FullHost)
@@ -692,13 +762,13 @@ func fleet_converge_plan_wet() -> ProcessExit
 
 // RLM-2's launch-environment plan. Same admission spine, narrower scope: see the scope annotation
 // in gunbc.fleet_converge_plan for why runner-slot and activation are omitted rather than excused.
-func fleet_converge_launch_environment_plan_wet() -> ProcessExit
+fn fleet_converge_launch_environment_plan_wet() -> ProcessExit
   uses net: Network
 {
   fleet_converge_scoped_plan_wet(scope: LaunchEnvironment)
 }
 
-func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
+fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
   uses net: Network
 {
   match observe_actions_run_binding() {
@@ -732,7 +802,7 @@ func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
 // beside observe_fleet_converge_request_wet, which apply already used -- two readings of one host
 // that a scope could only widen. Routing plan through the same observer means the population the
 // plan hashes and the population apply re-observes come from one authority.
-func fleet_converge_plan_scoped_bound_wet(
+fn fleet_converge_plan_scoped_bound_wet(
   run: ActionsRunBinding,
   expected_host: String,
   scope: FleetConvergeScope,
@@ -867,7 +937,7 @@ func fleet_converge_plan_scoped_bound_wet(
 // the operator typed, the bundle hash on disk, the revision and the repository must all agree with
 // what the plan receipt says, and the apply receipt carries the plan receipt's identity so the
 // final join can pair them without re-deriving anything.
-func fleet_converge_apply_wet() -> ProcessExit
+fn fleet_converge_apply_wet() -> ProcessExit
   uses net: Network
 {
   match observe_actions_run_binding() {
@@ -898,7 +968,7 @@ func fleet_converge_apply_wet() -> ProcessExit
   }
 }
 
-func fleet_converge_apply_bound_wet(
+fn fleet_converge_apply_bound_wet(
   run: ActionsRunBinding,
   plan_run_id: String,
   plan_receipt: FleetConvergePlanReceipt,
@@ -1129,7 +1199,7 @@ type OperatorLocalRunBinding
   = OperatorLocalRunBound { binding: ActionsRunBinding }
   | OperatorLocalRunUnbound { reason: String }
 
-func observe_operator_local_run_binding() -> OperatorLocalRunBinding
+fn observe_operator_local_run_binding() -> OperatorLocalRunBinding
   uses net: Network
 {
   let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
@@ -1153,7 +1223,7 @@ func observe_operator_local_run_binding() -> OperatorLocalRunBinding
   }
 }
 
-func fleet_converge_local_plan_wet(scope: String) -> ProcessExit
+fn fleet_converge_local_plan_wet(scope: String) -> ProcessExit
   uses net: Network
 {
   match fleet_converge_scope_of_wire(wire: scope) {
@@ -1205,7 +1275,7 @@ fn fleet_converge_deploy_branch_admits(observed: String, required: String) -> Bo
   trim(s: required) != "" && trim(s: observed) == trim(s: required)
 }
 
-func fleet_converge_operator_cli_entry(
+fn fleet_converge_operator_cli_entry(
   host: String,
   mode: String,
   scope: String,
@@ -1248,7 +1318,7 @@ func fleet_converge_operator_cli_entry(
   }
 }
 
-func fleet_converge_operator_cli_dispatch(
+fn fleet_converge_operator_cli_dispatch(
   host: String,
   mode: String,
   scope: String,
@@ -1293,7 +1363,7 @@ func fleet_converge_operator_cli_dispatch(
   }
 }
 
-func fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> ProcessExit
+fn fleet_converge_local_apply_wet(plan_run_id: String, plan_hash: String) -> ProcessExit
   uses net: Network
 {
   match observe_operator_local_run_binding() {
@@ -1369,7 +1439,7 @@ type RunnerSlotProvenanceRead
   = SlotProvenanceRead { member: RunnerSlotMember }
   | SlotProvenanceRefused { reason: String }
 
-func observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMember) -> RunnerSlotProvenanceRead
+fn observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMember) -> RunnerSlotProvenanceRead
   uses net: Network
 {
   let name = member.instance_name
@@ -1412,7 +1482,7 @@ func observe_runner_slot_provenance_wet(host: NonEmptyStr, member: RunnerSlotMem
   }
 }
 
-func observe_runner_slot_members_with_provenance_wet(host: NonEmptyStr) -> RunnerSlotObservation
+fn observe_runner_slot_members_with_provenance_wet(host: NonEmptyStr) -> RunnerSlotObservation
   uses net: Network
 {
   match observe_runner_slot_members_wet() {

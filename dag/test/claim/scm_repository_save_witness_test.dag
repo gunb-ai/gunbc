@@ -100,8 +100,3 @@ test fn scm_sv_a_refused_save_leaves_no_file() -> Bool {
   }
   refused && absent
 }
-
-test fn scm_repository_save_keystone_holds() -> Bool {
-  scm_sv_an_unrepresentable_repository_is_refused_by_the_codec() &&
-    scm_sv_a_refused_save_leaves_no_file()
-}

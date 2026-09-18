@@ -12,12 +12,23 @@ import std.repair_input_origin {
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
+import gunbc.reference_derived_candidate {
+  ReferenceDerivedCandidateDisposition,
+  CandidateSurvived,
+  CandidateOwnModule,
+  CandidateVariantDelegatedToParent,
+  CandidateVariantParentUnresolved,
+  CandidateRegistryAbsent,
+  CandidateLeafAmbiguous,
+  CandidateExportProofFailed,
+  ReferenceDerivedCandidateRow
+}
 
 import extdeps.languages.rust.capabilities { phantom_opaque_carrier_derive_traits }
 
 import std.algebra { trim, AlgebraFieldTemplate, is_collection_filter_template }
 import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
-import v1.std.core {
+import v1.std.core { Unmarked,
   call_semantics_target,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
@@ -40,7 +51,7 @@ import v1.std.core {
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   is_error_diagnostic, EmissionConstructUnprojectable, FilterInBranchCondition,
-  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded, ParameterDefaultFormNotAdmitted, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -126,7 +137,8 @@ import v1.compiler.languages {
   sharing_for_target,
   is_string_like
 }
-import v1.compiler.runtime_rust { rust_runtime_source }
+import v1.compiler.runtime_rust { rust_runtime_source, rust_runtime_cargo_features }
+import extdeps.cargo { CargoFeature }
 import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
@@ -231,7 +243,7 @@ import v1.compiler.emit {
   module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node,
   emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items,
   order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
-  tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
+  tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
   service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared,
   emit_typed_let_shared,
@@ -1943,7 +1955,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData }
+  Node { occurrence_identity: OccurrenceSynthetic, name: "", span: no_span(), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -3336,9 +3348,8 @@ type EmitRustContext {
   emit_info: EmitGraphInfo
   registry: Map<String, ItemInfo>
   data_items: Map<String, Node>
-  workflow_funcs: List<WorkflowFunc>
-  workflow_default_diags: List<ErrorNode>
   anonymous_record_diags: List<ErrorNode>
+  effectful_recursion_diags: List<ErrorNode>
   svc_module_map: Map<String, String>
   test_projections: List<TestProjection>
   export_sets: Map<String, Map<String, Bool>>
@@ -3391,9 +3402,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     expected_type: none
   }
   let registry = typed.item_registry
-  let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
-  let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
+  let effectful_recursion_diags = typed.modules |> flat_map(tm => effectful_self_recursion_diagnostics(tm: tm, registry: registry))
   let svc_module_map = typed.modules |> fold(init: empty_map(), f: (acc, tm) =>
     let svc_items = tm.items |> filter(item => item.module_item_kind == ModuleItemService)
     let mod_filename = module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
@@ -3408,9 +3418,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     emit_info: emit_info,
     registry: registry,
     data_items: data_items,
-    workflow_funcs: workflow_funcs,
-    workflow_default_diags: workflow_default_diags,
     anonymous_record_diags: anonymous_record_diags,
+    effectful_recursion_diags: effectful_recursion_diags,
     svc_module_map: svc_module_map,
     test_projections: test_projections,
     export_sets: export_sets,
@@ -3487,14 +3496,13 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let module_index = ctx.module_index
   let unlisted_type_names_by_module = ctx.unlisted_type_names_by_module
   let shared_types = emit_info.shared_types
-  let workflow_funcs = ctx.workflow_funcs
-  let workflow_default_diags = ctx.workflow_default_diags
-  if workflow_default_diags |> count > 0 {
-    return EmitResult { files: [], diagnostics: workflow_default_diags }
-  }
   let anonymous_record_diags = ctx.anonymous_record_diags
   if anonymous_record_diags |> count > 0 {
     return EmitResult { files: [], diagnostics: anonymous_record_diags }
+  }
+  let effectful_recursion_diags = ctx.effectful_recursion_diags
+  if effectful_recursion_diags |> count > 0 {
+    return EmitResult { files: [], diagnostics: effectful_recursion_diags }
   }
   let filename_collisions = module_filename_collision_diagnostics(typed: typed)
   if filename_collisions |> count > 0 {
@@ -3534,10 +3542,10 @@ fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection
   let cargo = emit_cargo_toml(
     crate_name: crate_name,
     demand: EmittedCrateDependencyDemand {
-      renders_clap_cli: has_pipeline || (workflow_funcs |> count > 0),
+      renders_clap_cli: has_pipeline,
       renders_async_services: has_services
     })
-  let main_file = emit_main_rs(workflow_funcs: workflow_funcs, modules: typed.modules, has_services: has_services, crate_name: crate_name, svc_module_map: svc_module_map)
+  let main_file = emit_main_rs(modules: typed.modules, has_services: has_services, crate_name: crate_name)
   let cli_dispatch_file = if has_pipeline { [emit_gunbc_cli_dispatch_generated(crate_name: crate_name)] } else { [] }
   let rt_file = emit_v2_rt_module()
   let compiler_tests_file = if has_pipeline { [emit_compiler_tests_module()] } else { [] }
@@ -4884,25 +4892,6 @@ fn local_coproduct_variant_names(items: List<Node>, source_indices: Map<String, 
 // says that covers every reference form. The check is mechanical and is the arm's next rung: no
 // parent_enum may appear in a routed row without appearing as a row of its own. Until that is
 // measured, a routed row is a claim about WHERE the obligation went, never that it was discharged.
-type ReferenceDerivedCandidateDisposition
-  = CandidateSurvived { provider_module: String }
-  | CandidateOwnModule
-  | CandidateVariantDelegatedToParent { parent_enum: String }
-  | CandidateVariantParentUnresolved
-  | CandidateRegistryAbsent
-  | CandidateLeafAmbiguous
-  | CandidateExportProofFailed { provider_module: String }
-
-// One decided candidate, at the grain the census reports: (module, name, disposition). The module is
-// the REFERENCING module, never the provider -- the provider rides on the disposition where it is
-// known, and for CandidateRegistryAbsent there is no provider to name, which is exactly the fact
-// that arm carries.
-type ReferenceDerivedCandidateRow {
-  module_name: String
-  name: String
-  disposition: ReferenceDerivedCandidateDisposition
-}
-
 // THE ONE DECISION, WITH TWO CONSUMERS (DESIGN section 2, one concept derived twice rather than
 // modelled twice). reference_derived_use_lines takes the survivors and emits exactly the use-lines it
 // emitted before; the census takes the same rows and counts them. Byte-identity of the emitted crate
@@ -8920,6 +8909,131 @@ fn v1_call_site_clone_forwarded_param_names(
 // keeps the boundary: a callee that earns its own equality bound only by forwarding two hops up is
 // not bounded here in one pass, and a specimen needing the same transitivity for equality is the
 // next-rung trigger rather than a silent gap.
+// A CALLER THAT INSTANTIATES A `'static`-EARNING CALLEE AT ITS OWN GENERICS INHERITS THE BOUND,
+// TRANSITIVELY.
+//
+// THE DEFECT THIS CLOSES, measured rather than reasoned about. `std.change` declares
+// `keyed_patch_monoid<K, V>` and `keyed_patch_fold<K, V>` with IDENTICAL type parameters, and the
+// emitter gave the first `K: Clone + 'static` and the second bare `K: Clone`. The asymmetry is not
+// arbitrary: the bound is derived from a function's OWN return type -- a record whose fields are
+// arrows moves its generics into an `Rc<dyn Fn>`, which defaults to `'static` -- and
+// `keyed_patch_fold` returns `KeyedPatch`, which has no arrow fields. But its BODY does
+// `let monoid = keyed_patch_monoid()`, instantiating the `'static`-earning callee at the caller's
+// own `K, V`, so rustc demands the bound at a function whose signature never mentions an arrow.
+//
+// WHY IT IS TRANSITIVE, AND THE EVIDENCE IS THIS DERIVATION'S OWN FIRST ATTEMPT. A one-hop version
+// shipped first and fixed two of the eight E0310s, because IT CREATED THE SECOND HOP: giving
+// `keyed_two_way_diff` the bound made `keyed_apply_two_way_diff` -- which calls it and returns a
+// plain `KeyedPatch` -- newly require one. A one-hop rule cannot converge here by construction,
+// since every hop it fixes manufactures the next, and `'static` on a generic is inherited by every
+// caller that instantiates at its own generics however far up the chain it sits. So the callee's
+// bound is its OWN union its OWN FORWARDED bound, recursively, which is the shape the Clone half
+// beside this one already took when its two-hop specimen arrived.
+//
+// THE CYCLE GUARD IS THE SAME ONE, NOT A SECOND MECHANISM: a `visited` list of callee names, with
+// the walk returning empty on re-entry. Ordinary recursion in the corpus would otherwise not
+// terminate, and this is a real shape here rather than a defensive one -- `std.change`'s own folds
+// are recursive.
+//
+// WHY IT FORWARDS ALL THE CALLER'S GENERICS RATHER THAN THE FLOWING ONES, which is the one place it
+// is coarser than its Clone and equality siblings. Those join (callee param, argument) pairs to
+// learn which of the wrapper's generics reach the bound. That join is unavailable here: the callee
+// in the originating specimen takes NO ARGUMENTS -- `keyed_patch_monoid()` is instantiated purely by
+// inference from its return type -- so there is no argument position to read the flow from. The
+// granularity is therefore the SAME ONE THE RULE ALREADY USES for its own case
+// (`static_param_names = if returns_fn_field_record { generic_param_names }`, all generics, not the
+// flowing subset). It over-approximates only toward `'static` on an owned type parameter, which
+// excludes no instantiation this corpus can express: every emitted carrier is owned (`Rc`, `Vec`,
+// enums) and no emitted signature is generic over a borrow. NEXT-RUNG TRIGGER: a specimen whose
+// `'static`-earning callee takes the generic as an argument, at which point the join the siblings
+// use becomes available and this derivation narrows to it.
+fn v1_call_forwarding_static_bound_param_names(
+  generic_param_names: List<String>,
+  body: Node,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  if (generic_param_names |> count) == 0 {
+    return []
+  }
+  let here = match body.expr_data {
+    ExprCall => v1_call_site_static_forwarded_param_names(
+      call: body,
+      generic_param_names: generic_param_names,
+      fn_decl_items: fn_decl_items,
+      emit_info: emit_info,
+      source_indices: source_indices,
+      visited: visited
+    )
+    _ => []
+  }
+  body.children |> fold(init: here, f: (acc, child) =>
+    v1_union_bound_param_names(
+      base: acc,
+      extra: v1_call_forwarding_static_bound_param_names(
+        generic_param_names: generic_param_names,
+        body: child,
+        fn_decl_items: fn_decl_items,
+        emit_info: emit_info,
+        source_indices: source_indices,
+        visited: visited
+      )
+    )
+  )
+}
+
+// One call site: does the callee carry a `'static` bound by ANY route -- earned from its own
+// arrow-field return, or inherited from what IT calls. A NON-GENERIC callee cannot forward one; it
+// has no type parameters for the caller's to stand in, and asking first is not an optimisation:
+// without it, every call to a monomorphic arrow-returning function would bind the caller's
+// unrelated generics.
+fn v1_call_site_static_forwarded_param_names(
+  call: Node,
+  generic_param_names: List<String>,
+  fn_decl_items: Map<String, Node>,
+  emit_info: EmitGraphInfo,
+  source_indices: Map<String, NewlineIndex>,
+  visited: List<String>
+) -> List<String> {
+  let si = source_indices
+  let callee_name = expr_call_func_at(texpr: call, source_indices: si)
+  if visited |> any(v => v == callee_name) {
+    return []
+  }
+  match map_get(fn_decl_items, callee_name) {
+    Absent => []
+    Present { value: callee_item } =>
+      match callee_item.body {
+        Absent => []
+        Present { value: callee_body } =>
+          let callee_type_params = function_type_params(params: callee_item.params)
+          if (callee_type_params |> count) == 0 {
+            []
+          } else {
+            let callee_generic_param_names = callee_type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+            let callee_own_static = if type_has_fn_fields(
+              name: rust_fn_sig_leaf_name(source_indices: si, n: resolved_type(n: callee_item)),
+              emit_info: emit_info
+            ) { callee_generic_param_names } else { [] }
+            let callee_static = v1_union_bound_param_names(
+              base: callee_own_static,
+              extra: v1_call_forwarding_static_bound_param_names(
+                generic_param_names: callee_generic_param_names,
+                body: callee_body,
+                fn_decl_items: fn_decl_items,
+                emit_info: emit_info,
+                source_indices: si,
+                visited: concat(visited, [callee_name])
+              )
+            )
+            if (callee_static |> count) > 0 { generic_param_names } else { [] }
+          }
+      }
+  }
+}
+
 fn v1_call_forwarding_equality_bound_param_names(
   generic_param_names: List<String>,
   body: Node,
@@ -9132,7 +9246,19 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   )
   let returns_fn_field_record = type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: si, n: inferred), emit_info: emit_info)
   let returns_arrow_or_fn_field_record = (inferred.params |> count) > 0 || returns_fn_field_record
-  let static_param_names = if returns_fn_field_record { generic_param_names } else { [] }
+  let call_forwarded_static_param_names = v1_call_forwarding_static_bound_param_names(
+    generic_param_names: generic_param_names,
+    body: body,
+    fn_decl_items: emit_info.fn_decl_items,
+    emit_info: emit_info,
+    source_indices: si,
+    visited: []
+  )
+  let static_param_names = if returns_fn_field_record {
+    generic_param_names
+  } else {
+    call_forwarded_static_param_names
+  }
   let bounds_by_param = v1_fn_bounds_by_param(
     clone_param_names: clone_param_names,
     eq_param_names: eq_param_names,
@@ -9145,7 +9271,7 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
-  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: returns_arrow_or_fn_field_record)
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, fn_param_needs_static: returns_arrow_or_fn_field_record || (call_forwarded_static_param_names |> count) > 0)
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
@@ -9413,15 +9539,15 @@ fn emit_tco_params(params: List<Node>, generic_param_names: List<String>, shared
 fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
-    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: false)
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: false)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
-  concat("mut ", emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust), rust_items().param_type_sep, ty)
+  concat("mut ", emit_ident(name: tco_loop_slot_name(param_name: param_node_name_at(n: param, source_indices: source_indices)), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: false))
+  let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: false))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()))
   )
@@ -9436,8 +9562,8 @@ fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices:
   concat(" -> Result<", render_rust_type(n: inferred, shared_types: shared_types, source_indices: source_indices, emit_info: empty_emit_graph_info()), ", Box<dyn std::error::Error>>")
 }
 
-fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
-  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: enclosing_returns_arrow))
+fn emit_params(params: List<Node>, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
+  let strs = params |> map(p => emit_param(param: p, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: fn_param_needs_static))
   strs |> join(separator: ", ")
 }
 
@@ -9487,7 +9613,25 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
 // a medium-agnostic language — `'static` appears in no .dag source module — and would leave the
 // next arrow-into-Rc site to be rediscovered the same way (DESIGN §3 layer inversion, §5
 // construction over validation).
-fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
+// WHETHER AN `impl Fn` PARAMETER CARRIES `+ 'static`, AND WHY THE QUESTION HAS TWO CAUSES.
+//
+// The first is the one this parameter was born for: a function RETURNING an arrow, or a record whose
+// fields are arrows, moves its parameters into an `Rc<dyn Fn>` that defaults to `'static`.
+//
+// The second was missing and is measured. A function that neither returns an arrow nor builds one
+// can still FORWARD an `impl Fn` parameter into a callee that requires `'static` --
+// `keyed_three_way_fold` hands `value_eq` to `keyed_three_way_patch_monoid` and returns a plain
+// `KeyedThreeWayPatch` -- so rustc demands the bound at a signature that mentions no arrow. That is
+// the same transitive fact the TYPE-parameter half of this derivation already computes
+// (`v1_call_forwarding_static_bound_param_names`), arriving at the other of the two surfaces a
+// `'static` bound can land on, and the two were fixed one release apart because the type-param
+// surface is the one the first specimen exhibited.
+//
+// THE PARAMETER IS NAMED FOR THE QUESTION RATHER THAN FOR EITHER CAUSE. It was
+// `enclosing_returns_arrow`, which described cause one and was correct while cause one was the only
+// one; carrying that spelling with two causes behind it would make the name a nickname for a
+// property it only partly describes (DESIGN section 3).
+fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
   if n.params |> count > 0 {
     let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
     let param_str = param_types |> join(separator: ", ")
@@ -9495,18 +9639,18 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
       Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       _ => "()"
     }
-    let static_bound = if enclosing_returns_arrow { " + 'static" } else { "" }
+    let static_bound = if fn_param_needs_static { " + 'static" } else { "" }
     concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone", static_bound)
   } else {
     render_rust_fn_sig_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
 }
 
-fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, enclosing_returns_arrow: Bool) -> String {
+fn emit_param(param: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv, fn_param_needs_static: Bool) -> String {
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   let authored = param_node_type_expr(n: param)
   let ty = if authored.params |> count > 0 {
-    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, enclosing_returns_arrow: enclosing_returns_arrow)
+    emit_rust_param_type(n: authored, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, fn_param_needs_static: fn_param_needs_static)
   } else {
     render_rust_param_sig_type(param: param, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
@@ -10997,6 +11141,124 @@ fn call_target_is_runtime_primitive(target: CallTargetIdentity) -> Bool {
 // TARGET HAS NO ROW IN THIS TARGET'S RUNTIME REGISTRY. Absent means builtin resolution produced
 // the target and no declaration ever answered, so there is nothing to fall back to and the one
 // remaining arm is a refusal.
+// AN UNREALIZED HOST SEAM: a runtime target that no declaration ever backed.
+//
+// WHY IT IS A DECLARATION RATHER THAN A LOCAL. The emitter asks this question in call position to
+// decide whether the refusal it renders is the CALLEE or the WHOLE expression, and the reasoning
+// behind that choice is irreducible rationale about a construction -- exactly what DESIGN section 4c
+// admits at module-item grain and refuses inside a body. Written as a `let` with a comment above it,
+// the compiler refused the emitter's own source, which is the rule working.
+//
+// WHAT IT IS FOR. A primitive whose body is a bare self-call declares that its body lives in the
+// host. Emitting that shape verbatim produces a function that compiles, runs and returns to no
+// caller -- DESIGN section 5 silent wrongness, and strictly worse than a missing symbol because
+// nothing reports it. So the emitter renders a diverging `panic!` instead, and that refusal is
+// correct and stays.
+//
+// WHAT WAS WRONG IS WHERE IT LANDED. The refusal was built as the CALLEE and then handed the call's
+// arguments, rendering `panic!("...")(arg)` -- a `!` value applied to an argument list. rustc refuses
+// that with E0618 `expected function, found !`, and separately refuses each argument as an
+// `unreachable expression`, so ONE unrealized seam produced two errors per call site and every
+// diagnostic named the shape of the emission rather than the missing realization. Measured on the
+// v2-native CLI closure: two seams (`decl_facts`, `decl_facts_at`) at four call sites, eight of that
+// closure's nineteen errors, none of which mentioned a seam.
+//
+// `panic!` diverges, so it inhabits every type the call could have returned and needs no arguments
+// to do it. Dropping them is not a widening: the arguments are unreachable past the panic by
+// construction, and work no consumer can observe.
+//
+// IT COMPOSES THE ACCESSORS BESIDE IT rather than re-matching the target coproduct a third time
+// (DESIGN section 2): `call_target_runtime_primitive_name` answers Present only for a runtime
+// target, and `call_target_projected_declaration` answers Absent exactly when no declaration backed
+// it.
+//
+// A BODY-GRAIN CONSUMER OF THIS PREDICATE WAS BUILT, MEASURED AND WITHDRAWN, and the reason is a
+// fact about the emitter worth keeping. The call-site repair below leaves one residue: a seam whose
+// RESULT is consumed still renders `panic!("...").len()`, and `!` coerces in value position while
+// method resolution against it does not (E0599). The obvious completion is to refuse the whole
+// FUNCTION whenever its body reaches a seam, which type-checks cleanly because `!` coerces in return
+// position.
+//
+// IT CANNOT BE DECIDED FROM A BODY WALK. `rt_functions()` is not the set of realizable primitives:
+// many builtins -- collection folds, pipelines, the operators -- are rendered by dedicated arms in
+// this emitter and carry no bridge row, so a walk that asks only "runtime primitive, no bridge, no
+// projected declaration" calls them unrealized. The CALL SITE is safe precisely because it sits at
+// the RESIDUE position, after every other arm has declined; a walk has no way to know which arm will
+// take a call. Measured twice on the seed's own rebuild: the emitted compiler refused
+// `v1.compiler.tokenize source_code_point`, then `v1.compiler.infer typecheck_module`, and panicked
+// on its own first tokenize and first typecheck respectively -- both ordinary functions the emitter
+// realizes correctly.
+//
+// SO THE RESIDUE STANDS, DECLARED, AND IT IS FIVE ERRORS RATHER THAN THE ONE E0599 THAT NAMES IT.
+// Measured on the v2-native CLI closure: the seam's result feeds onward, so the same two modules also
+// produce two `unreachable call`, one `unreachable statement` and one E0282 -- every one an error
+// under the `-D warnings` the emitted-crate build runs with. Counting this residue as one error was
+// an estimate that survived into a commit message before it was measured; it is five.
+// TRIGGER: the emitter can answer "will any arm render this call" as one predicate -- the same
+// question the call site answers positionally today -- at which point a body walk can consume it and
+// the whole-function refusal becomes decidable.
+//
+// THE PREDICATE IS ONLY TRUE AT THE RESIDUE POSITION, AND THAT IS A FACT ABOUT WHERE IT MAY BE
+// ASKED RATHER THAN ABOUT WHAT IT COMPUTES. It answers "runtime primitive, no bridge, no projected
+// declaration" -- which is the right question ONLY once every earlier arm has declined, because the
+// emitter renders a family of primitives through DEDICATED ARMS that carry no bridge row: `with`
+// (record update), `concat` past two arguments, the collection folds, the pipelines. Asked before
+// those arms, it calls every one of them unrealized.
+//
+// MEASURED TWICE, both times by the seed failing on itself rather than by reading the dispatch. A
+// body-grain consumer refused `v1.compiler.tokenize source_code_point` and `v1.compiler.infer
+// typecheck_module`, and the rebuilt seed panicked on its own first tokenize. Then a call-expression
+// consumer placed one level too early intercepted `with` in `v1.compiler.infer` -- the emitted
+// `let typed_module = with(typed_base, ..)` took the seam refusal's type instead of the record
+// update's, and the SECOND GENERATION failed to compile with `expected Rc<Node>, found
+// Rc<HashMap<_, _>>`. Stage one built clean both times; only the fixed-point check caught it.
+//
+// So the only admissible consumer is the arm in `emit_typed_call` that already sits after `is_rt`
+// and after the `call_target` match. A caller that wants this answer earlier does not want this
+// question.
+//
+// THE BRIDGE TEST IS PART OF THE PREDICATE, NOT A GUARD ITS CALLERS ADD, and that placement was
+// bought the hard way. A runtime primitive WITH a `v1_rt` row is realized -- the bridge IS its
+// realization -- so "runtime primitive with no projected declaration" is not the question; it
+// over-approximates to every bridged builtin in the corpus. The call-site consumer happened to be
+// guarded by its own `is_rt` check and so read correctly, while the body-grain consumer had no such
+// guard and inherited the over-approximation: the emitted seed refused
+// `v1.compiler.tokenize source_code_point` -- an ordinary bridged function -- and the rebuilt binary
+// panicked on its own first tokenize. A predicate that is only correct when every caller remembers
+// to pre-filter it is a wall with a hole per consumer, so the filter moved inside.
+// The seam's own name, for the refusal text. Empty when the target is not a runtime primitive at
+// all, which the predicate beside this one has already excluded at every call site that asks.
+fn call_target_unrealized_primitive_name(target: CallTargetIdentity) -> String {
+  match call_target_runtime_primitive_name(target: target) {
+    Present { value: primitive_name } => primitive_name
+    Absent => ""
+  }
+}
+
+// THE REFUSAL STAYS AT THE CALL ARM RATHER THAN CLIMBING TO A PRE-EMISSION COLLECTOR. Refusing
+// the MODULE (the EmissionConstructUnprojectable route) would be the higher rung if the question
+// were decidable at body grain, and it is not: a body walk sees a call, not a realization, so it
+// cannot tell an unrealized primitive from one the emitter renders through a dedicated arm. The
+// collector that was built called `v1.compiler.tokenize source_code_point` unrealized and panicked
+// the rebuilt seed on its own first tokenize. The climb this class is waiting on is a realizability
+// roster -- `extdeps.languages.rust.emit` `rt_functions` is NOT that roster, since the collection
+// folds, the pipelines and the operators are realized with no bridge row -- and not a second
+// consumer of this predicate placed earlier.
+fn call_target_is_unrealized_primitive(target: CallTargetIdentity) -> Bool {
+  match call_target_runtime_primitive_name(target: target) {
+    Absent => false
+    Present { value: primitive_name } =>
+      if rust_runtime_primitive_has_bridge(primitive_name: primitive_name) {
+        false
+      } else {
+        match call_target_projected_declaration(target: target) {
+          Present { value: _ } => false
+          Absent => true
+        }
+      }
+  }
+}
+
 fn call_target_projected_declaration(target: CallTargetIdentity) -> DeclaredCallableIdentity? {
   match target {
     RuntimePrimitiveCall { primitive_name: _, projected_from: projected_from } => projected_from
@@ -11398,7 +11660,7 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
       _ => "v1_rt::rc_empty_set::<_>()"
     }
   } else {
-    emit_typed_call(func: func, args: args, call_semantics: call_semantics, callee_is_function_value: callee_is_function_value, call_target: call_target, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    emit_typed_call(func: func, args: args, inferred: inferred, call_semantics: call_semantics, callee_is_function_value: callee_is_function_value, call_target: call_target, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 
   let wraps_in_rc = match call_target_runtime_primitive_name(target: call_target) {
@@ -11575,7 +11837,19 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
 // because a BARE leaf can name two modules, which is precisely the state a resolved owner rules
 // out. An undetermined target has no identifier to emit and gets a located refusal rather than
 // a fall back to the authored spelling, which is the re-lookup this carrier exists to remove.
-fn emit_typed_call(func: String, args: List<Node>, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+//
+// ONE SHAPE, NOT TWO: THE SEAM RENDERS THE SAME CALL WHETHER OR NOT THE SITE'S TYPE IS RESOLVED.
+// The typed arm takes its turbofish from the call's own `inferred`; an unresolved site renders
+// `::<_>` and asks rustc for the same answer from the consuming context. That is deliberately NOT a
+// second arm falling back to the authored spelling: `unrealized_host_seam` diverges either way, so
+// the refusal is the same refusal, and where the context cannot determine T the target answers
+// E0282 -- loud, at the site, naming the type it could not infer. The alternative the earlier shape
+// carried was `func_ident`, which at this arm is `emit_error_expr` (`panic!`) by construction --
+// already a refusal rather than a silent widen, but one that cannot stand in receiver position
+// (E0599, and every argument after it `unreachable`), which is the whole defect the typed seam was
+// built to remove. Keeping it for the unresolved case would have kept that defect for exactly the
+// population the emitter knows least about.
+fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
@@ -11707,6 +11981,9 @@ fn emit_typed_call(func: String, args: List<Node>, call_semantics: CallSemantics
   let callee_self_capture = if is_rt { false } else {
     filled_args |> any(a => expr_references_var(node: arg_value(n: a), var_name: func, source_indices: si))
   }
+  let unrealized_primitive_call = if is_rt { false } else {
+    call_target_is_unrealized_primitive(target: call_target)
+  }
   let func_ident = if is_rt { concat("v1_rt::", emit_ident(name: runtime_name, target: Rust)) }
     else { match call_target {
       SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
@@ -11725,10 +12002,28 @@ fn emit_typed_call(func: String, args: List<Node>, call_semantics: CallSemantics
         }
     } }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
-  let call_str = if is_rt && func == "concat" && all_args |> count > 2 {
-    emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
+  let call_str = if unrealized_primitive_call {
+    let seam_type = match inferred {
+      Present { value: Resolved { node: ret_type } } =>
+        render_rust_type(n: ret_type, shared_types: shared_types, source_indices: si, emit_info: emit_info)
+      _ => "_"
+    }
+    concat(
+      "v1_rt::unrealized_host_seam::<",
+      seam_type,
+      ">(\"",
+      escape_string_literal_body(s: concat(
+        concat("primitive ", call_target_unrealized_primitive_name(target: call_target)),
+        " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers"
+      )),
+      "\")"
+    )
   } else {
-    concat(func_name, "(", args_str, ")")
+    if is_rt && func == "concat" && all_args |> count > 2 {
+      emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
+    } else {
+      concat(func_name, "(", args_str, ")")
+    }
   }
   match callee {
     Present { value: info } =>
@@ -13465,6 +13760,33 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   )
 }
 
+// THE EFFECTFUL PATH HAS NO RECURSION REALIZATION, SO IT REFUSES ONE RATHER THAN RENDERING IT.
+// emit_func_def renders every effectful declaration as `async fn` and never consults
+// is_tco_eligible or is_self_recursive -- the loop transform and the stacker guard belong to the
+// pure path only -- so a self-call inside an effectful body would be emitted verbatim, and rustc
+// refuses recursion in an async fn without boxing (E0733). Emitting it would be a green compile
+// whose output cannot build (DESIGN section 5, fabricated plausible output). The fact is read from
+// the SAME registry row the pure path's TCO decision reads, through the same reader, so this is
+// the first consumer of is_self_recursive on an effectful declaration: until the FuncItem collapse
+// the registry hardcoded that field false for every effectful item, and this refusal could not
+// have fired. Rust-specific by construction: Python's `async def` and Go recurse without boxing.
+fn effectful_self_recursion_diagnostics(tm: TypedModule, registry: Map<String, ItemInfo>) -> List<ErrorNode> {
+  let si = tm.type_env.source_indices
+  let module_name = authored_name_at(source_indices: si, node: tm.module)
+  tm.items |> flat_map(item =>
+    match item.body {
+      Present { value: body } =>
+        if item.uses |> count > 0 {
+          let name = authored_name_at(source_indices: si, node: item)
+          if is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: name }, body: body, registry: registry, source_indices: si) {
+            [make_error_node(diagnostic: EffectfulSelfRecursionUnrealized { name: name, span: item.span }, module_name: module_name)]
+          } else { [] }
+        } else { [] }
+      Absent => []
+    }
+  )
+}
+
 // gunbc dashboard node://adhoc-e47d0143-6a2. An anonymous record literal has no authored
 // nominal identity, so the Rust emitter may name a struct only when the literal's field shape
 // (and, when necessary, its inferred field-type hints) identifies exactly one TypeSummary. The
@@ -13484,6 +13806,7 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
 //
 // RUNG: mechanically preventable at the v1 emitter boundary, not structurally impossible in the
 // source language; the target compiler is never counted as part of this guarantee.
+
 
 fn anonymous_record_struct_candidates(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<TypeSummary> {
   let candidates = struct_candidates_by_field_names(field_names: field_names, type_summaries: type_summaries)
@@ -14139,14 +14462,20 @@ fn emit_tco_init_stmt(stmt: Node, params: List<Node>, registry: Map<String, Item
 
 fn emit_typed_tco_body(texpr: Node, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let inner = emit_typed_tco_expr(texpr: texpr, fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth + 1, shared_types: shared_types, emit_info: emit_info)
-  concat("loop {\n", make_indent(level: depth + 1),inner, "\n}")
+  concat(
+    "loop {\n",
+    tco_loop_iteration_lets(params: params, source_indices: scope.type_env.source_indices, depth: depth + 1),
+    make_indent(level: depth + 1),
+    inner,
+    "\n}"
+  )
 }
 
 fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match frame.expr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
-      let call_str = emit_typed_call(func: f, args: frame.expr.children, call_semantics: cs, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
+      let call_str = emit_typed_call(func: f, args: frame.expr.children, inferred: frame.expr.inferred, call_semantics: cs, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       concat("break ", call_str, ";")
     _ => emit_error_expr(message: "emit_rust_tco_non_self_call expected ExprCall", target: Rust)
   }
@@ -14355,32 +14684,20 @@ fn expr_references_var(node: Node, var_name: String, source_indices: Map<String,
 fn emit_typed_tco_reassign(args: List<Node>, params: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let si = scope.type_env.source_indices
   let arg_values = args |> map(a => arg_value(n: a))
-  let identity_params = params |> enumerate |> fold(init: empty_map(), f: (m, pair) =>
-    let pname = param_node_name_at(n: pair.second, source_indices: si)
-    let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
-    if is_tco_identity_passthrough(arg_val: av, param_name: pname, si: si) {
-      map_insert(m, pname, true)
-    } else { m }
-  )
-  let filtered_arg_values = params |> enumerate
-    |> filter(pair => match map_get(identity_params, param_node_name_at(n: pair.second, source_indices: si)) { Present { value: _ } => false  Absent => true })
-    |> map(pair => match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second })
-  let filtered_params = params
-    |> filter(p => match map_get(identity_params, param_node_name_at(n: p, source_indices: si)) { Present { value: _ } => false  Absent => true })
-  let tco_movable = filtered_params |> fold(acc: emit_info.movable, f: (m, p) =>
+  let pairs = params |> enumerate
+  let tco_movable = params |> fold(acc: emit_info.movable, f: (m, p) =>
     let pname = param_node_name_at(n: p, source_indices: si)
-    let ref_count = filtered_arg_values |> fold(acc: 0, f: (n, av) =>
+    let ref_count = arg_values |> fold(acc: 0, f: (n, av) =>
       if expr_references_var(node: av, var_name: pname, source_indices: si) { n + 1 } else { n })
     if ref_count <= 1 { set_insert(m, pname) } else { m })
   let tco_emit_info = with(emit_info, { movable: tco_movable })
-  let ordered_args = filtered_arg_values |> map(av => emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024))
-  let param_names = filtered_params |> map(p => emit_ident(name: param_node_name_at(n: p, source_indices: si), target: Rust))
-  let all_lines = tco_reassign_core(
-    ordered_args: ordered_args, param_names: param_names,
-    temp_var_prefix: "__tco_", temp_decl_prefix: "let ",
-    temp_assign_op: " = ", stmt_terminator: ";",
-    continue_str: "continue;", line_prefix: "")
-  concat("{\n", make_indent(level: depth + 1),(all_lines |> join(separator: "\n")), "\n}")
+  let ordered_args = pairs |> map(pair =>
+    let av = match arg_values |> skip(pair.first) |> first { Present { value: v } => v  Absent => pair.second }
+    emit_typed_expr(texpr: av, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: tco_emit_info, fuel: 1024)
+  )
+  let param_names = pairs |> map(pair => emit_ident(name: tco_loop_slot_name(param_name: param_node_name_at(n: pair.second, source_indices: si)), target: Rust))
+  let inner = shared_tco_reassign(ordered_args: ordered_args, param_names: param_names, spec: language_spec(target: Rust))
+  concat("{\n", make_indent(level: depth + 1), inner, "\n}")
 }
 
 fn emit_service_def(
@@ -14505,7 +14822,7 @@ fn emit_modifier_doc_from_props(properties: List<Node>, source_indices: Map<Stri
 fn emit_operation_method(service_name: String, transport: Node, op_node: Node, registry: Map<String, ItemInfo>, depth: Int, shared_types: Set<String>, env: TypeEnv, service_item: Node, emit_info: EmitGraphInfo) -> String {
   let op_text = authored_name(env: env, node: op_node)
   let input_params = op_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, enclosing_returns_arrow: false))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, fn_param_needs_static: false))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -15594,7 +15911,7 @@ fn emit_resource_def(item: Node, shared_types: Set<String>, env: TypeEnv) -> Str
 
 fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEnv) -> String {
   let input_params = cap_node.params |> map(p =>
-    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, enclosing_returns_arrow: false))
+    concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Rust), rust_items().param_type_sep, emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: empty_map(), env: env, fn_param_needs_static: false))
   )
   let params_str = input_params |> join(separator: ", ")
   let all_params = if params_str == "" {
@@ -15844,7 +16161,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Tex
 
 fn rust_test_signature_comment(projection: TestProjection) -> String {
   let params_str = projection.params
-    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map(), env: projection.type_env, enclosing_returns_arrow: false)))
+    |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), source_indices: projection.source_indices, variant_to_enum: empty_map(), env: projection.type_env, fn_param_needs_static: false)))
     |> join(separator: ", ")
   concat(
     "// Signature: ",
@@ -15909,9 +16226,9 @@ fn emit_cargo_dep_no_default_features(name: String, version: String, features: L
 //
 // A fixed dependency list is a SECOND AUTHORITY for the crate's dependencies, free to disagree
 // with the sources the same run just wrote. It did disagree: `clap` was declared unconditionally
-// while the only two things that render `use clap` -- the derived CLI over workflow functions and
-// the generated pipeline dispatch -- are both selected by the emission itself, so every crate
-// emitted from a corpus with neither declared a dependency no emitted line referenced. DESIGN
+// while the one thing that renders `use clap` -- the generated pipeline dispatch -- is selected by
+// the emission itself, so every crate emitted without it declared a dependency no emitted line
+// referenced. (A derived CLI over "workflow" functions was the second clap renderer; it is deleted.) DESIGN
 // section 5 prefers construction over validation, and the construction here is to make the demand
 // a FIELD THE EMISSION FILLS rather than a literal a reader must check against the output.
 //
@@ -15951,491 +16268,34 @@ fn emitted_crate_dependency_lines(demand: EmittedCrateDependencyDemand) -> List<
   concat(base_deps, concat(cli_deps, async_deps))
 }
 
+// The emitted crate always carries v1_rt.rs, so its manifest declares the runtime's features.
 fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand) -> TextFile {
   let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
   let workspace = "\n[workspace]\n"
   let all_deps = emitted_crate_dependency_lines(demand: demand)
-  TextFile { path: "Cargo.toml", content: concat(header, workspace, "\n[dependencies]\n", all_deps |> join(separator: "")) }
+  let features = emit_cargo_features_section(features: rust_runtime_cargo_features())
+  TextFile { path: "Cargo.toml", content: concat(header, workspace, features, "\n[dependencies]\n", all_deps |> join(separator: "")) }
 }
 
-type WorkflowFunc {
-  name: String
-  module_name: String
-  params: List<Node>
-  inferred: Node
-  uses: List<Node>
-  service_names: List<String>
-  resolved_defaults: Map<String, String>
-  unresolvable_default_data_references: Map<String, UnresolvableDataReference>
-  read_only_params: Set<String>
-  source_indices: Map<String, NewlineIndex>
-}
-
-fn extract_literal_string(expr: Node) -> String? {
-  match expr.expr_data {
-    ExprLiteral { value: v } => match v {
-      LitStr { value: s } => Present { value: s }
-      LitInt { value: i } => Present { value: to_string(value: i) }
-      LitFloat { value: f } => Present { value: f }
-      LitBool { value: b } => Present { value: if b { "true" } else { "false" } }
-      _ => none
-    }
-    _ => none
+fn emit_cargo_feature(feature: CargoFeature) -> String {
+  if (feature.dependencies |> count) == 0 {
+    concat(feature.name, " = []\n")
+  } else {
+    let dep_names = feature.dependencies |> map(d => concat("\"", d, "\"")) |> join(separator: ", ")
+    concat(feature.name, " = [", dep_names, "]\n")
   }
 }
 
-// EXACT DECLARATION IDENTITY FOR A DATA REFERENCE. This index previously admitted EVERY item
-// carrying a body -- functions included -- keyed by BARE authored name across the whole corpus, so
-// one module's `fn owner` and another's `data owner` collided on the key `owner` and the last fold
-// won. Restricting it to data bodies fixed the kind half of that collision and left the key itself
-// standing, so two DATA declarations sharing a spelling still resolved by last-wins: measured live,
-// `gunbc.tools.review` and `gunbc.tools.review_codex` each declare `data default_model` and each
-// reference it as a workflow CLI default, so one map answer had to serve two consumers wanting
-// different values and exactly one review tool would have emitted the other's model.
-//
-// THE KEY NOW CARRIES THE DECLARING MODULE, so a colliding key cannot be constructed: two modules'
-// same-named data items occupy different buckets. Resolution follows the author's imports and
-// NOTHING ELSE -- own module first (a local `data` shadows an import, which is what makes both
-// review tools' references unambiguous despite the shared spelling), then the visibility walk in
-// `data_decl_visible_modules`. There is no corpus-wide fallback: a declaration the referrer's
-// imports cannot reach can no longer answer for it, whatever its spelling.
-//
-// A NAME ANSWERED BY MORE THAN ONE VISIBLE DECLARATION RESOLVES TO NEITHER, and refuses with its
-// own located diagnostic naming the spelling and every module that answers to it -- not with the
-// generic `must be a string, int, float, bool literal, or data reference` sentence, which is what
-// `no visible declaration` means and is a different repair.
-//
-// NEXT RUNG (DESIGN 4b(2)): this recomputes visibility from the module's own import list, which is
-// a second, narrow resolver beside `03_resolve`. It retires when the ExprVar node carries its
-// resolved declaration site, at which point the walk and its depth bound both delete and emission
-// reads the binding resolution already computed.
-type DataImportEdge {
-  module_path: String
-  is_all: Bool
-  specific_names: List<String>
-}
-
-type DataDeclIndex {
-  by_module: Map<String, Map<String, Node>>
-  imports_by_module: Map<String, List<DataImportEdge>>
-  source_indices_by_module: Map<String, Map<String, NewlineIndex>>
-}
-
-// FOUR ANSWERS, NOT ONE. `no data declaration is visible under this name`, `two visible
-// declarations answer to this name`, and `the visibility walk ran out of budget before it could
-// tell` are different states with different owners and opposite repairs -- a typo or a missing
-// import, a genuine ambiguity the author must disambiguate, and a compiler limit that is nobody's
-// authoring mistake. Collapsing them hands the second and third the first one's message, which is
-// the same conflation the bare key produced one level up. The budget arm has zero live exposure --
-// no corpus import chain is anywhere near the bound -- but a walk that stopped early reporting
-// `not there` would be an absorbing answer, and reporting it as its own state costs one variant.
-type DataRefResolution
-  = DataRefResolved { module_path: String, body: Node }
-  | DataRefAmbiguous { modules: List<String> }
-  | DataRefVisibilityBudgetExhausted
-  | DataRefAbsent
-
-fn empty_data_decl_index() -> DataDeclIndex {
-  DataDeclIndex {
-    by_module: empty_map(),
-    imports_by_module: empty_map(),
-    source_indices_by_module: empty_map()
-  }
-}
-
-fn data_import_edges(module: Node, source_indices: Map<String, NewlineIndex>) -> List<DataImportEdge> {
-  module_imports(n: module) |> map(imp => DataImportEdge {
-    module_path: authored_name_at(source_indices: source_indices, node: imp),
-    is_all: import_is_all(n: imp),
-    specific_names: import_specific_names_at(n: imp, source_indices: source_indices)
-  })
-}
-
-fn record_data_decl(index: DataDeclIndex, module_path: String, name: String, body: Node) -> DataDeclIndex {
-  let bucket = match map_get(index.by_module, module_path) {
-    Present { value: m } => m
-    Absent => empty_map()
-  }
-  DataDeclIndex {
-    by_module: map_insert(index.by_module, module_path, map_insert(bucket, name, body)),
-    imports_by_module: index.imports_by_module,
-    source_indices_by_module: index.source_indices_by_module
-  }
-}
-
-fn build_data_decl_index(modules: List<TypedModule>) -> DataDeclIndex {
-  modules |> fold(init: empty_data_decl_index(), f: (acc, tm) =>
-    let si = tm.type_env.source_indices
-    let module_path = authored_name_at(source_indices: si, node: tm.module)
-    let seeded = DataDeclIndex {
-      by_module: acc.by_module,
-      imports_by_module: map_insert(acc.imports_by_module, module_path, data_import_edges(module: tm.module, source_indices: si)),
-      source_indices_by_module: map_insert(acc.source_indices_by_module, module_path, si)
-    }
-    tm.items |> fold(init: seeded, f: (inner, i) =>
-      if item_kind(item: i) != DataItem { inner }
-      else {
-        match i.body {
-          Present { value: b } => record_data_decl(index: inner, module_path: module_path, name: authored_name_at(source_indices: si, node: i), body: b)
-          Absent => inner
-        }
-      }
+fn emit_cargo_features_section(features: List<CargoFeature>) -> String {
+  if (features |> count) == 0 {
+    ""
+  } else {
+    concat(
+      "\n[features]\n",
+      "default = []\n",
+      features |> map(emit_cargo_feature) |> join(separator: "")
     )
-  )
-}
-
-fn data_decl_in_module(index: DataDeclIndex, module_path: String, name: String) -> Node? {
-  match map_get(index.by_module, module_path) {
-    Present { value: m } => map_get(m, name)
-    Absent => none
   }
-}
-
-fn data_decl_module_edges(index: DataDeclIndex, module_path: String) -> List<DataImportEdge> {
-  match map_get(index.imports_by_module, module_path) {
-    Present { value: e } => e
-    Absent => []
-  }
-}
-
-fn data_import_admits_name(edge: DataImportEdge, name: String) -> Bool {
-  edge.is_all || (edge.specific_names |> any(n => n == name))
-}
-
-// An all-import makes a name VISIBLE in the importing module without re-exporting it onward
-// (`03_resolve` `get_exported_names` contributes only specifically-imported names), so the two
-// predicates are genuinely different questions and are separate functions rather than one with a
-// flag.
-fn data_import_reexports_name(edge: DataImportEdge, name: String) -> Bool {
-  if edge.is_all { false } else { data_import_admits_name(edge: edge, name: name) }
-}
-
-data data_reference_visibility_depth_limit: Int = 16
-
-// WHAT THE WALK REACHED, AND WHETHER IT FINISHED. Two facts, because a truncated walk that
-// returned one module is not the same evidence as a complete walk that returned one module -- the
-// truncated one may have had a second declaration behind the bound, so treating them alike would
-// resolve an ambiguity by running out of budget.
-type DataDeclReach {
-  modules: List<String>
-  budget_exhausted: Bool
-}
-
-fn empty_data_decl_reach() -> DataDeclReach {
-  DataDeclReach { modules: [], budget_exhausted: false }
-}
-
-fn merge_data_decl_reach(left: DataDeclReach, right: DataDeclReach) -> DataDeclReach {
-  DataDeclReach {
-    modules: concat(left.modules, right.modules),
-    budget_exhausted: left.budget_exhausted || right.budget_exhausted
-  }
-}
-
-// WHAT A MODULE RE-EXPORTS, and this is read off `03_resolve` `get_exported_names` rather than
-// guessed: a module's exported names are its own items, its coproduct variants, and the names it
-// imported SPECIFICALLY -- an all-import contributes nothing onward. So a declaration can reach a
-// referrer through a chain of specific-name imports, and this walk is that chain, not a corpus
-// scan. The distinction matters because the alternative -- admitting a name because the spelling
-// happens to be unique corpus-wide -- would make a declaration the referrer's imports cannot see
-// answer for it anyway, which is the bare-name fallback in different clothes.
-//
-// The bound is not decoration even though the import graph is acyclic: `03_resolve` reports a
-// cycle as a diagnostic and emission still runs, so an unbounded walk here would recurse forever
-// on a graph the pipeline had already refused. Exceeding it is REPORTED, never absorbed.
-fn data_decl_reexporting_modules(index: DataDeclIndex, module_path: String, name: String, depth: Int) -> DataDeclReach {
-  if depth > data_reference_visibility_depth_limit { DataDeclReach { modules: [], budget_exhausted: true } }
-  else {
-    match data_decl_in_module(index: index, module_path: module_path, name: name) {
-      Present { value: _ } => DataDeclReach { modules: [module_path], budget_exhausted: false }
-      Absent =>
-        data_decl_module_edges(index: index, module_path: module_path)
-          |> filter(e => data_import_reexports_name(edge: e, name: name))
-          |> fold(init: empty_data_decl_reach(), f: (acc, e) =>
-               merge_data_decl_reach(left: acc, right: data_decl_reexporting_modules(index: index, module_path: e.module_path, name: name, depth: depth + 1)))
-    }
-  }
-}
-
-// THE MODULES THIS REFERENCE COULD BIND. Own declaration first -- a local `data` shadows anything
-// imported, which is what makes the two review tools' `default_model` references unambiguous
-// despite the shared spelling. Otherwise every import edge that ADMITS the name (an all-import
-// included, since an all-import is visibility into the module it names even though it re-exports
-// nothing onward), followed into what that module re-exports.
-fn data_decl_visible_modules(index: DataDeclIndex, module_path: String, name: String) -> DataDeclReach {
-  match data_decl_in_module(index: index, module_path: module_path, name: name) {
-    Present { value: _ } => DataDeclReach { modules: [module_path], budget_exhausted: false }
-    Absent =>
-      let reached = data_decl_module_edges(index: index, module_path: module_path)
-        |> filter(e => data_import_admits_name(edge: e, name: name))
-        |> fold(init: empty_data_decl_reach(), f: (acc, e) =>
-             merge_data_decl_reach(left: acc, right: data_decl_reexporting_modules(index: index, module_path: e.module_path, name: name, depth: 1)))
-      DataDeclReach { modules: unique_strings(items: reached.modules), budget_exhausted: reached.budget_exhausted }
-  }
-}
-
-// THE BUDGET ARM IS TESTED FIRST, and the order is the whole of its safety: a truncated walk that
-// happened to reach exactly one module must not resolve, because the declaration that would have
-// made it ambiguous may be the one behind the bound.
-fn resolve_data_reference(index: DataDeclIndex, module_path: String, name: String) -> DataRefResolution {
-  let reach = data_decl_visible_modules(index: index, module_path: module_path, name: name)
-  if reach.budget_exhausted { DataRefVisibilityBudgetExhausted }
-  else if (reach.modules |> count) > 1 { DataRefAmbiguous { modules: reach.modules } }
-  else {
-    match reach.modules |> first {
-      Present { value: mp } =>
-        match data_decl_in_module(index: index, module_path: mp, name: name) {
-          Present { value: b } => DataRefResolved { module_path: mp, body: b }
-          Absent => DataRefAbsent
-        }
-      Absent => DataRefAbsent
-    }
-  }
-}
-
-fn data_decl_source_indices(index: DataDeclIndex, module_path: String, fallback: Map<String, NewlineIndex>) -> Map<String, NewlineIndex> {
-  match map_get(index.source_indices_by_module, module_path) {
-    Present { value: si } => si
-    Absent => fallback
-  }
-}
-
-data workflow_default_fold_depth_limit: Int = 8
-
-// ONE AUTHORITY FOR A DATA REFERENCE. The ExprVar arm used to ask the registry whether a name is
-// a data item and then ask the body index for its body -- two corpus-wide maps keyed by
-// UNQUALIFIED name, either of which a same-named item in an unrelated module could win -- so the
-// kind gate and the body could be answered by DIFFERENT declarations. The index above admits data
-// bodies only, which makes presence in it the evidence the registry gate was being asked for, and
-// the arm consults it alone. It now consults it AT A DECLARATION, not at a spelling: the fold
-// carries the module the expression was authored in, and following a reference re-bases the module
-// and the source indices onto the DECLARING module, so a nested reference inside an imported body
-// resolves in that body's own scope rather than the referrer's.
-// A CONSTANT FOLDED TO ITS DECLARING MODULE, OR THE REASON IT WAS NOT. The module travels with
-// the expression because a folded body is authored somewhere else: a record literal reached
-// through an imported data item carries ITS module's field names and ITS module's nested
-// references, and resolving those in the REFERRER's module would re-open the same
-// wrong-declaration answer one hop further down. The ambiguous arm is separate from the
-// not-constant arm for the reason `DataRefResolution` gives: they reach the author as different
-// sentences because they have different repairs.
-type ConstantFold
-  = ConstantFolded { module_path: String, expr: Node }
-  | ConstantFoldAmbiguousDataReference { name: String, modules: List<String> }
-  | ConstantFoldVisibilityBudgetExhausted { name: String }
-  | ConstantFoldUnresolved
-
-fn fold_constant_default_expr(expr: Node, index: DataDeclIndex, module_path: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> ConstantFold {
-  if depth > workflow_default_fold_depth_limit { ConstantFoldUnresolved }
-  else {
-    match expr.expr_data {
-      ExprVar { binding_kind: _ } =>
-        let var_name = authored_name_at(source_indices: source_indices, node: expr)
-        match resolve_data_reference(index: index, module_path: module_path, name: var_name) {
-          DataRefResolved { module_path: decl_module, body: body } =>
-            fold_constant_default_expr(expr: body, index: index, module_path: decl_module, source_indices: data_decl_source_indices(index: index, module_path: decl_module, fallback: source_indices), depth: depth + 1)
-          DataRefAmbiguous { modules: mods } => ConstantFoldAmbiguousDataReference { name: var_name, modules: mods }
-          DataRefVisibilityBudgetExhausted => ConstantFoldVisibilityBudgetExhausted { name: var_name }
-          DataRefAbsent => ConstantFoldUnresolved
-        }
-      ExprFieldAccess { summary: _ } =>
-        match fold_constant_default_expr(expr: field_access_base(texpr: expr), index: index, module_path: module_path, source_indices: source_indices, depth: depth + 1) {
-          ConstantFolded { module_path: base_module, expr: base } =>
-            let base_indices = data_decl_source_indices(index: index, module_path: base_module, fallback: source_indices)
-            match record_lit_named_field_value_optional(record_expr: base, field: field_access_field_at(texpr: expr, source_indices: source_indices), source_indices: base_indices) {
-              Present { value: field_value } => fold_constant_default_expr(expr: field_value, index: index, module_path: base_module, source_indices: base_indices, depth: depth + 1)
-              Absent => ConstantFoldUnresolved
-            }
-          ConstantFoldAmbiguousDataReference { name: n, modules: mods } => ConstantFoldAmbiguousDataReference { name: n, modules: mods }
-          ConstantFoldVisibilityBudgetExhausted { name: n } => ConstantFoldVisibilityBudgetExhausted { name: n }
-          ConstantFoldUnresolved => ConstantFoldUnresolved
-        }
-      _ => ConstantFolded { module_path: module_path, expr: expr }
-    }
-  }
-}
-
-// WHY THE REFUSAL CARRIES A CAUSE RATHER THAN A MODULE LIST. Two of the three states that stop a
-// data reference from folding are reportable at the parameter, and they are not the same sentence:
-// an ambiguity names the declarations the author must choose between, and an exhausted visibility
-// walk names no declarations at all because it never finished looking. A list that is empty for
-// one reason and populated for another is the `Bool` with nowhere to put `not asked`.
-type DataReferenceUnresolvableCause
-  = DataReferenceAmbiguous { modules: List<String> }
-  | DataReferenceVisibilityBudgetExhausted
-
-type UnresolvableDataReference {
-  name: String
-  cause: DataReferenceUnresolvableCause
-}
-
-// One pass over a workflow's params yields both outcomes. Two folds, each re-running the
-// resolution, would have paid the whole visibility walk twice per parameter to answer two halves
-// of one question.
-type WorkflowParamDefaults {
-  resolved: Map<String, String>
-  ambiguous: Map<String, UnresolvableDataReference>
-}
-
-type ParamDefaultResolution
-  = ParamDefaultLiteral { value: String }
-  | ParamDefaultAmbiguousDataReference { name: String, modules: List<String> }
-  | ParamDefaultVisibilityBudgetExhausted { name: String }
-  | ParamDefaultUnresolved
-
-fn resolve_param_default(param: Node, index: DataDeclIndex, module_path: String, source_indices: Map<String, NewlineIndex>) -> ParamDefaultResolution {
-  match param_node_default_value(n: param) {
-    Present { value: dv } =>
-      match fold_constant_default_expr(expr: dv, index: index, module_path: module_path, source_indices: source_indices, depth: 0) {
-        ConstantFolded { module_path: _, expr: folded } =>
-          match extract_literal_string(expr: folded) {
-            Present { value: lit } => ParamDefaultLiteral { value: lit }
-            Absent => ParamDefaultUnresolved
-          }
-        ConstantFoldAmbiguousDataReference { name: n, modules: mods } => ParamDefaultAmbiguousDataReference { name: n, modules: mods }
-        ConstantFoldVisibilityBudgetExhausted { name: n } => ParamDefaultVisibilityBudgetExhausted { name: n }
-        ConstantFoldUnresolved => ParamDefaultUnresolved
-      }
-    Absent => ParamDefaultUnresolved
-  }
-}
-
-fn to_workflow_func(item: Node, module_name: String, registry: Map<String, ItemInfo>, index: DataDeclIndex, source_indices: Map<String, NewlineIndex>, read_only_params_index: Map<String, Set<String>>) -> WorkflowFunc {
-  let item_name = authored_name_at(source_indices: source_indices, node: item)
-  let svc_names = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: item_name }) {
-    Present { value: info } => info.service_names
-    Absent => []
-  }
-  let param_defaults = item.params |> fold(init: WorkflowParamDefaults { resolved: empty_map(), ambiguous: empty_map() }, f: (acc, p) =>
-    let param_name = param_node_name_at(n: p, source_indices: source_indices)
-    match resolve_param_default(param: p, index: index, module_path: module_name, source_indices: source_indices) {
-      ParamDefaultLiteral { value: lit } =>
-        WorkflowParamDefaults { resolved: map_insert(acc.resolved, param_name, lit), ambiguous: acc.ambiguous }
-      ParamDefaultAmbiguousDataReference { name: n, modules: mods } =>
-        WorkflowParamDefaults { resolved: acc.resolved, ambiguous: map_insert(acc.ambiguous, param_name, UnresolvableDataReference { name: n, cause: DataReferenceAmbiguous { modules: mods } }) }
-      ParamDefaultVisibilityBudgetExhausted { name: n } =>
-        WorkflowParamDefaults { resolved: acc.resolved, ambiguous: map_insert(acc.ambiguous, param_name, UnresolvableDataReference { name: n, cause: DataReferenceVisibilityBudgetExhausted }) }
-      ParamDefaultUnresolved => acc
-    }
-  )
-  let defaults = param_defaults.resolved
-  let ambiguous = param_defaults.ambiguous
-  let qualified = concat(module_name, ".", item_name)
-  let ro_params = match map_get(read_only_params_index, qualified) {
-    Present { value: m } => m
-    Absent => empty_set()
-  }
-  WorkflowFunc {
-    name: item_name,
-    module_name: module_name,
-    params: item.params,
-    inferred: resolved_type(n: item),
-    uses: item.uses,
-    service_names: svc_names,
-    resolved_defaults: defaults,
-    unresolvable_default_data_references: ambiguous,
-    read_only_params: ro_params,
-    source_indices: source_indices
-  }
-}
-
-fn is_workflow_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if item.body == none { false }
-  else if item.uses |> count > 0 { true }
-  else {
-
-    match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name_at(source_indices: source_indices, node: item) }) {
-      Present { value: info } => info.service_names |> count > 0 || info.resource_names |> count > 0
-      Absent => true
-    }
-  }
-}
-
-fn collect_workflow_funcs(modules: List<TypedModule>, registry: Map<String, ItemInfo>, read_only_params_index: Map<String, Set<String>>) -> List<WorkflowFunc> {
-  let index = build_data_decl_index(modules: modules)
-  modules |> flat_map(tm =>
-    tm.items
-      |> filter(item => is_workflow_item(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, source_indices: tm.type_env.source_indices))
-      |> map(item => to_workflow_func(item: item, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module), registry: registry, index: index, source_indices: tm.type_env.source_indices, read_only_params_index: read_only_params_index))
-  )
-}
-
-fn cli_default_literal_value(expr: Node) -> String? {
-  match expr.expr_data {
-    ExprLiteral { value: v } => match v {
-      LitStr { value: s } => Present { value: s }
-      LitInt { value: i } => Present { value: to_string(value: i) }
-      LitFloat { value: f } => Present { value: f }
-      LitBool { value: b } => Present { value: if b { emit_keyword(key: "true", target: Rust) } else { emit_keyword(key: "false", target: Rust) } }
-      LitNull => none
-      LitSymbol { value: s } => Present { value: s }
-    }
-    _ => none
-  }
-}
-
-// THE CAUSE THIS MODULE ARGUES FOR FOUR TYPES DEEP IS RENDERED HERE, AND FOR A WHILE IT WAS NOT.
-// DataReferenceUnresolvableCause, DataRefAmbiguous, ConstantFoldAmbiguousDataReference and
-// ParamDefaultAmbiguousDataReference all carry the distinction faithfully, and then all three
-// terminal arms below emitted InternalError -- so an author's ambiguous data reference surfaced as
-// "the compiler has a bug", which misdirects the repair and leaves the class no identity to key on.
-//
-// EACH ARM NOW NAMES ITS OWN CLASS, AND NONE OF THE THREE IS A NEW SPELLING OF A CAUSE THAT
-// ALREADY HAD ONE. The ambiguity routes to AmbiguousReference, which v1.compiler.infer has owned
-// all along and which already renders the candidate list and the remedy -- minting a fifth
-// data-reference-flavoured ambiguity would have been the nickname DESIGN section 3 forbids. The
-// exhausted visibility walk is not an authoring error and does not become one: it says no verdict
-// is asserted about how many declarations answer to the name, which is the honest report of a walk
-// that stopped before it finished looking. The absent arm is a different question entirely -- the
-// default's FORM was never admitted -- and it carries the admitted forms as data rather than
-// baking them into a sentence.
-fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<ErrorNode> {
-  workflow_funcs |> flat_map(wf =>
-    wf.params |> flat_map(param =>
-      match param_node_default_value(n: param) {
-        Present { value: dv } =>
-          let param_name = authored_name_at(source_indices: wf.source_indices, node: param)
-          let resolved = match map_get(wf.resolved_defaults, param_name) {
-            Present { value: _ } => true
-            Absent => match cli_default_literal_value(expr: dv) {
-              Present { value: _ } => true
-              Absent => false
-            }
-          }
-          if resolved { [] }
-          else {
-            match map_get(wf.unresolvable_default_data_references, param_name) {
-              Present { value: unresolvable } =>
-                match unresolvable.cause {
-                  DataReferenceAmbiguous { modules: mods } => [make_error_node(diagnostic: AmbiguousReference {
-                      name: unresolvable.name,
-                      candidates: mods,
-                      span: param.span
-                    }, module_name: wf.module_name)]
-                  DataReferenceVisibilityBudgetExhausted => [make_error_node(diagnostic: DataReferenceVisibilityBudgetExceeded {
-                      name: unresolvable.name,
-                      span: param.span
-                    }, module_name: wf.module_name)]
-                }
-              Absent => [make_error_node(diagnostic: ParameterDefaultFormNotAdmitted {
-                  parameter: param_name,
-                  admitted: ["string literal", "int literal", "float literal", "bool literal", "data reference"],
-                  span: param.span
-                }, module_name: wf.module_name)]
-            }
-          }
-        Absent => []
-      }
-    )
-  )
-}
-
-fn find_resource_module(resource_name: String, modules: List<TypedModule>) -> String {
-  let matching = modules |> filter(m => m.items |> any(item => authored_name_at(source_indices: m.type_env.source_indices, node: item) == resource_name))
-  let result = match matching |> first {
-    Present { value: tm } => module_to_filename(name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
-    Absent => ""
-  }
-  result
 }
 
 fn cli_dispatch_field_type(sub: CliSubcommandRow, field: String) -> String {
@@ -16488,6 +16348,7 @@ fn emit_candidate_compile_host_method(params: String) -> String {
     "        }\n",
     "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n",
     "            subject: subject.unwrap(),\n",
+    "            root_demand: cli_run::RootDemandDeclaration { repository: repository.clone(), measured_root_demands: measured_root_demands.clone() },\n",
     "            source_roots: source_roots.iter().cloned().collect(),\n",
     "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n",
     "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n",
@@ -16640,6 +16501,8 @@ data compiler_entry_source_root_eval_driver: String = "SourceRootEvalDriver"
 
 data compiler_entry_direct_ingest_driver: String = "DirectIngestDriver"
 
+data compiler_entry_native_cli_driver: String = "NativeCliDriver"
+
 type CompilerPipelineEntryDecl {
   module_name: String
   driver: String
@@ -16723,7 +16586,31 @@ fn compiler_pipeline_entry_driver_is_known(modules: List<TypedModule>) -> Bool {
       d.driver == compiler_entry_retained_host_driver
       || d.driver == compiler_entry_source_root_eval_driver
       || d.driver == compiler_entry_direct_ingest_driver
+      || d.driver == compiler_entry_native_cli_driver
     Absent => true
+  }
+}
+
+fn compiler_pipeline_entry_is_native_cli(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver == compiler_entry_native_cli_driver
+    Absent => false
+  }
+}
+
+// THE DIRECT-INGEST ARM IS ASKED BY NAME, WHICH IT WAS NOT BEFORE. It used to be the RESIDUE of the
+// selection below -- whatever matched neither of two predicates -- and that residue is precisely the
+// class `gunbc.recurring_failure_mode` `closed_variant_partition_read_as_a_default_arm` records: a
+// reading matching no declared driver silently rendered this main. `compiler_pipeline_entry_driver_is_known`
+// closed that by refusing an unrecognised reading first, but the residue SHAPE survived, and a
+// fourth driver is exactly the edit that makes a surviving residue wrong again -- a NativeCliDriver
+// reading would have rendered the direct-ingest main had this predicate not been added in the same
+// change. So each arm is now asked for itself and the selection ends in a refusal rather than in an
+// arm.
+fn compiler_pipeline_entry_is_direct_ingest(modules: List<TypedModule>) -> Bool {
+  match compiler_pipeline_entry_decl(modules: modules) {
+    Present { value: d } => d.driver == compiler_entry_direct_ingest_driver
+    Absent => false
   }
 }
 
@@ -16786,39 +16673,14 @@ fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> TextFile {
 // properties of having an entry point. Rendering it through the retained-host path would emit a
 // main naming v1_compiler.cli_run, which a self-emitted crate does not contain -- trading a correct
 // refusal for a call that does not link.
-fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, has_services: Bool, crate_name: String, svc_module_map: Map<String, String>) -> TextFile {
+//
+// THE ENTRY AUTHORITY IS `compiler_pipeline_entry` AND NOTHING ELSE. A closure that declares none is
+// a library: its main is the typed entry-point-absent refusal. The derived "workflow" CLI that used
+// to answer below the pipeline arms -- one clap subcommand per function carrying `uses` or reaching
+// a service -- is deleted: it renamed the effect axis an entry role, and no built closure reached it.
+fn emit_main_rs(modules: List<TypedModule>, has_services: Bool, crate_name: String) -> TextFile {
   let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules: modules)
   let pipeline_module = compiler_pipeline_entry_module_name(modules: modules)
-  let resource_type_names = workflow_funcs |> flat_map(wf => wf.uses |> map(u => authored_name_at(source_indices: wf.source_indices, node: resource_use_resource(n: u))))
-  let unique_resource_types = unique_strings(items: resource_type_names)
-  let resource_imports = unique_resource_types |> flat_map(rname =>
-    let mod_name = find_resource_module(resource_name: rname, modules: modules)
-    if mod_name != "" { [concat("use ", crate_name, "::", mod_name, "::", rname, ";")] }
-    else { [] }
-  )
-  let resource_imports_str = resource_imports |> join(separator: "\n")
-  let all_svc_names = workflow_funcs |> flat_map(wf => wf.service_names)
-  let unique_svc_names = unique_strings(items: all_svc_names)
-  let svc_imports = unique_svc_names |> flat_map(sn =>
-    let struct_name = sanitize_service_name(name: sn)
-    match map_get(svc_module_map, sn) {
-      Present { value: mod_name } => [concat("use ", crate_name, "::", mod_name, "::", struct_name, ";")]
-      Absent => []
-    }
-  )
-  let svc_imports_str = svc_imports |> join(separator: "\n")
-  let header = concat(
-    "// Generated by v1 compiler -- do not edit.\n\n",
-    "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
-    concat("use clap::", "{", "Parser, Subcommand", "}", ";\n")
-  )
-  let crate_use = if has_services {
-    concat("use ", crate_name, "::dry_run::DryRunMode;\n")
-  } else {
-    ""
-  }
-  let resource_use = if resource_imports_str != "" { concat(resource_imports_str, "\n") } else { "" }
-  let svc_use = if svc_imports_str != "" { concat(svc_imports_str, "\n") } else { "" }
   if compiler_pipeline_entry_is_ambiguous(modules: modules) {
     return emit_ambiguous_compiler_pipeline_main_rs(
       module_names: compiler_pipeline_entry_module_names(modules: modules)
@@ -16834,38 +16696,60 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     if compiler_pipeline_entry_is_source_root_eval(modules: modules) {
       return emit_source_root_eval_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
     }
-    return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+    if compiler_pipeline_entry_is_native_cli(modules: modules) {
+      return emit_native_cli_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+    }
+    if compiler_pipeline_entry_is_direct_ingest(modules: modules) {
+      return emit_direct_ingest_driver_main_rs(crate_name: crate_name, pipeline_module: pipeline_module)
+    }
+    return emit_unknown_compiler_pipeline_driver_main_rs(
+      module_name: pipeline_module,
+      driver_reading: compiler_pipeline_entry_driver_reading(modules: modules)
+    )
   }
-  if workflow_funcs |> count == 0 && retained_host_pipeline == false {
+  if retained_host_pipeline == false {
     return emit_entry_point_absent_main_rs(crate_name: crate_name)
   }
-  let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: retained_host_pipeline, crate_name: crate_name, pipeline_module: pipeline_module)
-  let binary_name = if retained_host_pipeline { "gunbc" } else { crate_name }
-  let cli_about = if retained_host_pipeline { "A causal compiler: write .dag, get Rust/Python/Go." } else { "" }
-  let cli_version_attr = if retained_host_pipeline { ", version = env!(\"GUNBC_BUILD_IDENTITY\")" } else { "" }
-  let cli_struct = if retained_host_pipeline { "" } else { emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about, version_attr: cli_version_attr) }
-  let subcommand_enum = if retained_host_pipeline { "" } else { emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: retained_host_pipeline) }
-  let pipeline_fns = if retained_host_pipeline { concat(emit_main_pipeline_fns(crate_name: crate_name, pipeline_module: pipeline_module), emit_candidate_cli_host(crate_name: crate_name)) } else { "" }
-  let main_fn = if retained_host_pipeline {
+  let header = concat(
+    "// Generated by v1 compiler -- do not edit.\n\n",
+    "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
+    concat("use clap::", "{", "Parser, Subcommand", "}", ";\n")
+  )
+  let crate_use = if has_services {
+    concat("use ", crate_name, "::dry_run::DryRunMode;\n")
+  } else {
+    ""
+  }
+  let content = concat(
+    header, crate_use, emit_retained_host_main_mod_uses(crate_name: crate_name, pipeline_module: pipeline_module), "\n",
+    "\n\n",
+    "\n\n",
+    concat(emit_main_pipeline_fns(crate_name: crate_name, pipeline_module: pipeline_module), emit_candidate_cli_host(crate_name: crate_name)),
     concat(
       "fn main() {\n",
       "    let cli = ", crate_name, "::gunbc_cli_dispatch_generated::Cli::parse();\n",
       "    let host = CandidateCliHost;\n",
       "    ", crate_name, "::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)\n",
-      "}\n")
-  } else {
-    emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: retained_host_pipeline, crate_name: crate_name)
-  }
-  let diagnostic_fns = if retained_host_pipeline { emit_main_diagnostic_fns(crate_name: crate_name) } else { "" }
-  let content = concat(
-    header, crate_use, resource_use, svc_use, mod_uses, "\n",
-    cli_struct, "\n\n",
-    subcommand_enum, "\n\n",
-    pipeline_fns,
-    main_fn, "\n",
-    diagnostic_fns
+      "}\n"), "\n",
+    emit_main_diagnostic_fns(crate_name: crate_name)
   )
   TextFile { path: concat(rust_source_root(), "main", rust_source_ext()), content: content }
+}
+
+fn emit_retained_host_main_mod_uses(crate_name: String, pipeline_module: String) -> String {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
+  let core_mod = module_to_filename(name: "v1.std.core")
+  concat(
+    "\nuse im::HashMap;\n",
+    "use std::rc::Rc;\n",
+    "use ", crate_name, "::", pipeline_mod, ";\n",
+    "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
+    "use ", crate_name, "::", core_mod, "::", "{",
+    "\n    diagnostic_to_message, diagnostic_to_span,\n",
+    "    byte_to_line_col, source_line_at, NewlineIndex,\n",
+    "    CompilerDiagnostic,\n",
+    "}", ";\n",
+    "use ", crate_name, "::cli_run;\n")
 }
 
 // THE DRIVER FOR A SELF-EMITTED COMPILER, AND WHY IT IS A SHIM RATHER THAN A PROGRAM.
@@ -16925,6 +16809,152 @@ fn emit_direct_ingest_driver_main_rs(crate_name: String, pipeline_module: String
       "        }\n",
       "    }\n",
       "}\n")
+  }
+}
+
+// THE SOURCE-ROOT WALK AND THE BYTE READS, RENDERED ONCE FOR EVERY DRIVER THAT OWNS THAT BOUNDARY.
+//
+// Two rendered mains now need the same host operation -- SourceRootEvalDriver and NativeCliDriver
+// both take source roots on argv and must hand the resulting ingest to a `.dag` fold -- and the
+// second one is exactly the edit that turns "a block inside one template" into two copies of one
+// program. They would drift in the way copied text always drifts: a fix to the extension test, the
+// path sort, or the witness fields would land in whichever main its author was reading.
+//
+// IT IS TOTAL OVER ITS ROOT LIST, deliberately, and that is a behavioural change from the text it
+// replaces. The eval driver's `read_ingest` refused an EMPTY root list with exit 2 inside the
+// shared body; that refusal is a fact about what THAT driver's modes require, not about reading
+// files, and it is wrong for the CLI driver, whose `.dag` entry already refuses a verb with no root
+// (`cli_no_source_root`) and owes the operator that located cause rather than a harness message.
+// So the guard moved out to the eval driver's own two call sites and this reader answers for
+// whatever it is handed -- including the empty list, which reads zero files.
+fn emit_host_source_root_read_rs() -> String {
+  concat(
+      "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> \{", "\n",
+      "    let entries = match std::fs::read_dir(dir) \{", "\n",
+      "        Ok(entries) => entries,", "\n",
+      "        Err(cause) => return Err(format!(\"could not walk source root {}: \{cause\}\", dir.display())),", "\n",
+      "    \};", "\n",
+      "    for entry in entries \{", "\n",
+      "        let entry = match entry \{", "\n",
+      "            Ok(entry) => entry,", "\n",
+      "            Err(cause) => return Err(format!(\"could not read entry under {}: \{cause\}\", dir.display())),", "\n",
+      "        \};", "\n",
+      "        let path = entry.path();", "\n",
+      "        if path.is_dir() \{", "\n",
+      "            collect_dag_paths(&path, out)?;", "\n",
+      "        \} else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) \{", "\n",
+      "            out.push(path.to_string_lossy().into_owned());", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "    Ok(())", "\n",
+      "\}", "\n",
+      "\n",
+      "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> \{", "\n",
+      "    let mut paths: Vec<String> = Vec::new();", "\n",
+      "    for root in source_roots \{", "\n",
+      "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) \{", "\n",
+      "            eprintln!(\"REFUSED: \{cause\}\");", "\n",
+      "            std::process::exit(2);", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "    paths.sort();", "\n",
+      "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();", "\n",
+      "    for path in &paths \{", "\n",
+      "        let text = match std::fs::read_to_string(path) \{", "\n",
+      "            Ok(text) => text,", "\n",
+      "            Err(cause) => \{", "\n",
+      "                eprintln!(\"REFUSED: could not read \{path\}: \{cause\}\");", "\n",
+      "                std::process::exit(2);", "\n",
+      "            \}", "\n",
+      "        \};", "\n",
+      "        reads.push(Rc::new(DagSourceReadWitness \{", "\n",
+      "            source: Rc::new(Medium \{", "\n",
+      "                carried: text,", "\n",
+      "                fidelity: DecodeFidelity::Lossless,", "\n",
+      "                _phantom: std::marker::PhantomData,", "\n",
+      "            \}),", "\n",
+      "            artifact: Rc::new(Artifact \{", "\n",
+      "                kind: ArtifactKind::SourceFile,", "\n",
+      "                id: path.clone(),", "\n",
+      "                file_path: path.clone(),", "\n",
+      "            \}),", "\n",
+      "            compilation_unit: path.clone(),", "\n",
+      "            source_root: source_root_for_storage_path(path.clone()),", "\n",
+      "        \}));", "\n",
+      "    \}", "\n",
+      "    reads", "\n",
+      "\}", "\n",
+      "\n",
+  )
+}
+
+// THE V2-EXCLUSIVE CLI'S MAIN, AND THE REASON IT IS THIS SHORT.
+//
+// Everything below argv is a call. The verb, every refusal, what gets emitted and what status the
+// process takes are decided in `v2.cli.compile_cli` -- this template performs the four operations a
+// `.dag` fold cannot and hands each back as a VALUE: it reads argv, walks and reads the source
+// roots the PLAN named, writes the emitted text to stdout, and sets the status the `.dag` fold
+// returned. That is deliberately the shape `gunbc.source_root_eval_driver_seed_growth` states as the
+// capability retiring its own row ("the rendered main becomes one call into that fold"), so this
+// driver is written to it from the start rather than growing a second ~500-line hand-authored main
+// that would have to shrink later.
+//
+// IT IS TWO CALLS AND NOT ONE, and the reason is the boundary rather than convenience. The host
+// cannot know which roots to walk until argv has been parsed, and the `.dag` entry cannot parse
+// argv and then read the roots itself, so the plan comes back as a value the host acts on. The
+// roots come from `v2_cli_plan_source_roots` and NEVER from re-reading argv here: two readings of
+// one fact are free to disagree, and the disagreement would be a run that walked one closure while
+// reporting the verb's.
+//
+// THE EMPTY WALK IS NOT SHORT-CIRCUITED HERE, and that is load-bearing. A refused plan names no
+// roots, so the reader is handed an empty list and returns zero witnesses; the `.dag` fold then
+// answers with the PLAN'S OWN located cause rather than a harness message about missing roots. An
+// `if` here that refused early would put a second refusal authority in the shim, and it would
+// report the wrong one.
+//
+// THE STATUS IS NOT DERIVED FROM THE OUTPUT. `std.process` `ProcessExit` is the carrier for an exit
+// this program declares for itself, `v2_cli_exit` returns it, and this main maps the arm to a
+// number. Choosing the status here from whether stdout was empty would be a second representation
+// of the verdict, free to disagree with the outcome it came from -- and it would report a
+// legitimately empty emission as a failure.
+fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -> TextFile {
+  let pipeline_mod = module_to_filename(name: pipeline_module)
+  TextFile {
+    path: concat(rust_source_root(), "main", rust_source_ext()),
+    content: concat(
+      "// Generated by v1 compiler -- do not edit.", "\n",
+      "\n",
+      "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]", "\n",
+      "\n",
+      "use std::rc::Rc;", "\n",
+      "\n",
+      "use ", crate_name, "::extdeps_communication_medium::\{DecodeFidelity, Medium\};", "\n",
+      "use ", crate_name, "::v2_compiler_source_authority::\{source_root_for_storage_path, DagSourceReadWitness\};", "\n",
+      "use ", crate_name, "::v2_std_artifact::\{Artifact, ArtifactKind\};", "\n",
+      "use ", crate_name, "::std_process::ProcessExit;", "\n",
+      "use ", crate_name, "::", pipeline_mod, "::\{", "\n",
+      "    v2_cli_exit, v2_cli_outcome_text, v2_cli_parse, v2_cli_plan_source_roots, v2_cli_run,", "\n",
+      "\};", "\n",
+      "\n",
+      emit_host_source_root_read_rs(),
+      "fn main() \{", "\n",
+      "    let argv: Vec<String> = std::env::args().skip(1).collect();", "\n",
+      "    let plan = v2_cli_parse(Rc::new(argv.into()));", "\n",
+      "    let roots: Vec<String> = v2_cli_plan_source_roots(plan.clone()).iter().cloned().collect();", "\n",
+      "    let reads = read_ingest(&roots);", "\n",
+      "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));", "\n",
+      "    let text = v2_cli_outcome_text(outcome.clone());", "\n",
+      "    match &*v2_cli_exit(outcome) \{", "\n",
+      "        ProcessExit::ExitSuccess => \{", "\n",
+      "            print!(\"\{text\}\");", "\n",
+      "            std::process::exit(0);", "\n",
+      "        \}", "\n",
+      "        ProcessExit::ExitFailure \{ code, reason \} => \{", "\n",
+      "            eprintln!(\"REFUSED: \{reason\}\");", "\n",
+      "            std::process::exit(*code as i32);", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "\}", "\n")
   }
 }
 
@@ -17045,9 +17075,17 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    native_lane_module_resolution,", "\n",
       "    native_lane_closure_ingest, native_lane_closure_modules, native_lane_closure_round_budget,", "\n",
       "    native_lane_ingest_matches_closure, native_lane_ingest_receipt, native_lane_receipt,", "\n",
-      "    native_lane_source_facts, native_lane_universe, native_test_context_from_ingest,", "\n",
+      "    native_lane_source_facts, native_lane_universe, native_test_context_absorb,", "\n",
+      "    native_test_context_finish, native_test_context_from_ingest, native_test_context_state_empty,", "\n",
+      "    native_test_front_end_prepare,", "\n",
       "    NativeLaneHostFacts, NativeLaneModulePreparation, NativeLaneModuleResolution,", "\n",
       "    NativeRouteMemberRow,", "\n",
+      "\};", "\n",
+      "use ", crate_name, "::v2_compiler_program_assembly::\{", "\n",
+      "    program_assembly_measured_outcome, program_assembly_memo_hits,", "\n",
+      "    program_assembly_memo_lookup_calls, program_assembly_memo_misses,", "\n",
+      "    program_assembly_phase_normalize, program_assembly_phase_parse_measured,", "\n",
+      "    program_assembly_phase_token_count, program_assembly_phase_tokenize,", "\n",
       "\};", "\n",
       "use ", crate_name, "::gunbc_witness_v2_native_route::\{", "\n",
       "    native_route_admission, native_route_admission_summary, native_route_admitted,", "\n",
@@ -17058,70 +17096,13 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "use ", crate_name, "::v2_std_diagnostic::Outcome;", "\n",
       "use ", crate_name, "::std_compiler_entry::\{", "\n",
       "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,", "\n",
-      "    native_driver_exclusive_sum, NativeDriverCostAccounting, NativeDriverExclusiveRows,", "\n",
+      "    native_driver_exclusive_sum, NativeDriverCostAccounting,", "\n",
+      "    native_driver_exclusive_rows, native_driver_exclusive_row_name,", "\n",
+      "    NativeDriverExclusiveRowKey,", "\n",
       "\};", "\n",
       "use ", crate_name, "::std_measure::\{nanosecond, nanosecond_count\};", "\n",
       "\n",
-      "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> \{", "\n",
-      "    let entries = match std::fs::read_dir(dir) \{", "\n",
-      "        Ok(entries) => entries,", "\n",
-      "        Err(cause) => return Err(format!(\"could not walk source root {}: \{cause\}\", dir.display())),", "\n",
-      "    \};", "\n",
-      "    for entry in entries \{", "\n",
-      "        let entry = match entry \{", "\n",
-      "            Ok(entry) => entry,", "\n",
-      "            Err(cause) => return Err(format!(\"could not read entry under {}: \{cause\}\", dir.display())),", "\n",
-      "        \};", "\n",
-      "        let path = entry.path();", "\n",
-      "        if path.is_dir() \{", "\n",
-      "            collect_dag_paths(&path, out)?;", "\n",
-      "        \} else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) \{", "\n",
-      "            out.push(path.to_string_lossy().into_owned());", "\n",
-      "        \}", "\n",
-      "    \}", "\n",
-      "    Ok(())", "\n",
-      "\}", "\n",
-      "\n",
-      "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> \{", "\n",
-      "    if source_roots.is_empty() \{", "\n",
-      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
-      "        std::process::exit(2);", "\n",
-      "    \}", "\n",
-      "    let mut paths: Vec<String> = Vec::new();", "\n",
-      "    for root in source_roots \{", "\n",
-      "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) \{", "\n",
-      "            eprintln!(\"REFUSED: \{cause\}\");", "\n",
-      "            std::process::exit(2);", "\n",
-      "        \}", "\n",
-      "    \}", "\n",
-      "    paths.sort();", "\n",
-      "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();", "\n",
-      "    for path in &paths \{", "\n",
-      "        let text = match std::fs::read_to_string(path) \{", "\n",
-      "            Ok(text) => text,", "\n",
-      "            Err(cause) => \{", "\n",
-      "                eprintln!(\"REFUSED: could not read \{path\}: \{cause\}\");", "\n",
-      "                std::process::exit(2);", "\n",
-      "            \}", "\n",
-      "        \};", "\n",
-      "        reads.push(Rc::new(DagSourceReadWitness \{", "\n",
-      "            source: Rc::new(Medium \{", "\n",
-      "                carried: text,", "\n",
-      "                fidelity: DecodeFidelity::Lossless,", "\n",
-      "                _phantom: std::marker::PhantomData,", "\n",
-      "            \}),", "\n",
-      "            artifact: Rc::new(Artifact \{", "\n",
-      "                kind: ArtifactKind::SourceFile,", "\n",
-      "                id: path.clone(),", "\n",
-      "                file_path: path.clone(),", "\n",
-      "            \}),", "\n",
-      "            compilation_unit: path.clone(),", "\n",
-      "            source_root: source_root_for_storage_path(path.clone()),", "\n",
-      "        \}));", "\n",
-      "    \}", "\n",
-      "    reads", "\n",
-      "\}", "\n",
-      "\n",
+      emit_host_source_root_read_rs(),
       "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String \{", "\n",
       "    match facts.get(key) \{", "\n",
       "        Some(value) => value.clone(),", "\n",
@@ -17223,6 +17204,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "\}", "\n",
       "\n",
       "fn run_census(source_roots: &[String]) \{", "\n",
+      "    if source_roots.is_empty() \{", "\n",
+      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
       "    let reads = read_ingest(source_roots);", "\n",
       "    let context = match &*native_test_context_from_ingest(Rc::new(reads.into())) \{", "\n",
       "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
@@ -17339,6 +17324,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    // the load row: reading the declared roots off disk. Its own exclusive row rather than a", "\n",
       "    // field on another phase, so the IO is never mixed into a fold's number.", "\n",
       "    let load_started = Instant::now();", "\n",
+      "    if source_roots.is_empty() \{", "\n",
+      "        eprintln!(\"REFUSED: no source roots given\");", "\n",
+      "        std::process::exit(2);", "\n",
+      "    \}", "\n",
       "    let reads = read_ingest(source_roots);", "\n",
       "    let corpus_reads = reads.len();", "\n",
       "    let ingest = Rc::new(im::vector::Vector::from(reads));", "\n",
@@ -17393,16 +17382,145 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    \}", "\n",
       "    let universe_nanos = span_nanos(universe_started);", "\n",
       "", "\n",
-      "    // the context row: the front-end fold -- tokenize, parse, normalize -- over the CLOSURE only.", "\n",
+      "    // the context row: the front-end fold over the CLOSURE only, entered ONE PHASE AT A TIME.", "\n",
+      "    // The driver owns the clock, so it is the only place a phase span can be read; the phases", "\n",
+      "    // themselves are v2.compiler.program_assembly declarations and each binds the previous", "\n",
+      "    // phase's Outcome, so each phase BODY is single-authored and only the ORDER and the", "\n",
+      "    // inter-phase diagnostic merge exist twice -- here and in the modeled composition", "\n",
+      "    // program_assembly_read_to_normalized_root_prepared.", "\n",
+      "    //", "\n",
+      "    // THAT SECOND SPELLING IS ADMITTED DEBT AND IS FILED, NOT ASSERTED AWAY (review 65068):", "\n",
+      "    // gunbc.recurring_failure_mode.realization_respells_a_modeled_folds_sequencing_to_instrument_it.", "\n",
+      "    // An earlier revision of this comment claimed the two are the same computation. Nothing", "\n",
+      "    // executes that claim, and a .dag witness comparing the composition against its own phases", "\n",
+      "    // CANNOT go red -- the composition is defined as the phase chain -- so the honest answer is", "\n",
+      "    // the row and its trigger (a realization seam that yields per-phase spans FROM a modeled", "\n",
+      "    // fold), not a green check. Reordering these calls or dropping the merge that", "\n",
+      "    // program_assembly_phase_parse_measured performs would change the context with nothing red.", "\n",
       "    let context_started = Instant::now();", "\n",
-      "    let context = match &*native_test_context_from_ingest(closure_ingest) \{", "\n",
+      "    // THE ONCE-PER-FOLD INVARIANT IS PAID ONCE, HERE, AND CARRIED INTO EVERY FILE. A second", "\n",
+      "    // dag_language_model() or prepare_grammar() call inside the loop would re-introduce at the", "\n",
+      "    // realization layer exactly the per-file recompute the fold hoisted out.", "\n",
+      "    let front_end = match &*native_test_front_end_prepare() \{", "\n",
       "        Outcome::Accepted \{ value, .. \} => value.clone(),", "\n",
       "        Outcome::Rejected \{ diagnostics \} => \{", "\n",
       "            eprintln!(\"CONTEXT-REFUSED: \{diagnostics:#?\}\");", "\n",
       "            std::process::exit(1);", "\n",
       "        \}", "\n",
       "    \};", "\n",
+      "    let front_end_nanos = span_nanos(context_started);", "\n",
+      "    let mut context_state = native_test_context_state_empty();", "\n",
+      "    let mut tokenize_nanos: u128 = 0;", "\n",
+      "    let mut parse_nanos: u128 = 0;", "\n",
+      "    let mut normalize_nanos: u128 = 0;", "\n",
+      "    let mut absorb_nanos: u128 = 0;", "\n",
+      "    let mut phase_calls: u64 = 0;", "\n",
+      "    let mut token_total: u64 = 0;", "\n",
+      "    let mut memo_hits_total: u64 = 0;", "\n",
+      "    let mut memo_misses_total: u64 = 0;", "\n",
+      "    let mut memo_lookups_total: u64 = 0;", "\n",
+      "    let mut byte_total: u64 = 0;", "\n",
+      "    let mut context_file_samples: Vec<u128> = Vec::new();", "\n",
+      "    for read in closure_ingest.iter() \{", "\n",
+      "        let file_started = Instant::now();", "\n",
+      "        let tokenize_started = Instant::now();", "\n",
+      "        let tokens = program_assembly_phase_tokenize(read.clone(), front_end.lm.clone());", "\n",
+      "        let file_tokenize_nanos = span_nanos(tokenize_started);", "\n",
+      "        // The COUNT the time is read against: a span alone cannot separate a large file from a", "\n",
+      "        // per-file constant. Counted outside every phase span so it prices none of them.", "\n",
+      "        let file_tokens = program_assembly_phase_token_count(tokens.clone());", "\n",
+      "        let parse_started = Instant::now();", "\n",
+      "        let measured = program_assembly_phase_parse_measured(", "\n",
+      "            tokens.clone(),", "\n",
+      "            front_end.prepared.clone(),", "\n",
+      "            // The residue field is an Optional whose inner type rides a recursion cycle, so the", "\n",
+      "            // emitted record BOXES it while the phase takes the option by value. Deref the box", "\n",
+      "            // rather than clone it; the sibling fields above are Rc and clone correctly.", "\n",
+      "            (*front_end.residue).clone(),", "\n",
+      "        );", "\n",
+      "        let file_parse_nanos = span_nanos(parse_started);", "\n",
+      "        // The memo accounting rides BESIDE the outcome, so it reports on a refusal too --", "\n",
+      "        // which is the expensive case this instrument exists to read. Counted outside every", "\n",
+      "        // phase span so it prices none of them.", "\n",
+      "        let file_memo_hits = program_assembly_memo_hits(measured.clone());", "\n",
+      "        let file_memo_misses = program_assembly_memo_misses(measured.clone());", "\n",
+      "        let file_memo_lookups = program_assembly_memo_lookup_calls(measured.clone());", "\n",
+      "        let parsed = program_assembly_measured_outcome(measured);", "\n",
+      "        let normalize_started = Instant::now();", "\n",
+      "        let root = program_assembly_phase_normalize(parsed.clone());", "\n",
+      "        let file_normalize_nanos = span_nanos(normalize_started);", "\n",
+      "        // qualified-name read plus source-root index insertion: the half of the per-file step", "\n",
+      "        // that is not the front end, timed separately because a quadratic accumulator would", "\n",
+      "        // live here and nowhere else in this loop.", "\n",
+      "        let absorb_started = Instant::now();", "\n",
+      "        context_state = native_test_context_absorb(context_state.clone(), read.clone(), root.clone());", "\n",
+      "        let file_absorb_nanos = span_nanos(absorb_started);", "\n",
+      "        let file_nanos = span_nanos(file_started);", "\n",
+      "        tokenize_nanos += file_tokenize_nanos;", "\n",
+      "        parse_nanos += file_parse_nanos;", "\n",
+      "        normalize_nanos += file_normalize_nanos;", "\n",
+      "        absorb_nanos += file_absorb_nanos;", "\n",
+      "        phase_calls += 1;", "\n",
+      "        token_total += file_tokens.max(0) as u64;", "\n",
+      "        memo_hits_total += file_memo_hits.max(0) as u64;", "\n",
+      "        memo_misses_total += file_memo_misses.max(0) as u64;", "\n",
+      "        memo_lookups_total += file_memo_lookups.max(0) as u64;", "\n",
+      "        let file_bytes = read.source.carried.len() as u64;", "\n",
+      "        byte_total += file_bytes;", "\n",
+      "        context_file_samples.push(file_nanos);", "\n",
+      "        eprintln!(", "\n",
+      "            \"[native-context-split] {}\",", "\n",
+      "            serde_json::json!(\{", "\n",
+      "                \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",", "\n",
+      "                \"path\": read.compilation_unit.clone(),", "\n",
+      "                \"bytes\": file_bytes,", "\n",
+      "                \"tokens\": file_tokens,", "\n",
+      "                \"tokenize_nanos\": file_tokenize_nanos,", "\n",
+      "                \"parse_nanos\": file_parse_nanos,", "\n",
+      "                \"normalize_nanos\": file_normalize_nanos,", "\n",
+      "                \"absorb_nanos\": file_absorb_nanos,", "\n",
+      "                \"file_nanos\": file_nanos,", "\n",
+      "                \"memo_hits\": file_memo_hits,", "\n",
+      "                \"memo_misses\": file_memo_misses,", "\n",
+      "                \"memo_lookup_calls\": file_memo_lookups,", "\n",
+      "            \}),", "\n",
+      "        );", "\n",
+      "    \}", "\n",
+      "    let context = native_test_context_finish(context_state, front_end.clone(), closure_ingest.clone());", "\n",
       "    let context_nanos = span_nanos(context_started);", "\n",
+      "    context_file_samples.sort_unstable();", "\n",
+      "    let context_phase_sum = front_end_nanos + tokenize_nanos + parse_nanos + normalize_nanos + absorb_nanos;", "\n",
+      "    eprintln!(", "\n",
+      "        \"[native-context-partition] {}\",", "\n",
+      "        serde_json::json!(\{", "\n",
+      "            \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",", "\n",
+      "            \"basis\": \"context_span\",", "\n",
+      "            \"basis_note\": \"exclusive phase rows partition context_nanos; residual is loop overhead and the eprintln per file\",", "\n",
+      "            \"context_nanos\": context_nanos,", "\n",
+      "            \"front_end_prepare_nanos\": front_end_nanos,", "\n",
+      "            \"tokenize_nanos\": tokenize_nanos,", "\n",
+      "            \"parse_nanos\": parse_nanos,", "\n",
+      "            \"normalize_nanos\": normalize_nanos,", "\n",
+      "            \"absorb_nanos\": absorb_nanos,", "\n",
+      "            \"sum_phase_nanos\": context_phase_sum,", "\n",
+      "            \"residual_nanos\": context_nanos.saturating_sub(context_phase_sum),", "\n",
+      "            \"files\": phase_calls,", "\n",
+      "            \"tokenize_calls\": phase_calls,", "\n",
+      "            \"parse_calls\": phase_calls,", "\n",
+      "            \"normalize_calls\": phase_calls,", "\n",
+      "            \"absorb_calls\": phase_calls,", "\n",
+      "            \"front_end_prepare_calls\": 1,", "\n",
+      "            \"tokens\": token_total,", "\n",
+      "            \"memo_hits\": memo_hits_total,", "\n",
+      "            \"memo_misses\": memo_misses_total,", "\n",
+      "            \"memo_lookup_calls\": memo_lookups_total,", "\n",
+      "            \"bytes\": byte_total,", "\n",
+      "            \"file_refusals\": context.file_refusals.len(),", "\n",
+      "            \"file_p50_nanos\": native_cost_quantile_nanos(&context_file_samples, 1, 2),", "\n",
+      "            \"file_p95_nanos\": native_cost_quantile_nanos(&context_file_samples, 19, 20),", "\n",
+      "            \"file_max_nanos\": context_file_samples.last().copied().unwrap_or(0),", "\n",
+      "        \}),", "\n",
+      "    );", "\n",
       "", "\n",
       "    // the prepare and eval rows, entered separately per module so the number the profile", "\n",
       "    // lane prices -- the eval row -- is the sum of native_lane_identity_row", "\n",
@@ -17415,6 +17533,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    let mut prepare_ok: u64 = 0;", "\n",
       "    let mut prepare_refused: u64 = 0;", "\n",
       "    let mut module_release_nanos: u128 = 0;", "\n",
+      "    let mut relay_emit_nanos: u128 = 0;", "\n",
       "    // The per-path refusal index is built ONCE here rather than per module: this loop is the", "\n",
       "    // only place that knows a loop is about to happen, and the join it feeds was O(modules x", "\n",
       "    // refusals) when each module scanned the refusal list for itself.", "\n",
@@ -17495,12 +17614,20 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        prepare_samples.push(module_prepare_nanos);", "\n",
       "        // RELEASE IS MEASURED, NOT LEFT TO SCOPE EXIT. The resolved tree this module built is", "\n",
       "        // dropped HERE, inside a span, because dropping it at the end of the iteration paid real", "\n",
-      "        // time that no exclusive row covered -- the residual that refused the full corpus at", "\n",
-      "        // RemainderExceedsTolerance. An explicit drop makes the cost nameable; scope exit hides it.", "\n",
+      "        // time that no exclusive row covered. An explicit drop makes the cost nameable; scope", "\n",
+      "        // exit hides it. What that cost turned out to BE -- and whether it explains anything --", "\n",
+      "        // is a fact of std.compiler_entry NativeDriverExclusiveRows, not of this template.", "\n",
       "        let release_started = Instant::now();", "\n",
       "        drop(resolution);", "\n",
       "        module_release_nanos += span_nanos(release_started);", "\n",
+      "        // One stderr write per unique module, to a pipe the host runner drains. It is spanned", "\n",
+      "        // because it was paid inside parent_span with no exclusive row over it. What the span", "\n",
+      "        // has since MEASURED, and what the residual is, are facts of std.compiler_entry", "\n",
+      "        // NativeDriverExclusiveRows and are deliberately not restated here: a number copied", "\n",
+      "        // into a generated template rots in a place no fold can reach to correct it.", "\n",
+      "        let relay_started = Instant::now();", "\n",
       "        eprintln!(\"[native-prepare-split] module=\{\} resolve_nanos=\{module_resolve_nanos\} infer_nanos=\{module_infer_nanos\} prepare_nanos=\{module_prepare_nanos\} decls=\{\} outcome=\{outcome_label\}\", entry.module, identities);", "\n",
+      "        relay_emit_nanos += span_nanos(relay_started);", "\n",
       "    \}", "\n",
       "", "\n",
       "    // receipt_admission: minting the receipt and evaluating the authority's admission and summary", "\n",
@@ -17546,15 +17673,21 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "    prepare_samples.sort_unstable();", "\n",
       "    eval_samples.sort_unstable();", "\n",
       "    let parent_span_nanos = span_nanos(driver_start);", "\n",
-      "    let exclusive = Rc::new(NativeDriverExclusiveRows \{", "\n",
-      "        load: nanosecond(native_cost_i64(load_nanos)),", "\n",
-      "        universe_derivation: nanosecond(native_cost_i64(universe_nanos)),", "\n",
-      "        context: nanosecond(native_cost_i64(context_nanos)),", "\n",
-      "        prepare: nanosecond(native_cost_i64(prepare_total_nanos)),", "\n",
-      "        eval: nanosecond(native_cost_i64(evaluate_total_nanos)),", "\n",
-      "        receipt_admission: nanosecond(native_cost_i64(admission_nanos)),", "\n",
-      "        row_serialization: nanosecond(native_cost_i64(row_serialization_nanos)),", "\n",
-      "        module_release: nanosecond(native_cost_i64(module_release_nanos)),", "\n",
+      "    // THE DRIVER IS EXHAUSTIVE OVER THE KEY WITH NO WILDCARD, deliberately: a row added to", "\n",
+      "    // std.compiler_entry makes THIS match refuse to compile until the driver says what", "\n",
+      "    // measures it. A wildcard here would answer zero for a span nobody wired up, which is", "\n",
+      "    // the absorbing arm DESIGN section 5 forbids -- and it is what the old record literal", "\n",
+      "    // did silently, three folds running.", "\n",
+      "    let exclusive = native_driver_exclusive_rows(move |k| match k \{", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(native_cost_i64(load_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveUniverseDerivation => nanosecond(native_cost_i64(universe_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveContext => nanosecond(native_cost_i64(context_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusivePrepare => nanosecond(native_cost_i64(prepare_total_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveEval => nanosecond(native_cost_i64(evaluate_total_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(native_cost_i64(admission_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(native_cost_i64(row_serialization_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(native_cost_i64(module_release_nanos)),", "\n",
+      "        NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(native_cost_i64(relay_emit_nanos)),", "\n",
       "    \});", "\n",
       "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;", "\n",
       "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;", "\n",
@@ -17599,7 +17732,10 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "        \"verdict\": verdict,", "\n",
       "        \"tolerance_nanos\": tolerance_nanos,", "\n",
       "        \"parent_span_nanos\": parent_span_nanos,", "\n",
-      "        \"exclusive\": exclusive,", "\n",
+      "        \"exclusive\": exclusive.rows.iter().map(|r| (", "\n",
+      "            native_driver_exclusive_row_name(r.key.clone()),", "\n",
+      "            serde_json::json!(r.nanos),", "\n",
+      "        )).collect::<serde_json::Map<String, serde_json::Value>>(),", "\n",
       "        \"sum_exclusive_nanos\": exclusive_sum,", "\n",
       "        \"remainder_nanos\": remainder_nanos,", "\n",
       "        \"corpus_reads\": corpus_reads,", "\n",
@@ -17704,9 +17840,9 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
 // failure arm must refuse, never widen (DESIGN section 5), and the refusal must be countable:
 // silence cannot be joined to anything, so the gap never ranks for closing.
 //
-// THE REFUSAL SAYS WHICH OF TWO ABSENCES HELD, because a corpus reaches this arm two ways -- it
-// declares no `workflow` function, and it carries no compiler pipeline module -- and a repair acts
-// on one of them. The sibling arm twenty lines below already refuses this way per verb
+// THE REFUSAL NAMES THE ONE ABSENCE THAT HOLDS: the corpus declares no `compiler_pipeline_entry`,
+// which is the sole entry authority (a derived "workflow" CLI over effectful functions used to be a
+// second way to have an entry, and is deleted). The sibling arm twenty lines below already refuses this way per verb
 // (emit_candidate_cli_host renders every CliDispatchHost method as a located refusal and exit 2),
 // so this is the emitter's own convention applied to the arm that was exempt from it, not a new
 // one. Exit 2 is that same convention's status.
@@ -17742,31 +17878,7 @@ fn entry_point_absent_refusal_text(crate_name: String) -> String {
   concat(
     entry_point_absent_refusal_marker(),
     " -- crate ", crate_name,
-    " was emitted from a corpus with no workflow function and no compiler pipeline module, so it is a library and there is nothing to run")
-}
-
-fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, crate_name: String, pipeline_module: String) -> String {
-  let mod_names = workflow_funcs |> map(wf => module_to_filename(name: wf.module_name))
-  let unique_mods = unique_strings(items: mod_names)
-  let use_lines = unique_mods |> map(m => concat("use ", crate_name, "::", m, ";"))
-  let base = use_lines |> join(separator: "\n")
-  if has_pipeline {
-    let pipeline_mod = module_to_filename(name: pipeline_module)
-    let core_mod = module_to_filename(name: "v1.std.core")
-    concat(base,
-      "\nuse im::HashMap;\n",
-      "use std::rc::Rc;\n",
-      "use ", crate_name, "::", pipeline_mod, ";\n",
-      "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
-      "use ", crate_name, "::", core_mod, "::", "{",
-      "\n    diagnostic_to_message, diagnostic_to_span,\n",
-      "    byte_to_line_col, source_line_at, NewlineIndex,\n",
-      "    CompilerDiagnostic,\n",
-      "}", ";\n",
-      "use ", crate_name, "::cli_run;\n")
-  } else {
-    base
-  }
+    " was emitted from a corpus that declares no compiler_pipeline_entry, so it is a library and there is nothing to run")
 }
 
 fn emit_cli_root_struct(binary_name: String, about: String, version_attr: String, public: Bool) -> String {
@@ -17781,39 +17893,6 @@ fn emit_cli_root_struct(binary_name: String, about: String, version_attr: String
     "    /// Run in dry-run mode (mock all service calls)\n",
     "    #[arg(long, global = true)]\n",
     "    ", visibility, "dry_run: bool,\n",
-    "}"
-  )
-}
-
-fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>, binary_name: String, about: String, version_attr: String) -> String {
-  emit_cli_root_struct(binary_name: binary_name, about: about, version_attr: version_attr, public: false)
-}
-
-// THE gunbc-SPECIFIC VARIANTS ARE ROWS NOW, NOT LITERALS IN THIS FILE.
-//
-// This function used to carry gunbc's `Compile` and `Run` subcommands as Rust text, selected by
-// `has_pipeline` -- a predicate asking whether the corpus being compiled happens to contain
-// `v1.compiler.compile`. That is one product's argv policy welded into the emitter every product
-// shares, and it decayed exactly the way DESIGN section 3 says a fused fact decays: the committed
-// CLI grew `ci`, `converge` and `serve` and a `--entry` flag on `compile`, and none of them
-// reached the literals here, because nothing related the two.
-//
-// The rows live in `gunbc.cli_dispatch_surface`. What survives in this file is the RENDERING --
-// how a declared option becomes a clap attribute and a Rust field type -- which is realization
-// and belongs on the Rust target's side of the seam. `has_pipeline` still selects WHETHER gunbc's
-// surface participates; that selector is the residue of the same fusion and dissolves when the
-// surface arrives as part of the compiled corpus rather than by import.
-fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool) -> String {
-  let depth = 0
-  let variants = workflow_funcs |> map(wf => emit_subcommand_variant(wf: wf, depth: depth + 1))
-  let modeled_rows = if has_pipeline { gunbc_cli_generated_dispatch_subcommands() } else { [] }
-  let modeled = modeled_rows |> map(sub => emit_modeled_subcommand_variant(sub: sub, depth: depth))
-  let all_variants = concat(variants, modeled)
-  let variants_str = all_variants |> join(separator: "\n")
-  concat(
-    "#[derive(Subcommand)]\n",
-    "enum Commands {\n",
-    make_indent(level: depth + 1),variants_str, "\n",
     "}"
   )
 }
@@ -17916,84 +17995,6 @@ fn cli_option_rust_type(opt: CliOptionRow) -> String {
     CliAtMostOne => concat("Option<", base, ">")
     CliRepeated => concat("Vec<", base, ">")
   }
-}
-
-fn emit_subcommand_variant(wf: WorkflowFunc, depth: Int) -> String {
-  let variant_name = to_pascal(name: wf.name)
-  let doc_line = concat("/// Run the ", wf.name, " workflow")
-  if wf.params |> count == 0 {
-    concat(doc_line, "\n", variant_name, ",")
-  } else {
-    let fields = wf.params |> map(p => emit_subcommand_field(param: p, source_indices: wf.source_indices, resolved_defaults: wf.resolved_defaults))
-    let fields_str = fields |> join(separator: "\n")
-    concat(doc_line, "\n", variant_name, " {\n",
-      make_indent(level: depth + 1),fields_str, "\n",
-      "},")
-  }
-}
-
-fn emit_subcommand_field(param: Node, source_indices: Map<String, NewlineIndex>, resolved_defaults: Map<String, String>) -> String {
-  let field_name = emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust)
-  let param_name = param_node_name_at(n: param, source_indices: source_indices)
-  let field_type = emit_cli_param_type_node(n: param_node_type_expr(n: param), source_indices: source_indices)
-  let default_attr = match map_get(resolved_defaults, param_name) {
-    Present { value: resolved } =>
-      concat("#[arg(long, default_value = \"", resolved, "\")]\n")
-    Absent => match param_node_default_value(n: param) {
-      Present { value: dv } => match cli_default_literal_value(expr: dv) {
-        Present { value: default_value } =>
-          concat("#[arg(long, default_value = \"", default_value, "\")]\n")
-        Absent => "#[arg(long)]\n"
-      }
-      Absent => "#[arg(long)]\n"
-    }
-  }
-  concat(default_attr, field_name, ": ", field_type, ",")
-}
-
-fn emit_cli_param_type_node(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  let is_optional = n.return_cardinality == CardOptional
-  let has_structure = n.connective != NoConnective
-  if is_optional {
-    concat("Option<", emit_cli_param_type_node(n: with_required_cardinality(n: n), source_indices: source_indices), ">")
-  } else if has_structure {
-    "String"
-  } else if n.children |> count == 0 {
-    let nname = authored_name_at(source_indices: source_indices, node: n)
-    if nname == "String" {
-      "String"
-    } else {
-      let mapped = coerce_primitive_type(decision: type_reference_realization(n: n, dag_name: nname, target: Rust), dag_name: nname)
-      if mapped != nname { mapped } else { "String" }
-    }
-  } else {
-    "String"
-  }
-}
-
-fn emit_main_fn(workflow_funcs: List<WorkflowFunc>, has_services: Bool, has_pipeline: Bool, crate_name: String) -> String {
-  let depth = 0
-  let async_attr = if has_services { "#[tokio::main]\nasync fn main() " } else { "fn main() " }
-  let parse_line = "let cli = Cli::parse();"
-  let dry_run_line = if has_services {
-    "let dry_run = DryRunMode(cli.dry_run);"
-  } else {
-    ""
-  }
-  let match_arms = workflow_funcs |> map(wf => emit_main_match_arm(wf: wf, has_services: has_services))
-  let arms_str = match_arms |> join(separator: "\n")
-  let match_block = concat("match cli.command {\n", make_indent(level: depth + 2),arms_str, "\n    }")
-  let result_handling = if has_services {
-    match_block
-  } else {
-    concat("let _result = ", match_block, ";")
-  }
-  let body_lines = if dry_run_line == "" {
-    concat(parse_line, "\n", result_handling)
-  } else {
-    concat(parse_line, "\n", dry_run_line, "\n", result_handling)
-  }
-  concat(async_attr, "{\n", make_indent(level: depth + 1),body_lines, "\n}")
 }
 
 fn emit_bootstrap_dag_operation_match_arm(sub: CliSubcommandRow, binding: CliBootstrapDagOperationBinding, crate_name: String) -> String {
@@ -18354,72 +18355,6 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "        }\n",
     "    }\n",
     "}\n")
-}
-
-fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
-  let variant_name = to_pascal(name: wf.name)
-  let mod_name = module_to_filename(name: wf.module_name)
-  let fn_name = emit_ident(name: wf.name, target: Rust)
-  let await_suffix = if has_services { ".await" } else { "" }
-  let call_expr = if wf.params |> count == 0 {
-    let service_args = emit_main_service_args(wf: wf, has_services: has_services)
-    concat(mod_name, "::", fn_name, "(", service_args, ")", await_suffix)
-  } else {
-    let call_args = emit_main_call_args(wf: wf, has_services: has_services)
-    concat(mod_name, "::", fn_name, "(", call_args, ")", await_suffix)
-  }
-  let pattern = if wf.params |> count == 0 {
-    concat("Commands::", variant_name)
-  } else {
-    let field_binds = wf.params |> map(p => emit_ident(name: param_node_name_at(n: p, source_indices: wf.source_indices), target: Rust))
-    let binds_str = field_binds |> join(separator: ", ")
-    concat("Commands::", variant_name, " { ", binds_str, " }")
-  }
-  if has_services {
-    concat(pattern, " => {\n",
-      "            match ", call_expr, " {\n",
-      "                Ok(value) => {\n",
-      "                    let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| format!(\"{:?}\", value));\n",
-      "                    println!(\"{}\", json);\n",
-      "                }\n",
-      "                Err(e) => {\n",
-      "                    eprintln!(\"Error: {}\", e);\n",
-      "                    std::process::exit(1);\n",
-      "                }\n",
-      "            }\n",
-      "        }")
-  } else {
-    concat(pattern, " => ", call_expr, ",")
-  }
-}
-
-fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
-  let param_args = wf.params |> map(p =>
-    let pname = param_node_name_at(n: p, source_indices: wf.source_indices)
-    emit_ident(name: pname, target: Rust)
-  )
-  let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
-  let all_args = concat(param_args, service_args)
-  all_args |> join(separator: ", ")
-}
-
-fn emit_main_service_args(wf: WorkflowFunc, has_services: Bool) -> String {
-  let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
-  service_args |> join(separator: ", ")
-}
-
-fn emit_main_service_arg_list(wf: WorkflowFunc, has_services: Bool) -> List<String> {
-  let sharing = language_spec(target: Rust).sharing
-  let resource_args = wf.uses |> map(u => concat("&", authored_name_at(source_indices: wf.source_indices, node: resource_use_resource(n: u))))
-  let svc_args = wf.service_names |> map(sn =>
-    let struct_name = sanitize_service_name(name: sn)
-    if has_services {
-      concat("&", struct_name, "::new(", apply_type_template1(template: sharing.clone_value, arg0: "dry_run"), ")")
-    } else {
-      concat("&", struct_name, "::new()")
-    }
-  )
-  concat(resource_args, svc_args)
 }
 
 fn emit_dry_run_module() -> TextFile {

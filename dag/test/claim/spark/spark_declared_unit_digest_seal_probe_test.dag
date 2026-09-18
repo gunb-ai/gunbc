@@ -1,0 +1,112 @@
+module test.claim.spark.spark_declared_unit_digest_seal_probe_test
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WHAT THIS FILE ESTABLISHES, MEASURED RATHER THAN PREDICTED. An earlier revision of this header
+// said these rows were DECLINED BEFORE EXECUTION and ran nowhere, reasoning from
+// v2.workflow.floor_route_gap's note that ReadsLiveTree files are declined. THAT WAS WRONG, and
+// understating a wall is a rung-honesty defect in the same way overstating one is (DESIGN 4b(1)):
+// an unproven-looking wall does not get climbed, and the next reader is misled about what holds.
+// RECEIPT, required-floor run 35162345507 on e549dfda76d, all three rows:
+//   standing=planned-and-passed disposition=planned_as_changed_witness outcome=passed
+// They ran because a PR that CHANGES a witness file gets it planned and executed as a changed
+// witness, which is a different route from the hermetic discovery corpus.
+//
+// AND THE LIMIT OF THAT, STATED WITH ITS OWN EVIDENCE. This is a wall MEASURED ON THE CHANGE THAT
+// INTRODUCES IT, not a standing gate on every later run: in that same run the sibling probe
+// test.claim.fabric_m0_origin_readback_seal_test -- also ReadsLiveTree, but unchanged by this PR --
+// does not appear at all. So once this file stops changing, nothing re-runs these arms. That is the
+// same standing extdeps.filesystem.filesystem_io records for its own sole_constructor measurement:
+// one execution of a wall whose arms nothing currently re-runs, taken once at the fixture boundary.
+// NEXT-RUNG TRIGGER, A CAPABILITY: the floor planning ReadsLiveTree claims on every run rather than
+// only when their file changes, SUFFICIENT FOR these arms to become a standing gate.
+//
+// THE HALF THAT IS WALLED WITHOUT THIS FILE, AND IT IS THE LARGER HALF. The split is enforced by
+// ORDINARY COMPILATION for every module in the corpus, on every floor run:
+// spark_pair_rendered_unit_digest returns the UNSEALED RenderedUnitDigestStanding, so no in-corpus
+// caller can turn caller-authored bytes into a sealed standing without a typecheck refusal, and
+// DeclaredUnitDigestEvidence's sole_constructor refuses a forge at the literal's own position. What
+// these rows would add is the same question asked of FOREIGN source text.
+//
+// WHY THE SEAL IS ON A RECORD: sole_constructor on a COPRODUCT does not refuse cross-module variant
+// construction -- the declared hole measured by
+// test.claim.sole_constructor_completeness_audit_probe_test f13_variant_construction_refuses.
+// Sealing DeclaredUnitDigestStanding directly would have been permanently green by construction.
+//
+// Class this file exists for: gunbc.recurring_failure_mode
+// admitted_call_edge_with_unrestricted_value_egress. An earlier revision of this change exported
+// spark_pair_declared_unit_digest(render: SparkPairUnitRender) returning the SEALED standing;
+// SparkPairUnitRendered is an ordinary variant, so any module could hand it bytes of its choosing
+// and receive sealed evidence over a digest it picked. The record was sealed and the seal did
+// nothing, because the rule is not who may call the mint but WHAT MAY LEAVE.
+
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// EXACT: this class, this subject, blocking only. A bare total would be the WHOLE COMPILE'S row
+// count -- every imported module's closure included -- so `== 0` on an importing fixture is a
+// property of the corpus that is permanently false, which is a decoration rather than a weak wall.
+// gunbc.compile_diagnostic_census names the keyed count and the one-axis differential as the two
+// exact forms; this file uses both.
+fn keyed_count(source: String, wanted_class: String, wanted_subject: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: wanted_class, subject_name: wanted_subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE ONE-AXIS PRODUCER. Module header, import block, signature and RETURN TYPE are byte-identical
+// across both arms; the only thing that differs is the expression that produces the standing, so the
+// shared closure's rows cancel between the two censuses.
+fn probe_source(expr: String) -> String {
+  join([
+    "module probe_declared_unit_digest_seal\n",
+    "import gunbc.spark.pair_serving_realization { DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestEvidence, spark_pair_declared_head_digest }\n",
+    "import gunbc.spark.fabric_switch_observed { FabricGroupA }\n",
+    "import std.content_hash { ContentHash }\n",
+    "fn probe(h: ContentHash) -> DeclaredUnitDigestStanding {\n  ",
+    expr,
+    "\n}\n",
+  ], "")
+}
+
+data forge_expr: String = "DeclaredUnitDigested { evidence: DeclaredUnitDigestEvidence { digest: h } }"
+data sanctioned_expr: String = "spark_pair_declared_head_digest(group: FabricGroupA)"
+
+fn seal_violations(expr: String) -> Int {
+  keyed_count(
+    source: probe_source(expr: expr),
+    wanted_class: "SoleConstructorViolation",
+    wanted_subject: "DeclaredUnitDigestEvidence",
+  )
+}
+
+// RED ARM: foreign code forging the sealed record is refused at the literal's own position.
+test fn foreign_code_cannot_construct_declared_unit_digest_evidence() -> Bool {
+  seal_violations(expr: forge_expr) >= 1
+}
+
+// GREEN CONTROL, AND IT IS THE OTHER HALF OF THE DIFFERENTIAL. The sanctioned route -- ask
+// spark_pair_declared_head_digest for a MODELED GROUP -- trips no seal violation. Without this arm
+// the row above would pass for a type that is simply unusable cross-module, rather than for
+// construction being confined while legitimate consumption stays open.
+test fn the_sanctioned_group_route_trips_no_seal_violation() -> Bool {
+  seal_violations(expr: sanctioned_expr) == 0
+}
+
+// BOTH CENSUSES MUST HAVE ACTUALLY RUN. keyed_count answers the -1 sentinel on CensusNotRunnable, so
+// a passing pair above could otherwise mean the probe never reached the compiler at all.
+test fn both_arms_reached_the_compiler() -> Bool {
+  seal_violations(expr: forge_expr) >= 0 && seal_violations(expr: sanctioned_expr) >= 0
+}

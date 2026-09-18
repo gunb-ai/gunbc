@@ -43,6 +43,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
 }
 import v2.std.node { Node }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import gunbc.live_deploy.operations { deploy_stage_path_word }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text {
@@ -244,6 +245,228 @@ fn derived_runner_memory_cap_members() -> List<CapMember> {
   [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member()]
 }
 
+// ── RAISING A CAP IS ORDERED AFTER RETIREMENT, AND THE ORDER IS A TYPE ────────────────────────
+//
+// WHAT ADMISSION ALREADY DOES: `runner_slot_service_units_for_host` bounds the units these drop-ins
+// target by `gunbc_runner_slots_per_host`, so a host whose width is REFUSED gets no units and
+// therefore no caps. That answers WHETHER a host may be written to.
+//
+// WHAT IT DOES NOT ANSWER IS WHEN. Narrowing a width from 21 to 12 narrows the target list -- it
+// does not stop slots 13..21 EXISTING or SERVING. Applying the raise then commits the host to
+// twelve slots at the new ceiling PLUS nine still holding the old one.
+//
+// THE OBSERVATION IS AN INPUT RATHER THAN A LOOKUP, so a fixture can drive every arm this claims to
+// refuse; a zero-argument derivation over today's fleet would leave the refusing arms unreachable
+// and the check on them a decoration.
+type SurplusSlotObservation
+  = SurplusSlotsObserved { retired: List<NonEmptyStr>, still_present: List<NonEmptyStr> }
+  | SurplusSlotsUnobserved { cause: String }
+
+// THE REQUIRED RETIRING SET IS CARRIED, AND WITHOUT IT THE GATE COULD NOT SEE AN OMISSION.
+//
+// An earlier revision partitioned only the SUPPLIED standings and admitted whenever `still_present`
+// was empty. That detects an incomplete STANDING and is blind to an incomplete COLLECTION of them:
+// `standings = []` projects to `retired: [], still_present: []` and admitted, as did one truthful
+// completion supplied while another required retiree was simply omitted. Evidence about the slots
+// someone chose to mention is not evidence about the slots that must go.
+//
+// AN EMPTY REQUIRED SET IS LEGITIMATE and is not rejected: a host with no surplus -- including the
+// already-converged second pass -- has nothing to retire, and refusing that would make convergence
+// non-idempotent.
+type CapRaiseStanding
+  = CapRaiseAdmitted
+  | CapRaiseBlockedPendingRetirement { still_present: List<NonEmptyStr> }
+  | CapRaiseBlockedIncompleteEvidence { missing: List<NonEmptyStr> }
+  | CapRaiseBlockedUnobserved { cause: String }
+
+fn retirement_evidence_covers(required: List<NonEmptyStr>, retired: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  required |> filter(r => !any(retired, d => (d as String) == (r as String)))
+}
+
+fn cap_raise_standing(
+  required_retiring: List<NonEmptyStr>,
+  observation: SurplusSlotObservation,
+) -> CapRaiseStanding {
+  match observation {
+    SurplusSlotsUnobserved { cause: c } => CapRaiseBlockedUnobserved { cause: c }
+    SurplusSlotsObserved { retired: rt, still_present: sp } =>
+      if sp.length() > 0 {
+        CapRaiseBlockedPendingRetirement { still_present: sp }
+      } else {
+        let missing = retirement_evidence_covers(required: required_retiring, retired: rt)
+        if missing.length() > 0 {
+          CapRaiseBlockedIncompleteEvidence { missing: missing }
+        } else {
+          CapRaiseAdmitted
+        }
+      }
+  }
+}
+
+// A WITHHELD RAISE IS NOT AN EMPTY DESIRED SET, AND THE DIFFERENCE IS A TEARDOWN.
+//
+// The previous shape returned `[]` on every blocked arm, with a note claiming an empty member list
+// means "no change". IT DOES NOT. `caps_reconcile` treats an OWNED OBSERVED member absent from the
+// desired set as `MemberRemoved`, and `membership_effects` renders that as `EffectRemove` -- so
+// "this host is not authorised to change" was encoded as "this host should have no cap members",
+// which asks for the existing caps to be TORN DOWN. A blocked raise would have removed the very
+// ceilings it was blocked from raising.
+//
+// The disposition is therefore carried to the EFFECT decision rather than flattened into a list on
+// the way there, and the withheld arm emits neither upserts nor removals.
+// THE AUTHORIZATION CARRIES ITS SUBJECT, BECAUSE AN UNBOUND ONE AUTHORIZES ANYTHING.
+//
+// An earlier revision was `CapConvergeAuthorized { desired }` -- no host, no transition. The
+// production writer then reduced it to a Boolean and rebuilt the script from its own `spec`, so a
+// decision honestly produced from srv4's completed retirement would have authorized an srv1 apply.
+// No forged constructor is needed for that: the identity was simply erased, and "not withheld" is
+// not a statement about WHICH host or WHICH transition was proven.
+//
+// So the arm names the host it authorizes AND the retiring population whose retirement licensed it.
+// A writer must check both against the deployment in front of it, and must emit the members the
+// authorization carries rather than re-deriving equivalent ones -- re-derivation is what let the
+// Boolean check pass while the content came from somewhere else.
+// THE PLAN IS THE UNIT OF AUTHORIZATION, AND THE WRITER HAS NO OTHER SOURCE FOR IT.
+//
+// Carrying `authorized_retiring` was not enough: the writer matched it as `_` and then took its
+// target units independently from `runner_slot_service_units_for_host(host)`, so a legitimate
+// decision covering retirement set R1 could be spent on a transition of the same host that required
+// R2. The host check cannot see that -- both name the same host.
+//
+// THE REPAIR IS CONSTRUCTION, NOT A SECOND CHECK. The authorized arm now carries the TARGET UNITS
+// alongside the members and the retiring set, and the writer uses THOSE. There is no independent
+// second transition for it to mis-apply, because it has no independent way to name one: the units it
+// caps and the retirees whose retirement licensed the raise are produced together, at one point, from
+// one host. A checker comparing two populations would only have been as good as whoever supplied the
+// one to compare against.
+type CapConvergeDecision
+  = CapConvergeAuthorized {
+      host: HostIdentity,
+      authorized_retiring: List<NonEmptyStr>,
+      target_units: List<NonEmptyStr>,
+      desired: List<CapMember>,
+    }
+  | CapConvergeWithheld { cause: String }
+
+fn cap_converge_decision(
+  host: HostIdentity,
+  required_retiring: List<NonEmptyStr>,
+  observation: SurplusSlotObservation,
+) -> CapConvergeDecision {
+  match cap_raise_standing(required_retiring: required_retiring, observation: observation) {
+    CapRaiseAdmitted =>
+      CapConvergeAuthorized {
+        host: host,
+        authorized_retiring: required_retiring,
+        target_units: runner_slot_service_units_for_host(host: host),
+        desired: derived_runner_memory_cap_members(),
+      }
+    CapRaiseBlockedPendingRetirement { still_present: sp } =>
+      CapConvergeWithheld {
+        cause: join(["surplus slots have not retired: ", join(map(sp, u => u as String), " "), "; existing caps are left exactly as observed"], ""),
+      }
+    CapRaiseBlockedIncompleteEvidence { missing: ms } =>
+      CapConvergeWithheld {
+        cause: join(["no retirement evidence for required retirees: ", join(map(ms, u => u as String), " "), "; existing caps are left exactly as observed"], ""),
+      }
+    CapRaiseBlockedUnobserved { cause: c } =>
+      CapConvergeWithheld {
+        cause: join(["the slot population could not be observed (", c, "); existing caps are left exactly as observed"], ""),
+      }
+  }
+}
+
+fn cap_converge_is_withheld(d: CapConvergeDecision) -> Bool {
+  match d {
+    CapConvergeAuthorized { host: _, authorized_retiring: _, target_units: _, desired: _ } => false
+    CapConvergeWithheld { cause: _ } => true
+  }
+}
+
+// THE BINDING CHECK THE WRITER MUST MAKE. A decision is usable by a deployment only if it names that
+// deployment's host; anything else is an authorization for a different subject.
+type CapAuthorizationForHost
+  = CapAuthorizedForThisHost {
+      desired: List<CapMember>,
+      authorized_retiring: List<NonEmptyStr>,
+      target_units: List<NonEmptyStr>,
+    }
+  | CapAuthorizationWithheld { cause: String }
+  | CapAuthorizationRefused { cause: String }
+
+// WITHHELD AND REFUSED ARE TWO ANSWERS AND THE WRITER MUST NOT COLLAPSE THEM (operator ruling,
+// 2026-09-17). Withheld is the decision's own arm: the retirement evidence is not yet there, and the
+// promise it carries is "existing caps are left exactly as observed" -- a zero-mutation member, the
+// same standing the fleet plan reports for a slot teardown it will not perform. Refused is a
+// decision that cannot be spent here at all: it names another host. Rendering both as the poison
+// that aborts the whole apply turned the deploy of every unrelated member (unit install, restart)
+// into a hostage of the slot-retirement lane, which was the earliest unjustified boundary in the
+// chain that left srv1 serving a stale release.
+
+fn cap_authorization_for_host(
+  d: CapConvergeDecision,
+  host: HostIdentity,
+) -> CapAuthorizationForHost {
+  match d {
+    CapConvergeWithheld { cause: c } => CapAuthorizationWithheld { cause: c }
+    CapConvergeAuthorized { host: h, authorized_retiring: ar, target_units: tu, desired: ds } =>
+      if (h as String) == (host as String) {
+        CapAuthorizedForThisHost { desired: ds, authorized_retiring: ar, target_units: tu }
+      } else {
+        CapAuthorizationRefused {
+          cause: join(["the authorization names host ", h as String, " and this deployment targets ", host as String, "; an authorization is evidence about ONE host's retirement and cannot be spent on another"], ""),
+        }
+      }
+  }
+}
+
+// THE ONLY ROUTE FROM A DECISION TO EFFECTS. A withheld decision yields NO effects at all -- not an
+// empty desired set reconciled against a nonempty observed one, which is the removal path above.
+// WITHHELD AND REFUSED ARE DIFFERENT EMPTY LISTS, so this returns a standing rather than a list.
+// The earlier shape mapped BOTH the withheld arm and `ApplyRefused` to `[]`, which meant a control
+// asserting "no effects" could not tell the intended withholding from an unrelated reconcile
+// refusal -- and a test written to prove the teardown repair would pass for the wrong reason.
+type CapEffectStanding
+  = CapEffectsReady { effects: List<MemberEffect<CapMember>> }
+  | CapEffectsWithheld { cause: String }
+  | CapEffectsRefusedByReconcile { cause: String }
+
+fn authorized_caps_effect_standing(
+  decision: CapConvergeDecision,
+  host: HostIdentity,
+  observed: List<CapMember>,
+) -> CapEffectStanding {
+  match cap_authorization_for_host(d: decision, host: host) {
+    CapAuthorizationWithheld { cause: c } => CapEffectsWithheld { cause: c }
+    CapAuthorizationRefused { cause: c } => CapEffectsWithheld { cause: c }
+    CapAuthorizedForThisHost { desired: d, authorized_retiring: _, target_units: _ } =>
+      match caps_effects(desired: d, observed: observed) {
+        EffectsReady { effects: es } => CapEffectsReady { effects: es }
+        ApplyRefused { refusals: _ } =>
+          CapEffectsRefusedByReconcile {
+            cause: "membership reconcile refused the authorized cap plan; this is NOT the withheld arm and must not be reported as one",
+          }
+      }
+  }
+}
+
+fn cap_effect_standing_effects(s: CapEffectStanding) -> List<MemberEffect<CapMember>> {
+  match s {
+    CapEffectsReady { effects: es } => es
+    CapEffectsWithheld { cause: _ } => []
+    CapEffectsRefusedByReconcile { cause: _ } => []
+  }
+}
+
+fn cap_raise_standing_blocks(standing: CapRaiseStanding) -> Bool {
+  match standing {
+    CapRaiseAdmitted => false
+    CapRaiseBlockedPendingRetirement { still_present: _ } => true
+    CapRaiseBlockedIncompleteEvidence { missing: _ } => true
+    CapRaiseBlockedUnobserved { cause: _ } => true
+  }
+}
+
 // runner_memory_cap_author_script AND runner_memory_cap_author_stmts WERE HERE. They rendered
 // both derived drop-ins as one converge-side authoring script, and after the converge apply arm
 // was deleted (2026-08-21) their only remaining readers were witnesses. Production code whose
@@ -312,14 +535,38 @@ fn deploy_cap_upsert_staged_stmts(m: CapMember, stage_name: String) -> List<Node
   ]
 }
 
-fn deploy_runner_memory_cap_author_stmts() -> List<Node> {
+// THE STAGE NAME IS THE DROP-IN'S OWN BASENAME, derived rather than paired with it by hand. The two
+// hand-written pairs this replaces spelled "20-fleet-width.conf" and "40-fleet-high.conf" beside
+// paths that already end in exactly those names, so a member whose path moved would have staged
+// under the wrong file.
+fn cap_member_stage_name(m: CapMember) -> String {
+  fold(split(s: m.dropin_path as String, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+}
+
+// ONE STAGED AUTHORING IMPLEMENTATION, PARAMETERIZED BY THE MEMBERS IT AUTHORS.
+//
+// WHY THIS EXISTS: the writer that consumes an authorization needs to author the AUTHORIZED members
+// through the SAME staged, privileged mechanism the deploy already uses -- stage the bytes, install
+// them with sudo, then ONE privileged daemon reload after every installation. An earlier revision of
+// that writer built its script from `cap_upsert_stmts` instead, which writes each drop-in directly
+// and reloads non-elevated per member. That is a different program: it bypasses the staged install
+// and the privilege boundary, and it could not satisfy the ordering guard that re-derived the staged
+// form, so the AUTHORIZED branch reached "ordering gate failed" for every ordinary authorization.
+//
+// ALL INSTALLATIONS PRECEDE THE RELOAD, AND THE RELOAD PRECEDES ANY SHADOW REVERT. Reverting before
+// the derived bytes are on disk raises effective caps off stale 16/15 GiB files, which is the
+// operator hazard `host_axis_caps` records beside `runner_memory_cap_author_ready_for_shadow_revert`.
+fn deploy_runner_memory_cap_author_stmts_for(members: List<CapMember>) -> List<Node> {
   concat(
-    concat(
-      deploy_cap_upsert_staged_stmts(m: derived_runner_memory_max_cap_member(), stage_name: "20-fleet-width.conf"),
-      deploy_cap_upsert_staged_stmts(m: derived_runner_memory_high_cap_member(), stage_name: "40-fleet-high.conf"),
+    fold(members, init: [], f: (acc, m) =>
+      concat(acc, deploy_cap_upsert_staged_stmts(m: m, stage_name: cap_member_stage_name(m: m)))
     ),
     [shell_privileged_command_intent(argv: systemctl_daemon_reload_argv())],
   )
+}
+
+fn deploy_runner_memory_cap_author_stmts() -> List<Node> {
+  deploy_runner_memory_cap_author_stmts_for(members: derived_runner_memory_cap_members())
 }
 
 fn deploy_runner_memory_cap_author_script() -> String {
@@ -343,6 +590,22 @@ fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
   deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
 }
 
+// THE SCRIPT IS BUILT FROM THE MEMBERS THE AUTHORIZATION CARRIES, not re-derived beside it. The
+// earlier route checked a Boolean and then called `deploy_memory_cap_apply_script_for_host`, so the
+// bytes came from the writer's own `spec` while the check came from a decision about possibly some
+// other host. Taking the members from the authorization is what makes the check load-bearing.
+fn deploy_memory_cap_apply_script_from_authorization(
+  members: List<CapMember>,
+  units: List<NonEmptyStr>,
+) -> String {
+  shell_command_text_of_stmts(
+    stmts: concat(
+      deploy_runner_memory_cap_author_stmts_for(members: members),
+      deploy_memory_cap_shadow_revert_stmts(units: units),
+    )
+  )
+}
+
 // Deploy apply composite: author derived drop-ins first, then shadow revert per unit.
 fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
   shell_command_text_of_stmts(stmts: deploy_memory_cap_apply_stmts_ordered(units: units))
@@ -361,12 +624,61 @@ fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: L
 }
 
 // Independently derive author + revert halves; refuse reversed or padded wrong-order scripts.
-fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: List<NonEmptyStr>) -> Bool {
-  let ordered = shell_command_text_of_stmts(stmts: concat(
-    deploy_runner_memory_cap_author_stmts(),
-    deploy_memory_cap_shadow_revert_stmts(units: units),
-  ))
-  list_length(items: units) > 0 && script == ordered
+// THE GUARD CHECKS THE SCRIPT'S OWN ORDERING, NOT ITS EQUALITY TO A RE-DERIVATION.
+//
+// IT USED TO ASSERT `script == ordered`, rebuilding the whole program from
+// `deploy_runner_memory_cap_author_stmts()` and comparing text. That is validation standing where
+// construction was available (DESIGN section 5), and it failed the way re-derivation always does:
+// once the writer began authoring the AUTHORIZED members rather than the ones this function chose to
+// rebuild, equality could only hold when the two coincided -- so the authorized branch reached
+// "ordering gate failed" for every ordinary authorization. The bug was not in the writer's members;
+// it was in a guard that could only recognise one particular program.
+//
+// WHAT IT ASSERTS INSTEAD is the property the hazard is actually about: every privileged INSTALL of
+// a derived drop-in appears BEFORE the first `systemctl revert`. Reverting shadows before the derived
+// bytes are on disk drops the shadows onto stale 16/15 GiB files and RAISES effective caps, which is
+// the operator hazard recorded beside `runner_memory_cap_author_ready_for_shadow_revert`. Splitting
+// at the first revert and requiring the install marker in the prefix says exactly that, for ANY
+// authored member set.
+//
+// THE UNIT PRECONDITION SURVIVES UNCHANGED: reverting shadows on zero units is a no-op that would
+// otherwise report success.
+//
+// THE GUARD NO LONGER SPLITS RENDERED TEXT, AND THAT WAS NOT A SIMPLIFICATION -- THE TEXT FORM WAS
+// BROKEN AND ITS RED WAS UNREACHABLE. Two earlier revisions split the script on the literal
+// `"systemctl revert"` and required an `install` marker in the prefix. That substring never appears:
+// `shell_command_intent` routes every argv word through `shell_literal_words`, so the emitted bytes
+// carry `'systemctl' 'revert'` per-word-quoted and the two-word literal is not present at any
+// position. Measured, not reasoned: a probe asserting `string_contains(revert_text, "systemctl
+// revert")` FAILED while `revert_stmts_are_nonempty` PASSED on the same script.
+//
+// The consequence is worse than a guard that refused everything, and it is the reason this note is
+// long. `split` returned ONE part, so `list_length(parts) > 1` was false, so the guard answered false
+// for EVERY script -- including the correctly ordered one. The positive control therefore failed, and
+// the two NEGATIVE controls PASSED for entirely the wrong reason: `!guard(reversed_script)` is true
+// when the guard cannot read any script at all. A suite of refusals that pass because the predicate is
+// inert is exactly the decoration DESIGN section 4b names as worse than absent, and it is what made
+// three production-root witnesses red while the guard's own file looked covered.
+//
+// WHAT IT ASSERTS NOW IS A PROPERTY OF THE COMPOSITION, DECIDED WITHOUT PARSING BYTES: the script must
+// BE the ordered concatenation of the author half and the revert half built from THE SAME members and
+// units it is being judged against. That is decidable, immune to how the serializer quotes words, and
+// still refuses a reversed or padded script -- the reachable RED the text form never had.
+//
+// THIS IS NOT THE EQUALITY GUARD THAT WAS REJECTED, and the difference is the inputs rather than the
+// operator. The rejected form re-derived the author half from `deploy_runner_memory_cap_author_stmts()`
+// -- the module's OWN members -- while the writer authored the members the AUTHORIZATION carried, so
+// equality could hold only when those two populations coincided and the authorized branch was dead for
+// every ordinary authorization. Re-deriving from the members PASSED IN closes that gap: there is no
+// second population for the check and the writer to disagree about.
+fn deploy_memory_cap_script_author_precedes_shadow_revert(
+  script: String,
+  members: List<CapMember>,
+  units: List<NonEmptyStr>,
+) -> Bool {
+  list_length(items: units) > 0
+    && list_length(items: members) > 0
+    && script == deploy_memory_cap_apply_script_from_authorization(members: members, units: units)
 }
 
 // Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.

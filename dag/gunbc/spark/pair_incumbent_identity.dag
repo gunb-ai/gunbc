@@ -1,0 +1,484 @@
+module gunbc.spark.pair_incumbent_identity
+
+import std.types { String, Bool, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.content_hash {
+  ContentHash, Fnv1a64Structural,
+  content_hash_atom, content_hash_combine_structural, content_hash_tagged, serialize_content_hash,
+}
+import product.placement_supply { HostIdentity, host_identity_eq }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.host_effect { FleetSsh }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch }
+import gunbc.spark.vllm_serving_launch {
+  EndpointIncarnationObservation, LaunchedFromDeclaredUnit, LaunchedFromDifferentUnit, LaunchUnitDigestsIncomparable,
+  launch_unit_provenance, DigestsAgree, DigestsDiffer, DigestsIncomparable, digests_agree,
+}
+import gunbc.spark.serving_incarnation_observe {
+  ServingIncarnationRefusal, IncarnationObserved, IncarnationRefused,
+  serving_incarnation_refusal_text, observe_endpoint_incarnation,
+  UnitIdentityObserved, UnitIdentityRefused, read_unit_identity,
+}
+import gunbc.spark.pair_serving_desired { SparkPairServingUnitReady, SparkPairServingUnitRefused, spark_pair_serving_unit }
+import gunbc.spark.pair_serving_realization {
+  SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused, SparkPairHostRealization,
+  RenderedUnitDigested, RenderedUnitDigestUnavailable, spark_pair_rendered_unit_digest,
+  spark_pair_realizations, spark_pair_worker_unit_name,
+}
+
+// ── WHAT WE INTEND V4 TO BE, WHAT IS RUNNING, AND WHETHER THEY AGREE ARE THREE FACTS ───────────
+//
+// gunbc.spark.pair_serving_authority carries Group A as PairServingActive with an UNESTABLISHED
+// exact realization, and its obligation says why: the only identity the corpus held for the
+// incumbent was gunbc.spark.first_party_serving spark_realization_identity, a readback comparison
+// of one configured model path, which is configuration agreement and not a content-addressed key.
+// The Cut D transaction (docs/plans/dsv41-cut-d-redesign.md, D0) needs to prove that what it
+// suspends is what it would restore, and one hash cannot do that, because it would have to stand
+// for two different subjects at once:
+//
+//   DeclaredPairRealization    what the repository intends the pair to be -- derived from the
+//                              rendered unit bytes of every rank, which already carry the image
+//                              reference, the model path, the engine argv and the container
+//                              environment, so nothing is listed twice beside them
+//   ObservedPairRealization    what is running on the group right now -- the head's answering
+//                              incarnation (gunbc.spark.serving_incarnation_observe) joined with
+//                              the unit identity of every worker rank
+//   PairRealizationAgreement   whether the second realizes the first, host by host
+//
+// A declaration-derived key inhabits the first. It may never stand for the second: two launches of
+// one unit are two incarnations (vllm_serving_launch says why), and a unit that was edited on the
+// host after our render is a different realization under our name. The key is EXPECTED identity,
+// and only the agreement fold, holding an observation, says whether the expectation is met.
+//
+// THE KEY POPULATION IS V4'S, NOT THE SUCCESSOR'S. The four Engram rank-store identities and the
+// produced V4.1 image belong to the successor's authorization scope (Cut D §D1), not to the
+// identity of the incumbent being suspended; listing them here would key the incumbent on facts
+// about a different candidate.
+//
+// WHAT THE OBSERVED SIDE CARRIES THAT THE DECLARED SIDE CANNOT COMPARE. The head's incarnation
+// carries the running container's image id. The pair runtime image is built on the host from
+// gunbc_spark_pair_runtime_dockerfile and its id is minted by that build, so the corpus declares an
+// image REFERENCE (inside the unit text) and no image id to compare against. That axis is therefore
+// carried as observed-and-uncompared with the obligation that would ground it, never folded into
+// the agreement as if it had been checked (DESIGN §4d: a bet is typed as a bet).
+
+// ── DECLARED ───────────────────────────────────────────────────────────────────────────────────
+
+type DeclaredRankUnit {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+  digest: ContentHash
+}
+
+type DeclaredPairRealization sole_constructor {
+  group: FabricGroup
+  head: DeclaredRankUnit
+  workers: List<DeclaredRankUnit>
+  key: ContentHash
+}
+
+type DeclaredPairRealizationStanding
+  = DeclaredPairRealizationKeyed { declared: DeclaredPairRealization }
+  | DeclaredPairRealizationUnavailable { group: FabricGroup, obligation: NonEmptyStr }
+
+data declared_pair_realization_key_tag: NonEmptyStr = "gunbc.spark.pair_incumbent_identity/declared-pair-realization/v1" as NonEmptyStr
+
+// One rank's contribution to the key: the host, the unit it carries and what that unit's rendered
+// bytes digest to. The host is part of it because the same unit bytes on a different machine is a
+// different pair.
+fn declared_rank_atom(u: DeclaredRankUnit) -> Fnv1a64Structural {
+  content_hash_atom(value: join([u.host as String, "=", u.unit_name as String, "=", serialize_content_hash(hash: u.digest) as String], "") as NonEmptyStr)
+}
+
+// THE KEY IS A FOLD OVER THE RANKS IN DECLARED ORDER -- head first, then workers as the desired unit
+// lists them -- so it is a function of the declaration alone and two renders of one declaration key
+// identically. Any rank's bytes changing changes it.
+fn declared_pair_key(group: FabricGroup, head: DeclaredRankUnit, workers: List<DeclaredRankUnit>) -> ContentHash {
+  let seed = content_hash_atom(value: fabric_group_wire(g: group))
+  let folded = fold(concat([head], workers), init: seed, f: (acc, u) => content_hash_combine_structural(left: acc, right: declared_rank_atom(u: u)))
+  content_hash_tagged(tag: declared_pair_realization_key_tag, payload: folded)
+}
+
+// THE CONSTRUCTOR, and the only way a DeclaredPairRealization gets its key: the key is derived from
+// the ranks handed in, never supplied beside them, so a value cannot carry a key that disagrees
+// with its own ranks. Production reaches it through declared_pair_realization; witnesses hand in
+// fixture ranks.
+fn declared_pair_realization_of(group: FabricGroup, head: DeclaredRankUnit, workers: List<DeclaredRankUnit>) -> DeclaredPairRealization {
+  DeclaredPairRealization { group: group, head: head, workers: workers, key: declared_pair_key(group: group, head: head, workers: workers) }
+}
+
+type RankUnavailable {
+  host: HostIdentity
+  obligation: NonEmptyStr
+}
+
+type DeclaredRankUnitRead
+  = DeclaredRankUnitRead { unit: DeclaredRankUnit }
+  | DeclaredRankUnitUnavailable { unavailable: RankUnavailable }
+
+fn declared_rank_unit(real: SparkPairHostRealization) -> DeclaredRankUnitRead {
+  match spark_pair_rendered_unit_digest(render: real.unit) {
+    RenderedUnitDigestUnavailable { obligation: o } => DeclaredRankUnitUnavailable { unavailable: RankUnavailable { host: real.host, obligation: o } }
+    RenderedUnitDigested { unit_name: n, digest: d } => DeclaredRankUnitRead { unit: DeclaredRankUnit { host: real.host, unit_name: n, digest: d } }
+  }
+}
+
+fn declared_rank_unavailable(r: DeclaredRankUnitRead) -> List<RankUnavailable> {
+  match r {
+    DeclaredRankUnitUnavailable { unavailable: u } => [u]
+    DeclaredRankUnitRead { unit: _ } => [] as List<RankUnavailable>
+  }
+}
+
+fn declared_rank_units(r: DeclaredRankUnitRead) -> List<DeclaredRankUnit> {
+  match r {
+    DeclaredRankUnitRead { unit: u } => [u]
+    DeclaredRankUnitUnavailable { unavailable: _ } => [] as List<DeclaredRankUnit>
+  }
+}
+
+fn rank_unavailable_text(role: String, u: RankUnavailable) -> NonEmptyStr {
+  join([role, " ", u.host as String, ": ", u.obligation as String], "") as NonEmptyStr
+}
+
+fn declared_pair_of_realization(r: SparkPairRealization) -> DeclaredPairRealizationStanding {
+  match r {
+    SparkPairRealizationRefused { group: g, cause: c } => DeclaredPairRealizationUnavailable { group: g, obligation: c }
+    SparkPairRealized { group: g, head: h, workers: ws } => {
+      let head_read = declared_rank_unit(real: h)
+      let worker_reads = map(ws, w => declared_rank_unit(real: w))
+      match first(declared_rank_unavailable(r: head_read)) {
+        Present { value: u } => DeclaredPairRealizationUnavailable { group: g, obligation: rank_unavailable_text(role: "head", u: u) }
+        Absent =>
+          match first(flat_map(worker_reads, wr => declared_rank_unavailable(r: wr))) {
+            Present { value: u } => DeclaredPairRealizationUnavailable { group: g, obligation: rank_unavailable_text(role: "worker", u: u) }
+            Absent => {
+              let head_units = declared_rank_units(r: head_read)
+              let worker_units = flat_map(worker_reads, wr => declared_rank_units(r: wr))
+              match first(head_units) {
+                Absent => DeclaredPairRealizationUnavailable { group: g, obligation: "the head rank read neither a unit nor a refusal" as NonEmptyStr }
+                Present { value: head_unit } =>
+                  DeclaredPairRealizationKeyed { declared: declared_pair_realization_of(group: g, head: head_unit, workers: worker_units) }
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn realization_names_group(r: SparkPairRealization, group: FabricGroup) -> Bool {
+  match r {
+    SparkPairRealizationRefused { group: g, cause: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
+    SparkPairRealized { group: g, head: _, workers: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
+  }
+}
+
+// THE DECLARED SIDE, FROM THE PRODUCTION DECLARATION. Renders every rank of the group's pair
+// realization once and digests each once; callers hold the standing for their transaction.
+fn declared_pair_realization(group: FabricGroup) -> DeclaredPairRealizationStanding {
+  match first(filter(spark_pair_realizations(), r => realization_names_group(r: r, group: group))) {
+    Absent => DeclaredPairRealizationUnavailable { group: group, obligation: "no pair realization names this fabric group, so there are no rendered unit bytes to key" as NonEmptyStr }
+    Present { value: r } => declared_pair_of_realization(r: r)
+  }
+}
+
+// ── OBSERVED ───────────────────────────────────────────────────────────────────────────────────
+
+type ObservedRankUnit {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+  systemd_invocation: NonEmptyStr
+  unit_digest: ContentHash
+}
+
+// The whole four-rank realization as observed: the head's answering incarnation -- endpoint bound
+// to engine launch, container id, image id, unit digest, invocation -- and each worker's unit
+// identity. SOLE-CONSTRUCTED: production reaches it only through observe_pair_realization.
+type ObservedPairRealization sole_constructor {
+  group: FabricGroup
+  head: EndpointIncarnationObservation
+  workers: List<ObservedRankUnit>
+  receipt: ObservationReceiptRef
+}
+
+// The first three are minted by the caller that reaches for the observation -- a route with no
+// endpoint, an endpoint whose launch could not be read, a fleet session that could not be prepared
+// -- because they are refusals to observe at all, and the observation's caller is where they occur.
+// The constructor: production reaches it through observe_pair_realization, witnesses through this
+// with fixture evidence, the idiom gunbc.spark.vllm_serving_launch sets for its own sole-constructed
+// observation.
+fn observed_pair_realization_of(group: FabricGroup, head: EndpointIncarnationObservation, workers: List<ObservedRankUnit>, receipt: ObservationReceiptRef) -> ObservedPairRealization {
+  ObservedPairRealization { group: group, head: head, workers: workers, receipt: receipt }
+}
+
+type PairObservationRefusal
+  = PairRouteUnresolved { group: FabricGroup, obligation: NonEmptyStr }
+  | PairLaunchUnobserved { group: FabricGroup, obligation: NonEmptyStr }
+  | PairFleetAccessRefused { group: FabricGroup, cause: NonEmptyStr }
+  | PairGroupNotDesired { group: FabricGroup, cause: NonEmptyStr }
+  | PairHeadIncarnationRefused { host: HostIdentity, refusal: ServingIncarnationRefusal }
+  | PairWorkerUnitRefused { host: HostIdentity, refusal: ServingIncarnationRefusal }
+
+type ObservedPairRealizationReading
+  = ObservedPairRealizationRead { observed: ObservedPairRealization }
+  | ObservedPairRealizationRefused { refusal: PairObservationRefusal }
+
+data pair_realization_observation_receipt: ObservationReceiptRef = "gunbc.spark.pair_incumbent_identity" as ObservationReceiptRef
+
+fn pair_observation_refusal_text(r: PairObservationRefusal) -> String {
+  match r {
+    PairRouteUnresolved { group: g, obligation: o } => join([fabric_group_wire(g: g) as String, " has no resolved serving route: ", o as String], "")
+    PairLaunchUnobserved { group: g, obligation: o } => join([fabric_group_wire(g: g) as String, " answered no launch: ", o as String], "")
+    PairFleetAccessRefused { group: g, cause: c } => join([fabric_group_wire(g: g) as String, " could not be reached over the fleet session: ", c as String], "")
+    PairGroupNotDesired { group: g, cause: c } => join([fabric_group_wire(g: g) as String, " has no desired pair unit: ", c as String], "")
+    PairHeadIncarnationRefused { host: h, refusal: r } => join(["head ", h as String, ": ", serving_incarnation_refusal_text(r: r)], "")
+    PairWorkerUnitRefused { host: h, refusal: r } => join(["worker ", h as String, ": ", serving_incarnation_refusal_text(r: r)], "")
+  }
+}
+
+type RankRefused {
+  host: HostIdentity
+  refusal: ServingIncarnationRefusal
+}
+
+type ObservedRankUnitRead
+  = ObservedRankUnitRead { unit: ObservedRankUnit }
+  | ObservedRankUnitRefused { refused: RankRefused }
+
+// ONE WORKER RANK: the same three unprivileged reads the head's incarnation begins with, over the
+// worker unit, and nothing more -- a worker exports no endpoint, so there is no process to bind.
+fn observe_worker_unit(context: FleetSshExecutionContext, host: HostIdentity) -> ObservedRankUnitRead {
+  let transport = FleetSsh { target: fleet_locus_ssh_target(host: host), context: context }
+  match read_unit_identity(transport: transport, unit: spark_pair_worker_unit_name) {
+    UnitIdentityRefused { refusal: r } => ObservedRankUnitRefused { refused: RankRefused { host: host, refusal: r } }
+    UnitIdentityObserved { invocation: i, unit_digest: d } =>
+      ObservedRankUnitRead { unit: ObservedRankUnit { host: host, unit_name: spark_pair_worker_unit_name, systemd_invocation: i, unit_digest: d } }
+  }
+}
+
+fn observed_rank_refused(r: ObservedRankUnitRead) -> List<RankRefused> {
+  match r {
+    ObservedRankUnitRefused { refused: x } => [x]
+    ObservedRankUnitRead { unit: _ } => [] as List<RankRefused>
+  }
+}
+
+fn observed_rank_units(r: ObservedRankUnitRead) -> List<ObservedRankUnit> {
+  match r {
+    ObservedRankUnitRead { unit: u } => [u]
+    ObservedRankUnitRefused { refused: _ } => [] as List<ObservedRankUnit>
+  }
+}
+
+// THE OBSERVATION. The rank population it reads is the DESIRED unit's -- the hosts the declaration
+// names as head and workers -- because that is the only roster that says which machines to ask; a
+// host outside it running our worker unit is not observable here and is not claimed to be absent.
+// Every rank is read; the first refusal is the reading's refusal, because a pair with one unread
+// rank has no identity rather than three quarters of one.
+fn observe_pair_realization(
+  context: FleetSshExecutionContext,
+  group: FabricGroup,
+  endpoint: VllmEndpointProcessLaunch,
+) -> ObservedPairRealizationReading {
+  match spark_pair_serving_unit(group: group) {
+    SparkPairServingUnitRefused { group: g, cause: c } => ObservedPairRealizationRefused { refusal: PairGroupNotDesired { group: g, cause: c } }
+    SparkPairServingUnitReady { group: g, engine: _, head: h, workers: ws } =>
+      match observe_endpoint_incarnation(context: context, group: g, head: h.host, endpoint: endpoint) {
+        IncarnationRefused { refusal: r } => ObservedPairRealizationRefused { refusal: PairHeadIncarnationRefused { host: h.host, refusal: r } }
+        IncarnationObserved { observation: head_obs } => {
+          let worker_reads = map(ws, w => observe_worker_unit(context: context, host: w.host))
+          match first(flat_map(worker_reads, wr => observed_rank_refused(r: wr))) {
+            Present { value: x } => ObservedPairRealizationRefused { refusal: PairWorkerUnitRefused { host: x.host, refusal: x.refusal } }
+            Absent =>
+              ObservedPairRealizationRead {
+                observed: observed_pair_realization_of(group: g, head: head_obs, workers: flat_map(worker_reads, wr => observed_rank_units(r: wr)), receipt: pair_realization_observation_receipt),
+              }
+          }
+        }
+      }
+  }
+}
+
+// ── AGREEMENT ──────────────────────────────────────────────────────────────────────────────────
+
+type PairRankDrift {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+  declared: ContentHash
+  observed: ContentHash
+}
+
+// The head's image id is observed and has nothing declared to be compared against; see the header.
+type ObservedImageStanding
+  = ImageObservedUncompared { observed: ContentHash, obligation: NonEmptyStr }
+
+data pair_declared_image_digest_obligation: NonEmptyStr = "the pair runtime image is built on the host from gunbc_spark_pair_runtime_dockerfile and the corpus declares its reference, not its id; comparing the observed image id needs a produced-image receipt from that build materialization (gunbc.spark.vllm_runtime_image_build is the shape) carried on the declared realization" as NonEmptyStr
+
+type PairRealizationAgreement
+  = PairRealizationEstablished { key: ContentHash, declared: DeclaredPairRealization, observed: ObservedPairRealization, image: ObservedImageStanding }
+  | PairRealizationDrifted { key: ContentHash, drifted: List<PairRankDrift> }
+  | PairRealizationRankPopulationDiffers { key: ContentHash, declared_hosts: List<HostIdentity>, observed_hosts: List<HostIdentity> }
+  | PairRealizationConflict { key: ContentHash, host: HostIdentity, cause: NonEmptyStr }
+  | PairRealizationDeclarationUnavailable { group: FabricGroup, obligation: NonEmptyStr }
+  | PairRealizationUnread { key: ContentHash, refusal: PairObservationRefusal }
+
+type RankAgreementRow
+  = RankAgrees
+  | RankDrifted { drift: PairRankDrift }
+  | RankIncomparable { host: HostIdentity }
+  | RankUnobserved { host: HostIdentity }
+
+fn head_row(declared: DeclaredRankUnit, observed: ObservedPairRealization) -> RankAgreementRow {
+  match launch_unit_provenance(launch: observed.head.launch, declared: declared.digest) {
+    LaunchedFromDeclaredUnit { declared: _ } => RankAgrees
+    LaunchedFromDifferentUnit { observed: o, declared: d } => RankDrifted { drift: PairRankDrift { host: declared.host, unit_name: declared.unit_name, declared: d, observed: o } }
+    LaunchUnitDigestsIncomparable => RankIncomparable { host: declared.host }
+  }
+}
+
+fn worker_row(declared: DeclaredRankUnit, observed: List<ObservedRankUnit>) -> RankAgreementRow {
+  match first(filter(observed, o => host_identity_eq(a: o.host, b: declared.host))) {
+    Absent => RankUnobserved { host: declared.host }
+    Present { value: o } =>
+      match digests_agree(left: o.unit_digest, right: declared.digest) {
+        DigestsAgree => RankAgrees
+        DigestsDiffer => RankDrifted { drift: PairRankDrift { host: declared.host, unit_name: declared.unit_name, declared: declared.digest, observed: o.unit_digest } }
+        DigestsIncomparable => RankIncomparable { host: declared.host }
+      }
+  }
+}
+
+fn row_drifts(r: RankAgreementRow) -> List<PairRankDrift> {
+  match r {
+    RankDrifted { drift: d } => [d]
+    RankAgrees => [] as List<PairRankDrift>
+    RankIncomparable { host: _ } => [] as List<PairRankDrift>
+    RankUnobserved { host: _ } => [] as List<PairRankDrift>
+  }
+}
+
+fn row_incomparable(r: RankAgreementRow) -> List<HostIdentity> {
+  match r {
+    RankIncomparable { host: h } => [h]
+    RankAgrees => [] as List<HostIdentity>
+    RankDrifted { drift: _ } => [] as List<HostIdentity>
+    RankUnobserved { host: _ } => [] as List<HostIdentity>
+  }
+}
+
+fn row_unobserved(r: RankAgreementRow) -> Bool {
+  match r {
+    RankUnobserved { host: _ } => true
+    RankAgrees => false
+    RankDrifted { drift: _ } => false
+    RankIncomparable { host: _ } => false
+  }
+}
+
+fn drifts_of(rows: List<RankAgreementRow>) -> List<PairRankDrift> {
+  flat_map(rows, r => row_drifts(r: r))
+}
+
+fn first_incomparable(rows: List<RankAgreementRow>) -> HostIdentity? {
+  first(flat_map(rows, r => row_incomparable(r: r)))
+}
+
+fn any_unobserved(rows: List<RankAgreementRow>) -> Bool {
+  any(rows, r => row_unobserved(r: r))
+}
+
+fn declared_hosts(d: DeclaredPairRealization) -> List<HostIdentity> {
+  concat([d.head.host], map(d.workers, w => w.host))
+}
+
+fn observed_hosts(o: ObservedPairRealization) -> List<HostIdentity> {
+  concat([o.head.launch.head], map(o.workers, w => w.host))
+}
+
+// THE AGREEMENT, HOST BY HOST. The precedence is refusal-first: a declaration that could not be
+// keyed has nothing to agree with; an unread observation is unread; a population mismatch means the
+// two sides are not even about the same machines; an incomparable digest pair is an observer
+// contradiction (vllm_serving_launch: "cannot compare" is never "differs"); and only then is a
+// non-empty drift list a drift. Established is what remains, and it carries both sides so a
+// consumer can cite exactly what agreed.
+fn pair_realization_agreement(declared: DeclaredPairRealizationStanding, observed: ObservedPairRealizationReading) -> PairRealizationAgreement {
+  match declared {
+    DeclaredPairRealizationUnavailable { group: g, obligation: o } => PairRealizationDeclarationUnavailable { group: g, obligation: o }
+    DeclaredPairRealizationKeyed { declared: d } =>
+      match observed {
+        ObservedPairRealizationRefused { refusal: r } => PairRealizationUnread { key: d.key, refusal: r }
+        ObservedPairRealizationRead { observed: o } => {
+          let head_agrees_host = host_identity_eq(a: o.head.launch.head, b: d.head.host)
+          let rows = concat([head_row(declared: d.head, observed: o)], map(d.workers, w => worker_row(declared: w, observed: o.workers)))
+          if !head_agrees_host || any_unobserved(rows: rows) || length(o.workers) != length(d.workers) {
+            PairRealizationRankPopulationDiffers { key: d.key, declared_hosts: declared_hosts(d: d), observed_hosts: observed_hosts(o: o) }
+          } else {
+            match first_incomparable(rows: rows) {
+              Present { value: h } => PairRealizationConflict { key: d.key, host: h, cause: "the declared and observed unit digests are of different hash families, so the two cannot be compared" as NonEmptyStr }
+              Absent => {
+                let drifted = drifts_of(rows: rows)
+                if length(drifted) != 0 {
+                  PairRealizationDrifted { key: d.key, drifted: drifted }
+                } else {
+                  PairRealizationEstablished {
+                    key: d.key, declared: d, observed: o,
+                    image: ImageObservedUncompared { observed: o.head.launch.executable_digest, obligation: pair_declared_image_digest_obligation },
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn pair_realization_is_established(a: PairRealizationAgreement) -> Bool {
+  match a {
+    PairRealizationEstablished { key: _, declared: _, observed: _, image: _ } => true
+    PairRealizationDrifted { key: _, drifted: _ } => false
+    PairRealizationRankPopulationDiffers { key: _, declared_hosts: _, observed_hosts: _ } => false
+    PairRealizationConflict { key: _, host: _, cause: _ } => false
+    PairRealizationDeclarationUnavailable { group: _, obligation: _ } => false
+    PairRealizationUnread { key: _, refusal: _ } => false
+  }
+}
+
+fn drift_line(d: PairRankDrift) -> String {
+  join(["  ", d.host as String, " ", d.unit_name as String, ": declared ", serialize_content_hash(hash: d.declared) as String, " observed ", serialize_content_hash(hash: d.observed) as String], "")
+}
+
+fn hosts_wire(hs: List<HostIdentity>) -> String {
+  join(map(hs, h => h as String), ",")
+}
+
+// The agreement as receipt lines: one verdict line naming the key, then whatever locates the verdict.
+fn pair_realization_agreement_lines(a: PairRealizationAgreement) -> List<String> {
+  match a {
+    PairRealizationEstablished { key: k, declared: d, observed: o, image: ImageObservedUncompared { observed: img, obligation: ob } } =>
+      concat(
+        [
+          join(["established key=", serialize_content_hash(hash: k) as String, " group=", fabric_group_wire(g: d.group) as String], ""),
+          join(["  head ", o.head.launch.head as String, " invocation=", o.head.launch.systemd_invocation as String, " container=", o.head.launch.container_id as String, " unit=", serialize_content_hash(hash: o.head.launch.unit_digest) as String], ""),
+        ],
+        concat(
+          map(o.workers, w => join(["  worker ", w.host as String, " invocation=", w.systemd_invocation as String, " unit=", serialize_content_hash(hash: w.unit_digest) as String], "")),
+          [join(["  image-uncompared observed=", serialize_content_hash(hash: img) as String, " -- ", ob as String], "")],
+        ),
+      )
+    PairRealizationDrifted { key: k, drifted: ds } =>
+      concat([join(["drifted key=", serialize_content_hash(hash: k) as String], "")], map(ds, d => drift_line(d: d)))
+    PairRealizationRankPopulationDiffers { key: k, declared_hosts: dh, observed_hosts: oh } =>
+      [join(["rank-population-differs key=", serialize_content_hash(hash: k) as String, " declared=", hosts_wire(hs: dh), " observed=", hosts_wire(hs: oh)], "")]
+    PairRealizationConflict { key: k, host: h, cause: c } =>
+      [join(["conflict key=", serialize_content_hash(hash: k) as String, " host=", h as String, ": ", c as String], "")]
+    PairRealizationDeclarationUnavailable { group: g, obligation: o } =>
+      [join(["declaration-unavailable group=", fabric_group_wire(g: g) as String, ": ", o as String], "")]
+    PairRealizationUnread { key: k, refusal: r } =>
+      [join(["unread key=", serialize_content_hash(hash: k) as String, ": ", pair_observation_refusal_text(r: r)], "")]
+  }
+}

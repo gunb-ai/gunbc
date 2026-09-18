@@ -3,7 +3,7 @@ module test.claim.machine_intake_predictive_claim_witness_test
 import std.types { Bool, CommitSha, EpochMs, Int, NonEmptyStr }
 import std.claim_evidence { Claim, ClaimId, RecordedFact, RecordedFactId }
 import std.decl_ref { decl_ref }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ExitSuccess }
 import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.predictive_claim {
@@ -441,31 +441,4 @@ test fn operator_reports_keep_the_weak_match_and_the_falsified_revision_visible(
     }
   }
   conversation_visible && falsifier_visible
-}
-
-func predictive_claim_contract_probe() -> ProcessExit {
-  if prediction_must_have_a_distinguishable_falsifier()
-    && commitment_must_strictly_precede_start()
-    && observation_must_follow_start_and_respect_committed_bound()
-    && a_snapshot_cannot_be_committed_before_the_evidence_it_contains()
-    && a_missing_approximate_or_zero_window_cannot_be_preregistered()
-    && no_tests_and_five_surviving_tests_are_different_standings()
-    && confounding_and_missing_preregistration_each_weaken_a_match()
-    && unknown_outcome_is_not_confirmation()
-    && falsification_blocks_further_testing_until_narrowing()
-    && narrowing_must_exclude_the_counterexample_and_change_revision()
-    && twice_narrowed_lineage_preserves_both_killed_versions_and_cannot_widen()
-    && a_replayed_receipt_cannot_be_counted_twice()
-    && narrowing_cannot_erase_the_entire_scope()
-    && a_surviving_test_never_discharges_the_standing_obligation()
-    && tonight_is_one_weak_conversation_match_and_not_preregistered()
-    && a_commit_without_witnessed_order_is_distinct_from_conversation_and_preregistration()
-    && spare_screen_archives_the_falsified_commit_and_narrows_without_inventing_a_new_pass()
-    && a_restart_outside_the_reported_window_cannot_falsify_the_spare_screen()
-    && training_instead_of_restart_would_not_falsify_the_spare_screen()
-    && archival_publication_never_earns_committed_or_preregistered_match_standing()
-    && operator_reports_keep_the_weak_match_and_the_falsified_revision_visible() {
-    return ExitSuccess
-  }
-  return exit_failure(reason: "predictive claim contract failed")
 }

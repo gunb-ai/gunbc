@@ -1,0 +1,22 @@
+module gunbc.git_use_census.rust_floor_head_observation
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.git_use_authority { GitUseRow, RustGitDependency, ClassifiedGitUse, GitHistoryDiffGateObservation, DeclaredLegacyGitUse }
+
+// SOURCE-VERIFIED live Rust use. The direct .dag import wall does not reach this identity.
+// Coverage trigger: a Node-derived dependency producer whose source scope includes Rust.
+data rust_floor_head_observation: GitUseRow = GitUseRow {
+  consumer: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "current_git_head_or_unresolved"),
+
+  surface: RustGitDependency { operation: "Run git rev-parse HEAD to label required-floor freeze-intersection diagnostics; the current failure label is HEAD-unresolved." as NonEmptyStr },
+
+  classification: ClassifiedGitUse {
+    role: GitHistoryDiffGateObservation,
+    authorization: DeclaredLegacyGitUse { retirement_capability: "The required-floor freeze-intersection diagnostic executes with the checked native candidate identity and separately observed Git projection provenance." as NonEmptyStr }
+  },
+
+  bridge_disposition: "Label the checked native candidate separately from the observed Git head; preserve the current HEAD-unresolved observation as unavailable Git provenance." as NonEmptyStr,
+
+  cutover_disposition: "Identify the checked native candidate; optional Git projection provenance remains external observation and never native identity." as NonEmptyStr,
+}

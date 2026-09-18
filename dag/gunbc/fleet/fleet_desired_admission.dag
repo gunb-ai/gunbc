@@ -1,6 +1,6 @@
 module gunbc.fleet_desired_admission
 
-import std.types { String, Bool, FilePath, GitRef, NonEmptyStr }
+import std.types { String, Bool, FilePath, GitRef, NonEmptyStr, CommitSha }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.object_store {
@@ -19,15 +19,16 @@ import extdeps.github.workflow_runs {
   Success, Failure, Cancelled, Neutral, Skipped, TimedOut, ActionRequired, StartupFailure,
   workflow_run_conclusion_wire_label,
 }
-import extdeps.github.workflow_run_event {
-  WorkflowRunEvent,
-  WorkflowRunEventObserved,
-  WorkflowRunEventMemberAbsent,
-  WorkflowRunEventMemberMalformed,
-  WorkflowRunEventMalformed,
-  WorkflowRunEventPayloadReadRefused,
-  workflow_run_event_from_event_path,
+import extdeps.github.workflow_runs { WorkflowRunList }
+import extdeps.github.push_event {
+  PushRefUpdate,
+  PushRefUpdateObserved,
+  push_ref_update_from_event_path,
+  push_ref_update_observation_message,
 }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.github { max_per_page }
+import extdeps.github.actions { github_event_name_merge_group }
 import gunbc.fleet_revision_acceptance {
   AcceptedFleetRevision,
   RequiredCiSucceeded,
@@ -36,10 +37,11 @@ import gunbc.fleet_revision_acceptance {
   RequiredCiRefused,
   DefaultBranchAdmitted,
   DefaultBranchRefused,
+  DefaultBranchAdmission,
   FleetRevisionAccepted,
   RequiredCiAndDefaultBranchRevisionMismatch,
-  accept_required_ci_workflow_run,
-  observe_default_branch_revision,
+  accept_required_ci_merge_group_runs,
+  observe_default_branch_push,
   admit_fleet_revision,
   required_ci_refusal_message,
   default_branch_refusal_message,
@@ -168,47 +170,63 @@ type FleetDesiredAcceptedRevision
   = FleetDesiredRevisionAccepted { accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> }
   | FleetDesiredRevisionRefused { cause: String }
 
-// The evidence both propositions carry is the run id: both facts are read from ONE delivered
-// event, so claiming two independent provenances would be a lie about where they came from.
-// THE OBSERVED EPOCH IS THREADED IN RATHER THAN READ HERE, and that is deliberate. This fold is
-// pure over a delivered event, which is what lets its witnesses hand it exact fixture events; making
-// it perform a Git read would trade that for an effect at the one seam where every fleet admission
-// decision is composed. The exact-commit read is the caller's effect, and the two halves are
-// evidenced separately -- a Git-backed reader test over two real commits, and this seam exercised
-// with the observations those commits produce.
-fn fleet_desired_accepted_from_event(
-  event: WorkflowRunEvent,
+// THE JOIN AND ITS ONE REFUSAL SENTENCE, shared by both providers of the two propositions so the
+// mismatch reads identically whichever route produced the carriers.
+fn fleet_desired_join(
+  required_ci: RequiredCiSucceeded<NonEmptyStr>,
+  default_branch: DefaultBranchRevisionObserved<NonEmptyStr>,
+) -> FleetDesiredAcceptedRevision {
+  match admit_fleet_revision(required_ci: required_ci, default_branch: default_branch) {
+    FleetRevisionAccepted { accepted: a } => FleetDesiredRevisionAccepted { accepted: a }
+    RequiredCiAndDefaultBranchRevisionMismatch {
+      required_ci_revision: ci_rev,
+      default_branch_revision: br_rev,
+    } =>
+      FleetDesiredRevisionRefused {
+        cause: join([
+          "fleet_desired_admission: the floor proved ",
+          git_object_id_wire_hex(oid: ci_rev) as String,
+          " while the default branch carries ",
+          git_object_id_wire_hex(oid: br_rev) as String,
+          " -- both facts are true of different revisions, and only their conjunction would license an advance",
+        ], ""),
+      }
+  }
+}
+
+// THE MERGE-QUEUE ROUTE. The branch fact comes from the push event and the CI fact from the floor's
+// merge_group runs on the pushed revision, so -- unlike the workflow_run route above -- the two
+// evidences ARE independent provenances and each carries its own: the push's `after`, and the ids
+// of the runs that agreed. The branch fact is judged FIRST because the revision the runs are read
+// for comes from it; a push that is not to the default branch never reaches the forge at all.
+// Split in two so the wet entry can perform its read between them and a witness can hand the
+// second an exact run list.
+fn fleet_desired_accepted_from_merge_queue(
+  default_branch: DefaultBranchRevisionObserved<NonEmptyStr>,
+  runs: WorkflowRunList,
   observed_epoch: RequiredCiEpochObservation,
 ) -> FleetDesiredAcceptedRevision {
-  match accept_required_ci_workflow_run(event: event, evidence: event.run_id, observed_epoch: observed_epoch) {
+  match accept_required_ci_merge_group_runs(revision: default_branch.revision, runs: runs, observed_epoch: observed_epoch) {
     RequiredCiRefused { cause: why } =>
-      FleetDesiredRevisionRefused {
-        cause: concat("fleet_desired_admission: ", required_ci_refusal_message(cause: why)),
-      }
-    RequiredCiAdmitted { succeeded: ci } =>
-      match observe_default_branch_revision(event: event, evidence: event.run_id) {
-        DefaultBranchRefused { cause: why } =>
-          FleetDesiredRevisionRefused {
-            cause: concat("fleet_desired_admission: ", default_branch_refusal_message(cause: why)),
-          }
-        DefaultBranchAdmitted { observed: br } =>
-          match admit_fleet_revision(required_ci: ci, default_branch: br) {
-            FleetRevisionAccepted { accepted: a } => FleetDesiredRevisionAccepted { accepted: a }
-            RequiredCiAndDefaultBranchRevisionMismatch {
-              required_ci_revision: ci_rev,
-              default_branch_revision: br_rev,
-            } =>
-              FleetDesiredRevisionRefused {
-                cause: join([
-                  "fleet_desired_admission: the floor proved ",
-                  git_object_id_wire_hex(oid: ci_rev) as String,
-                  " while the default branch carries ",
-                  git_object_id_wire_hex(oid: br_rev) as String,
-                  " -- both facts are true of different revisions, and only their conjunction would license an advance",
-                ], ""),
-              }
-          }
-      }
+      FleetDesiredRevisionRefused { cause: concat("fleet_desired_admission: ", required_ci_refusal_message(cause: why)) }
+    RequiredCiAdmitted { succeeded: ci } => fleet_desired_join(required_ci: ci, default_branch: default_branch)
+  }
+}
+
+fn fleet_desired_branch_from_push(push: PushRefUpdate) -> DefaultBranchAdmission<NonEmptyStr> {
+  observe_default_branch_push(push: push, evidence: concat("push after ", push.after) as NonEmptyStr)
+}
+
+fn fleet_desired_accepted_from_push(
+  push: PushRefUpdate,
+  runs: WorkflowRunList,
+  observed_epoch: RequiredCiEpochObservation,
+) -> FleetDesiredAcceptedRevision {
+  match fleet_desired_branch_from_push(push: push) {
+    DefaultBranchRefused { cause: why } =>
+      FleetDesiredRevisionRefused { cause: concat("fleet_desired_admission: ", default_branch_refusal_message(cause: why)) }
+    DefaultBranchAdmitted { observed: br } =>
+      fleet_desired_accepted_from_merge_queue(default_branch: br, runs: runs, observed_epoch: observed_epoch)
   }
 }
 
@@ -385,59 +403,84 @@ fn fleet_desired_advance_input_wet(
   }
 }
 
-func admit_fleet_desired_from_floor_event_wet() -> ProcessExit {
-  match workflow_run_event_from_event_path(path: fleet_desired_admission_event_payload_path) {
-    WorkflowRunEventObserved { event: event } =>
-      match fleet_desired_accepted_from_event(
-        event: event,
-        observed_epoch: observe_required_ci_epoch_at_commit(
-          address: GitWorktreeAt { path: fleet_desired_admission_repo_root },
-          head_sha: event.head_sha as GitRef,
-        ),
-      ) {
-        FleetDesiredRevisionRefused { cause: why } => exit_failure(reason: why)
-        FleetDesiredRevisionAccepted { accepted: accepted } =>
-          match fleet_desired_action_from_decision(
-            decision: decide_fleet_desired_advance(
-              input: fleet_desired_advance_input_wet(accepted: accepted),
+// THE ACTUATION TAIL, shared by both admission routes: everything after an accepted revision is
+// one path, so the two routes cannot drift in how an admitted revision becomes a CAS action.
+fn fleet_desired_actuate_accepted_wet(
+  accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr>,
+) -> ProcessExit {
+  match fleet_desired_action_from_decision(
+    decision: decide_fleet_desired_advance(
+      input: fleet_desired_advance_input_wet(accepted: accepted),
+    ),
+  ) {
+    AdmissionRefused { cause: why } => exit_failure(reason: why)
+    AdmissionActionAuthorized { action: action } =>
+      match local_tree_revision(repo: fleet_desired_admission_repo_root) {
+        LocalTreeRevisionUnobserved { cause: _ } =>
+          exit_failure(reason: fleet_desired_unobservable_judge_source_refusal_reason())
+        LocalTreeRevisionObserved { revision: judge_source_observed } => {
+          let wrote = Filesystem.Write(
+            path: fleet_desired_admission_authorized_action_path,
+            content: fleet_desired_authorized_action_script(
+              action: action,
+              judge_source_observed: judge_source_observed,
+            ) as String,
+          )
+          if wrote.success {
+            ExitSuccess
+          } else {
+            exit_failure(
+              reason: join([
+                "fleet_desired_admission: the action was authorized but could not be written to ",
+                fleet_desired_admission_authorized_action_path,
+                " -- the absent file is the transport-failure signal and must never be read as a no-op: ",
+                wrote.error,
+              ], ""),
+            )
+          }
+        }
+      }
+  }
+}
+
+// THE MERGE-QUEUE ENTRY, fired by the push to the default branch. The branch fact is judged from
+// the delivered payload before anything is read from the forge; only an admitted branch fact names
+// a revision worth asking about. The run list is read from the REST resource addressed at
+// gunbc.repository, one page at the maximum size -- a revision with more floor runs than that
+// refuses as a partial page inside the fold rather than being judged from part of its evidence.
+// A push whose revision has no qualifying merge_group run refuses as RequiredCiMergeGroupRunAbsent.
+// An operator's admin-bypass merge or a direct push is one SCENARIO that produces that absent
+// evidence; the refusal reports only the absence, never a diagnosed cause.
+fn admit_fleet_desired_from_push_wet() -> ProcessExit {
+  match push_ref_update_from_event_path(path: fleet_desired_admission_event_payload_path) {
+    PushRefUpdateObserved { update: push } =>
+      match fleet_desired_branch_from_push(push: push) {
+        DefaultBranchRefused { cause: why } =>
+          exit_failure(reason: concat("fleet_desired_admission: ", default_branch_refusal_message(cause: why)))
+        DefaultBranchAdmitted { observed: br } => {
+          let revision_hex = git_object_id_wire_hex(oid: br.revision) as String
+          let listed = github.WorkflowRuns.ListForRef(
+            auth_token: "",
+            owner: gunbc_repository.owner,
+            repo: gunbc_repository.name,
+            head_sha: revision_hex as CommitSha,
+            event: github_event_name_merge_group,
+            per_page: max_per_page,
+          )
+          match fleet_desired_accepted_from_merge_queue(
+            default_branch: br,
+            runs: listed.runs,
+            observed_epoch: observe_required_ci_epoch_at_commit(
+              address: GitWorktreeAt { path: fleet_desired_admission_repo_root },
+              head_sha: revision_hex as GitRef,
             ),
           ) {
-            AdmissionRefused { cause: why } => exit_failure(reason: why)
-            AdmissionActionAuthorized { action: action } =>
-              match local_tree_revision(repo: fleet_desired_admission_repo_root) {
-                LocalTreeRevisionUnobserved { cause: _ } =>
-                  exit_failure(reason: fleet_desired_unobservable_judge_source_refusal_reason())
-                LocalTreeRevisionObserved { revision: judge_source_observed } => {
-                  let wrote = Filesystem.Write(
-                    path: fleet_desired_admission_authorized_action_path,
-                    content: fleet_desired_authorized_action_script(
-                      action: action,
-                      judge_source_observed: judge_source_observed,
-                    ) as String,
-                  )
-                  if wrote.success {
-                    ExitSuccess
-                  } else {
-                    exit_failure(
-                      reason: join([
-                        "fleet_desired_admission: the action was authorized but could not be written to ",
-                        fleet_desired_admission_authorized_action_path,
-                        " -- the absent file is the transport-failure signal and must never be read as a no-op: ",
-                        wrote.error,
-                      ], ""),
-                    )
-                  }
-                }
-              }
+            FleetDesiredRevisionRefused { cause: why } => exit_failure(reason: why)
+            FleetDesiredRevisionAccepted { accepted: accepted } =>
+              fleet_desired_actuate_accepted_wet(accepted: accepted)
           }
+        }
       }
-    WorkflowRunEventMemberAbsent { member: m } =>
-      exit_failure(reason: concat("fleet_desired_admission: floor run event payload is missing a required member: ", m))
-    WorkflowRunEventMemberMalformed { member: m, detail: d } =>
-      exit_failure(reason: join(["fleet_desired_admission: floor run event member ", m, " is malformed: ", d], ""))
-    WorkflowRunEventMalformed { detail: d } =>
-      exit_failure(reason: concat("fleet_desired_admission: floor run event payload is malformed: ", d))
-    WorkflowRunEventPayloadReadRefused { path: p, cause: c } =>
-      exit_failure(reason: join(["fleet_desired_admission: floor run event payload could not be read at ", p, ": ", c], ""))
+    other => exit_failure(reason: concat("fleet_desired_admission: ", push_ref_update_observation_message(o: other)))
   }
 }

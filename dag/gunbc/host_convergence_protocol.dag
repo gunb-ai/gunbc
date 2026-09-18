@@ -1,0 +1,424 @@
+module gunbc.host_convergence_protocol
+
+import std.types { Bool, String, List, Int }
+import v2.std.algebra { filter, length }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+  GoalAssessment,
+  inspect_goal,
+  GoalInspection,
+}
+import std.upsert_decision { UpsertDecision }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  Grounding,
+  ReconciledEffect,
+  Application,
+  reconcile_effect,
+  reconcile_effect_without_read,
+}
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import gunbc.host_convergence_census {
+  ProtocolPhases,
+  HostConvergenceCensus,
+  CensusWellFormed,
+  CensusMalformed,
+  host_convergence_census_standing,
+  std_decision,
+  std_goal_assessment,
+  std_upsert,
+  std_reconcile,
+  fleet_plan,
+  fleet_apply,
+  live_readiness,
+  HostConvergenceCensusRefusal,
+}
+
+// CONVERGENCE-ONE C1. Binds the C0 census to the canonical stack without host actuation.
+// gunbc.ensure remains the adapter: its observation spelling projects onto
+// ObservationAttempt<ShowEffectiveRead<E>, String>.
+// RUNG: mechanically preventable on the enrolled REDs; empty GoalDiverged remains
+// structurally impossible in std.goal_assessment.
+// HostEffectDomainProjection is observe, assess, decide. inspect_via consumes
+// observe/assess this cut. decide is a §3c declared frontier typed onto
+// std.upsert_decision UpsertDecision. C3 named live_deploy_inspect_member and
+// admit_live_deploy_member_basis as plan-side consumers; apply stays C4.
+// Readiness is NOT a field on this projection. C5 landed gunbc.readiness
+// Readiness = Ready | Pending | Refused, independent of Reconciliation.
+// Provider readiness is consumed by gunbc.roadmap_serve, not by a fourth
+// field here: a Reconciliation-typed readiness field remains the control-8
+// hazard and is not restored.
+// C0 left ensure_decide and observe_executable as inline cites; those two
+// have no named census accessor, so the bind holds one decl_ref each.
+// NEXT-RUNG (control 1): a compile instrument that imports inspect_goal.
+// Control 8: production observers return gunbc.readiness Readiness, which
+// has no inhabitant in Reconciliation or ReconciledEffect. Conversion still
+// exists at live_deploy_apply_readiness_gate_with_readiness, so the class is
+// mechanically preventable there (the gate admits Ready only), not
+// structurally impossible. Discriminating REDs remain enrolled
+// (test.claim.readiness_algebra_witness pending-vs-refused classify
+// controls and witness_red_control_observe_unplaced_executable_runs_the_producer;
+// test.claim.live_deploy.apply
+// witness_red_control_pending_readiness_cannot_converge). Isolated compile_fixture still cannot import live
+// types; that residual is control 1's compile instrument, not this class.
+
+data ensure_decide_id: DeclarationRef = decl_ref(
+  module_path: "gunbc.ensure",
+  decl_name: "ensure_decide",
+)
+
+data observe_executable_id: DeclarationRef = decl_ref(
+  module_path: "gunbc.live_deploy.member_observe",
+  decl_name: "observe_executable",
+)
+
+type CanonicalProtocolLayer
+  = LayerSelect
+  | LayerObserveAssess
+  | LayerRemedy
+  | LayerReadback
+  | LayerEnsureAdapter
+  | LayerFleetPlan
+  | LayerFleetApply
+  | LayerDeployObserve
+  | LayerDeployReadiness
+
+type CanonicalLayerBinding {
+  layer: CanonicalProtocolLayer
+  authority: DeclarationRef
+}
+
+data canonical_protocol_bindings: List<CanonicalLayerBinding> = [
+  CanonicalLayerBinding {
+    layer: LayerSelect,
+    authority: std_decision(),
+  },
+  CanonicalLayerBinding {
+    layer: LayerObserveAssess,
+    authority: std_goal_assessment(),
+  },
+  CanonicalLayerBinding {
+    layer: LayerRemedy,
+    authority: std_upsert(),
+  },
+  CanonicalLayerBinding {
+    layer: LayerReadback,
+    authority: std_reconcile(),
+  },
+  CanonicalLayerBinding {
+    layer: LayerEnsureAdapter,
+    authority: ensure_decide_id,
+  },
+  CanonicalLayerBinding {
+    layer: LayerFleetPlan,
+    authority: fleet_plan(),
+  },
+  CanonicalLayerBinding {
+    layer: LayerFleetApply,
+    authority: fleet_apply(),
+  },
+  CanonicalLayerBinding {
+    layer: LayerDeployObserve,
+    authority: observe_executable_id,
+  },
+  CanonicalLayerBinding {
+    layer: LayerDeployReadiness,
+    authority: live_readiness(),
+  },
+]
+
+data required_canonical_layers: List<CanonicalProtocolLayer> = [
+  LayerSelect,
+  LayerObserveAssess,
+  LayerRemedy,
+  LayerReadback,
+  LayerEnsureAdapter,
+  LayerFleetPlan,
+  LayerFleetApply,
+  LayerDeployObserve,
+  LayerDeployReadiness,
+]
+
+type CanonicalLayerJoin
+  = CanonicalLayersCovered
+  | CanonicalLayerMissing { layer: CanonicalProtocolLayer }
+  | CanonicalLayerDuplicated { layer: CanonicalProtocolLayer }
+
+fn canonical_layer_tag(layer: CanonicalProtocolLayer) -> Int {
+  match layer {
+    LayerSelect => 0
+    LayerObserveAssess => 1
+    LayerRemedy => 2
+    LayerReadback => 3
+    LayerEnsureAdapter => 4
+    LayerFleetPlan => 5
+    LayerFleetApply => 6
+    LayerDeployObserve => 7
+    LayerDeployReadiness => 8
+  }
+}
+
+fn canonical_layer_eq(a: CanonicalProtocolLayer, b: CanonicalProtocolLayer) -> Bool {
+  canonical_layer_tag(layer: a) == canonical_layer_tag(layer: b)
+}
+
+fn canonical_layer_join(
+  required: List<CanonicalProtocolLayer>,
+  bindings: List<CanonicalLayerBinding>,
+) -> CanonicalLayerJoin {
+  fold(required, init: CanonicalLayersCovered, f: fn(acc, layer) {
+    match acc {
+      CanonicalLayerMissing { layer: m } => CanonicalLayerMissing { layer: m }
+      CanonicalLayerDuplicated { layer: d } => CanonicalLayerDuplicated { layer: d }
+      CanonicalLayersCovered => {
+        let hits = filter(xs: bindings, predicate: fn(b) { canonical_layer_eq(a: b.layer, b: layer) })
+        if length(xs: hits) == 0 {
+          CanonicalLayerMissing { layer: layer }
+        } else {
+          if length(xs: hits) > 1 {
+            CanonicalLayerDuplicated { layer: layer }
+          } else {
+            CanonicalLayersCovered
+          }
+        }
+      }
+    }
+  })
+}
+
+type ProtocolPhaseBinding
+  = PhasesBound { phases: ProtocolPhases }
+  | SelectionLeakedIntoObservation { phases: ProtocolPhases }
+  | SelectionLeakedIntoAssessment { phases: ProtocolPhases }
+
+fn admit_protocol_phases(phases: ProtocolPhases) -> ProtocolPhaseBinding {
+  if phases.selects && phases.observes {
+    SelectionLeakedIntoObservation { phases: phases }
+  } else {
+    if phases.selects && phases.assesses {
+      SelectionLeakedIntoAssessment { phases: phases }
+    } else {
+      PhasesBound { phases: phases }
+    }
+  }
+}
+
+type CensusPhaseStanding
+  = CensusPhasesBound
+  | CensusStandingMalformed { cause: HostConvergenceCensusRefusal }
+  | CensusSelectionLeaked { identity: DeclarationRef, leak: ProtocolPhaseBinding }
+
+fn bind_census_protocol_phases(census: HostConvergenceCensus) -> CensusPhaseStanding {
+  match census {
+    CensusMalformed { cause: c } => CensusStandingMalformed { cause: c }
+    CensusWellFormed { rows: rows } =>
+      fold(rows, init: CensusPhasesBound, f: fn(acc, row) {
+        match acc {
+          CensusStandingMalformed { cause: c } => CensusStandingMalformed { cause: c }
+          CensusSelectionLeaked { identity: i, leak: l } =>
+            CensusSelectionLeaked { identity: i, leak: l }
+          CensusPhasesBound =>
+            match admit_protocol_phases(phases: row.phases) {
+              PhasesBound { phases: _ } => CensusPhasesBound
+              SelectionLeakedIntoObservation { phases: p } =>
+                CensusSelectionLeaked {
+                  identity: row.identity,
+                  leak: SelectionLeakedIntoObservation { phases: p },
+                }
+              SelectionLeakedIntoAssessment { phases: p } =>
+                CensusSelectionLeaked {
+                  identity: row.identity,
+                  leak: SelectionLeakedIntoAssessment { phases: p },
+                }
+            }
+        }
+      })
+  }
+}
+
+type ProtocolDeclaredFrontier {
+  declaration: DeclarationRef
+  named_consumer: DeclarationRef
+  trigger_capability: DeclarationRef
+}
+
+type FrontierStanding
+  = FrontierHonest
+  | FrontierConsumerIsDeclaration { frontier: ProtocolDeclaredFrontier }
+  | FrontierTriggerIsDeclaration { frontier: ProtocolDeclaredFrontier }
+  | FrontierTriggerIsTheConsumer { frontier: ProtocolDeclaredFrontier }
+
+type CanonicalProtocolStanding
+  = CanonicalProtocolBound { frontiers: List<FrontierStanding> }
+  | CanonicalFrontiersUnbound { frontiers: List<FrontierStanding> }
+  | CanonicalLayersUnbound { join: CanonicalLayerJoin }
+  | CensusProtocolUnbound { standing: CensusPhaseStanding }
+
+type HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan> {
+  observe: fn(Subject, Request) -> ObservationAttempt<Observed, ObserveRefusal>
+  assess: fn(Goal, Observed) -> GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>
+  decide: fn(GoalAssessment<Evidence, Deviation, UnknownFact, AssessRefusal>) -> UpsertDecision<Plan>
+}
+
+fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan>(
+  subject: Subject,
+  goal: Goal,
+  request: Request,
+  projection: HostEffectDomainProjection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal, Plan>,
+) -> GoalInspection<Subject, Goal, Request, Observed, Evidence, Deviation, UnknownFact, ObserveRefusal, AssessRefusal> {
+  inspect_goal(
+    subject: subject,
+    goal: goal,
+    request: request,
+    observe: projection.observe,
+    assess: projection.assess,
+  )
+}
+
+// C3 plan-side discharge. named_consumer is the function that actually calls the declaration.
+// trigger_capability is a remaining capability, not the consumer: inspect_via still observes via
+// supplied ObservedMember rather than wet observe_executable; HostEffectDomainProjection is used
+// by admit but does not yet mint fleet_converge_plan_artifact (no LiveDeploy request arm until C2).
+// host_effect_decide_apply_frontier is untouched — C4. bind_declared_frontiers stays Unbound.
+data live_deploy_inspect_member_id: DeclarationRef = decl_ref(
+  module_path: "gunbc.live_deploy.fleet_request",
+  decl_name: "live_deploy_inspect_member",
+)
+
+data admit_live_deploy_member_basis_id: DeclarationRef = decl_ref(
+  module_path: "gunbc.live_deploy.fleet_request",
+  decl_name: "admit_live_deploy_member_basis",
+)
+
+data host_effect_observe_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+  declaration: decl_ref(
+    module_path: "gunbc.host_convergence_protocol",
+    decl_name: "inspect_via_host_effect_projection",
+  ),
+  named_consumer: live_deploy_inspect_member_id,
+  trigger_capability: observe_executable_id,
+}
+
+data host_effect_decide_plan_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+  declaration: decl_ref(
+    module_path: "gunbc.host_convergence_protocol",
+    decl_name: "HostEffectDomainProjection",
+  ),
+  named_consumer: admit_live_deploy_member_basis_id,
+  trigger_capability: fleet_plan(),
+}
+
+data host_effect_decide_apply_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+  declaration: decl_ref(
+    module_path: "gunbc.host_convergence_protocol",
+    decl_name: "HostEffectDomainProjection",
+  ),
+  named_consumer: fleet_apply(),
+  trigger_capability: fleet_apply(),
+}
+
+data host_effect_declared_frontiers: List<ProtocolDeclaredFrontier> = [
+  host_effect_observe_frontier,
+  host_effect_decide_plan_frontier,
+  host_effect_decide_apply_frontier,
+]
+
+fn frontier_names_a_distinct_consumer(f: ProtocolDeclaredFrontier) -> Bool {
+  !declaration_ref_eq(a: f.declaration, b: f.named_consumer)
+}
+
+fn frontier_trigger_is_not_declaration(f: ProtocolDeclaredFrontier) -> Bool {
+  !declaration_ref_eq(a: f.declaration, b: f.trigger_capability)
+}
+
+fn frontier_trigger_is_not_the_consumer(f: ProtocolDeclaredFrontier) -> Bool {
+  !declaration_ref_eq(a: f.trigger_capability, b: f.named_consumer)
+}
+
+fn reconcile_from_read_attempt<P, R, E>(
+  decision: UpsertDecision<P>,
+  application: Application,
+  after: ObservationAttempt<ShowEffectiveRead<R>, String>,
+  grounding: Grounding<E>,
+) -> ReconciledEffect<P, E> {
+  match after {
+    ObservationEstablished { observed: read } =>
+      reconcile_effect(
+        decision: decision,
+        application: application,
+        show_read: read,
+        grounding: grounding,
+      )
+    ObservationRefused { cause: cause } =>
+      reconcile_effect_without_read(
+        decision: decision,
+        application: application,
+        reason: cause,
+      )
+  }
+}
+
+fn admit_frontier(f: ProtocolDeclaredFrontier) -> FrontierStanding {
+  if frontier_names_a_distinct_consumer(f: f) {
+    if frontier_trigger_is_not_declaration(f: f) {
+      if frontier_trigger_is_not_the_consumer(f: f) {
+        FrontierHonest
+      } else {
+        FrontierTriggerIsTheConsumer { frontier: f }
+      }
+    } else {
+      FrontierTriggerIsDeclaration { frontier: f }
+    }
+  } else {
+    FrontierConsumerIsDeclaration { frontier: f }
+  }
+}
+
+fn frontier_standing_is_honest(s: FrontierStanding) -> Bool {
+  match s {
+    FrontierHonest => true
+    FrontierConsumerIsDeclaration { frontier: _ } => false
+    FrontierTriggerIsDeclaration { frontier: _ } => false
+    FrontierTriggerIsTheConsumer { frontier: _ } => false
+  }
+}
+
+fn bind_declared_frontiers(frontiers: List<ProtocolDeclaredFrontier>) -> CanonicalProtocolStanding {
+  let standings = fold(frontiers, init: [], f: fn(acc, f) {
+    concat(acc, [admit_frontier(f: f)])
+  })
+  if fold(standings, init: true, f: fn(ok, s) {
+    if ok {
+      frontier_standing_is_honest(s: s)
+    } else {
+      false
+    }
+  }) {
+    CanonicalProtocolBound { frontiers: standings }
+  } else {
+    CanonicalFrontiersUnbound { frontiers: standings }
+  }
+}
+
+fn bind_canonical_protocol() -> CanonicalProtocolStanding {
+  match bind_census_protocol_phases(census: host_convergence_census_standing) {
+    CensusStandingMalformed { cause: c } =>
+      CensusProtocolUnbound { standing: CensusStandingMalformed { cause: c } }
+    CensusSelectionLeaked { identity: i, leak: l } =>
+      CensusProtocolUnbound { standing: CensusSelectionLeaked { identity: i, leak: l } }
+    CensusPhasesBound =>
+      match canonical_layer_join(
+        required: required_canonical_layers,
+        bindings: canonical_protocol_bindings,
+      ) {
+        CanonicalLayerMissing { layer: m } =>
+          CanonicalLayersUnbound { join: CanonicalLayerMissing { layer: m } }
+        CanonicalLayerDuplicated { layer: d } =>
+          CanonicalLayersUnbound { join: CanonicalLayerDuplicated { layer: d } }
+        CanonicalLayersCovered =>
+          bind_declared_frontiers(frontiers: host_effect_declared_frontiers)
+      }
+  }
+}

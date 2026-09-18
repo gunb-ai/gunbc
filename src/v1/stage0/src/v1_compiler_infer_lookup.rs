@@ -47,7 +47,7 @@ pub use crate::v1_compiler_infer_env::{
 pub use crate::v1_compiler_infer_items::item_kind;
 pub use crate::v1_compiler_infer_items::ItemKind;
 use crate::v1_compiler_infer_items::ItemKind::{
-    DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
+    DataItem, FnItem, OtherItem, ServiceItem, TypeItem,
 };
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_resolve::{fn_type_param_names, peel_nominal_alias_identity};
@@ -142,7 +142,6 @@ pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>
                     formals: Rc::new(vec![]),
                 }),
                 inferred: builtin_return.clone(),
-                is_async: false,
                 output_provenance: Rc::new(vec![]),
                 variant_provenance: v1_rt::rc_empty_map::<
                     String,
@@ -677,7 +676,6 @@ pub fn borrowed_census_callable_candidate(
                     ),
                 }),
                 inferred: return_type.clone(),
-                is_async: false,
                 output_provenance: Rc::new(vec![]),
                 variant_provenance: v1_rt::rc_empty_map::<
                     String,
@@ -846,7 +844,6 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 },
                                             ),
                                             inferred: raw_return.clone(),
-                                            is_async: false,
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
                                                 String,
@@ -883,7 +880,6 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                     },
                                                 ),
                                                 inferred: qualified_return.clone(),
-                                                is_async: false,
                                                 output_provenance: Rc::new(vec![]),
                                                 variant_provenance: v1_rt::rc_empty_map::<
                                                     String,

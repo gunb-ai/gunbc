@@ -15,6 +15,7 @@ import gunbc.target_binding {
   TargetProducer, HeadsReadingDifferentialProducer, BehavioralReceiptPlanProducer,
   BehavioralReceiptCensusProducer, BehavioralReceiptSelftestProducer,
   CompileCleanDiagnosticCensusProducer,
+  EvaluationStoreAddressExactHeadProducer,
   CompileCleanDiagnosticCensusStanding, CompileCleanDiagnosticCensusCompleted,
   CompileCleanDiagnosticCensusRefused, CompileCleanDiagnosticCensusObservation,
   CompileCleanDiagnosticCensusIdentity,
@@ -47,6 +48,7 @@ import gunbc.instrument_targets {
   behavioral_receipt_plan_label, behavioral_receipt_census_label,
   behavioral_receipt_selftest_label,
   compile_clean_diagnostic_census_label,
+  evaluation_store_address_exact_head_label,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -130,6 +132,15 @@ test fn the_diagnostic_census_operand_routes_to_its_own_producer() -> Bool {
     TargetInvocationRouted { binding: b } =>
       label_eq(a: b.target, b: compile_clean_diagnostic_census_label())
         && (b.producer == CompileCleanDiagnosticCensusProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+test fn the_evaluation_store_address_exact_head_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:evaluation-store-address-exact-head") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: evaluation_store_address_exact_head_label())
+        && (b.producer == EvaluationStoreAddressExactHeadProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }
@@ -426,8 +437,8 @@ test fn the_instrument_target_and_its_binding_are_the_same_identity() -> Bool {
          LabelNonCanonical { cause: _ } => false
        })
     && (render_label(l: t.label) == differential_operand())
-    && ((instrument_targets() |> count) == 5)
-    && ((instrument_bindings() |> count) == 5)
+    && ((instrument_targets() |> count) == 8)
+    && ((instrument_bindings() |> count) == 8)
 }
 
 // THE ABSENCE PROOF, MEASURED OVER THE DERIVED POPULATION RATHER THAN ASSERTED IN PROSE.

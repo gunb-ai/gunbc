@@ -1,0 +1,791 @@
+module test.claim.fabric.spill_candidate_field_witness
+
+import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { Nat }
+import std.types { NonEmptyStr, String, List, EpochSecs }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import std.measure {
+  MoneyRate, MoneyPerSecond, money_amount_micro,
+  Second, second,
+  HardwareThreadCount, hardware_thread_count,
+}
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
+import product.fabric.work {
+  Shape, HardRequirements, ExecutionRequirements, CapabilityManifestRef, TrustDomainRef,
+  ControlPlaneCapacity,
+}
+import product.fabric.envelope { unstated_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.provider_route {
+  ProviderRoute, ProviderRouteFacts, CompliancePostureRevision,
+  ProviderDataPathClosure, ProviderPathStanding, ProviderPathLocated, ProviderPathAbsent,
+  ProviderPathUnread,
+  PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated,
+  DownstreamProviderPopulation, NoDownstreamProviders,
+}
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUsePermit,
+  DispositionStanding, DispositionCleared,
+}
+import product.fabric.offer_route { OfferRouteRow }
+import product.fabric.route_readiness {
+  RouteExercise, RouteReadinessRequirement, RequireExercisedRoute, ExerciseOfRoute,
+}
+import product.fabric.supply {
+  SupplierOffer, OfferQuote, QuotedPerHour, ObservedSupply,
+  GrantDuration, ExactGrantDuration, StableRosterOrder, PlacementAffinityKey,
+}
+import product.fabric.selection {
+  CandidateOffer, DispatchInputs,
+  AvailabilityObservation, AvailableIndefinitely,
+  CommitmentState, PayAsYouGo,
+  StartCostMeasured, NoTransitionRequired, OperatingCostBorneBySupplier,
+  OperatingCostObservation, OpportunityCostObservation, NoFeasibleAlternativeUse,
+  SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved,
+  select_supply,
+}
+import product.fabric.candidate_field {
+  FieldRequest, CandidateField, FieldExclusion, FieldExclusionCause,
+  FieldRouteNotModeled, FieldRouteAmbiguous, FieldRouteFactsNameAnotherRoute,
+  FieldUseRefused, FieldDispatchInputsNameAnotherOffer, FieldPermitNamesAnotherOffer,
+  FieldPermitNamesAnotherRoute, FieldPermitNamesAnotherWork, FieldPermitNamesAnotherDemand,
+  assemble_candidate_field,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE CANDIDATE FIELD OF A REAL SPILL POPULATION, AND THE POPULATION IS UNEVEN ON
+// PURPOSE BECAUSE THE REAL ONE IS.
+//
+// The CI spill roster names four compute offers - a Scaleway AMP2 instance, a Hetzner CAX41, an
+// Oracle Ampere A1 and a GCP N2 on-demand instance. Exactly one of those four providers has a route
+// whose data paths anybody has modeled. Three do not, and the question this file answers is what
+// happens to the other three: whether an offer whose provider we have never assessed is refused,
+// or whether it quietly reaches the ranking and wins on price because nothing was there to stop it.
+//
+// WHAT THIS FILE DOES NOT ASSERT ABOUT ANY REAL VENDOR, stated first because getting this wrong is
+// worse than the coverage gap it would paper over. The four offer IDENTITIES are real - those are
+// products that exist and that our own spill roster names. THE ROUTE FACTS BELOW ARE NOT A READING
+// OF ANY VENDOR'S SUBPROCESSOR DOCUMENTATION, DATA-RESIDENCY REPRESENTATIONS OR CONTRACT. They are
+// this witness's declared inputs, and every one of them cites a row in this module that says so in
+// its own text. DESIGN section 4d's rule is that a figure carries its evidentiary standing in the
+// type rather than in a reader's memory; the standing of everything here is "witness input, read
+// obligation outstanding", and the obligation is named. Nobody may cite this file as evidence that
+// Hetzner's execution path is located where this file puts it - the whole point of the file is that
+// the corpus has not read those paths for three of four providers.
+//
+// THE FOURTH IS A DIFFERENT STATE AND THE DIFFERENCE MATTERS, because writing it down wrongly is
+// how somebody is sent to do a read that has already been done. A Hetzner read EXISTS and is owned:
+// six dated published-source readings, one of them a NEGATIVE reading recording what the vendor's
+// technical-and-organizational-measures page does not say. It is UNLANDED rather than missing, and
+// deliberately so - it is sequenced behind a carrier change that widens ProviderPathUnread with a
+// consulted slot, so that an unread path can cite the documents that were consulted and failed to
+// answer. Carrier first, census conforms. This witness therefore does not reach for those readings
+// because they are not in this tree yet, not because nobody has done the work.
+//
+// WHY THE ONE MODELED ROUTE IS ALSO THE DEAREST. Scaleway is priced lowest and Hetzner highest, so
+// the surviving offer is the one that loses on every economic axis. If compliance were a conjunct
+// beside cost - or a tiebreak, or a penalty added to a total - the cheap unassessed offer would win
+// and this file would go red. It wins nothing, because it is never in the list the ranker is
+// handed.
+//
+// THE PRICES ARE ORDINALS, NOT QUOTES. They are 1000, 2000, 3000 and 4000 micros an hour, spaced so
+// the ORDER is unmistakable and so no reader can mistake them for a vendor's published rate. The
+// subject of every claim below is which offer survives, never what anything costs; a real quote
+// belongs to a pricing authority and is cited from there, never transcribed into a witness.
+
+// ── THE POPULATION'S ROUTE COMPONENTS, DECLARED SO EVERY CITATION RESOLVES ────────────────────
+//
+// The provider and service components of the Hetzner route cite extdeps.cloud.hetzner, which is the
+// real upstream authority for that vendor and already carries its catalog. The REGION component
+// cites a row in this module instead, and the reason is a real modeling state rather than laziness:
+// that module models regions as a closed coproduct (HetznerCloudRegion = Helsinki | Nuremberg) with
+// no per-region DECLARATION to name, and DESIGN section 3 requires citing a symbol rather than a
+// position, so there is presently nothing upstream to point at. TRIGGER: a per-region declaration in
+// extdeps.cloud.hetzner, at which point this row is deleted and the citation moves upstream.
+data spill_hetzner_helsinki_region: NonEmptyStr = "spill-hetzner-region-helsinki"
+data spill_hetzner_nuremberg_region: NonEmptyStr = "spill-hetzner-region-nuremberg"
+// THE EXERCISE RECEIPT every witness route exercise cites. Like the region rows it is this witness's
+// declared input, not a reading of any real run on any real vendor.
+data spill_route_exercise: NonEmptyStr = "spill-route-exercise-witness-input"
+
+// THE THREE PROVIDERS WITH NO MODELED ROUTE. NO ROUTE FACTS ARE MODELED FOR ANY OF THESE THREE
+// ANYWHERE IN THIS CORPUS: no data-path closure, no downstream population, no contract terms. That
+// is the population's actual state and is the subject of this file, not an omission in it.
+//
+// The rows exist so the OFFERS can name the route they claim to run on - an offer must state its
+// route or a facts row could never be found to disagree with it - and they deliberately carry no
+// facts. Naming a provider here establishes nothing whatever about that provider.
+//
+// THE VALUES ARE IDENTIFIERS AND THE PROSE IS HERE, which is DESIGN section 4c rather than a style
+// choice: an ordinary String declaration whose purpose is commentary is misplaced data, mechanically
+// indistinguishable from program data, and "//" is the quarantine boundary the corpus settled on
+// after sweeping 215 such rows. The sibling rows this file sits beside - the live probe's
+// probe_customer_profile, the admission fixture's fixture_provider - are identifier-shaped for the
+// same reason.
+data spill_scaleway_provider: NonEmptyStr = "spill-provider-scaleway"
+data spill_scaleway_service: NonEmptyStr = "spill-service-scaleway-amp2"
+data spill_scaleway_region: NonEmptyStr = "spill-region-scaleway-unread"
+data spill_oracle_provider: NonEmptyStr = "spill-provider-oracle"
+data spill_oracle_service: NonEmptyStr = "spill-service-oci-ampere-a1"
+data spill_oracle_region: NonEmptyStr = "spill-region-oci-unread"
+data spill_google_provider: NonEmptyStr = "spill-provider-google"
+data spill_google_service: NonEmptyStr = "spill-service-gce-n2-on-demand"
+data spill_google_region: NonEmptyStr = "spill-region-gcp-unread"
+
+// ── THE WITNESS'S DECLARED INPUTS ─────────────────────────────────────────────────────────────
+//
+// THE READ IS OUTSTANDING IN THIS TREE. No route facts here state any of these providers' data-path
+// closures - execution, durable storage, backups, logs, telemetry, control plane, support access,
+// administrative access and spill - nor enumerate their downstream providers. For one of the four
+// providers such a read has been performed and is awaiting a carrier change before it lands; for
+// the other three none exists. Either way it is not HERE, so until a real reading lands and is
+// cited to the provider's own published representations, every path standing built from these rows
+// is an INPUT TO A TEST and is not a fact about any provider.
+//
+// spill_witness_read_obligation is what every ProviderPathLocated arm below cites as its evidence,
+// so the obligation is not a note beside the data - it is the DeclarationRef the typed carrier
+// points at, reachable from any path standing this witness constructs.
+data spill_witness_read_obligation: NonEmptyStr = "spill-witness-read-obligation"
+data spill_witness_operator: NonEmptyStr = "spill-witness-operator"
+data spill_witness_jurisdiction: NonEmptyStr = "spill-witness-jurisdiction"
+data spill_witness_no_spill_path: NonEmptyStr = "spill-witness-no-spill-path"
+data spill_witness_no_downstream: NonEmptyStr = "spill-witness-no-downstream"
+data spill_witness_contract_terms: NonEmptyStr = "spill-witness-contract-terms"
+data spill_witness_posture_authority: NonEmptyStr = "spill-witness-posture-authority"
+data spill_witness_customer_profile: NonEmptyStr = "spill-witness-customer-profile"
+data spill_witness_data_handling_profile: NonEmptyStr = "spill-witness-data-handling-profile"
+data spill_witness_agreement: NonEmptyStr = "spill-witness-agreement"
+data spill_witness_prohibited_use_cleared: NonEmptyStr = "spill-witness-prohibited-use-cleared"
+data spill_witness_sanctions_cleared: NonEmptyStr = "spill-witness-sanctions-cleared"
+data spill_witness_export_cleared: NonEmptyStr = "spill-witness-export-cleared"
+data spill_witness_decision_receipt: NonEmptyStr = "spill-witness-decision-receipt"
+
+fn s_hash(seed: String) -> ContentHash {
+  as_content_hash_structural(structural: content_hash_atom(value: seed))
+}
+
+fn s_hetzner_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "extdeps_external_authority_anchor"),
+    service: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_cloud_listed_catalog"),
+    region: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_hetzner_helsinki_region"),
+  }
+}
+
+fn s_hetzner_sibling_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "extdeps_external_authority_anchor"),
+    service: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "hetzner_cloud_listed_catalog"),
+    region: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_hetzner_nuremberg_region"),
+  }
+}
+
+fn s_scaleway_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_scaleway_provider"),
+    service: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_scaleway_service"),
+    region: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_scaleway_region"),
+  }
+}
+
+fn s_oracle_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_oracle_provider"),
+    service: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_oracle_service"),
+    region: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_oracle_region"),
+  }
+}
+
+fn s_google_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_google_provider"),
+    service: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_google_service"),
+    region: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_google_region"),
+  }
+}
+
+fn s_located() -> ProviderPathStanding {
+  ProviderPathLocated {
+    operator: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_operator"),
+    jurisdiction: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_jurisdiction"),
+    evidence: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_read_obligation"),
+  }
+}
+
+fn s_closure() -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: s_located(),
+    durable_storage: s_located(),
+    backups: s_located(),
+    logs: s_located(),
+    telemetry: s_located(),
+    control_plane: s_located(),
+    support_access: s_located(),
+    administrative_access: s_located(),
+    spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_no_spill_path") },
+  }
+}
+
+fn s_facts(route: ProviderRoute) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route,
+    contract_terms: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_contract_terms"),
+    data_paths: s_closure(),
+    downstream: NoDownstreamProviders { evidence: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_no_downstream") },
+    observed_at: "2026-09-13T00:00:00Z",
+    facts_revision: s_hash(seed: "spill-witness-facts-r1"),
+  }
+}
+
+// THE POSTURE PERMITS THE JURISDICTION THIS WITNESS'S OWN PATHS CITE, and it enumerates rather than
+// leaving the population unread, because an unread population refuses every located path and would
+// take the positive control down with the reds. Jurisdiction admission is gunbc#11194's subject and
+// has its own witnesses; this file states a well-formed posture so that the thing IT is about - the
+// offer-to-route correspondence - is what its reds actually move.
+//
+// No drop enrollments: nothing here is enrolled in the jurisdiction rung drop, and an empty list is
+// the honest value rather than a placeholder.
+fn s_posture() -> CompliancePostureRevision {
+  CompliancePostureRevision {
+    authority: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_posture_authority"),
+    revision: s_hash(seed: "spill-witness-posture-r1"),
+    permitted_jurisdictions: PermittedJurisdictionsEnumerated {
+      first: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_jurisdiction"),
+      further: [],
+    },
+    jurisdiction_drop_enrollments: [],
+  }
+}
+
+fn s_customer_profile() -> DeclarationRef { decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_customer_profile") }
+fn s_data_handling_profile() -> DeclarationRef { decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_data_handling_profile") }
+fn s_agreement() -> DeclarationRef { decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_agreement") }
+
+fn s_sanction(route: ProviderRoute) -> RouteScopeSanction {
+  RouteScopeSanction {
+    route: route,
+    posture: s_posture(),
+    customer_profile: s_customer_profile(),
+    data_handling_profile: s_data_handling_profile(),
+    requires_agreement: s_agreement(),
+  }
+}
+
+fn s_cleared(ev: DeclarationRef) -> DispositionStanding {
+  DispositionCleared { evidence: ev }
+}
+
+fn s_demand() -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc", key: "spill-demand-1" }
+}
+
+fn s_work() -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: "gunbc", key: "spill-work-1" }
+}
+
+fn s_scope() -> ProviderUseScope<NonEmptyStr> {
+  ProviderUseScope {
+    demand: s_demand(),
+    work: s_work(),
+    customer_profile: s_customer_profile(),
+    data_handling_profile: s_data_handling_profile(),
+    agreement: s_agreement(),
+    prohibited_use_disposition: s_cleared(ev: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_prohibited_use_cleared")),
+    sanctions_disposition: s_cleared(ev: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_sanctions_cleared")),
+    export_disposition: s_cleared(ev: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_export_cleared")),
+  }
+}
+
+fn s_receipt() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_decision_receipt")
+}
+
+// ── THE FOUR OFFERS ───────────────────────────────────────────────────────────────────────────
+fn s_caps() -> CapabilityManifestRef { "gunbc.capabilities.linux-rust-toolchain" }
+fn s_trust() -> TrustDomainRef { "gunbc.trust.internal-fleet" }
+fn s_isolation() -> IsolationProfile { IsolationProfile { guarantees: [] } }
+
+fn s_shape(threads: HardwareThreadCount) -> Shape {
+  Shape { hard: HardRequirements { threads: threads }, envelope: unstated_envelope() }
+}
+
+fn s_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: s_shape(threads: hardware_thread_count(count: 8)),
+    capabilities: s_caps(),
+    trust_domain: s_trust(),
+    isolation: s_isolation(),
+  }
+}
+
+fn s_hourly(micros: Nat) -> OfferQuote {
+  QuotedPerHour(MoneyRate { amount: money_amount_micro(count: micros), currency: Usd })
+}
+
+fn s_offer(key: OfferKey, route: ProviderRoute, micros: Nat) -> SupplierOffer<NonEmptyStr> {
+  SupplierOffer {
+    id: FabricIdentity { principal: "gunbc", key: key },
+    executor: "gunbc",
+    route: route,
+    shape: s_shape(threads: hardware_thread_count(count: 16)),
+    capabilities: s_caps(),
+    trust_domain: s_trust(),
+    isolation: s_isolation(),
+    quantity_bound: 1,
+    ready_at: "2026-09-13T00:00:00Z",
+    quote: s_hourly(micros: micros),
+    billing_quantum: second(count: 3600),
+    evidence: ObservedSupply {
+      observed_at: "2026-09-13T00:00:00Z",
+      receipt: "gunbc.observation.spill-roster-1",
+    },
+  }
+}
+
+fn s_inputs(key: OfferKey) -> DispatchInputs<NonEmptyStr> {
+  DispatchInputs {
+    offer: FabricIdentity { principal: "gunbc", key: key },
+    availability: AvailableIndefinitely {
+      delay: second(count: 0),
+      receipt: "gunbc.observation.spill-availability-1",
+    },
+    commitment: PayAsYouGo,
+    start: StartCostMeasured {
+      amount: MoneyRate { amount: money_amount_micro(count: 0), currency: Usd },
+      receipt: "gunbc.observation.spill-start-cost-1",
+    },
+    transition: NoTransitionRequired,
+    operating: OperatingCostBorneBySupplier,
+    opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.spill-alternative-uses-1" },
+  }
+}
+
+fn s_request(key: OfferKey, route: ProviderRoute, micros: Nat) -> FieldRequest<NonEmptyStr> {
+  FieldRequest { offer: s_offer(key: key, route: route, micros: micros), dispatch: s_inputs(key: key) }
+}
+
+// THE ROSTER, CHEAPEST FIRST. Roster order is also the StableRosterOrder tie policy's order, so
+// putting the cheapest unassessed offer FIRST is deliberate: if the field leaked it through, it
+// would win both on price and on order, and no tie-break accident could disguise the failure.
+fn s_requests() -> List<FieldRequest<NonEmptyStr>> {
+  [
+    s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), micros: 1000),
+    s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), micros: 2000),
+    s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), micros: 3000),
+    s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000),
+  ]
+}
+
+// THE ONLY ROUTE ANYBODY HAS MODELED. One row, for one of four providers - which is the corpus's
+// actual coverage and is why three of the four reds below need no operator decision to fire.
+fn s_modeled_routes() -> List<OfferRouteRow<NonEmptyStr>> {
+  [
+    OfferRouteRow {
+      offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" },
+      facts: s_facts(route: s_hetzner_route()),
+    },
+  ]
+}
+
+// THE DECISION INSTANT every field below is taken at, and the Hetzner exercise that makes that
+// route ready at it. The claims about correspondence and admission are not about readiness, so they
+// run with every route exercised; the readiness claims supply their own exercises.
+data s_at: EpochSecs = 1000
+
+fn s_exercise(route: ProviderRoute, valid_through: EpochSecs) -> RouteExercise {
+  RouteExercise {
+    route: route,
+    exercised_at: 100,
+    valid_through: valid_through,
+    receipt: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_route_exercise"),
+  }
+}
+
+fn s_hetzner_exercise(valid_through: EpochSecs) -> RouteExercise {
+  s_exercise(route: s_hetzner_route(), valid_through: valid_through)
+}
+
+fn s_every_route_exercised() -> List<RouteExercise> {
+  map([s_scaleway_route(), s_oracle_route(), s_google_route(), s_hetzner_route()], r => s_exercise(route: r, valid_through: 2000))
+}
+
+fn s_field_with_readiness(
+  routes: List<OfferRouteRow<NonEmptyStr>>,
+  sanctions: List<RouteScopeSanction>,
+  requests: List<FieldRequest<NonEmptyStr>>,
+  exercises: List<RouteExercise>,
+  readiness: RouteReadinessRequirement<NonEmptyStr>,
+) -> CandidateField<NonEmptyStr> {
+  assemble_candidate_field(
+    routes: routes,
+    sanctions: sanctions,
+    active: s_posture(),
+    scope: s_scope(),
+    decision_receipt: s_receipt(),
+    exercises: exercises,
+    readiness: readiness,
+    at: s_at,
+    requests: requests,
+  )
+}
+
+fn s_field(
+  routes: List<OfferRouteRow<NonEmptyStr>>,
+  sanctions: List<RouteScopeSanction>,
+  requests: List<FieldRequest<NonEmptyStr>>,
+) -> CandidateField<NonEmptyStr> {
+  s_field_with_readiness(
+    routes: routes,
+    sanctions: sanctions,
+    requests: requests,
+    exercises: s_every_route_exercised(),
+    readiness: RequireExercisedRoute,
+  )
+}
+
+fn s_default_field() -> CandidateField<NonEmptyStr> {
+  s_field(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: s_requests(),
+  )
+}
+
+// A TYPED HELPER RATHER THAN A RECORD LITERAL IN ARGUMENT POSITION. MoneyPerSecond is MoneyRate at
+// a phantom rate, and spelled inline at the call site it does not typecheck - which fails the whole
+// MODULE to resolve, so every claim in this file becomes unreachable rather than red.
+fn s_no_delay_valuation() -> MoneyPerSecond {
+  MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }
+}
+
+fn s_select(candidates: List<CandidateOffer<NonEmptyStr>>) -> SupplySelection<NonEmptyStr> {
+  select_supply(
+    requirements: s_requirements(),
+    candidates: candidates,
+    duration: ExactGrantDuration { seconds: second(count: 90) },
+    maximum_buy_order: money_amount_micro(count: 1000000),
+    budget_currency: Usd,
+    delay_valuation: s_no_delay_valuation(),
+    tie: StableRosterOrder,
+    affinity: "spill.demand" as PlacementAffinityKey,
+  )
+}
+
+fn s_selected_key(s: SupplySelection<NonEmptyStr>) -> NonEmptyStr {
+  match s {
+    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => (o.offer.id.key as NonEmptyStr)
+    NoAdmissibleOffer { considered: _ } => "none"
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => "tie-unresolved"
+  }
+}
+
+fn s_selected_permit(s: SupplySelection<NonEmptyStr>) -> List<ProviderUsePermit<NonEmptyStr>> {
+  match s {
+    OfferSelected { candidate: o, cost: _, basis: _, horizon: _, considered: _, tie_policy: _ } => [o.permit]
+    NoAdmissibleOffer { considered: _ } => []
+    EqualCostTieUnresolved { digest: _, cause: _, considered: _ } => []
+  }
+}
+
+fn s_exclusion_tag(c: FieldExclusionCause<NonEmptyStr>) -> String {
+  match c {
+    FieldRouteNotModeled => "route-not-modeled"
+    FieldRouteAmbiguous { claimed: _ } => "route-ambiguous"
+    FieldRouteFactsNameAnotherRoute { facts_route: _, offer_route: _ } => "facts-name-another-route"
+    FieldRouteNeverExercised { route: _ } => "route-never-exercised"
+    FieldRouteExerciseExpired { route: _, latest_valid_through: _, at: _ } => "route-exercise-expired"
+    FieldUseRefused { cause: _ } => "use-refused"
+    FieldDispatchInputsNameAnotherOffer { inputs_name: _ } => "inputs-name-another-offer"
+    FieldPermitNamesAnotherOffer { permit_names: _ } => "permit-names-another-offer"
+    FieldPermitNamesAnotherRoute => "permit-names-another-route"
+    FieldPermitNamesAnotherWork { permit_work: _, subject_work: _ } => "permit-names-another-work"
+    FieldPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
+  }
+}
+
+fn s_excluded_keys(field: CandidateField<NonEmptyStr>, tag: String) -> List<NonEmptyStr> {
+  map(
+    filter(field.excluded, x => s_exclusion_tag(c: x.cause) == tag),
+    x => (x.offer.key as NonEmptyStr))
+}
+
+fn s_admitted_keys(field: CandidateField<NonEmptyStr>) -> List<NonEmptyStr> {
+  map(field.admitted, c => (c.offer.id.key as NonEmptyStr))
+}
+
+// ── THE POSITIVE CONTROL ──────────────────────────────────────────────────────────────────────
+//
+// Load-bearing for every red below. Without it, "the cheap offer did not win" would be satisfied by
+// a fixture in which nothing wins at all, and the file would assert nothing about admission.
+test fn w_the_one_modeled_route_survives_the_field() -> Bool {
+  s_admitted_keys(field: s_default_field()) == ["spill-hetzner-cax41"]
+}
+
+// RED - AN UNCLASSIFIED ROUTE REFUSES RATHER THAN DEFAULTING. Three of four providers have no
+// modeled route, and each is excluded by NAME with the cause that says what to go and do: read the
+// data paths. Not "unsupported", not a silent drop, and not ProviderRouteUnclassified either -
+// that cause would send the operator to sanction a route whose facts nobody has gathered.
+test fn w_the_three_unmodeled_providers_refuse_by_name() -> Bool {
+  s_excluded_keys(field: s_default_field(), tag: "route-not-modeled")
+    == ["spill-scaleway-amp2", "spill-oci-ampere-a1", "spill-gcp-n2-on-demand"]
+}
+
+// RED - A DECLARED POSTURE DOES NOT RESCUE AN UNREAD ROUTE. The same population, run against a
+// sanction roster that admits ALL FOUR routes under the active posture. The three unmodeled ones
+// are still refused, because a sanction is a statement about a route whose facts exist; sanctioning
+// a route nobody has read does not manufacture the reading. This is why the refusal does not wait
+// on an operator decision.
+test fn w_sanctioning_every_route_does_not_admit_an_unread_one() -> Bool {
+  s_admitted_keys(field: s_field(
+    routes: s_modeled_routes(),
+    sanctions: [
+      s_sanction(route: s_hetzner_route()),
+      s_sanction(route: s_scaleway_route()),
+      s_sanction(route: s_oracle_route()),
+      s_sanction(route: s_google_route()),
+    ],
+    requests: s_requests(),
+  )) == ["spill-hetzner-cax41"]
+}
+
+// RED - THE CHEAPEST UNADMITTED ROUTE NEVER WINS. The Scaleway offer is first in roster order and
+// lowest in price, and the offer that is selected is the DEAREST of the four. Compliance did not
+// outweigh price here; it ran before price existed.
+test fn w_the_cheapest_unadmitted_route_never_wins() -> Bool {
+  s_selected_key(s: s_select(candidates: s_default_field().admitted)) == "spill-hetzner-cax41"
+}
+
+// THE DISCRIMINATING CONTROL FOR THE RED ABOVE, AND IT IS THE MUTATION RATHER THAN A SECOND
+// ASSERTION. The only thing that moves is that Scaleway's route becomes modeled and sanctioned -
+// same prices, same roster, same order - and Scaleway then wins. So the previous red is not green
+// because of an arithmetic accident, a currency screen or a shape mismatch: it is green because of
+// the gate, and removing the gate's grounds changes the answer.
+test fn w_the_cheapest_route_does_win_once_it_is_modeled_and_sanctioned() -> Bool {
+  s_selected_key(s: s_select(candidates: s_field(
+    routes: concat(s_modeled_routes(), [
+      OfferRouteRow {
+        offer: FabricIdentity { principal: "gunbc", key: "spill-scaleway-amp2" },
+        facts: s_facts(route: s_scaleway_route()),
+      },
+    ]),
+    sanctions: [s_sanction(route: s_hetzner_route()), s_sanction(route: s_scaleway_route())],
+    requests: s_requests(),
+  ).admitted)) == "spill-scaleway-amp2"
+}
+
+// RED - AN EXCLUDED OFFER IS INDISTINGUISHABLE FROM AN ABSENT ONE. The three unmodeled offers are
+// not merely outranked: adding them to the population changes the answer not at all.
+test fn w_the_unmodeled_offers_change_nothing_at_all() -> Bool {
+  s_selected_key(s: s_select(candidates: s_default_field().admitted))
+    == s_selected_key(s: s_select(candidates: s_field(
+         routes: s_modeled_routes(),
+         sanctions: [s_sanction(route: s_hetzner_route())],
+         requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+       ).admitted))
+}
+
+// RED - A FIELD OF NOTHING BUT UNREAD ROUTES SELECTS NOTHING. With the one modeled route removed
+// from the population, the answer is a refusal to place work rather than the cheapest of three
+// unassessed clouds.
+test fn w_a_field_of_unread_routes_selects_nothing() -> Bool {
+  s_selected_key(s: s_select(candidates: s_field(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [
+      s_request(key: "spill-scaleway-amp2", route: s_scaleway_route(), micros: 1000),
+      s_request(key: "spill-oci-ampere-a1", route: s_oracle_route(), micros: 2000),
+      s_request(key: "spill-gcp-n2-on-demand", route: s_google_route(), micros: 3000),
+    ],
+  ).admitted)) == "none"
+}
+
+// RED - REAL FACTS CARRIED ONTO THE WRONG ROUTE DO NOT ADMIT. The facts row is complete and its
+// route is genuinely sanctioned; it simply governs the sibling region. An offer running in Helsinki
+// is not admitted by a Nuremberg reading, and the refusal names the wiring fault rather than
+// reporting the route as unread.
+test fn w_facts_for_a_sibling_region_do_not_admit_the_offer() -> Bool {
+  s_excluded_keys(
+    field: s_field(
+      routes: [
+        OfferRouteRow {
+          offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" },
+          facts: s_facts(route: s_hetzner_sibling_route()),
+        },
+      ],
+      sanctions: [s_sanction(route: s_hetzner_sibling_route())],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+    ),
+    tag: "facts-name-another-route",
+  ) == ["spill-hetzner-cax41"]
+}
+
+// THE SAME ROUTE, READ TWO DIFFERENT WAYS. One row has every path located; this one leaves EXECUTION
+// unread. Both name the identical route, so a check asking only "do these rows disagree about the
+// route" sees no conflict at all - and the two rows are the difference between admitting and
+// refusing, which is why the pair below is the discriminating input rather than a duplicate of the
+// sibling-region red.
+fn s_facts_execution_unread(route: ProviderRoute) -> ProviderRouteFacts {
+  ProviderRouteFacts {
+    route: route,
+    contract_terms: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_contract_terms"),
+    data_paths: ProviderDataPathClosure {
+      execution: ProviderPathUnread {
+        obligation: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_read_obligation"),
+        consulted: [],
+      },
+      durable_storage: s_located(),
+      backups: s_located(),
+      logs: s_located(),
+      telemetry: s_located(),
+      control_plane: s_located(),
+      support_access: s_located(),
+      administrative_access: s_located(),
+      spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_no_spill_path") },
+    },
+    downstream: NoDownstreamProviders { evidence: decl_ref(module_path: "test.claim.fabric.spill_candidate_field_witness", decl_name: "spill_witness_no_downstream") },
+    observed_at: "2026-09-13T00:00:00Z",
+    facts_revision: s_hash(seed: "spill-witness-facts-execution-unread-r1"),
+  }
+}
+
+fn s_two_reading_field(first: ProviderRouteFacts, second: ProviderRouteFacts) -> CandidateField<NonEmptyStr> {
+  s_field(
+    routes: [
+      OfferRouteRow { offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }, facts: first },
+      OfferRouteRow { offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }, facts: second },
+    ],
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+  )
+}
+
+// RED - TWO ROWS THAT AGREE ON THE ROUTE AND DISAGREE ON THE FACTS STILL REFUSE. This is the case an
+// ambiguity check keyed on route disagreement cannot see: both rows name the same route, so nothing
+// about the ROUTE conflicts, and the two readings differ only in whether the execution path was
+// read. One of them admits and the other refuses, so taking the first would let roster order decide
+// whether this work runs at all.
+test fn w_two_readings_of_one_route_refuse_rather_than_admitting_the_first() -> Bool {
+  s_excluded_keys(
+    field: s_two_reading_field(first: s_facts(route: s_hetzner_route()), second: s_facts_execution_unread(route: s_hetzner_route())),
+    tag: "route-ambiguous",
+  ) == ["spill-hetzner-cax41"]
+}
+
+// RED - AND IT REFUSES IN EITHER ROSTER ORDER, which is the claim rather than a repetition of it.
+// Under the previous fold these two orders gave DIFFERENT answers - admitted when the fully-read row
+// came first, refused when it came second - and both were reported as a decision. An order-dependent
+// compliance answer is the failure; one order being correct is not a defence.
+test fn w_the_two_readings_refuse_in_either_roster_order() -> Bool {
+  s_excluded_keys(
+    field: s_two_reading_field(first: s_facts_execution_unread(route: s_hetzner_route()), second: s_facts(route: s_hetzner_route())),
+    tag: "route-ambiguous",
+  ) == ["spill-hetzner-cax41"]
+}
+
+// RED - A ROSTER THAT ANSWERS TWICE REFUSES INSTEAD OF TAKING THE FIRST ANSWER. Two rows for one
+// offer identity naming two different routes is a roster that does not know where the work runs,
+// and the row that happens to be first in a list may not decide that.
+test fn w_two_rows_for_one_offer_refuse_rather_than_taking_the_first() -> Bool {
+  s_excluded_keys(
+    field: s_field(
+      routes: [
+        OfferRouteRow {
+          offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" },
+          facts: s_facts(route: s_hetzner_route()),
+        },
+        OfferRouteRow {
+          offer: FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" },
+          facts: s_facts(route: s_hetzner_sibling_route()),
+        },
+      ],
+      sanctions: [s_sanction(route: s_hetzner_route()), s_sanction(route: s_hetzner_sibling_route())],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+    ),
+    tag: "route-ambiguous",
+  ) == ["spill-hetzner-cax41"]
+}
+
+// RED - AN UNSANCTIONED BUT FULLY READ ROUTE IS REFUSED FOR A DIFFERENT REASON, AND THE TWO CAUSES
+// STAY APART. Hetzner's facts are present and the offer is the only candidate, but no sanction
+// covers the route. The exclusion is the admission's own typed cause, not route-not-modeled: the
+// remedy here is to sanction the route, and reporting it as unread would send the operator to read
+// paths that have already been read.
+test fn w_a_read_but_unsanctioned_route_refuses_as_a_use_refusal() -> Bool {
+  s_excluded_keys(
+    field: s_field(
+      routes: s_modeled_routes(),
+      sanctions: [],
+      requests: [s_request(key: "spill-hetzner-cax41", route: s_hetzner_route(), micros: 4000)],
+    ),
+    tag: "use-refused",
+  ) == ["spill-hetzner-cax41"]
+}
+
+// THE PERMIT SURVIVES SELECTION. The admission ran before the candidate field existed; this reads
+// the permit off the WINNER of the ranking and finds it still naming the exact offer, route, work
+// and demand it was minted for. A selection returning a raw offer could not answer this at all.
+test fn w_the_winning_candidate_still_carries_its_admission_proof() -> Bool {
+  map(s_selected_permit(s: s_select(candidates: s_default_field().admitted)), p => (p.offer.key as NonEmptyStr))
+    == ["spill-hetzner-cax41"]
+}
+
+test fn w_the_surviving_permit_names_the_work_and_demand_it_was_admitted_for() -> Bool {
+  fold(
+    s_selected_permit(s: s_select(candidates: s_default_field().admitted)),
+    init: false,
+    f: (acc, p) => (p.work.key as NonEmptyStr) == "spill-work-1" && (p.demand.key as NonEmptyStr) == "spill-demand-1",
+  )
+}
+
+// ── READINESS: A SANCTIONED ROUTE THAT HAS NEVER RUN WORK IS NOT CAPACITY ─────────────────────────
+
+fn s_readiness_field(exercises: List<RouteExercise>, readiness: RouteReadinessRequirement<NonEmptyStr>) -> CandidateField<NonEmptyStr> {
+  s_field_with_readiness(
+    routes: s_modeled_routes(),
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: s_requests(),
+    exercises: exercises,
+    readiness: readiness,
+  )
+}
+
+// The discriminating red for the whole stage: the SAME modeled, sanctioned route that wins above
+// is refused by name once its exercise is removed, and the field then selects nothing.
+test fn w_a_sanctioned_route_never_exercised_is_not_capacity() -> Bool {
+  let field = s_readiness_field(exercises: [], readiness: RequireExercisedRoute)
+  s_excluded_keys(field: field, tag: "route-never-exercised") == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: field) == []
+    && s_selected_key(s: s_select(candidates: field.admitted)) == "none"
+}
+
+test fn w_an_expired_exercise_refuses_by_name() -> Bool {
+  let field = s_readiness_field(exercises: [s_hetzner_exercise(valid_through: 999)], readiness: RequireExercisedRoute)
+  s_excluded_keys(field: field, tag: "route-exercise-expired") == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: field) == []
+}
+
+// Readiness is monotone in the exercise set: an expired and a live exercise of one route admit in
+// either order.
+test fn w_any_unexpired_exercise_admits_in_either_order() -> Bool {
+  let live = s_hetzner_exercise(valid_through: 2000)
+  let stale = s_hetzner_exercise(valid_through: 10)
+  s_admitted_keys(field: s_readiness_field(exercises: [stale, live], readiness: RequireExercisedRoute)) == ["spill-hetzner-cax41"]
+    && s_admitted_keys(field: s_readiness_field(exercises: [live, stale], readiness: RequireExercisedRoute)) == ["spill-hetzner-cax41"]
+}
+
+// The exercise arm admits its own work onto its own route, and nothing wider: naming another work
+// falls back to requiring an exercise, which this route does not have.
+test fn w_an_exercise_admits_only_its_own_work_on_its_own_route() -> Bool {
+  let own = s_readiness_field(exercises: [], readiness: ExerciseOfRoute { route: s_hetzner_route(), work: s_work() })
+  let other_work = s_readiness_field(
+    exercises: [],
+    readiness: ExerciseOfRoute { route: s_hetzner_route(), work: FabricIdentity { principal: "gunbc", key: "some-other-work" } },
+  )
+  s_admitted_keys(field: own) == ["spill-hetzner-cax41"]
+    && s_excluded_keys(field: other_work, tag: "route-never-exercised") == ["spill-hetzner-cax41"]
+}

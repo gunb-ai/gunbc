@@ -136,6 +136,17 @@ pub mod gunbc_namespace_reference_derived_closure_admission;
     suspicious_double_ref_op,
     clippy::all
 )]
+pub mod gunbc_reference_derived_candidate;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
 pub mod gunbc_rust_decl_type_overlay;
 #[allow(
     unused_imports,
@@ -687,6 +698,17 @@ pub mod v1_tests_claim_production_fed_exposure_discrimination_control_test;
     clippy::all
 )]
 pub mod v1_tests_claim_reference_derived_disposition_census_witness_test;
+#[allow(
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_parens,
+    dead_code,
+    non_shorthand_field_patterns,
+    suspicious_double_ref_op,
+    clippy::all
+)]
+pub mod v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness;
 #[allow(
     unused_imports,
     unused_variables,

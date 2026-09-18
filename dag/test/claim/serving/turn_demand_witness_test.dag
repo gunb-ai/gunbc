@@ -1,83 +1,151 @@
 module test.claim.serving.turn_demand_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.optional { Present, Absent }
 import product.fabric.work {
-  SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements,
+  ArtifactManifestRef, EffectContractRef, OutputContractRef, ExecutionRequirements, ServiceInterfaceRef,
   ControlPlaneCapacity, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef, OpaqueEffects,
-  OutputArtifactObligation, TerminalResultObligation,
+  OutputArtifactObligation, TerminalResultObligation, Work, WorkContract, MaterializedProgram, OfferedService,
+  work_for,
 }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
-import product.fabric.demand { ObservationReceiptRef }
 import std.measure { hardware_thread_count }
 import gunbc.serving.turn_demand {
-  ServingTurnRequest, ServingTurnSource, TurnSourceManifest, serving_turn_source_unestablished,
-  serving_turn_steps, serving_turn_output_obligations, TurnWorkBound, TurnWorkUnestablished,
+  ServingTurnRequest, serving_turn_contract, serving_turn_steps, serving_turn_output_obligations,
   serving_turn_work, serving_turn_requirements, serving_turn_satisfaction,
 }
+import gunbc.harness.harness_seat {
+  ServingModelRequirement, AnyAdmittedModel, ExactServingUnit, harness_model_requirement_ref, harness_requirement_admits,
+}
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm, Glm53FlashOnVllm }
+import gunbc.spark.serving_offer { spark_serving_capability }
 
-fn probe_requirements() -> ExecutionRequirements {
+// ── A TURN'S WORK IS WHAT THE CALLER ASKED FOR, NOT WHAT A SUPPLIER LOADED ─────────────────────
+//
+// The previous witness asserted that a turn refused until the selected engine's weights, tokenizer
+// and runtime were each observed. That was the wrong boundary: it made request identity depend on
+// the supplier's realization, and since nothing can observe loaded weight bytes it refused every
+// turn. These controls pin the replacement. The model requirement reaches identity as REQUEST
+// identity (ServingTurnRequest.model_requirement), exactly as the harness supplies it; the
+// requirements' capability is the one stable token-serving capability on both sides. Nothing about
+// an offer can reach the key, which is a property of serving_turn_work's signature (it takes no
+// offer, launch or endpoint).
+
+fn t_requirements() -> ExecutionRequirements {
   serving_turn_requirements(
     capacity_class: ControlPlaneCapacity,
-    capabilities: "gunbc.capabilities.spark-serving.probe" as CapabilityManifestRef,
+    capabilities: spark_serving_capability(),
     trust_domain: "gunbc.trust.spark-fleet" as TrustDomainRef,
     isolation: IsolationProfile { guarantees: [] },
     shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 0) }, envelope: unstated_envelope() },
   )
 }
 
-fn request_with(source: ServingTurnSource) -> ServingTurnRequest {
+fn t_request(inputs: String) -> ServingTurnRequest {
+  t_request_for(requirement: AnyAdmittedModel, inputs: inputs)
+}
+
+fn t_request_for(requirement: ServingModelRequirement, inputs: String) -> ServingTurnRequest {
   ServingTurnRequest {
-    source: source,
-    runtime_closure: "probe.runtime" as ArtifactManifestRef,
-    inputs: "probe.inputs" as ArtifactManifestRef,
+    interface: "openai.chat-completions" as ServiceInterfaceRef,
+    inputs: inputs as ArtifactManifestRef,
+    model_requirement: harness_model_requirement_ref(requirement: requirement),
     effect_contract: "probe.effects" as EffectContractRef,
     output_contract: "probe.outputs" as OutputContractRef,
   }
 }
 
-// ── AN ALIAS IS NOT A SOURCE MANIFEST, AND THE REFUSAL IS THE WHOLE POINT ─────────────────────
-//
-// What shipped before cast the served model alias straight into SourceManifestRef, which gave one
-// Work identity to engines that may be serving different weights, tokenizers or quantizations. There
-// is no arm here that turns an unestablished source into a Work: the turn has no exact identity
-// until something observes what the launch loaded, and the obligation says which consumer is waiting
-// and what would discharge it.
-test fn an_unestablished_source_refuses_to_mint_work() -> Bool {
-  let w = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: serving_turn_source_unestablished()), requirements: probe_requirements())
-  match w {
-    TurnWorkUnestablished { obligation: o } =>
-      string_contains(s: o as String, pattern: "no canonical source manifest")
-        && string_contains(s: o as String, pattern: "launch receipt")
-    TurnWorkBound { work: _ } => false
-  }
+fn t_key(requirement: ServingModelRequirement, inputs: String) -> String {
+  serving_turn_work(principal: "gunbc" as NonEmptyStr, request: t_request_for(requirement: requirement, inputs: inputs), requirements: t_requirements()).id.key as String
 }
 
-// AND THE POSITIVE CONTROL, so the refusal above is a wall and not a function that cannot succeed. A
-// request carrying an observed manifest mints Work, and its key comes from the fabric's own
-// constructor rather than from a second derivation here.
-test fn an_observed_manifest_mints_work_through_the_fabric_constructor() -> Bool {
-  let source = TurnSourceManifest { manifest: "probe.model-manifest" as SourceManifestRef, receipt: "test.claim.serving.turn_demand_witness" as ObservationReceiptRef }
-  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: source), requirements: probe_requirements()) {
-    TurnWorkBound { work: work } => length(work.contract.steps) == 1 && length(work.id.key as String) > 0
-    TurnWorkUnestablished { obligation: _ } => false
-  }
+// POSITIVE CONTROL. An AnyAdmittedModel turn constructs Work with no observation of any engine, and
+// the Work is an offered service rather than a materialized program.
+test fn any_admitted_model_work_constructs_as_an_offered_service() -> Bool {
+  let w = serving_turn_work(principal: "gunbc" as NonEmptyStr, request: t_request(inputs: "probe.inputs"), requirements: t_requirements())
+  length(w.contract.steps) == 1
+    && length(w.id.key as String) > 0
+    && (match w.contract.execution {
+      OfferedService { interface: i } => (i as String) == "openai.chat-completions"
+      MaterializedProgram { program: _, source: _, runtime_closure: _ } => false
+    })
 }
 
-// TWO SOURCES ARE TWO WORKS. This is what the alias cast destroyed: the identity is derived from the
-// contract, so a different manifest is a different key without anyone deciding it should be.
-test fn two_source_manifests_are_two_works() -> Bool {
-  let one = TurnSourceManifest { manifest: "probe.model-a" as SourceManifestRef, receipt: "probe" as ObservationReceiptRef }
-  let two = TurnSourceManifest { manifest: "probe.model-b" as SourceManifestRef, receipt: "probe" as ObservationReceiptRef }
-  match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: one), requirements: probe_requirements()) {
-    TurnWorkUnestablished { obligation: _ } => false
-    TurnWorkBound { work: a } =>
-      match serving_turn_work(principal: "gunbc" as NonEmptyStr, request: request_with(source: two), requirements: probe_requirements()) {
-        TurnWorkUnestablished { obligation: _ } => false
-        TurnWorkBound { work: b } => (a.id.key as String) != (b.id.key as String)
-      }
+// THE MODEL SCREEN ADMITS EITHER UNIT UNDER AnyAdmittedModel. This row proves exactly that and no
+// more: it drives harness_requirement_admits over the two unit values. It does not construct two
+// supplier offers and does not run fabric fungibility, so it is not evidence that one Work binds
+// on either supplier -- that control belongs beside a stable pair of SupplierOffers, which the
+// harness admission change owes (gunbc#11411).
+test fn the_model_screen_admits_either_unit_under_any_admitted_model() -> Bool {
+  harness_requirement_admits(requirement: AnyAdmittedModel, observed: DeepseekV4FlashOnVllm)
+    && harness_requirement_admits(requirement: AnyAdmittedModel, observed: Glm53FlashOnVllm)
+}
+
+// RED: THE IDENTITY PREIMAGE IS INJECTIVE IN THE FIELD TUPLE. Two materialized programs that differ
+// only in which side of a field boundary a separator byte falls are different Work; a joined
+// preimage folded them onto one key. The same holds across the execution/steps boundary and inside
+// the step list.
+test fn a_separator_moved_across_a_field_boundary_is_different_work() -> Bool {
+  let service = serving_turn_contract(request: t_request(inputs: "probe.inputs"))
+  let req = t_requirements()
+  let left = WorkContract {
+    execution: MaterializedProgram { program: "a", source: "b\u{1d}c", runtime_closure: "d" },
+    steps: service.steps, inputs: service.inputs, effect_contract: service.effect_contract,
+    output_contract: service.output_contract, output_obligations: service.output_obligations,
   }
+  let right = WorkContract {
+    execution: MaterializedProgram { program: "a\u{1d}b", source: "c", runtime_closure: "d" },
+    steps: service.steps, inputs: service.inputs, effect_contract: service.effect_contract,
+    output_contract: service.output_contract, output_obligations: service.output_obligations,
+  }
+  let unit_left = WorkContract {
+    execution: MaterializedProgram { program: "a", source: "b", runtime_closure: "d\u{1f}" },
+    steps: service.steps, inputs: service.inputs, effect_contract: service.effect_contract,
+    output_contract: service.output_contract, output_obligations: service.output_obligations,
+  }
+  let unit_right = WorkContract {
+    execution: MaterializedProgram { program: "a", source: "b", runtime_closure: "d" },
+    steps: service.steps, inputs: service.inputs, effect_contract: service.effect_contract,
+    output_contract: service.output_contract, output_obligations: service.output_obligations,
+  }
+  (work_for(principal: "gunbc" as NonEmptyStr, contract: left, requirements: req).id.key as String)
+    != (work_for(principal: "gunbc" as NonEmptyStr, contract: right, requirements: req).id.key as String)
+    && (work_for(principal: "gunbc" as NonEmptyStr, contract: unit_left, requirements: req).id.key as String)
+      != (work_for(principal: "gunbc" as NonEmptyStr, contract: unit_right, requirements: req).id.key as String)
+}
+
+// RED: AN EXACT REQUIREMENT IS NOT WEAKENED. Exact DeepSeek and exact GLM are different Work, and each
+// differs from AnyAdmittedModel, so removing supplier realization from identity did not collapse a
+// requirement the caller actually stated.
+test fn exact_model_requirements_are_different_works() -> Bool {
+  let ds = t_key(requirement: ExactServingUnit { unit: DeepseekV4FlashOnVllm }, inputs: "probe.inputs")
+  let glm = t_key(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, inputs: "probe.inputs")
+  let any = t_key(requirement: AnyAdmittedModel, inputs: "probe.inputs")
+  ds != glm && ds != any && glm != any
+    && !harness_requirement_admits(requirement: ExactServingUnit { unit: DeepseekV4FlashOnVllm }, observed: Glm53FlashOnVllm)
+}
+
+// RED: DIFFERENT NORMALIZED INPUTS ARE DIFFERENT WORK.
+test fn different_inputs_are_different_works() -> Bool {
+  t_key(requirement: AnyAdmittedModel, inputs: "probe.inputs.a") != t_key(requirement: AnyAdmittedModel, inputs: "probe.inputs.b")
+}
+
+// RED: THE EXECUTION ARM IS IDENTITY. A materialized program whose spellings coincide with a service's
+// is never the same Work, so the new arm cannot alias an existing program key.
+test fn a_program_and_a_service_sharing_every_other_field_are_different_works() -> Bool {
+  let service = serving_turn_contract(request: t_request(inputs: "probe.inputs"))
+  let program = WorkContract {
+    execution: MaterializedProgram { program: "openai.chat-completions", source: "openai.chat-completions", runtime_closure: "openai.chat-completions" },
+    steps: service.steps,
+    inputs: service.inputs,
+    effect_contract: service.effect_contract,
+    output_contract: service.output_contract,
+    output_obligations: service.output_obligations,
+  }
+  let req = t_requirements()
+  (work_for(principal: "gunbc" as NonEmptyStr, contract: service, requirements: req).id.key as String)
+    != (work_for(principal: "gunbc" as NonEmptyStr, contract: program, requirements: req).id.key as String)
 }
 
 // ── A STREAMED TURN IS NOT RESUMABLE AND ITS STEP IS NOT REUSABLE ─────────────────────────────

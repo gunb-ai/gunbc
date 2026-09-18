@@ -71,6 +71,7 @@
 )]
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::rc::Rc;
 
 use crate::cli_run::declaration_index::{
     import_surface_has, index_get, index_records, DeclarationIndex, ModuleDeclarationRecord,
@@ -257,23 +258,24 @@ pub struct NamespaceDelta {
 
 /// The authored pattern naming one exact runtime delta subject.
 ///
-/// Its borrowed fields keep the admission roster const: no initializer can compute permission
-/// from observed deltas, a file, or process state. Runtime observations remain owned
-/// `DeltaSubject` values — a distinct type from an authored pattern.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Permission is the directory of authored `.dag` rows, not a const and not a value computed
+/// from observed deltas. Runtime observations remain owned `DeltaSubject` values — a distinct
+/// type from an authored pattern. Binding `module` / `in_declaration` realize
+/// `gunbc.namespace.transition_admission` `AdmissionSubject.Binding.enclosing` (`DeclarationRef`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdmissionSubject {
     Membership {
-        module: &'static str,
-        target: &'static str,
+        module: String,
+        target: String,
     },
     Binding {
-        module: &'static str,
-        in_declaration: &'static str,
-        spelling: &'static str,
+        module: String,
+        in_declaration: String,
+        spelling: String,
         /// Exact candidate set after the admitted transition, checked at the head before
         /// admission and at the base to derive consumption. A set, never merely one member
-        /// whose presence could hide unexpected candidates. The const roster stays authored.
-        expected_candidates: &'static [&'static str],
+        /// whose presence could hide unexpected candidates.
+        expected_candidates: Vec<String>,
     },
 }
 
@@ -285,7 +287,7 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
                 module: observed_module,
                 target: observed_target,
             },
-        ) => *module == observed_module && *target == observed_target,
+        ) => module == observed_module && target == observed_target,
         (
             AdmissionSubject::Binding {
                 module,
@@ -299,9 +301,9 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
                 spelling: observed_spelling,
             },
         ) => {
-            *module == observed_module
-                && *in_declaration == observed_declaration
-                && *spelling == observed_spelling
+            module == observed_module
+                && in_declaration == observed_declaration
+                && spelling == observed_spelling
         }
         _ => false,
     }
@@ -334,1465 +336,124 @@ pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
 /// now is that its population must be an enumeration, never a predicate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransitionAdmission {
-    pub label: &'static str,
+    pub label: String,
     pub subject: AdmissionSubject,
     pub disposition: NamespaceDeltaDisposition,
+    /// The pull request that deletes this row once its own merge has consumed it, authored by the
+    /// row's owner BEFORE the owning change is enqueued.
+    pub deletion_follow_up: DeletionFollowUp,
+    /// The pull request that authored this row -- the owner a consumed-row receipt names. Typed
+    /// rather than read out of `label`, whose `gunbc#N` prefix is a convention nothing enforces.
+    pub owner_pull_request: u32,
 }
 
-/// CONST-NESS IS SAFETY, NOT STORAGE STYLE. A const roster cannot be computed from observed
-/// deltas, a file, environment state, or any runtime input: its permission set is exactly what an
-/// author wrote and a reviewer read. `AdmissionSubject` therefore carries `&'static str` patterns
-/// distinct from runtime-owned `DeltaSubject` observations. The prior `String` subject admitted
-/// only the all-empty shape in a const: it refused loudly as stale, but no const row could name a
-/// real module.
+/// ONE OWNED CONSUMED ROW, AS A TYPED AND LOCATED RECEIPT (lane ruling X, fierce-lark-661,
+/// 2026-09-13). A row consumed at the base whose owner authored a deletion follow-up is a declared
+/// frontier, not a refusal: the owner has DECLARED a deletion follow-up number -- this module reads
+/// no forge, so nothing here establishes that the referenced pull request exists, is open, or
+/// deletes these rows -- and refusing the next unrelated
+/// composition while that follow-up is still open would bill a bystander for the owner's window --
+/// the §5 externalization review 65313 found the previous arms still committed. Every run that sees
+/// the row prints this receipt, so the window is visible per run.
 ///
-/// EVERY ROW BELOW IS `TargetChanged`, AND THAT IS THE WHOLE CLAIM: a spelling authored on both
-/// sides now resolves to a different module. NONE of them changes WHICH DECLARATION the spelling
-/// denotes -- the wall reports the module-membership half of the same motion as
-/// `SameDeclarationIdentityRebind` and auto-admits it, and a binding whose meaning had actually
-/// moved would refuse on its own row rather than be covered by these. The rows are enumerated by
-/// exact identity, never by a pattern over the renamed modules, because a pattern would admit a
-/// genuine rebind that happened to land in the same module pair.
+/// WHAT THIS BINARY CANNOT SEE, AND WHO DOES. Whether the follow-up is OPEN (frontier), CLOSED
+/// UNMERGED (the row is an orphan and must refuse at its next touch), or MERGED with the row still
+/// present (the deletion landed without deleting, and must refuse) is forge state, and this module
+/// reads no forge -- AND NO EXECUTING ROUTE IN THIS REPOSITORY READS IT EITHER (review 65476,
+/// verified: there is no `landing_tally` symbol, and nothing outside this module consumes
+/// `deletion_follow_up`). The pre-enqueue landing procedure that reads it is out-of-band human
+/// review, so the follow-up's forge state is OUTSIDE THE MODELED GUARANTEE (DESIGN section 4b)
+/// rather than a checked property, and this receipt exists to make that unchecked window visible
+/// on every run. The trigger that brings it inside is the typed repository/forge read this
+/// module's CLASS B acquisition boundary already waits on: when a fold can ask the forge for a
+/// pull request's state, these three dispositions become a wall instead of a printed receipt.
+/// A receipt
+/// is also not a verdict: the retained roster-touch and `base == head` rules still refuse runs that
+/// carry owned rows, so a printed receipt and a refusal on the same run are the expected
+/// coexistence, not a contradiction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsumedRowReceipt {
+    pub label: String,
+    pub owner_pull_request: u32,
+    pub deletion_follow_up_pull_request: u32,
+}
 
-/// EMPTY IS THE RESTING STATE between transitions.
+/// WHO OWES THE DELETION, AUTHORED WHERE THE DEBT IS CREATED.
 ///
-/// It carried 53 exact admissions for the owner-qualified call-target cut, each measured by the
-/// required floor against the merge base after the namespace wall landed. That subject landed
-/// (#9436, #9504); #9400 closed unmerged with no successor. All 53 then matched no delta — the
-/// finding this roster's rule predicts: "a row that no longer matches is itself a finding
-/// (`stale_admissions`), so this temporary transition roster must shrink with its subject."
+/// `deletion_follow_up` RECORDS A DEBT; NOTHING ENFORCES IT IN ADVANCE, AND THAT IS DELIBERATE.
+/// The field stays on the row and stays read, so a row can say which pull request is meant to
+/// delete it once its owner lands. What was removed (2026-09-16, operator ruling) are the two
+/// `merge_group` arms that refused on its absence: `OwnerFollowUpAbsent`, charging a row's owner at
+/// their own queue run, and `ConsumedRowOwnerChargeBypassed`, charging a BYSTANDER composition for
+/// someone else's unauthored follow-up.
 ///
-/// WHY LEAVING THEM WAS NOT A QUIET COST. `stale_admissions` is per RUN: a row is stale unless a
-/// delta IN THAT RUN matches it. A pull_request build adjudicates the MERGE commit, so once the
-/// rows were on main every open PR inherited all 53, and a PR touching no namespace can never
-/// match them. The phase refused every unrelated change, so the shrink is the fix, not housekeeping.
+/// WHERE THE DEBT STILL REFUSES, AT THE GRAIN THE REQUIRED PATH ACTUALLY HAS. A consumed row
+/// refuses when `roster_due` -- `base == head` OR a roster-source edit. An earlier revision of this
+/// paragraph stopped there and read as though the deletion were still compelled; it is not, on the
+/// path that gates a merge. The merge queue moved the required verdict off the push to the default
+/// branch (fierce-lark-661, 2026-09-13), and that was the only run where `base == head`, so on the
+/// required path `roster_due` reduces to `roster_touched` alone: a base-consumed row whose owner
+/// authored no follow-up refuses on NO required run until somebody edits the roster directory.
+/// That loss is declared, not implied -- `gunbc.rung_drop.consumed_row_owner_charge_unenforced` --
+/// and citing the `base == head` arm without saying it is off the required path is the §4b(1)
+/// inflation that row exists to prevent.
 ///
-/// EMPTY DOES NOT MEAN PERMISSIVE, which is why shrinking is safe: with no rows, a run with no
-/// delta passes and a run with a real delta refuses it as UNADJUDICATED. Shrinking too early
-/// yields a loud refusal naming the delta, closed by authoring a row — never a silent admission.
-/// Each transition adds its rows here and removes them when its subject lands.
-/// SECOND SHRINK, SAME RULE. Two `gunbc.ci_render` `plain_span` rows dissolved on schedule:
-/// `ci_render` now imports `plain_span` from the `std.render` authority and declares none, so no
-/// run can produce those deltas and both reported stale on every build. Removed by the trigger
-/// they were authored with, not a reinterpretation of it.
-/// THIRD SHRINK, SAME RULE (2026-08-29). The 314 `std->extdeps consolidation 2026-08-28` rows,
-/// authored for #9641: it merged, so merge commit and base both carry the consolidation, and all
-/// 314 reported stale — refusing every unrelated PR, the shape recorded above for the first 53.
-/// Removed by their trigger. The roster is EMPTY and empty is not permissive.
-/// FOURTH TRANSITION (2026-08-29, gunbc#9665 / issue #9664). `DeclaredCallableIdentity` moved
-/// from `v1.compiler.infer_sigs` to `v1.std.core`, so every binding of that spelling inside
-/// `v1.compiler.infer_lookup` reports `TargetChanged`. Not cosmetic and not avoidable by
-/// re-spelling: `v1.std.core`'s `CallTargetIdentity` now CARRIES a `DeclaredCallableIdentity` on
-/// its `RuntimePrimitiveCall` arm — the declaration a runtime target was projected from, which
-/// lets Rust emission fall back to the declaration when its registry has no bridge for the
-/// primitive instead of inventing `v1_rt::length`. `v1.compiler.infer_sigs` imports `v1.std.core`,
-/// so the type could not stay without a cycle, and re-declaring the pair in `v1.std.core` is the
-/// second-representation defect DESIGN §3 forbids — the type's own note says so and travelled
-/// with the declaration.
-///
-/// FOUR ROWS, ONE PER BINDING SITE, enumerated rather than matched by module pattern because the
-/// roster's population is an enumeration, never a predicate. The two `membership` deltas this
-/// change also produces (`v1.compiler.emit_rust -> std.decl_ref` and `-> std.primitive_projection`)
-/// are `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent.
-///
-/// DISSOLVE-ON: this PR merging. Once `DeclaredCallableIdentity` is in `v1.std.core` on main,
-/// base and head both carry it, all four report stale and refuse every unrelated PR, as the three
-/// shrinks above record. Remove them by that trigger, not by reinterpreting it.
-/// FOURTH SHRINK, SAME RULE (2026-08-30). The six `DeclaredCallableIdentity hoist to
-/// v1.std.core 2026-08-29` rows dissolved on that trigger: #9665 merged as ecdeb492, so merge
-/// commit and base both carry the hoist and all six reported stale (measured on #9689 @
-/// bfd9524881: `0 unadjudicated delta(s), 6 stale admission(s)`) — refusing every unrelated PR,
-/// the fourth time this roster reproduced that shape. Main's own push build at ecdeb492 stayed
-/// green because its base is pre-#9665 and the deltas exist there: the block is PR-only but
-/// universal, so the shrink cannot wait for a PR that would otherwise touch this file. Removed
-/// by their trigger. The roster is EMPTY and empty is not permissive.
-/// FIFTH TRANSITION (2026-08-29, gunbc#9675). The four `rust_source_prefix_*` constants moved
-/// from `gunbc.stage0_rust_source_lifecycle_scaffold` to `gunbc.rust_item_host_observation` —
-/// the namespace table there needs the tooling prefix, and importing the other way closes the
-/// cycle scaffold -> seed_growth_admission -> host_observation. Every spelling bound to the old
-/// declarer now binds to the new one: six `TargetChanged` rows, each naming exact module,
-/// enclosing declaration and leaf, blast radius 0. DISSOLVE-ON: #9675 merging — base and head
-/// then both carry the relocation, the rows report stale, and they are removed by that trigger
-/// as the four shrinks above were.
-/// FIFTH SHRINK, SAME RULE (2026-08-30). #9675 merged (e1905850789), so base and head of every
-/// pull_request build carry the relocation, the six rows report stale and refuse every PR.
-/// Removed by their trigger, in the first merge of main carrying the relocation on both sides.
-/// SIXTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
-/// `BuildLane` and `WitnessesLane` moved (not duplicated) from
-/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` — the
-/// census's own named next rung — so its `required_ci_host_verdict_rows` now binds those
-/// spellings through the roster. `TargetChanged` on a deliberate move is the wall working; the
-/// rows adjudicate exactly those two subjects. They go STALE when #9698 merges and MUST be
-/// removed then.
-/// SIXTH SHRINK, SAME RULE (2026-08-30). #9698 merged, so base and head of every run carry the
-/// lane move, both rows report stale and refuse every PR. Removed by their trigger, in the first
-/// PR cut from the main carrying the move. The roster is EMPTY again and empty is not
-/// permissive.
-/// THIRD TRANSITION: `admission_from_module_root` moved home. #9710 relocated
-/// `admission_from_module_root` (with `import_rows_from_parsed_module`,
-/// `collect_import_decl_nodes` and `ImportRowsState`) from `v2.compiler.name_resolve` to
-/// `v2.lens.reference_deps`, the layer of its only two consumers, so the compiler entry's
-/// emitted closure no longer carries the reference_deps subtree for a function no compile path
-/// reaches. The two consumers repoint their import; each is a `TargetChanged` binding delta
-/// admitted by exact subject. Both rows dissolve when the relocation is on main: they report
-/// stale and refuse the first unrelated PR — the trigger to delete them.
-/// FOURTH TRANSITION: three host seams segregated out of the modules the compile closure carries
-/// (A1-R). Emission decides membership at MODULE grain, so an unrealized host seam was emitted
-/// into the v2 compiler's own Rust crate whenever any NEIGHBOUR in its file was needed — measured
-/// before this change as five `panic!` sites in the emitted closure, none reachable from a
-/// compile. Three modules now separate seam from wanted vocabulary: `resolve_type_node` /
-/// `coproduct_arm_keys` / `coproduct_nullary_inhabitants` to `v2.std.node_reflection`,
-/// `layer_import_facts_live` to `v2.std.layer_import_scan`, and the `Filesystem.Read`
-/// read-through with `SourceRootIngestBuild` to `v2.compiler.source_authority_read`. Every
-/// consumer repoints its import, so each moved spelling arrives as a `TargetChanged` binding
-/// delta — the wall working on a deliberate relocation.
-///
-/// EVERY ROW BELOW HAS BLAST RADIUS 0 AND NAMES ONE EXACT SUBJECT: no row admits a module, prefix
-/// or spelling in general, so an unintended binding still refuses. The count is 56 because the
-/// read-through moved a type, two variants and a function that eight consumers reference from
-/// several declarations — one row per (module, declaration, spelling) triple, never per module.
-///
-/// DISSOLVE-ON: this stack merging. Base and head then both carry the relocations, no run can
-/// produce these deltas, all 56 report stale, and they are removed by that trigger exactly as
-/// every shrink above was -- a stale row here refuses every unrelated PR in the repository.
-/// SIXTH DISSOLUTION (2026-08-30). The A1-R relocation stack (#9724 and its neighbours) merged;
-/// base and head both carry the relocations, no run can produce those deltas, and ALL 58 rows
-/// reported stale on every open PR (measured on gunbc#9746 run 33312973854 and gunbc#9743 run
-/// 33313128325, and independently on session/calm-pike-248 run 33313218281: `0 unadjudicated
-/// delta(s), 58 stale admission(s)`) while main's own push builds stayed green (NoSubject) -- the
-/// PR-only-but-universal block this ledger has now recorded five times, which is again the reason
-/// the shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger
-/// they were authored with. The roster is EMPTY and empty is not permissive: a run carrying a
-/// real namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
-/// A SHRINK IN PARALLEL, SAME RULE (2026-08-30, gunbc#9690). Thirty-one `TargetChanged` rows
-/// were authored for the first cut of the network-boot and firmware-transition standings out of
-/// `gunbc.os_install_mechanism` into `gunbc.boot_artifact_delivery`. Ruling 3 made the FINAL cut
-/// instead — the standings now live in `gunbc.network_boot_delivery` and
-/// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
-/// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
-/// Removed by the roster's own rule before the PR merged, so the rows never reached main.
-/// XL-0N (`node://adhoc-aec65f93-b00`, gunbc#9719): ONE relocation, rostered by its author under
-/// the rule this ledger states -- "a run carrying a real namespace delta still refuses it as
-/// UNADJUDICATED until its author adds a row here". The operand's declaration must be read where
-/// the type reference's SCOPED env binding is live, which is inference; `v1.compiler.emit_rust`
-/// cannot be imported by `v1.compiler.infer` (emission depends on inference, not the reverse), so
-/// the identity read `type_reference_declaration_ref` moves to `v1.compiler.infer_env`, where the
-/// only other consumer already lives. The move is the whole change to this spelling: same function,
-/// same signature, one declaring module -- not a requalification, and no second declaration is left
-/// behind. `emit_rust`'s own call site now resolves to the new declarer, which is the delta below.
-///
-/// SEVENTH DISSOLUTION (2026-08-31). XL-0N (#9719) merged, so base and head both carry the
-/// `type_reference_declaration_ref` relocation. The row above can no longer match a delta and was
-/// observed stale on every unrelated PR, including gunbc#9771 run 33368922338. Removed by its own
-/// dissolve-on trigger. The roster is empty and remains fail-closed for any new namespace delta.
-/// EIGHTH DISSOLUTION (2026-08-31). INTAKE-AGENT-0A (#9784) merged, so base and head both carry
-/// the `BootArtifact` / `IntakeLinuxEnvironment` / `IsoImage` relocations to `gunbc.boot_artifact`.
-/// The five rows above could no longer match any delta and were observed stale on every unrelated
-/// PR, including gunbc#9792 run 33398398650 (5 stale admission(s) after verdict=FloorClean).
-/// Removed by their own dissolve-on trigger, exactly as the seven shrinks above. The roster is
-/// empty and remains fail-closed for any new namespace delta.
-/// NINTH, AND THIS ONE WAS AN ADDITION RATHER THAN A SHRINK (2026-08-31). The two rows were
-/// the SPARK-PAIR-0 P0-C3a consolidation's own adjudication, carried across main's eighth
-/// dissolution, which emptied the roster. They are NOT stale: the required run that reported the
-/// five BootArtifact rows stale reported `0 unadjudicated delta(s)` on the same line, and that
-/// zero is these two rows doing their job.
-/// TENTH DISSOLUTION (2026-09-01). SPARK-PAIR-0 P0-C3a merged, and the required run for
-/// gunbc#9896 proved both rows consumed at the base. This change touches the roster to teach the
-/// wall that ambient kernel identities are resolved, so the roster's own next-touch obligation
-/// deletes both receipts. The roster is empty and remains fail-closed for new namespace motion.
-/// ELEVENTH TRANSITION, AND THE FIRST WHOSE SUBJECT IS A REQUALIFICATION RATHER THAN A MOVE
-/// (2026-09-01, XL-0T, gunbc#9907). `v2.compiler.tokenize` and `v2.std.compilers.lexing` name the
-/// structural text carrier EXPLICITLY where they previously wrote the bare spelling: `String` in
-/// those positions resolved to the kernel identity and now resolves to `v2.std.text`, whose
-/// `String` is `FreeMonoid<Char>`. No declaration moved and no name was minted -- the destination
-/// is written where the module already meant it -- so every one of the seventeen arrives as
-/// `TargetChanged binding`, base `{<kernel>}` -> head `{v2.std.text}`.
-///
-/// THE POPULATION IS EXACTLY SEVENTEEN AND THE RUN SAYS SO. On run 33501228511 the phase reported
-/// `modules_compared=4475 modules_added=1 modules_removed=0 closure_rows_moved=0 deltas=17`: one
-/// module added (the ingress witness this change enrolls), nothing removed, and no closure motion
-/// at all. That is what makes seventeen a population rather than a count -- the denominators are
-/// beside it, and a delta this roster does not name still refuses.
-///
-/// EVERY ROW NAMES ONE EXACT (module, declaration, spelling) TRIPLE. No wildcard, no prefix rule,
-/// no row admitting a module or a spelling in general: an unintended requalification of `String`
-/// anywhere else in either module -- or anywhere in the corpus -- still refuses as UNADJUDICATED.
-/// The fifteen `v2.compiler.tokenize` rows and the two `v2.std.compilers.lexing` rows are the
-/// whole change to this spelling.
-///
-/// DISSOLVE-ON: #9907 merging. Base and head then both carry the qualification, no run can produce
-/// these deltas, all seventeen report stale, and they are removed by that trigger exactly as the
-/// ten shrinks above were -- a stale row here refuses every unrelated PR in the repository.
-/// TWELFTH, AND AN ADDITION RATHER THAN A SHRINK (2026-09-01). RLM-2b (`node://adhoc-104e11ac-69a`,
-/// gunbc#9832): ONE relocation, rostered by its author under the rule this ledger states -- a run
-/// carrying a real namespace delta refuses it as UNADJUDICATED until its author adds a row here.
-/// `fleet_converge_plan_spark_typed_actions_wire_path` is the on-disk path of one of the three
-/// members of the plan BUNDLE DIGEST, and the digest is computed in `gunbc.fleet_converge_plan`
-/// while the path constant was declared in `gunbc.fleet_converge_plan_cli`. That split is what the
-/// PR's persisted-member work made untenable: the manifest admission must name the path it is
-/// judging, and a transport module cannot be the authority for a member of an identity the plan
-/// module mints. The constant therefore moves to the module that owns the digest -- same spelling,
-/// same value, one declaring module, no second declaration left behind and no requalification. The
-/// two rows it added were the CLI's own call sites resolving to the new declarer. That paragraph
-/// previously reported them as `closure blast radius: 0 module(s)`, which gunbc#9908 has since made
-/// a wrong sentence rather than a stale one: closure is a pure function of MEMBERSHIP, so a binding
-/// row is not asked the question and now carries `None` and renders no clause at all. Quoting a
-/// measured zero for it would be the exact conflation that change removed. Their declared trigger
-/// was that PR merging; the fourteenth entry records it firing and the rows are gone.
-/// THIRTEENTH DISSOLUTION (2026-09-01). The seventeen XL-0T rows above were removed by THEIR OWN
-/// dissolve-on trigger, which the paragraph declaring them states as "#9907 merging". #9907 merged
-/// to main at 14:02:39; the first merge of main into this branch that carried them was made at
-/// 14:12:13, ten minutes AFTER their lifetime ended, and preserved them anyway. Base and head both
-/// carry the qualification now, so no run can produce those deltas and all seventeen report stale --
-/// and a stale row here refuses every unrelated PR in the repository, which is why the deletion is
-/// owed on the roster's next touch rather than at someone's convenience. This merge is that touch.
-///
-/// THE MISTAKE WAS ASKING THE QUESTION OF ONE SIDE ONLY, and it is recorded because the resolution
-/// recipe is what failed, not the arithmetic. The trigger check was run carefully against the rows
-/// being KEPT -- this PR's own two, whose trigger is this PR merging and has not fired -- and was
-/// never run against the cohort being IMPORTED. "Preserve both sides" is the wrong default for a
-/// ledger with dissolution rules: the resolved roster is the old cohort, UNION newly live main
-/// cohorts, MINUS every cohort whose trigger has fired as of the base being merged, asked of each
-/// side independently.
-/// FOURTEENTH DISSOLUTION (2026-09-02), AND IT IS THE THIRTEENTH'S OWN LESSON APPLIED TO THE ROWS
-/// THAT TAUGHT IT. RLM-2b's two rows declared their trigger as "#9832 merging". #9832 IS the
-/// base this change merges -- main's head is that merge -- so their lifetime ended at the moment
-/// this merge began. Base and head both carry the constant's relocation, no run can produce those
-/// deltas, and both rows would report stale, refusing every unrelated PR exactly as the seventeen
-/// did. They are removed here.
-///
-/// THE THIRTEENTH ENTRY WARNED THAT "PRESERVE BOTH SIDES" IS THE WRONG DEFAULT FOR A LEDGER WITH
-/// DISSOLUTION RULES, and asking the trigger question of the kept rows only is how the previous
-/// cohort outlived itself by ten minutes. Keeping RLM-2b's rows through this merge because they
-/// arrived from main would be that identical mistake one iteration later, with the roles swapped.
-/// The recipe was run against BOTH sides: that change's own cohort had an unfired trigger and
-/// stayed; the imported cohort's had fired and went.
-///
-/// A TENSE CORRECTION, MADE BY THE FIFTEENTH DISSOLUTION AND RECORDED RATHER THAN SILENTLY APPLIED.
-/// The three paragraphs above were written from inside the commits that made them, and referred to
-/// their cohorts DEICTICALLY -- rows "above", deltas "below", a cohort that "stays". Every one of
-/// those referents has since been deleted, so sentences that were true when authored became prose
-/// asserting a present-tense fact that is false, inside the very ledger whose subject is rows
-/// outliving their truth. Only the tense and the position words were changed; no claim was altered.
-/// This is DESIGN section 3's standing rule reaching prose: cite the cohort by NAME, never by where
-/// it sits, because a ledger's positions are exactly what its own dissolution rule destroys.
-/// FIFTEENTH TRANSITION (2026-09-02, DCH-1, gunbc#9985). The messages/tool-use wire shape moved
-/// WHOLE from `extdeps.llm.anthropic` to `extdeps.llm.anthropic_messages_api`, the specification
-/// module more than one implementation cites. No declaration was renamed and no name was minted:
-/// every spelling below denotes the same declaration it denoted at the base, at a new home, so
-/// each arrives as `TargetChanged binding` with base `{extdeps.llm.anthropic}` -> head
-/// `{extdeps.llm.anthropic_messages_api}`.
-/// DISSOLVE-ON: #9985 merging. Base and head then both name the specification module, no run can
-/// produce these deltas, all nine report stale, and they are removed by that trigger -- a stale row
-/// here refuses every unrelated PR in the repository.
-/// FOURTEENTH DISSOLUTION, AND THE FIRST ONE A MECHANISM CAN SEE (2026-09-02). The nine DCH-1
-/// rows authored by gunbc#9985 are removed by their own dissolve-on trigger, which is that pull
-/// request merging: c2cd45dcff9 IS that merge, so `extdeps.llm.anthropic_rest` already imports the
-/// four hoisted spellings from `extdeps.llm.anthropic_messages_api` on the base of every run, and
-/// `admission_satisfied_at` proves the relocation the rows admit. Like the RLM-2b pair before
-/// them, they were BORN CONSUMED — authored in the same commit that merged their subject, so no
-/// run after that commit could ever match them.
-///
-/// THIS DELETION IS NOT HOUSEKEEPING ATTACHED TO AN UNRELATED CHANGE; IT IS THIS CHANGE'S OWN
-/// FIRST POSITIVE CONTROL. The commit removing them is also the commit that makes
-/// `roster_touched` reachable, and it touches this file, so under the arm it enables these nine
-/// rows would come due and refuse it. A change that turns a wall on and leaves standing exactly
-/// the population that wall refuses would be reporting a green it did not earn.
-///
-/// EMPTY IS THE RESTING STATE and empty is not permissive: with no rows, a run with no delta
-/// passes and a run with a real delta refuses it as UNADJUDICATED.
-/// SIXTEENTH TRANSITION (2026-09-02, SJT-1, gunbc#10010), AND IT LEFT THE RESTING STATE THE
-/// PARAGRAPH ABOVE DESCRIBES. The four Redfish boot-override constants moved WHOLE from
-/// `gunbc.srv3_boot_once_cd` to `gunbc.srv3_os_install_actuate_workflow`, the module that now
-/// authors the scoped-authorization subject those constants are the fields of. Nothing was renamed
-/// and no name was minted: each of the four spellings denoted the same declaration it denoted at the
-/// base, at a new home, so each arrived as `TargetChanged binding` with base `{gunbc.srv3_boot_once_cd}`
-/// -> head `{gunbc.srv3_os_install_actuate_workflow}`. The relocation is forced rather than
-/// stylistic: `srv3_boot_once_cd` already imports the workflow module, so leaving the constants
-/// behind would have made the subject's own module import its importer.
-///
-/// THE POPULATION IS EXACTLY FOUR. The run's other motion classified automatically as
-/// `ExplicitlyEvaluatedZeroDelta` membership additions (the new `std.scoped_authorization` edges),
-/// so these four are the whole unadjudicated set, not a sample: a fifth re-pointed binding
-/// anywhere in the corpus still refuses as UNADJUDICATED.
-///
-/// DISSOLVE-ON: gunbc#10010 merging. Base and head then both place the constants in the workflow
-/// module, no run can produce these deltas, all four report stale, and the roster RETURNS to the
-/// empty resting state -- a stale row here refuses every unrelated PR in the repository.
-///
-/// THE DCH-1 COHORT IS NOT RESURRECTED HERE, AND THAT IS A DELIBERATE READ OF THE MERGE RATHER
-/// THAN AN ACCIDENT OF IT. Both sides of this merge deleted those nine rows independently, main by
-/// the dissolution recorded above and this branch by its own reading of the same fired trigger.
-/// A union of the two rosters would have re-added a deletion both sides intended; the resolution
-/// took the deletion.
-/// SEVENTEENTH DISSOLUTION (2026-09-02). The four SJT-1 rows are removed by their own
-/// dissolve-on trigger. That trigger reads "this change merging", and the change is gunbc#10010,
-/// merged as de531c35496, which is an ancestor of the base of every run here.
-///
-/// THE RECEIPT IS PER ROW, NOT PER COHORT, because a row whose trigger fired for a different
-/// reason than the sweep assumes is exactly how a dissolution goes wrong. Each row admits
-/// `TargetChanged binding` in `gunbc.srv3_boot_once_cd`, declaration `srv3_boot_once_cd_resolved`,
-/// base `{gunbc.srv3_boot_once_cd}` -> head `{gunbc.srv3_os_install_actuate_workflow}`. For each,
-/// on the base: the constant is declared in the TARGET module, `srv3_boot_once_cd` imports it from
-/// there, and the spelling still occurs inside `srv3_boot_once_cd_resolved` -- so the reference
-/// exists, resolves to the target on BOTH sides, and the delta the row admits cannot be produced.
-///
-///   srv3_boot_cd_target      declared srv3_os_install_actuate_workflow; occurs in the boot-override
-///                            body; moved by de531c35496 (removed from srv3_boot_once_cd, added there)
-///   srv3_boot_cd_enabled     same commit, same motion; occurs beside it in the same body
-///   srv3_boot_cd_mode        same commit, same motion; occurs twice, in the override-mode refusal
-///                            match and in the boot-override body
-///   srv3_boot_cd_reset_type  same commit, same motion; occurs in the reset body
-///
-/// No row was swept for tidiness: all four receipts were established separately and all four fired.
-/// Had one lacked a fired trigger it would have been left standing and said so here, because four
-/// rows swept with three receipts is worse than three rows swept.
-///
-/// THE SIXTEENTH ENTRY PREDICTED THE WRONG DISPOSITION AND THE PREDICTION IS LEFT STANDING RATHER
-/// THAN QUIETLY CORRECTED. It says these rows would "report stale". They reported CONSUMED. The two
-/// are not synonyms: STALE is a row matching no delta, and CONSUMED is a row whose delta is already
-/// satisfied at the BASE -- and only the second carries the deletion obligation onto an unrelated
-/// roster-toucher, which is how this sweep came to exist. An author predicting the softer
-/// disposition is worth a line here, because it is the disposition that decides who pays.
-///
-/// THESE WERE BORN CONSUMED, the same way the DCH-1 cohort was: de531c35496 is BOTH the commit that
-/// authored the rows and the commit that performed the move they admit, so no run after it could
-/// ever match them. That is why the wall reported them as CONSUMED "already satisfied at the base"
-/// rather than as stale, and why it charges the deletion to whoever next TOUCHES this roster.
-///
-/// THE DELETING CHANGE IS UNRELATED TO THE ROWS' SUBJECT, AND THAT IS THE MECHANISM WORKING AS
-/// DESIGNED. A consumed row left standing is a permission over nothing that reads as coverage, and
-/// naming the next roster-toucher as the sweeper is what keeps a row's removal from waiting on its
-/// author coming back. This change is a one-file sweep carrying nothing else, so the receipts above
-/// are the whole of what it claims.
-///
-/// THE RESTING STATE IS RESTORED: empty, and empty is not permissive -- a run with a real delta
-/// still refuses it as UNADJUDICATED.
-/// FOURTH TRANSITION, SAME RULE (2026-09-02). The `ClaimSafetyOutcome` /
-/// `ClaimPreemptionReachability` relocation of gunbc#10077: both types move from
-/// `v2.workflow.required_floor` to `v2.workflow.floor_terminal_ledger`, beside the
-/// `ClaimAttemptTerminal` arm that carries them, so the ledger stops importing the floor and the
-/// cycle that blocked the wet-route migration opens. Every one of the 57 rows below is a
-/// `TargetChanged` binding whose base is `v2.workflow.required_floor` and whose head is
-/// `v2.workflow.floor_terminal_ledger` — verified as the ONLY shape in the report, so no row here
-/// adjudicates a delta this transition did not cause.
-///
-/// THEY ARE ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Fifty-seven deltas, fifty-seven rows,
-/// each naming its module, its declaration and the exact spelling whose target moved. A wildcard
-/// covering this relocation would also admit the next one nobody reviewed.
-///
-/// EIGHTEENTH DISSOLUTION (2026-09-03). The 57 `ledger safety vocabulary relocation gunbc#10077`
-/// rows are removed by their own trigger, which fired: #10077 merged 2026-09-02T18:55:08Z as
-/// a4a6db175d2, so main carries the relocation and no run after it can produce those deltas.
-///
-/// THE RECEIPT IS THE RUN THAT NAMED THEM. On the merge of main into gunbc#9975 (2b3b841263e,
-/// run 33694346070) the wave phase reported all 57 as CONSUMED while still ADMITTING the change,
-/// because that commit does not touch this roster. The refusal wording from the SJT-1 cohort states
-/// the rule exactly: consumed rows are "due for deletion on this roster-touching change". So they
-/// are charged to a change that touches the file, and this one does.
-///
-/// SO THE DELETION IS OWED AND IT SHOULD NOT WAIT FOR ME. They must be removed in the first PR
-/// after #10077 lands, by whoever next touches this roster, which is the convention the sweep above
-/// establishes rather than a favour asked of them. Removing them early is safe and loud — an
-/// unadjudicated delta refuses by name and is closed by re-authoring a row, never by a silent
-/// admission — so the only dangerous direction is leaving them standing.
-/// THAT LAST SENTENCE WAS TRUE WHEN IT WAS WRITTEN AND IS NOT TRUE OF THIS FILE, which is why it is
-/// corrected here rather than edited above: the sweep it describes really did return the roster to
-/// empty on main, and the merge that brought it here re-opened the roster with the five gunbc#10011
-/// rows below. The paragraph is left standing as the record of that sweep; those five rows'
-/// DISSOLVE-ON is gunbc#10011 merging.
-///
-/// AND THE ROSTER'S CURRENT STATE IS THE FIVE ROWS AGAIN, though it passed through sixty-two on
-/// the way: the gunbc#10077 conflict briefly added fifty-seven that turned out to be consumed. Writing "the roster's current state is the five open rows" was correct for
-/// exactly one merge and false at the next one, which is the same mistake as the RESTORED-TO-EMPTY
-/// sentence it was written to correct. A claim about the WHOLE roster made from inside one
-/// transition's paragraph goes stale the moment any other transition opens; a claim about that
-/// transition's OWN rows does not.
-///
-/// THIS MERGE IS THE FIRST APPLICATION OF THE RULE BELOW AND IS RECORDED AS ONE. Main and this
-/// branch conflicted on this const: the base held the four SJT-1 rows, main deleted them by the
-/// dissolution above, and this branch had deleted the same four independently while adding five of
-/// its own. Reading it row by row rather than side by side: the SJT-1 four are MERGED, so both
-/// deletions agree and the deletion is taken; the gunbc#10011 five are OPEN, so they survive. The
-/// resolution is neither side's file -- it is main's prose, which carries receipts this branch never
-/// saw, over this branch's rows, which are the only unconsumed ones in the merge.
-///
-/// THE RULE HAS NOW BEEN APPLIED TWICE AND FIRED THE SAME WAY BOTH TIMES, and the first draft of
-/// this paragraph said the opposite, so the correction is the entry. Resolving the gunbc#10077
-/// conflict I kept main's fifty-seven rows and wrote that the rule had gone "the other way" --
-/// that they were live on main and deleting them would un-adjudicate a running transition. That
-/// was an ASSERTION WHERE A MEASUREMENT WAS AVAILABLE. The wall answered it directly on the next
-/// run: fifty-seven CONSUMED ADMISSION lines, every one of them gunbc#10077, and none of the five
-/// gunbc#10011 rows among them. gunbc#10077 had merged, so its rows were BORN CONSUMED in exactly
-/// the way the SJT-1 four were, and the roster refused this branch a second time for a second
-/// cohort of rows I had preserved for a second wrong reason.
-///
-/// WHAT THE MISTAKE ACTUALLY WAS, because "I got the arm backwards" does not describe it: I read
-/// PRESENT ON MAIN as evidence of OPEN. It is not evidence of anything. A row's disposition is a
-/// fact about whether its transition has merged, the wall computes exactly that fact per row and
-/// prints it, and I substituted an inference from where the row lived for a receipt I could have
-/// read. That is the same substitution as the first incident wearing different clothes -- there I
-/// took the union because both sides had rows, here I took main's because main had them.
-///
-/// SO THE RULE IS UNCHANGED AND ITS DISCRIMINATOR IS NOT THE SIDE, IT IS THE RECEIPT. Both
-/// applications deleted merged rows and kept open ones; neither had anything to do with which
-/// branch authored them. If a future conflict here seems to call for keeping rows because they are
-/// main's, that is this paragraph's exact error and the answer is to run the gate and read the
-/// dispositions.
-///
-/// THE RULE, STATED SO THE NEXT CONFLICT IS NOT RESOLVED BY REFLEX: on a conflict in this roster,
-/// union the rows whose transitions are still OPEN and delete the rows whose transitions have
-/// MERGED. "Take both sides" is not a safe default here; it is safe only for the unconsumed half.
-///
-/// I AM THE TOUCHER MY OWN TRIGGER NAMED. The rows' trigger said the deletion is owed by whoever
-/// next touches this roster; re-tensing that very trigger touched it, so the obligation landed on
-/// the change that went looking for it. Removing them here is the trigger being honoured rather
-/// than a sweep of convenience, and it is why no separate follow-up PR is owed.
-///
-/// THE RESTING STATE WAS RESTORED BY THE EIGHTEENTH DISSOLUTION (2026-09-03): empty, as of that
-/// change and before the seventeenth transition below. That half is a dated observation about a
-/// moment, so it carries its date.
-///
-/// EMPTY IS NOT PERMISSIVE — a run with a real delta still refuses it as UNADJUDICATED, closed by
-/// authoring a row and never by a silent admission. That is a claim about the MECHANISM, it holds
-/// whatever the roster contains, and it is stated on its own rather than as a subordinate clause of
-/// a snapshot that can go stale underneath it.
-///
-/// NINETEENTH DISSOLUTION (2026-09-03). The three `gunbc#10011 supersession-standing re-home`
-/// rows are removed by their own trigger, which fired: #10011 merged as 4acf8ac234, so main
-/// carries the re-home and no run after it can produce those deltas. They arrived here through a
-/// merge rather than by being authored here -- this branch composed the roster from both sides
-/// when git cut its hunks through the middle of the records -- and the required run reported them
-/// as `3 consumed admission(s) due for deletion on this roster-touching change`.
-///
-/// THE OBLIGATION IS CHARGED TO THE TOUCHER AND THIS COMMIT IS ONE, which is the same rule the
-/// eighteenth dissolution above paid. A row whose subject has landed is not merely useless: it is
-/// stale on every subsequent run, so leaving it refuses unrelated changes. The roster shrinks with
-/// its subject or it becomes a tax on everyone downstream.
-///
-/// SEVENTEENTH TRANSITION (2026-09-03, gunbc#10106), AND IT LANDED ON A ROSTER THIS BRANCH AND
-/// MAIN EMPTIED INDEPENDENTLY, WHICH IS THE TRIGGER MECHANISM WORKING RATHER THAN A COLLISION.
-/// Main deleted the 57 consumed rows on one side while this branch deleted the same 57 on the
-/// other, neither aware of the other, both paying the rule that consumed rows are due for deletion
-/// on the next roster-touching change. A trigger that reaches two unrelated changes and is
-/// honoured by both is doing what a trigger is for.
-///
-/// THE SENTENCE ABOVE WAS SPLIT, NOT RE-TENSED, and the distinction is the point. It was doing two
-/// jobs: a dated claim that the roster was empty, which the rows below falsify, and a claim that an
-/// empty roster is not permissive, which is a property of the mechanism and remains true.
-/// Re-tensing the whole sentence would have weakened a live invariant in order to correct a stale
-/// fact standing beside it -- the same error as taking either side of a conflict whole.
-/// AND THE ROSTER RE-OPENS ONCE MORE, for the same reason and by the same rule. The sweep above is
-/// main's and it is correct: the gunbc#10077 rows were consumed and the change that re-tensed their
-/// trigger owed their deletion. It restored the resting state to empty ON MAIN. This merge then
-/// re-opens it with the five gunbc#10011 rows below, whose transition has NOT merged -- verified
-/// rather than assumed, because assuming is what I got wrong the last two times: main still
-/// declares HeldSpecificationSupersessionStanding in
-/// extdeps.cpu.ampere_altra_platform_hw_design.subject and extdeps.publication does not carry it,
-/// so the deltas these three adjudicate are still producible and none of them is consumed.
-///
-/// TWO OF THE FIVE ARE GONE AND THAT IS THE SAME TRIGGER FIRING, NOT A SEPARATE DECISION. They
-/// adjudicated bindings inside `platform_facts_are_from_the_latest_revision`, and review 59072
-/// established that predicate as the dissolved variant-test shape, so this change DELETES the
-/// declaration rather than widening its match. A row naming a declaration that no longer exists
-/// matches no producible delta -- it is STALE, and a stale row refuses every unrelated PR in the
-/// repository, which is the failure mode this whole roster exists to avoid. Deleting the
-/// declaration and keeping its admission rows would have been the fabricated-debt shape: a
-/// permission over nothing that reads as coverage.
-///
-/// THE THREE THAT REMAIN ARE THE SUBJECT MODULE'S, whose declarations are untouched by that
-/// deletion -- the specification record's field type, and the standing row's declared type and
-/// constructor. Their transition is still open for the reason stated above.
-/// TWENTIETH DISSOLUTION (2026-09-03, gunbc#10156). The 47 `rung drop authority consolidation
-/// gunbc#10106` rows are deleted, by their own trigger: #10106 merged as 78e022c51e4, so main
-/// carries the consolidation and no run after it can produce those deltas. Required run 33772725454
-/// on 646058e82c reported `FAILED PHASE namespace-wave-admission (0 unadjudicated delta(s),
-/// 0 stale admission(s), 47 consumed admission(s) due for deletion on this roster-touching
-/// change)`, with the floor CLEAN in that same run -- so the phase failure was this and nothing
-/// else. The resting state returns to this branch's own 17 rows.
-///
-/// THIS IS THE SAME EVENT FOR THE THIRD TIME, AND THE SECOND TIME ON THIS ONE BRANCH. At 57 rows
-/// (main and a branch, independently), at 3 rows (this branch and #10106, independently, both
-/// authoring the same NINETEENTH DISSOLUTION), and now at 47. The trigger is working exactly as
-/// designed each time -- it reaches every concurrent roster-touching change and is honoured by
-/// whichever observes it first. What recurs is the COST of honouring it: a branch that touches this
-/// roster for its own reasons inherits the obligation to delete someone else's consumed rows, and
-/// must author or yield a record for an event it did not cause. This branch has now done that twice
-/// in one PR, for two different upstream transitions.
-///
-/// NO YIELD THIS TIME, AND THE ASYMMETRY IS THE POINT. The gunbc#10011 deletion was yielded to
-/// #10106 because that branch was live and had authored the same record concurrently; two records
-/// of one event would have been a §3 violation that merged silently. #10106 has now MERGED, so
-/// nothing else is going to delete its consumed rows and no competing record exists. Deleting
-/// without recording would leave 47 admissions vanishing from main with nothing describing why,
-/// which is the failure the roster's history exists to prevent. So this branch records it.
-///
-/// THE THREE `gunbc#10011` ROWS ARE DELETED HERE AND THE RECORD OF THAT DISSOLUTION IS NOT HERE.
-/// It is gunbc#10106's NINETEENTH DISSOLUTION, and this branch deliberately authors no second one.
-///
-/// Both branches discovered the same three consumed admissions independently, both concluded the
-/// deletion was owed by the first roster-touching change to observe it, and both were right -- the
-/// trigger obliges EVERY concurrent roster-touching branch, so concurrent discovery is the
-/// mechanism working, not a race. What does not follow is two records. One event with two
-/// ordinal-bearing writeups is a §3 single-authority violation whichever ordinals they wear, and
-/// it would survive the git conflict rather than being caught by it. #10106 pushed first and is
-/// mid-CI, so it carries the record and this branch carries only the deletion the gate requires.
-///
-/// THIS IS THE THIRD ORDINAL COLLISION ON THIS FILE FROM ONE BRANCH, AND THE SECOND TIME THIS
-/// EXACT EVENT HAS BEEN DOUBLE-RECORDED. #10106's own SEVENTEENTH TRANSITION documents the same
-/// thing happening one round earlier with 57 rows -- "main deleted the 57 consumed rows on one
-/// side while this branch deleted the same 57 on the other, neither aware of the other" -- and
-/// wrote it up as the trigger working. It is now twice, at 57 rows and at 3, which makes it a
-/// property of the carrier rather than an accident: an author-assigned ordinal, in prose, in a
-/// file every lane must write by construction, cannot be made safe by diligence. Recorded here as
-/// the observation; choosing the replacement carrier is not this cut's to make.
-///
-/// EIGHTEENTH TRANSITION (2026-09-03). Call-reachability grounding, gunbc#10156: the duplicated
-/// call-reachability walk over fn-arrow declarations, and the declaration-index helpers duplicated
-/// beside it, move from `v2.lens.effect_reach` and `v2.lens.live_read_classification` into the one
-/// authority at `v2.std.fn_index`. Each of the 17 rows below is a `TargetChanged` binding whose
-/// head is `v2.std.fn_index` -- verified as the only `TargetChanged` shape in the report, so no row
-/// here adjudicates a delta this transition did not cause. Measured from required run 33700978133
-/// on cdd31b664a, which reported exactly `17 unadjudicated delta(s)`.
-///
-/// THE BASES ARE NOT ALL ONE MODULE, and that is the transition's shape rather than an error: the
-/// concept had FOUR authorities, so the spellings move from four different bases -- the two lenses
-/// that carried the walk, plus `v2.lens.production_qualification_origin_probe` and
-/// `v2.lens.affected_set.entry_selection`, which each held a copy of one helper. One row names a
-/// consumer outside `src/v2` entirely: `test.claim.bmc_onboarding_quarantine_witness_test` bound
-/// `atom_identities_in_node` by name. Nothing broke -- the name still resolves -- but a cross-root
-/// binding whose target moved is exactly the delta a reader must be shown.
-///
-/// ENUMERATED BY IDENTITY, NOT MATCHED BY PATTERN. Seventeen deltas, seventeen rows, each naming
-/// its module, its declaration and the exact spelling whose target moved. A wildcard over
-/// "anything that moved to v2.std.fn_index" would also admit the next relocation nobody reviewed.
-///
-/// TRIGGER: #10156 MERGING. After that, main carries the grounding, so a later run's base and head
-/// both have it and no run can produce these deltas.
-///
-/// THEY WILL REPORT CONSUMED, NOT STALE, on the reasoning the fourth transition established and the
-/// eighteenth dissolution then confirmed: rows authored in the same PR that performs their own move
-/// are satisfied at the BASE of every later run, never merely unmatched. Born consumed, like the
-/// SJT-1, DCH-1 and #10077 cohorts. Their deletion is therefore owed by whoever next touches this
-/// roster, on the convention the entry above honoured rather than delegated.
-///
-/// THE ORDINAL IS THE NEXT UNUSED ONE, NOT THE NEXT IN SEQUENCE, because this ledger's transition
-/// ordinals already collide: FOURTH and FIFTH each name two different transitions (gunbc#9665 and
-/// #9675 on 2026-08-29, then #10077 on 2026-09-02 reusing FOURTH deliberately as a back-reference,
-/// "SAME RULE"). FIFTEENTH is the highest in use, so this is SIXTEENTH. A third duplicate would
-/// have made the entry uncitable by its own name -- which is what an ordinal is for.
+/// WHY THE ADVANCE CHARGE WAS NOT WORTH ITS COST -- WHICH IS NOT THE SAME AS SAYING IT COST NOTHING
+/// TO REMOVE. What it established was that a NUMBER was authored and nothing more: whether that
+/// number named an open pull request deleting these rows is checked by no executing route in this
+/// repository -- not by this binary, which reads no forge, and not by any other consumer
+/// (review 65476, verified) -- so a fabricated number passed it. That is what made the charge a poor
+/// trade, and the second arm additionally made a BYSTANDER pay it. But a weak GREEN is not a
+/// decoration: DESIGN section 4b reserves that word for a check whose RED cannot be authored at all,
+/// and both arms had authorable REDs that fired (review 67014). So both removals are declared
+/// section 4b(3) rung drops -- `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced` -- each naming the capability that
+/// restores it. Reference verification remains out of band or absent, which is now stated rather
+/// than implied by a wall that could not perform it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeletionFollowUp {
+    NotAuthored,
+    PullRequest(u32),
+}
 
-/// TWENTIETH TRANSITION (2026-09-04), gunbc#10328, AND IT IS THE NINETEENTH'S OWN SHAPE APPLIED TO
-/// THE SECOND LEDGER. `gunbc.guarantee_stall` is split one file per row, exactly as gunbc#10206
-/// split `gunbc.recurring_failure_mode`, and for the same measured reason: every row PR appended at
-/// the declaration tail and the roster tail, so row lanes conflicted with each other by
-/// construction. The direction is forced by acyclicity rather than chosen -- a row module imports
-/// `GuaranteeStall` from the type module, so the type module cannot import the rows back -- which
-/// is why the enumeration leaves for `gunbc.guarantee_stall.roster` and each row for
-/// `gunbc.guarantee_stall.<row>`.
+/// THE CI EVENT THIS RUN WAS TRIGGERED BY. IT NO LONGER SELECTS A POLICY, AND THE DOC SAYING IT DID
+/// OUTLIVED THE THING IT DESCRIBED (review 67027).
 ///
-/// TEN DELTAS, TEN ROWS, ENUMERATED BY IDENTITY AND NOT MATCHED BY PATTERN, on the rule the
-/// eighteenth transition states: a wildcard over "anything that moved under
-/// gunbc.guarantee_stall" would also admit the next relocation nobody reviewed. All ten are
-/// bindings in ONE consumer, `test.claim.guarantee_stall_witness_test`, and they split two ways --
-/// six whose spelling now resolves to the roster module (`all_guarantee_stalls`,
-/// `restored_stalls`, `every_restored_stall_is_rostered_once`), four whose spelling now resolves to
-/// one row module (`next_rung_trigger_enforcement_stall`). The three folds that take a
-/// `List<GuaranteeStall>` PARAMETER did not move and produce no delta, which is the check on the
-/// claim: had they moved too, this ledger would be showing thirteen.
+/// Until 2026-09-16 the consumption obligation genuinely differed by event: two `merge_group` arms
+/// charged a deletion follow-up that no other run charged. Those arms were removed on an operator
+/// ruling (gunbc#11481) and nothing downstream branches on the event now -- every run refuses on the
+/// same set: stale rows, unadjudicated deltas, and a consumed row when `base == head` or the roster
+/// source is touched.
 ///
-/// THE MEMBERSHIP ADDITIONS ARE NOT HERE AND THAT IS NOT AN OMISSION. The witness reaching the two
-/// new modules classified `ExplicitlyEvaluatedZeroDelta` and auto-admits; only `TargetChanged`
-/// refuses. A row for an auto-admitted disposition would be a decoration that later reports stale.
-///
-/// THESE ROWS ARE DATA IN AN EXISTING DECLARED ROSTER, NOT NEW MACHINERY -- no branch, no dispatch,
-/// no code path; the mechanism that reads them is unchanged. What would be a scaffold is a second
-/// route around the adjudicator, and there is none.
-///
-/// DISSOLVE-ON is gunbc#10328 merging, and the trigger names the CAPABILITY rather than an
-/// artifact: once main carries the split, base and head both have it and NO RUN CAN PRODUCE THESE
-/// TEN DELTAS. They will report CONSUMED rather than stale, born consumed like the #10206, SJT-1
-/// and DCH-1 cohorts, because a row authored in the same PR that performs its own move is satisfied
-/// at the BASE of every later run. Their deletion is charged to WHOEVER NEXT TOUCHES THIS ROSTER,
-/// which is this module's standing convention and not a follow-up PR anyone could forget.
-///
-/// EMPTY IS THE RESTING STATE between transitions, and it is not permissive: a run with a real
-/// delta still refuses it as UNADJUDICATED, closed by authoring a row and never by a silent
-/// admission. That is a claim about the MECHANISM and it holds whatever the roster contains.
-///
-/// TWENTY-THIRD DISSOLUTION (2026-09-03). Six incoming rows are removed by their own trigger, and
-/// each was checked against the base before the deletion rather than after a run reported it:
-///
-/// - the four `gunbc#10028 irrefutability-predicate dissolution (review 59122)` rows. #10028 merged
-///   as 8f8e513a23 and main declares `match_pattern_is_irrefutable` in v1.std.core
-///   (src/v1/00_core.dag), with v1.compiler.emit_rust referencing it from there;
-/// - the two `recurring_failure_mode_roster` rows. Main declares that datum in
-///   gunbc.recurring_failure_mode.roster (dag/gunbc/recurring_failure_mode/roster.dag), which is the
-///   target the rows name, so gunbc.design_ledgers now resolves the spelling there.
-///
-/// In both cases the base already binds the spelling to the target, so the delta is not producible
-/// and the row can only be stale.
-///
-/// FIVE CONFLICTS ON THIS ROSTER, FOUR CARRYING ALREADY-CONSUMED ROWS -- 47 for gunbc#10106, 17 for
-/// gunbc#10156, then these six. The first two were unioned in on the reasoning that incoming rows
-/// should be kept, and each cost a required run to discover they were closed. The rule was right
-/// both times and its INPUT was guessed.
-///
-/// SO THE RULE IS OPERATIONAL RATHER THAN ASPIRATIONAL: on a conflict here, keep the rows THIS
-/// branch authored whose transitions are open, and for every incoming row READ THE BASE -- does it
-/// already bind that spelling to that target? -- before carrying it. Consumption is decidable from
-/// the tree, which makes guessing it a choice rather than a limitation. A branch merging main is
-/// downstream of main's own sweep, so the prior on an incoming row is that it has already landed.
-///
-/// ONE ROW STANDS (gunbc#10218), for an occurrence-binding relocation whose transition is open.
-/// `physical_asset_identity_eq` was authored privately inside
-/// product.printed_chassis.manufacturing_manifest and now resolves in product.placement_supply,
-/// which OWNS PhysicalAssetIdentity and already carries host_identity_eq for the sibling branded
-/// type. The private copy was tolerable while one module consumed it and stopped being tolerable
-/// when product.inventory needed the same comparison: inventory is a generic authority, so importing
-/// a specific product's helper to obtain an equality would invert the layering. The spelling is
-/// unchanged on both sides and only its TARGET moved, which is exactly TargetChanged. Run
-/// 33792437834 reported it ADMITTED-BY this row, which is the positive control for every deletion
-/// above: the roster is not merely emptier, it is still adjudicating the one delta this branch makes.
-///
-/// ITS CONSUMPTION IS DECIDABLE ON THAT SAME RULE: once gunbc#10218 merges, the base binds the
-/// spelling to product.placement_supply, the delta stops being producible, and this row is owed
-/// deletion by the next roster-touching change.
-// THE ONE gunbc#10218 ROW IS DELETED HERE, NOT CARRIED. It was CONSUMED -- its relocation is
-// already satisfied at the base because that PR merged -- and this roster's own rule is that a
-// consumed row's deletion is owed on the roster's next touch. This is that touch.
-//
-// WHAT THESE 19 ROWS ADMIT, AND WHY THEY ARE ALL ONE MOVE. gunbc.fleet_asset_identity was extracted
-// so that a printer's network endpoint and its inventory row could cite ONE declaration of
-// printer_01 rather than agreeing by label string. Binding the endpoint to the asset would otherwise
-// have made gunbc.fleet_intent_network and gunbc.fleet_physical_inventory import each other, and
-// DESIGN section 3 states the import graph's one structural law is acyclicity.
-//
-// Every delta below is the same shape: a spelling that resolved to gunbc.fleet_physical_inventory
-// now resolves to gunbc.fleet_asset_identity. No name changed, no value changed, and no consumer
-// reads a different constant -- the declarations moved beneath their readers rather than away from
-// them. The four test.claim.cooling_qualification_witness rows are the same move seen from a
-// witness that reads cooler_srv3 through the same namespace.
-/// TWENTY-FOURTH DISSOLUTION (2026-09-04, gunbc#10358), PAID BECAUSE THIS CHANGE TOUCHES THE
-/// ROSTER. The nineteen `gunbc#10344` asset-identity extraction rows are deleted.
-///
-/// THE PROOF IS THE GROUPED JOIN, NOT ONE SPECIMEN. An earlier draft of this entry cited a single
-/// row -- `gunbc.fleet_physical_inventory` importing `chassis_srv1` -- and concluded that all
-/// nineteen were consumed. That implication established one row and asserted nineteen, which is the
-/// same overbroad shape this ledger exists to refuse. The actual partition at the base is:
-///
-///   15  gunbc.fleet_physical_inventory        -> gunbc.fleet_asset_identity
-///    4  test.claim.cooling_qualification_witness -> gunbc.fleet_asset_identity
-///
-/// A COUNT HERE IS OCCURRENCES, NOT CONSTANTS, and saying it the other way is how the previous
-/// draft of this paragraph went wrong a second time. The admission key is
-/// `(module, in_declaration, spelling)`, so one constant referenced from two declarations is two
-/// rows. The fifteen are 10 DISTINCT SPELLINGS ACROSS 8 DECLARATIONS, not fifteen constants and not
-/// "`chassis_srv1` and its twelve siblings": `cooler_srv3` alone contributes three rows
-/// (`installed_cooler_containments`, `installed_cooling_realizations`, `srv3_cooler_asset`) and
-/// `chassis_srv1` two (`fleet_host_spatial_facts`, `srv1_chassis_asset`). Main's
-/// `fleet_physical_inventory` imports each of those ten names from `gunbc.fleet_asset_identity`, so
-/// every admitted spelling binds to the admitted target in a singleton set. The label's own
-/// "13 PhysicalAssetIdentity constants" is the MOVED POPULATION, not this cohort: all ten admitted
-/// spellings are among the thirteen, and the three that never appear here -- `ams_01`,
-/// `pi_controller`, `printer_01` -- moved with the others but are referenced by no admitted
-/// occurrence. So 13, 10 and 15 count three different things (constants moved, names referenced,
-/// occurrences admitted) and none is a restatement of another.
-///
-/// The four resolve THROUGH A RE-EXPORT CHAIN and are worth stating separately, because they look
-/// like a different target until the channel is read correctly. All four are the SAME spelling,
-/// `cooler_srv3`, in four different declarations of the cooling witness
-/// (`srv3_installed_cooling`, `duplicate_cooling_ab`, `duplicate_cooling_ba`, and
-/// `catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence`) -- which is the occurrence grain
-/// again, from the opposite direction: one name, four rows. That witness imports `cooler_srv3` from
-/// `gunbc.fleet_physical_inventory`, not from the asset authority -- but the binding channel follows
-/// the chain to the module that actually DECLARES the name, which is `gunbc.fleet_asset_identity`.
-/// Same admitted target, one hop further out.
-///
-/// Neither consumer file is in this diff, so base equals head for both and
-/// `admission_satisfied_at` holds on all nineteen.
-///
-/// THE DELETION IS OWED BY THIS PARTICULAR CHANGE AND BY NO OTHER. `consumed_due` is
-/// `roster_touched && !consumed.is_empty()`: a consumed row does NOT refuse unrelated pull requests,
-/// and it comes due on the roster file's own next touch. This change is that touch. The treadmill is
-/// deliberate -- #10344 discharged #10197's rows on exactly this rule, and the next roster-touching
-/// change will discharge the cohort below.
-///
-/// THE gunbc#10197 ROWS ARE NOT NARRATED HERE. An earlier head of this branch deleted them and wrote
-/// its own entry; main deleted the same sixteen independently in #10344. One event, one record -- my
-/// entry is dropped in favour of main's action, which is the rule the TWENTY-THIRD entry already
-/// states for the six rows before it.
-///
-/// OLLAMA-CHOICE RECLASSIFICATION (2026-09-04, gunbc#10358). `gunbc.model.choice` advertised a
-/// runtime-neutral domain it never served: every runtime identity was minted solely from Ollama
-/// release authority, the configuration carrier was an `ObservedOllamaLaunchConfiguration`, and the
-/// fit evidence was an `OllamaRunnerMemoryObservation`. The module and its Ollama-specific
-/// declarations are renamed to say so, and no compatibility re-export is left behind, so the
-/// compile failures at the old import sites ARE the census (DESIGN section 3 delete-first).
-///
-/// EVERY ROW BELOW IS A PURE RELOCATION. Not one declaration changes what it denotes; the witness
-/// binds the same spellings through the renamed authority, so the wall reports `TargetChanged` at
-/// each binding site. A binding whose MEANING had moved would refuse on its own row rather than be
-/// covered here. The rows are enumerated by exact identity rather than matched by the module pair,
-/// because a pattern would admit a genuine rebind that happened to land in the same two modules --
-/// and the whole point of a rename wave is that it must not be able to hide one.
-///
-/// WHY ONLY THE WITNESS MODULE APPEARS. The wall's binding channel is authored NAME OCCURRENCES
-/// resolved per module, and `test.claim.model.serving_choice_witness_test` is the only consumer that
-/// imports these spellings by bare name. The other three touched files -- `gunbc.model.population`,
-/// `gunbc.spark.serving_convergence_withholding` and `std.measure` -- carry the old module name only
-/// in prose, which the binding channel does not and should not observe.
-///
-/// TRIGGER, STATED AS THE MECHANISM ACTUALLY IMPLEMENTS IT. An earlier draft of this paragraph said
-/// the rows would report STALE and refuse EVERY unrelated PR. Both halves were wrong, and the
-/// correction matters because the wrong version overstates this cohort's blast radius.
-///
-/// After #10358 lands, each of these spellings binds to `gunbc.model.ollama_choice` at the base, so
-/// `admission_satisfied_at` holds and the rows report CONSUMED -- not stale. A stale row matches
-/// no delta; a consumed row is one the base has already satisfied. Different states, different
-/// reporters.
-///
-/// Consumed rows are NOT globally blocking. The refusal predicate is
-/// `consumed_due = roster_touched && !consumed_admissions.is_empty()`, so they come due on the roster
-/// file's OWN next touch and on no other change -- an enrolled unit test names exactly that
-/// behaviour. Unrelated pull requests are unaffected.
-///
-/// They also cannot be removed in the cut that merges the rename: this change needs them PRESENT to
-/// admit its own wave. Deletion belongs to the first post-merge change that touches this roster, and
-/// an immediate dedicated cleanup is the intended shrink rather than waiting for an unrelated lane to
-/// inherit the debt.
-/// TWENTY-NINTH DISSOLUTION (2026-09-04, gunbc#10355). All 255 `gunbc#10358` selector-reclass rows
-/// are deleted, and OLLAMA_CHOICE_RECLASS_LABEL with them. #10358 merged as 97345e55d50 and is this
-/// branch's base, so the standing prior applies, and the join confirms it for every row: 255 of 255
-/// name a spelling DECLARED in the module the row names as its target, none open.
-///
-/// THE FIRST TWO PASSES OF THAT JOIN WERE BOTH WRONG, AND BOTH FAILED THE SAME WAY -- an incomplete
-/// index answering "not found" in a shape indistinguishable from "not declared":
-///
-///   THE PARSER missed 11 of the 255 rows, because it required `module`/`spelling` to be a single
-///   string literal and these rows carry continuation-joined literals. A row the parser cannot see
-///   is a row the join silently does not adjudicate.
-///
-///   THE DECLARATION INDEX missed every COPRODUCT VARIANT, because it read only `data`, `fn` and
-///   `type` at line start. So `ChoseCandidate`, `NoCandidateAdmissible` and 181 siblings resolved to
-///   an EMPTY owner set, which the join then read as "the target does not declare this" and reported
-///   as 183 OPEN rows. Keeping those would have left 183 stale rows refusing every later unrelated
-///   PR.
-///
-/// THE CLASS, NAMED PRECISELY: A PARTIAL OBSERVER RETURNED THE NEGATIVE VALUE OF A TOTAL OBSERVER.
-/// That is what makes these failures dangerous rather than merely incomplete. A parser that cannot
-/// see continuation-joined literals does not report "I could not read this row" -- it reports the
-/// row set WITHOUT it, which is the same type and shape a complete parser returns. An index that
-/// does not know coproduct variants does not report "I do not index that form" -- it returns the
-/// EMPTY OWNER SET, which is exactly what a total index returns for a spelling nothing declares.
-/// In both cases "not inspected" collapsed into "absent", and the caller cannot tell them apart
-/// because the answer is well formed and of the right type. It is only the MEANING that is wrong.
-///
-/// SO THE OBLIGATION IS ON THE OBSERVER, NOT THE CALLER: anything here that reads the corpus and
-/// can be partial must be able to SAY it was partial -- report the forms it does not cover, or
-/// refuse -- because a caller has no way to distinguish a true negative from an unexamined one.
-/// This is the third instance on this branch. The module-to-file step transliterated a module path
-/// and returned an empty read; the spelling-to-owner step read the import path and returned a
-/// non-match; the declaration index used a pattern that did not cover the language and returned an
-/// empty owner set. Three different steps, one shape, and every one of them silently produced the
-/// negative answer a total observer would have produced only if the fact were genuinely absent.
-///
-/// WHAT WOULD ACTUALLY SETTLE IT is the production predicate rather than any hand join.
-/// `admission_satisfied_at` resolves the full (module, enclosing declaration, spelling) subject
-/// through the re-export chain and requires the base candidate set to be the EXACT SINGLETON named
-/// by the target. Every hand join above is a NECESSARY condition only; it agreed with the mechanism
-/// on these rows and did not establish what the mechanism establishes. The wall's own run at the
-/// exact head is the proof, and it is the thing to trust.
-///
-/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10350). All 30 `gunbc#10355` proposal-vocabulary rows
-/// are deleted, and SCM_PROPOSAL_VOCABULARY_LABEL with them. #10355 is in this branch's base, so
-/// every row reports CONSUMED rather than stale, and the wall refused this change with
-/// `30 CONSUMED ADMISSION(S) DUE FOR DELETION ON THIS ROSTER-TOUCH` -- the roster-touch obligation
-/// the entry below predicted for itself, coming due on the first change to touch this file.
-///
-/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE, because the entry below
-/// says in terms that a trigger sentence is not evidence the trigger fired. Each row was joined
-/// against MAIN's tree by its own (module, in_declaration, spelling, target) tuple: 30 of 30 name a
-/// spelling DECLARED in `gunbc.scm.proposal`, none open. ROWS CHECKED EQUALS ROWS IN LABEL EQUALS
-/// THE COUNT THE WALL REPORTED -- 30 = 30 = 30 -- so the subject was not silently narrowed.
-///
-/// THE JOIN WAS BUILT TO SURVIVE THIS FILE'S OWN TWO RECORDED FAILURE MODES, and one of them fired.
-/// `RequireBinding` and `RequireBindingAbsent` are COPRODUCT VARIANTS, not `data`/`fn`/`type`
-/// declarations, so an index reading only line-start declarations would have answered "not found"
-/// for both -- in a shape indistinguishable from "not declared", which is exactly the defect the
-/// TWENTY-NINTH DISSOLUTION records catching on its second pass. The join resolves variants and
-/// fields as well as declarations. It was also calibrated rather than trusted: `MergeCommit`,
-/// `ObjectStore` and a fabricated name all answer NOT DECLARED against the same module, so a
-/// uniform "found" was not available to it.
-///
-/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only, for the reason stated four
-/// paragraphs above -- `admission_satisfied_at` resolves the full subject through the re-export
-/// chain and requires an exact singleton, which no hand join reproduces. The wall's own run at the
-/// exact head is the proof.
-///
-/// TWENTY-SECOND TRANSITION (2026-09-04, gunbc#10355). `gunbc.scm.merge` was one module answering
-/// two questions, and the spelling `merge` was carrying two contracts: roles, requirements and
-/// supersession -- what the module does -- and two-commit merging, which it does not do and which
-/// `gunbc.scm.ancestry` is the subject of. The nouns move to their own authority,
-/// `gunbc.scm.proposal`, which depends on neither `ObjectStore` nor `ObjectId`; the operation over
-/// them becomes `gunbc.scm.role_requirement_integration`.
-///
-/// EVERY ROW BELOW IS A PURE RELOCATION OF A NOUN THE NEW AUTHORITY OWNS -- `Proposal`,
-/// `Requirement`, `RequireBinding`, `RequireBindingAbsent`, `requirement_role`. No declaration
-/// changes what it denotes: consumers bind the same spellings through the module that now owns them,
-/// so the wall reports `TargetChanged` at each binding site. Rows are enumerated by exact identity
-/// rather than matched on the module pair -- a pattern would admit a genuine rebind that happened to
-/// land in the same two modules.
-///
-/// ONLY THE `gunbc.scm.proposal` HALF NEEDS ADMISSION. The module rename is a module removal plus a
-/// module addition, which the wall classifies on its own rows; what needs naming here is the 30
-/// binding sites whose TARGET moved while their spelling did not.
-///
-/// THE ORDINAL IS TWENTY-SECOND, NOT TWENTY-FIRST. An earlier head of this branch numbered it
-/// twenty-first; that entry was lost when a conflict was resolved by taking main's file whole, and
-/// main has since landed its own transitions. Renumbering rather than reusing keeps each entry
-/// citable by a name that means one thing.
-///
-/// TRIGGER: these rows go when #10355 merges. The base then binds each spelling to
-/// `gunbc.scm.proposal`, the deltas stop being producible, and they are owed deletion by the next
-/// roster-touching change -- decidable by the declaring-module join above, whose known failure modes
-/// are recorded there, and confirmable only by the wall itself.
-///
-/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10439). Both `gunbc#10350` kernel-identity rows are
-/// deleted, and KERNEL_IDENTITY_RELOCATION_LABEL with them. #10350 is in this branch's base, so both
-/// report CONSUMED rather than stale, and the wall refused this change naming
-/// `2 consumed admission(s)` -- the roster-touch obligation the deleted entry predicted for itself.
-///
-/// ADJUDICATED BY THE DECLARING-MODULE JOIN, NOT BY THE TRIGGER SENTENCE, because the deleted entry
-/// said in terms that a trigger sentence is not evidence the trigger fired. Each row was joined
-/// against main's tree by its own (module, in_declaration, spelling, target) tuple:
-///
-///   v1.compiler.infer     `04_infer.dag` imports `resolved_node_is_kernel_identity_for_name` from
-///                         `v1.std.core`, and `ancestry_binding_is_kernel_identity` still calls it.
-///   v1.compiler.emit_rust `05_emit_rust.dag` imports the same spelling from `v1.std.core`, and
-///                         `import_name_resolves_to_host_realized_kernel_scalar` still calls it.
-///
-/// ROWS CHECKED EQUALS ROWS IN LABEL EQUALS THE COUNT THE WALL REPORTED -- 2 = 2 = 2 -- so the
-/// subject was not silently narrowed. The spelling has exactly ONE declaration in the tree,
-/// `00_core.dag`, so neither row's target set is ambiguous and no competing local declaration
-/// shadows either call site.
-///
-/// WHAT IS NOT CLAIMED: this hand join is a NECESSARY condition only. `admission_satisfied_at`
-/// resolves the full subject through the re-export chain and requires an exact singleton, which no
-/// hand join reproduces. The wall's own run at the exact head is the proof.
-///
-/// TWENTY-FOURTH TRANSITION (2026-09-04, gunbc#10439): the Ollama launch vocabulary moves beside
-/// the engine axis that dispatches it.
-///
-/// `SparkServingOccurrence` carried `launch_profile: OllamaServingLaunchProfile` while exactly one
-/// runtime existed, which made "what is served" and "how it is launched" one fact. #10439 adds
-/// `ServingEngine = OllamaServing | VllmServing` and cuts the occurrence over to it in the same
-/// tree, because leaving the fused carrier alive would make the new axis a parallel representation
-/// -- DESIGN §3's attractor -- rather than a replacement.
-///
-/// THE MOVE IS WHAT KEEPS THE IMPORT GRAPH ACYCLIC, WHICH IS ITS ONE STRUCTURAL LAW. `serving_engine`
-/// cannot import `OllamaServingLaunchProfile` from `serving_release` while `serving_release` imports
-/// `ServingEngine` from `serving_engine`. So `SparkServingBindListen`, `OllamaServingLaunchProfile`
-/// and `spark_serving_bind_listen_wire` MOVE into `gunbc.spark.serving_engine` -- a move, not a
-/// copy, so no second authority survives the change. Six binding sites therefore bind the same
-/// spelling to a different declaring module, which is a `TargetChanged` delta by construction and
-/// exactly the motion this wall exists to make visible.
-///
-/// THE THREE MEMBERSHIP DELTAS ARE NOT ADMITTED HERE BECAUSE THEY DO NOT NEED TO BE: the wall
-/// reports them `ExplicitlyEvaluatedZeroDelta` -- `serving_engine` is a new module reached by a name
-/// each importer authors -- and admitting a row the wall already adjudicates would be a second
-/// authority for the same decision.
-///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10439 merges. The base then binds
-/// each spelling to `gunbc.spark.serving_engine`, no run can produce these deltas, and all six
-/// report CONSUMED rather than stale -- coming due on this roster's own next touch. Adjudicate that
-/// deletion by the declaring-module join, joining each row against main's tree by its own
-/// (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because a
-/// trigger sentence is not evidence that the trigger fired.
-///
-/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10445). All six `gunbc#10439` serving-engine rows
-/// are deleted, and SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL with them. #10439 merged, so this
-/// branch's base carries the relocation, no run can produce those deltas, and the wall reports them
-/// CONSUMED rather than stale -- the death the entry above predicts for itself, coming due on the
-/// first change to touch this roster. That is this change, and the wall's own run at the exact head
-/// is what adjudicated it rather than the trigger sentence.
+/// WHAT THE ENUM STILL DOES, STATED AS WHAT IT IS. `adjudication_event_from_name` refuses a
+/// `GITHUB_EVENT_NAME` this enum does not model rather than adjudicating under assumptions nobody
+/// stated. With no event-selected policy left, that refusal is a tripwire on the workflow's TRIGGER
+/// SET and not a policy selector: add a trigger this module never considered and the required run
+/// stops loudly (DESIGN section 5) instead of quietly producing a verdict for a run nobody sized.
+/// `Local` is a run with no CI event at all -- an author's machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdjudicationEvent {
+    PullRequest,
+    MergeGroup,
+    Push,
+    WorkflowDispatch,
+    Local,
+}
 
-/// TWENTY-FIFTH TRANSITION (2026-09-04, gunbc#10445). The mixed object-table codec was living in
-/// `gunbc.scm.commit_closure_json_v2`, a module whose subject is the CLOSURE DOCUMENT: a tag, a
-/// designated root, and a table that under v4 admits SEMANTIC NODES ONLY. The table it hosted
-/// answers a different question -- how a store's three object kinds go onto the wire -- and the
-/// repository envelope, which has no closure and no closure root, was importing the closure module
-/// to reach it. One module answering two questions is the meaning fork DESIGN section 3 names, and
-/// the import edge it forced was a consumer resolving through the wrong authority. The codec and
-/// its vocabulary move to `gunbc.scm.object_table_json`, the module the object table is named for.
-///
-/// ONE ROW OF THIS ENTRY WAS REPOINTED WHERE IT SHOULD HAVE BEEN DELETED, AND THE WALL SAID SO
-/// TWICE. Renaming `encode_repository_v2` to `encode_repository_v3` moved the declaration a binding
-/// row is keyed on, and the row was rewritten to name the new spelling on the reasoning that "the
-/// binding it describes still moves". It does not. A RENAMED declaration is a NEW declaration: the
-/// base corpus has no `encode_repository_v3` for a target to have changed FROM, so the run produces
-/// no TargetChanged delta for it at all, and the row matched nothing on two consecutive heads. It is
-/// deleted. `encode_repository_checked`, which kept its name across the change, keeps its row --
-/// which is the distinction the repoint blurred.
-///
-/// THE SAME PR INTRODUCES A THIRD OBJECT KIND. `CorpusManifestObject` gives every kind-specific
-/// lookup a third wrong-kind arm, gives the object-table decoder its manifest causes, and splits
-/// the untyped locator so that an authored-source identity can no longer inhabit a semantic child
-/// position. Those are NEW SPELLINGS, not rebinds -- the base corpus declared none of them.
-///
-/// THE ORDINAL IS TWENTY-FIFTH, AND IT HAS BEEN TWENTY-THIRD AND TWENTY-FOURTH ON EARLIER HEADS OF
-/// THIS BRANCH. Each number was chosen against a base a later merge changed: gunbc#10350's
-/// kernel-identity relocation took twenty-third, and gunbc#10439's Ollama launch vocabulary took
-/// twenty-fourth. Renumbering against the base that actually exists is what the TWENTY-SECOND
-/// TRANSITION prescribes, for the reason it gives: an entry must stay citable by a name that means
-/// one thing.
-///
-/// THIS ENTRY DELETES NOTHING, THOUGH EARLIER HEADS OF THIS BRANCH DELETED TWO COHORTS. The
-/// THIRTIETH and THIRTY-FIRST DISSOLUTIONS above discharged the gunbc#10355 and gunbc#10350 rows on
-/// main first, so by this merge base there is nothing left for this entry to claim credit for. What
-/// this branch contributes is the rows below and nothing else.
-///
-/// THE ROWS BELOW ARE TWO CLASSES UNDER TWO LABELS, BECAUSE THEIR REASONS DIFFER. One label
-/// spanning both would make a single sentence answer for two distinct motions, and a row's only
-/// value is that a reader can check its stated reason against the row itself. A third class was
-/// authored and is deleted below, for the reason given there.
-///
-/// Rows are enumerated by exact identity, never matched on the module pair: a pattern over
-/// (`commit_closure_json_v2` -> `object_table_json`) would silently admit a genuine rebind that
-/// happened to land between those same two modules.
-///
-/// TRIGGER: both sets go when #10445 merges. The base then binds each spelling to the module
-/// named as its target, the deltas stop being producible, and the rows are owed deletion by the
-/// next roster-touching change -- adjudicated by the declaring-module join the THIRTIETH
-/// DISSOLUTION describes, never by this sentence, and confirmable only by the wall's own run at
-/// the exact head.
-/// THERE IS NO MANIFEST-VOCABULARY LABEL, AND THE 38 ROWS THAT CARRIED ONE ARE DELETED. An earlier
-/// head of this branch authored one row per newly authored manifest spelling, each reported as a
-/// `NewPoolCoincidenceResolution` binding delta by the wall at that base. Against the merged base
-/// the wall reports none of them: all 38 came back STALE -- matching no delta in the run -- while
-/// every `TargetChanged` and `AuthoredReferenceResolution` row beside them still matched.
-///
-/// THE ROWS GO RATHER THAN THEIR LABEL BEING REWORDED, because a row that matches no delta is a
-/// standing claim about a motion that is not happening. Carrying it would be the roster's own
-/// version of the defect this branch is made of: a well-formed statement of the right type whose
-/// subject does not exist. The wall decides which rows exist, and it says these do not.
-
-/// `node_target_of` is the sole constructor of `SemanticNodeTarget` in `gunbc.scm.object_store`,
-/// introduced when the untyped locator was split so an authored-source identity can no longer
-/// inhabit a semantic child position. These fixtures could previously write a bare `ObjectId`
-/// there; they now name the constructor, which is a name the base corpus did not declare.
-/// TWENTY-FIRST TRANSITION (2026-09-04, gunbc#10300). `param_names_of` stood twice, byte-identical,
-/// in `v2.lens.effect_reach` and `v2.lens.live_read_classification`, and it is the last duplicated
-/// fn-arrow helper: both copies are deleted and both lenses now read the one declaration in
-/// `v2.std.fn_index`, where `callees_from_node` already needed it to exclude a declaration's own
-/// parameter names from its callee set. Two `TargetChanged` deltas follow, one per consuming lens,
-/// enumerated by identity rather than admitted by a spelling wildcard, because a wildcard would also
-/// admit a THIRD consumer nobody reviewed.
-///
-/// ITS CONSUMPTION IS DECIDABLE ON THE ORDINARY RULE: once this merges, the base binds the spelling
-/// to `v2.std.fn_index` in both modules, the deltas stop being producible, and these two rows are
-/// owed deletion by the next roster-touching change -- the same rule the two dissolutions below were
-/// paid on.
-///
-/// THIRTIETH DISSOLUTION (2026-09-04, gunbc#10300). All 30 `gunbc#10355` SCM proposal-vocabulary
-/// rows are deleted, and `SCM_PROPOSAL_VOCABULARY_LABEL` with them. This is not a judgement call:
-/// the required namespace-wave-admission phase reported them by identity as `CONSUMED ADMISSION`,
-/// 30 of 30, on this branch's own head -- #10355 has merged, the base now binds each spelling to
-/// `gunbc.scm.proposal`, and the deltas have stopped being producible.
-///
-/// THE DELETION IS OWED BY THIS CHANGE AND NOT BY A LATER ONE, on the roster's own standing rule:
-/// a consumed row's deletion comes due on the roster's next touch, and this change touches the
-/// roster. That rule is what keeps the ledger from growing without bound, and it is why this
-/// dissolution is authored by a PR that has nothing to do with SCM vocabulary.
-///
-/// THIRTY-FIRST DISSOLUTION (2026-09-04, gunbc#10300). Both `gunbc#10350` kernel-identity
-/// predicate-relocation rows are deleted, and `KERNEL_IDENTITY_RELOCATION_LABEL` with them. Reported
-/// by identity as `CONSUMED ADMISSION`, 2 of 2, by the required phase on this branch's own head:
-/// #10350 has merged, `v1.compiler.infer::ancestry_binding_is_kernel_identity` and
-/// `v1.compiler.emit_rust::import_name_resolves_to_host_realized_kernel_scalar` both bind
-/// `resolved_node_is_kernel_identity_for_name` to `v1.std.core` at the base, and neither delta is
-/// producible any more.
-///
-/// THE SECOND SUCH PAYMENT ON THIS ONE BRANCH, which is worth recording rather than smoothing over.
-/// The THIRTIETH deleted 30 consumed `gunbc#10355` rows; a merge of main then brought in a fresh
-/// cohort whose own transition had merged in the meantime, and the phase came due again. That is the
-/// treadmill working as designed, not a defect: a long-lived branch touches the roster once per
-/// sync, and each touch pays whatever the base has since consumed. The alternative -- passing it on
-/// -- is what makes an append-only ledger grow without bound.
-///
-/// THIRTY-SECOND DISSOLUTION (2026-09-04, gunbc#10300). All six `gunbc#10439` serving-engine
-/// launch-vocabulary rows are deleted, and `SERVING_ENGINE_LAUNCH_VOCABULARY_LABEL` with them.
-/// Reported by identity as `CONSUMED ADMISSION`, 6 of 6, by the required phase on this branch's own
-/// head: #10439 has merged and none of the six deltas is producible against the base any more.
-///
-/// THE THIRD PAYMENT ON THIS ONE BRANCH, AND THE PATTERN IS NOW THE POINT. The THIRTIETH cleared 30
-/// consumed `gunbc#10355` rows, the THIRTY-FIRST cleared 2 `gunbc#10350` rows, and this clears 6
-/// `gunbc#10439` rows -- three different cohorts, none of them this PR's, each consumed by a merge
-/// that happened while this branch was open. A branch that syncs with main N times touches the
-/// roster N times and owes the payment N times.
-///
-/// THAT IS THE RULE WORKING, NOT FRICTION TO ROUTE AROUND, and it is worth saying plainly because
-/// the tempting reading is the opposite. The alternative to paying on touch is a roster that only
-/// ever grows, where every stale row refuses unrelated changes and the cost lands on whoever is
-/// unlucky enough to touch the file last. Paying three times over one afternoon is the ledger
-/// staying small; it is not the ledger misbehaving.
-///
-/// THIRTY-THIRD DISSOLUTION (2026-09-05, gunbc#10300). All 22 `gunbc#10445` rows are deleted, and
-/// both `SCM_OBJECT_TABLE_CODEC_MOVE_LABEL` and `SCM_NODE_TARGET_CONSTRUCTOR_LABEL` with them --
-/// 17 object-table codec-move rows and 5 semantic-target constructor rows. Reported by identity as
-/// `CONSUMED ADMISSION`, 22 of 22, by the required phase on this branch's own head: #10445 has
-/// merged and none of the deltas is producible against the base any more.
-///
-/// FOURTH PAYMENT, FOURTH COHORT, NONE OF THEM THIS PR'S. The running total on one branch is 30
-/// (#10355) + 2 (#10350) + 6 (#10439) + 22 (#10445) = 60 rows dissolved for work this change has
-/// nothing to do with, because the roster's rule is that a consumed row's deletion comes due on the
-/// roster's next touch and every sync with main is a touch.
-///
-/// THE RATE IS THE OBSERVATION WORTH LEAVING HERE. Four cohorts became consumed inside one open
-/// branch's lifetime, which means main is landing roster-touching transitions faster than a branch
-/// can complete a CI cycle. That is not an argument against the rule -- the ledger is 2 rows rather
-/// than 62 precisely because it is paid on touch -- but it does mean a long-lived branch pays a
-/// toll proportional to how long it stays open, and the honest way to shrink that toll is to keep
-/// branches short rather than to defer the payment.
-///
-/// THIRTY-FOURTH DISSOLUTION (2026-09-05, gunbc#10324), PAID BECAUSE THIS CHANGE TOUCHES THE
-/// ROSTER. Both `gunbc#10300 param_names_of grounding` rows are deleted. gunbc#10300 merged, so its
-/// rows were consumed by their own merge and their deletion falls to this roster's next touch.
-///
-/// ADJUDICATED BY THE DECLARING-MODULE JOIN AGAINST MAIN'S OWN BLOBS, NOT AGAINST THIS WORKTREE.
-/// The first run of this join read the working tree and answered NOT DECLARED, which would have
-/// kept two consumed rows alive; the working tree was the PRE-MERGE tree, so it was answering about
-/// a base the wall does not compare. Re-asked against `origin/main`, `param_names_of` IS declared in
-/// `v2.std.fn_index`, and NEITHER `v2.lens.effect_reach` NOR `v2.lens.live_read_classification`
-/// still declares its own copy -- so base and head bind the spelling identically and no run can
-/// produce these deltas. CALIBRATED IN BOTH DIRECTIONS: a fabricated spelling answers NOT DECLARED
-/// against the same module, and real neighbours in that module answer DECLARED, so neither a
-/// uniform "found" nor a uniform "missing" was available to the join. THE FIRST READING IS RECORDED
-/// RATHER THAN QUIETLY CORRECTED, because a join that silently answers about the wrong tree is the
-/// same defect class as an edit pass that matches nothing: well-formed, plausible, and about a
-/// subject that is not the one under adjudication.
-///
-/// THIS BRANCH'S OWN THIRTY-THIRD DISSOLUTION IS DROPPED, NOT RENUMBERED -- the fourth time this has
-/// happened here. gunbc#10300 landed its own THIRTY-THIRD DISSOLUTION deleting the identical 22
-/// gunbc#10445 rows this branch had just deleted. The deletion happened ONCE; two entries would
-/// leave two authorities describing one event.
-///
-/// FIFTH OBLIGATION, 62 ROWS, NONE AUTHORED HERE: 30 gunbc#10355, 2 gunbc#10350, 6 gunbc#10439, 22
-/// gunbc#10445, and now 2 gunbc#10300. FOUR OF THE FIVE WERE ALSO PAID INDEPENDENTLY BY THE BRANCH
-/// THAT LANDED FIRST, which is why four dissolution entries written here are dropped rather than
-/// renumbered. The rate is the observation: this roster is a serialization point every merging
-/// branch must pass through, and the debt attaches to arrival order, not to authorship.
-
-/// TWENTY-SIXTH TRANSITION (2026-09-05, gunbc#10324). `host_converge_for_identity` moves out of
-/// `gunbc.fleet_converge_cli` and lands beside the type it looks up, in `gunbc.host_converge`. Two
-/// bindings in `gunbc.fleet_converge_cli` therefore resolve to a new target, which is
-/// `TargetChanged` and is not auto-admitted.
-///
-/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the generic
-/// `find_by_identity` returns `T?` and the Optional does not survive inference, so a `match` over
-/// its result reads as the bare element type and reports `Present` as a missing variant of it, at
-/// that type's declaration, in another file. Two callers had each privately worked around this with
-/// their own monomorphic wrapper and a third site was about to author the same one. Promoting ONE
-/// wrapper to the module that declares `HostConverge` deletes the fork rather than widening it.
-///
-/// THE ORDINAL IS TWENTY-SIXTH AND IT STILL STANDS. It has already moved five times -- TWENTY-FIRST,
-/// TWENTY-THIRD, TWENTY-FOURTH, TWENTY-FIFTH, TWENTY-SIXTH -- each time because a base that changed
-/// underneath had minted the number first. This merge is the first that did NOT force a renumber:
-/// gunbc#10300 took TWENTY-FIRST, which was vacated by this entry long ago and is NOT reclaimed by
-/// it here either. THE VACATED NUMBERS ARE NOT RECLAIMED BY ANYONE is the stronger reading of that
-/// rule, and main just demonstrated the weaker one; the ordinals are a naming scheme, so what the
-/// discipline protects is that a citation resolves to ONE row across time, which reuse defeats.
-///
-/// THIS ENTRY AND ITS ROWS WERE RE-APPLIED ACROSS THE MERGE, NOT CARRIED, for the fifth time and for
-/// the same cause each time: the conflict is a misaligned array head, aligning this branch's rows
-/// against the other cohort's, so hand-editing the markers would splice one cohort's label onto the
-/// other's body. Main's file is taken WHOLE and this delta re-derived at ROW IDENTITY grain.
-///
-/// TRIGGER: gunbc#10324 MERGING. After that, main carries the wrapper in `gunbc.host_converge`, so
-/// base and head agree and no run can produce these deltas. They will then report CONSUMED, not
-/// stale, and their deletion is owed by whoever next touches this roster.
-/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10324). Both `host_converge_for_identity`
-/// rows are deleted, and `HOST_CONVERGE_LOOKUP_MOVE_LABEL` with them. The entry above named its own
-/// trigger -- gunbc#10324 MERGING -- and that has happened: 3a1ee654d4 is in this branch's history,
-/// so main carries the wrapper in `gunbc.host_converge`, base and head bind the spelling
-/// identically, and no run can produce these deltas.
-///
-/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE. The required namespace-wave phase reported
-/// both rows as `CONSUMED ADMISSION` by identity, 2 of 2, and refused this change until they were
-/// removed -- which is the standard the entry above sets for itself and the reason the sentence
-/// alone was never sufficient.
-///
-/// THIRD COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six (paid by
-/// gunbc#10445 before this branch reached them) and gunbc#10300's two (paid concurrently by
-/// gunbc#10324). The toll is proportional to how long a branch stays open, which is an argument for
-/// shorter branches rather than against the rule: the roster is small precisely because the
-/// deletion comes due on touch.
-
-/// DISSOLUTION PAID BY THIS CHANGE (2026-09-05, gunbc#10459). All seven parsed-item-kind
-/// vocabulary rows are deleted, and `PARSED_ITEM_KIND_VOCABULARY_LABEL` with them. No ordinal is
-/// claimed, for the reason the entry below gives.
-///
-/// ADJUDICATED BY A RUN, NOT BY THE TRIGGER SENTENCE, which is the standard that entry set for
-/// itself: it asked for the deletion to be decided by joining each row against main's tree on its
-/// own (module, in_declaration, spelling, target) tuple rather than by trusting its own prose. The
-/// required namespace-wave phase did exactly that and reported all seven as CONSUMED ADMISSION by
-/// identity, 7 of 7, refusing this change until they were removed. gunbc#10459 is in main, so base
-/// and head bind each spelling to `v1.std.core` identically and no run can produce those deltas.
-///
-/// FOURTH COHORT PAID BY THIS BRANCH FOR WORK IT DID NOT DO, after gunbc#10439's six, gunbc#10300's
-/// two, and gunbc#10324's two. The roster's own note that the toll is proportional to how long a
-/// branch stays open is not an observation this branch can dispute: it has now paid on two separate
-/// touches, and the second cohort came due only because the first merge conflict held it open long
-/// enough for gunbc#10459 to land.
-
-/// SECRET MANAGER ACCESS ENSURE MOVES TO THE AUTH LAYER (2026-09-05, gunbc#10514). No ordinal is
-/// claimed, following the entry above and for the reason it gives: the numbered entries count
-/// against a sequence other lanes append to concurrently, so a number picked on this branch is
-/// wrong by the time it merges. This branch proved that empirically -- it authored a
-/// TWENTY-SEVENTH TRANSITION, and main had moved underneath it before the merge, which is the
-/// third such renumber this roster records rather than the first.
-///
-/// Eight bindings across two modules resolve to a new target, which is `TargetChanged` and is not
-/// auto-admitted. `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
-/// and `SuppliedTokenUnavailable` move from `gunbc.spark.secret_access_ensure` to
-/// `gunbc.auth.gcp_secret_access`.
-///
-/// WHY THE MOVE, because a relocation with no reason is the one a reader cannot check: the module
-/// path named the reconciler's FIRST CONSUMER rather than the fact it owns. That held while
-/// spark-administrator-password was the only secret it bound, and stopped holding when the
-/// gunbai-ci App key became a second caller in a different domain and had to reach into the spark
-/// namespace for a fact that was never about spark. DESIGN section 3 homes a fact by its LAYER, so
-/// the reconciler lands in the auth layer and the spark module keeps a wrapper naming its own
-/// target.
-///
-/// THE LEAF IS UNCHANGED AND THE DECLARER MOVED, which is the shape this roster exists to
-/// adjudicate rather than auto-admit. Every one of those spellings is identical on both sides; only
-/// the declaring module differs. The wall keys on the leaf segment, sees the target move, and
-/// refuses -- correctly, because a symbol changing modules is real membership motion and not the
-/// requalification the leaf key is invariant under.
-///
-/// ONE CHANGE CLASS, NOT TWO. The standing rule is that a wave which both requalifies and moves a
-/// symbol is two classes in one diff. This is the second alone: nothing here is requalified, every
-/// spelling is imported under the leaf it always had, and what moved is the declaration behind it.
-///
-/// THIS BRANCH'S OWN DISSOLUTION ENTRY FOR THE gunbc#10324 ROWS IS DROPPED, NOT RENUMBERED, the
-/// same disposition the entries above record for four earlier collisions. This branch had authored
-/// one (numbered thirty-fifth at the time) deleting both `host_converge_for_identity` rows,
-/// adjudicated by its own required run reporting them CONSUMED, 2 of 2. Main discharged that
-/// deletion first. It happened ONCE, and two entries would leave two authorities for one event.
-///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10514 merges. Main then carries the
-/// reconciler in `gunbc.auth.gcp_secret_access`, base and head bind each spelling identically, no
-/// run can produce these deltas, and all eight report CONSUMED rather than stale -- coming due on
-/// this roster's next touch. Adjudicate that deletion by joining each row against main's tree on its
-/// own (module, in_declaration, spelling, target) tuple rather than trusting this sentence, because
-/// a trigger sentence is not evidence that the trigger fired.
-/// THE gunbc#10514 SECRET-ACCESS ROWS DISSOLVED HERE (2026-09-05), BY THEIR OWN TRIGGER AND ON THE
-/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch, and this is
-/// it: adding the row below made the required run report `0 unadjudicated delta(s), 0 stale
-/// admission(s), 8 consumed admission(s) due for deletion on this roster-touching change` (run
-/// 33998369913, `required-witnesses-floor`), which BLOCKS -- a consumed row left standing is the
-/// same debt a stale one is, and this is the seventh time this ledger has recorded that shape.
-///
-/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE, which is exactly what
-/// that entry asked of whoever deleted them. On main, `gunbc.auth.gcp_secret_access` declares all
-/// four spellings -- `secret_access_ensure_for`, `read_supplied_access_token`, `SuppliedTokenReady`
-/// and `SuppliedTokenUnavailable` -- and both consumers name that module in their import:
-/// `gunbc.fleet.org_actions_converge` on one line, `gunbc.spark.secret_access_ensure` in a braced
-/// list. `gunbc.spark.secret_access_ensure` no longer declares any of them. So base and head bind
-/// each spelling identically, no run can produce those deltas, and CONSUMED is the correct reading.
-/// That join is the positive, decidable fact the entry named as separating a consumed row from an
-/// author-error row; the trigger sentence alone was not taken as evidence that the trigger fired.
-///
-/// gunbc#10602, ONE ROW, ONE SUBJECT: `repository_status_lines` un-forked. `gunbc.scm.render`
-/// declared its own `repository_status_lines` that independently re-assembled the status line
-/// order already decided by `gunbc.scm.status` -- two authorities for one document's composition
-/// (DESIGN.md §3), which the repository's own
-/// `status_document_does_not_fork_the_verb_modules_text` witness exists to catch. The render copy
-/// is DELETED and `scm_status_document` now imports the status module's declaration. The spelling
-/// is unchanged on both sides and the declarer moved, so it arrives as `TargetChanged` -- the wall
-/// working on a deliberate deletion-and-repoint, not a requalification. Blast radius 0: the row
-/// names the exact (module, declaration, spelling) triple and admits nothing else.
-///
-/// TRIGGER, WHICH IS THIS ROW'S OWN DEATH: gunbc#10602 merging. Main then carries the un-fork,
-/// base and head both bind the spelling to `gunbc.scm.status`, no run can produce this delta, and
-/// the row reports CONSUMED rather than unadjudicated -- due for deletion on this roster's next
-/// touch. Adjudicate that deletion by joining the row against main's tree on its own
-/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
-/// THE gunbc#10602 ROW DISSOLVED HERE (2026-09-06), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
-/// NAMED. gunbc#10602 merged as 136d1c0f716, which is an ancestor of this change's base. Adjudicated
-/// by the join the entry above asked for rather than by its sentence: on main, `gunbc.scm.render`
-/// declares no `repository_status_lines` and imports that spelling from `gunbc.scm.status` inside
-/// `scm_status_document`, so base and head bind it identically, no run can produce the delta, and
-/// the row is CONSUMED -- due on this touch, which is this change. The gunbc#10514 dissolution the
-/// entry above records happened once and is not re-recorded here: this branch had deleted the same
-/// eight rows independently, the two deletions agree, and main's entry is the one authority.
-///
-/// THE gunbc#10639 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
-/// THEY NAMED. gunbc#10639 merged as 8769167dd05, which is an ancestor of this change's base.
-/// Adjudicated by the join those rows asked for rather than by their sentence: on main,
-/// `gunbc.spark.training_ready` declares `SparkServingProbeCapture` itself, so base and head bind
-/// every one of the thirty spellings to the same declaration, no run can produce the delta, and
-/// all thirty report CONSUMED -- due on this touch, which is this change.
-///
-/// THE OBSERVATION CARRIER MOVES OUT OF THE SPEC MODULE (2026-09-06, gunbc#10671). No ordinal is
-/// claimed, for the reason the entries above give. `extdeps.transceiver.sff_8636` models what
-/// SFF-8636 bytes MEAN. It had also come to declare what THIS REPOSITORY READ off a delivered
-/// cable, which DESIGN section 3 refuses in terms: "Observations produced by this repository are
-/// receipts in the observing product or workflow layer, not facts owned by the observed upstream."
-/// The observation carrier and its unread/observed distinction are rehomed to
-/// `product.cable_leg_observation`, whose subject is a leg this repository holds.
-///
-/// FOUR BINDINGS ACROSS TWO TEST MODULES resolve to the new declarer, which is `TargetChanged` and
-/// is not auto-admitted: the four fixture constructors that spell `SecondaryNotObserved`. The
-/// spelling is identical on both sides; only the declaring module differs, which is the membership
-/// motion this roster exists to adjudicate. The three membership additions the same run reported
-/// are `ExplicitlyEvaluatedZeroDelta` and the one removal is `SameDeclarationIdentityRebind`, so
-/// they are auto-admitted and are deliberately not rostered here.
-///
-/// ONE CHANGE CLASS. Nothing is requalified; every spelling is imported under the leaf it always
-/// had, and the declaration behind it moved.
-///
-/// TRIGGER, AND IT IS THESE ROWS' OWN DEATH: they go when gunbc#10671 merges. Main then declares
-/// the carrier in `product.cable_leg_observation`, base and head bind each spelling identically,
-/// and all four report CONSUMED, coming due on this roster's next touch. Adjudicate that deletion
-/// by joining each row against main's tree on its own tuple, not by trusting this sentence.
-
-/// THE gunbc#10671 ROWS DISSOLVED HERE (2026-09-06), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
-/// THEY NAMED. gunbc#10671 merged, so the four cable-leg rows reported CONSUMED and came due on the
-/// next roster-touching change, which is this one.
-///
-/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, in all three
-/// directions the join has. On main, `product.cable_leg_observation` DECLARES `SecondaryNotObserved`
-/// as an arm of its compliance coproduct; `extdeps.transceiver.sff_8636` does NOT declare it -- its
-/// only remaining occurrence of the spelling is prose recording that an earlier head authored it,
-/// which is exactly the trap a grep-count would have fallen into and a declaration check does not;
-/// and both consumers, `test.claim.cable_leg_coding_witness` and
-/// `test.claim.cable_order_admission_witness`, import the spelling from the new declarer. So base and
-/// head bind it identically, no run can produce those four deltas, and CONSUMED is the correct
-/// reading rather than an author error.
-///
-/// THE gunbc#10676 ROWS DISSOLVE HERE (2026-09-07), BY THEIR OWN TRIGGER AND ON THIS ROSTER TOUCH.
-/// gunbc#10676 merged; the nine builder-rehome rows reported CONSUMED. Joined on origin/main against
-/// each row's (module, in_declaration, spelling, target), not the trigger sentence:
-///
-///   `test.fixture.scm_repository_builder` DECLARES `MbBuild` with arms `MbBuilt` and
-///   `MbSetupFailed`, and `fn mb_start`, `mb_stage`, `mb_commit`, `mb_at`, `mb_head`, `mb_root_of`.
-///   `test.claim.scm_merge_base_witness` DECLARES none of those nine spellings -- they appear only
-///   as an import from the fixture (and as uses inside `mb_scene` and
-///   `scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on`). Both consumers --
-///   `test.claim.scm_merge_base_witness` and `test.claim.scm_squash_merge_witness` -- import every
-///   one of those spellings from the new declarer. So base and head bind identically; CONSUMED is
-///   the correct reading for all nine.
-///
-/// EXIT_OK RELOCATES TO std.process. Seven rows reported CONSUMED on required run 34117629718
-/// (PR #10712): base already binds `exit_ok` in each `tools.floor_effect_gate_witness` `*_passes`
-/// declaration to `std.process`. This roster touch deletes them rather than carrying them as
-/// permissions standing over nothing.
-///
-/// `CitedFigureStanding` constructors were renamed with the rehome (`CitedToAuthority` /
-/// `TranscribedUncited`): a renamed declaration is a new declaration, so the wall does not
-/// produce `TargetChanged` for `CeilingTranscribedUncited`. That row is deleted rather than
-/// rewritten to the new spelling (see encode_repository_v3: a rewritten spelling matches nothing).
-///
-/// THE gunbc#10688 ROWS DISSOLVE HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE ROSTER TOUCH
-/// THEY NAMED. The two `call_semantics_target` re-home rows reported CONSUMED on required run
-/// 34262728404 (PR #10856), which is the roster-touching change their trigger named.
-///
-/// ADJUDICATED BY THE JOIN THOSE ROWS DEMANDED RATHER THAN BY THEIR OWN SENTENCE, on each row's
-/// own (module, in_declaration, spelling, target) tuple against main. On main,
-/// `src/v1/00_core.dag` opens `module v1.std.core` and declares
-/// `fn call_semantics_target(cs: CallSemantics?) -> CallTargetIdentity`;
-/// `src/v1/05_emit_rust.dag` DECLARES no such function and imports the spelling, and both named
-/// declarations still spell it -- `emit_rust_expr_call` and `emit_rust_tco_non_self_call` each
-/// call `call_semantics_target(cs: cs)`. So base and head bind the spelling to the same declarer,
-/// no run can produce either `TargetChanged` delta, and CONSUMED is the correct reading rather
-/// than an author error.
-///
-/// TRIGGER: they go when this re-home is on main, at which point base and head both resolve the
-/// spelling to `v1.std.core`, both rows report CONSUMED, and they come due on the roster's next
-/// touch. Adjudicate that deletion by joining each row against main on its own
-/// (module, in_declaration, spelling, target) tuple, not by trusting this sentence.
-///
-/// SIXTH DISSOLUTION (2026-09-08). #10688 merged; both rows report consumed. This change touches
-/// the roster (base-side reconstruction of the gitignored failure-mode fold), so the deletion is
-/// owed here.
-///
-/// THE gunbc#10688 CALL-TARGET ROWS DISSOLVED HERE (2026-09-08), BY THEIR OWN TRIGGER AND ON THE
-/// ROSTER TOUCH THEY NAMED. Their entry said they came due on this roster's next touch.
-/// ADJUDICATED BY THE JOIN THEY DEMANDED RATHER THAN BY THEIR OWN SENTENCE: a required run reported
-/// both as already satisfied at the base -- consumed by its own merge.
-///
-/// SEVENTH TRANSITION (2026-09-08, gunbc#10813). A new recurring-failure-mode class,
-/// `cumulative_metric_read_as_per_event`, is added as its own file under
-/// `dag/gunbc/recurring_failure_mode/`, and the roster's `recurring_failure_mode_roster` names it.
-/// The spelling is authored on BOTH sides of the diff -- the roster declaration is not new -- and on
-/// the head side that name newly resolves into the class's own module, which is
-/// `NewPoolCoincidenceResolution` rather than an authored reference: the roster gains a member by
-/// the membership rule the directory IS, not by anyone rebinding an existing name.
-///
-/// THIS IS THE ROSTER GROWING THE WAY DESIGN SAYS IT MUST. The failure-mode ledger is a directory of
-/// one file per class precisely so that two lanes appending different classes never rewrite one
-/// file, so every new class produces exactly this delta shape. That it needs an admission row at all
-/// is the honest cost of the pool being adjudicated rather than assumed: a name appearing in a pool
-/// is the same motion whether it was intended or accidental, and only the author can say which.
-///
-/// ONE ROW, because one class was added. TRIGGER: it goes when this class is on main, at which point
-/// base and head both resolve the spelling into the class's module, the row reports CONSUMED, and it
-/// comes due on the roster's next touch -- adjudicated by joining the tuple against main, not by
-/// trusting this sentence.
-/// THE gunbc#10813 ROW DISSOLVES HERE (2026-09-08), BY ITS OWN TRIGGER AND ON THE ROSTER TOUCH IT
-/// NAMED, AND THE DEFECT IT WAS ADMITTING IS REPAIRED IN THE SAME CHANGE. Two separate facts, and
-/// the row would go on either one alone.
-///
-/// FIRST, THE TRIGGER FIRED. gunbc#10813 is on main, so the class file
-/// `dag/gunbc/recurring_failure_mode/cumulative_metric_read_as_per_event.dag` and the roster naming
-/// it are present on BOTH sides. Adjudicated by the join the row demanded rather than by its
-/// sentence: on main that file opens
-/// `module gunbc.recurring_failure_mode.cumulative_metric_read_as_per_event` and the roster names
-/// the spelling, so base and head resolve it into the same module, no run can produce the delta,
-/// and CONSUMED is the correct reading. Its label goes with it, leaving the roster an EMPTY
-/// enumeration.
-///
-/// SECOND, AND THIS IS WHY NO SUCCESSOR ROW REPLACES IT: the delta that row admitted was not the
-/// ledger's growth shape. It was an artifact of the BASELINE, repaired by this same change.
-/// `run_required_wave_admission` rebuilt the base index by carrying forward every head record the
-/// diff did not touch; `dag/gunbc/recurring_failure_mode/roster.dag` is gitignored and written on
-/// the read path, so it can never appear in `git diff --name-status`, and the HEAD's generated
-/// roster was therefore carried in as the BASE's. Both symptoms follow: the binding key existed on
-/// both sides so it read `base {} -> head {row}`, and the authorship discriminator compared the
-/// roster's base and head source, which were THE SAME BYTES, so an ordinary append read as not
-/// locally authored and classified `NewPoolCoincidenceResolution`. With the roster's base side
-/// DERIVED from the base tree's row membership, the roster module's source genuinely differs across
-/// the sides and an append classifies `AuthoredReferenceResolution`, which is auto-admitted.
-///
-/// THE EVIDENCE IS EXECUTED, NOT ARGUED: the required run on this change's own previous head
-/// (34271585163) added a failure-mode class with NO admission row for it and reported
-/// `0 unadjudicated delta(s)`. So the per-append admission row is not the honest cost of the pool
-/// being adjudicated — it was the cost of the baseline being wrong, and a row per class from here
-/// on would be a standing mitigation over a repaired defect (DESIGN §4b: construction subsumes it).
-///
-/// #10818 CpuBoundStanding rehome consumed: required floor on this PR's previous head
-/// (34440928699) reported both `TargetChanged` rows already satisfied at the base. This file is
-/// the roster, so this touch deletes them. Empty is the resting state; empty is not permissive.
-/// TRIGGER: this row goes when #10945 merges. The base then binds the spelling to
-/// `extdeps.transports.rest` inside `mint_r2_object_read_token`, the delta stops being producible,
-/// and CONSUMED comes due on the roster's next touch — adjudicated by the declaring-module join, not
-/// by this sentence.
-///
-/// TWENTIETH DISSOLUTION (2026-09-10). That trigger fired and the wall said so rather than this
-/// paragraph: #10945 merged, and the required floor on gunbc#10951 (run 34517633122) reported the
-/// row as `CONSUMED ADMISSION ... already satisfied at the base — consumed by its own merge` and
-/// then refused adjudication with `1 consumed admission(s) due for deletion on this roster-touching
-/// change`. This change edits `evaluate_wave_admission`, so it is the toucher the rule charges, and
-/// the deletion is paid here rather than deferred to a follow-up nobody owes.
-///
-/// THE RECEIPT IS THE DISPOSITION, NOT THE SIDE — which is the correction the eighteenth and
-/// nineteenth dissolutions above were both written to record. This row arrived from main through a
-/// merge and was never authored on this branch; that is not evidence of anything, and the reason it
-/// goes is that the wall computed its transition as merged and printed it.
-///
-/// THE RESTING STATE WAS EMPTY AND THIS CHANGE AUTHORS ONE ROW BACK INTO IT, which is the ordinary
-/// motion and not a regression of the dissolution above: the twentieth dissolution retired a row
-/// whose delta had stopped being producible, and the row below admits a different delta that this
-/// change produces. Empty is not permissive and non-empty is not permission - a run with any delta
-/// no row names still refuses it as UNADJUDICATED.
-///
-/// TWENTY-FIRST DISSOLUTION (2026-09-11). #10956 merged, and the required floor on gunbc#11071
-/// (run 34627055157) reported its row as `CONSUMED ADMISSION ... already satisfied at the base —
-/// consumed by its own merge`. This change edits the roster, so it is the toucher the rule charges
-/// and the deletion is paid here. The rows below are a DIFFERENT relocation, not that one restored:
-/// empty was the resting state and one change authoring rows back into it is the ordinary motion.
-///
-/// THIRTY-FIFTH DISSOLUTION (2026-09-12, gunbc#11137). The three `gunbc#11071 LinuxKernelRelease
-/// rehome` rows are deleted and their description with them. #11071 merged, so the base authors
-/// `LinuxKernelRelease` in `extdeps.linux.kernel`, the delta stopped being producible, and the
-/// required floor on this branch reported all three as `CONSUMED ADMISSION ... already satisfied
-/// at the base`. A consumed row's deletion comes due on this roster's OWN next touch; this change
-/// is that touch, so the debt is paid here rather than inherited by an unrelated lane. Their
-/// TRIGGER, recorded at the time as "these rows go when #11071 merges", is what fired.
-///
-/// THIRTY-SIXTH DISSOLUTION (2026-09-12). #11137 merged. The required floor on gunbc#11121
-/// (run 34681339370) reported that row as `STALE ADMISSION ... matches no delta in this run`.
-/// RETIRED (2026-09-12): #11137 merged as 34d2a8db32d; its transition is present at the base.
-/// Empty is the resting state; this touch deletes the row rather than inheriting it.
-/// Lifecycle is derived by the evaluator from the candidate set; no predicted STALE or
-/// CONSUMED outcome is authored here.
-/// THE SAME DISSOLUTION, WITH THE DISPOSITION WRITTEN DOWN -- a continuation of the paragraph
-/// above rather than a second ordinal for one event. Main recorded the retirement and cited the
-/// floor run that reported the row stale; what follows is why the disposition was nearly the
-/// wrong one, which is the part that generalises. The `gunbc#11137
-/// extdeps.tools.sha256sum names Filesystem instead of reaching it` row is deleted, and the
-/// description that stood above it goes with it. Its trigger, authored as "this row goes when
-/// #11137 merges", FIRED: #11137 merged as 34d2a8db32 ("Qualify the extdeps.tools bare-name reads
-/// by their declaring module"), so the base carries the named import, the delta stopped being
-/// producible, and the row became CONSUMED.
-///
-/// THE DISTINCTION IS WORTH WRITING DOWN BECAUSE IT NEARLY WENT THE OTHER WAY. The row was
-/// reported as matching no delta on any open PR, and the required floor refused
-/// `namespace-wave-admission` on every branch carrying it, which makes DELETING IT look like
-/// roster hygiene -- an unmatched entry swept up by whoever the wall stopped. That is a different
-/// disposition from the one recorded here, and DESIGN section 4b(3) turns on exactly that
-/// difference: a declared row is retired BY ITS TRIGGER AND BY NOTHING ELSE, so a deletion
-/// performed for the convenience of a green wall, written up as a trigger firing, would launder an
-/// unpaid debt into a discharged one and leave the next such row unprotected. The merge was
-/// checked by identity (`git log --oneline 34d2a8db32`) before this paragraph was written, not
-/// inferred from the refusal. Had #11137 still been open, the honest record here would have said
-/// the row was deleted unmatched, and the debt would have stayed visible.
-///
-/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
-/// so the debt is paid here rather than inherited by an unrelated lane.
-///
-/// THIRTY-SEVENTH DISSOLUTION (2026-09-12). The 181 `v2-native-route module split` and
-/// `v2-native-route policy split` rows are deleted, and the four paragraphs that described them
-/// go with them.
-///
-/// THEIR OWN TRIGGER FIRED, AND IT WAS CHECKED BY IDENTITY RATHER THAN INFERRED FROM THE REFUSAL.
-/// The block above them authored `DISSOLVE-ON: this PR merging, after which the base binds these
-/// spellings to exactly these targets and the rows read as consumed`. #10940 merged as
-/// `6c7b081961` ("v2-native route: closure-scoped ingest and native adjudication over a
-/// seed-prepared artifact"), verified with `git log --oneline 6c7b081961` before this paragraph
-/// was written. So the base carries the four module splits, the deltas stopped being producible,
-/// and the required floor on this branch reported all 181 as `CONSUMED ADMISSION ... already
-/// satisfied at the base -- consumed by its own merge`. That is the trigger discharging the debt,
-/// not a wall being tidied: the THIRTY-SIXTH entry above records why that distinction is worth
-/// paying attention to, and the same discipline is applied here.
-///
-/// THE PARTITION, so the count is not one number standing for a population nobody enumerated.
-/// All 181 carry a `v2-native-route ` label prefix: 175 `module split` rows over the four moved
-/// authorities (`v2.compiler.native_test_vocabulary`, `v2.workflow.compile_door_cause_ownership`,
-/// `v2.workflow.floor_discovery_source_authority`, `v2.workflow.floor_discovery_row`) and 6
-/// `policy split` rows for `repo_self_warning_denial` / `repo_self_warning_denial_rustflags`.
-/// Main's roster held exactly these 181 rows and nothing else, so the array is empty of inherited
-/// rows after this deletion and carries only this change's own two.
-///
-/// A consumed row's deletion comes due on this roster's OWN next touch; this change is that touch,
-/// so the debt is paid here rather than inherited by an unrelated lane.
-///
-/// THIRTY-SEVENTH DISSOLUTION (2026-09-13). The two `gunbc#11156` rows are deleted, and the
-/// description that stood above them goes with them.
-///
-/// THEIR OWN TRIGGER FIRED, AND IT IS ADJUDICATED RATHER THAN SWEPT. The block above them
-/// authored `TRIGGER: these rows go when #11156 merges. The base then carries the named imports,
-/// the deltas stop being producible, and CONSUMED comes due on the roster's next touch.` #11156
-/// merged as `d7b7ab96c1f`, checked by identity before this paragraph was written, and the
-/// required floor reported exactly those two as `already satisfied at the base -- consumed by its
-/// own merge`. Trigger, merge and floor report agree, which is what separates a discharged debt
-/// from a row swept up by whoever the wall stopped.
-///
-/// WHY THIS IS ITS OWN CHANGE. A consumed row's deletion is owed on landing OR on the roster's
-/// next touch, and on main it is the FIRST of those: main's push runs fail
-/// `namespace-wave-admission` on these two and will fail on every landing until they go, while PR
-/// runs whose base carries them end ADMITTED and stay green. So the debt is main's, it blocks
-/// every lane rather than one, and it is paid here in a change that deletes two rows and nothing
-/// else. Both rows are this author's, which is why this lane pays rather than passing an
-/// unexamined deletion to whoever next touched the file.
-///
-/// NO EXECUTED VERDICT CHANGES. An admission row admits a namespace DELTA between base and head;
-/// with the transition present at the base there is no delta left for these to admit, so deleting
-/// them removes nothing that could still fire.
-///
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+pub fn adjudication_event_from_name(name: Option<&str>) -> Result<AdjudicationEvent, String> {
+    match name {
+        None => Ok(AdjudicationEvent::Local),
+        Some("pull_request") => Ok(AdjudicationEvent::PullRequest),
+        Some("merge_group") => Ok(AdjudicationEvent::MergeGroup),
+        Some("push") => Ok(AdjudicationEvent::Push),
+        Some("workflow_dispatch") => Ok(AdjudicationEvent::WorkflowDispatch),
+        Some(other) => Err(format!(
+            "GITHUB_EVENT_NAME `{other}` is not an event wave admission models, so this run was \
+             never sized against the trigger that produced it; refusing rather than adjudicating \
+             under assumptions nobody stated"
+        )),
+    }
+}
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
@@ -1821,6 +482,26 @@ pub struct WaveAdmissionReport {
     /// not match a delta" — a row provable against neither side stays an UnmatchedAdmission
     /// refusal in `stale_admissions`.
     pub consumed_admissions: Vec<String>,
+    /// Rows USED to admit a delta in this run whose owner authored no deletion follow-up. Each is
+    /// satisfied at the candidate, so it will be consumed when the candidate lands.
+    ///
+    /// NOTHING REFUSES ON THIS SET. It used to be the owner's refusal on a `merge_group` run
+    /// (`OwnerFollowUpAbsent`); that arm was removed on 2026-09-16 and declared as the drop
+    /// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed`. The set is still COUNTED in the
+    /// refusal message when some other arm produces one, which is the record the ruling kept.
+    pub used_without_follow_up: Vec<String>,
+    /// The subset of `consumed_admissions` whose owner authored NO deletion follow-up.
+    ///
+    /// NO PRODUCTION READER SINCE gunbc#11481, FLAGGED RATHER THAN HIDDEN. This was the population
+    /// `ConsumedRowOwnerChargeBypassed` refused on; that arm is removed and declared as the drop
+    /// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. The field is still POPULATED and is
+    /// read only by tests, so it is a DESIGN 3c dangling field today -- kept because it is the exact
+    /// population that drop's restoration trigger has to re-cover, and deleting it would discard the
+    /// one derivation a restoration would need. Its honest disposition is decided when that drop is
+    /// retired: consumed by the restored charge, or removed with the drop row.
+    pub consumed_without_follow_up: Vec<String>,
+    /// The complement: consumed rows with an authored follow-up, carried as receipts.
+    pub owned_consumed_receipts: Vec<ConsumedRowReceipt>,
 }
 
 /// The wall's verdict: every delta is either auto-admitted or named by an admission.
@@ -2057,6 +738,159 @@ fn membership_map(index: &DeclarationIndex) -> BTreeMap<String, BTreeSet<String>
 }
 
 // ---------------------------------------------------------------------------
+// THE DEPENDENTS DIRECTION — match-bearing consumers of a coproduct whose arm set changed
+// ---------------------------------------------------------------------------
+
+/// One coproduct whose arm set differs between the base and head indexes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArmSetChange {
+    pub module_path: String,
+    pub declaration: String,
+    pub arms_added: Vec<String>,
+    pub arms_removed: Vec<String>,
+}
+
+/// How a consumer's match arm was bound to the changed coproduct, carried so the receipt can
+/// name the two populations apart: a read whose candidate set names the declaring module, and a
+/// bare read whose candidate set is EMPTY at this grain -- the flat last-writer-wins channel the
+/// namespace cut is retiring. The second is planned too (it is a consumer in the compiler's
+/// eyes, and a missed one is exactly the silent class this selector closes), but it is counted
+/// under its own name so the deficit stays visible instead of being absorbed into the answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArmConsumerBinding {
+    BoundToDeclaringModule,
+    BoundThroughFlatBareChannel,
+}
+
+/// One module that carries a `match` naming an arm of a changed coproduct, with the declaring
+/// module that arm resolved to and the declarations in the consumer that carry the match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArmSetMatchConsumer {
+    pub changed_module_path: String,
+    pub changed_declaration: String,
+    pub consumer_module_path: String,
+    pub consumer_rel_path: String,
+    pub in_declarations: Vec<String>,
+    pub binding: ArmConsumerBinding,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ArmSetConsumerSelection {
+    pub changes: Vec<ArmSetChange>,
+    pub consumers: Vec<ArmSetMatchConsumer>,
+}
+
+/// THE SELECTOR THE REQUIRED FLOOR'S PLANNING ROW CONSUMES, derived from declarations and
+/// never from paths or names (DESIGN §3c: a declaration's consumers are a fact the namespace
+/// tree carries; the planned set is producer-derived, never a path filter).
+///
+/// A `match` over a closed coproduct that was exhaustive when it landed goes stale when the
+/// coproduct grows an arm in ANOTHER module: the match site has an empty diff, so no
+/// diff-keyed selector can see it, and the required floor's prepared subject is the gate
+/// closure plus the changed set -- the consumer is never Strict-prepared and `check_match`
+/// never runs on it (gunbc#11194, found by a person reading arms). This is the DEPENDENTS
+/// direction; `touched_entry_files` seeding is the DEPENDENCY direction, and neither closes
+/// the class alone.
+///
+/// THE RELATION IS THE ONE THE WALL ALREADY USES. A consumer is a module whose `matched_arms`
+/// (a pattern head, read at the one site that has no transport entry) names an arm of the
+/// changed coproduct and whose `declaring_candidates` for that spelling include the declaring
+/// module -- on EITHER side, because a match naming a REMOVED arm has no head-side candidate
+/// (the surface no longer exports it) while its base-side one names the declarer exactly. No
+/// second consumer relation is minted here; this is `declaring_candidates` asked one more
+/// question.
+///
+/// WHAT IS NOT SELECTED, deliberately: the declaring module itself (its own file is in the
+/// diff, so the dependency direction already seeds it); a coproduct that is NEW at head (no
+/// consumer can have matched it exhaustively before it existed); and a module whose match
+/// names the arm but whose candidate set names a DIFFERENT declarer (a same-spelled arm of an
+/// unrelated coproduct -- a consumer of that one, not of this one). A match that names none
+/// of the coproduct's arms -- a wildcard, or arms of another type -- is not a consumer, and it
+/// is also not stale.
+pub(crate) fn arm_set_changed_match_consumers(
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+) -> ArmSetConsumerSelection {
+    let mut changes: Vec<ArmSetChange> = Vec::new();
+    for head_record in index_records(head) {
+        let Some(base_record) = index_get(base, &head_record.module_path) else {
+            continue;
+        };
+        for (declaration, head_arms) in &head_record.coproduct_arms {
+            let Some(base_arms) = base_record.coproduct_arms.get(declaration) else {
+                continue;
+            };
+            if head_arms == base_arms {
+                continue;
+            }
+            changes.push(ArmSetChange {
+                module_path: head_record.module_path.clone(),
+                declaration: declaration.clone(),
+                arms_added: head_arms.difference(base_arms).cloned().collect(),
+                arms_removed: base_arms.difference(head_arms).cloned().collect(),
+            });
+        }
+    }
+    let mut consumers: Vec<ArmSetMatchConsumer> = Vec::new();
+    for change in &changes {
+        let universe: BTreeSet<&String> = {
+            let head_arms = &index_get(head, &change.module_path)
+                .expect("a change names a head module")
+                .coproduct_arms[&change.declaration];
+            let base_arms = &index_get(base, &change.module_path)
+                .expect("a change names a base module")
+                .coproduct_arms[&change.declaration];
+            head_arms.iter().chain(base_arms.iter()).collect()
+        };
+        for consumer in index_records(head) {
+            if consumer.module_path == change.module_path {
+                continue;
+            }
+            let mut in_declarations: BTreeSet<String> = BTreeSet::new();
+            let mut binding: Option<ArmConsumerBinding> = None;
+            for (in_declaration, spelling) in &consumer.matched_arms {
+                let leaf = qualified_last_segment(spelling.clone());
+                if !universe.contains(&leaf) {
+                    continue;
+                }
+                let mut candidates = declaring_candidates(head, consumer, spelling);
+                candidates.extend(declaring_candidates(base, consumer, spelling));
+                let bound = if candidates.contains(&change.module_path) {
+                    ArmConsumerBinding::BoundToDeclaringModule
+                } else if candidates.is_empty() {
+                    ArmConsumerBinding::BoundThroughFlatBareChannel
+                } else {
+                    // Bound to another declarer of a same-spelled arm: not this coproduct's consumer.
+                    continue;
+                };
+                in_declarations.insert(in_declaration.clone());
+                // A declarer-bound read wins over a flat one for the module's disposition: the
+                // module IS a resolved consumer if any read resolves, and the flat count is for
+                // modules that reach the coproduct by no other route.
+                binding = Some(match (binding, bound) {
+                    (Some(ArmConsumerBinding::BoundToDeclaringModule), _)
+                    | (_, ArmConsumerBinding::BoundToDeclaringModule) => {
+                        ArmConsumerBinding::BoundToDeclaringModule
+                    }
+                    _ => ArmConsumerBinding::BoundThroughFlatBareChannel,
+                });
+            }
+            if let Some(binding) = binding {
+                consumers.push(ArmSetMatchConsumer {
+                    changed_module_path: change.module_path.clone(),
+                    changed_declaration: change.declaration.clone(),
+                    consumer_module_path: consumer.module_path.clone(),
+                    consumer_rel_path: consumer.rel_path.clone(),
+                    in_declarations: in_declarations.into_iter().collect(),
+                    binding,
+                });
+            }
+        }
+    }
+    ArmSetConsumerSelection { changes, consumers }
+}
+
+// ---------------------------------------------------------------------------
 // THE ADJUDICATION
 // ---------------------------------------------------------------------------
 
@@ -2234,7 +1068,7 @@ pub fn adjudicate(
                         continue;
                     }
                 }
-                delta.admitted_by = Some(admission.label.to_string());
+                delta.admitted_by = Some(admission.label.clone());
                 used.insert(i);
                 break;
             }
@@ -2260,8 +1094,24 @@ pub fn adjudicate(
     // resident on main — the capability that makes a stale-able row unwritable. Until that
     // carrier exists, consumed rows persist as typed receipts and their deletion is enforced on
     // the roster file's own next touch.
+    let used_without_follow_up = used
+        .iter()
+        .map(|&i| &admissions[i])
+        .filter(|a| a.deletion_follow_up == DeletionFollowUp::NotAuthored)
+        .map(|a| {
+            format!(
+                "{} ({} {}) is used by this candidate and will be consumed when it lands, but \
+                 its owner authored no deletion follow-up (follow-up PR absent)",
+                a.label,
+                disposition_label(a.disposition),
+                admission_subject_render(&a.subject)
+            )
+        })
+        .collect::<Vec<_>>();
     let mut stale_admissions = Vec::new();
     let mut consumed_admissions = Vec::new();
+    let mut consumed_without_follow_up = Vec::new();
+    let mut owned_consumed_receipts = Vec::new();
     for (i, a) in admissions.iter().enumerate() {
         if used.contains(&i) {
             continue;
@@ -2272,13 +1122,34 @@ pub fn adjudicate(
                 .map_err(|mismatch| format!("base {mismatch}")),
         };
         match satisfaction {
-            Ok(()) => consumed_admissions.push(format!(
-                "{} ({} {}) already satisfied at the base — consumed by its own merge; deletion \
-                 is owed on landing or the roster's next touch",
-                a.label,
-                disposition_label(a.disposition),
-                admission_subject_render(&a.subject)
-            )),
+            Ok(()) => {
+                let rendered = format!(
+                    "{} ({} {}) already satisfied at the base — consumed by its own merge; \
+                     deletion is owed on landing or the roster's next touch; owner gunbc#{}; {}",
+                    a.label,
+                    disposition_label(a.disposition),
+                    admission_subject_render(&a.subject),
+                    a.owner_pull_request,
+                    match a.deletion_follow_up {
+                        DeletionFollowUp::NotAuthored =>
+                            "no deletion follow-up authored".to_string(),
+                        DeletionFollowUp::PullRequest(n) => format!("deletion follow-up gunbc#{n}"),
+                    }
+                );
+                match a.deletion_follow_up {
+                    DeletionFollowUp::NotAuthored => {
+                        consumed_without_follow_up.push(rendered.clone())
+                    }
+                    DeletionFollowUp::PullRequest(n) => {
+                        owned_consumed_receipts.push(ConsumedRowReceipt {
+                            label: a.label.to_string(),
+                            owner_pull_request: a.owner_pull_request,
+                            deletion_follow_up_pull_request: n,
+                        })
+                    }
+                }
+                consumed_admissions.push(rendered);
+            }
             Err(mismatch) => stale_admissions.push(format!(
                 "{} ({} {}) has no valid admission in this run: {mismatch}",
                 a.label,
@@ -2293,6 +1164,9 @@ pub fn adjudicate(
         deltas,
         stale_admissions,
         consumed_admissions,
+        used_without_follow_up,
+        consumed_without_follow_up,
+        owned_consumed_receipts,
     }
 }
 
@@ -2307,14 +1181,14 @@ fn admission_satisfied_at(
     match &a.subject {
         AdmissionSubject::Membership { module, target } => {
             if membership
-                .get(*module)
-                .is_some_and(|members| members.contains(*target))
+                .get(module)
+                .is_some_and(|members| members.contains(target))
             {
                 Ok(())
             } else {
                 Err(format!(
                     "expected membership {module} -> {target}, found {:?}",
-                    membership.get(*module)
+                    membership.get(module)
                 ))
             }
         }
@@ -2324,15 +1198,14 @@ fn admission_satisfied_at(
             spelling,
             expected_candidates,
         } => {
-            let expected: BTreeSet<String> =
-                expected_candidates.iter().map(|s| s.to_string()).collect();
+            let expected: BTreeSet<String> = expected_candidates.iter().cloned().collect();
             let Some(record) = index_get(index, module) else {
                 return Err(format!(
                     "expected candidates {expected:?}, found no module {module}"
                 ));
             };
             let rows = binding_rows(index, record);
-            match rows.get(&((*in_declaration).to_string(), (*spelling).to_string())) {
+            match rows.get(&(in_declaration.clone(), spelling.clone())) {
                 Some(found) if *found == expected => Ok(()),
                 Some(found) => Err(format!(
                     "expected candidates {expected:?}, found candidates {found:?}"
@@ -2542,16 +1415,440 @@ pub enum WaveAdmissionOutcome {
     Adjudicated {
         base: String,
         head: String,
-        report: WaveAdmissionReport,
+        /// Boxed because the report dwarfs the other arms (clippy `large_enum_variant`).
+        report: Box<WaveAdmissionReport>,
         /// Whether this diff touches the roster source. Consumed rows come due here
         /// and on main (base == head); stale rows refuse regardless of this flag.
         roster_touched: bool,
     },
 }
 
-/// The roster's own source path, as the diff names it — the subject of the consumed-row
-/// deletion obligation.
-pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_admission.rs";
+/// Directory whose membership IS the transition-admission roster (trailing slash so the type
+/// module `dag/gunbc/namespace/transition_admission.dag` is not a roster touch).
+pub const ADMISSION_ROSTER_REL_PATH: &str = "dag/gunbc/namespace/transition_admission/";
+
+/// True when a diff path is a row file (or the directory itself) under the roster prefix.
+pub fn admission_roster_path_touched(rel: &str) -> bool {
+    rel == ADMISSION_ROSTER_REL_PATH.trim_end_matches('/')
+        || rel.starts_with(ADMISSION_ROSTER_REL_PATH)
+}
+
+const ROW_MODULE_PREFIX: &str = "gunbc.namespace.transition_admission.";
+
+/// Load production admissions from a workspace: the directory fold.
+///
+/// AUTHORING IS SAFETY, NOT CONST-NESS. The permission set must be authored and
+/// reviewable, never derived from the delta it admits. `const` used to make that
+/// mechanically true; each permission is now an authored `.dag` row in the PR
+/// diff. `read_dir` enumerates files git already carries — it does not mint
+/// permission. A computed predicate over observed deltas still has no constructor.
+///
+/// Missing directory (`ErrorKind::NotFound`) is the empty roster: git cannot carry an empty
+/// directory, so absence IS the resting empty-const state. That arm yields fewer admissions,
+/// never more — fail-closed on the admission axis. Every other `read_dir`, dirent, stem, parse,
+/// or type error refuses, located, and is never skipped. Standing census of whether the
+/// directory is empty lives on `gunbc.namespace.transition_admission`, not here.
+pub fn load_transition_admissions(workspace: &Path) -> Result<Vec<TransitionAdmission>, String> {
+    load_transition_admissions_from_dir(&workspace.join(ADMISSION_ROSTER_REL_PATH))
+}
+
+pub fn load_transition_admissions_from_dir(dir: &Path) -> Result<Vec<TransitionAdmission>, String> {
+    match std::fs::read_dir(dir) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(format!(
+            "transition-admission roster directory {} is unreadable: {e}",
+            dir.display()
+        )),
+        Ok(entries) => {
+            let mut files = Vec::new();
+            for entry in entries {
+                let entry = entry.map_err(|e| {
+                    format!(
+                        "transition-admission roster directory {} dirent failed: {e}",
+                        dir.display()
+                    )
+                })?;
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+                    continue;
+                }
+                let stem = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
+                    format!(
+                        "transition-admission row {} has a non-utf8 stem",
+                        path.display()
+                    )
+                })?;
+                if stem == "roster" {
+                    return Err(format!(
+                        "transition-admission row {} is named roster.dag; this roster has no \
+                         committed list (directory membership is the list)",
+                        path.display()
+                    ));
+                }
+                files.push((stem.to_string(), path));
+            }
+            files.sort_by(|a, b| a.0.cmp(&b.0));
+            let mut out = Vec::with_capacity(files.len());
+            for (stem, path) in files {
+                let rel = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("row.dag");
+                let content = std::fs::read_to_string(&path).map_err(|e| {
+                    format!(
+                        "transition-admission row {} is unreadable: {e}",
+                        path.display()
+                    )
+                })?;
+                out.push(parse_transition_admission_row(&path, rel, &stem, &content)?);
+            }
+            Ok(out)
+        }
+    }
+}
+
+fn parse_transition_admission_row(
+    path: &Path,
+    rel: &str,
+    stem: &str,
+    content: &str,
+) -> Result<TransitionAdmission, String> {
+    let located = |msg: String| format!("{}: {msg}", path.display());
+    let fill = crate::v1_compiler_compile::parse_census_fill_sources_with_environment(
+        Rc::new(
+            vec![Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: rel.to_string(),
+                content: content.to_string(),
+            })]
+            .into(),
+        ),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    if !fill.diagnostics.is_empty() {
+        return Err(located(format!(
+            "does not parse ({} diagnostic(s))",
+            fill.diagnostics.len()
+        )));
+    }
+    let module = fill
+        .modules
+        .iter()
+        .next()
+        .ok_or_else(|| located("parsed to no module".to_string()))?;
+    let source_indices: Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>> = Rc::new(
+        fill.newline_indices
+            .iter()
+            .fold(im::HashMap::new(), |acc, i| {
+                acc.update(i.file.clone(), i.clone())
+            }),
+    );
+    let module_path = crate::v1_std_core::authored_name_at(source_indices.clone(), module.clone());
+    let expected_module = format!("{ROW_MODULE_PREFIX}{stem}");
+    if module_path != expected_module {
+        return Err(located(format!(
+            "module `{module_path}` must be `{expected_module}` (stem is the relocation identity)"
+        )));
+    }
+    let mut data_items = Vec::new();
+    for item in crate::v1_std_core::module_items(module.clone()).iter() {
+        if crate::v1_compiler_infer_items::item_kind(item.clone())
+            == crate::v1_compiler_infer_items::ItemKind::DataItem
+        {
+            data_items.push(item.clone());
+        }
+    }
+    if data_items.len() != 1 {
+        return Err(located(format!(
+            "must declare exactly one data row, found {}",
+            data_items.len()
+        )));
+    }
+    let item = &data_items[0];
+    let decl_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+    if decl_name != stem {
+        return Err(located(format!(
+            "data declaration `{decl_name}` must equal file stem `{stem}`"
+        )));
+    }
+    let Some(body) = item.body.clone() else {
+        return Err(located("data row has no initializer".to_string()));
+    };
+    parse_transition_admission_expr(body, &source_indices).map_err(located)
+}
+
+fn peel_expr(expr: Rc<crate::v1_std_core::Node>) -> Rc<crate::v1_std_core::Node> {
+    match (*expr.expr_data).clone() {
+        crate::v1_std_core::ExprData::ExprCast => expr
+            .children
+            .iter()
+            .next()
+            .cloned()
+            .map(peel_expr)
+            .unwrap_or(expr),
+        _ => expr,
+    }
+}
+
+fn expr_string(expr: Rc<crate::v1_std_core::Node>) -> Result<String, String> {
+    let expr = peel_expr(expr);
+    crate::v1_std_core::expr_literal_string_optional(expr)
+        .ok_or_else(|| "expected a string literal".to_string())
+}
+
+fn expr_leaf_name(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> String {
+    let raw = crate::v1_std_core::authored_name_at(source_indices.clone(), peel_expr(expr));
+    qualified_last_segment(raw)
+}
+
+fn parse_transition_admission_expr(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<TransitionAdmission, String> {
+    let expr = peel_expr(expr);
+    if expr_leaf_name(expr.clone(), source_indices) != "TransitionAdmission" {
+        return Err(format!(
+            "initializer must construct TransitionAdmission, found `{}`",
+            expr_leaf_name(expr, source_indices)
+        ));
+    }
+    let Some(label_e) = crate::v1_std_core::record_lit_named_field_value_optional(
+        expr.clone(),
+        "label".to_string(),
+        source_indices.clone(),
+    ) else {
+        return Err("TransitionAdmission is missing field `label`".to_string());
+    };
+    let Some(subject_e) = crate::v1_std_core::record_lit_named_field_value_optional(
+        expr.clone(),
+        "subject".to_string(),
+        source_indices.clone(),
+    ) else {
+        return Err("TransitionAdmission is missing field `subject`".to_string());
+    };
+    let Some(disposition_e) = crate::v1_std_core::record_lit_named_field_value_optional(
+        expr.clone(),
+        "disposition".to_string(),
+        source_indices.clone(),
+    ) else {
+        return Err("TransitionAdmission is missing field `disposition`".to_string());
+    };
+    let Some(follow_up_e) = crate::v1_std_core::record_lit_named_field_value_optional(
+        expr.clone(),
+        "deletion_follow_up".to_string(),
+        source_indices.clone(),
+    ) else {
+        return Err("TransitionAdmission is missing field `deletion_follow_up`".to_string());
+    };
+    let Some(owner_e) = crate::v1_std_core::record_lit_named_field_value_optional(
+        expr.clone(),
+        "owner_pull_request".to_string(),
+        source_indices.clone(),
+    ) else {
+        return Err("TransitionAdmission is missing field `owner_pull_request`".to_string());
+    };
+    Ok(TransitionAdmission {
+        label: expr_string(label_e)?,
+        subject: parse_admission_subject(subject_e, source_indices)?,
+        disposition: parse_disposition(disposition_e, source_indices)?,
+        deletion_follow_up: parse_deletion_follow_up(follow_up_e, source_indices)?,
+        owner_pull_request: expr_u32(owner_e)?,
+    })
+}
+
+fn expr_u32(expr: Rc<crate::v1_std_core::Node>) -> Result<u32, String> {
+    let expr = peel_expr(expr);
+    crate::v1_std_core::expr_literal_int_optional(expr)
+        .ok_or_else(|| "expected an integer literal".to_string())
+        .and_then(|n| u32::try_from(n).map_err(|_| format!("integer {n} is not a u32")))
+}
+
+fn parse_deletion_follow_up(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<DeletionFollowUp, String> {
+    let expr = peel_expr(expr);
+    match expr_leaf_name(expr.clone(), source_indices).as_str() {
+        "NotAuthored" => Ok(DeletionFollowUp::NotAuthored),
+        "PullRequest" => {
+            let number = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr.clone(),
+                "number".to_string(),
+                source_indices.clone(),
+            )
+            .or_else(|| expr.children.iter().next().cloned())
+            .ok_or_else(|| "PullRequest is missing `number`".to_string())?;
+            Ok(DeletionFollowUp::PullRequest(expr_u32(number)?))
+        }
+        other => Err(format!("unknown DeletionFollowUp `{other}`")),
+    }
+}
+
+fn parse_disposition(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<NamespaceDeltaDisposition, String> {
+    match expr_leaf_name(expr, source_indices).as_str() {
+        "SameDeclarationIdentityRebind" => {
+            Ok(NamespaceDeltaDisposition::SameDeclarationIdentityRebind)
+        }
+        "UnusedSubjectMembershipRemoved" => {
+            Ok(NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved)
+        }
+        "ExplicitlyEvaluatedZeroDelta" => {
+            Ok(NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta)
+        }
+        "TargetChanged" => Ok(NamespaceDeltaDisposition::TargetChanged),
+        "NewAmbiguity" => Ok(NamespaceDeltaDisposition::NewAmbiguity),
+        "NewUnresolvedness" => Ok(NamespaceDeltaDisposition::NewUnresolvedness),
+        "NewPoolCoincidenceResolution" => {
+            Ok(NamespaceDeltaDisposition::NewPoolCoincidenceResolution)
+        }
+        "AuthoredReferenceResolution" => Ok(NamespaceDeltaDisposition::AuthoredReferenceResolution),
+        "UnexplainedSubjectMotion" => Ok(NamespaceDeltaDisposition::UnexplainedSubjectMotion),
+        "NotEvaluated" => Ok(NamespaceDeltaDisposition::NotEvaluated),
+        other => Err(format!("unknown NamespaceDeltaDisposition `{other}`")),
+    }
+}
+
+fn parse_admission_subject(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<AdmissionSubject, String> {
+    let expr = peel_expr(expr);
+    match expr_leaf_name(expr.clone(), source_indices).as_str() {
+        "Binding" => {
+            let Some(enclosing) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr.clone(),
+                "enclosing".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Binding is missing field `enclosing`".to_string());
+            };
+            let Some(spelling) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr.clone(),
+                "spelling".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Binding is missing field `spelling`".to_string());
+            };
+            let Some(candidates) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr,
+                "expected_candidates".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Binding is missing field `expected_candidates`".to_string());
+            };
+            let (module, in_declaration) = parse_decl_ref(enclosing, source_indices)?;
+            let spelling = expr_string(spelling)?;
+            let mut expected_candidates = Vec::new();
+            for (candidate_module, candidate_decl) in
+                parse_decl_ref_list(candidates, source_indices)?
+            {
+                if candidate_decl != spelling {
+                    return Err(format!(
+                        "expected_candidates DeclarationRef.decl_name `{candidate_decl}` must equal Binding.spelling `{spelling}`"
+                    ));
+                }
+                expected_candidates.push(candidate_module);
+            }
+            Ok(AdmissionSubject::Binding {
+                module,
+                in_declaration,
+                spelling,
+                expected_candidates,
+            })
+        }
+        "Membership" => {
+            let Some(from_module) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr.clone(),
+                "from_module".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Membership is missing field `from_module`".to_string());
+            };
+            let Some(target_module) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr,
+                "target_module".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Membership is missing field `target_module`".to_string());
+            };
+            Ok(AdmissionSubject::Membership {
+                module: expr_string(from_module)?,
+                target: expr_string(target_module)?,
+            })
+        }
+        other => Err(format!("unknown AdmissionSubject `{other}`")),
+    }
+}
+
+fn parse_decl_ref(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<(String, String), String> {
+    let expr = peel_expr(expr);
+    if expr_leaf_name(expr.clone(), source_indices) == "DeclarationRef" {
+        let module = crate::v1_std_core::record_lit_named_field_value_optional(
+            expr.clone(),
+            "module_path".to_string(),
+            source_indices.clone(),
+        )
+        .ok_or_else(|| "DeclarationRef is missing `module_path`".to_string())?;
+        let decl = crate::v1_std_core::record_lit_named_field_value_optional(
+            expr,
+            "decl_name".to_string(),
+            source_indices.clone(),
+        )
+        .ok_or_else(|| "DeclarationRef is missing `decl_name`".to_string())?;
+        return Ok((expr_string(module)?, expr_string(decl)?));
+    }
+    match (*expr.expr_data).clone() {
+        crate::v1_std_core::ExprData::ExprCall { .. } => {
+            let mut module = None;
+            let mut decl = None;
+            let mut positional = Vec::new();
+            for child in expr.children.iter() {
+                let value = crate::v1_std_core::arg_value(child.clone());
+                match crate::v1_std_core::arg_name_at(child.clone(), source_indices.clone()) {
+                    Some(name) if name == "module_path" => module = Some(expr_string(value)?),
+                    Some(name) if name == "decl_name" => decl = Some(expr_string(value)?),
+                    Some(_) => {}
+                    None => {
+                        if let Ok(s) = expr_string(value) {
+                            positional.push(s);
+                        }
+                    }
+                }
+            }
+            if let (Some(m), Some(d)) = (module, decl) {
+                return Ok((m, d));
+            }
+            if positional.len() >= 2 {
+                return Ok((positional[0].clone(), positional[1].clone()));
+            }
+            Err("decl_ref / DeclarationRef did not yield module_path and decl_name".to_string())
+        }
+        _ => Err("enclosing must be a DeclarationRef or decl_ref(...)".to_string()),
+    }
+}
+
+fn parse_decl_ref_list(
+    expr: Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<im::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Result<Vec<(String, String)>, String> {
+    let expr = peel_expr(expr);
+    match (*expr.expr_data).clone() {
+        crate::v1_std_core::ExprData::ExprListLit => expr
+            .children
+            .iter()
+            .map(|c| parse_decl_ref(c.clone(), source_indices))
+            .collect(),
+        _ => Err("expected_candidates must be a list of DeclarationRef".to_string()),
+    }
+}
 
 /// Whether one adjudicated run REFUSES, and the sentence naming why — the wall's verdict, held by
 /// the wall.
@@ -2565,7 +1862,34 @@ pub const ADMISSION_ROSTER_REL_PATH: &str = "src/v1/stage0/src/namespace_wave_ad
 /// so "does this run refuse" has one authority instead of one authority and one printer.
 ///
 /// Stale rows and unadjudicated deltas always refuse. Consumed rows refuse at landing
-/// (base == head) or on a roster-source edit. Lifecycle is derived from the candidate-set
+/// (base == head) or on a roster-source edit. THAT IS THE WHOLE REFUSAL SET.
+///
+/// Two `merge_group` arms were removed on 2026-09-16 (operator ruling): `OwnerFollowUpAbsent`,
+/// which refused a used row whose owner had authored no `deletion_follow_up`, and
+/// `ConsumedRowOwnerChargeBypassed`, which refused a bystander composition for a prior owner's
+/// unauthored follow-up. BOTH TOOK COVERAGE WITH THEM AND BOTH ARE DECLARED AS §4b(3) DROPS —
+/// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. Two earlier revisions of this note said
+/// otherwise and both were caught in review. The first arm did establish only that a number had
+/// been typed -- its own message conceded it "checks that a number is authored, never that it names
+/// an open or deleting pull request" -- but a weak GREEN is not a decoration: §4b reserves that for
+/// a check whose RED cannot be authored at all, and this one's RED was authored and fired
+/// (review 67014). The second billed a change for a debt its own comment said was not its own,
+/// which is a reason to remove it, not a reason its coverage was nothing.
+///
+/// WHAT THIS COSTS, STATED PLAINLY. An earlier revision of this note claimed
+/// the landing arm still compels a consumed row's deletion. On the REQUIRED path it does not.
+/// Lane ruling (fierce-lark-661, 2026-09-13): the merge queue moved the required verdict off the
+/// push to the default branch, and with it the only run where base == head -- so `roster_due`
+/// reduces to `roster_touched` alone there. With `ConsumedRowOwnerChargeBypassed` gone, a
+/// base-consumed row whose owner authored no follow-up refuses on NO required run until somebody
+/// happens to edit the roster directory. That is the coverage the consumed-row drop declares, and
+/// it is a separate row from the owner-side one because the two are restored by different
+/// capabilities: adjudicating a consumed row at all, versus resolving an authored follow-up number
+/// to the pull request it claims to name.
+///
+/// `used_without_follow_up` is still COUNTED in the message, so the debt stays visible as a
+/// receipt; it just no longer refuses. Lifecycle is derived from the candidate-set
 /// proof, never predicted by an authored row. Policy authority:
 /// `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
@@ -2582,6 +1906,19 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
         } => {
             let unadjudicated = report_unadjudicated(report);
             let roster_due = base == head || *roster_touched;
+            // THE FOLLOW-UP ARMS ARE GONE, AND THE DEBT IS STILL ENFORCED. Two merge_group arms
+            // used to refuse here: OwnerFollowUpAbsent (a used row whose owner authored no
+            // deletion_follow_up) and ConsumedRowOwnerChargeBypassed (a bystander composition
+            // charged for someone else's unauthored follow-up). Both are removed.
+            //
+            // COVERAGE FALLS WITH THEM AND IT IS DECLARED, NOT WAVED OFF. Each removal has its
+            // own §4b(3) row -- `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` and
+            // `gunbc.rung_drop.consumed_row_owner_charge_unenforced`. What SURVIVES is a record
+            // rather than a refusal: `deletion_follow_up` remains on the row and is still read, and
+            // `consumed_due` below still refuses a consumed row at landing or on a roster-source
+            // edit -- which, since the merge queue moved the required verdict off the push to the
+            // default branch, means on a roster-source edit alone on the required path. The two
+            // rows say exactly what that leaves uncovered and what would restore it.
             let consumed_due = roster_due && !report.consumed_admissions.is_empty();
             let stale_due = !report.stale_admissions.is_empty();
             if unadjudicated.is_empty() && !stale_due && !consumed_due {
@@ -2604,7 +1941,7 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
             };
             Some(format!(
                 "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
-                 consumed admission(s){}){remedy}",
+                 consumed admission(s){}, {} used row(s) without a deletion follow-up){remedy}",
                 unadjudicated.len(),
                 report.stale_admissions.len(),
                 report.consumed_admissions.len(),
@@ -2612,7 +1949,8 @@ pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> 
                     " due for correction or deletion"
                 } else {
                     ""
-                }
+                },
+                report.used_without_follow_up.len(),
             ))
         }
     }
@@ -2690,7 +2028,8 @@ pub fn in_sweep_scope(rel: &str) -> bool {
 /// THE SIDES ARE UNFILTERED, WHICH IS WHAT MAKES THIS ONE AUTHORITY FOR WHAT THE DIFF TOUCHED.
 /// Scope is not applied here: it belongs to the QUESTION being asked, not to the diff, and two
 /// consumers downstream ask different ones — the base-index reconstruction wants the parser's
-/// `in_sweep_scope`, and `roster_touched` wants a `.rs` path that predicate can never admit.
+/// `in_sweep_scope`; `roster_touched` matches the roster prefix, including a directory path
+/// that predicate would drop.
 /// A rename may still cross a scope boundary either way, so each consumer applies its own scope
 /// PER SIDE at its call site.
 pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
@@ -2736,14 +2075,26 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// bind runs after parse), so the baseline IS observable. Treating those diagnostics as
 /// unreadable base sealed the transition that only moves `//` onto the declaration the grain
 /// admits. Any other diagnostic, or a file that produced no module, stays unobservable.
-pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
-    let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
-        vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-            path: rel.to_string(),
-            content: content.to_string(),
-        })]
-        .into(),
-    ));
+/// THE ENVIRONMENT IS REQUIRED, NOT DEFAULTED. A default would be the HEAD grammar, and this
+/// function's entire job is reading the BASE revision -- so a forgetful caller would read base text
+/// under head rules and answer confidently, which is
+/// `gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change` itself. A caller
+/// that genuinely means the head environment says so at the call site.
+pub fn base_records(
+    rel: &str,
+    content: &str,
+    environment: std::rc::Rc<crate::std_syntax::ParseEnvironment>,
+) -> Result<Vec<ModuleDeclarationRecord>, String> {
+    let fill = crate::v1_compiler_compile::parse_census_fill_sources_with_environment(
+        std::rc::Rc::new(
+            vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: rel.to_string(),
+                content: content.to_string(),
+            })]
+            .into(),
+        ),
+        environment,
+    );
     let annotation_erased_readable = !fill.modules.is_empty()
         && !fill.diagnostics.is_empty()
         && fill.diagnostics.iter().all(|d| {
@@ -2800,17 +2151,97 @@ pub fn run_required_wave_admission(
             })
         }
     };
+    run_wave_admission_between(&workspace, &base, &head, head_index)
+}
+
+/// The wave adjudication over an EXPLICIT repository and revision pair.
+///
+/// Split from the production entry so the adjudication can be driven over a repository that is not
+/// this process's workspace and a base/head pair that is not `merge-base origin/main HEAD` -- which
+/// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
+/// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
+/// base and head speak different grammars. Nothing about the adjudication differs between the two
+/// callers: the seam selects the subject, never the rules.
+/// The base side of one change, reconstructed from the head index, at file grain.
+///
+/// LIFTED OUT OF `run_wave_admission_between` so the required floor's planning row can ask the
+/// same question over ITS OWN comparison window. The two callers resolve different windows on
+/// purpose -- the wall compares against the merge base with `origin/main`, the floor against
+/// `v2.workflow.floor_diff_observe`'s resolved baseline -- so the refs are parameters and the
+/// reconstruction is one function. It is `pub(crate)`: its only callers are in this crate, and a
+/// public export would be seed surface growth under the freeze.
+pub(crate) enum BaselineReconstruction {
+    /// The window's base IS its head: nothing to reconstruct, and not a refusal.
+    NoSubject { head: String },
+    /// The base could not be observed. NOT an empty base: the two are different states with
+    /// different remedies, and conflating them is the empty-observation narrow.
+    NotEvaluated { reason: String },
+    Reconstructed {
+        base: String,
+        head: String,
+        base_index: DeclarationIndex,
+        /// Every head path the diff touched, UNFILTERED -- consumers apply their own scope.
+        head_touched: Vec<String>,
+    },
+}
+
+/// THE BASE INDEX IS THE HEAD INDEX WITH THE DIFF APPLIED IN REVERSE, at file grain -- the
+/// construction, not an optimisation -- unless the two revisions speak different grammars, in
+/// which case the whole base side is read under the base's own environment (see below). Only
+/// changed files are re-parsed from their base blobs and substituted on the ordinary route.
+pub(crate) fn reconstruct_base_index(
+    workspace: &std::path::Path,
+    base: &str,
+    head: &str,
+    head_index: &DeclarationIndex,
+) -> Result<BaselineReconstruction, String> {
+    let base = base.to_string();
+    let head = head.to_string();
+    let workspace = workspace.to_path_buf();
     if base == head {
-        if NAMESPACE_TRANSITION_ADMISSIONS.is_empty() {
-            return Ok(WaveAdmissionOutcome::NoSubject { head });
+        return Ok(BaselineReconstruction::NoSubject { head });
+    }
+
+    // WHICH GRAMMAR DOES THE BASE SPEAK? Everything below reads base-side declarations, and reading
+    // them under the head's grammar is the defect this phase kept tripping over: a change that edits
+    // the language refuses in proportion to how thoroughly it succeeded
+    // (gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change).
+    //
+    // The cheap answer comes first. Object identity over the files declaring the environment settles
+    // "same grammar?" in a few `rev-parse` calls, so the ordinary pull request -- which changes no
+    // grammar -- pays nothing, and only a real grammar change pays to materialize and evaluate the
+    // base corpus.
+    let agreement = match environment_agreement(&workspace, &base, &head) {
+        Ok(a) => a,
+        // A REFUSAL HERE IS NOT A LICENCE TO USE THE HEAD'S. Not knowing which grammar the base
+        // speaks makes every base-side declaration unreadable, which is ignorance, and ignorance is
+        // NotEvaluated rather than a confident answer under the wrong rules.
+        Err(e) => {
+            return Ok(BaselineReconstruction::NotEvaluated {
+                reason: format!(
+                    "the base revision's parse environment could not be established ({}), so its declarations cannot be read under any grammar this run can justify", environment_load_refusal_text(&e)
+                ),
+            })
         }
-        // Landing owns roster debt even though it has no namespace delta to compare.
-        return Ok(WaveAdmissionOutcome::Adjudicated {
-            base,
-            head,
-            report: adjudicate(head_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS),
-            roster_touched: false,
-        });
+    };
+
+    // THE KERNEL HALF, GUARDED NARROWLY. `declaring_candidates` consults this binary's own
+    // `kernel_type_set`, a head fact. Equal declaring blobs mean both revisions name the same kernel
+    // and one map serves; different blobs leave the question open, and an open question refuses.
+    match kernel_set_serves_both(&workspace, &base, &head) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(BaselineReconstruction::NotEvaluated {
+                reason: format!(
+                    "{KERNEL_TYPES_PATH} differs between {base} and {head}, so the kernel-name set this binary carries cannot speak for the base side"
+                ),
+            })
+        }
+        Err(e) => {
+            return Ok(BaselineReconstruction::NotEvaluated {
+                reason: format!("the kernel declaring file could not be compared ({})", environment_load_refusal_text(&e)),
+            })
+        }
     }
 
     let name_status = git_stdout(
@@ -2824,7 +2255,7 @@ pub fn run_required_wave_admission(
     // reconstruction may read. Filtering per side rather than once is not redundancy: a rename may
     // cross the sweep boundary in either direction, which is why `diff_sides` splits the sides in
     // the first place. Everything below that asks a DIFFERENT question — `roster_touched` — reads
-    // the unfiltered list, because its subject is a `.rs` path this predicate cannot admit.
+    // the unfiltered list, because prefix match is not the parse-sweep predicate.
     let head_parsed: Vec<&String> = head_touched.iter().filter(|p| in_sweep_scope(p)).collect();
     let base_parsed: Vec<&String> = base_side.iter().filter(|p| in_sweep_scope(p)).collect();
 
@@ -2834,13 +2265,42 @@ pub fn run_required_wave_admission(
     // path, so the diff can never name it — and carrying it made the HEAD's roster stand as the
     // BASE's. Its base side is not read from git either (the tree does not carry it); it is
     // DERIVED from the base tree's row membership, below, by the same renderer the writer uses.
+    //
+    // CARRYING UNTOUCHED HEAD RECORDS IS VALID ONLY WHILE THE GRAMMARS AGREE. The reconstruction
+    // below keeps every head record the diff did not touch, which assumes an untouched FILE has an
+    // untouched PARSE. That holds when both revisions speak one grammar and fails exactly when they
+    // do not: a keyword, literal, operator or item-form change gives an untouched file a different
+    // parse, so its head records are not its base records. When the environments differ, nothing is
+    // carried and every base-side file in sweep scope is read under the base's own environment.
+    let (base_environment, full_base_parse, differing) = match &agreement {
+        EnvironmentAgreement::Identical => (
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+            false,
+            Vec::new(),
+        ),
+        EnvironmentAgreement::Differs {
+            base_environment,
+            differing_paths,
+        } => (base_environment.clone(), true, differing_paths.clone()),
+    };
+    if full_base_parse {
+        eprintln!(
+            "namespace-wave-admission: the base and head parse environments differ ({}), so the \
+             baseline is read in full under the base's own grammar rather than reconstructed from \
+             untouched head records",
+            differing.join(", ")
+        );
+    }
+
     let mut base_index = DeclarationIndex::default();
-    for record in index_records(head_index) {
-        if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
-            continue;
-        }
-        if !head_parsed.iter().any(|c| *c == &record.rel_path) {
-            crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
+    if !full_base_parse {
+        for record in index_records(head_index) {
+            if crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
+                continue;
+            }
+            if !head_parsed.iter().any(|c| *c == &record.rel_path) {
+                crate::cli_run::declaration_index::index_insert(&mut base_index, record.clone());
+            }
         }
     }
     // ABSENCE AT THE BASE IS ESTABLISHED FROM AN AUTHORITATIVE LISTING, NEVER INFERRED FROM A
@@ -2852,26 +2312,72 @@ pub fn run_required_wave_admission(
     // `ls-tree` answers what the base tree CONTAINS: a path missing from its output is absent,
     // and a failure to obtain the listing is a refusal, not an empty answer.
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
-    let base_paths: std::collections::BTreeSet<String> =
-        base_paths.lines().map(|l| l.trim().to_string()).collect();
-    for rel in &base_parsed {
+    let base_paths: BTreeSet<String> = base_paths.lines().map(|l| l.trim().to_string()).collect();
+    // WHEN THE GRAMMARS DIFFER THE READ SET IS THE WHOLE BASE SIDE, not the diff's. The diff is a
+    // statement about bytes; a grammar change is a statement about every file's parse.
+    let owned_full: Vec<String> = if full_base_parse {
+        base_paths
+            .iter()
+            .filter(|p| in_sweep_scope(p))
+            .cloned()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let read_set: Vec<&String> = if full_base_parse {
+        owned_full.iter().collect()
+    } else {
+        base_parsed.clone()
+    };
+    // ONE ACQUISITION FOR THE WHOLE READ SET, not one `git show` per path. On the grammar-differs
+    // route the read set is every base-side file in sweep scope -- thousands -- and the process-
+    // per-file shape this prerequisite removed from the loader must not survive one layer down in
+    // its consumer. The paths the base actually carries are archived once and read locally.
+    let present: Vec<&str> = read_set
+        .iter()
+        .filter(|rel| base_paths.contains(**rel))
+        .map(|rel| rel.as_str())
+        .collect();
+    let base_tree = workspace.join("target").join(format!(
+        "gunbc-wave-base-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    if !present.is_empty() {
+        if let Err(e) = materialize_revision_paths(&workspace, &base, &base_tree, &present) {
+            let _ = std::fs::remove_dir_all(&base_tree);
+            return Ok(BaselineReconstruction::NotEvaluated {
+                reason: format!(
+                    "the base revision's files could not be materialized ({}), so the baseline is \
+                     unobservable and no verdict is available",
+                    environment_load_refusal_text(&e)
+                ),
+            });
+        }
+    }
+    for rel in &read_set {
         if !base_paths.contains(*rel) {
             // Genuinely added by this change: no base side to read, established by the listing.
             continue;
         }
         // The listing says the base carries this path, so a read failure here is UNOBSERVABLE
         // BASELINE, not news about the file.
-        let content = git_stdout(&workspace, &["show", &format!("{base}:{rel}")]).map_err(|e| {
-            format!(
-                "cannot read {rel} at the base revision {base} ({e}), so the baseline is \
-                 partially unobservable and no verdict is available"
-            )
-        });
-        let content = match content {
+        let content = match std::fs::read_to_string(base_tree.join(rel)) {
             Ok(c) => c,
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&base_tree);
+                return Ok(BaselineReconstruction::NotEvaluated {
+                    reason: format!(
+                        "cannot read {rel} at the base revision {base} ({e}), so the baseline is \
+                         partially unobservable and no verdict is available"
+                    ),
+                });
+            }
         };
-        match base_records(rel, &content) {
+        match base_records(rel, &content, base_environment.clone()) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
@@ -2886,9 +2392,13 @@ pub fn run_required_wave_admission(
             // compare equal whenever the head touched only comments, so the old discriminator
             // would happily certify a baseline for a file that failed to parse for an unrelated
             // reason. The residual case argues for deletion, not for retention.
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => {
+                let _ = std::fs::remove_dir_all(&base_tree);
+                return Ok(BaselineReconstruction::NotEvaluated { reason });
+            }
         }
     }
+    let _ = std::fs::remove_dir_all(&base_tree);
 
     // THE DERIVED ROSTER'S BASE SIDE, from the base tree's row membership. `base_paths` is the
     // authoritative listing already in hand, so this asks the same question the writer asks of a
@@ -2906,26 +2416,570 @@ pub fn run_required_wave_admission(
         ) else {
             continue;
         };
-        match base_records(&record.rel_path, &content) {
+        // SYNTHESIZED BY THE CURRENT RENDERER, SO PARSED UNDER THE CURRENT GRAMMAR. This content is
+        // not bytes read from the base tree; it is new source the head's roster writer produced from
+        // the base tree's path membership. The base environment is reserved for bytes that actually
+        // came out of the base revision -- sending renderer output through an older grammar could
+        // refuse text no historical source ever carried.
+        match base_records(
+            &record.rel_path,
+            &content,
+            crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+        ) {
             Ok(records) => {
                 for record in records {
                     crate::cli_run::declaration_index::index_insert(&mut base_index, record);
                 }
             }
-            Err(reason) => return Ok(WaveAdmissionOutcome::NotEvaluated { reason }),
+            Err(reason) => return Ok(BaselineReconstruction::NotEvaluated { reason }),
         }
     }
 
-    // READ FROM THE UNFILTERED HEAD SIDE. This is the whole subject of the repair: the roster is a
-    // `.rs` file, so while `diff_sides` narrowed its answer to the parser's `.dag` question this
-    // predicate was false on every production run and the consumed-row deletion obligation it
-    // gates could never come due.
-    let roster_touched = head_touched.iter().any(|p| p == ADMISSION_ROSTER_REL_PATH);
-    let report = adjudicate(&base_index, head_index, NAMESPACE_TRANSITION_ADMISSIONS);
+    Ok(BaselineReconstruction::Reconstructed {
+        base,
+        head,
+        base_index,
+        head_touched,
+    })
+}
+
+/// The wave adjudication over an EXPLICIT repository and revision pair.
+///
+/// Split from the production entry so the adjudication can be driven over a repository that is not
+/// this process's workspace and a base/head pair that is not `merge-base origin/main HEAD` -- which
+/// is the only way the grammar-differs arm below can carry executed evidence. Production reaches
+/// this through `run_required_wave_admission`; a witness reaches it with a scratch repository whose
+/// base and head speak different grammars. Nothing about the adjudication differs between the two
+/// callers: the seam selects the subject, never the rules. The CI event no longer travels with the
+/// subject at all -- it stopped selecting an obligation when the follow-up arms were removed
+/// (gunbc#11481), and this sentence said otherwise until review 67027.
+pub fn run_wave_admission_between(
+    workspace: &std::path::Path,
+    base: &str,
+    head: &str,
+    head_index: &DeclarationIndex,
+) -> Result<WaveAdmissionOutcome, String> {
+    let admissions = load_transition_admissions(workspace)?;
+    let (base, head, base_index, head_touched) =
+        match reconstruct_base_index(workspace, base, head, head_index)? {
+            BaselineReconstruction::NoSubject { head } => {
+                if admissions.is_empty() {
+                    return Ok(WaveAdmissionOutcome::NoSubject { head });
+                }
+                // Landing owns roster debt even though it has no namespace delta to compare.
+                return Ok(WaveAdmissionOutcome::Adjudicated {
+                    base: head.clone(),
+                    head,
+                    report: Box::new(adjudicate(head_index, head_index, &admissions)),
+                    roster_touched: false,
+                });
+            }
+            BaselineReconstruction::NotEvaluated { reason } => {
+                return Ok(WaveAdmissionOutcome::NotEvaluated { reason })
+            }
+            BaselineReconstruction::Reconstructed {
+                base,
+                head,
+                base_index,
+                head_touched,
+            } => (base, head, base_index, head_touched),
+        };
+
+    // READ FROM THE UNFILTERED HEAD SIDE. `roster_touched` matches the roster directory prefix,
+    // not `in_sweep_scope`; row files are `.dag` and in sweep, but a directory path is not.
+    let roster_touched = head_touched
+        .iter()
+        .any(|p| admission_roster_path_touched(p));
+    let report = adjudicate(&base_index, head_index, &admissions);
     Ok(WaveAdmissionOutcome::Adjudicated {
         base,
         head,
-        report,
+        report: Box::new(report),
         roster_touched,
     })
+}
+
+// THE PARSE ENVIRONMENT OF A REVISION THAT IS NOT THE RUNNING BINARY'S.
+//
+// `ParseEnvironment` (`std.syntax`) is threaded through the tokenizer and parser so that reading a
+// revision's source does not mean reading it under whatever grammar this binary was built with.
+// That thread is inert until something can PRODUCE an environment other than the compiled-in
+// `dag_parse_environment`. This is that producer, and the revision SELECTS THE SOURCE: the bytes
+// evaluated are the bytes git holds at that revision, not the worktree's.
+//
+// WHY: `gunbc.recurring_failure_mode.base_readability_gate_refuses_a_grammar_change`. A gate that
+// compares base-side declarations against head-side ones parses both with one compiler, and has no
+// representable arm for "the base is well formed under its OWN grammar and unreadable only under
+// the head's" -- so a change that edits the grammar is refused in proportion to how thoroughly it
+// succeeded.
+//
+// ONE MATERIALIZATION, THEN THE REPOSITORY'S OWN INDEX. An earlier revision of this code listed the
+// whole `.dag` tree and ran one `git show` per file -- 5,306 subprocesses on every required run --
+// and recognized `module` and `import` with its own line-prefix scanner, which is a second grammar
+// for declarations the module index already recognizes (section 3). Both are gone: one
+// `git archive` writes the revision's `dag/` tree into a caller-owned directory, and the real
+// module index and entry resolver read it from there. The loader therefore cannot disagree with the
+// compiler about what a module is, because it does not decide.
+//
+// DECODE IS NOT HAND-WRITTEN. `Value` -> `value_to_wire_json` -> `serde_json::from_value`: the wire
+// encoder resolves its tag policy from the same emitter that wrote the `#[serde(...)]` attributes
+// on the mirror struct, so encoder and decoder cannot disagree about shape unless the emitter
+// disagrees with itself. A hand-written decoder would fork the type's shape across nine types and
+// drift the first time a field was added to `SyntaxSpec`.
+//
+// WHAT IT DOES NOT COVER. This reproduces the DECLARATIVE environment: which words are keywords,
+// which item forms exist, which operators bind how. It does NOT reproduce the revision's PARSER --
+// body parsers are dispatched on `body_kind` to code compiled into this binary, so a revision whose
+// body parser behaved differently is not reproduced by supplying its environment and must not be
+// claimed to be. That population stays outside the covered set.
+
+/// The module whose declarations ARE the dag realization's parse environment.
+const ENVIRONMENT_MODULE: &str = "extdeps.languages.dag.syntax";
+/// The data item within it that carries the environment value.
+const ENVIRONMENT_ITEM: &str = "dag_parse_environment";
+/// The path, relative to the repository root, of the file declaring `ENVIRONMENT_MODULE`.
+const ENVIRONMENT_MODULE_PATH: &str = "dag/extdeps/languages/dag/syntax.dag";
+/// Where the corpus of `.dag` declarations lives, relative to the repository root.
+const DAG_SOURCE_ROOT: &str = "dag";
+
+/// Why an environment could not be produced for a revision.
+///
+/// EVERY ARM IS A REFUSAL, NEVER A SUBSTITUTION. The tempting arm when a base environment cannot be
+/// read is to fall back to the head's -- precisely the assumption this code exists to remove, and it
+/// would fail open on exactly the changes that alter the grammar. Section 5's absorbing fallback in
+/// its purest form: nothing is missed, so the arm reads as safe, while the only signal that the base
+/// was unreadable is destroyed. So the failure is typed and located and the caller decides what an
+/// unreadable base means for its own verdict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnvironmentLoadRefusal {
+    /// `git` could not be run, or answered non-zero, while reading this revision.
+    RevisionUnreadable {
+        revision: String,
+        step: String,
+        cause: String,
+    },
+    /// The revision's materialized tree has no file at the environment module's path.
+    EnvironmentModuleMissing { revision: String, path: String },
+    /// The materialized corpus did not resolve, or the item did not evaluate.
+    ClosureNotEvaluable { revision: String, cause: String },
+    /// `ENVIRONMENT_ITEM` is not declared by `ENVIRONMENT_MODULE` at this revision.
+    ///
+    /// Separate from `ClosureNotEvaluable` because it is the HOMONYM refusal: the interpreter
+    /// resolves a data item by bare name across the whole closure, so without this check a
+    /// `dag_parse_environment` declared anywhere else could silently supply the grammar. The
+    /// environment must come from the declaration that owns it.
+    EnvironmentItemNotOwned {
+        revision: String,
+        item: String,
+        module: String,
+    },
+    /// The item evaluated, but its value did not decode into the typed environment.
+    ///
+    /// The arm that fires on emitted-schema drift -- a field the wire encoder omits that the mirror
+    /// struct requires. Separate from `ClosureNotEvaluable` because the owners differ: that one is a
+    /// defect in the revision being read, this one is THIS binary disagreeing with its own emitter.
+    ValueNotDecodable { revision: String, cause: String },
+}
+
+/// The operator-facing text of a refusal.
+///
+/// A FREE FUNCTION, NOT A `Display` IMPL, because this module's seed-growth roster enumerates every
+/// declaration it carries by `DeclarationRef`, and an `impl` block is the one item that roster
+/// structurally cannot cite -- the reason an earlier lane converted the module's methods to free
+/// functions. An earlier revision of this change added `impl Display` here and left the roster's
+/// "carries no impl block" sentence standing over it; this keeps the sentence true.
+pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String {
+    match refusal {
+        EnvironmentLoadRefusal::RevisionUnreadable {
+            revision,
+            step,
+            cause,
+        } => format!("reading revision {revision} failed at {step}: {cause}"),
+        EnvironmentLoadRefusal::EnvironmentModuleMissing { revision, path } => format!(
+            "{path} does not exist at revision {revision}, so that revision's parse \
+                 environment cannot be read"
+        ),
+        EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => format!(
+            "the parse environment closure at revision {revision} did not evaluate: {cause}"
+        ),
+        EnvironmentLoadRefusal::EnvironmentItemNotOwned {
+            revision,
+            item,
+            module,
+        } => format!(
+            "`{item}` is not declared by `{module}` at revision {revision}, so the value a \
+                 bare-name lookup would return is not the grammar authority"
+        ),
+        EnvironmentLoadRefusal::ValueNotDecodable { revision, cause } => format!(
+            "the parse environment at revision {revision} evaluated but did not decode into \
+                 this binary's `ParseEnvironment`: {cause}"
+        ),
+    }
+}
+
+/// Run one `git` invocation to completion, or refuse with what it said.
+fn git_capture(
+    repo: &std::path::Path,
+    revision: &str,
+    step: &str,
+    args: &[&str],
+) -> Result<Vec<u8>, EnvironmentLoadRefusal> {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: step.to_string(),
+            cause: format!("git failed to start: {e}"),
+        })?;
+    if !out.status.success() {
+        return Err(EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: step.to_string(),
+            cause: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        });
+    }
+    Ok(out.stdout)
+}
+
+/// The object id git holds for one path at one revision, or `None` if the path is absent.
+///
+/// Used to decide whether two revisions share a parse environment WITHOUT materializing either:
+/// object identity is content identity, so equal ids over the environment's declaring files mean the
+/// environments are equal by construction rather than by comparison.
+pub fn blob_id_at(
+    repo: &std::path::Path,
+    revision: &str,
+    path: &str,
+) -> Result<Option<String>, EnvironmentLoadRefusal> {
+    let spec = format!("{revision}:{path}");
+    let out = std::process::Command::new("git")
+        .args(["rev-parse", "--verify", "--quiet", &spec])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: format!("rev-parse {spec}"),
+            cause: format!("git failed to start: {e}"),
+        })?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    let id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if id.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(id))
+    }
+}
+
+/// Materialize one revision's ENVIRONMENT CLOSURE under `dest`, in a single git invocation.
+///
+/// ONLY THE CLOSURE, NEVER THE WHOLE TREE, and the reason is the class this loader exists to
+/// repair, met one level down. The module index that resolves the environment parses every `.dag`
+/// file it is shown with THIS binary's grammar. Materializing the whole `dag/` tree therefore
+/// parsed every base-side file under the head's grammar in order to learn the base's grammar --
+/// and a base file written in the base's grammar refused inside the loader before the environment
+/// was ever evaluated. The grammar-differs witness caught exactly that. So the index is shown only
+/// the files the environment's declaring closure consists of.
+///
+/// THE HONEST BOUNDARY THIS DRAWS: the loader can read a base whose grammar differs from the head's
+/// so long as the base's ENVIRONMENT CLOSURE is itself readable under the head's grammar. A change
+/// that alters the grammar AND uses the altered grammar inside `std.syntax`'s own closure is outside
+/// any head-built loader's reach -- the same bootstrap boundary the compiler itself has -- and it
+/// refuses as `ClosureNotEvaluable`, never answering under the wrong rules.
+///
+/// `git archive | tar -x` over the named paths rather than a read per file: acquisition cost must
+/// not scale with the corpus (section 6, bare minimum cost). `dest` is the caller's to remove.
+fn materialize_environment_closure_at(
+    repo: &std::path::Path,
+    revision: &str,
+    dest: &std::path::Path,
+    closure_paths: &BTreeSet<String>,
+) -> Result<(), EnvironmentLoadRefusal> {
+    let paths: Vec<&str> = closure_paths.iter().map(String::as_str).collect();
+    materialize_revision_paths(repo, revision, dest, &paths)?;
+    if !dest.join(ENVIRONMENT_MODULE_PATH).exists() {
+        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
+            revision: revision.to_string(),
+            path: ENVIRONMENT_MODULE_PATH.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Materialize the named paths of one revision under `dest`: one `git archive`, one `tar -x`.
+///
+/// THE ONE ACQUISITION ROUTE. Every consumer that needs a revision's bytes on disk -- the
+/// environment loader above for its closure, the grammar-differs and provenance witnesses for a
+/// whole `dag/` tree -- comes through here, so acquisition is checked once and a defect in it is
+/// found once. An earlier shape had the witnesses carrying their own `sh -c "git archive | tar"`
+/// string beside this function: the same pipeline twice over, one of them unchecked hand-shell. A
+/// pathspec may name a directory (`dag`) or a file; git archive accepts both.
+pub fn materialize_revision_paths(
+    repo: &std::path::Path,
+    revision: &str,
+    dest: &std::path::Path,
+    paths: &[&str],
+) -> Result<(), EnvironmentLoadRefusal> {
+    std::fs::create_dir_all(dest).map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+        revision: revision.to_string(),
+        step: "create materialization directory".to_string(),
+        cause: e.to_string(),
+    })?;
+    let mut args: Vec<&str> = vec!["archive", "--format=tar", revision];
+    args.extend_from_slice(paths);
+    let archive = git_capture(repo, revision, "archive", &args)?;
+    let tar_path = dest.join("dag-tree.tar");
+    std::fs::write(&tar_path, &archive).map_err(|e| {
+        EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "write archive".to_string(),
+            cause: e.to_string(),
+        }
+    })?;
+    let extract = std::process::Command::new("tar")
+        .arg("-xf")
+        .arg(&tar_path)
+        .arg("-C")
+        .arg(dest)
+        .output()
+        .map_err(|e| EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "tar -xf".to_string(),
+            cause: format!("tar failed to start: {e}"),
+        })?;
+    if !extract.status.success() {
+        return Err(EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: revision.to_string(),
+            step: "tar -xf".to_string(),
+            cause: String::from_utf8_lossy(&extract.stderr).trim().to_string(),
+        });
+    }
+    let _ = std::fs::remove_file(&tar_path);
+    Ok(())
+}
+
+/// Decode an evaluated environment value into this binary's `ParseEnvironment`.
+pub fn decode_environment_value(
+    value: &crate::v1_interpreter::Value,
+    ctx: &crate::v1_interpreter::InterpContext,
+    revision: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let wire = super::value_to_wire_json(value, ctx).map_err(|e| {
+        EnvironmentLoadRefusal::ValueNotDecodable {
+            revision: revision.to_string(),
+            cause: format!("wire-encode: {e}"),
+        }
+    })?;
+    serde_json::from_value::<crate::std_syntax::ParseEnvironment>(wire)
+        .map(std::rc::Rc::new)
+        .map_err(|e| EnvironmentLoadRefusal::ValueNotDecodable {
+            revision: revision.to_string(),
+            cause: e.to_string(),
+        })
+}
+
+/// Evaluate the parse environment out of an already-materialized corpus rooted at `root`.
+///
+/// Split from acquisition so the decode seam can be exercised against an independent oracle -- the
+/// compiled-in `dag_parse_environment()` over the live tree -- without a revision in the way. The
+/// revision string here is diagnostic ONLY; callers that mean "the environment AT a revision" must
+/// use `load_parse_environment_at`, which selects the source.
+pub fn evaluate_environment_in(
+    root: &std::path::Path,
+    revision: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    if !entry.exists() {
+        return Err(EnvironmentLoadRefusal::EnvironmentModuleMissing {
+            revision: revision.to_string(),
+            path: entry.display().to_string(),
+        });
+    }
+    let dag_root = root.join(DAG_SOURCE_ROOT);
+    let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
+    let entry_display = entry.display().to_string();
+    let (graph, indices) =
+        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry_display).map_err(
+            |e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+                revision: revision.to_string(),
+                cause: e,
+            },
+        )?;
+    // HERMETIC, NOT WET. A static grammar declaration has no business acquiring permission to
+    // perform host effects while it is being decoded; `Wet` here would let a corpus under
+    // examination act during examination.
+    let ctx = super::make_eval_context(
+        &graph,
+        indices,
+        crate::v1_interpreter::ExecutionMode::Hermetic,
+    );
+    // EXACT OWNERSHIP, NOT A BARE NAME. `eval_data_item_value` resolves by bare name across the
+    // closure, so a homonymous `dag_parse_environment` elsewhere in the corpus would silently
+    // supply the grammar. The environment must come from the declaration that owns it.
+    if !super::data_item_declared_in_file(&ctx, ENVIRONMENT_ITEM, &entry_display) {
+        return Err(EnvironmentLoadRefusal::EnvironmentItemNotOwned {
+            revision: revision.to_string(),
+            item: ENVIRONMENT_ITEM.to_string(),
+            module: ENVIRONMENT_MODULE.to_string(),
+        });
+    }
+    let value = crate::v1_interpreter::with_active_context(&ctx, || {
+        crate::v1_interpreter::eval_data_item_value(&ctx, ENVIRONMENT_ITEM)
+    })
+    .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        revision: revision.to_string(),
+        cause: format!("eval {ENVIRONMENT_ITEM}: {e}"),
+    })?
+    .ok_or_else(|| EnvironmentLoadRefusal::ClosureNotEvaluable {
+        revision: revision.to_string(),
+        cause: format!("{ENVIRONMENT_ITEM} is not a data item in `{ENVIRONMENT_MODULE}`"),
+    })?;
+    decode_environment_value(&value, &ctx, revision)
+}
+
+/// THE LOADER: the parse environment git holds at `revision`.
+///
+/// The revision selects the bytes. Materialization happens into a temporary directory this function
+/// owns and removes, so nothing about the caller's worktree is read or written.
+pub fn load_parse_environment_at(
+    repo: &std::path::Path,
+    revision: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let closure = environment_closure_paths()?;
+    load_parse_environment_with_closure(repo, revision, &closure)
+}
+
+/// The loader over an ALREADY-RESOLVED closure.
+///
+/// `environment_agreement` resolves the closure to decide whether the grammars differ and then, on
+/// the differing path, loads the base's environment -- the same closure, same inputs, with the
+/// caller already holding the answer. Section 2: carry the first value rather than recompute it at
+/// the least common ancestor. This is that carried value; `load_parse_environment_at` resolves once
+/// for callers that hold nothing.
+pub fn load_parse_environment_with_closure(
+    repo: &std::path::Path,
+    revision: &str,
+    closure: &BTreeSet<String>,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dest =
+        // UNDER THE WORKSPACE, NOT /tmp. The module index and entry resolver refuse any path outside
+        // the workspace root (`repo_relative_path_normalized`), so a corpus materialized into the
+        // system temp directory cannot be read by the repository's own machinery -- the loader would
+        // refuse every call, in production as much as in test. `target/` is where generated and
+        // scratch trees already live (`target/stage0-regen-candidate` is the precedent).
+        super::workspace_root()
+            .join("target")
+            .join(format!("gunbc-parse-env-{}-{}", std::process::id(), stamp));
+    // If the base's closure has a member the head's does not, the materialized set is incomplete
+    // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
+    let outcome = materialize_environment_closure_at(repo, revision, &dest, closure)
+        .and_then(|()| evaluate_environment_in(&dest, revision));
+    let _ = std::fs::remove_dir_all(&dest);
+    outcome
+}
+
+/// The repo-relative files that declare the parse environment's closure, per the real resolver.
+///
+/// ASKED OF THE RESOLVER, NOT LISTED. The closure is 13 modules today and that number appears
+/// nowhere: a hardcoded roster would be a second authority for what the grammar depends on and would
+/// go stale, silently, the first time `std.syntax` gained an import -- a stale roster still resolves.
+/// The resolved graph's own span files ARE the closure.
+pub fn environment_closure_paths() -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    let root = super::workspace_root();
+    let entry = root.join(ENVIRONMENT_MODULE_PATH);
+    let dag_root = root.join(DAG_SOURCE_ROOT);
+    let index = super::build_multi_entry_index(&[dag_root.display().to_string()]);
+    let (graph, _indices) =
+        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.display().to_string())
+            .map_err(|e| EnvironmentLoadRefusal::ClosureNotEvaluable {
+                revision: "live-tree".to_string(),
+                cause: e,
+            })?;
+    let mut paths = BTreeSet::new();
+    for module in graph.modules.iter() {
+        for item in module.items.iter() {
+            let file = item.span.file.clone();
+            if let Some(idx) = file.find(&format!("{DAG_SOURCE_ROOT}/")) {
+                paths.insert(file[idx..].to_string());
+            }
+        }
+    }
+    if paths.is_empty() {
+        return Err(EnvironmentLoadRefusal::ClosureNotEvaluable {
+            revision: "live-tree".to_string(),
+            cause: "the resolved environment closure named no files, so no agreement check is \
+                    possible"
+                .to_string(),
+        });
+    }
+    Ok(paths)
+}
+
+/// Whether two revisions share a parse environment, and the base's environment when they do not.
+#[derive(Debug, Clone)]
+pub enum EnvironmentAgreement {
+    /// Every file declaring the environment is byte-identical across the two revisions.
+    ///
+    /// Equal object ids are equal content, so the environments are identical BY CONSTRUCTION rather
+    /// than by a comparison that could be wrong. Nothing needs loading, and the changed-file
+    /// baseline reconstruction stays valid.
+    Identical,
+    /// The declaring files differ, so the base must be read under its own environment.
+    Differs {
+        base_environment: std::rc::Rc<crate::std_syntax::ParseEnvironment>,
+        differing_paths: Vec<String>,
+    },
+}
+
+/// Decide whether the base and head grammars agree, loading the base's environment only if not.
+///
+/// THE CHEAP CHECK COMES FIRST because the expensive one must not be paid on every run: object
+/// identity over the closure's files answers "same grammar?" with a handful of `rev-parse` calls,
+/// and only a real difference pays for materializing and evaluating the base corpus. The ordinary
+/// pull request changes no grammar and therefore costs nothing here.
+pub fn environment_agreement(
+    repo: &std::path::Path,
+    base: &str,
+    head: &str,
+) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
+    let closure = environment_closure_paths()?;
+    let mut differing = Vec::new();
+    for path in &closure {
+        if blob_id_at(repo, base, path)? != blob_id_at(repo, head, path)? {
+            differing.push(path.clone());
+        }
+    }
+    if differing.is_empty() {
+        return Ok(EnvironmentAgreement::Identical);
+    }
+    Ok(EnvironmentAgreement::Differs {
+        base_environment: load_parse_environment_with_closure(repo, base, &closure)?,
+        differing_paths: differing,
+    })
+}
+
+/// The path whose declarations the kernel-name set is derived from.
+const KERNEL_TYPES_PATH: &str = "dag/std/types.dag";
+
+/// Whether the kernel type set this binary carries can speak for both revisions.
+///
+/// NARROW ON PURPOSE. `declaring_candidates` consults the RUNNING compiler's `kernel_type_set`,
+/// which is a fact about the head. Threading distinct base and head kernel maps is the general
+/// repair and is not this change's subject; what is needed here is honesty about when the single map
+/// is adequate. Equal blobs for the declaring file means both revisions name the same kernel, so one
+/// map serves. Different blobs means the question is open, and an open question is `NotEvaluated` --
+/// not a guess that the head's map is close enough.
+pub fn kernel_set_serves_both(
+    repo: &std::path::Path,
+    base: &str,
+    head: &str,
+) -> Result<bool, EnvironmentLoadRefusal> {
+    Ok(blob_id_at(repo, base, KERNEL_TYPES_PATH)? == blob_id_at(repo, head, KERNEL_TYPES_PATH)?)
 }

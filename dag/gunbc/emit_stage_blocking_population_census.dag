@@ -4,6 +4,8 @@ import std.types { Bool, Int, String, NonEmptyStr, CommitSha, List }
 import std.nat { Nat }
 import std.measure { ByteSize, Second, second, byte_size_count, measure_count }
 import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
+import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
 import std.disposition { Disposition, Terminal, SingleAuthority }
 import extdeps.posix.rusage {
   RusageMaxrssObservation,
@@ -121,7 +123,9 @@ fn census_run_invocation(r: CensusRun) -> List<String> {
     "--source-root", r.primary_root as String,
     "--source-root", r.dependency_pool_root as String,
     "--target", r.render_target as String,
-    "--output-dir", "<a fresh directory>"
+    "--output-dir", "<a fresh directory>",
+    "--repository", whole_corpus_compile_repository as String,
+    "--measured-root-demands", whole_corpus_compile_demand_projection_path()
   ]
 }
 
@@ -176,6 +180,10 @@ fn emit_produced_sites(sites: List<BlockingSite>) -> List<BlockingSite> {
 // as a gate finds anything, so every later check NEVER RUNS. A count taken over emit is therefore
 // a PREFIX of the truth, stopping at whichever gate fired first, and the tell is wall time rather
 // than the counts -- emit runs LONGER once a gate is cleared, because it gets further.
+// `WorkflowParameterDefaultGate` NAMES A GATE THAT NO LONGER EXISTS, and stays because a recorded
+// reading below (`pristine_census`) stopped on it at its own revision: deleting the arm would make
+// that receipt unrepresentable rather than retire it. No reading taken after the derived workflow
+// CLI's deletion can observe this gate.
 type EmitGate
   = WorkflowParameterDefaultGate
   | AnonymousRecordLiteralGate
@@ -185,9 +193,9 @@ type EmitGate
 fn emit_gate_text(g: EmitGate) -> String {
   match g {
     WorkflowParameterDefaultGate =>
-      "workflow parameter-default gate (v1.compiler.emit_rust validate_workflow_param_defaults) -- the FIRST gate, so every later check is masked"
+      "workflow parameter-default gate (v1.compiler.emit_rust validate_workflow_param_defaults, which existed at the recorded census revision and was deleted with the derived workflow CLI) -- at that revision the FIRST gate, so every later check was masked"
     AnonymousRecordLiteralGate =>
-      "anonymous-record-literal gate (v1.compiler.emit_rust ambiguous_anonymous_record_literal_diagnostics) -- the SECOND gate, reached only once the first is clear"
+      "anonymous-record-literal gate (v1.compiler.emit_rust ambiguous_anonymous_record_literal_diagnostics) -- the first gate since the workflow parameter-default gate was deleted; the second at revisions that still carried it"
     EmitStoppedOnUpstreamCauses =>
       "the compile refused at emit over causes produced upstream of it -- how far emit_rust's own gates ran is unestablished"
     NoGateFired =>
@@ -260,7 +268,8 @@ fn census_population_bound(r: CensusReading) -> PopulationBound {
 // THE COMMAND, which is the instrument and is named rather than paraphrased:
 //
 //   cargo build --release -p v1-compiler --bin gunbc
-//   gunbc compile --source-root dag --source-root src/v2 --target rust --output-dir <D>
+//   gunbc compile --source-root dag --source-root src/v2 --target rust --output-dir <D> \
+//     --repository gunbc --measured-root-demands tools/whole_corpus_compile_measured_root_demands.json
 //
 // --target rust IS LOAD-BEARING AND IS NOT A DEFAULT. v1.05_emit file_emission_target_is_modeled
 // answers Rust => true with Python, Go and Dag ALL FALSE, so the Rust path is the only one on

@@ -47,7 +47,7 @@ import v1.compiler.infer_emit_info {
 }
 
 
-type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherItem
+type ItemKind = FnItem | TypeItem | DataItem | ServiceItem | OtherItem
 
 type ItemInfo {
   name: String
@@ -243,8 +243,6 @@ fn item_kind(item: Node) -> ItemKind {
     TypeItem
   } else if item.transport != none {
     ServiceItem
-  } else if item.body != none && item.uses |> count > 0 {
-    FuncItem
   } else if item.body != none && item.params |> count > 0 {
     FnItem
   } else if item.body != none && item.type_annotation != none {

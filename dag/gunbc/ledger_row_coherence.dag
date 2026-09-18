@@ -5,13 +5,13 @@ import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, FleetDesiredAdmissionYamlArtifact,
   GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
-  DesignFailureModesArtifact, DesignRungDropsArtifact,
+  DesignFailureModesArtifact, DesignRungDropsArtifact, ContributorOnboardingArtifact,
   GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact, Stage0ExecutableAssemblyGeneratedDagArtifact,
   SeedRetentionFrontierGeneratedRsArtifact,
   V1InterpreterDispatchGeneratedRsArtifact, EvaluationBudgetConsequenceGeneratedRsArtifact,
-  FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact,
+  FileTransportRealizationGeneratedRsArtifact, CouponCadQueryProgramArtifact, WholeCorpusCompileMeasuredRootDemandsArtifact,
   AutoinstallUserDataArtifact, RunnerHostSudoersArtifact, PlanArtifact
 }
 import gunbc.recurring_failure_mode { RecurringFailureMode, authored }
@@ -111,6 +111,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
         identity: (d.identity as String),
         body: rung_drop_declaration_message(d: d)
       })
+    ContributorOnboardingArtifact => []
     WitnessFloorYamlArtifact => []
     FleetConvergeYamlArtifact => []
     FleetDesiredAdmissionYamlArtifact => []
@@ -132,6 +133,7 @@ fn ledger_rows(a: GeneratedArtifact) -> List<LedgerRow> {
     FileTransportRealizationGeneratedRsArtifact => []
     Fci1BoundedExecutionContextArtifact => []
     CouponCadQueryProgramArtifact => []
+    WholeCorpusCompileMeasuredRootDemandsArtifact => []
     AutoinstallUserDataArtifact { spec: _ } => []
     RunnerHostSudoersArtifact { host: _ } => []
     PlanArtifact { plan: _ } => []

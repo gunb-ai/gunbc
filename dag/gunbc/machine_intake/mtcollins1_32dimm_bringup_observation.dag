@@ -1,5 +1,6 @@
 module gunbc.machine_intake_mtcollins1_32dimm_bringup_observation
 
+import gunbc.mtcollins_memory_change { mtcollins_training_capture_path, mtcollins_training_capture_sha256 }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
@@ -165,9 +166,9 @@ type HeldSessionCapture {
 }
 
 data mtcollins1_dram_training_capture: HeldSessionCapture = HeldSessionCapture {
-  artifact_path: "artifacts/bmc/mtcollins1-sol-dram-training-2026-09-12.txt",
+  artifact_path: mtcollins_training_capture_path,
   byte_count: byte_size(count: 3764),
-  digest: Sha256Hash(Sha256Digest { hex: "e5044f71cde73fe9b2ea1e76c9b894c1ab2f007577b9cbb7e8d50650c2b78a4c" }),
+  digest: Sha256Hash(Sha256Digest { hex: mtcollins_training_capture_sha256 as String }),
   first_pass_error_lines: [
     "ERR: CHANNEL Mismatch Byte 6 SLOT0[00] EXP[91] @MCU[4]",
     "ERR: 84f05923",
@@ -661,7 +662,7 @@ fn first_failure(checks: List<ProcessExit>) -> ProcessExit {
   )
 }
 
-func mtcollins1_32dimm_bringup_probe() -> ProcessExit {
+fn mtcollins1_32dimm_bringup_probe() -> ProcessExit {
   return first_failure(checks: [
     check_collectors_before_actuation(),
     check_console_silence_is_not_a_terminal(),

@@ -10,12 +10,13 @@ import gunbc.roadmap_static_site {
 }
 import gunbc.live_deploy.spec { deployment_plan_listen_port }
 import gunbc.live_deploy.readiness {
-  service_ready_apply_effect,
-  ServiceReadyApplyEffect,
-  ServiceReadyEvidence,
+  ServiceReadiness,
+  ServiceReadinessPollBound,
+  ServiceProbeUnanswered,
+  service_readiness_reason,
 }
+import gunbc.readiness { Refused, Pending }
 import gunbc.live_deploy.service_ready {
-  service_not_ready_reason,
   ServiceNotReady,
   live_deploy_service_ready_poll_bound,
   live_deploy_service_ready_unit_authority,
@@ -31,7 +32,7 @@ import gunbc.host_effect {
   HostEffectEvidence,
   ShellEffectApplied,
 }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.fleet_intent { srv1_host }
 import std.realization_reconcile {
   Reconciliation,
@@ -82,16 +83,17 @@ fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEv
   }
 }
 
-fn fixture_service_not_ready_readiness() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  NotConverged {
-    reason: service_not_ready_reason(refusal: ServiceNotReady {
-      unit: live_deploy_service_ready_unit_authority,
-      endpoint: live_deploy_service_ready_endpoint_authority,
-      waited: live_deploy_service_ready_poll_bound,
-      last_probe: "health probe never succeeded",
-      unit_diagnosis: UnitDiagnosisUnavailable,
-    }),
-    applied: service_ready_apply_effect(),
+fn fixture_service_not_ready_readiness() -> ServiceReadiness {
+  Refused {
+    cause: ServiceReadinessPollBound {
+      refusal: ServiceNotReady {
+        unit: live_deploy_service_ready_unit_authority,
+        endpoint: live_deploy_service_ready_endpoint_authority,
+        waited: live_deploy_service_ready_poll_bound,
+        last_probe: "health probe never succeeded",
+        unit_diagnosis: UnitDiagnosisUnavailable,
+      },
+    },
   }
 }
 
@@ -114,6 +116,17 @@ test fn witness_red_control_service_not_ready_reason_surfaces_on_blocked_apply()
         && string_contains(s: why, pattern: "health probe never succeeded")
     Converged { evidence: _, applied: _ } => false
   }
+}
+
+test fn witness_red_control_pending_readiness_cannot_converge() -> Bool {
+  !reconciliation_converged(
+    r: live_deploy_apply_readiness_gate_with_readiness(
+      mutation: fixture_converged_mutation(),
+      readiness: Pending {
+        cause: ServiceProbeUnanswered { detail: "not answering yet" },
+      },
+    )
+  )
 }
 
 test fn witness_digest_readback_script_is_bounded_and_post_mutation() -> Bool {

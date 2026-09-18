@@ -1,0 +1,571 @@
+module gunbc.spark.serving_incarnation_observe
+
+import std.types { String, NonEmptyStr, Bool, Int, List, EpochSecs }
+import std.algebra { trim }
+import std.decimal { ExactDecimal, decimal_pow10 }
+import std.checked_arithmetic { checked_int_multiply, checked_int_add, CheckedIntReady, CheckedIntOverflow }
+import std.measure { Hertz, hertz, hertz_count }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+import product.placement_supply { HostIdentity }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.spark.vllm_endpoint_process_launch { VllmEndpointProcessLaunch, vllm_endpoint_process_launch_key }
+import gunbc.spark.vllm_serving_launch {
+  VllmServingLaunch, vllm_serving_launch,
+  EndpointIncarnationObservation, endpoint_incarnation_observation,
+  EndpointIncarnationStanding, EndpointIncarnationObserved, EndpointIncarnationUnobserved,
+  launch_wire,
+}
+import gunbc.spark.pair_serving_realization { spark_pair_container_name, spark_pair_head_unit_name }
+import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_managed_grant_argv, spark_managed_grant_wire }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
+import extdeps.docker.cli {
+  DockerContainerInspectIdentity, DockerContainerInspectIdentityUnreadable,
+  docker_container_inspect_identity_from_stdout, docker_image_id_sha256_hex,
+}
+import extdeps.docker.cgroup { DockerContainerScope, NotADockerContainerCgroup, docker_cgroup_membership }
+import extdeps.linux.proc_self_cgroup {
+  CurrentCgroupObserved, MembershipMissing, MembershipAmbiguous, MembershipMalformed,
+  read_unified_cgroup_membership,
+}
+import extdeps.linux.proc_stat { BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch, proc_stat_boot_time }
+import extdeps.linux.proc_pid_stat {
+  StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, proc_pid_stat_start_time,
+}
+import extdeps.posix.getconf { ClockTicksObserved, ClockTicksUnparseable, ClockTicksNotPositive, clock_ticks_reading }
+import extdeps.procps.pgrep {
+  PgrepPidsRead, PgrepPidLineUnparseable, pgrep_pid_listing,
+  PgrepScanOutcome, PgrepMatched, PgrepNoMatch, PgrepScanFailed, pgrep_match_full_command_line_argv, pgrep_scan_outcome,
+}
+import extdeps.prometheus.client {
+  SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
+}
+import extdeps.systemd { SystemdUnitProperty, InvocationIDProperty, FragmentPathProperty, systemd_unit_property_wire }
+import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyCaptureRefused, systemctl_show_property_read }
+import gunbc.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host_operation_exec {
+  HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
+  ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, GetconfClockTicksPerSecond, Sha256SumFile,
+}
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+
+// ── WHICH INCARNATION ANSWERED, OBSERVED ON THE HOST ──────────────────────────────────────────
+//
+// THE PRODUCER gunbc.spark.vllm_serving_launch EndpointIncarnationObservation names. That carrier's
+// header names THIS module as its production producer: before it, the only reader of live launch
+// facts minted a launch from a privileged probe and never read which exporter belonged to it, and
+// its live host read was itself a frontier. This module is the observation, and it is taken almost
+// entirely WITHOUT PRIVILEGE, over the fleet key session as the managed automation principal, because
+// the facts that bind an endpoint to an incarnation are ones the kernel and the manager already
+// expose to any reader on the host.
+//
+// THE JOIN IS AN IDENTITY OF ONE KERNEL VALUE READ FROM TWO SIDES, not a time-proximity heuristic.
+// The engine exports process_start_time_seconds through prometheus_client's process collector,
+// which computes it as /proc/stat btime plus /proc/self/stat starttime divided by the clock tick
+// rate (extdeps.prometheus.client). This observer reads the same btime, the same tick rate and the
+// same starttime field of every candidate process from outside, and the candidate whose reading
+// EQUALS the exported decimal -- as rationals, exactly -- is the process that answered. Two
+// processes cannot share a start tick and a cgroup by accident inside one container; if two
+// candidates agree the observation refuses rather than choosing, and if none does it refuses
+// rather than taking the nearest. The exported field is compared as the decimal the exporter
+// rendered, never as a parsed float, for the reason that module states.
+//
+// WHAT IS READ AND WHAT IS NOT. The candidate set comes from pgrep over the engine binary's path,
+// which returns pids and nothing of the command lines it matched: a serving command line can carry
+// tokens as arguments, so /proc/<pid>/cmdline is never read by this module and no argv text appears
+// in any refusal or receipt. The container is read off the bound process's cgroup membership --
+// the daemon names a container's cgroup by its full id (extdeps.docker.cgroup) -- which needs no
+// docker access at all. The ONE privileged read is the container's image id, which only the
+// inspect object carries; it runs the exact argv gunbc.spark.managed_access_bootstrap
+// InspectServingContainer authorizes, and the reader takes .Id and .Image off the object and
+// nothing else (extdeps.docker.cli docker_container_inspect_identity_from_stdout). Until that grant
+// is installed on a host, that leg fails (the sudo is denied) and the incarnation stays
+// unobserved with that cause; every unprivileged fact is still established first, so the refusal
+// names the exact container the grant would have described.
+//
+// THE CGROUP ID AND THE INSPECTED ID MUST AGREE. Inspect is asked BY NAME, and a name can be
+// reassigned: a container being replaced under the same name is a different object with a
+// different id. The process's cgroup names the id it actually runs in, so the inspected .Id must
+// equal it or the observation refuses -- which is what makes the image digest a fact about the
+// answering process and not about whatever currently holds the name.
+
+type ServingIncarnationRefusal
+  = IncarnationUnitPropertyUnread { unit: NonEmptyStr, property: NonEmptyStr, cause: String }
+  | IncarnationUnitNotActive { unit: NonEmptyStr }
+  | IncarnationUnitDigestUnread { unit: NonEmptyStr, cause: String }
+  | IncarnationClockTicksUnread { cause: String }
+  | IncarnationBootTimeUnread { cause: String }
+  | IncarnationExportedStartUnreadable { field: NonEmptyStr, cause: String }
+  | IncarnationProcessScanRefused { pattern: NonEmptyStr, cause: String }
+  | IncarnationNoEngineProcess { pattern: NonEmptyStr }
+  | IncarnationProcessStartUnread { pid: Int, cause: String }
+  | IncarnationNoProcessStartsAtExportedInstant { candidates: Int, field: NonEmptyStr }
+  | IncarnationAmbiguousProcessStart { pids: List<Int>, field: NonEmptyStr }
+  | IncarnationProcessCgroupUnread { pid: Int, cause: String }
+  | IncarnationProcessNotInDockerContainer { pid: Int, cgroup_path: NonEmptyStr }
+  | InspectLegDidNotRun { container: NonEmptyStr, cause: String }
+  | InspectCommandFailed { container: NonEmptyStr, exit_code: Int, stderr: String }
+  | InspectIdentityUnreadable { container: NonEmptyStr, cause: String }
+  | InspectedContainerIsNotTheAnsweringOne { by_name: NonEmptyStr, answering: NonEmptyStr }
+  | IncarnationImageIdNotSha256 { image_id: NonEmptyStr }
+  | IncarnationStartBeforeEpoch { seconds: Int }
+
+type ServingIncarnationReading
+  = IncarnationObserved { observation: EndpointIncarnationObservation }
+  | IncarnationRefused { refusal: ServingIncarnationRefusal }
+
+data serving_incarnation_receipt: ObservationReceiptRef = "gunbc.spark.serving_incarnation_observe" as ObservationReceiptRef
+
+fn serving_incarnation_refusal_text(r: ServingIncarnationRefusal) -> String {
+  match r {
+    IncarnationUnitPropertyUnread { unit: u, property: p, cause: c } =>
+      join(["unit ", u as String, " property ", p as String, " could not be read: ", c], "")
+    IncarnationUnitNotActive { unit: u } =>
+      join(["unit ", u as String, " has no invocation id, so no launch of it is active on the host"], "")
+    IncarnationUnitDigestUnread { unit: u, cause: c } =>
+      join(["the unit file of ", u as String, " could not be digested: ", c], "")
+    IncarnationClockTicksUnread { cause: c } => join(["the host's clock tick rate could not be read: ", c], "")
+    IncarnationBootTimeUnread { cause: c } => join(["the host's boot time could not be read: ", c], "")
+    IncarnationExportedStartUnreadable { field: f, cause: c } =>
+      join(["the exported process start field `", f as String, "` did not read as an exact decimal: ", c], "")
+    IncarnationProcessScanRefused { pattern: p, cause: c } =>
+      join(["the process scan for ", p as String, " was refused: ", c], "")
+    IncarnationNoEngineProcess { pattern: p } =>
+      join(["no process on the host runs ", p as String], "")
+    IncarnationProcessStartUnread { pid: p, cause: c } =>
+      join(["the start time of pid ", to_string(p), " could not be read: ", c], "")
+    IncarnationNoProcessStartsAtExportedInstant { candidates: n, field: f } =>
+      join([to_string(n), " engine process(es) were found and none started at the instant the endpoint exports (", f as String, "), so the answering process is not on this host or is not the engine"], "")
+    IncarnationAmbiguousProcessStart { pids: ps, field: f } =>
+      join(["pids ", join(map(ps, p => to_string(p)), ","), " all started at the exported instant ", f as String, ", so the answering process cannot be named"], "")
+    IncarnationProcessCgroupUnread { pid: p, cause: c } =>
+      join(["the cgroup of pid ", to_string(p), " could not be read: ", c], "")
+    IncarnationProcessNotInDockerContainer { pid: p, cgroup_path: g } =>
+      join(["pid ", to_string(p), " runs in ", g as String, ", which is not a docker container's cgroup"], "")
+    InspectLegDidNotRun { container: c, cause: why } =>
+      join(["the inspect leg for ", c as String, " did not run, so the image the answering container was created from is unread: ", why], "")
+    InspectCommandFailed { container: c, exit_code: code, stderr: err } =>
+      join(["the inspect command for ", c as String, " exited ", to_string(code), ", so the image the answering container was created from is unread -- this is where a not-held InspectServingContainer grant (sudo denies) surfaces, but a removed or renamed container answers the same way, so the exit and stderr are carried rather than a cause asserted: ", trim(s: err)], "")
+    InspectIdentityUnreadable { container: c, cause: why } =>
+      join(["the inspect object of ", c as String, " did not yield an id and image: ", why], "")
+    InspectedContainerIsNotTheAnsweringOne { by_name: n, answering: a } =>
+      join(["the container holding the name is ", n as String, " but the answering process runs in ", a as String], "")
+    IncarnationImageIdNotSha256 { image_id: i } =>
+      join(["the container's image id ", i as String, " is not a sha256 image id"], "")
+    IncarnationStartBeforeEpoch { seconds: s } =>
+      join(["the computed start instant ", to_string(s), " precedes the epoch"], "")
+  }
+}
+
+fn endpoint_incarnation_standing(reading: ServingIncarnationReading) -> EndpointIncarnationStanding {
+  match reading {
+    IncarnationObserved { observation: o } => EndpointIncarnationObserved { observation: o }
+    IncarnationRefused { refusal: r } =>
+      EndpointIncarnationUnobserved {
+        obligation: join(["gunbc.spark.serving_incarnation_observe refused: ", serving_incarnation_refusal_text(r: r)], "") as NonEmptyStr,
+      }
+  }
+}
+
+// ── THE READS, ONE TYPED OUTCOME EACH ──────────────────────────────────────────────────────────
+
+type UnitTextRead
+  = UnitTextObserved { value: String }
+  | UnitTextRefused { cause: String }
+
+// ONE PROPERTY, ONE READ. The systemd property IS the argument -- there is no second enum naming
+// the same two properties, and a refusal's wire label is derived from the property by
+// systemd_unit_property_wire rather than passed beside it, so a caller cannot name a property whose
+// message disagrees with the read (the dual-fact shape gunbc.host_operation_exec already forbids).
+fn read_unit_property(transport: HostEffectTransport, unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitTextRead {
+  match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
+    SystemdPropertyCaptured { value: v } => UnitTextObserved { value: trim(s: v) }
+    SystemdPropertyCaptureRefused { reason: why } => UnitTextRefused { cause: why }
+  }
+}
+
+type HostTextRead
+  = HostTextObserved { stdout: String }
+  | HostTextRefused { cause: String }
+
+// ONE HOST READ, TYPED, over a gunbc.host_operation_exec HostOperation directly -- this module does
+// not re-roster those operations under second names (DESIGN 3): a read it needs is a variant there,
+// not a variant here. Every one of these reads answers with exit 0 or fails; a non-zero exit is a
+// typed, located refusal. pgrep is NOT one of these -- its exit code is its answer (1 = no match, 2/3
+// = the scan never ran to a verdict), which host_operation_exec's success bool cannot carry -- so it
+// runs over the exit-code-preserving typed-argv leg instead (scan_engine_processes below).
+fn host_read_text(transport: HostEffectTransport, operation: HostOperation) -> HostTextRead {
+  match host_operation_exec(transport: transport, operation: operation) {
+    HostOperationObserved { stdout: out, success: true, stderr: _ } => HostTextObserved { stdout: out }
+    HostOperationObserved { stdout: _, success: false, stderr: err } => HostTextRefused { cause: host_read_failure_text(stderr: err) }
+    HostOperationRefused { operation: op, reason: why } => HostTextRefused { cause: join([op, ": ", why], "") }
+  }
+}
+
+fn host_read_failure_text(stderr: String?) -> String {
+  match stderr {
+    Present { value: e } => if trim(s: e) == "" { "the read exited non-zero" } else { join(["the read exited non-zero: ", trim(s: e)], "") }
+    Absent => "the read exited non-zero"
+  }
+}
+
+// ── THE START-INSTANT EQUALITY ──────────────────────────────────────────────────────────────────
+//
+// exported = units / 10^scale (an ExactDecimal); computed = (btime * ticks + starttime) / ticks.
+// They are equal exactly when units * ticks == (btime * ticks + starttime) * 10^scale. Both sides
+// are integers, so no division and no rounding occur. The units side is about 1.8e11 * 100 at
+// today's epoch and a two-digit tick rate; the substrate Int carries it.
+// EVERY INTEGER STEP OF BOTH SIDES IS CHECKED, including the RHS intermediate. A value whose magnitude
+// outruns i64 at ANY step -- units*ticks, boot*ticks, +start_ticks, or the final *10^scale -- is NOT a
+// match (it cannot be the start instant of a real process), it is `false`, never a wrapped equality
+// that fabricates one. Only refusing <=0 tick rates is not enough: a huge positive CLK_TCK would wrap
+// boot*ticks before the outer multiply ever saw it, so that intermediate is formed with
+// checked_int_multiply / checked_int_add too. The prometheus reader bounds exported.fraction_digits to
+// the i64-safe pow10 range, so decimal_pow10 here does not itself wrap.
+fn exported_start_equals_process_start(exported: ExactDecimal, boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: Int) -> Bool {
+  let ticks = hertz_count(h: ticks_per_second)
+  match checked_int_multiply(a: exported.units, b: ticks) {
+    CheckedIntOverflow { cause: _ } => false
+    CheckedIntReady { value: lhs } =>
+      match checked_int_multiply(a: boot_epoch_seconds, b: ticks) {
+        CheckedIntOverflow { cause: _ } => false
+        CheckedIntReady { value: boot_ticks } =>
+          match checked_int_add(a: boot_ticks, b: start_ticks) {
+            CheckedIntOverflow { cause: _ } => false
+            CheckedIntReady { value: since_epoch_ticks } =>
+              match checked_int_multiply(a: since_epoch_ticks, b: decimal_pow10(exponent: exported.fraction_digits)) {
+                CheckedIntOverflow { cause: _ } => false
+                CheckedIntReady { value: rhs } => lhs == rhs
+              }
+          }
+      }
+  }
+}
+
+type BoundProcess {
+  pid: Int
+  start_ticks: Int
+}
+
+type CandidateScan {
+  matched: List<BoundProcess>
+  refusal: ServingIncarnationRefusal?
+}
+
+fn scan_candidate(acc: CandidateScan, transport: HostEffectTransport, pid: Int, exported: ExactDecimal, boot: EpochSecs, ticks: Hertz) -> CandidateScan {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match host_read_text(transport: transport, operation: ProcfsReadPidStat { pid: to_string(pid) as NonEmptyStr }) {
+        HostTextRefused { cause: c } =>
+          CandidateScan { matched: acc.matched, refusal: Present { value: IncarnationProcessStartUnread { pid: pid, cause: c } } }
+        HostTextObserved { stdout: text } =>
+          match proc_pid_stat_start_time(content: text) {
+            StartTimeObserved { ticks_since_boot: st } =>
+              if exported_start_equals_process_start(exported: exported, boot_epoch_seconds: boot, ticks_per_second: ticks, start_ticks: st) {
+                CandidateScan { matched: append(acc.matched, BoundProcess { pid: pid, start_ticks: st }), refusal: none }
+              } else {
+                acc
+              }
+            StartTimeCommUnterminated =>
+              CandidateScan { matched: acc.matched, refusal: Present { value: IncarnationProcessStartUnread { pid: pid, cause: "the stat line has no terminated comm field" } } }
+            StartTimeFieldAbsent { fields_after_comm: n } =>
+              CandidateScan { matched: acc.matched, refusal: Present { value: IncarnationProcessStartUnread { pid: pid, cause: join(["the stat line has only ", to_string(n), " fields after comm"], "") } } }
+            StartTimeUnparseable { field: f } =>
+              CandidateScan { matched: acc.matched, refusal: Present { value: IncarnationProcessStartUnread { pid: pid, cause: join(["starttime field `", f, "` is not an integer"], "") } } }
+          }
+      }
+  }
+}
+
+// The start instant of the bound process on the epoch clock, floored to whole seconds -- the grain
+// VllmServingLaunch.started_at carries. The sub-second part is exactly what the exported field and
+// the tick equality above keep; this field is the launch's coarse instant for readers that order
+// launches, not its identity.
+fn process_start_epoch_seconds(boot_epoch_seconds: EpochSecs, ticks_per_second: Hertz, start_ticks: Int) -> Int {
+  boot_epoch_seconds + (start_ticks / hertz_count(h: ticks_per_second))
+}
+
+// ── THE OBSERVATION ─────────────────────────────────────────────────────────────────────────────
+
+fn incarnation_after_container(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  group: FabricGroup,
+  head: HostIdentity,
+  endpoint: VllmEndpointProcessLaunch,
+  invocation: NonEmptyStr,
+  unit_digest: ContentHash,
+  container_id: NonEmptyStr,
+  started_at: EpochSecs,
+) -> ServingIncarnationReading {
+  let grant = InspectServingContainer { container: spark_pair_container_name }
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: spark_managed_grant_argv(grant: grant)) {
+    TypedArgvExecRefused { reason: why } =>
+      IncarnationRefused { refusal: InspectLegDidNotRun { container: spark_pair_container_name, cause: why } }
+    TypedArgvExecConverged { result: r } =>
+      if !r.success {
+        IncarnationRefused { refusal: InspectCommandFailed { container: spark_pair_container_name, exit_code: r.exit_code, stderr: r.stderr } }
+      } else {
+        match docker_container_inspect_identity_from_stdout(stdout: r.stdout) {
+          DockerContainerInspectIdentityUnreadable { cause: c } =>
+            IncarnationRefused { refusal: InspectIdentityUnreadable { container: spark_pair_container_name, cause: c } }
+          DockerContainerInspectIdentity { id: by_name, image: image_id } =>
+            if (by_name as String) != (container_id as String) {
+              IncarnationRefused { refusal: InspectedContainerIsNotTheAnsweringOne { by_name: by_name, answering: container_id } }
+            } else {
+              match docker_image_id_sha256_hex(image_id: image_id) {
+                Absent => IncarnationRefused { refusal: IncarnationImageIdNotSha256 { image_id: image_id } }
+                Present { value: hex } =>
+                  match sha256_hex_digest(hex: hex) {
+                    Absent => IncarnationRefused { refusal: IncarnationImageIdNotSha256 { image_id: image_id } }
+                    Present { value: digest } =>
+                      IncarnationObserved {
+                        observation: endpoint_incarnation_observation(
+                          endpoint: endpoint,
+                          launch: vllm_serving_launch(
+                            group: group,
+                            head: head,
+                            systemd_invocation: invocation,
+                            container_id: container_id,
+                            executable_digest: Sha256Hash(digest),
+                            unit_digest: unit_digest,
+                            started_at: started_at,
+                          ),
+                          receipt: serving_incarnation_receipt,
+                        ),
+                      }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn incarnation_after_process(
+  transport: HostEffectTransport,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  group: FabricGroup,
+  head: HostIdentity,
+  endpoint: VllmEndpointProcessLaunch,
+  invocation: NonEmptyStr,
+  unit_digest: ContentHash,
+  pid: Int,
+  boot: EpochSecs,
+  ticks: Hertz,
+  start_ticks: Int,
+) -> ServingIncarnationReading {
+  match host_read_text(transport: transport, operation: ProcfsReadPidCgroup { pid: to_string(pid) as NonEmptyStr }) {
+    HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationProcessCgroupUnread { pid: pid, cause: c } }
+    HostTextObserved { stdout: text } =>
+      match read_unified_cgroup_membership(content: text) {
+        MembershipMissing => IncarnationRefused { refusal: IncarnationProcessCgroupUnread { pid: pid, cause: "no unified hierarchy line" } }
+        MembershipAmbiguous { first: _, second: _ } => IncarnationRefused { refusal: IncarnationProcessCgroupUnread { pid: pid, cause: "more than one unified hierarchy line" } }
+        MembershipMalformed { cause: _ } => IncarnationRefused { refusal: IncarnationProcessCgroupUnread { pid: pid, cause: "malformed cgroup line" } }
+        CurrentCgroupObserved { relative_path: path } =>
+          match docker_cgroup_membership(relative_path: path) {
+            NotADockerContainerCgroup { relative_path: p } => IncarnationRefused { refusal: IncarnationProcessNotInDockerContainer { pid: pid, cgroup_path: p } }
+            DockerContainerScope { container_id: id } => {
+              let seconds = process_start_epoch_seconds(boot_epoch_seconds: boot, ticks_per_second: ticks, start_ticks: start_ticks)
+              if seconds < 0 {
+                IncarnationRefused { refusal: IncarnationStartBeforeEpoch { seconds: seconds } }
+              } else {
+                incarnation_after_container(
+                  target: target, context: context, group: group, head: head, endpoint: endpoint,
+                  invocation: invocation, unit_digest: unit_digest, container_id: id, started_at: seconds,
+                )
+              }
+            }
+          }
+      }
+  }
+}
+
+// THE PGREP LEG, RUN SO ITS EXIT CODE SURVIVES. host_operation_exec flattens exit to a success
+// bool, which is correct for reads whose only non-zero is failure, and wrong for pgrep whose exit
+// code distinguishes no-match (1) from scan-failure (2/3). So pgrep runs over
+// typed_argv_exec_over_fleet_ssh, whose SshSessionExecResult carries exit_code, and pgrep_scan_outcome
+// classifies it. A transport refusal (portable words / session) is a scan refusal, never a no-match.
+// THE LEG NOT RUNNING AND THE LEG RUNNING TO A VERDICT ARE DIFFERENT FACTS, kept apart rather than
+// folded through a fabricated exit code. A TypedArgvExecRefused means the pgrep argv never reached a
+// process (portable words / session), so there is no exit code to classify; inventing one (exit -1)
+// would be an in-band sentinel for non-execution, the DESIGN 5 hole the inspect path already split
+// into InspectLegDidNotRun vs InspectCommandFailed. So this returns a leg-did-not-run arm, and only a
+// leg that RAN is handed to pgrep_scan_outcome.
+type EngineProcessScan
+  = EngineScanLegDidNotRun { cause: String }
+  | EngineScanClassified { outcome: PgrepScanOutcome }
+
+fn scan_engine_processes(target: SshTarget, context: FleetSshExecutionContext, pattern: NonEmptyStr) -> EngineProcessScan {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: pgrep_match_full_command_line_argv(pattern: pattern)) {
+    TypedArgvExecRefused { reason: why } =>
+      EngineScanLegDidNotRun { cause: why }
+    TypedArgvExecConverged { result: r } =>
+      EngineScanClassified { outcome: pgrep_scan_outcome(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) }
+  }
+}
+
+fn incarnation_after_host_facts(
+  transport: HostEffectTransport,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  group: FabricGroup,
+  head: HostIdentity,
+  endpoint: VllmEndpointProcessLaunch,
+  invocation: NonEmptyStr,
+  unit_digest: ContentHash,
+  exported: ExactDecimal,
+  boot: EpochSecs,
+  ticks: Hertz,
+) -> ServingIncarnationReading {
+  let pattern = sparkrun_vllm_ds4_gb10_vllm_binary
+  match scan_engine_processes(target: target, context: context, pattern: pattern) {
+    EngineScanLegDidNotRun { cause: why } =>
+      IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["the pgrep leg did not run: ", why], "") } }
+    EngineScanClassified { outcome: PgrepScanFailed { exit_code: code, stderr: err } } =>
+      IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["pgrep exited ", to_string(code), ", which is neither a match (0) nor a clean no-match (1), so the scan did not answer: ", trim(s: err)], "") } }
+    EngineScanClassified { outcome: PgrepNoMatch } => IncarnationRefused { refusal: IncarnationNoEngineProcess { pattern: pattern } }
+    EngineScanClassified { outcome: PgrepMatched { listing: listing } } =>
+      match pgrep_pid_listing(stdout: listing) {
+        PgrepPidLineUnparseable { line: l } =>
+          IncarnationRefused { refusal: IncarnationProcessScanRefused { pattern: pattern, cause: join(["pgrep printed a non-pid line: ", l], "") } }
+        PgrepPidsRead { pids: pids } =>
+          if count(pids) == 0 {
+            IncarnationRefused { refusal: IncarnationNoEngineProcess { pattern: pattern } }
+          } else {
+            let scan = fold(pids, init: CandidateScan { matched: [], refusal: none }, f: (acc, pid) =>
+              scan_candidate(acc: acc, transport: transport, pid: pid, exported: exported, boot: boot, ticks: ticks))
+            match scan.refusal {
+              Present { value: r } => IncarnationRefused { refusal: r }
+              Absent =>
+                if count(scan.matched) == 0 {
+                  IncarnationRefused { refusal: IncarnationNoProcessStartsAtExportedInstant { candidates: count(pids), field: endpoint.process_start_field } }
+                } else if count(scan.matched) > 1 {
+                  IncarnationRefused { refusal: IncarnationAmbiguousProcessStart { pids: map(scan.matched, b => b.pid), field: endpoint.process_start_field } }
+                } else {
+                  let bound = scan.matched.first()
+                  incarnation_after_process(
+                    transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
+                    invocation: invocation, unit_digest: unit_digest, pid: bound.pid, boot: boot, ticks: ticks, start_ticks: bound.start_ticks,
+                  )
+                }
+            }
+          }
+      }
+  }
+}
+
+fn incarnation_after_unit(
+  transport: HostEffectTransport,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  group: FabricGroup,
+  head: HostIdentity,
+  endpoint: VllmEndpointProcessLaunch,
+  invocation: NonEmptyStr,
+  unit_digest: ContentHash,
+) -> ServingIncarnationReading {
+  match prometheus_sample_value_reading(field: endpoint.process_start_field as String) {
+    SampleValueNotFinite { lexeme: l } =>
+      IncarnationRefused { refusal: IncarnationExportedStartUnreadable { field: endpoint.process_start_field, cause: join(["not a finite value: ", l], "") } }
+    SampleValueUnreadable { lexeme: l } =>
+      IncarnationRefused { refusal: IncarnationExportedStartUnreadable { field: endpoint.process_start_field, cause: join(["not an exposition-format number: ", l], "") } }
+    SampleValueExact { value: exported } =>
+      match host_read_text(transport: transport, operation: GetconfClockTicksPerSecond) {
+        HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: c } }
+        HostTextObserved { stdout: tick_text } =>
+          match clock_ticks_reading(stdout: tick_text) {
+            ClockTicksUnparseable { field: f } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: join(["`", f, "` is not an integer"], "") } }
+            ClockTicksNotPositive { value: v } => IncarnationRefused { refusal: IncarnationClockTicksUnread { cause: join(["tick rate ", to_string(v), " is not positive"], "") } }
+            ClockTicksObserved { per_second: n } =>
+              let ticks = hertz(count: n)
+              match host_read_text(transport: transport, operation: ProcfsReadStat) {
+                HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: c } }
+                HostTextObserved { stdout: stat_text } =>
+                  match proc_stat_boot_time(content: stat_text) {
+                    BootTimeLineAbsent => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: "/proc/stat has no btime line" } }
+                    BootTimeUnparseable { field: f } => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: join(["btime `", f, "` is not an integer"], "") } }
+                    BootTimeBeforeEpoch { field: f } => IncarnationRefused { refusal: IncarnationBootTimeUnread { cause: join(["btime `", f, "` is before the epoch"], "") } }
+                    BootTimeObserved { epoch_seconds: boot } =>
+                      incarnation_after_host_facts(
+                        transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
+                        invocation: invocation, unit_digest: unit_digest, exported: exported, boot: boot, ticks: ticks,
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// ── ONE UNIT'S IDENTITY, READ WITHOUT PRIVILEGE ─────────────────────────────────────────────────
+//
+// The invocation id systemd minted for the unit's current start and the digest of the fragment the
+// unit was started from. It is the same three reads for the head unit and for a worker unit -- a
+// worker exports no endpoint, so this is the WHOLE of what can be observed about a worker rank
+// without privilege, and it is exactly the part of the head's incarnation that does not need one.
+// It is factored out so gunbc.spark.pair_incumbent_identity can read every rank of a pair through
+// one fold rather than a second copy of these three reads.
+type UnitIdentityRead
+  = UnitIdentityObserved { invocation: NonEmptyStr, unit_digest: ContentHash }
+  | UnitIdentityRefused { refusal: ServingIncarnationRefusal }
+
+fn read_unit_identity(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitIdentityRead {
+  match read_unit_property(transport: transport, unit: unit, property: InvocationIDProperty) {
+    UnitTextRefused { cause: c } =>
+      UnitIdentityRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty), cause: c } }
+    UnitTextObserved { value: invocation_text } =>
+      if invocation_text == "" {
+        UnitIdentityRefused { refusal: IncarnationUnitNotActive { unit: unit } }
+      } else {
+        match read_unit_property(transport: transport, unit: unit, property: FragmentPathProperty) {
+          UnitTextRefused { cause: c } =>
+            UnitIdentityRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: FragmentPathProperty), cause: c } }
+          UnitTextObserved { value: fragment_path } =>
+            if fragment_path == "" {
+              UnitIdentityRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the unit reports no fragment path" } }
+            } else {
+              match host_read_text(transport: transport, operation: Sha256SumFile { path: fragment_path as NonEmptyStr }) {
+                HostTextRefused { cause: c } => UnitIdentityRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: c } }
+                HostTextObserved { stdout: line } =>
+                  match sha256sum_line_digest(line: line) {
+                    Absent => UnitIdentityRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "sha256sum printed no 64-hex digest line" } }
+                    Present { value: d } =>
+                      match sha256_digest_content_hash(digest: d) {
+                        Absent => UnitIdentityRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the sha256sum output did not read as a sha256 content hash" } }
+                        Present { value: digest } => UnitIdentityObserved { invocation: invocation_text as NonEmptyStr, unit_digest: digest }
+                      }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+// THE ENTRY. One head host, one group, the endpoint launch the harness just read from that group's
+// route, and the sealed fleet context; everything else is derived. The unit is the pair-serving head
+// unit, because that is the unit whose engine exports the endpoint; a worker unit exports nothing.
+fn observe_endpoint_incarnation(
+  context: FleetSshExecutionContext,
+  group: FabricGroup,
+  head: HostIdentity,
+  endpoint: VllmEndpointProcessLaunch,
+) -> ServingIncarnationReading {
+  let target = fleet_locus_ssh_target(host: head)
+  let transport = FleetSsh { target: target, context: context }
+  let unit = spark_pair_head_unit_name
+  match read_unit_identity(transport: transport, unit: unit) {
+    UnitIdentityRefused { refusal: r } => IncarnationRefused { refusal: r }
+    UnitIdentityObserved { invocation: invocation, unit_digest: digest } =>
+      incarnation_after_unit(
+        transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
+        invocation: invocation, unit_digest: digest,
+      )
+  }
+}

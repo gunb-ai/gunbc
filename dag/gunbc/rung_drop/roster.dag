@@ -61,12 +61,25 @@ import gunbc.rung_drop.floor_cost_debt_straddling_produced_decl { floor_cost_deb
 import gunbc.rung_drop.determinism_transitive_reachability { determinism_transitive_reachability }
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
+import gunbc.rung_drop.consumed_row_owner_charge_unenforced { consumed_row_owner_charge_unenforced }
+import gunbc.rung_drop.owner_deletion_follow_up_charge_removed { owner_deletion_follow_up_charge_removed }
 import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
 import gunbc.rung_drop.long_module_changed_witness_cpu_observed_only { long_module_changed_witness_cpu_observed_only }
+import gunbc.rung_drop.long_home_enrolment_margin_observed_only { long_home_enrolment_margin_observed_only }
 import gunbc.rung_drop.native_lane_second_textual_production_reading { native_lane_second_textual_production_reading }
 import gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership { native_lane_closure_walk_unkeyed_membership }
 import gunbc.rung_drop.heal_healed_head_executed_verdict_without_human { heal_healed_head_executed_verdict_without_human }
+import gunbc.rung_drop.runner_host_file_apply_route_hermetic { runner_host_file_apply_route_hermetic }
+import gunbc.rung_drop.floor_cost_cpu_regression_at_constant_eval_steps { floor_cost_cpu_regression_at_constant_eval_steps }
+import gunbc.rung_drop.accumulator_copy_positive_controls_off_every_lane { accumulator_copy_positive_controls_off_every_lane }
+import gunbc.rung_drop.seed_whole_corpus_demand_population_blind { seed_whole_corpus_demand_population_blind }
+import gunbc.rung_drop.roadmap_live_projection_new_witness_eval_step_cost { roadmap_live_projection_new_witness_eval_step_cost }
+import gunbc.rung_drop.live_deploy_apply_render_new_witness_eval_step_cost { live_deploy_apply_render_new_witness_eval_step_cost }
+import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_monolith_control_unmeasured_derived_root }
+import gunbc.rung_drop.typescript_same_language_round_trip_leaves_off_required_floor { typescript_same_language_round_trip_leaves_off_required_floor }
+import gunbc.rung_drop.type_reference_location_fallback_keys_production_realization { type_reference_location_fallback_keys_production_realization }
+import gunbc.rung_drop.persisted_resolved_graph_disk_probe_unqualified_format { persisted_resolved_graph_disk_probe_unqualified_format }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -111,12 +124,25 @@ data rung_drop_roster: List<RungDrop> = [
   determinism_transitive_reachability,
   transitional_admission_exception(),
   v2_native_route_off_the_merge_path,
+  consumed_row_owner_charge_unenforced,
+  owner_deletion_follow_up_charge_removed,
   main_per_commit_floor_verdict,
   v1_consumer_census_live_population_off_the_merge_path(),
   long_module_changed_witness_cpu_observed_only,
+  long_home_enrolment_margin_observed_only,
   native_lane_second_textual_production_reading,
   native_lane_closure_walk_unkeyed_membership,
   heal_healed_head_executed_verdict_without_human,
+  runner_host_file_apply_route_hermetic,
+  floor_cost_cpu_regression_at_constant_eval_steps,
+  accumulator_copy_positive_controls_off_every_lane,
+  seed_whole_corpus_demand_population_blind,
+  roadmap_live_projection_new_witness_eval_step_cost,
+  live_deploy_apply_render_new_witness_eval_step_cost,
+  seam_monolith_control_unmeasured_derived_root,
+  typescript_same_language_round_trip_leaves_off_required_floor,
+  type_reference_location_fallback_keys_production_realization,
+  persisted_resolved_graph_disk_probe_unqualified_format,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

@@ -279,18 +279,3 @@ test fn transport_requires_clean_worktree_before_publication() -> Bool {
     _ => false
   }
 }
-
-test fn all_floor_discovery_exact_subject_controls_hold() -> Bool {
-  exact_subject_binds()
-    && wrong_commit_refuses_at_commit_coordinate()
-    && wrong_tree_refuses_at_tree_coordinate()
-    && source_root_order_is_part_of_the_subject()
-    && request_preserves_subject_refusal()
-    && wrong_scope_refuses_without_widening()
-    && wrong_execution_mode_refuses()
-    && exact_request_binds()
-    && commit_and_tree_each_move_request_identity()
-    && canonical_request_identity_matches_bootstrap_golden()
-    && transport_preserves_exact_subject_and_refuses_dirty_worktree()
-    && transport_requires_clean_worktree_before_publication()
-}

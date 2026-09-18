@@ -1,6 +1,7 @@
 module gunbc.spark.model_snapshot_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr }
+import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_native_manifest }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address, ipv4_address, ipv4_address_eq }
 import extdeps.huggingface.hub {
   HubRepoId, HubModelRepo, hub_repo_cache_directory_name, hub_cli_program,
@@ -73,7 +74,7 @@ data deepseek_v4_flash_tool_call_parser: NonEmptyStr = "deepseek_v4" as NonEmpty
 data glm_5_3_flash_snapshot: ModelSnapshotDesired = ModelSnapshotPinned {
   identity: "glm-5.3-flash" as NonEmptyStr,
   repo: HubRepoId { kind: HubModelRepo, path: "zai-org/GLM-5.3-Flash" as NonEmptyStr },
-  revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
+  revision: glm_5_3_flash_native_manifest.revision,
   placement: HubCachePlacement { cache_root: spark_hub_cache_root },
   revision_provenance: "resolved from the Hub model API for zai-org/GLM-5.3-Flash on 2026-09-07; the same response reported lastModified 2026-09-07T12:13:47Z, so the branch was moving when this was taken" as NonEmptyStr,
 }
@@ -82,6 +83,20 @@ fn model_snapshot_identity(snapshot: ModelSnapshotDesired) -> NonEmptyStr {
   match snapshot {
     ModelSnapshotPinned { identity: i, repo: _, revision: _, placement: _, revision_provenance: _ } => i
     ModelSnapshotUnpinned { identity: i, repo: _, cause: _ } => i
+  }
+}
+
+// THE REVISION, PROJECTED BESIDE THE IDENTITY, because a consumer that needs the commit this
+// snapshot pins should read it here rather than re-spelling the hash. It is OPTIONAL and that is
+// the arm doing the work: an unpinned snapshot has no revision at all, and answering with a
+// plausible-looking string there would be the fabricated default this module's own pin/unpin split
+// exists to make impossible. gunbc.spark.prefill_batch_sweep and
+// gunbc.spark.tensor_parallel_comparison are the consumers -- each had minted its own copy of the
+// commit while correctly consuming the pinned image reference on the adjacent line.
+fn model_snapshot_revision(snapshot: ModelSnapshotDesired) -> NonEmptyStr? {
+  match snapshot {
+    ModelSnapshotPinned { identity: _, repo: _, revision: r, placement: _, revision_provenance: _ } => Present { value: r }
+    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => Absent
   }
 }
 

@@ -13,11 +13,14 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::no_span;
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::ParsedModuleItemKind::{
     ModuleItemResource, ModuleItemTypeDeclaration, NotAModuleItem,
 };
-pub use crate::v1_std_core::{Cardinality, Connective, ExprData, Node, ParsedModuleItemKind};
+pub use crate::v1_std_core::{
+    Cardinality, Connective, DeclarationMarker, ExprData, Node, ParsedModuleItemKind,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -44,6 +47,7 @@ pub fn leaf_shaped_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -69,6 +73,7 @@ pub fn structured_item(kind: ParsedModuleItemKind) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: kind.clone(),
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }

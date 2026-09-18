@@ -11,7 +11,17 @@ import product.fabric.provider_route {
   DownstreamProviderPopulation, NoDownstreamProviders, DownstreamProvidersUnread,
   PermittedJurisdictionPopulation, PermittedJurisdictionsEnumerated, PermittedJurisdictionsUnread,
   JurisdictionDropEnrollment,
-  first_unresolved_obligation, downstream_obligation,
+  first_unread_standing, downstream_obligation,
+}
+import product.supplier.hetzner_path_reading {
+  hetzner_published_readings,
+  hetzner_published_reading_locators,
+  hetzner_technical_organizational_measures_reading,
+  hetzner_data_protection_overview_reading,
+  hetzner_reading_records_silence,
+  LogSystemCountryUnstated,
+  AdministrativeAccessJurisdictionUnstated,
+  FinlandOrHelsinkiUnmentioned,
 }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseAdmission,
@@ -199,12 +209,84 @@ fn closure_telemetry_unread(where_it_is: DeclarationRef) -> ProviderDataPathClos
     durable_storage: located(where_it_is: where_it_is),
     backups: located(where_it_is: where_it_is),
     logs: located(where_it_is: where_it_is),
-    telemetry: ProviderPathUnread { obligation: telemetry_obligation() },
+    telemetry: ProviderPathUnread { obligation: telemetry_obligation(), consulted: [] },
     control_plane: located(where_it_is: where_it_is),
     support_access: located(where_it_is: where_it_is),
     administrative_access: located(where_it_is: where_it_is),
     spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "no_spill_configured") },
   }
+}
+
+fn tom_reading_ref() -> DeclarationRef {
+  decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_technical_organizational_measures_reading")
+}
+
+fn dpo_reading_ref() -> DeclarationRef {
+  decl_ref(module_path: "product.supplier.hetzner_path_reading", decl_name: "hetzner_data_protection_overview_reading")
+}
+
+fn wrong_reading_ref() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "evidence")
+}
+
+// THE SAME CLOSURE WITH TELEMETRY RESEARCHED AND UNANSWERED. consulted cites the two Hetzner
+// published readings that a Located.evidence slot cannot carry -- they are what was read and did
+// not locate the path. The obligation is identical to the never-looked sibling, so admission
+// still refuses as facts-incomplete naming telemetry; only the consulted list on that
+// denial tells the two unread states apart.
+fn closure_telemetry_researched_unread(where_it_is: DeclarationRef) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: located(where_it_is: where_it_is),
+    durable_storage: located(where_it_is: where_it_is),
+    backups: located(where_it_is: where_it_is),
+    logs: located(where_it_is: where_it_is),
+    telemetry: ProviderPathUnread {
+      obligation: telemetry_obligation(),
+      consulted: [tom_reading_ref(), dpo_reading_ref()],
+    },
+    control_plane: located(where_it_is: where_it_is),
+    support_access: located(where_it_is: where_it_is),
+    administrative_access: located(where_it_is: where_it_is),
+    spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "no_spill_configured") },
+  }
+}
+
+fn closure_telemetry_wrong_consulted(where_it_is: DeclarationRef) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: located(where_it_is: where_it_is),
+    durable_storage: located(where_it_is: where_it_is),
+    backups: located(where_it_is: where_it_is),
+    logs: located(where_it_is: where_it_is),
+    telemetry: ProviderPathUnread {
+      obligation: telemetry_obligation(),
+      consulted: [wrong_reading_ref()],
+    },
+    control_plane: located(where_it_is: where_it_is),
+    support_access: located(where_it_is: where_it_is),
+    administrative_access: located(where_it_is: where_it_is),
+    spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "no_spill_configured") },
+  }
+}
+
+fn closure_first_unread_never_looked_later_researched(where_it_is: DeclarationRef) -> ProviderDataPathClosure {
+  ProviderDataPathClosure {
+    execution: located(where_it_is: where_it_is),
+    durable_storage: located(where_it_is: where_it_is),
+    backups: located(where_it_is: where_it_is),
+    logs: located(where_it_is: where_it_is),
+    telemetry: ProviderPathUnread { obligation: telemetry_obligation(), consulted: [] },
+    control_plane: located(where_it_is: where_it_is),
+    support_access: located(where_it_is: where_it_is),
+    administrative_access: ProviderPathUnread {
+      obligation: subprocessor_obligation(),
+      consulted: [tom_reading_ref(), dpo_reading_ref()],
+    },
+    spill: ProviderPathAbsent { evidence: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "no_spill_configured") },
+  }
+}
+
+fn consulted_cites(consulted: List<DeclarationRef>, expected: DeclarationRef) -> Bool {
+  count(filter(consulted, r => declaration_ref_eq(a: r, b: expected))) == 1
 }
 
 fn route_facts(
@@ -299,7 +381,7 @@ fn decide(
 fn refusal_tag(c: ProviderUseRefusal) -> String {
   match c {
     ProviderRouteUnclassified { route } => "route-unclassified",
-    ProviderRouteFactsIncomplete { route, obligation } => "facts-incomplete",
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => "facts-incomplete",
     DownstreamProviderUnassessed { obligation } => "downstream-unassessed",
     PostureJurisdictionsUnread { obligation } => "posture-jurisdictions-unread",
     TransferOrLocationUnresolved { route, jurisdiction } => "transfer-or-location-unresolved",
@@ -319,7 +401,7 @@ fn refusal_tag(c: ProviderUseRefusal) -> String {
 fn refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
   match c {
     ProviderRouteUnclassified { route } => [],
-    ProviderRouteFactsIncomplete { route, obligation } => [obligation],
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => [obligation],
     DownstreamProviderUnassessed { obligation } => [obligation],
     PostureJurisdictionsUnread { obligation } => [obligation],
     TransferOrLocationUnresolved { route, jurisdiction } => [jurisdiction],
@@ -331,6 +413,24 @@ fn refusal_located(c: ProviderUseRefusal) -> List<DeclarationRef> {
     ProhibitedUseNotCleared { obligation } => [obligation],
     SanctionsNotCleared { obligation } => [obligation],
     ExportNotCleared { obligation } => [obligation],
+  }
+}
+
+fn refusal_consulted(c: ProviderUseRefusal) -> List<DeclarationRef> {
+  match c {
+    ProviderRouteUnclassified { route } => [],
+    ProviderRouteFactsIncomplete { route, obligation, consulted } => consulted,
+    DownstreamProviderUnassessed { obligation } => [],
+    PostureJurisdictionsUnread { obligation } => [],
+    TransferOrLocationUnresolved { route, jurisdiction } => [],
+    ProviderAccessPathUnsupported { route, operator, jurisdiction } => [],
+    PostureRevisionStale { evaluated, active } => [],
+    CustomerScopeUnsupported { cause } => [],
+    DataHandlingUnsupported { cause } => [],
+    RequiredAgreementAuthorityAbsent { accepted } => [],
+    ProhibitedUseNotCleared { obligation } => [],
+    SanctionsNotCleared { obligation } => [],
+    ExportNotCleared { obligation } => [],
   }
 }
 
@@ -362,6 +462,13 @@ fn denied_tagged(a: ProviderUseAdmission<NonEmptyStr>, tag: String) -> Bool {
   match a {
     ProviderUseAdmitted { permit } => false,
     ProviderUseDenied { decision, cause } => refusal_tag(c: cause) == tag,
+  }
+}
+
+fn admission_consulted(a: ProviderUseAdmission<NonEmptyStr>) -> List<DeclarationRef> {
+  match a {
+    ProviderUseAdmitted { permit } => [],
+    ProviderUseDenied { decision, cause } => refusal_consulted(c: cause),
   }
 }
 
@@ -409,18 +516,20 @@ test fn w_same_provider_two_regions_differ() -> Bool {
 
 // RED - unread telemetry refuses AND the refusal names the TELEMETRY obligation, not the
 // provider row. Naming the provider would keep the category right and the remedy wrong.
+// RED - unread telemetry refuses AND the refusal names the TELEMETRY obligation, not the
+// provider row. Naming the provider would keep the category right and the remedy wrong.
+// consulted ON THE REFUSAL IS EMPTY: this closure is never-looked, so the live denial must
+// tell a caller to go read something rather than to stop re-reading the same pages.
 test fn w_unread_telemetry_names_its_obligation() -> Bool {
-  denied_with(
-    a: decide(
-      route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
-      paths: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
-      downstream: no_downstream(),
-      active: posture(seed: "posture-r1"),
-      scope: scope_ordinary(),
-    ),
-    tag: "facts-incomplete",
-    located: telemetry_obligation(),
+  let a = decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")),
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
   )
+  denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
+    && count(admission_consulted(a: a)) == 0
 }
 
 // RED - an unread downstream population refuses and names ITS OWN obligation. A provider's
@@ -586,16 +695,131 @@ test fn w_wrong_agreement_refuses() -> Bool {
   )
 }
 
-// Non-vacuity for the obligation extractors, so a green above cannot come from both arms of the
-// path helpers being accidentally equal. Asserted on the OBLIGATION LISTS rather than on Bool
-// predicates, because the lists are what the decision actually consumes now - a Bool helper here
-// would be a second answer to a question the extractor already answers, and would be testing
-// something the wall does not use.
+// Non-vacuity for the unread-standing extractor, so a green above cannot come from both
+// closures being accidentally equal. Asserted on first_unread_standing, because that is
+// what path_refusals consumes.
 test fn w_closure_extractors_discriminate() -> Bool {
-  count(first_unresolved_obligation(c: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 0
-    && count(first_unresolved_obligation(c: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 1
+  count(first_unread_standing(c: closure_all_located(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 0
+    && count(first_unread_standing(c: closure_telemetry_unread(where_it_is: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")))) == 1
     && count(downstream_obligation(d: no_downstream())) == 0
     && count(downstream_obligation(d: DownstreamProvidersUnread { obligation: subprocessor_obligation() })) == 1
+}
+
+// RESEARCHED-AND-UNANSWERED IS NOT NEVER-LOOKED. Both unread closures refuse admission on the
+// same telemetry obligation; a witness that only asserted the refusal tag would green identically
+// on both. first_unread_standing is the production walk; never-looked is one standing whose
+// consulted list is empty, researched identity-joins the two Hetzner published readings on
+// the live denial, and a resolving reference to the wrong declaration fails that join.
+fn w_jurisdiction_one() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "jurisdiction_one")
+}
+
+test fn w_never_looked_unread_is_boxed_empty_consulted() -> Bool {
+  let paths = closure_telemetry_unread(where_it_is: w_jurisdiction_one())
+  count(first_unread_standing(c: paths)) == 1
+    && match paths.telemetry {
+      ProviderPathLocated { operator, jurisdiction, evidence } => false
+      ProviderPathAbsent { evidence } => false
+      ProviderPathUnread { obligation, consulted } => count(consulted) == 0
+    }
+}
+
+// THE READING ROWS ARE EXERCISED, NOT MERELY COUNTED. A count equality over hetzner_published_readings
+// greens while the locators are retargeted or the silences dropped; these folds read locator and
+// silence membership, so deleting a row, retargeting a URI, or dropping a typed silence reds.
+// The consulted decl_refs above still name the declarations; this is the half that reads the
+// values those names resolve to.
+test fn w_hetzner_published_readings_are_exercised_not_merely_counted() -> Bool {
+  count(hetzner_published_readings()) == 2
+    && count(hetzner_published_reading_locators()) == 2
+    && count(filter(
+      hetzner_published_reading_locators(),
+      l => l == ("docs.hetzner.com/general/security-and-identify/technical-and-organizational-measures/" as NonEmptyStr),
+    )) == 1
+    && count(filter(
+      hetzner_published_reading_locators(),
+      l => l == ("docs.hetzner.com/general/company-and-policy/data-protection-at-hetzner/" as NonEmptyStr),
+    )) == 1
+    && hetzner_reading_records_silence(
+      r: hetzner_technical_organizational_measures_reading,
+      silence: LogSystemCountryUnstated,
+    )
+    && hetzner_reading_records_silence(
+      r: hetzner_technical_organizational_measures_reading,
+      silence: AdministrativeAccessJurisdictionUnstated,
+    )
+    && hetzner_reading_records_silence(
+      r: hetzner_technical_organizational_measures_reading,
+      silence: FinlandOrHelsinkiUnmentioned,
+    )
+    && count(hetzner_data_protection_overview_reading.silences) == 0
+}
+
+test fn w_researched_unread_cites_the_two_hetzner_readings() -> Bool {
+  let paths = closure_telemetry_researched_unread(where_it_is: w_jurisdiction_one())
+  let a = decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: paths,
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  )
+  let consulted = admission_consulted(a: a)
+  denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
+    && count(hetzner_published_readings()) == 2
+    && count(consulted) == 2
+    && consulted_cites(consulted: consulted, expected: tom_reading_ref())
+    && consulted_cites(consulted: consulted, expected: dpo_reading_ref())
+}
+
+test fn w_resolving_wrong_consulted_reading_refuses_the_join() -> Bool {
+  let a = decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: closure_telemetry_wrong_consulted(where_it_is: w_jurisdiction_one()),
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  )
+  let consulted = admission_consulted(a: a)
+  denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
+    && count(consulted) == 1
+    && !consulted_cites(consulted: consulted, expected: tom_reading_ref())
+    && !consulted_cites(consulted: consulted, expected: dpo_reading_ref())
+}
+
+test fn w_never_looked_and_researched_unread_are_not_the_same_citations() -> Bool {
+  count(admission_consulted(a: decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: closure_telemetry_unread(where_it_is: w_jurisdiction_one()),
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  ))) == 0
+    && count(admission_consulted(a: decide(
+      route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+      paths: closure_telemetry_researched_unread(where_it_is: w_jurisdiction_one()),
+      downstream: no_downstream(),
+      active: posture(seed: "posture-r1"),
+      scope: scope_ordinary(),
+    ))) == 2
+}
+
+test fn w_later_researched_unread_does_not_fill_a_never_looked_first_path() -> Bool {
+  let paths = closure_first_unread_never_looked_later_researched(where_it_is: w_jurisdiction_one())
+  let a = decide(
+    route: route_of(region: decl_ref(module_path: "test.claim.fabric.provider_admission_witness", decl_name: "region_one")),
+    paths: paths,
+    downstream: no_downstream(),
+    active: posture(seed: "posture-r1"),
+    scope: scope_ordinary(),
+  )
+  denied_with(a: a, tag: "facts-incomplete", located: telemetry_obligation())
+    && count(admission_consulted(a: a)) == 0
+    && match paths.administrative_access {
+      ProviderPathLocated { operator, jurisdiction, evidence } => false
+      ProviderPathAbsent { evidence } => false
+      ProviderPathUnread { obligation, consulted } => count(consulted) == 2
+    }
 }
 
 // RED - the permit RECORDS the clearance evidence it gated on. The three evidences were once

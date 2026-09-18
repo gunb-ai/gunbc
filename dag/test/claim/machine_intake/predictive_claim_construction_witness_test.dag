@@ -1,7 +1,6 @@
 module test.claim.machine_intake_predictive_claim_construction_witness_test
 
 import std.types { Bool, String }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
@@ -41,14 +40,4 @@ test fn the_same_model_is_readable_through_the_public_boundary() -> Bool {
     CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
     CensusNotRunnable { cause: _ } => false
   }
-}
-
-func predictive_construction_probe() -> ProcessExit {
-  if predictive_model_cannot_be_forged_or_have_its_receipts_erased()
-    && a_started_test_cannot_be_forged_without_ordering_admission()
-    && the_internal_append_cannot_bypass_registration_admission()
-    && the_same_model_is_readable_through_the_public_boundary() {
-    return ExitSuccess
-  }
-  return exit_failure(reason: "predictive constructor boundary failed")
 }

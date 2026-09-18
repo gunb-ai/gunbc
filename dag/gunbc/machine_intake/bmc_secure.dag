@@ -1,19 +1,37 @@
 module gunbc.machine_intake_bmc_secure
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
 import std.content_hash { ContentHash }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { RedfishAccountRole }
+import extdeps.bmc.ipmi_channel {
+  IpmiChannelCensusMember,
+  IpmiChannelNumber,
+  IpmiControllerChannelCensus,
+  IpmiLanChannelMember,
+  IpmiLanIpv4Assigned,
+  IpmiLanIpv4Unassigned,
+  IpmiNonLanChannelMember,
+  IpmiPrivilegeNoAccess,
+  IpmiUserChannelAccess,
+  IpmiUserId,
+}
+import extdeps.network.ipv4 { Ipv4Address }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_phase {
   Arrival,
   BmcAccess,
   BmcSecure,
+  DevelopmentAndTest,
   IntakePhase,
+  IntakeQualificationPolicy,
+  MachineOperatingEnvironment,
   OperatorAction,
+  Production,
   QualificationPolicy,
   QualificationRefusalOwner,
+  intake_qualification_policy_digest,
 }
 import gunbc.machine_intake_receipt {
   EvidenceRef,
@@ -112,16 +130,76 @@ type CredentialRotationApplication
   | RotationNotAttempted
   | AccountManagementUnavailable { detail: NonEmptyStr }
 
+// ONE LAN PROBE, ADDRESSED TO ONE CENSUS MEMBER. The join matches when BOTH
+// channel and assigned IPv4 agree (DESIGN §5: completeness is an identity
+// join, not a count, and not a disjunction). A probe that names the member's
+// channel and a different address, or the member's address and a different
+// channel, covers no member: a rejection observed at 9.9.9.9 cannot close
+// 10.0.0.1. The old single published_probe minted BmcSecured while a second
+// LAN address still accepted; a disjunctive key would reopen that arm.
+type PublishedCredentialLanProbe {
+  channel: IpmiChannelNumber
+  address: Ipv4Address
+  outcome: CredentialProbeOutcome
+}
+
+// HOW THE PUBLISHED ACCOUNT WOULD RETURN. Firmware reset is the MegaRAC
+// residual measured on Mt. Collins unit 1: the disabled factory user remains
+// on the controller and a firmware reset restores it. Administrator re-enable
+// is the other documented restore, not a prose note.
+type PublishedCredentialRestorePath
+  = FirmwareResetRestoresPublishedAccount
+  | AdministratorReEnableRestoresPublishedAccount
+
+// A DELIBERATE BACKDOOR IS A NAMED POLICY OUTCOME, NEVER AN OPEN MACHINE.
+// Break-glass is the default: a credential we own (SecretRef, never a
+// password, never the published factory login). Keeping the published
+// factory password is a separately named choice because that password is
+// public and grants power, console, virtual media and firmware flash to
+// anyone on the BMC network.
+type RetainedCredentialKind
+  = BreakGlassAccount { secret: SecretRef }
+  | PublishedFactoryCredential
+
+// THE PUBLISHED ACCOUNT'S STANDING ON THE CONTROLLER, independent of whether
+// a LAN probe rejected. Rejected-on-LAN and deleted-from-the-user-list are
+// different facts: a disabled user still exists, and BmcSecured must say so.
+// observed_at is ordered against rotation applied_at in adjudicate_published_census
+// (PublishedCredentialAccountPrecedesRotation); a pre-rotation user-list cannot
+// label the post-rotation standing.
+// RetainedByPolicy is a third arm: it satisfies the BMC-secure conjunct
+// ONLY under DevelopmentAndTest. Production refuses it; that refusal is the
+// discriminating control for the day a machine is promoted.
+type PublishedCredentialAccountObservation
+  = PublishedCredentialRetired { evidence: EvidenceRef, observed_at: EpochMs }
+  | PublishedCredentialDisabledNotRetired {
+      restore_path: PublishedCredentialRestorePath
+      evidence: EvidenceRef
+      observed_at: EpochMs
+    }
+  | PublishedCredentialRetainedByPolicy {
+      retention: RetainedCredentialKind
+      evidence: EvidenceRef
+      observed_at: EpochMs
+    }
+
 // THE OBSERVATION, BOUND TO ITS SUBJECT AND ITS CONTROLLER. sole_constructor
 // keeps a caller from spelling the record beside the mint; it does not make the
 // caller honest about where the readbacks came from, and this module does not
-// claim it does. What it does hold is that the four readings are carried
-// together with the attempt they were taken for, so a rotation observed on one
-// unit can never be presented as another's — the same join
-// gunbc.machine_intake_access performs before the delivery solver runs.
+// claim it does. What it does hold is that the readings are carried together with
+// the attempt they were taken for, so a rotation observed on one unit can never
+// be presented as another's — the same join gunbc.machine_intake_access
+// performs before the delivery solver runs.
 //
 // previous_credential_epoch is the epoch this unit stood at BEFORE the attempt:
 // a rotation that re-writes the same generation is not a rotation.
+//
+// THE SINGLE published_probe FIELD IS GONE. It answered "did this one host
+// reject" and minted BmcSecured while a second LAN address on the same
+// controller still accepted. The published-credential readback is now a census
+// of every channel the controller reported, plus a probe list joined to that
+// census by identity. An empty census is not a one-host observation wearing a
+// new name: it refuses rather than adjudicate.
 type BmcCredentialRotationObservation sole_constructor {
   subject: MachineIntakeSubject
   endpoint: BmcControllerEndpoint
@@ -129,7 +207,12 @@ type BmcCredentialRotationObservation sole_constructor {
   bootstrap_probe: CredentialProbeOutcome
   rotation: CredentialRotationApplication
   managed_probe: CredentialProbeOutcome
-  published_probe: CredentialProbeOutcome
+  channel_census: IpmiControllerChannelCensus
+  census_evidence: EvidenceRef
+  census_observed_at: EpochMs
+  published_probes: List<PublishedCredentialLanProbe>
+  published_user: IpmiUserId
+  published_account: PublishedCredentialAccountObservation
 }
 
 fn observed_bmc_credential_rotation(
@@ -139,7 +222,12 @@ fn observed_bmc_credential_rotation(
   bootstrap_probe: CredentialProbeOutcome,
   rotation: CredentialRotationApplication,
   managed_probe: CredentialProbeOutcome,
-  published_probe: CredentialProbeOutcome,
+  channel_census: IpmiControllerChannelCensus,
+  census_evidence: EvidenceRef,
+  census_observed_at: EpochMs,
+  published_probes: List<PublishedCredentialLanProbe>,
+  published_user: IpmiUserId,
+  published_account: PublishedCredentialAccountObservation,
 ) -> BmcCredentialRotationObservation {
   BmcCredentialRotationObservation {
     subject: subject,
@@ -148,7 +236,12 @@ fn observed_bmc_credential_rotation(
     bootstrap_probe: bootstrap_probe,
     rotation: rotation,
     managed_probe: managed_probe,
-    published_probe: published_probe,
+    channel_census: channel_census,
+    census_evidence: census_evidence,
+    census_observed_at: census_observed_at,
+    published_probes: published_probes,
+    published_user: published_user,
+    published_account: published_account,
   }
 }
 
@@ -175,9 +268,22 @@ type BmcSecureRefusalCause
   | ManagedCredentialRejected
   | ManagedCredentialUnestablished { detail: NonEmptyStr }
   | ManagedCredentialProbePrecedesRotation { applied_at: EpochMs, probed_at: EpochMs }
-  | PublishedCredentialStillAccepted
+  | PublishedCredentialStillAccepted { channel: IpmiChannelNumber }
   | PublishedCredentialRetirementUnestablished { detail: NonEmptyStr }
   | PublishedCredentialProbePrecedesRotation { applied_at: EpochMs, probed_at: EpochMs }
+  | PublishedCredentialCensusPrecedesRotation { applied_at: EpochMs, observed_at: EpochMs }
+  | PublishedCredentialAccountPrecedesRotation { applied_at: EpochMs, observed_at: EpochMs }
+  | PublishedCredentialCensusNotTaken
+  | PublishedCredentialNoAddressableLanMember
+  | PublishedCredentialLanMemberUnaddressed { channel: IpmiChannelNumber }
+  | PublishedCredentialChannelAccessNotClosed { channel: IpmiChannelNumber }
+  | PublishedCredentialUserAccessUnestablished { channel: IpmiChannelNumber }
+  | PublishedCredentialUserAccessDuplicate { channel: IpmiChannelNumber }
+  | PublishedCredentialCensusMemberUnprobed { channel: IpmiChannelNumber }
+  | PublishedCredentialProbeDuplicate { channel: IpmiChannelNumber }
+  | PublishedCredentialProbeUnmatched { channel: IpmiChannelNumber }
+  | PublishedCredentialRetainedNotAdmittedForProduction
+  | PublishedCredentialNotRetained { channel: IpmiChannelNumber }
 
 // NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
 // factory credential is an access state -> PartsHold, not ReturnWindow, absent
@@ -198,9 +304,22 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     ManagedCredentialRejected => OperatorAction
     ManagedCredentialUnestablished { detail: _ } => BmcAccess
     ManagedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => QualificationPolicy
-    PublishedCredentialStillAccepted => OperatorAction
+    PublishedCredentialStillAccepted { channel: _ } => OperatorAction
     PublishedCredentialRetirementUnestablished { detail: _ } => BmcAccess
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => QualificationPolicy
+    PublishedCredentialCensusPrecedesRotation { applied_at: _, observed_at: _ } => QualificationPolicy
+    PublishedCredentialAccountPrecedesRotation { applied_at: _, observed_at: _ } => QualificationPolicy
+    PublishedCredentialCensusNotTaken => BmcAccess
+    PublishedCredentialNoAddressableLanMember => BmcAccess
+    PublishedCredentialLanMemberUnaddressed { channel: _ } => BmcAccess
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => OperatorAction
+    PublishedCredentialUserAccessUnestablished { channel: _ } => BmcAccess
+    PublishedCredentialUserAccessDuplicate { channel: _ } => QualificationPolicy
+    PublishedCredentialCensusMemberUnprobed { channel: _ } => BmcAccess
+    PublishedCredentialProbeDuplicate { channel: _ } => QualificationPolicy
+    PublishedCredentialProbeUnmatched { channel: _ } => QualificationPolicy
+    PublishedCredentialRetainedNotAdmittedForProduction => QualificationPolicy
+    PublishedCredentialNotRetained { channel: _ } => OperatorAction
   }
 }
 
@@ -215,35 +334,64 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     ManagedCredentialRejected => "the rotated managed credential does not authenticate"
     ManagedCredentialUnestablished { detail: _ } => "the rotated managed credential readback did not establish a credential state"
     ManagedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => "the managed credential readback precedes the rotation it claims to verify"
-    PublishedCredentialStillAccepted => "the published factory credential still authenticates after rotation"
+    PublishedCredentialStillAccepted { channel: _ } => "the published factory credential still authenticates after rotation on a census LAN member"
     PublishedCredentialRetirementUnestablished { detail: _ } => "the published factory credential readback did not establish whether it still authenticates"
     PublishedCredentialProbePrecedesRotation { applied_at: _, probed_at: _ } => "the published credential readback precedes the rotation it claims to verify"
+    PublishedCredentialCensusPrecedesRotation { applied_at: _, observed_at: _ } => "the channel census was taken before the rotation it claims to verify"
+    PublishedCredentialAccountPrecedesRotation { applied_at: _, observed_at: _ } => "the published-account user-list reading precedes the rotation it claims to verify"
+    PublishedCredentialCensusNotTaken => "no controller channel census was taken; a single-address probe cannot adjudicate retirement"
+    PublishedCredentialNoAddressableLanMember => "the channel census contained no addressable LAN member to probe"
+    PublishedCredentialLanMemberUnaddressed { channel: _ } => "a LAN census member has no usable address and the published account still has access on that channel"
+    PublishedCredentialChannelAccessNotClosed { channel: _ } => "the published account still has channel access (not NO ACCESS) on a census member"
+    PublishedCredentialUserAccessUnestablished { channel: _ } => "Get User Access for the published user was not present on a census member"
+    PublishedCredentialUserAccessDuplicate { channel: _ } => "more than one Get User Access row matched the published user on the same census member"
+    PublishedCredentialCensusMemberUnprobed { channel: _ } => "a census LAN member has no matching published-credential probe"
+    PublishedCredentialProbeDuplicate { channel: _ } => "more than one published-credential probe matched the same census LAN member"
+    PublishedCredentialProbeUnmatched { channel: _ } => "a published-credential probe matched no census LAN member"
+    PublishedCredentialRetainedNotAdmittedForProduction => "a retained BMC backdoor is not admitted for production; a fresh census pass that retires or disables the published credential is required"
+    PublishedCredentialNotRetained { channel: _ } => "the declared factory-credential retention was not observed on a census LAN member"
   }
 }
 
 // The satisfied terminal keeps the reference and the readings it rests on, so a
 // later reader can say WHICH rotation secured the unit and WHERE its evidence
 // is. The password is not among them, structurally.
+//
+// published_credential SITS ON BmcSecured, NOT AS A REFUSAL AND NOT AS A
+// SECOND SATISFIED COPRODUCT ARM. DisabledNotRetired is a real secured
+// outcome: every addressable LAN member rejected the published credential, so
+// the phase conjunction holds now. The residual is that a typed restore path
+// would bring the account back. A third BmcSecureOutcome arm that also mapped
+// to ReceiptSatisfied would be two names for one satisfied standing. A refusal
+// would file a currently-closed published login as an unsatisfied phase and
+// block fleet admission for a residual that is not an open session. The
+// residual travels with the standing; it does not reopen the door.
+// latest_admitted_probe_at is the max observed_at among admitted LAN probes,
+// including accepted probes on the factory-retention path — not census
+// order, and not a claim about when the door closed.
 type BmcSecureOutcome
   = BmcSecured {
       endpoint: BmcControllerEndpoint,
       reference: ManagedCredentialReference,
       evidence: List<EvidenceRef>,
-      secured_at: EpochMs,
+      latest_admitted_probe_at: EpochMs,
+      published_credential: PublishedCredentialAccountObservation,
     }
   | BmcSecureRefused { cause: BmcSecureRefusalCause }
 
-// THE STANDING CARRIES THE SUBJECT IT WAS ADJUDICATED FOR, AND THE JOIN IS
-// SEALED. An earlier cut returned the outcome alone and had
-// bmc_secure_phase_receipt take the subject as a separate argument, so a
-// standing legitimately derived for host A could be handed to the receipt
-// function beside host B's subject and the receipt read as B's evidence that B
-// had been rotated. Nothing in the types forbade the pairing, and the ledger
-// spine does not repair it: validate_intake_receipt_ledger checks that the
-// receipts in a ledger AGREE on a subject, and a replayed receipt already bears
-// the replacement subject before validation sees it. That is the escape hatch
-// DESIGN §5 rejects outright — the refusal fold is bypassed not by defeating it
-// but by re-addressing its answer.
+// THE STANDING CARRIES THE SUBJECT AND THE QUALIFICATION POLICY IT WAS
+// ADJUDICATED UNDER, AND BOTH JOINS ARE SEALED. An earlier cut returned the
+// outcome alone and had bmc_secure_phase_receipt take the subject as a
+// separate argument, so a standing legitimately derived for host A could be
+// handed to the receipt function beside host B's subject. The same hatch
+// existed for policy: derive wrote DevelopmentAndTest and the receipt took a
+// second Production policy, restamping the digest. The receipt now reads
+// subject and policy off the standing; there is no parameter left to swap.
+// Promotion is a fresh derive_bmc_secure under Production, which refuses
+// RetainedByPolicy. There is no observed environment on the unit; the policy
+// is the declared qualification (FleetAdmissionReceipt already binds its
+// digest). A caller can still declare DevelopmentAndTest — that is the policy
+// fact, not a second knob beside the receipt.
 //
 // So the subject and the outcome are ONE record and the record is
 // sole_constructor: derive_bmc_secure is its only mint, and the receipt
@@ -272,6 +420,7 @@ type BmcSecureOutcome
 // the construction and not the type's usability.
 type BmcSecureStanding sole_constructor {
   subject: MachineIntakeSubject
+  policy: IntakeQualificationPolicy
   outcome: BmcSecureOutcome
 }
 
@@ -279,43 +428,522 @@ fn bmc_secure_evidence(
   bootstrap: CredentialProbeOutcome,
   rotation_evidence: EvidenceRef,
   managed: EvidenceRef,
-  published: EvidenceRef,
+  census_evidence: EvidenceRef,
+  published_probe_evidence: List<EvidenceRef>,
+  account_evidence: EvidenceRef,
 ) -> List<EvidenceRef> {
   let head = match credential_probe_evidence(outcome: bootstrap) {
     Present { value: e } => [e]
     Absent => []
   }
-  concat(head, [rotation_evidence, managed, published])
+  concat(concat(concat(head, [rotation_evidence, managed, census_evidence]), published_probe_evidence), [account_evidence])
 }
 
-// THE PUBLISHED-CREDENTIAL READBACK, ADJUDICATED LAST AND ADJUDICATED WHOLE.
-// Rejected is the only arm that may reach BmcSecured, and only when it was read
-// after the rotation. Accepted is the design doc's discriminating control.
-// Unestablished refuses rather than widening: "we could not tell" and "it is
-// closed" are different facts, and only one of them is what the phase promises.
+fn published_account_evidence(account: PublishedCredentialAccountObservation) -> EvidenceRef {
+  match account {
+    PublishedCredentialRetired { evidence: e, observed_at: _ } => e
+    PublishedCredentialDisabledNotRetired { restore_path: _, evidence: e, observed_at: _ } => e
+    PublishedCredentialRetainedByPolicy { retention: _, evidence: e, observed_at: _ } => e
+  }
+}
+
+fn published_account_observed_at(account: PublishedCredentialAccountObservation) -> EpochMs {
+  match account {
+    PublishedCredentialRetired { evidence: _, observed_at: at } => at
+    PublishedCredentialDisabledNotRetired { restore_path: _, evidence: _, observed_at: at } => at
+    PublishedCredentialRetainedByPolicy { retention: _, evidence: _, observed_at: at } => at
+  }
+}
+
+fn published_account_requires_published_closed(account: PublishedCredentialAccountObservation) -> Bool {
+  match account {
+    PublishedCredentialRetired { evidence: _, observed_at: _ } => true
+    PublishedCredentialDisabledNotRetired { restore_path: _, evidence: _, observed_at: _ } => true
+    PublishedCredentialRetainedByPolicy { retention: k, evidence: _, observed_at: _ } =>
+      match k {
+        BreakGlassAccount { secret: _ } => true
+        PublishedFactoryCredential => false
+      }
+  }
+}
+
+// Join identity is (channel, address). Packed as one Int so the census fold looks up
+// rather than scanning probes per member (DESIGN §6: a quadratic fold is always fixed).
+fn published_lan_identity_key(channel: IpmiChannelNumber, address: Ipv4Address) -> Int {
+  ((channel as Int) * 4294967296)
+    + ((((address.octet1 as Int) * 16777216) + ((address.octet2 as Int) * 65536))
+      + ((address.octet3 as Int) * 256) + (address.octet4 as Int))
+}
+
+type PublishedProbeSlot
+  = OneProbe { probe: PublishedCredentialLanProbe }
+  | SeveralProbes
+
+fn insert_published_probe_slot(
+  acc: Map<Int, PublishedProbeSlot>,
+  p: PublishedCredentialLanProbe,
+) -> Map<Int, PublishedProbeSlot> {
+  let key = published_lan_identity_key(channel: p.channel, address: p.address)
+  match map_get(acc, key) {
+    Absent => map_insert(acc, key, OneProbe { probe: p })
+    Present { value: slot } =>
+      match slot {
+        OneProbe { probe: _ } => map_insert(acc, key, SeveralProbes)
+        SeveralProbes => acc
+      }
+  }
+}
+
+fn index_published_probes(probes: List<PublishedCredentialLanProbe>) -> Map<Int, PublishedProbeSlot> {
+  fold(probes, init: empty_map(), f: (acc, p) => insert_published_probe_slot(acc: acc, p: p))
+}
+
+fn bump_assigned_lan_identity(
+  acc: Map<Int, Int>,
+  channel: IpmiChannelNumber,
+  address: Ipv4Address,
+) -> Map<Int, Int> {
+  let key = published_lan_identity_key(channel: channel, address: address)
+  match map_get(acc, key) {
+    Absent => map_insert(acc, key, 1)
+    Present { value: n } => map_insert(acc, key, n + 1)
+  }
+}
+
+fn index_assigned_lan_identities(members: List<IpmiChannelCensusMember>) -> Map<Int, Int> {
+  fold(
+    members,
+    init: empty_map(),
+    f: (acc, m) =>
+      match m {
+        IpmiNonLanChannelMember { channel: _, medium: _ } => acc
+        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg } =>
+          match cfg {
+            IpmiLanIpv4Unassigned => acc
+            IpmiLanIpv4Assigned { address: a } => bump_assigned_lan_identity(acc: acc, channel: ch, address: a)
+          }
+      },
+  )
+}
+
+type CensusJoinProgress
+  = CensusJoinOpen { evidence: List<EvidenceRef>, latest_admitted_probe_at: EpochMs?, saw_addressable_lan: Bool }
+  | CensusJoinClosed { cause: BmcSecureRefusalCause }
+
+// ONE SOURCE for whether an assigned-LAN probe admits or refuses. A later
+// re-match of probe.outcome that closed Accepted/Unestablished independently
+// made the RED-1 mutation receipt void (review 65033): changing this function's
+// Accepted arm to none still closed in the caller with the same cause.
+type PublishedProbeAdjudication
+  = PublishedProbeRefused { cause: BmcSecureRefusalCause }
+  | PublishedProbeAdmitted { evidence: EvidenceRef, observed_at: EpochMs }
+
 fn adjudicate_published_probe(
+  probe: PublishedCredentialLanProbe,
+  channel: IpmiChannelNumber,
+  applied_at: EpochMs,
+  require_published_closed: Bool,
+) -> PublishedProbeAdjudication {
+  match probe.outcome {
+    CredentialProbeUnestablished { detail: d } =>
+      PublishedProbeRefused { cause: PublishedCredentialRetirementUnestablished { detail: d } }
+    CredentialAccepted { evidence: e, observed_at: at } =>
+      if require_published_closed {
+        PublishedProbeRefused { cause: PublishedCredentialStillAccepted { channel: channel } }
+      } else if at < applied_at {
+        PublishedProbeRefused { cause: PublishedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
+      } else {
+        PublishedProbeAdmitted { evidence: e, observed_at: at }
+      }
+    CredentialRejected { evidence: e, observed_at: at } =>
+      if require_published_closed {
+        if at < applied_at {
+          PublishedProbeRefused { cause: PublishedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
+        } else {
+          PublishedProbeAdmitted { evidence: e, observed_at: at }
+        }
+      } else {
+        PublishedProbeRefused { cause: PublishedCredentialNotRetained { channel: channel } }
+      }
+  }
+}
+
+type LaterAdmittedProbeTime
+  = TakePrevious
+  | TakeObserved
+
+fn later_admitted_probe_time_choice(prev_i: Int, observed_i: Int) -> LaterAdmittedProbeTime {
+  if prev_i < observed_i {
+    TakeObserved
+  } else {
+    TakePrevious
+  }
+}
+
+fn later_admitted_probe_at(previous: EpochMs?, observed_at: EpochMs) -> EpochMs {
+  match previous {
+    Absent => observed_at
+    Present { value: prev } =>
+      match later_admitted_probe_time_choice(prev_i: prev as Int, observed_i: observed_at as Int) {
+        TakePrevious => prev
+        TakeObserved => observed_at
+      }
+  }
+}
+
+fn join_open_assigned_lan(
+  ev: List<EvidenceRef>,
+  previous: EpochMs?,
+  channel: IpmiChannelNumber,
+  address: Ipv4Address,
+  probe_index: Map<Int, PublishedProbeSlot>,
+  applied_at: EpochMs,
+  require_published_closed: Bool,
+) -> CensusJoinProgress {
+  match map_get(probe_index, published_lan_identity_key(channel: channel, address: address)) {
+    Absent => CensusJoinClosed { cause: PublishedCredentialCensusMemberUnprobed { channel: channel } }
+    Present { value: slot } =>
+      match slot {
+        SeveralProbes => CensusJoinClosed { cause: PublishedCredentialProbeDuplicate { channel: channel } }
+        OneProbe { probe: probe } =>
+          match adjudicate_published_probe(probe: probe, channel: channel, applied_at: applied_at, require_published_closed: require_published_closed) {
+            PublishedProbeRefused { cause: c } => CensusJoinClosed { cause: c }
+            PublishedProbeAdmitted { evidence: pe, observed_at: at } =>
+              CensusJoinOpen {
+                evidence: concat(ev, [pe]),
+                latest_admitted_probe_at: Present { value: later_admitted_probe_at(previous: previous, observed_at: at) },
+                saw_addressable_lan: true,
+              }
+          }
+      }
+  }
+}
+
+fn join_assigned_lan_member(
+  progress: CensusJoinProgress,
+  channel: IpmiChannelNumber,
+  address: Ipv4Address,
+  probe_index: Map<Int, PublishedProbeSlot>,
+  applied_at: EpochMs,
+  require_published_closed: Bool,
+) -> CensusJoinProgress {
+  match progress {
+    CensusJoinClosed { cause: c } => CensusJoinClosed { cause: c }
+    CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: _ } =>
+      join_open_assigned_lan(
+        ev: ev,
+        previous: latest,
+        channel: channel,
+        address: address,
+        probe_index: probe_index,
+        applied_at: applied_at,
+        require_published_closed: require_published_closed,
+      )
+  }
+}
+
+fn published_user_access_key(channel: IpmiChannelNumber, user: IpmiUserId) -> Int {
+  ((channel as Int) * 64) + (user as Int)
+}
+
+type PublishedUserAccessSlot
+  = OneUserAccess { access: IpmiUserChannelAccess }
+  | SeveralUserAccess
+
+fn insert_published_user_access_slot(
+  acc: Map<Int, PublishedUserAccessSlot>,
+  row: IpmiUserChannelAccess,
+) -> Map<Int, PublishedUserAccessSlot> {
+  let key = published_user_access_key(channel: row.channel, user: row.user)
+  match map_get(acc, key) {
+    Absent => map_insert(acc, key, OneUserAccess { access: row })
+    Present { value: slot } =>
+      match slot {
+        OneUserAccess { access: _ } => map_insert(acc, key, SeveralUserAccess)
+        SeveralUserAccess => acc
+      }
+  }
+}
+
+fn index_published_user_access(rows: List<IpmiUserChannelAccess>) -> Map<Int, PublishedUserAccessSlot> {
+  fold(rows, init: empty_map(), f: (acc, row) => insert_published_user_access_slot(acc: acc, row: row))
+}
+
+fn published_user_privilege_on_channel(
+  access_index: Map<Int, PublishedUserAccessSlot>,
+  channel: IpmiChannelNumber,
+  published_user: IpmiUserId,
+) -> BmcSecureRefusalCause? {
+  match map_get(access_index, published_user_access_key(channel: channel, user: published_user)) {
+    Absent => Present { value: PublishedCredentialUserAccessUnestablished { channel: channel } }
+    Present { value: slot } =>
+      match slot {
+        SeveralUserAccess => Present { value: PublishedCredentialUserAccessDuplicate { channel: channel } }
+        OneUserAccess { access: row } =>
+          if row.privilege == IpmiPrivilegeNoAccess {
+            none
+          } else {
+            Present { value: PublishedCredentialChannelAccessNotClosed { channel: channel } }
+          }
+      }
+  }
+}
+
+fn unaddressed_lan_published_access_cause(
+  access_index: Map<Int, PublishedUserAccessSlot>,
+  channel: IpmiChannelNumber,
+  published_user: IpmiUserId,
+) -> BmcSecureRefusalCause? {
+  match map_get(access_index, published_user_access_key(channel: channel, user: published_user)) {
+    Absent => Present { value: PublishedCredentialUserAccessUnestablished { channel: channel } }
+    Present { value: slot } =>
+      match slot {
+        SeveralUserAccess => Present { value: PublishedCredentialUserAccessDuplicate { channel: channel } }
+        OneUserAccess { access: row } =>
+          if row.privilege == IpmiPrivilegeNoAccess {
+            none
+          } else {
+            Present { value: PublishedCredentialLanMemberUnaddressed { channel: channel } }
+          }
+      }
+  }
+}
+
+fn join_census_member(
+  progress: CensusJoinProgress,
+  member: IpmiChannelCensusMember,
+  probe_index: Map<Int, PublishedProbeSlot>,
+  access_index: Map<Int, PublishedUserAccessSlot>,
+  published_user: IpmiUserId,
+  applied_at: EpochMs,
+  require_published_closed: Bool,
+) -> CensusJoinProgress {
+  match progress {
+    CensusJoinClosed { cause: c } => CensusJoinClosed { cause: c }
+    CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw } =>
+      match member {
+        IpmiNonLanChannelMember { channel: ch, medium: _ } =>
+          match published_user_privilege_on_channel(access_index: access_index, channel: ch, published_user: published_user) {
+            Present { value: c } => CensusJoinClosed { cause: c }
+            Absent => CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
+          }
+        IpmiLanChannelMember { channel: ch, medium: _, ipv4: cfg } =>
+          match cfg {
+            IpmiLanIpv4Unassigned =>
+              match unaddressed_lan_published_access_cause(access_index: access_index, channel: ch, published_user: published_user) {
+                Present { value: c } => CensusJoinClosed { cause: c }
+                Absent => CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: saw }
+              }
+            IpmiLanIpv4Assigned { address: a } =>
+              join_assigned_lan_member(
+                progress: CensusJoinOpen { evidence: ev, latest_admitted_probe_at: latest, saw_addressable_lan: true },
+                channel: ch,
+                address: a,
+                probe_index: probe_index,
+                applied_at: applied_at,
+                require_published_closed: require_published_closed,
+              )
+          }
+      }
+  }
+}
+
+fn probe_unmatched_or_duplicate(
+  probe: PublishedCredentialLanProbe,
+  assigned_index: Map<Int, Int>,
+) -> BmcSecureRefusalCause? {
+  match map_get(assigned_index, published_lan_identity_key(channel: probe.channel, address: probe.address)) {
+    Absent => Present { value: PublishedCredentialProbeUnmatched { channel: probe.channel } }
+    Present { value: n } =>
+      if n > 1 {
+        Present { value: PublishedCredentialProbeDuplicate { channel: probe.channel } }
+      } else {
+        none
+      }
+  }
+}
+
+fn unmatched_published_probe_cause(
+  probes: List<PublishedCredentialLanProbe>,
+  assigned_index: Map<Int, Int>,
+) -> BmcSecureRefusalCause? {
+  fold(
+    probes,
+    init: none,
+    f: (acc, p) =>
+      match acc {
+        Present { value: c } => Present { value: c }
+        Absent => probe_unmatched_or_duplicate(probe: p, assigned_index: assigned_index)
+      },
+  )
+}
+
+// THE PUBLISHED-CREDENTIAL READBACK IS A FOLD OVER THE CONTROLLER CHANNEL
+// CENSUS. Assigned LAN members still require an identity-joined login probe.
+// Unaddressed LAN (0.0.0.0) and non-LAN members join on Get User Access for
+// observation.published_user: NO ACCESS closes the member; any other privilege
+// refuses; a missing or duplicated (channel, user) row refuses. A NO ACCESS
+// row for a different user does not close this one (review 65645).
+// That is the unit-1 fact: channel 7 is 802.3 with a permanent unspecified
+// address, and the rotation set admin to NO ACCESS on ch2, ch7 and ch8.
+// Treating unaddressed as unconditionally open would refuse that controller
+// forever (DESIGN §4d over-prohibition). An unaddressed channel that still
+// holds ADMINISTRATOR is the exposure the moment it gets an address.
+// A census taken before rotation is not the universe that join is complete
+// against: a channel the rotation enabled would be absent from the roster.
+// adjudicate_published_census_join refuses CensusPrecedesRotation once, before
+// the fold, so assigned-LAN members cannot skip the ordering the unaddressed
+// and non-LAN arms used to carry twice.
+//
+// RUNG: mechanically preventable. Ceiling is enrolled one-arm mutants on the
+// merge path (DESIGN §4b(4)): a deletion of a guarding arm that reddens exactly
+// the named witness. Next-rung trigger: that mutation capability for
+// test.claim.machine_intake_bmc_secure_witness_test on required CI, not a
+// scratch-tree one-shot. Named-cause witnesses in that module are the enrolled
+// evidence this PR keeps executing. Do not cite an un-enrolled local run.
+fn adjudicate_published_census_join(
   endpoint: BmcControllerEndpoint,
   reference: ManagedCredentialReference,
   applied_at: EpochMs,
   rotation_evidence: EvidenceRef,
   bootstrap: CredentialProbeOutcome,
   managed_evidence: EvidenceRef,
-  published: CredentialProbeOutcome,
+  census: IpmiControllerChannelCensus,
+  census_evidence: EvidenceRef,
+  census_observed_at: EpochMs,
+  probes: List<PublishedCredentialLanProbe>,
+  published_user: IpmiUserId,
+  published_account: PublishedCredentialAccountObservation,
 ) -> BmcSecureOutcome {
-  match published {
-    CredentialAccepted { evidence: _, observed_at: _ } => BmcSecureRefused { cause: PublishedCredentialStillAccepted }
-    CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: d } }
-    CredentialRejected { evidence: pe, observed_at: at } =>
-      if at < applied_at {
-        BmcSecureRefused { cause: PublishedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
-      } else {
-        BmcSecured {
-          endpoint: endpoint,
-          reference: reference,
-          evidence: bmc_secure_evidence(bootstrap: bootstrap, rotation_evidence: rotation_evidence, managed: managed_evidence, published: pe),
-          secured_at: at,
+  if list_length(items: census.members) == 0 {
+    BmcSecureRefused { cause: PublishedCredentialCensusNotTaken }
+  } else if census_observed_at < applied_at {
+    BmcSecureRefused {
+      cause: PublishedCredentialCensusPrecedesRotation { applied_at: applied_at, observed_at: census_observed_at },
+    }
+  } else {
+    let require_closed = published_account_requires_published_closed(account: published_account)
+    let probe_index = index_published_probes(probes: probes)
+    let assigned_index = index_assigned_lan_identities(members: census.members)
+    let access_index = index_published_user_access(rows: census.user_access)
+    let joined = fold(
+      census.members,
+      init: CensusJoinOpen { evidence: [], latest_admitted_probe_at: none, saw_addressable_lan: false },
+      f: (acc, m) => join_census_member(
+        progress: acc,
+        member: m,
+        probe_index: probe_index,
+        access_index: access_index,
+        published_user: published_user,
+        applied_at: applied_at,
+        require_published_closed: require_closed,
+      ),
+    )
+    match joined {
+      CensusJoinClosed { cause: c } => BmcSecureRefused { cause: c }
+      CensusJoinOpen { evidence: pev, latest_admitted_probe_at: latest, saw_addressable_lan: saw } =>
+        if saw == false {
+          BmcSecureRefused { cause: PublishedCredentialNoAddressableLanMember }
+        } else {
+          match unmatched_published_probe_cause(probes: probes, assigned_index: assigned_index) {
+            Present { value: c } => BmcSecureRefused { cause: c }
+            Absent =>
+              match latest {
+                Absent => BmcSecureRefused { cause: PublishedCredentialNoAddressableLanMember }
+                Present { value: at } =>
+                  BmcSecured {
+                    endpoint: endpoint,
+                    reference: reference,
+                    evidence: bmc_secure_evidence(
+                      bootstrap: bootstrap,
+                      rotation_evidence: rotation_evidence,
+                      managed: managed_evidence,
+                      census_evidence: census_evidence,
+                      published_probe_evidence: pev,
+                      account_evidence: published_account_evidence(account: published_account),
+                    ),
+                    latest_admitted_probe_at: at,
+                    published_credential: published_account,
+                  }
+              }
+          }
         }
+    }
+  }
+}
+
+fn adjudicate_published_census(
+  endpoint: BmcControllerEndpoint,
+  reference: ManagedCredentialReference,
+  applied_at: EpochMs,
+  rotation_evidence: EvidenceRef,
+  bootstrap: CredentialProbeOutcome,
+  managed_evidence: EvidenceRef,
+  census: IpmiControllerChannelCensus,
+  census_evidence: EvidenceRef,
+  census_observed_at: EpochMs,
+  probes: List<PublishedCredentialLanProbe>,
+  published_user: IpmiUserId,
+  published_account: PublishedCredentialAccountObservation,
+  environment: MachineOperatingEnvironment,
+) -> BmcSecureOutcome {
+  let account_at = published_account_observed_at(account: published_account)
+  if account_at < applied_at {
+    BmcSecureRefused {
+      cause: PublishedCredentialAccountPrecedesRotation { applied_at: applied_at, observed_at: account_at },
+    }
+  } else {
+    match published_account {
+    PublishedCredentialRetainedByPolicy { retention: _, evidence: _, observed_at: _ } =>
+      match environment {
+        Production => BmcSecureRefused { cause: PublishedCredentialRetainedNotAdmittedForProduction }
+        DevelopmentAndTest =>
+          adjudicate_published_census_join(
+            endpoint: endpoint,
+            reference: reference,
+            applied_at: applied_at,
+            rotation_evidence: rotation_evidence,
+            bootstrap: bootstrap,
+            managed_evidence: managed_evidence,
+            census: census,
+            census_evidence: census_evidence,
+            census_observed_at: census_observed_at,
+            probes: probes,
+            published_user: published_user,
+            published_account: published_account,
+          )
       }
+    PublishedCredentialRetired { evidence: _, observed_at: _ } =>
+      adjudicate_published_census_join(
+        endpoint: endpoint,
+        reference: reference,
+        applied_at: applied_at,
+        rotation_evidence: rotation_evidence,
+        bootstrap: bootstrap,
+        managed_evidence: managed_evidence,
+        census: census,
+        census_evidence: census_evidence,
+        census_observed_at: census_observed_at,
+        probes: probes,
+        published_user: published_user,
+        published_account: published_account,
+      )
+    PublishedCredentialDisabledNotRetired { restore_path: _, evidence: _, observed_at: _ } =>
+      adjudicate_published_census_join(
+        endpoint: endpoint,
+        reference: reference,
+        applied_at: applied_at,
+        rotation_evidence: rotation_evidence,
+        bootstrap: bootstrap,
+        managed_evidence: managed_evidence,
+        census: census,
+        census_evidence: census_evidence,
+        census_observed_at: census_observed_at,
+        probes: probes,
+        published_user: published_user,
+        published_account: published_account,
+      )
+  }
   }
 }
 
@@ -323,13 +951,12 @@ fn adjudicate_published_probe(
 // that created it. A pre-rotation acceptance would be a reading of whatever
 // account already answered to that name.
 fn adjudicate_managed_probe(
-  endpoint: BmcControllerEndpoint,
+  observation: BmcCredentialRotationObservation,
   reference: ManagedCredentialReference,
   applied_at: EpochMs,
   rotation_evidence: EvidenceRef,
-  bootstrap: CredentialProbeOutcome,
   managed: CredentialProbeOutcome,
-  published: CredentialProbeOutcome,
+  environment: MachineOperatingEnvironment,
 ) -> BmcSecureOutcome {
   match managed {
     CredentialRejected { evidence: _, observed_at: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
@@ -338,27 +965,31 @@ fn adjudicate_managed_probe(
       if at < applied_at {
         BmcSecureRefused { cause: ManagedCredentialProbePrecedesRotation { applied_at: applied_at, probed_at: at } }
       } else {
-        adjudicate_published_probe(
-          endpoint: endpoint,
+        adjudicate_published_census(
+          endpoint: observation.endpoint,
           reference: reference,
           applied_at: applied_at,
           rotation_evidence: rotation_evidence,
-          bootstrap: bootstrap,
+          bootstrap: observation.bootstrap_probe,
           managed_evidence: me,
-          published: published,
+          census: observation.channel_census,
+          census_evidence: observation.census_evidence,
+          census_observed_at: observation.census_observed_at,
+          probes: observation.published_probes,
+          published_user: observation.published_user,
+          published_account: observation.published_account,
+          environment: environment,
         )
       }
   }
 }
 
-// A rotation that leaves the unit on the generation it already had is not a
-// rotation, however successfully it was applied: re-writing the same epoch is
-// how a replayed run reports progress it did not make.
 fn adjudicate_rotation(
   observation: BmcCredentialRotationObservation,
   reference: ManagedCredentialReference,
   applied_at: EpochMs,
   rotation_evidence: EvidenceRef,
+  environment: MachineOperatingEnvironment,
 ) -> BmcSecureOutcome {
   if (reference.credential_epoch <= observation.previous_credential_epoch) {
     BmcSecureRefused {
@@ -369,24 +1000,20 @@ fn adjudicate_rotation(
     }
   } else {
     adjudicate_managed_probe(
-      endpoint: observation.endpoint,
+      observation: observation,
       reference: reference,
       applied_at: applied_at,
       rotation_evidence: rotation_evidence,
-      bootstrap: observation.bootstrap_probe,
       managed: observation.managed_probe,
-      published: observation.published_probe,
+      environment: environment,
     )
   }
 }
 
-// THE BOOTSTRAP READING IS AN ACCESS STATE, NEVER A VERDICT ON THE UNIT
-// (design §6). Accepted is the ordinary arrival case and proceeds. Rejected
-// means this controller is already off its published default and the attempt
-// needs the credential a previous rotation minted — a PartsHold owned by
-// BmcAccess, not a defect and not a silent skip: proceeding from here would
-// certify a retirement this attempt never performed.
-fn adjudicate_bootstrap(observation: BmcCredentialRotationObservation) -> BmcSecureOutcome {
+fn adjudicate_bootstrap(
+  observation: BmcCredentialRotationObservation,
+  environment: MachineOperatingEnvironment,
+) -> BmcSecureOutcome {
   match observation.bootstrap_probe {
     CredentialProbeUnestablished { detail: d } => BmcSecureRefused { cause: CredentialStateUnknown { detail: d } }
     CredentialRejected { evidence: _, observed_at: _ } => BmcSecureRefused { cause: PreviouslyRotatedCredentialRequired }
@@ -395,33 +1022,35 @@ fn adjudicate_bootstrap(observation: BmcCredentialRotationObservation) -> BmcSec
         RotationNotAttempted => BmcSecureRefused { cause: CredentialRotationNotApplied }
         AccountManagementUnavailable { detail: d } => BmcSecureRefused { cause: AccountManagementUnreachable { detail: d } }
         RotationApplied { reference: r, applied_at: at, evidence: e } =>
-          adjudicate_rotation(observation: observation, reference: r, applied_at: at, rotation_evidence: e)
+          adjudicate_rotation(
+            observation: observation,
+            reference: r,
+            applied_at: at,
+            rotation_evidence: e,
+            environment: environment,
+          )
       }
   }
 }
 
-// THE PRODUCER. Attempt binding first — a rotation observed for another
-// attempt is not evidence about this one however well its fields fit — then
-// the bootstrap access state, the rotation itself, the epoch, and the two
-// post-rotation readbacks in that order, so each refusal names the first rule
-// the observation breaks.
 fn derive_bmc_secure(
   subject: MachineIntakeSubject,
   observation: BmcCredentialRotationObservation,
+  policy: IntakeQualificationPolicy,
 ) -> BmcSecureStanding {
   let outcome = if same_intake_subject(left: subject, right: observation.subject) == false {
     BmcSecureRefused { cause: RotationObservationForOtherAttempt { expected: subject, found: observation.subject } }
   } else {
-    adjudicate_bootstrap(observation: observation)
+    adjudicate_bootstrap(observation: observation, environment: policy.environment)
   }
-  BmcSecureStanding { subject: subject, outcome: outcome }
+  BmcSecureStanding { subject: subject, policy: policy, outcome: outcome }
 }
 
 data bmc_secure_phase: IntakePhase = Arrival { phase: BmcSecure }
 
 fn bmc_secure_receipt_result(standing: BmcSecureStanding) -> IntakeReceiptResult {
   match standing.outcome {
-    BmcSecured { endpoint: _, reference: _, evidence: _, secured_at: _ } => ReceiptSatisfied
+    BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => ReceiptSatisfied
     BmcSecureRefused { cause: c } =>
       ReceiptRefused { owner: bmc_secure_refusal_owner(cause: c), cause: bmc_secure_refusal_label(cause: c) }
   }
@@ -429,25 +1058,14 @@ fn bmc_secure_receipt_result(standing: BmcSecureStanding) -> IntakeReceiptResult
 
 fn bmc_secure_receipt_observations(standing: BmcSecureStanding) -> List<EvidenceRef> {
   match standing.outcome {
-    BmcSecured { endpoint: _, reference: _, evidence: e, secured_at: _ } => e
+    BmcSecured { endpoint: _, reference: _, evidence: e, latest_admitted_probe_at: _, published_credential: _ } => e
     BmcSecureRefused { cause: _ } => []
   }
 }
 
-// THE ROUTE TO THE CONSUMER. The standing becomes one ordinary phase receipt on
-// the spine every other phase writes, so gunbc.machine_intake_disposition reads
-// a refused rotation exactly as it reads a refused memory test — and a machine
-// whose published credential still works cannot reach FleetAdmissible, because
-// derive_fleet_admission requires a satisfied receipt for this phase. There is
-// deliberately no second projection: a credential-specific admission path
-// beside the roster would be the parallel authority DESIGN §3 forbids.
-//
-// The subject is READ OFF THE STANDING and is not a parameter, so the receipt
-// this returns can only ever be about the attempt the fold adjudicated.
 fn bmc_secure_phase_receipt(
   standing: BmcSecureStanding,
   producer: IntakeProducerIdentity,
-  policy_digest: ContentHash,
   started_at: EpochMs,
   ended_at: EpochMs,
   previous_receipt: ContentHash?,
@@ -457,7 +1075,7 @@ fn bmc_secure_phase_receipt(
     subject: standing.subject,
     phase: bmc_secure_phase,
     producer: producer,
-    policy_digest: policy_digest,
+    policy_digest: intake_qualification_policy_digest(policy: standing.policy),
     started_at: started_at,
     ended_at: ended_at,
     observations: bmc_secure_receipt_observations(standing: standing),

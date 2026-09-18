@@ -13,8 +13,14 @@ import gunbc.fleet_posix_accounts {
   PosixAccountOccurrence,
 }
 import extdeps.systemd.loginctl { loginctl_enable_linger_argv, loginctl_enable_linger_command }
+import extdeps.ethtool {
+  ethtool_module_info_raw_argv, ethtool_module_info_raw_command,
+}
+import gunbc.spark.fabric_switch_observed { spark_fabric_leg_netdev }
 import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_command }
-
+import extdeps.exec.command { argv_words }
+import extdeps.docker.cli { docker_container_inspect_command }
+import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -223,6 +229,68 @@ type SparkGrantOutcome
 type SparkManagedGrant
   = EnableLingerForOwnAccount { subject: NonEmptyStr }
   | RebootThisHost
+  | InspectServingContainer { container: NonEmptyStr }
+  | ReadFabricModuleEeprom { device: NonEmptyStr }
+
+// READING THE FABRIC LEG'S MODULE EEPROM IS THE CAPABILITY THE 100G QUESTION TURNS ON, and it is
+// missing rather than withheld: measured on spark-a3ee 2026-09-17, gunbc-automation holds exactly
+// enable-linger and reboot, so `ethtool -m` asks for a password and no principal this fleet runs as
+// can read a cable leg's coding.
+//
+// WHAT WAITS ON IT. gunbc.spark.fabric_switch_observed records the legs as QSFP28-coded -- extended
+// compliance 0x0B, byte 116 = 00h -- so nothing attests 100GBASE-CR2 and the ConnectX-7 refuses the
+// mode. The operator re-flashed every leg with an FS BOX V4 on 2026-09-17, which invalidates the
+// EEPROM half of that observation WITHOUT replacing it, because nothing has re-read the bytes. That
+// module's own standing says the re-flash outcome is an EXPERIMENT and only the post-change read
+// establishes anything about the copper; this grant is what makes the read possible.
+//
+// THE DEVICE IS CARRIED, AND THE READ AND THE SET ARE DIFFERENT GRANTS. `-m` with no device
+// authorizes the read on every interface the host has, which is wider than anything here needs, so
+// the device is a required field folded from spark_fabric_leg_netdev. And forcing a link mode --
+// `ethtool -s <dev> speed ...` -- has NO arm in this coproduct and no rows in extdeps.ethtool: the
+// question this grant answers is answered by observing, and authorizing a mutation of a live fabric
+// alongside a read would make the narrow thing carry the wide thing. The set grant lands with the
+// convergence that calls it.
+
+// INSPECT IS THE ACCESS CAPABILITY THE LIVE SERVING READERS ARE MISSING, measured rather than
+// assumed (2026-09-13, srv5 and srv6): gunbc-automation authenticates, `sudo -n` asks for a
+// password, and the docker socket is root:docker 0660 with the account in no docker group, so no
+// principal this fleet runs as can read a running container. The walls that wait on that reading
+// are gunbc.spark.first_party_serving spark_serving_usage_stats_declared_environment_obligation and
+// gunbc.spark.serving_offer spark_serving_incarnation_unobserved_obligation.
+//
+// The grant is `docker container inspect <name>` with the name PINNED, and it is deliberately not
+// docker group membership: the docker group is root-equivalent (it can run a privileged container),
+// while this Cmnd_Spec authorizes one read verb on one object. `ps`, `exec`, `logs` and a wildcard
+// name have no spelling. WHAT IT DISCLOSES is stated because it is the reason to grant it and the
+// reason to think before granting: inspect with no --format prints the WHOLE object that
+// extdeps.docker.container_inspect ContainerInspect models -- path and args, image, the ContainerConfig
+// (env, cmd, entrypoint, volumes, labels, exposed ports), network settings, and the HostConfig
+// (volumes, device requests, namespace modes, capabilities). The command is narrow; the data is not.
+// Config.Env is the part the usage-stats wall needs and the part whose values can carry secrets.
+//
+// THEREFORE THE GRANT IS DESIRED BUT NOT INSTALLABLE, and that is decided by
+// spark_managed_grant_disclosure_standing together with spark_managed_grant_install_basis, which
+// gunbc.spark.managed_grant_reconcile spark_grant_install_admission consumes on the install route, so
+// merging this grant does not make the modeled installer install it. Knowing a command is narrow says who may run it; installing it
+// changes who may read what it returns, so ignorance about that output refuses the install rather
+// than riding beside it as a trigger sentence.
+//
+// WHAT "EVERYTHING ELSE" IS IS NOT ESTABLISHED BY THIS REPOSITORY. spark_pair_container_env declares
+// no secret-bearing entry, but the container's Config.Env also inherits the image's baked ENV.
+// THE PINNED-BASE HALF IS ESTABLISHED BY EXECUTION: gunbc.spark.pinned_base_env_classification
+// sparkrun_pinned_base_env_read reads Hub config at extdeps.docker.images.sparkrun_vllm_ds4_gb10
+// sparkrun_vllm_ds4_gb10_pinned_reference, decodes into extdeps.container.oci.image_config
+// ContainerImageConfig, and classifies Env. Name that instrument; do not transcribe its output here
+// (DESIGN 6). That receipt is not a classification of the live serving container.
+//
+// AND THE IMAGE THE CONTAINER RUNS IS NOT THAT DIGEST. It is created from the host-local tag
+// gunbc_spark_pair_runtime_image_tag, built from gunbc_spark_pair_runtime_dockerfile (FROM the pinned
+// base, RUN pip, CMD; no ENV instruction), so nothing binds the running container to a digest. This
+// grant is also that gap's observer: inspect returns .Image, the running container's image id, which
+// is its config digest. TRIGGER: this grant installed AND a build-digest producer for that Dockerfile,
+// SUFFICIENT FOR the running pair container's image to be identified by digest rather than by a
+// host-local tag. No comparison is built here; the join half is missing.
 
 // THIS FUNCTION AND THE ARGV BELOW WERE A FORK, and it was live: this one emitted
 // "/usr/bin/loginctl enable-linger" and the argv six lines down emitted bare
@@ -239,10 +307,115 @@ type SparkManagedGrant
 // name, path and verb -- so the absolute/bare divergence and the subject divergence are no longer
 // two functions remembering to agree. Absolute for the sudoers Cmnd_Spec, bare for the argv, one
 // authority for both, because that is one binary rendered for two consumers and not two facts.
+// WHAT INSTALLING A GRANT DISCLOSES, AND WHETHER IT MAY BE INSTALLED ANYWAY, ARE TWO AXES. The first is
+// epistemic -- is what the grantee would read classified? -- and only a classification receipt moves
+// it. The second is policy -- may installation proceed given that standing? -- and an operator can
+// move it without moving the first. Carried as one coproduct, an operator's acceptance would REPLACE
+// "unestablished" and erase its obligation for the very grant it admits, so the model would say the
+// knowledge wall came down when only the decision to proceed was taken.
+
+// THE EPISTEMIC AXIS. A grant that returns no host data has nothing to classify.
+// A pinned-base image Env classification lives on PinnedBaseEnvRead, not on this coproduct:
+// classifying a digest-pinned image is not a disclosure standing for any grant, including
+// InspectServingContainer (live object, unpinned tag).
+type SparkGrantDisclosureStanding
+  = GrantReturnsNoHostData
+  | GrantDisclosureSpecificationBounded { specification: NonEmptyStr, residual: NonEmptyStr }
+  | GrantDisclosureUnestablished { obligation: NonEmptyStr }
+
+// THE THIRD ARM EXISTS BECAUSE THE EEPROM READ IS NEITHER OF THE OTHER TWO, and forcing it into
+// either would have been a lie in one of two directions.
+//
+// It is NOT GrantReturnsNoHostData. `ethtool -m` returns the module's management page -- vendor,
+// part number, serial, date code, the compliance and rate bytes -- and that is host data by any
+// reading. Borrowing reboot's arm to make the grant installable would have been the under-assertion
+// DESIGN §4d names: a wall that does not exist, bought by declining to state what is returned.
+//
+// It is NOT GrantDisclosureUnestablished either, and this is the distinction worth having. What
+// makes InspectServingContainer unclassifiable is not that its output is large but that its output
+// is UNBOUNDED: Config.Env carries whatever the image and the run put there, so no reading of the
+// object tells you what the NEXT reading may contain. The SFF-8636 management page is the opposite
+// kind of surface -- its field layout is fixed by a published specification this repository already
+// models in extdeps.transceiver.sff_8636, so what may appear at a given offset is decided upstream
+// and not by anything running on the host. A bounded surface whose bound is a citable external
+// authority is a classification, not an absence of one.
+//
+// AND THE RESIDUAL IS NAMED RATHER THAN WAVED THROUGH. SFF-8636 reserves vendor-specific regions
+// whose contents the specification does not define, so "bounded by the specification" is true of the
+// LAYOUT and not of every byte's meaning. That residual is carried in the arm rather than left out
+// of it, because a classification that quietly covered the part it cannot read would be exactly the
+// absorbing fallback §5 forbids -- widening to "no host data" on the strength of the part that IS
+// specified. What the residual is not is a reason to withhold: vendor bytes on a passive copper leg
+// are module identity, the grant returns them either way, and nothing on the host writes them.
+
+data spark_inspect_grant_disclosure_unestablished_obligation: NonEmptyStr = "gunbc.spark.managed_access_bootstrap: installing InspectServingContainer lets gunbc-automation read the whole extdeps.docker.container_inspect ContainerInspect object of the live serving container, including Config.Env, whose values can carry secrets, and nothing in this repository classifies that live object. The pinned-base Env half is established by gunbc.spark.pinned_base_env_classification sparkrun_pinned_base_env_read over extdeps.docker.images.sparkrun_vllm_ds4_gb10 sparkrun_vllm_ds4_gb10_pinned_reference. What is still missing is whether the live container is that construction at all, since it runs the host-local tag gunbc_spark_pair_runtime_image_tag, which no digest binds. A registry reading therefore cannot stand in for the live object. TRIGGER: a classification of the inspect-visible sensitive fields of the live container, established without the grant (an administrator-credential read, or a pinned-image reading joined to an observation that the live container runs that digest), SUFFICIENT FOR spark_managed_grant_disclosure_standing to leave GrantDisclosureUnestablished for InspectServingContainer" as NonEmptyStr
+
+data spark_eeprom_grant_disclosure_specification: NonEmptyStr = "SFF-8636 module management memory page 00h, whose field layout is fixed by the specification and decoded in extdeps.transceiver.sff_8636: identifier, encoding, nominal signalling rate (bytes 140 and 222), extended specification compliance (byte 192), and the vendor identity fields (name, part number, serial number, date code)" as NonEmptyStr
+
+data spark_eeprom_grant_disclosure_residual: NonEmptyStr = "SFF-8636 reserves vendor-specific regions of page 00h whose contents the specification does not define, so the bound this arm asserts is over the LAYOUT rather than over every byte's meaning. The read returns those bytes and this repository decodes only the fields extdeps.transceiver.sff_8636 models. They are module identity written by the module's manufacturer -- on a passive copper leg nothing running on the host writes them -- so the residual is a limit on what this classification CLAIMS, not an outstanding obligation that should withhold the install" as NonEmptyStr
+
+fn spark_managed_grant_disclosure_standing(grant: SparkManagedGrant) -> SparkGrantDisclosureStanding {
+  match grant {
+    EnableLingerForOwnAccount { subject: _ } => GrantReturnsNoHostData
+    RebootThisHost => GrantReturnsNoHostData
+    InspectServingContainer { container: _ } =>
+      GrantDisclosureUnestablished { obligation: spark_inspect_grant_disclosure_unestablished_obligation }
+    ReadFabricModuleEeprom { device: _ } =>
+      GrantDisclosureSpecificationBounded {
+        specification: spark_eeprom_grant_disclosure_specification,
+        residual: spark_eeprom_grant_disclosure_residual,
+      }
+  }
+}
+
+// THE POLICY AXIS. OperatorAcceptedUnresolvedDisclosureRisk is an attributable decision to install one
+// grant WHILE its disclosure is unclassified -- acceptance of whatever the whole surface that grant
+// returns might contain, never a statement of what it contains, so it carries no reading and cannot
+// generalize one. It is scoped to the grant it names. It carries its own fields rather than borrowing
+// gunbc.spark.dgx_procurement OperatorAllocation, whose name means a slot allocation, and it is not
+// std.scoped_authorization OperatorGrant: that binds one attempt and expires, while this is a standing
+// install policy.
+type SparkGrantInstallBasis
+  = InstallBasisAbsent
+  | OperatorAcceptedUnresolvedDisclosureRisk { actor: NonEmptyStr, decided_on: NonEmptyStr, accepted_for: SparkManagedGrant }
+
+// THE ROW AN OPERATOR DECISION EDITS, AND THE DECISION THAT EDITED IT. On 2026-09-14 the operator
+// answered the escalation raised when the inspect grant landed withheld (#11326): APPROVE installing
+// InspectServingContainer for the pinned pair container, on the strength of a one-off read of the
+// base image's configuration taken outside this repository. That read is NOT transcribed here and
+// this row does NOT classify anything -- it is an attributable decision to proceed while the
+// disclosure stays unestablished, which is exactly what the accepted-risk arm means. The
+// obligation spark_inspect_grant_disclosure_unestablished_obligation remains outstanding and is
+// still owed by the image-configuration reader and by the live inspect classification; an admission
+// on this basis carries that obligation into the receipt rather than retiring it.
+//
+// The actor is the operator's fleet login, read from the account model rather than spelled here, so
+// the decision is attributed to the same principal every other operator act in this lane names.
+data spark_managed_grant_install_basis: SparkGrantInstallBasis = OperatorAcceptedUnresolvedDisclosureRisk {
+  actor: fleet_bootstrap_principal_login(),
+  decided_on: "2026-09-14" as NonEmptyStr,
+  accepted_for: InspectServingContainer { container: spark_pair_container_name },
+}
+
+// Whether a basis names this grant, joined on the derived sudoers command: two grants authorizing the
+// same words are the same authorization.
+fn spark_install_basis_accepts_risk_for(basis: SparkGrantInstallBasis, grant: SparkManagedGrant) -> Bool {
+  match basis {
+    InstallBasisAbsent => false
+    OperatorAcceptedUnresolvedDisclosureRisk { actor: _, decided_on: _, accepted_for: g } =>
+      spark_managed_grant_sudoers_command(grant: g) as String == spark_managed_grant_sudoers_command(grant: grant) as String
+  }
+}
+
+
+
 fn spark_managed_grant_sudoers_command(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
     EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_command(subject: s)
     RebootThisHost => systemctl_reboot_command()
+    InspectServingContainer { container: c } =>
+      join(argv_words(command: docker_container_inspect_command(name: c)), " ") as NonEmptyStr
+    ReadFabricModuleEeprom { device: d } => ethtool_module_info_raw_command(device: d)
   }
 }
 
@@ -254,6 +427,8 @@ fn spark_managed_grant_argv(grant: SparkManagedGrant) -> List<String> {
     match grant {
       EnableLingerForOwnAccount { subject: s } => loginctl_enable_linger_argv(subject: s)
       RebootThisHost => systemctl_reboot_argv()
+      InspectServingContainer { container: c } => argv_words(command: docker_container_inspect_command(name: c))
+      ReadFabricModuleEeprom { device: d } => ethtool_module_info_raw_argv(device: d)
     },
   )
 }
@@ -262,12 +437,16 @@ fn spark_managed_grant_wire(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
     EnableLingerForOwnAccount { subject: _ } => "enable-linger for this account only" as NonEmptyStr
     RebootThisHost => "reboot this host" as NonEmptyStr
+    InspectServingContainer { container: _ } => "inspect the serving container only" as NonEmptyStr
+    ReadFabricModuleEeprom { device: _ } => "read the fabric leg module EEPROM on one device only" as NonEmptyStr
   }
 }
 
 data spark_managed_grant_population: List<SparkManagedGrant> = [
   EnableLingerForOwnAccount { subject: spark_managed_executor_login as NonEmptyStr },
   RebootThisHost,
+  InspectServingContainer { container: spark_pair_container_name },
+  ReadFabricModuleEeprom { device: spark_fabric_leg_netdev },
 ]
 
 fn derive_spark_bootstrap_plan(

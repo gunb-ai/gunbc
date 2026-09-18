@@ -10,10 +10,16 @@ import extdeps.github.actions_runner {
   actions_runner_slot_extract_script, actions_runner_release_2_336_0,
   ActionsRunnerBinaryArtifact, ActionsRunnerLinuxArm64,
 }
-import gunbc.runner_slot_provision { gunbc_runner_slot_privileged_commands }
+import gunbc.runner_slot_provision {
+  gunbc_runner_slot_privileged_commands,
+  RunnerSlotMember,
+  runner_slot_member_observed,
+  SlotProvenanceObserved,
+  SlotUnregistered,
+}
 import std.content_hash { serialize_content_hash }
 import gunbc.membership_reconcile { MemberAction, MemberAdded, MemberRemoved }
-import gunbc.host_axis_caps { CapMember }
+import gunbc.host_axis_caps { CapMember, desired_cap_member }
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction, runner_unit_standings_unobserved_no_transaction }
 import gunbc.fabric_cell_observation_admission {
@@ -69,6 +75,8 @@ import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import gunbc.fleet_converge_plan {
+  fleet_converge_cap_lines,
+  fleet_converge_cap_refusal_count,
   fabric_cell_observation_refusal_line,
   TimerRetirementMember,
   FleetConvergePlanSubject,
@@ -106,6 +114,7 @@ import gunbc.fleet_converge_plan {
   LaunchEnvironment,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  LiveDeploy,
   FullHostConverge,
   FabricExecutionCellsConverge,
   fleet_converge_request_scope,
@@ -139,7 +148,9 @@ import gunbc.fleet_converge_plan {
   fleet_converge_slot_refusal_count,
 }
 import gunbc.fabric_cell_effect { fabric_cell_realization, CellPlanRealizable, CellPlanRefused }
-import gunbc.runner_host_deploy { srv3_runner_host_deploy }
+import gunbc.runner_host_deploy {
+  admitted_deploy_for,
+  RunnerHostDeploy }
 import gunbc.runner_slot_provision { runner_slot_member_from_instance_name }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.fleet_converge_plan_cli {
@@ -148,6 +159,18 @@ import gunbc.fleet_converge_plan_cli {
 }
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.runner_slot_retirement {
+  SlotRetirementEvidence,
+  SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  RunnerRetirementStanding,
+  runner_retirement_standing,
+  retirement_observation_from_readings,
+  cgroup_occupancy_from_reads,
+  srv4_transition_interruption_authorization,
+  CgroupAbsent,
+}
+import gunbc.host_operation_exec { HostOperationObserved }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -170,6 +193,7 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
         && string_contains(s: artifact.plan_body, pattern: "MemberNotOwned")
@@ -199,6 +223,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   {
         let a2 = fleet_converge_plan_artifact(
@@ -210,6 +235,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
       )
       match fleet_converge_plan_artifact_hash(artifact: a1) {
             Present { value: h1 } =>
@@ -238,6 +264,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   {
       let drifted = CapMember {
@@ -254,6 +281,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
           observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
           observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
         observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+        observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
         },
       )
     }
@@ -271,6 +299,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
         && string_contains(s: artifact.plan_body, pattern: "plan_generation:5")
@@ -295,6 +324,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   !fleet_converge_apply_subject_admits(
         planned_subject: artifact.subject,
@@ -306,6 +336,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
           observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
           observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
         observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+        observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
         },
       )
   }
@@ -326,6 +357,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   {
         let gen1 = fleet_converge_plan_artifact(
@@ -337,6 +369,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
       )
       match fleet_converge_plan_artifact_hash(artifact: gen0) {
             Present { value: h0 } =>
@@ -373,6 +406,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   {
       let drifted = CapMember {
@@ -389,6 +423,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
           observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
           observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
         observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+        observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
         },
       )
     }
@@ -416,6 +451,7 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
@@ -594,6 +630,7 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")
         && !string_contains(s: artifact.apply_shell, pattern: "HOST_SHORT=$(hostname -s)")
@@ -628,18 +665,20 @@ test fn an_unmodeled_host_refuses_in_the_slot_section() -> Bool {
   let lines = fleet_converge_slot_lines(
     host: "srv-nonexistent" as NonEmptyStr,
     observed_slots: [],
+    retirement_evidence: witness_no_retirement_evidence(),
   )
   any(lines, l => string_contains(s: l, pattern: "REFUSED-UNMODELED-HOST runner-slot"))
     && fleet_converge_slot_refusal_count(
          host: "srv-nonexistent" as NonEmptyStr,
          observed_slots: [],
+         retirement_evidence: witness_no_retirement_evidence(),
        ) == 1
 }
 
 // THE POSITIVE CONTROL, without which the row above is satisfied by a family that refuses always.
 // srv1 is modeled and carries a committed width, so an empty observation must propose ADDs.
 test fn a_modeled_host_proposes_the_slots_it_is_missing() -> Bool {
-  let lines = fleet_converge_slot_lines(host: witness_host_srv1, observed_slots: [])
+  let lines = fleet_converge_slot_lines(host: witness_host_srv1, observed_slots: [], retirement_evidence: witness_no_retirement_evidence())
   any(lines, l => string_contains(s: l, pattern: "ADD runner-slot srv1-01"))
     && (any(lines, l => string_contains(s: l, pattern: "REFUSED-UNMODELED-HOST")) == false)
 }
@@ -652,6 +691,7 @@ test fn an_unowned_observed_slot_is_refused_removal_not_removed() -> Bool {
   let lines = fleet_converge_slot_lines(
     host: witness_host_srv1,
     observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-99")],
+    retirement_evidence: witness_no_retirement_evidence(),
   )
   any(lines, l => string_contains(s: l, pattern: "REFUSED-REMOVAL runner-slot srv1-99"))
     && (any(lines, l => string_contains(s: l, pattern: "REMOVE runner-slot srv1-99")) == false)
@@ -672,6 +712,7 @@ test fn a_slot_add_reaches_the_emitted_apply_script() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   string_contains(s: artifact.plan_body, pattern: "ADD runner-slot srv1-01")
         && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=0")
@@ -694,6 +735,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   )
   fleet_converge_member_set_fingerprint_matches(
         planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
@@ -705,6 +747,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
           observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
           observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
         observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+        observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
         },
       )
       && (fleet_converge_member_set_fingerprint_matches(
@@ -717,6 +760,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
           observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
           observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
         observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+        observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
         },
       ) == false)
   }
@@ -994,6 +1038,7 @@ fn fabric_fingerprint_with(population: FabricCellObservationDecision) -> String 
         observed_fabric_cells: population,
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
       },
     ),
   ) as String
@@ -1135,7 +1180,7 @@ test fn witness_fabric_cell_plan_and_apply_project_the_same_effects() -> Bool {
             [fabric_cell_apply_effects_header],
             fabric_cell_effect_apply_command_lines(
               effects: es,
-              job_user: srv3_runner_host_deploy.job_user,
+              job_user: wt_srv3_deploy().job_user,
             ),
           )
     CellPlanRefused { refusals: _ } => false
@@ -1755,6 +1800,7 @@ test fn witness_scope_changes_subject_identity() -> Bool {
     observed_fabric_cells: population,
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   }
   let fabric_only = FabricExecutionCellsConverge {
     host: "srv3" as NonEmptyStr,
@@ -1779,6 +1825,7 @@ test fn witness_request_scope_is_its_arm() -> Bool {
     observed_fabric_cells: population,
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   }))
     && scope_is_fabric_only(s: fleet_converge_request_scope(request: FabricExecutionCellsConverge {
         host: "srv3" as NonEmptyStr,
@@ -1798,7 +1845,7 @@ test fn witness_request_scope_is_its_arm() -> Bool {
 // without the scope row the two texts would be byte-identical and the two subjects would collide:
 // an apply could admit a fabric-only plan against a full-host re-observation. This law asserts the
 // separation is real and that it is carried by the scope row plus the one family only a full host
-// carries, the unit standings, which is asserted separately below.
+// carries, the unit standings AND the retirement family, each asserted separately below.
 test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
   let population = fabric_cell_observation_unobserved(host: operator_host_srv3)
   let full_lines = split(
@@ -1810,6 +1857,7 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
       observed_fabric_cells: population,
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
     observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
     }),
     separator: "\n",
   )
@@ -1820,7 +1868,7 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
     }),
     separator: "\n",
   )
-  join(filter(full_lines, l => !line_is_a_scope_row(l: l) && !line_is_a_units_row(l: l)), "\n")
+  join(filter(full_lines, l => !line_is_a_scope_row(l: l) && !line_is_a_units_row(l: l) && !line_is_a_retirement_row(l: l)), "\n")
     == join(filter(fabric_lines, l => !line_is_a_scope_row(l: l)), "\n")
     && list_length(items: filter(full_lines, l => line_is_a_scope_row(l: l))) == 1
     && list_length(items: filter(fabric_lines, l => line_is_a_scope_row(l: l))) == 1
@@ -1829,6 +1877,8 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
     && list_length(items: filter(full_lines, l => l == "host:srv3")) == 1
     && list_length(items: filter(full_lines, l => line_is_a_units_row(l: l))) == 1
     && list_length(items: filter(fabric_lines, l => line_is_a_units_row(l: l))) == 0
+    && list_length(items: filter(full_lines, l => line_is_a_retirement_row(l: l))) > 0
+    && list_length(items: filter(fabric_lines, l => line_is_a_retirement_row(l: l))) == 0
 }
 
 // THE UNIT-STANDINGS FAMILY IS THE ONE FAMILY A FULL-HOST BASELINE CANNOT LEAVE EMPTY: an unread
@@ -1843,6 +1893,20 @@ fn line_is_a_units_row(l: String) -> Bool {
   starts_with(s: l, prefix: "units:")
 }
 
+// THE RETIREMENT FAMILY IS THE THIRD ONE ONLY A FULL HOST CARRIES, and it is normalised out of the
+// remainder for the same reason the unit-standings family is: a fabric-only request has no such
+// field, so leaving these rows in the comparison would make the two baselines differ for a reason
+// that is not the scope row and defeat the separation this law is about.
+//
+// IT IS ASSERTED ON ITS OWN SIDE RATHER THAN JUST FILTERED. A full host contributes retirement rows
+// whatever its transition looks like -- an unobserved evidence is `retirement:absent`, which is a row
+// and not an absence of rows -- so a full-host baseline with none of them would mean the retirement
+// disposition had silently left the plan/apply subject, which is the exact bypass these rows were
+// added to close.
+fn line_is_a_retirement_row(l: String) -> Bool {
+  starts_with(s: l, prefix: "retirement:") || starts_with(s: l, prefix: "required:")
+}
+
 // THE SCOPE ROWS ARE NORMALISED AWAY BY THIS PREDICATE RATHER THAN BY MATCHING TWO LITERALS AT
 // EACH SITE, so a third scope's row cannot be left behind in the remainder and read as an ordinary
 // difference. It is a helper over the wire spelling authority rather than a second spelling of it.
@@ -1850,6 +1914,7 @@ fn line_is_a_scope_row(l: String) -> Bool {
   l == fleet_converge_scope_wire(scope: FullHost)
     || l == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
     || l == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)
+    || l == fleet_converge_scope_wire(scope: LiveDeploy)
 }
 
 // #9746 added FabricAllocationStoreOnly to the scope sum and left these two predicates behind, so
@@ -1862,6 +1927,7 @@ fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
     LaunchEnvironment => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    LiveDeploy => false
   }
 }
 
@@ -1871,6 +1937,7 @@ fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
     FullHost => false
     LaunchEnvironment => false
     FabricAllocationStoreOnly => false
+    LiveDeploy => false
   }
 }
 
@@ -1892,6 +1959,7 @@ test fn witness_subject_carries_scope_as_a_readable_fact() -> Bool {
         observed_fabric_cells: population,
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
       }).scope)
 }
 
@@ -1914,6 +1982,7 @@ test fn witness_apply_refuses_a_scope_crossing_and_admits_its_own_scope() -> Boo
     observed_fabric_cells: population,
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+  observed_retirement: SlotRetirementEvidenceAbsent { cause: "this fixture binds no retirement observation" },
   }
   fleet_converge_apply_subject_admits(
     planned_subject: fleet_converge_plan_subject(request: fabric_request),
@@ -2118,4 +2187,311 @@ test fn deploy_branch_policy_compares_and_never_admits_any_branch() -> Bool {
     && !fleet_converge_deploy_branch_admits(observed: "worktree-fleet-converge-status", required: "main")
     && !fleet_converge_deploy_branch_admits(observed: "main", required: "")
     && !fleet_converge_deploy_branch_admits(observed: "", required: "")
+}
+
+
+// ── THE TWO-PASS RETIREMENT TRANSACTION, THROUGH slot_apply_lines ─────────────────────────────
+//
+// `slot_apply_lines` is the SOLE renderer of runner-slot retirement and teardown effects, and what
+// it emits is what fleet apply executes after reobserving the same subject. So these rows drive it
+// rather than the helpers beneath it: a control that proved the realization and left the renderer
+// unexamined is how this branch previously shipped a teardown that never consulted retirement at all.
+fn witness_no_retirement_evidence() -> SlotRetirementEvidence {
+  SlotRetirementEvidenceAbsent { cause: "this control binds no observation" }
+}
+
+fn witness_srv4_evidence(standings: List<RunnerRetirementStanding>) -> SlotRetirementEvidence {
+  SlotRetirementEvidencePresent {
+    authorization: srv4_transition_interruption_authorization,
+    standings: standings,
+  }
+}
+
+fn witness_srv4_surplus() -> List<RunnerSlotMember> {
+  [runner_slot_member_observed(
+    instance_name: "srv4-13",
+    provenance: SlotProvenanceObserved {
+      in_host_grammar: true,
+      registration: SlotUnregistered,
+      unit_active: false,
+      unit_enabled: false,
+    },
+  )]
+}
+
+fn witness_srv4_complete_standing() -> RunnerRetirementStanding {
+  runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: CgroupAbsent,
+    ),
+  )
+}
+
+// THE TEARDOWN PREDICATE NAMES THE RETIRED TREE, because a bare `-rf` is not a teardown signal here.
+// Every slot ADD's extract script embeds `remove_command` -- an `rm -rf` of that slot's own directory
+// before the tarball is unpacked -- so on a host proposing twelve adds, `-rf` is present in a plan
+// that retires nothing at all. Four controls asserted `!any(-rf)` and failed against the ADD path's
+// cleanup rather than against any retirement effect. The discriminating string is the RETIRED unit's
+// tree, which no ADD for srv4-01..12 can name.
+// THE MASK PREDICATE NAMES THE RENDERED VERB, NOT THE WORD. `mask` appears in the REFUSAL prose as
+// well as in the command -- a unit outside the authorized scope renders `cause=... neither masked nor
+// deleted` -- so a bare substring test reads a refusal as an actuation. The serializer quotes each
+// argv word, so the quoted verb is in the emitted command and in no prose cause.
+fn emits_mask_command(lines: List<String>) -> Bool {
+  any(lines, l => string_contains(s: l, pattern: "'mask'"))
+}
+
+fn removes_retired_tree(lines: List<String>) -> Bool {
+  any(lines, l => string_contains(s: l, pattern: "-rf") && string_contains(s: l, pattern: "/opt/actions-runner/srv4-13"))
+}
+
+fn witness_srv4_apply(standings: List<RunnerRetirementStanding>) -> List<String> {
+  slot_apply_lines(
+    host: "srv4" as NonEmptyStr,
+    observed_slots: witness_srv4_surplus(),
+    retirement_evidence: witness_srv4_evidence(standings: standings),
+  )
+}
+
+// FIRST PASS: the unit is required, permitted, and not yet retired. The renderer must emit the mask
+// and no removal -- a pass that did both would establish its own postcondition.
+test fn the_first_pass_masks_the_surplus_slot_and_removes_no_tree() -> Bool {
+  let lines = witness_srv4_apply(standings: [])
+  emits_mask_command(lines: lines)
+    && !removes_retired_tree(lines: lines)
+}
+
+// SECOND PASS: the same transition, the same identity, independently reobserved as complete. Only now
+// may the tree go -- and the mask must not be re-emitted, because the unit is already retired.
+test fn the_second_pass_removes_that_exact_tree_and_does_not_remask() -> Bool {
+  let lines = witness_srv4_apply(standings: [witness_srv4_complete_standing()])
+  removes_retired_tree(lines: lines)
+    && !emits_mask_command(lines: lines)
+}
+
+// A POPULATED CGROUP REMOVES NOTHING, whatever the unit says about itself. This is the decisive
+// negative at the renderer: masked and inactive with surviving processes must yield no teardown.
+test fn a_populated_cgroup_removes_no_tree_at_the_renderer() -> Bool {
+  let lines = witness_srv4_apply(standings: [
+    runner_retirement_standing(
+      o: retirement_observation_from_readings(
+        unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+        unit_file_state: "masked",
+        active_state: "inactive",
+        occupancy: cgroup_occupancy_from_reads(
+          directory_test: HostOperationObserved { stdout: "", success: true, stderr: none },
+          procs_read: HostOperationObserved { stdout: "4821\n", success: true, stderr: none },
+        ),
+      ),
+    ),
+  ])
+  !removes_retired_tree(lines: lines)
+}
+
+// A COMPLETED RECEIPT FOR ANOTHER IDENTITY AUTHORIZES NOTHING HERE EITHER. The identity join must hold
+// at the renderer, not only in the realization it calls.
+test fn another_slots_completion_removes_nothing_at_the_renderer() -> Bool {
+  let lines = witness_srv4_apply(standings: [
+    runner_retirement_standing(
+      o: retirement_observation_from_readings(
+        unit: "actions-runner@srv4-14.service" as NonEmptyStr,
+        unit_file_state: "masked",
+        active_state: "inactive",
+        occupancy: CgroupAbsent,
+      ),
+    ),
+  ])
+  !removes_retired_tree(lines: lines)
+}
+
+// WITH NO EVIDENCE BOUND, THE RENDERER NEITHER MASKS NOR REMOVES. This is the state every route that
+// has not been taught to observe retirement lands in, and it must be inert rather than destructive.
+test fn absent_evidence_neither_masks_nor_removes_at_the_renderer() -> Bool {
+  let lines = slot_apply_lines(
+    host: "srv4" as NonEmptyStr,
+    observed_slots: witness_srv4_surplus(),
+    retirement_evidence: witness_no_retirement_evidence(),
+  )
+  !removes_retired_tree(lines: lines)
+    && !emits_mask_command(lines: lines)
+}
+
+// A REFUSED HOST NEVER REACHES MEMBERSHIP RECONCILIATION. srv2's admitted width is zero because its
+// admission REFUSED, which is not a request for no slots -- reconciling an empty desired set against a
+// populated host is syntactically a remove-all plan.
+test fn a_width_zero_host_is_refused_before_any_membership_effect() -> Bool {
+  let lines = slot_apply_lines(
+    host: "srv2" as NonEmptyStr,
+    observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv2-01")],
+    retirement_evidence: witness_no_retirement_evidence(),
+  )
+  any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
+    && !any(lines, l => string_contains(s: l, pattern: "-rf"))
+    && !emits_mask_command(lines: lines)
+    && !any(lines, l => string_contains(s: l, pattern: "ADD runner-slot"))
+}
+
+
+// ── RETIREMENT DRIFT MUST INVALIDATE THE REVIEWED PLAN ────────────────────────────────────────
+//
+// Threading evidence to the renderer is only half of production consumption. `observed_baseline_text`
+// feeds the member-set fingerprint apply compares against the reviewed artifact, and it DESTRUCTURED
+// the retirement evidence without using it -- so the binding was blind to exactly the drift this
+// transaction exists to catch. A plan built while a unit read RetirementComplete carried a teardown
+// for it; an apply that reobserved that unit as POPULATED produced an identical fingerprint, admitted,
+// and would have executed `rm -rf` against a live tree.
+//
+// These rows hold the binding. Every other observation is identical between plan and apply; only the
+// retirement disposition moves.
+fn drift_request(standings: List<RunnerRetirementStanding>) -> FleetConvergeRequest {
+  FullHostConverge {
+    host: "srv4" as NonEmptyStr,
+    observed_timers: [],
+    observed_caps: [],
+    observed_slots: witness_srv4_surplus(),
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: "srv4" as HostIdentity),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+    observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+    observed_retirement: witness_srv4_evidence(standings: standings),
+  }
+}
+
+fn drift_populated_standing() -> RunnerRetirementStanding {
+  runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: cgroup_occupancy_from_reads(
+        directory_test: HostOperationObserved { stdout: "", success: true, stderr: none },
+        procs_read: HostOperationObserved { stdout: "4821\n", success: true, stderr: none },
+      ),
+    ),
+  )
+}
+
+// THE DISCRIMINATING RED: complete at plan time, populated at apply time, everything else equal. The
+// fingerprints must differ, so apply refuses before the locked script runs.
+test fn retirement_drift_between_plan_and_apply_changes_the_subject() -> Bool {
+  let planned = fleet_converge_member_set_fingerprint(request: drift_request(standings: [witness_srv4_complete_standing()]))
+  let reobserved = fleet_converge_member_set_fingerprint(request: drift_request(standings: [drift_populated_standing()]))
+  serialize_content_hash(hash: planned) != serialize_content_hash(hash: reobserved)
+}
+
+// AND THE POSITIVE CONTROL: an unchanged subject must still admit, or the row above is satisfied by a
+// fingerprint that differs from itself and every apply would refuse.
+test fn an_unchanged_retirement_subject_keeps_the_same_fingerprint() -> Bool {
+  let a = fleet_converge_member_set_fingerprint(request: drift_request(standings: [witness_srv4_complete_standing()]))
+  let b = fleet_converge_member_set_fingerprint(request: drift_request(standings: [witness_srv4_complete_standing()]))
+  serialize_content_hash(hash: a) == serialize_content_hash(hash: b)
+}
+
+// OBSERVED-BUT-ALL-PENDING IS NOT THE SAME SUBJECT AS NOT-OBSERVED-AT-ALL. A plan built under absent
+// evidence must not admit against a reobservation that did read the host, even though neither
+// authorizes a teardown.
+test fn absent_evidence_and_observed_pending_are_different_subjects() -> Bool {
+  let absent = fleet_converge_member_set_fingerprint(
+    request: FullHostConverge {
+      host: "srv4" as NonEmptyStr,
+      observed_timers: [],
+      observed_caps: [],
+      observed_slots: witness_srv4_surplus(),
+      observed_fabric_cells: fabric_cell_observation_unobserved(host: "srv4" as HostIdentity),
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      observed_unit_standings: runner_unit_standings_unobserved_no_transaction,
+      observed_retirement: witness_no_retirement_evidence(),
+    },
+  )
+  let pending = fleet_converge_member_set_fingerprint(request: drift_request(standings: [drift_populated_standing()]))
+  serialize_content_hash(hash: absent) != serialize_content_hash(hash: pending)
+}
+
+
+// ── A REFUSED HOST REACHES NO AXIS, NOT MERELY NO SLOT PLAN ───────────────────────────────────
+//
+// Routing srv2 away from membership reconciliation repaired ONE axis. The cap axis took no host at
+// all -- `fleet_converge_desired_caps` is fleet-wide -- so a refused host still reconciled desired
+// caps against its observed ones and proposed cap writes for the machine whose width cannot be
+// derived. These rows hold both axes to the same admission.
+test fn a_refused_host_produces_no_cap_plan() -> Bool {
+  let lines = fleet_converge_cap_lines(host: "srv2" as NonEmptyStr, observed_caps: [])
+  any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED cap-axis"))
+    && fleet_converge_cap_refusal_count(host: "srv2" as NonEmptyStr, observed_caps: []) == 1
+}
+
+// THE POSITIVE CONTROL FOR THE CAP AXIS, without which the row above is satisfied by a cap axis that
+// refuses every host and converges no ceiling anywhere.
+test fn an_admitted_host_still_produces_a_cap_plan() -> Bool {
+  let lines = fleet_converge_cap_lines(host: "srv1" as NonEmptyStr, observed_caps: [])
+  !any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
+}
+
+// A REFUSED HOST'S CAP REFUSAL CARRIES NO PLAN AT ALL, which is stronger than an empty desired set.
+// `caps_reconcile` reads an owned observed member absent from desired as MemberRemoved, so handing a
+// refused host `[]` would propose TEARING DOWN the ceilings it already carries. The disposition has
+// no plan for that arm to render.
+test fn a_refused_hosts_existing_caps_are_not_proposed_for_removal() -> Bool {
+  let observed = [
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+      property: "MemoryMax" as NonEmptyStr,
+      bytes_value: "17179869184" as NonEmptyStr,
+    ),
+  ]
+  let lines = fleet_converge_cap_lines(host: "srv2" as NonEmptyStr, observed_caps: observed)
+  !any(lines, l => string_contains(s: l, pattern: "REMOVE"))
+    && any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
+}
+
+// A REFUSED HOST REACHES NO MASK AND NO REMOVAL AT THE APPLY SEAM EITHER. `slot_apply_lines` is what
+// fleet apply executes; a host refused in the plan that still rendered a destructive step there would
+// be a refusal that only held for readers.
+test fn a_refused_host_emits_no_destructive_apply_step() -> Bool {
+  let lines = slot_apply_lines(
+    host: "srv2" as NonEmptyStr,
+    observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv2-01")],
+    retirement_evidence: witness_no_retirement_evidence(),
+  )
+  any(lines, l => string_contains(s: l, pattern: "REFUSED-HOST-NOT-ADMITTED"))
+    && !any(lines, l => string_contains(s: l, pattern: "-rf"))
+    && !emits_mask_command(lines: lines)
+    && !any(lines, l => string_contains(s: l, pattern: "ADD runner-slot"))
+}
+
+// AND THE WHOLE-FLEET RESULT DOES NOT CLAIM COMPLETION WHILE srv2 IS REFUSED. Partial convergence of
+// the admitted hosts is admissible only because srv2 is structurally incapable of receiving the
+// change; a fleet total that counted its refusal as zero work would report a converged fleet with one
+// host unreachable, which is the reading the earlier ruling forbids.
+test fn a_refused_host_keeps_the_fleet_result_incomplete() -> Bool {
+  fleet_converge_cap_refusal_count(host: "srv2" as NonEmptyStr, observed_caps: []) > 0
+    && fleet_converge_slot_refusal_count(
+         host: "srv2" as NonEmptyStr,
+         observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv2-01")],
+         retirement_evidence: witness_no_retirement_evidence(),
+       ) > 0
+}
+
+// THE ADMITTED ROW, ASKED FOR RATHER THAN READ. srv2 has no deploy row at all now -- its width
+// refuses -- so these rows come from the admission and a test that somehow lost its host fails on the
+// fixture rather than on a fabricated production value.
+fn wt_missing_deploy() -> RunnerHostDeploy {
+  RunnerHostDeploy {
+    host_label: "wt-unadmitted",
+    ssh_target: "unadmitted@invalid.example",
+    runner_user: "unadmitted",
+    unit_user: "unadmitted",
+    job_user: "unadmitted",
+    app: gunbc_ci_github_app,
+    runner_count: 1,
+  }
+}
+
+fn wt_srv3_deploy() -> RunnerHostDeploy {
+  match admitted_deploy_for(host: operator_host_srv3) {
+    Present { value: d } => d
+    Absent => wt_missing_deploy()
+  }
 }

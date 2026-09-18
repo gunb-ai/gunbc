@@ -1,0 +1,295 @@
+module test.claim.compute_board_truth_table_witness
+
+import std.types { String, List }
+import product.compute_board.truth_table_projection {
+  TruthTableProjected,
+  TruthTableRefused,
+  TruthTableDrivenSignalHasNoEquation,
+  TruthTableExpressionCycle,
+  TruthTableNameUnrenderable,
+  TruthTableSignalUndeclared,
+  project_intent_to_truth_table,
+  project_article_to_truth_table,
+}
+import product.compute_board.digital_control {
+  Conjunction,
+  DigitalControlIntent,
+  DigitalEquation,
+  DigitalInput,
+  DigitalOutput,
+  DigitalSignal,
+  Negation,
+  SignalName,
+  SignalRef,
+  board_power_interlock_intent,
+  conditioned_good_signal,
+  fault_signal,
+  power_permit_signal,
+  reset_release_signal,
+}
+import product.compute_board.admission {
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  admit_board_article,
+}
+import product.compute_board.article { BoardArticleIdentity, power_interlock_article }
+import v2.std.optional { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data test_identity: BoardArticleIdentity = BoardArticleIdentity {
+  name: "truth_table_fixture",
+  revision: "r0",
+}
+
+fn projected_source(intent: DigitalControlIntent) -> String {
+  match project_intent_to_truth_table(article_identity: test_identity, intent: intent) {
+    TruthTableProjected { receipt: r } => r.source
+    TruthTableRefused { cause: _ } => "REFUSED"
+  }
+}
+
+// THE EXHAUSTIVE TABLE FOR THE PRODUCTION BOARD, pinned whole rather than by substring. Four rows
+// is the entire input space of two inputs, so this is the board's complete combinational behaviour
+// and not a sample of it. The reset_release column is the reason this projection needed an
+// evaluator: its equation references power_permit, which is a driven OUTPUT, so the value in each
+// row is computed through that signal's own equation rather than read from the row.
+data expected_interlock_table: String = "| conditioned_good | fault | power_permit | reset_release |\n| --: | --: | --: | --: |\n| 0 | 0 | 0 | 0 |\n| 1 | 0 | 1 | 1 |\n| 0 | 1 | 0 | 0 |\n| 1 | 1 | 0 | 0 |"
+
+test fn w_the_production_board_emits_its_exhaustive_truth_table() -> Bool {
+  projected_source(intent: board_power_interlock_intent) == expected_interlock_table
+}
+
+// THE SAME ARTICLE THROUGH THE ADMITTED ENTRY, which is the route a caller takes. Without this the
+// claim above would only prove the fold works on an intent handed to it directly, and the article
+// field it reads (digital_control) would be unexercised.
+test fn w_the_admitted_article_projects_the_same_table() -> Bool {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleRefused { causes: _ } => false
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_truth_table(admitted: adm) {
+        TruthTableRefused { cause: _ } => false
+        TruthTableProjected { receipt: r } => r.source == expected_interlock_table
+      }
+  }
+}
+
+// PERTURBING THE EQUATION CHANGES THE ANSWERS, not just the bytes. Dropping the negation makes
+// power_permit an AND of both inputs, so the only row that permits power becomes the one where a
+// fault IS present -- and reset_release follows it, which is what proves the dependent column is
+// evaluated rather than copied.
+fn unnegated_intent() -> DigitalControlIntent {
+  DigitalControlIntent {
+    block_name: "board_power_interlock" as SignalName,
+    signals: board_power_interlock_intent.signals,
+    equations: [
+      DigitalEquation {
+        driven: power_permit_signal,
+        expression: Conjunction {
+          left: SignalRef { signal: conditioned_good_signal },
+          right: SignalRef { signal: fault_signal },
+        },
+      },
+      DigitalEquation {
+        driven: reset_release_signal,
+        expression: Conjunction {
+          left: SignalRef { signal: conditioned_good_signal },
+          right: SignalRef { signal: power_permit_signal },
+        },
+      },
+    ]
+  }
+}
+
+test fn w_dropping_the_negation_changes_the_table_answers() -> Bool {
+  let t = projected_source(intent: unnegated_intent())
+  t != expected_interlock_table
+    && string_contains(s: t, pattern: "| 1 | 1 | 1 | 1 |")
+    && !string_contains(s: t, pattern: "| 1 | 0 | 1 | 1 |")
+}
+
+// AN OUTPUT NOTHING DRIVES REFUSES, rather than being reported as 0. A fabricated 0 would be
+// indistinguishable from a real one in the emitted table, which is the whole reason this arm exists.
+fn output_without_equation_intent() -> DigitalControlIntent {
+  DigitalControlIntent {
+    block_name: "no_equation" as SignalName,
+    signals: [
+      DigitalSignal { name: conditioned_good_signal, direction: DigitalInput },
+      DigitalSignal { name: power_permit_signal, direction: DigitalOutput },
+    ],
+    equations: []
+  }
+}
+
+test fn w_an_output_with_no_equation_refuses() -> Bool {
+  match project_intent_to_truth_table(
+    article_identity: test_identity,
+    intent: output_without_equation_intent()
+  ) {
+    TruthTableProjected { receipt: _ } => false
+    TruthTableRefused { cause: c } =>
+      match c {
+        TruthTableDrivenSignalHasNoEquation { signal: s } => (s as String) == "power_permit"
+        TruthTableSignalUndeclared { signal: _ } => false
+        TruthTableExpressionCycle { signal: _ } => false
+        TruthTableNameUnrenderable { signal: _ } => false
+        TruthTableInputPopulationTooWide { inputs: _ } => false
+      }
+  }
+}
+
+// TWO OUTPUTS DRIVING EACH OTHER EXHAUST THE DEPTH AND ARE REPORTED AS A CYCLE. This is the arm
+// that makes the depth bound honest: without it the evaluator would not terminate, and a bounded
+// walk that quietly returned a value would be inventing behaviour for a board that has none.
+fn cyclic_intent() -> DigitalControlIntent {
+  DigitalControlIntent {
+    block_name: "cyclic" as SignalName,
+    signals: [
+      DigitalSignal { name: conditioned_good_signal, direction: DigitalInput },
+      DigitalSignal { name: power_permit_signal, direction: DigitalOutput },
+      DigitalSignal { name: reset_release_signal, direction: DigitalOutput },
+    ],
+    equations: [
+      DigitalEquation {
+        driven: power_permit_signal,
+        expression: SignalRef { signal: reset_release_signal },
+      },
+      DigitalEquation {
+        driven: reset_release_signal,
+        expression: SignalRef { signal: power_permit_signal },
+      },
+    ]
+  }
+}
+
+test fn w_two_outputs_driving_each_other_refuse_as_a_cycle() -> Bool {
+  match project_intent_to_truth_table(article_identity: test_identity, intent: cyclic_intent()) {
+    TruthTableProjected { receipt: _ } => false
+    TruthTableRefused { cause: c } =>
+      match c {
+        TruthTableExpressionCycle { signal: _ } => true
+        TruthTableSignalUndeclared { signal: _ } => false
+        TruthTableDrivenSignalHasNoEquation { signal: _ } => false
+        TruthTableNameUnrenderable { signal: _ } => false
+        TruthTableInputPopulationTooWide { inputs: _ } => false
+      }
+  }
+}
+
+// AN EXPRESSION NAMING A SIGNAL THE INTENT NEVER DECLARED REFUSES, and the cause names that signal
+// rather than the equation, because the author's repair is at the reference.
+fn undeclared_reference_intent() -> DigitalControlIntent {
+  DigitalControlIntent {
+    block_name: "undeclared" as SignalName,
+    signals: [
+      DigitalSignal { name: conditioned_good_signal, direction: DigitalInput },
+      DigitalSignal { name: power_permit_signal, direction: DigitalOutput },
+    ],
+    equations: [
+      DigitalEquation {
+        driven: power_permit_signal,
+        expression: Negation { operand: SignalRef { signal: fault_signal } },
+      },
+    ]
+  }
+}
+
+test fn w_a_reference_to_an_undeclared_signal_refuses() -> Bool {
+  match project_intent_to_truth_table(
+    article_identity: test_identity,
+    intent: undeclared_reference_intent()
+  ) {
+    TruthTableProjected { receipt: _ } => false
+    TruthTableRefused { cause: c } =>
+      match c {
+        TruthTableSignalUndeclared { signal: s } => (s as String) == "fault"
+        TruthTableDrivenSignalHasNoEquation { signal: _ } => false
+        TruthTableExpressionCycle { signal: _ } => false
+        TruthTableNameUnrenderable { signal: _ } => false
+        TruthTableInputPopulationTooWide { inputs: _ } => false
+      }
+  }
+}
+
+// THE WIDTH BOUND GETS A DISCRIMINATING RED (review 66759), and it is the arm that most needed one:
+// NOTE ON WHAT PAIRS WITH IT: an eight-input ADMISSION claim was written beside this one and then
+// removed. It cost 72,397 eval steps -- proving a bound at eight inputs means building all 256
+// rows -- against a 100ms-equivalent new-witness envelope, and what it bought over this claim was
+// only the exact LOCATION of the boundary. The blanket-refusal failure it was meant to catch is
+// already caught: w_the_production_board_emits_its_exhaustive_truth_table projects the real
+// two-input board and pins its whole table, so a projection that refused every width fails there
+// first. What is no longer pinned is that the maximum is exactly eight rather than, say, six.
+// it guards the only unbounded cost in the projection, since input_rows doubles the row set once per
+// declared input. Nine inputs is 512 rows and is refused; the arm was previously reachable only as a
+// false branch in five exhaustive matches, which establishes that the constructor exists and nothing
+// about whether the bound holds.
+//
+// THE FIXTURE IS BUILT RATHER THAN SPELLED OUT because nine near-identical signals authored by hand
+// would be nine chances to typo the population this claim is about. The names are distinct by
+// construction, and the count is the thing under test.
+fn wide_signal(n: String) -> DigitalSignal {
+  DigitalSignal { name: concat("in_", n) as SignalName, direction: DigitalInput }
+}
+
+fn nine_input_intent() -> DigitalControlIntent {
+  DigitalControlIntent {
+    block_name: "too_wide" as SignalName,
+    signals: concat(
+      map(["1", "2", "3", "4", "5", "6", "7", "8", "9"], n => wide_signal(n: n)),
+      [DigitalSignal { name: power_permit_signal, direction: DigitalOutput }]
+    ),
+    equations: [
+      DigitalEquation {
+        driven: power_permit_signal,
+        expression: SignalRef { signal: "in_1" as SignalName },
+      },
+    ]
+  }
+}
+
+test fn w_a_nine_input_population_refuses_as_too_wide() -> Bool {
+  match project_intent_to_truth_table(article_identity: test_identity, intent: nine_input_intent()) {
+    TruthTableProjected { receipt: _ } => false
+    TruthTableRefused { cause: c } =>
+      match c {
+        TruthTableInputPopulationTooWide { inputs: n } => n == 9
+        TruthTableSignalUndeclared { signal: _ } => false
+        TruthTableDrivenSignalHasNoEquation { signal: _ } => false
+        TruthTableExpressionCycle { signal: _ } => false
+        TruthTableNameUnrenderable { signal: _ } => false
+      }
+  }
+}
+
+// A NAME CARRYING THE TABLE DELIMITER REFUSES INSTEAD OF SPLITTING A COLUMN, which is the only
+// spelling rule Markdown imposes and therefore the only one this target enforces.
+fn pipe_named_intent() -> DigitalControlIntent {
+  DigitalControlIntent {
+    block_name: "pipe" as SignalName,
+    signals: [
+      DigitalSignal { name: "a|b" as SignalName, direction: DigitalInput },
+      DigitalSignal { name: power_permit_signal, direction: DigitalOutput },
+    ],
+    equations: [
+      DigitalEquation {
+        driven: power_permit_signal,
+        expression: SignalRef { signal: "a|b" as SignalName },
+      },
+    ]
+  }
+}
+
+test fn w_a_name_carrying_the_delimiter_refuses() -> Bool {
+  match project_intent_to_truth_table(article_identity: test_identity, intent: pipe_named_intent()) {
+    TruthTableProjected { receipt: _ } => false
+    TruthTableRefused { cause: c } =>
+      match c {
+        TruthTableNameUnrenderable { signal: s } => (s as String) == "a|b"
+        TruthTableSignalUndeclared { signal: _ } => false
+        TruthTableDrivenSignalHasNoEquation { signal: _ } => false
+        TruthTableExpressionCycle { signal: _ } => false
+        TruthTableInputPopulationTooWide { inputs: _ } => false
+      }
+  }
+}

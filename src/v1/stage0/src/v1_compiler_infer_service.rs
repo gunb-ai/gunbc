@@ -9,7 +9,7 @@ pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_items::inferred_to_outputs;
-use crate::v1_compiler_infer_items::ItemKind::FuncItem;
+use crate::v1_compiler_infer_items::ItemKind::*;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};
 pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref};
 use crate::v1_rt;
@@ -20,6 +20,7 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::{Conj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{
     ExprCall, ExprFieldAccess, ExprMethodCall, ExprVar, NoExprData,
 };
@@ -32,8 +33,8 @@ pub use crate::v1_std_core::{
     param_node_type_expr, unit_type,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ExprData,
-    InferredNode, NewlineIndex, Node,
+    CallSemantics, CallTargetIdentity, Cardinality, Connective, DeclarationMarker,
+    DeclaredCallableIdentity, ExprData, InferredNode, NewlineIndex, Node,
 };
 pub use crate::v1_std_core::{ParsedModuleItemKind, VarBindingKind};
 use crate::NonEmptyBTreeSet;
@@ -642,11 +643,17 @@ pub fn unjoinable_callee_edges(
 }
 
 pub fn expand_transitive_services_loop(
-    mut module_callees: Rc<Vec<Rc<ModuleCallees>>>,
-    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut remaining_passes: i64,
+    mut __tco_loop_module_callees: Rc<Vec<Rc<ModuleCallees>>>,
+    mut __tco_loop_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut __tco_loop_remaining_passes: i64,
 ) -> Rc<ServiceEffectAnalysis> {
     loop {
+        #[allow(unused_mut)]
+        let mut module_callees = __tco_loop_module_callees;
+        #[allow(unused_mut)]
+        let mut registry = __tco_loop_registry;
+        #[allow(unused_mut)]
+        let mut remaining_passes = __tco_loop_remaining_passes;
         let before = total_service_count(registry.clone());
         let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
         let after = total_service_count(next.clone());
@@ -666,10 +673,12 @@ pub fn expand_transitive_services_loop(
                 });
             } else {
                 {
-                    let __tco_0 = next.clone();
-                    let __tco_1 = (remaining_passes - 1);
-                    registry = __tco_0;
-                    remaining_passes = __tco_1;
+                    let __tco_0 = module_callees;
+                    let __tco_1 = next.clone();
+                    let __tco_2 = (remaining_passes - 1);
+                    __tco_loop_module_callees = __tco_0;
+                    __tco_loop_registry = __tco_1;
+                    __tco_loop_remaining_passes = __tco_2;
                     continue;
                 }
             }
@@ -837,6 +846,7 @@ pub fn check_service_method_call_node(
                                                 match_pattern: std::option::Option::None,
                                                 module_item_kind:
                                                     ParsedModuleItemKind::NotAModuleItem,
+                                                declaration_marker: DeclarationMarker::Unmarked,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }));
@@ -856,6 +866,7 @@ pub fn check_service_method_call_node(
                                     has_non_tail_self_call: false,
                                     match_pattern: std::option::Option::None,
                                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                                    declaration_marker: DeclarationMarker::Unmarked,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),

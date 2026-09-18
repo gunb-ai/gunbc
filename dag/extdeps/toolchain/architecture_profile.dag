@@ -3,6 +3,7 @@ module extdeps.toolchain.architecture_profile
 import extdeps.toolchain.types { Architecture }
 import extdeps.abi { ArchitecturalRegister, CallingConvention, StackLayout }
 import std.measure { BitWidth, ByteSize }
+import std.types { NonEmptyStr }
 import std.os.invocation { StableInvocationSurface }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -15,6 +16,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type Endianness = LittleEndian | BigEndian
+
+fn endianness_token(e: Endianness) -> NonEmptyStr {
+  match e {
+    LittleEndian => "little" as NonEmptyStr
+    BigEndian => "big" as NonEmptyStr
+  }
+}
 
 type ArchitectureProfile {
   architecture: Architecture

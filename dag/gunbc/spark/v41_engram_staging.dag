@@ -1,0 +1,158 @@
+module gunbc.spark.v41_engram_staging
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.content_hash { ContentHash, serialize_content_hash }
+import std.artifact_store { artifact_realization_digest }
+import std.decl_ref { DeclarationRef }
+import v2.std.optional { Present, Absent }
+import gunbc.spark.v41_runtime_candidate { v41_input }
+import gunbc.spark.v41_engram_row_store {
+  V41RowStoreEncoding, V41RowStoreEncodingIdentified, V41RowStoreEncodingUnestablished, V41RowStoreEncodingRefused,
+}
+import gunbc.spark.v41_runtime_realized { V41OciImageDigest }
+import extdeps.container.oci.digest { OciContentDigest, render_oci_content_digest_wire }
+import gunbc.spark.serving_deployment_selection { id_component_budget_authority }
+import gunbc.spark.vllm_runtime_image_build { VllmImageProvenance, BuiltByThisRun, AdoptedUnderExpectedTag }
+
+// ── CUT C: ARTIFACT STAGING, NOT SERVICE MUTATION ──────────────────────────────────────────────
+//
+// This module may create verified content-addressed files in a bounded staging area. It may not
+// start or stop processes, consume GPU memory, alter units, withdraw an incumbent, or claim seats.
+// Fabric/storage selection decides which provider holds the bytes; this
+// request names exact image X and exact rank-local stores R0..R3 and does not pick the copy source.
+//
+// THE INCUMBENT ON GROUP A IS AN OBSERVATION, NOT THIS MODULE'S ASSUMPTION. Operator ruling
+// (proud-deer-538, 2026-09-17): group A is unused — "no one ever uses it". Stage onto it. Do not
+// tear the pair cluster down; Cut D is that transaction. Do not launch a serving process on a
+// first-party image. authorized_v4_1_runtime_holds still admits only v41_published_arm64_reference;
+// this module must not widen that wall.
+//
+// WHY ENGRAM GOES TO DISK AT ALL is not a transcribed GiB figure. Route A at TP4 is excluded
+// by gunbc.spark.serving_deployment_selection candidate_component_budget, reading
+// gunbc.spark.pair_serving_observed group_rank_free_memory_observed: a measured shortfall on the
+// Engram term after the artifact's other components, not a near miss against device total. Cut B
+// exists because moving Engram off the resident budget is the only change that term feels.
+//
+// Prefer route D when admitted: durable origin -> fill each rank's local NVMe. Route B may become
+// equivalent once the local artifact exists. A missing local store still refuses at token time
+// (gunbc.spark.v41_runtime_realized v41_token_time); staging never records an NFS token-time path.
+type V41StagedRankStore sole_constructor {
+  rank: Nat
+  identity: ContentHash
+  readback: ContentHash
+}
+
+fn v41_staged_rank_store(rank: Nat, identity: ContentHash, readback: ContentHash) -> V41StagedRankStore {
+  V41StagedRankStore { rank: rank, identity: identity, readback: readback }
+}
+
+fn v41_staged_matching(encoding: V41RowStoreEncoding) -> List<V41StagedRankStore> {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      map(rs, r => v41_staged_rank_store(rank: r.rank, identity: r.digest, readback: r.digest))
+    V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41StagedRankStore>
+    V41RowStoreEncodingRefused { defects: _ } => [] as List<V41StagedRankStore>
+  }
+}
+
+fn v41_staged_with_readback(encoding: V41RowStoreEncoding, readback: ContentHash) -> List<V41StagedRankStore> {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      map(rs, r => v41_staged_rank_store(rank: r.rank, identity: r.digest, readback: readback))
+    V41RowStoreEncodingUnestablished { obligation: _ } => [] as List<V41StagedRankStore>
+    V41RowStoreEncodingRefused { defects: _ } => [] as List<V41StagedRankStore>
+  }
+}
+
+type V41StagingRequest sole_constructor {
+  image: V41OciImageDigest
+  ranks: List<ContentHash>
+}
+
+fn v41_staging_request(image: V41OciImageDigest, encoding: V41RowStoreEncoding) -> V41StagingRequest? {
+  match encoding {
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      Present { value: V41StagingRequest { image: image, ranks: map(rs.sort_by(r => r.rank), r => r.digest) } }
+    V41RowStoreEncodingUnestablished { obligation: _ } => none
+    V41RowStoreEncodingRefused { defects: _ } => none
+  }
+}
+
+type V41StagingReceipt
+  = V41StagingVerified {
+      request_key: ContentHash
+      image_readback: OciContentDigest
+      ranks: List<V41StagedRankStore>
+    }
+  | V41RankStoresVerified { ranks: List<V41StagedRankStore> }
+  | V41StagingUnestablished { obligation: NonEmptyStr }
+  | V41StagingRefused { defects: List<NonEmptyStr> }
+
+fn v41_rank_readbacks_match(desired: List<ContentHash>, rank_readbacks: List<V41StagedRankStore>) -> Bool {
+  length(rank_readbacks) == length(desired)
+    && all(enumerate(desired), p => any(rank_readbacks, s =>
+      s.rank == p.first && (serialize_content_hash(hash: s.identity) as String) == (serialize_content_hash(hash: p.second) as String)
+        && (serialize_content_hash(hash: s.readback) as String) == (serialize_content_hash(hash: s.identity) as String)))
+}
+
+// AUTHORIZED CUT C DOOR: rank-store bytes on disk, identity and readback. Does not claim an image
+// was produced or a serving process ran. V41StagingVerified stays behind BuiltByThisRun image
+// readback, which is the operator decision this module must not take.
+fn v41_stage_rank_stores(encoding: V41RowStoreEncoding, rank_readbacks: List<V41StagedRankStore>) -> V41StagingReceipt {
+  match encoding {
+    V41RowStoreEncodingUnestablished { obligation: o } => V41StagingUnestablished { obligation: o }
+    V41RowStoreEncodingRefused { defects: d } => V41StagingRefused { defects: d }
+    V41RowStoreEncodingIdentified { spec: _, spec_key: _, rank_stores: rs, content_digest: _ } =>
+      if v41_rank_readbacks_match(desired: map(rs.sort_by(r => r.rank), r => r.digest), rank_readbacks: rank_readbacks) {
+        V41RankStoresVerified { ranks: rank_readbacks }
+      } else {
+        V41StagingRefused { defects: ["rank-local readback does not match the requested row-store identities" as NonEmptyStr] }
+      }
+  }
+}
+
+// NOT THE CUT C DOOR. Minting V41StagingVerified requires a produced image digest (BuiltByThisRun).
+// That is running the first-party candidate. Do not call this to route around authorized_v4_1_runtime_holds.
+fn v41_stage(
+  request: V41StagingRequest,
+  image_readback: OciContentDigest,
+  rank_readbacks: List<V41StagedRankStore>,
+  provenance: VllmImageProvenance,
+) -> V41StagingReceipt {
+  match provenance {
+    AdoptedUnderExpectedTag => V41StagingRefused {
+      defects: ["staging a tag-only image is refused; the receipt must carry the produced digest" as NonEmptyStr],
+    }
+    BuiltByThisRun => {
+      let image_ok = render_oci_content_digest_wire(d: image_readback) == render_oci_content_digest_wire(d: request.image.manifest)
+      if !image_ok {
+        V41StagingRefused { defects: ["image readback does not match the requested manifest digest" as NonEmptyStr] }
+      } else if !v41_rank_readbacks_match(desired: request.ranks, rank_readbacks: rank_readbacks) {
+        V41StagingRefused { defects: ["rank-local readback does not match the requested row-store identities" as NonEmptyStr] }
+      } else {
+        V41StagingVerified {
+          request_key: artifact_realization_digest(inputs: concat(
+            [
+              v41_input(identity: "image.manifest", value: render_oci_content_digest_wire(d: request.image.manifest)),
+              v41_input(identity: "image.config", value: render_oci_content_digest_wire(d: request.image.config)),
+            ],
+            map(enumerate(request.ranks), p => v41_input(identity: join(["rank.", to_string(p.first)], ""), value: serialize_content_hash(hash: p.second) as String)))),
+          image_readback: image_readback,
+          ranks: rank_readbacks,
+        }
+      }
+    }
+  }
+}
+
+// THE LIVE GROUP-A FILL IS AN OBLIGATION UNTIL THE ORIGIN BYTES ARE TRANSFORMED. This cut models the
+// request and the receipt shape. Minting a verified receipt without a readback would be
+// specification-without-execution.
+fn v41_engram_goes_to_disk_because() -> DeclarationRef {
+  id_component_budget_authority
+}
+
+data v41_group_a_staging_standing: V41StagingReceipt = V41StagingUnestablished {
+  obligation: "Operator 2026-09-17: group A is unused; stage onto it; do not tear down the pair occupant; do not launch a first-party serving process. Rank fill waits on operator acquisition of the V4.1 checkpoint plus the Engram transform (hundreds of GB); there is no transform source to point v41_published_transform_standing at. Empty /home/briansrls/v41-engram-staging on spark-a3ee/3bd5/c2b1/ac79 is not a receipt. Receive fill through v41_stage_rank_stores. V41StagingVerified waits on a produced image digest the operator has not authorized. Disk justification is candidate_component_budget (id_component_budget_authority). GB10 is one unified pool (engram_pool_relief); staging must not be planned as a second pool." as NonEmptyStr,
+}

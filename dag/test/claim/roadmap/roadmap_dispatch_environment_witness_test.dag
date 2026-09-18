@@ -249,13 +249,3 @@ test fn empty_validation_contract_refuses_with_its_own_reason() -> Bool {
         && !string_contains(s: reason, pattern: "will not guess")
   }
 }
-
-test fn roadmap_dispatch_environment_keystone_holds() -> Bool {
-  empty_validation_contract_refuses_with_its_own_reason()
-    && all_required_grounded_receipts_admit()
-    && missing_capability_realization_refuses()
-    && observe_only_absence_never_fabricates_apply()
-    && may_apply_without_a_typed_plan_still_refuses()
-    && unspecified_contract_refuses_before_capability_checks()
-    && admission_receipt_is_structured_and_located()
-}

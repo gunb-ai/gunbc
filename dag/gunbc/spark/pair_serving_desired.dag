@@ -25,6 +25,7 @@ import gunbc.spark.fabric_switch_observed {
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire,
   FabricLaneObserved, fabric_lane_for_host,
 }
+import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
 import gunbc.spark.pair_serving_observed { first_pair_observed_head }
@@ -171,7 +172,105 @@ data spark_pair_serving_declared_enforcers: List<MemoryEnforcerKind> = [KernelOo
 // turn may be offered to -- and gunbc.serving.serving_enrollment now owns the second. This row is
 // the first question only, and it still says what it said on 2026-09-08: group B's hosts are the
 // canary's and are not claimed here.
-data spark_pair_serving_groups: List<FabricGroup> = [FabricGroupA]
+
+// THE NOTE ABOVE AND THIS ONE ARE ABOUT DIFFERENT CASES, and read in sequence they otherwise look like
+// a contradiction: it concludes that "the withdrawal belongs in the ROSTER, which is the thing that
+// decides", and this one says removing a member from that roster is the thing to stop and think about.
+// Both are right. The group B withdrawal removed a NON-LAST member to resolve a CONFLICTING claim -- two
+// authorities on one machine, and shrinking the roster was the correct repair, which is what that note
+// records. The case below is the opposite shape: the LAST member, removed for a SUCCESSOR that needs
+// those same hosts kept. Shrinking is right when you want the hosts released to someone else; it is
+// wrong when you want them held for you.
+//
+// READ THIS BEFORE REMOVING THE LAST MEMBER. Group A is the ONLY entry in this row, so a withdrawal
+// here does not remove an entry -- it EMPTIES THE ROSTER, and the two things that follow are not
+// obvious from the edit.
+//
+// FIRST, SOME FOLDS OVER THIS ROW LOSE THEIR SUBJECT AND OTHERS REFUSE, AND WHICH IS WHICH IS THE
+// WHOLE OBLIGATION. An `all(...)` over an empty list is true, so a check of the form "every claimed
+// serving group satisfies X" stops being evidence the moment the roster empties -- it passes, greenly,
+// because nothing remains to fail it. But a consumer that refuses on an empty population is fine, and
+// saying "every fold" would be a warning an author can disprove with one counterexample and then
+// discount entirely. The class is
+// gunbc.recurring_failure_mode.predicate_vacuously_true_on_an_empty_domain, whose recognition rule is
+// the test to apply: A PREDICATE THAT IS TRUE ON THE EMPTY CASE IS NOT A CHECK UNTIL ITS DOMAIN IS
+// PROVEN NON-EMPTY -- ask of every universal what it returns when the collection is empty, and whether
+// the boundary can produce empty. Here the boundary is this edit.
+//
+// THE ONE VACUOUS CONSUMER FOUND SO FAR IS NOW WALLED RATHER THAN DESCRIBED.
+// gunbc.instruments.fabric_capacity_standing maps this roster and then calls all(...), which on an empty
+// roster reached ExitSuccess having examined nothing; it now refuses on a zero-length standings list, so
+// that path is non-vacuous BY CONSTRUCTION and this paragraph is rationale rather than a warning anyone
+// must act on. Two other shapes are located and need nothing: spark_pair_serving_apply_wet already
+// refuses on an empty plan list, and host_commitment does not lose its subject at all -- it keeps the
+// fleet host population and reclassifies commitment and admissibility over it.
+//
+// THAT IS THE STANDARD FOR THE REST. An annotation is not a wall: no Accepted program reads a comment, so
+// a note here cannot protect a consumer in another module. Anything this partition finds VacuouslySatisfied
+// gets a bound in ITS OWN module, the way the instrument above now has one.
+//
+// AND EMPTYING THIS ROW IS NOT SILENT TODAY, which is worth knowing before you assume you are the only
+// guard. Two enrolled witnesses go RED rather than vacuous:
+// test.claim.spark.spark_pair_serving_desired_witness asserts length(spark_pair_serving_groups) == 1, so
+// emptying it fails that claim directly, and
+// test.claim.spark.serving_deployment_selection_witness_test reaches the roster through `any`, which is FALSE on
+// an empty list rather than true. So a lane that empties this row meets a red floor, not silence -- the
+// hazard above is what happens if someone answers that red by relaxing the claims instead of by asking
+// why the roster is empty.
+//
+// So anyone emptying this row owes a PARTITION over every DIRECT AND TRANSITIVE consumer, not merely
+// folds, sorting each empty result into Refused, IntentionallyEmpty, VacuouslySatisfied, or
+// ReclassifiedOntoAnotherSubject. Only VacuouslySatisfied is the failure mode above, and only it must be
+// repaired or shown to have a non-vacuous subject elsewhere. A check that silently
+// becomes vacuous is worse than a check that was deleted, because it is still cited as coverage.
+//
+// SECOND, THIS ROW IS AN AUTHORITY-HELD HOST-COMMITMENT INPUT, AND EMPTYING IT RECLASSIFIES HOSTS. gunbc.spark.host_commitment
+// derives every MemberOfClaimedServingGroup cause from this row and uses those causes to decide which
+// serving subject owns each host. gunbc.spark.cell_role assigns SparkServingCell to srv5 and srv6 only,
+// so THIS CLAIM IS WHAT SPEAKS FOR srv7 AND srv8. Empty the row and the two halves fail DIFFERENTLY,
+// which is worth knowing before you assume the milder half. srv5/srv6 keep a cell role, and
+// serving_subject_claims_host answers CommittedToCellRole with `false` for EVERY subject -- the module
+// says it in as many words, that "held by nobody" is a refusal for every subject rather than an absence
+// that reads as freedom. So those two are not freed, they are REFUSED, including to the very
+// PairServingUnitOn FabricGroupA subject that wanted them. srv7/srv8 meanwhile lose their only cause and
+// become uncommitted -- admissible to any serving subject and
+// eligible as admit_unplaced_host effect targets, which gunbc.spark.v41_runtime_image_probe consumes to
+// pull an image and start a container. A lane that empties this row to "release" Group A for its own use
+// removes the modeled commitment that serving selection, build admission and probe admission consult to
+// avoid conflicting placement -- a PairServingUnitOn FabricGroupA subject derives its host population
+// through spark_serving_admissible_hosts and would lose two of its four admissible hosts.
+//
+// BUT RETAINING THIS ROW IS NOT EXCLUSIVE POSSESSION EITHER, and the neighbouring modules say so: a
+// commitment is not a capability or a lease, and gunbc.spark.serving_arm_placement is explicit that a
+// claim does not confer exclusive use -- a consumer wanting exclusivity must acquire it. So this row is
+// what a conflicting placement CONSULTS, not what reserves the hosts. Anything needing exclusive use
+// still needs an acquired lease.
+//
+// SO WITHDRAWAL AND SUSPENSION ARE DIFFERENT, AND THE MODEL EXPRESSES ONLY THE FIRST. Withdrawal is
+// expressible ONLY as this roster shrinking, which is what the group B note above records. SUSPENSION is
+// not expressible at all: no carrier jointly provides a disabled pair realization, all four hosts
+// retained for PairServingUnitOn FabricGroupA, build and probe admission still fenced, an exact
+// successor authorization, and a bounded lease with cleanup. EMPTYING THIS ROSTER IS NOT A SUSPENSION
+// SUBSTITUTE. And when suspension is modeled, note the grain: V4 and V4.1 deliberately SHARE the subject
+// PairServingUnitOn FabricGroupA, so a successor must be discriminated by its exact authorization and
+// candidate realization rather than by subject identity, which does not change across that transition. The reasoning is at
+// docs/plans/dsv41-cut-d-redesign.md; the obligation is here, on the row that decides.
+// THIS ROW IS NOW DERIVED, AND THE ROW IT DERIVES FROM IS WHERE THE OBLIGATIONS ABOVE NOW BITE.
+// Claiming a group and being free to act on it were briefly authored as two hand-edited lists whose
+// agreement a test asserted -- one fact with two authors, admitted on the strength of a validator,
+// which is the shape DESIGN section 5 names when it says construction beats validation. Every authority
+// arm already carries its group, so membership is a projection of the authority population and a row
+// for an unclaimed group, or a claimed group with no authority, is now UNWRITABLE rather than merely
+// caught. The join claim that used to hold the two together dissolved with the climb.
+//
+// WHAT MOVED, precisely, so the reasoning above is not read against the wrong row: everything this
+// annotation says about withdrawal, vacuity and the shared V4/V4.1 subject is unchanged in substance,
+// but the row an author edits to withdraw Group A is now
+// gunbc.spark.pair_serving_authority spark_pair_serving_authorities. Emptying THAT empties this, so the
+// vacuity hazard is not removed by the indirection -- it is relocated onto the row that also carries
+// the suspension states, which is the point: an author reaching for withdrawal now has suspension
+// sitting in front of them in the same declaration.
+data spark_pair_serving_groups: List<FabricGroup> = map(spark_pair_serving_authorities, a => pair_serving_authority_group(a: a))
 
 // WHICH HOST IS THE HEAD IS AN ATTRIBUTABLE ROW. Group A: srv6, the observed head of the first pair
 // (serve process, unit and Ray node address were all there). Group B: srv9 (spark-0c75), the unit the
@@ -391,6 +490,22 @@ fn spark_pair_serving_unit_hosts(u: SparkPairServingUnit) -> List<HostIdentity> 
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: ws } => concat([h.host], map(ws, w => w.host))
     SparkPairServingUnitRefused { group: _, cause: _ } => [] as List<HostIdentity>
   }
+}
+
+// THE HEAD OF A GROUP'S DESIRED UNIT, for a reader that must ask the host whose engine exports the
+// group's endpoint. A refused unit has no head, and a group not on the roster has none either;
+// both are Absent rather than a fabricated host.
+fn spark_pair_group_head_host(group: FabricGroup) -> HostIdentity? {
+  fold(spark_pair_serving_desired, init: none, f: (acc, u) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match u {
+          SparkPairServingUnitReady { group: g, engine: _, head: h, workers: _ } =>
+            if (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String) { Present { value: h.host } } else { none }
+          SparkPairServingUnitRefused { group: _, cause: _ } => none
+        }
+    })
 }
 
 fn spark_pair_serving_desired_hosts() -> List<HostIdentity> {

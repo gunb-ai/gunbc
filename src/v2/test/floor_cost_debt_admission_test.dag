@@ -1,0 +1,255 @@
+module v2.test.floor_cost_debt_admission
+
+import v2.workflow.floor_cost_debt_admission {
+  FloorCostDebtRow, FloorCostDebtRowStanding,
+  FloorCostDebtRowAdmitted, FloorCostDebtRowRefusedUnderCeiling,
+  FloorCostDebtRowRefusedCensoredNotEstablished,
+  FloorCostDebtRowRefusedBoundWithoutCeiling,
+  FloorCostDebtReadingAttempt,
+  FloorCostDebtVerdictAxis, FloorCostDebtReachedAVerdict, FloorCostDebtNeverReachedAVerdict,
+  floor_cost_debt_row, floor_cost_debt_row_is_admitted, floor_cost_debt_admit_attempts,
+}
+import gunbc.floor_cost_distribution {
+  ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
+}
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Ceiling is a constructor parameter. The live authority is
+// `required_floor_claim_work_envelope_ms`; the enrolment-margin suite joins that name to this
+// constructor so this file need not import required_floor (and with it the floor's whole roster).
+fn ceiling() -> Millisecond {
+  millisecond(count: 500)
+}
+
+// THE STEP COUNT THESE FIXTURES CARRY IS INCIDENTAL AND IS DECLARED AS SUCH (gunbc#11366 Phase 1).
+// Every witness in this file exercises the CPU half -- the margin, the ceiling, the censoring
+// discriminator -- so the count is present because the arm requires one and not because any
+// assertion here reads it. When Phase 2 denominates this gate in eval steps these fixtures gain a
+// step parameter and the value stops being incidental; saying so now is what keeps a later reader
+// from mistaking an arbitrary figure for a measured one.
+fn observed(cpu_ms: Int) -> ClaimCostReading {
+  ObservedCpuReading { cpu_ms: millisecond(count: cpu_ms), eval_steps: fixture_incidental_steps() }
+}
+
+fn fixture_incidental_steps() -> EvalStepCount {
+  eval_step_count(count: 1000)
+}
+
+fn censored(cpu_lower_bound_ms: Millisecond, censoring_ceiling_ms: Millisecond) -> ClaimCostReading {
+  RightCensoredCpuReading {
+    cpu_lower_bound_ms: cpu_lower_bound_ms,
+    censoring_ceiling_ms: censoring_ceiling_ms,
+    eval_steps_before_censor: fixture_incidental_steps(),
+  }
+}
+
+fn observed_attempt(identity: String, cpu_ms: Int) -> FloorCostDebtReadingAttempt {
+  FloorCostDebtReadingAttempt {
+    identity: identity,
+    reading: observed(cpu_ms: cpu_ms),
+    verdict: FloorCostDebtReachedAVerdict,
+  }
+}
+
+fn censored_no_verdict(
+  identity: String,
+  cpu_lower_bound_ms: Millisecond,
+  censoring_ceiling_ms: Millisecond,
+) -> FloorCostDebtReadingAttempt {
+  FloorCostDebtReadingAttempt {
+    identity: identity,
+    reading: censored(
+      cpu_lower_bound_ms: cpu_lower_bound_ms,
+      censoring_ceiling_ms: censoring_ceiling_ms,
+    ),
+    verdict: FloorCostDebtNeverReachedAVerdict,
+  }
+}
+
+fn standing_observed(identity: String, cpu_ms: Int) -> FloorCostDebtRowStanding {
+  floor_cost_debt_row(
+    identity: identity,
+    reading: observed(cpu_ms: cpu_ms),
+    ceiling_ms: ceiling(),
+    verdict: FloorCostDebtReachedAVerdict,
+  )
+}
+
+fn standing_censored(
+  identity: String,
+  cpu_lower_bound_ms: Millisecond,
+  censoring_ceiling_ms: Millisecond,
+  verdict: FloorCostDebtVerdictAxis,
+) -> FloorCostDebtRowStanding {
+  floor_cost_debt_row(
+    identity: identity,
+    reading: censored(
+      cpu_lower_bound_ms: cpu_lower_bound_ms,
+      censoring_ceiling_ms: censoring_ceiling_ms,
+    ),
+    ceiling_ms: ceiling(),
+    verdict: verdict,
+  )
+}
+
+// A BOUND WITH NO CEILING REFUSES ON ITS OWN ARM AND MINTS NOTHING. Since no CPU deadline is
+// armed, a preempted row's CPU is a bound with no ceiling beside it, so the "establishes the
+// supplied ceiling" test has nothing to compare. The refusal must be its OWN arm: reusing
+// `RefusedCensoredNotEstablished` would need a `censoring_ceiling_ms` filled from the supplied
+// ceiling, a figure the reading never carried. This drives the real classification and asserts
+// both halves -- that it refuses, and that it refuses under the arm that does not fabricate.
+test fn a_bound_with_no_ceiling_is_refused_and_does_not_fabricate_a_ceiling() -> Bool {
+  let standing = floor_cost_debt_row(
+    identity: "fixture.bound_no_ceiling",
+    reading: CpuLowerBoundWithoutCeiling { cpu_lower_bound_ms: millisecond(count: 514), eval_steps_before_censor: fixture_incidental_steps() },
+    ceiling_ms: ceiling(),
+    verdict: FloorCostDebtNeverReachedAVerdict,
+  )
+  match standing {
+    FloorCostDebtRowRefusedBoundWithoutCeiling { identity: i, cpu_lower_bound_ms: b } =>
+      i == "fixture.bound_no_ceiling"
+        && millisecond_count(m: b) == 514
+        && !floor_cost_debt_row_is_admitted(standing: standing)
+    FloorCostDebtRowAdmitted { row: _ } => false
+    FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: _ } => false
+    FloorCostDebtRowRefusedCensoredNotEstablished {
+      identity: _,
+      cpu_lower_bound_ms: _,
+      censoring_ceiling_ms: _,
+    } => false
+  }
+}
+
+// HALF TWO RED: a fixture row at 325ms OBSERVED refuses to enter the roster. That is the
+// gunbc#10994 specimen cost — over the enrolment margin, under the 500ms ceiling — and
+// rostering it would mint "declared too expensive" from a margin crossing.
+test fn an_observed_row_at_325ms_cannot_enter_the_cost_debt_roster() -> Bool {
+  let standing = standing_observed(identity: "fixture.tripwire_325", cpu_ms: 325)
+  !floor_cost_debt_row_is_admitted(standing: standing)
+    && match standing {
+      FloorCostDebtRowAdmitted { row: _ } => false
+      FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: c } =>
+        millisecond_count(m: c) == 325
+      FloorCostDebtRowRefusedCensoredNotEstablished {
+        identity: _,
+        cpu_lower_bound_ms: _,
+        censoring_ceiling_ms: _,
+      } => false
+      FloorCostDebtRowRefusedBoundWithoutCeiling {
+        identity: _,
+        cpu_lower_bound_ms: _,
+      } => false
+    }
+}
+
+test fn an_observed_row_above_the_ceiling_is_admitted() -> Bool {
+  floor_cost_debt_row_is_admitted(
+    standing: standing_observed(identity: "fixture.proven_501", cpu_ms: 501)
+  )
+    && fold(
+         floor_cost_debt_admit_attempts(
+           attempts: [observed_attempt(identity: "fixture.proven_501", cpu_ms: 501)],
+           ceiling_ms: ceiling(),
+         ),
+         init: "",
+         f: fn(acc, row) { concat(acc, row.identity) }
+       ) == "fixture.proven_501"
+}
+
+test fn a_censored_row_is_admitted() -> Bool {
+  floor_cost_debt_row_is_admitted(
+    standing: standing_censored(
+      identity: "fixture.censored",
+      cpu_lower_bound_ms: millisecond(count: 500),
+      censoring_ceiling_ms: millisecond(count: 500),
+      verdict: FloorCostDebtNeverReachedAVerdict,
+    )
+  )
+    && fold(
+         floor_cost_debt_admit_attempts(
+           attempts: [censored_no_verdict(
+             identity: "fixture.censored",
+             cpu_lower_bound_ms: millisecond(count: 500),
+             censoring_ceiling_ms: millisecond(count: 500),
+           )],
+           ceiling_ms: ceiling(),
+         ),
+         init: "",
+         f: fn(acc, row) { concat(acc, row.identity) }
+       ) == "fixture.censored"
+}
+
+// THE GATEKEEPER COUNTEREXAMPLE: a 1ms censored reading against the real 500ms ceiling must
+// refuse. Censoring at 1ms does not establish the required-floor CPU ceiling.
+test fn a_1ms_censored_reading_against_the_500ms_ceiling_is_refused() -> Bool {
+  let standing = standing_censored(
+    identity: "fixture.censored_1ms",
+    cpu_lower_bound_ms: millisecond(count: 1),
+    censoring_ceiling_ms: millisecond(count: 1),
+    verdict: FloorCostDebtNeverReachedAVerdict,
+  )
+  !floor_cost_debt_row_is_admitted(standing: standing)
+    && match standing {
+      FloorCostDebtRowAdmitted { row: _ } => false
+      FloorCostDebtRowRefusedUnderCeiling { identity: _, observed_cpu_ms: _ } => false
+      FloorCostDebtRowRefusedCensoredNotEstablished {
+        identity: _,
+        cpu_lower_bound_ms: b,
+        censoring_ceiling_ms: c,
+      } => millisecond_count(m: b) == 1 && millisecond_count(m: c) == 1
+      FloorCostDebtRowRefusedBoundWithoutCeiling {
+        identity: _,
+        cpu_lower_bound_ms: _,
+      } => false
+    }
+}
+
+test fn a_censored_row_whose_ceiling_mismatches_the_supplied_ceiling_is_refused() -> Bool {
+  !floor_cost_debt_row_is_admitted(
+    standing: standing_censored(
+      identity: "fixture.censored_wrong_ceiling",
+      cpu_lower_bound_ms: millisecond(count: 500),
+      censoring_ceiling_ms: millisecond(count: 1),
+      verdict: FloorCostDebtNeverReachedAVerdict,
+    )
+  )
+}
+
+test fn a_censored_row_that_reached_a_verdict_is_refused() -> Bool {
+  !floor_cost_debt_row_is_admitted(
+    standing: standing_censored(
+      identity: "fixture.censored_with_verdict",
+      cpu_lower_bound_ms: millisecond(count: 500),
+      censoring_ceiling_ms: millisecond(count: 500),
+      verdict: FloorCostDebtReachedAVerdict,
+    )
+  )
+}
+
+test fn the_admission_fold_drops_a_325ms_observed_row() -> Bool {
+  let admitted = floor_cost_debt_admit_attempts(
+    attempts: [
+      observed_attempt(identity: "fixture.tripwire_325", cpu_ms: 325),
+      observed_attempt(identity: "fixture.proven_501", cpu_ms: 501),
+      censored_no_verdict(
+        identity: "fixture.censored",
+        cpu_lower_bound_ms: millisecond(count: 514),
+        censoring_ceiling_ms: millisecond(count: 500),
+      ),
+      censored_no_verdict(
+        identity: "fixture.censored_1ms",
+        cpu_lower_bound_ms: millisecond(count: 1),
+        censoring_ceiling_ms: millisecond(count: 1),
+      ),
+    ],
+    ceiling_ms: ceiling(),
+  )
+  fold(admitted, init: "", f: fn(acc, row) {
+    concat(acc, concat(row.identity, ";"))
+  }) == "fixture.proven_501;fixture.censored;"
+}

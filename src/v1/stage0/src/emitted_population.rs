@@ -33,6 +33,7 @@
 // src/gunbc_cli_dispatch_generated.rs
 // src/gunbc_cli_dispatch_surface.rs
 // src/gunbc_namespace_reference_derived_closure_admission.rs
+// src/gunbc_reference_derived_candidate.rs
 // src/gunbc_rust_decl_type_overlay.rs
 // src/gunbc_rust_source_type_bindings.rs
 // src/gunbc_stage0_crate_layout_generated.rs
@@ -150,6 +151,7 @@
 // src/v1_tests_claim_item_kind_dissolves_shape_predicates_control_test.rs
 // src/v1_tests_claim_production_fed_exposure_discrimination_control_test.rs
 // src/v1_tests_claim_reference_derived_disposition_census_witness_test.rs
+// src/v1_tests_claim_tco_tail_call_assigns_every_loop_slot_witness.rs
 // src/v1_tests_claim_transport_roster_closure_witness_test.rs
 // src/v1_tests_claim_type_declaration_occurrence_control_test.rs
 // src/wt_a.rs

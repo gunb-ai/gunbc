@@ -1,21 +1,21 @@
 module gunbc.fleet_desired_admission_workflow
 
-import extdeps.languages.yaml.types { yaml_string, kv }
+import extdeps.languages.yaml.types { yaml_string, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  WorkflowTrigger, WorkflowRunCompleted,
-  WorkflowPermissions, PermWrite,
+  WorkflowTrigger, Push,
+  WorkflowPermissions, PermWrite, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
   checkout_action,
-  github_event_path_env
+  github_event_path_env,
 }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
-import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
+import gunbc.witness_floor_workflow { witness_floor_toolchain_step }
 import gunbc.toolchain_workflow_steps {
   toolchain_home_isolation_step,
   toolchain_pin_rustup_default_step,
@@ -31,17 +31,30 @@ import gunbc.fleet_desired_admission {
   fleet_desired_admission_authorized_action_path,
 }
 import v2.std.optional { Present }
-import std.types { String }
+import std.types { String, List }
 
 // THIS WORKFLOW IS THE ADMISSION GATE'S TRIGGER, AND IT IS SEPARATE FROM THE DEPLOY WORKFLOW
 // FOR A REASON THAT IS NOT ORGANISATIONAL.
 //
 // gunbc.fleet_main_revision requires the desired revision to derive from MERGED, FLOOR-GREEN
-// main. The required floor takes about thirty minutes, so at the moment a merge lands there is
-// no floor conclusion for that revision to consult -- a push-triggered advance can only
-// fabricate floor-green or refuse forever. The conclusion becomes observable exactly once, when
-// the floor run completes, and that is a different event from the push. So the admission is a
-// different workflow, keyed to the floor's completion, reading the conclusion GitHub delivers.
+// main. Before the merge queue, a push to main landed with no floor conclusion for its revision to
+// consult -- the required floor took about thirty minutes to reach one -- so a push-triggered
+// advance could only fabricate floor-green or refuse. That is why the ORIGINAL route was keyed to
+// the floor run's completion (workflow_run), reading the conclusion GitHub delivered afterwards.
+//
+// UNDER THE MERGE QUEUE THAT PREMISE IS FALSE, and this workflow now has ONE route because it is.
+// The queue runs the required floor on its composed revision (the merge_group run) and moves the
+// default branch to exactly that revision only after the run succeeds, so when the push of R is
+// delivered the floor's verdict on R already exists. The route reads the branch fact from the push
+// itself and the CI fact from the merge_group runs on R
+// (gunbc.fleet_desired_admission admit_fleet_desired_from_push_wet). A push that bypassed the queue
+// has no such run and refuses loudly as RequiredCiMergeGroupRunAbsent.
+//
+// THE workflow_run ROUTE IS DELETED, on the condition this module stated for it: it stayed only
+// until the witnesses push-on-main run was cut, and that cut is
+// gunbc.witness_floor_workflow witness_floor_triggers. With no push-event run of the required
+// workflow there is no completion event to key on, so keeping the route would have left a second
+// authority for one fact that nothing can reach.
 //
 // WHAT THIS REPLACES. deploy.yml previously ended with a step that stamped $GITHUB_SHA onto
 // refs/fleet/desired on every push to main, consulting nothing. The modeled gate
@@ -130,7 +143,16 @@ fn fleet_desired_admission_stage_payload_step() -> Step {
 
 // The decision. A refusal exits non-zero here and the job stops before the actuation step, so
 // the ref keeps its previous admitted revision and the cause is in the log, located and typed.
-fn fleet_desired_admission_decide_step() -> Step {
+//
+// THE ONE DECISION STEP. A refusal exits non-zero here and the job stops before the actuation
+// step, so the ref keeps its previous admitted revision and the cause is in the log, located and
+// typed. There used to be TWO steps, one per admission route, selected by the triggering event:
+// the workflow_run route keyed to the push-on-main required run's completion, and this one. The
+// push-on-main run is cut (gunbc.witness_floor_workflow witness_floor_triggers), so that run never
+// completes and the event that carried its conclusion is never delivered -- the route went with it
+// rather than standing as a second authority that nothing can reach. This step reads the forge, so
+// it carries GITHUB_TOKEN, which github.WorkflowRuns resolves from its auth_source.
+fn fleet_desired_admission_decide_push_step() -> Step {
   RunStep {
     name: Present { value: "Decide whether the floor admits this revision" },
     id: none,
@@ -138,10 +160,10 @@ fn fleet_desired_admission_decide_step() -> Step {
       "ROOT=", ci_repo_root_shell(), "\n",
       "\"$ROOT/target/release/gunbc\" run --source-root dag --source-root src/v2",
       " --entry dag/gunbc/fleet/fleet_desired_admission.dag",
-      " --function admit_fleet_desired_from_floor_event_wet\n",
+      " --function admit_fleet_desired_from_push_wet\n",
     ], ""),
     shell: none,
-    env: none,
+    env: Present { value: [kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}"))] },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -202,17 +224,13 @@ fn fleet_desired_admission_job() -> Job {
       toolchain_pin_rustup_default_step(),
       fleet_desired_admission_build_step(),
       fleet_desired_admission_stage_payload_step(),
-      fleet_desired_admission_decide_step(),
+      fleet_desired_admission_decide_push_step(),
       fleet_desired_admission_action_step()
     ],
     needs: [],
     env: none,
     outputs: none,
-    if_condition: Present {
-      value: join([
-        "github.event.workflow_run.head_branch == '", gunbc_default_branch_name, "'",
-      ], ""),
-    },
+    if_condition: none,
     timeout_minutes: Present { value: 60 },
     continue_on_error: none,
     concurrency: none,
@@ -221,7 +239,7 @@ fn fleet_desired_admission_job() -> Job {
         contents: Present { value: PermWrite },
         pull_requests: none,
         issues: none,
-        actions: none,
+        actions: Present { value: PermRead },
         id_token: none,
       }
     }
@@ -351,31 +369,30 @@ fn fleet_desired_admission_job() -> Job {
 // citation duty.
 
 // DECLARED GAP -- SEARCH KEY: FleetDesiredAdmissionJudgeIdentity
-// A SECOND DECLARED GAP: THE IDENTITY OF THE CODE MAKING THE ADMISSION DECISION IS NOT MODELLED.
-// On a workflow_run event GitHub sets the checkout's default ref to the DEFAULT BRANCH HEAD, not to
-// the triggering run's head_sha, and the checkout step below names no ref. So the binary that
-// adjudicates candidate C is built from whatever the default branch happens to be when the
-// admission runs -- call it J -- and J is not necessarily C, nor necessarily admitted, nor
-// necessarily floor-green. The decision is correct about WHICH revision it admits (the candidate
-// comes from the event payload, not from the checkout), but the JUDGE's provenance is an accident
-// of timing.
+// THE IDENTITY OF THE CODE MAKING THE ADMISSION DECISION IS MODELLED BUT NOT CHOSEN.
+// The workflow_run shape of this gap is gone with that route: it was the case where GitHub set the
+// checkout's default ref to the DEFAULT BRANCH HEAD rather than to the triggering run's head_sha,
+// so the judge was whatever happened to be on main when the admission ran -- an accident of timing
+// that nothing recorded. On a push event the checkout's default ref IS the pushed revision, so the
+// judge is the candidate, and gunbc.fleet_desired_admission reads the worktree revision and refuses
+// rather than materializing an unattributable action
+// (fleet_desired_unobservable_judge_source_refusal_reason); every admission prints the observed
+// judge source beside the revision it admits.
 //
-// The naive repair -- checking out github.event.workflow_run.head_sha -- is NOT automatically safe:
-// workflow_run is a privileged trigger carrying write credentials, and building the candidate's own
-// code under those credentials is the pattern GitHub's own guidance warns against. The trust wall
-// in gunbc.fleet_desired_admission runs AFTER checkout and compilation, so it cannot protect a step
-// that already executed candidate code. Two honest constructions exist -- build the judge from the
-// currently admitted revision so the authority has an explicit identity, or split trusted validation
-// from candidate execution so the privileged CAS never runs candidate code -- and both are larger
-// than this change. Declared here rather than left to be discovered.
+// WHAT REMAINS IS THE OTHER HALF, AND IT IS NOT CLOSED: the candidate now adjudicates itself under
+// a token carrying contents: write, which is the pattern GitHub's own guidance warns against, and
+// the trust wall in gunbc.fleet_desired_admission runs AFTER checkout and compilation, so it cannot
+// protect a step that already executed candidate code. The mitigation the queue supplies is that a
+// revision only reaches this workflow after the required floor passed on it, which is a weaker fact
+// than trusted provenance. Two honest constructions exist -- build the judge from the currently
+// admitted revision so the authority has an explicit identity, or split trusted validation from
+// candidate execution so the privileged CAS never runs candidate code -- and both are larger than
+// this change. Declared here rather than left to be discovered.
 data fleet_desired_admission_workflow: Workflow = Workflow {
   name: "fleet-desired",
   run_name: none,
   on: [
-    WorkflowRunCompleted {
-      workflows: [witness_floor_workflow_name],
-      branches: [gunbc_default_branch_name],
-    }
+    Push { branches: [gunbc_default_branch_name], paths: [] }
   ],
   concurrency: Present {
     value: ConcurrencyMappingQueueMax {

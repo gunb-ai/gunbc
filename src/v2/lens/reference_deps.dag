@@ -8,6 +8,8 @@ import v2.lens.module_graph { map_lookup_where_rejected_unreachable, no_paths, m
 import v2.std.algebra { contains, fold_list, list_reverse }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
+import v2.std.text { string_eq }
+import v2.std.node { symbol_eq }
 
 
 type ReferenceResolutionFact {
@@ -30,13 +32,13 @@ type ReferenceResolutionCensus {
 data reference_deps_parsed_tree_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v2.lens.reference_deps",
-    decl_name: "reference_resolution_facts_from_parsed_corpus",
+    module_path: "v2.compiler.reference_site_collector",
+    decl_name: "collect_reference_sites",
     field: WholeDeclaration
   }
 }
 
-data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). On the import-only corpus reference_closure_live delegates to import_closure_live_excluding (same edge producer, no O(n²) fact re-materialization). reference_parsed_tree_facts_match_import_facts_at_path is green-by-execution on the conformance entry (witnessed in reference_closure_b2_safety_wall_holds). reference_parsed_tree_matches_import_facts_on_closure and reference_closure_parsed_live are scaffold-only until interpreter parse-per-member cost is bounded; parsed_reference_closure_two_entry_no_result_observation carries the exact emitted-surface census subject that produced no result within its deadline, with deciding-stage reach explicitly unproven. reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census (no witness yet). Dissolves when symbol_index_fill projects reference edges from the filled containment tree and non-import qualified-name sites require the parsed census path."
+data reference_deps_dissolution_note: String = "B2 reference edges from parsed-tree qualified-name use sites (imports + body/type refs via ingest → fold). Segment-prefix match against declared module paths (QualifiedName segments, not string scan). On the import-only corpus reference_closure_live delegates to import_closure_live_excluding (same edge producer, no O(n²) fact re-materialization). reference_parsed_tree_facts_match_import_facts_at_path is green-by-execution on the conformance entry (witnessed in reference_closure_b2_safety_wall_holds). reference_parsed_tree_matches_import_facts_on_closure and reference_closure_parsed_live are scaffold-only until interpreter parse-per-member cost is bounded; parsed_reference_closure_two_entry_no_result_observation carries the exact emitted-surface census subject that produced no result within its deadline, with deciding-stage reach explicitly unproven. reference_resolution_facts_from_parsed_corpus is the full-corpus scaffold census (no witness yet)."
 
 // NO EXECUTION RECEIPT, NO COST RESULT.
 //
@@ -84,14 +86,6 @@ data reference_deps_ingest_refusal_probe_path: String = "witness/ingest_refusal_
 data empty_reference_facts: List<ReferenceResolutionFact> = []
 
 data empty_reference_refusals: List<ReferenceIngestRefusal> = []
-
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
-  a == b
-}
 
 fn reference_ingest_refusal_diagnostic(refusal: ReferenceIngestRefusal) -> Diagnostic {
   Diagnostic {
@@ -955,7 +949,27 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-data reference_deps_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the namespace terminal step lands and reference edges come from the containment authority rather than this segment-prefix match over parsed-tree qualified-name use sites (namespace-resolution-design section 8)")
+// THE DISSOLUTION CONDITION IS REPOINTED (NAMESPACE-XL XL-0). The successor this row described
+// abstractly -- "the containment authority" -- now exists by name:
+// v2.compiler.reference_site_collector collect_reference_sites, which walks the tree the RESOLVER
+// consumes rather than the parse tree, so its sites are things resolution resolves. The Scaffold
+// disposition above binds to it.
+//
+// THE TRIGGER IS NOT "THE NAMESPACE STEP LANDS", AND THE TWO WALKERS STAND TOGETHER UNTIL IT FIRES.
+// This lens keys on ^dag_surface_qualified_name and the import productions and carries NO dot or
+// field-access handling, so it sees a qualified name in TYPE position and misses one in a BODY,
+// which parses as a field access. The collector reads the normalized tree, where a qualified
+// spelling is not that production at all, and misses both. Neither instrument covers the qualified
+// class today, so this is a DECLARED FRONTIER rather than a consolidation, and the condition names
+// the capability that actually ends it.
+//
+// STATED HERE AND NOT IN THE NARRATIVE ROW BESIDE IT. An earlier revision of this change appended
+// the repoint to reference_deps_dissolution_note, a String whose lifecycle content was already
+// EXTRACTED to this carrier -- gunbc.dissolution_migration_census classifies that row NarrativeOnly
+// for exactly that reason. The result was one lifecycle condition in two places with two different
+// contents, and the one a consumer reads was the stale one. DESIGN section 4c: a dissolution
+// condition belongs in a typed carrier, and `//` is where the rationale goes.
+data reference_deps_dissolve_on: DissolutionCondition = unbound_dissolution(description: "v2.compiler.reference_site_collector collect_reference_sites covers QUALIFIED reference sites, which waits on the dotted-reference capability -- a dotted spelling is not a qualified-name production in a body, so neither this lens nor that collector recognises it today. Landing the namespace terminal step does NOT satisfy this on its own.")
 
 fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
   let here = match parse_production_emitted_identity_optional(node: n) {

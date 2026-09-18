@@ -233,6 +233,25 @@ fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
     }
   }
 }
+
+fn diagnostics_list_has_reason(xs: List<Diagnostic>, reason: Symbol) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, d) {
+      acc || (d.reason == reason)
+    }
+  )
+}
+
+fn diagnostics_has_reason(d: Diagnostics, reason: Symbol) -> Bool {
+  match d {
+    None => false
+    Some { diagnostics: nds } =>
+      (nds.head.reason == reason)
+        || diagnostics_list_has_reason(xs: nds.tail, reason: reason)
+  }
+}
 fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
   match a {
     Accepted { value: av, diagnostics: ad } => match b {

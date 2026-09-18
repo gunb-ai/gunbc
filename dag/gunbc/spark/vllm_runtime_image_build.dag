@@ -8,11 +8,9 @@ import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.content_hash { ContentHash, content_hash_atom, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import product.placement_supply { HostIdentity, host_identity_eq }
-import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
-import gunbc.spark.fabric_switch_observed { fabric_group_hosts, fabric_lane_for_host }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
-import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_host_holds_undischarged_reservation }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.fabric_switch_observed { fabric_lane_for_host }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host, spark_unplaced_hosts }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker { DockerMount, BindMount }
@@ -144,55 +142,43 @@ import gunbc.typed_argv_exec {
 // of a vLLM build. The entry takes its host from the caller and admits it against a DERIVED
 // admissibility fact, so the roster cannot go stale against the fleet it describes.
 //
-// ADMISSIBILITY IS A SUBTRACTION FROM THE MODELED FLEET, not a written list. Every Spark carrying a
-// router binding is a candidate; a member of a group that is ACTUALLY SERVING is excluded, because
-// that is where an engine runs; a member holding an undischarged llama.cpp RPC peer reservation is
-// excluded, because that reservation is someone else's. Adding a Spark, or standing a second group up
-// into spark_pair_serving_groups, changes this answer with no edit here.
+// ADMISSIBILITY IS A SUBTRACTION FROM THE MODELED FLEET, not a written list, AND THE SUBTRACTION IS
+// NO LONGER THIS MODULE'S. It used to be: `spark_build_host_excluded` folded the unit roster against
+// the actively-claimed serving groups and the undischarged llama.cpp RPC reservations right here, and
+// `admissible_spark_build_hosts` filtered by it. It was one consumer's private copy of a fleet-wide
+// fact, and it was NOT correct -- it read claimed serving groups and held reservations and missed the
+// serving-arm placement, so it answered four free hosts where three was the truth, and would have
+// admitted a build onto the host the GLM canary serves from. That is the §3 fork in its expensive
+// form: invisible precisely because the private copy was locally reasonable. So the fold moved to
+// gunbc.spark.host_commitment at its root and this lane
+// consumes it; the reasoning it was carrying moved with it, including the correction the witness
+// caught here (a FabricGroup is a 400G cage of four hosts, so subtracting every group subtracts the
+// fleet -- a cage is where a group COULD serve, spark_pair_serving_groups is where one DOES).
 //
-// IT IS THE ACTIVE GROUPS, NOT EVERY FABRIC GROUP, AND THE FIRST CUT GOT THAT WRONG. A FabricGroup is
-// a 400G cage -- four hosts sharing one breakout -- so subtracting every group subtracted the entire
-// fleet and left nothing admissible, which the witness caught. A cage is where a group COULD serve;
-// gunbc.spark.pair_serving_desired spark_pair_serving_groups is where one DOES. Those are different
-// facts and only the second is a reservation.
-fn spark_build_host_excluded(host: HostIdentity) -> Bool {
-  let serving = flat_map(spark_pair_serving_groups, g => fabric_group_hosts(g: g))
-  any(serving, h => host_identity_eq(a: h, b: host))
-    || llama_cpp_rpc_host_holds_undischarged_reservation(host: host)
-}
+// WHAT THIS LANE STILL OWNS IS THE POLICY, and it is one sentence: a build may run on a host nothing
+// else has PLACED work on. `spark_host_is_unplaced` is that predicate, and no name for it is minted
+// here -- an `admissible_spark_build_hosts` alias standing beside `spark_unplaced_hosts` would be one
+// concept under two names, which is the other half of the same §3 law. "Unplaced" rather than
+// "uncommitted" because the census now also carries a RULING-DERIVED cause -- an operator ruling reserving
+// a cage for a serving subject -- and that cause is scoped to serving admissibility: a ruling about
+// which model a cage serves says nothing about where a container may be built, so it does not refuse
+// a build here. The residual that scoping accepts (a build on a reserved-but-idle host could exhaust
+// it before the serving rollout) is written down on gunbc.spark.serving_subject's reservation row.
 
-fn admissible_spark_build_hosts() -> List<HostIdentity> {
-  filter(dgx_spark_reserved_identities(), h => !spark_build_host_excluded(host: h))
-}
-
-fn spark_build_host_admissible(host: HostIdentity) -> Bool {
-  any(admissible_spark_build_hosts(), h => host_identity_eq(a: h, b: host))
-}
-
-// A HOST THE CALLER NAMED IS NOT YET A HOST THIS LANE MAY USE. The refusal is separated from the
-// endpoint lookup because they fail for different reasons and want different remedies: an
-// inadmissible host is a policy answer, an unresolvable one is a fleet-data answer, and an earlier
-// revision of this lane learned the second the hard way.
-type SparkBuildHostAdmission
-  = SparkBuildHostAdmitted { host: HostIdentity }
-  | SparkBuildHostRefused { cause: String }
-
-fn admit_spark_build_host(raw: String) -> SparkBuildHostAdmission {
-  let host = raw as HostIdentity
-  if raw == "" {
-    SparkBuildHostRefused { cause: "no build host was named; this entry takes one and does not pick" }
-  } else if !spark_build_host_admissible(host: host) {
-    SparkBuildHostRefused {
-      cause: join([
-        raw, " is not an admissible build host. Admissible today: ",
-        join(map(admissible_spark_build_hosts(), h => h as String), ", "),
-        ". A Spark is excluded when it is a member of a fabric serving group or holds an undischarged llama.cpp RPC peer reservation",
-      ], ""),
-    }
-  } else {
-    SparkBuildHostAdmitted { host: host }
-  }
-}
+// A HOST THE CALLER NAMED IS NOT YET A HOST THIS LANE MAY USE, AND THE SEAM THAT DECIDES THAT IS NOT
+// THIS MODULE'S ANY MORE.
+//
+// `SparkBuildHostAdmission` / `admit_spark_build_host` stood here and were called by exactly ONE of
+// this module's two effectful entries; the other repeated the check as a bare boolean with its own
+// refusal sentence, as did the published-image probe. One typed seam and two open-coded copies of it
+// is the same fork this PR removed from the host set itself, one level up, and it had the sharper
+// consequence: the witness exercised the typed one, so a regression in either copy left the suite
+// green while an effect ran on a claimed host. The seam now belongs to gunbc.spark.host_commitment,
+// which owns the fact it consults, and all three roots call it.
+//
+// WHAT THIS LANE STILL OWNS IS THE PURPOSE STRING it hands that seam -- what the host is wanted FOR,
+// which is the one thing the commitment authority cannot know and the refusal has to say.
+data vllm_build_host_purpose: NonEmptyStr = "a vLLM source build, which occupies the host for the better part of an hour" as NonEmptyStr
 
 // THE BUILD ROOT IS DERIVED FROM THE PRINCIPAL THAT OWNS IT, NOT SPELLED. An earlier revision put it
 // under the OPERATOR's home while the legs authenticate as the managed executor -- a path belonging to
@@ -251,6 +237,7 @@ fn v41_gb10_recipe() -> VllmContainerBuildRecipe {
   vllm_recipe_targeting(
     base: vllm_07b75534_aarch64_release_recipe,
     torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
+    install_kv_connectors: vllm_07b75534_aarch64_release_recipe.install_kv_connectors,
     max_jobs: v41_build_max_jobs,
     nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
   )
@@ -299,6 +286,7 @@ fn vllm_image_build_key_inputs(r: VllmContainerBuildRecipe) -> List<ArtifactReal
     ArtifactRealizationInput { identity: "torch_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.torch_version) },
     ArtifactRealizationInput { identity: "flashinfer_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.flashinfer_version) },
     ArtifactRealizationInput { identity: "torch_cuda_arch_list" as NonEmptyStr, content_digest: content_hash_atom(value: vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list) as NonEmptyStr) },
+    ArtifactRealizationInput { identity: "install_kv_connectors" as NonEmptyStr, content_digest: content_hash_atom(value: (if r.install_kv_connectors { "true" } else { "false" }) as NonEmptyStr) },
   ]
 }
 
@@ -312,8 +300,12 @@ fn vllm_image_build_key(r: VllmContainerBuildRecipe) -> ContentHash {
   artifact_realization_digest(inputs: vllm_image_build_key_inputs(r: r))
 }
 
+fn vllm_image_tag_for_key(key: ContentHash) -> NonEmptyStr {
+  join([vllm_image_repository as String, ":", serialize_content_hash(hash: key) as String], "") as NonEmptyStr
+}
+
 fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
-  join([vllm_image_repository as String, ":", serialize_content_hash(hash: vllm_image_build_key(r: r)) as String], "") as NonEmptyStr
+  vllm_image_tag_for_key(key: vllm_image_build_key(r: r))
 }
 
 // ── THE INVOCATION ────────────────────────────────────────────────────────────────────────────
@@ -324,6 +316,12 @@ fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
 // the recipe row records the value it resolves to. RUN_WHEEL_CHECK disables only upstream's PyPI
 // publication-size guard, which is a rule about what may be uploaded to PyPI and has nothing to say
 // about an image nobody publishes.
+//
+// INSTALL_KV_CONNECTORS IS PASSED BECAUSE IT IS KEYED. The module already carries one defect of the shape
+// where it does not -- a flashinfer version keyed and never handed to the build -- and adding the field to
+// the key without adding it here would have reproduced exactly that: a tag and a key that say
+// connectors-on while docker falls back to the Dockerfile's `false`, which is one identity standing for
+// two different sets of bytes. Keyed and passed are the same decision, made once.
 fn vllm_image_build_args(r: VllmContainerBuildRecipe) -> List<DockerBuildArg> {
   [
     DockerBuildArg { name: "CUDA_VERSION" as NonEmptyStr, value: r.cuda_version as String },
@@ -331,6 +329,7 @@ fn vllm_image_build_args(r: VllmContainerBuildRecipe) -> List<DockerBuildArg> {
     DockerBuildArg { name: "torch_cuda_arch_list" as NonEmptyStr, value: vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list) },
     DockerBuildArg { name: "max_jobs" as NonEmptyStr, value: to_string(r.max_jobs) },
     DockerBuildArg { name: "nvcc_threads" as NonEmptyStr, value: to_string(r.nvcc_threads) },
+    DockerBuildArg { name: "INSTALL_KV_CONNECTORS" as NonEmptyStr, value: if r.install_kv_connectors { "true" } else { "false" } },
     DockerBuildArg { name: "RUN_WHEEL_CHECK" as NonEmptyStr, value: "false" },
   ]
 }
@@ -340,8 +339,12 @@ fn vllm_image_dockerfile_path(r: VllmContainerBuildRecipe) -> NonEmptyStr {
 }
 
 fn vllm_image_build_spec(r: VllmContainerBuildRecipe) -> DockerBuildSpec {
+  vllm_image_build_spec_for_tag(r: r, tag: vllm_image_tag(r: r))
+}
+
+fn vllm_image_build_spec_for_tag(r: VllmContainerBuildRecipe, tag: NonEmptyStr) -> DockerBuildSpec {
   DockerBuildSpec {
-    tag: vllm_image_tag(r: r),
+    tag: tag,
     context_dir: vllm_source_dir() as FilePath,
     dockerfile: vllm_image_dockerfile_path(r: r),
     target: r.build_target,
@@ -366,7 +369,7 @@ type ImageLegOutcome
 //
 // So the docker legs bind to gunbc.spark.model_snapshot_materialize spark_remote_run, the one route
 // the corpus models for that daemon, and this leg keeps the git work, which needs no root.
-func vllm_docker_leg(ctx: SparkMaterializeContext, step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome
+fn vllm_docker_leg(ctx: SparkMaterializeContext, step: NonEmptyStr, command: ArgvCommand) -> ImageLegOutcome
   uses net: Network
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
@@ -390,6 +393,22 @@ fn vllm_image_leg(target: SshTarget, context: FleetSshExecutionContext, step: No
         ImageLegFailed { step: step, cause: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
       }
   }
+}
+
+type ImageUncheckedLeg
+  = ImageUncheckedRan { exit_code: Int, stdout: String, stderr: String }
+  | ImageUncheckedFailed { step: NonEmptyStr, cause: String }
+
+fn vllm_image_leg_unchecked(target: SshTarget, context: FleetSshExecutionContext, step: NonEmptyStr, command: ArgvCommand) -> ImageUncheckedLeg {
+  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)) {
+    TypedArgvExecRefused { reason: why } => ImageUncheckedFailed { step: step, cause: why }
+    TypedArgvExecConverged { result: r } =>
+      ImageUncheckedRan { exit_code: r.exit_code, stdout: trim(s: r.stdout), stderr: trim(s: r.stderr) }
+  }
+}
+
+fn vllm_image_build_key_with_observed_tree(r: VllmContainerBuildRecipe, extras: List<ArtifactRealizationInput>) -> ContentHash {
+  artifact_realization_digest(inputs: concat(vllm_image_build_key_inputs(r: r), extras))
 }
 
 // SOURCE MATERIALIZATION IS CONVERGENT, AND THE READBACK COMES FIRST. A tree already sitting at the
@@ -439,7 +458,7 @@ fn vllm_image_run_steps(target: SshTarget, context: FleetSshExecutionContext, st
     })
 }
 
-func vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) -> VllmSourceState?
+fn vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext) -> VllmSourceState?
   uses net: Network
 {
   match vllm_image_leg(target: target, context: context, step: "source-clean" as NonEmptyStr, command: git_status_porcelain_command(repository_dir: vllm_source_dir() as String)) {
@@ -457,7 +476,43 @@ func vllm_source_tree_clean(target: SshTarget, context: FleetSshExecutionContext
   }
 }
 
-func converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
+// A CLEAN CHECKOUT AT r.source WHEN THE DESIRED PATCH POPULATION IS EMPTY. Nonempty P is
+// converge_vllm_source_with_patches: std.upsert_decision over DigestFile'd members plus a
+// working-tree readback. This function does not choose P and does not apply V41EnginePatch.
+//
+// WORKING-TREE CLEANLINESS IS A PARAMETER OF THIS LADDER, not a second copy of it. Vanilla image
+// builds require a clean tree so the image is not stamped with a revision it was not built from.
+// A patched desired state is dirty by construction; porcelain is judged by
+// v41_source_patch_decision, not here.
+type VllmWorkingTreeRequirement
+  = VllmWorkingTreeMustBeClean
+  | VllmWorkingTreeMayBeDirty
+
+fn vllm_source_after_revision(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  already_present: Bool,
+  working_tree: VllmWorkingTreeRequirement,
+) -> VllmSourceState
+  uses net: Network
+{
+  match working_tree {
+    VllmWorkingTreeMayBeDirty => VllmSourceAtRevision { revision: r.source.full_revision, already_present: already_present }
+    VllmWorkingTreeMustBeClean =>
+      match vllm_source_tree_clean(target: target, context: context) {
+        Present { value: refusal } => refusal
+        Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: already_present }
+      }
+  }
+}
+
+fn converge_vllm_source_to_revision(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  working_tree: VllmWorkingTreeRequirement,
+) -> VllmSourceState
   uses net: Network
 {
   match vllm_source_head(target: target, context: context) {
@@ -468,10 +523,7 @@ func converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, 
           cause: join(["the source tree at ", vllm_source_dir() as String, " is checked out at ", head, " and this build wants ", r.source.full_revision as String, "; it is not moved from under a build that may be reading it"], ""),
         }
       } else {
-        match vllm_source_tree_clean(target: target, context: context) {
-          Present { value: refusal } => refusal
-          Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: true }
-        }
+        vllm_source_after_revision(target: target, context: context, r: r, already_present: true, working_tree: working_tree)
       }
     Absent =>
       match vllm_image_run_steps(target: target, context: context, step: "source-materialize" as NonEmptyStr, commands: vllm_materialize_source_steps(r: r)) {
@@ -487,14 +539,17 @@ func converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, 
               if head != (r.source.full_revision as String) {
                 VllmSourceRefused { step: "source-readback" as NonEmptyStr, cause: join(["checkout reported success and HEAD reads ", head], "") }
               } else {
-                match vllm_source_tree_clean(target: target, context: context) {
-                  Present { value: refusal } => refusal
-                  Absent => VllmSourceAtRevision { revision: r.source.full_revision, already_present: false }
-                }
+                vllm_source_after_revision(target: target, context: context, r: r, already_present: false, working_tree: working_tree)
               }
           }
       }
   }
+}
+
+fn converge_vllm_source(target: SshTarget, context: FleetSshExecutionContext, r: VllmContainerBuildRecipe) -> VllmSourceState
+  uses net: Network
+{
+  converge_vllm_source_to_revision(target: target, context: context, r: r, working_tree: VllmWorkingTreeMustBeClean)
 }
 
 // ── THE IMAGE ─────────────────────────────────────────────────────────────────────────────────
@@ -546,10 +601,16 @@ type VllmImageBuild
   = VllmImageBuilt { identity: VllmImageIdentity, already_present: Bool }
   | VllmImageBuildRefused { step: NonEmptyStr, cause: String }
 
-func converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
+fn converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
   uses net: Network
 {
-  let tag = vllm_image_tag(r: r)
+  converge_vllm_image_keyed(ctx: ctx, r: r, key: vllm_image_build_key(r: r))
+}
+
+fn converge_vllm_image_keyed(ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe, key: ContentHash) -> VllmImageBuild
+  uses net: Network
+{
+  let tag = vllm_image_tag_for_key(key: key)
   match vllm_docker_leg(ctx: ctx, step: "image-digest" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
     ImageLegFailed { step: st, cause: why } =>
       VllmImageBuildRefused { step: st, cause: join(["the image query did not run, so nothing is known about whether the tag exists: ", why], "") }
@@ -558,12 +619,12 @@ func converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildReci
         VllmImageBuilt {
           identity: VllmImageIdentity {
             tag: tag, local_config_digest: digest as NonEmptyStr, requested_from: r.source,
-            build_key: vllm_image_build_key(r: r), provenance: AdoptedUnderExpectedTag,
+            build_key: key, provenance: AdoptedUnderExpectedTag,
           },
           already_present: true,
         }
       } else {
-        match vllm_docker_leg(ctx: ctx, step: "image-build" as NonEmptyStr, command: docker_build_spec_command(spec: vllm_image_build_spec(r: r))) {
+        match vllm_docker_leg(ctx: ctx, step: "image-build" as NonEmptyStr, command: docker_build_spec_command(spec: vllm_image_build_spec_for_tag(r: r, tag: tag))) {
           ImageLegFailed { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
           ImageLegRan { stdout: _ } =>
             match vllm_docker_leg(ctx: ctx, step: "image-readback" as NonEmptyStr, command: docker_image_digest_command(image: tag)) {
@@ -575,7 +636,7 @@ func converge_vllm_image(ctx: SparkMaterializeContext, r: VllmContainerBuildReci
                   VllmImageBuilt {
                     identity: VllmImageIdentity {
                       tag: tag, local_config_digest: readback as NonEmptyStr, requested_from: r.source,
-                      build_key: vllm_image_build_key(r: r), provenance: BuiltByThisRun,
+                      build_key: key, provenance: BuiltByThisRun,
                     },
                     already_present: false,
                   }
@@ -614,7 +675,7 @@ fn vllm_image_build_succeeded(b: VllmImageBuild) -> Bool {
   }
 }
 
-func converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
+fn converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, r: VllmContainerBuildRecipe) -> VllmImageBuild
   uses net: Network
 {
   if !vllm_recipe_arch_is_buildable(r: r) {
@@ -651,7 +712,7 @@ func converge_vllm_runtime_image(target: SshTarget, context: FleetSshExecutionCo
 // decision, not this lane's), or this entry is executed against a warm context and its receipt lands
 // here. Until then the fallback build is correct by reading on this transport and executed only on the
 // other one, and this row is what keeps that from being read the other way round.
-func vllm_runtime_image_build_ci_wet() -> ProcessExit
+fn vllm_runtime_image_build_ci_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -660,9 +721,9 @@ func vllm_runtime_image_build_ci_wet() -> ProcessExit
     SparkConvergeTargetAllObserveOnly =>
       exit_failure(reason: "SPARK_CONVERGE_TARGET is unset: a build occupies one host for the better part of an hour, so it refuses rather than choosing one")
     SparkConvergeTargetSingle { host: build_host } =>
-      if !spark_build_host_admissible(host: build_host) {
-        exit_failure(reason: join([build_host as String, " is a rostered Spark but not an admissible BUILD host: ", join(map(admissible_spark_build_hosts(), h => h as String), ", "), " are the non-serving, non-reserved members"], ""))
-      } else {
+      match admit_unplaced_host(raw: build_host as String, purpose: vllm_build_host_purpose) {
+        SparkHostRefused { cause: why } => exit_failure(reason: why as String)
+        SparkHostAdmitted { host: _ } =>
         match observe_executor_reach() {
           ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["vllm_runtime_image_build_ci: ", c], ""))
           ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -764,13 +825,13 @@ fn vllm_source_acquired(s: VllmSourceState) -> Bool {
   }
 }
 
-func vllm_source_acquire_wet(host: String) -> ProcessExit
+fn vllm_source_acquire_wet(host: String) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
-  match admit_spark_build_host(raw: host) {
-    SparkBuildHostRefused { cause: why } => exit_failure(reason: why)
-    SparkBuildHostAdmitted { host: build_host } =>
+  match admit_unplaced_host(raw: host, purpose: vllm_build_host_purpose) {
+    SparkHostRefused { cause: why } => exit_failure(reason: why as String)
+    SparkHostAdmitted { host: build_host } =>
       match fleet_ssh_attempt_identity(raw: vllm_source_acquire_attempt_raw) {
         Absent => exit_failure(reason: "attempt identity is not a safe path segment")
         Present { value: attempt } =>
@@ -824,7 +885,11 @@ func vllm_source_acquire_wet(host: String) -> ProcessExit
 // how every read-only fleet instrument here is reached, and both have been EXECUTED that way against
 // srv9, with their receipts in this lane's record. They take the fleet key from an in-run agent and
 // need no credential an authoring session cannot hold, which is why they are CLI entries rather than
-// dispatch modes.
+// dispatch modes. The patched apply seam is a sibling door:
+// gunbc.spark.v41_source_patch_converge_wet v41_patched_source_acquire_wet, which supplies the
+// candidate's P into converge_vllm_source_with_patches and does not replace this vanilla acquire.
+// converge_vllm_runtime_image_with_patches is a declared frontier on that module: a patched sibling
+// of vllm_runtime_image_build_ci_wet, not a silent extra call from this vanilla acquire.
 //
 // vllm_runtime_image_build_ci_wet is DIFFERENT and is a declared frontier: it needs the administrator
 // credential, so its only honest invocation is a fleet-converge mode beside spark_runtime_image_probe.
@@ -881,7 +946,7 @@ fn classify_reported_hostname(host: HostIdentity, endpoint: NonEmptyStr, reporte
   }
 }
 
-func probe_spark_host_reachability(context: FleetSshExecutionContext, host: HostIdentity) -> SparkHostReachability
+fn probe_spark_host_reachability(context: FleetSshExecutionContext, host: HostIdentity) -> SparkHostReachability
   uses net: Network
 {
   match spark_reach_endpoint(host: host, path: ReachManagementLan) {
@@ -937,7 +1002,7 @@ data spark_reachability_receipt_path: String = "target/spark-build-host-reachabi
 // The diagnostics were typed and located and then discarded by the exit path, which is §5's failure
 // arm widening into silence. It now succeeds only when every admissible host answered AND its answer
 // joined to the identity it was asked about.
-func spark_build_host_reachability_wet() -> ProcessExit
+fn spark_build_host_reachability_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -954,7 +1019,7 @@ func spark_build_host_reachability_wet() -> ProcessExit
           match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
             Absent => exit_failure(reason: join(["trust could not be established, so no leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""))
             Present { value: context } => {
-              let readings = map(admissible_spark_build_hosts(), h => probe_spark_host_reachability(context: context, host: h))
+              let readings = map(spark_unplaced_hosts, h => probe_spark_host_reachability(context: context, host: h))
               let body = join([
                 join(["spark build-host reachability probed_at=", probed_at_word(reading: now) as String, " question=short hostname only\n"], ""),
                 join(["credential ", fleet_ssh_credential_locus_label(binding: binding), " public_material_identity=", serialize_content_hash(hash: fleet_ssh_credential_identity(binding: binding)) as String, "\n"], ""),

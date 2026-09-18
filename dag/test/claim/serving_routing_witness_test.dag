@@ -6,7 +6,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGro
 import gunbc.serving.serving_enrollment {
   serving_enrolled_groups, serving_route, serving_route_ceiling, serving_route_endpoint_wire,
   serving_route_turn_ceiling_count, ServingRouteResolved, ServingRouteUnresolved,
-  CeilingByDeclaredPolicy, CeilingFromRouteLaunch,
+  CeilingByDeclaredPolicy, CeilingFromRouteLaunch, ServingRouteEndpoint,
 }
 import gunbc.serving.admitted_model {
   serving_admits_id, serving_admit_advertised, ServingModelAdmitted, ServingModelNotAdmitted,
@@ -28,14 +28,15 @@ import gunbc.serving.turn_admission {
 import gunbc.spark.vllm_observed { ModelsRouteEntryAbsent }
 import gunbc.harness.harness_backend {
   HarnessBackendStanding, HarnessBackendServing, HarnessBackendModelNotAdmitted,
-  HarnessBackendUnreachable, HarnessBackendUnreadable,
+  HarnessBackendUnreachable, HarnessBackendUnreadable, harness_route_availability,
 }
 import gunbc.harness.harness_seat {
-  harness_seat_partition, harness_serving_readiness, harness_interactive_quality_seats,
+  harness_seat_partition, harness_interactive_quality_seats,
   ServingModelRequirement, AnyAdmittedModel, ExactServingUnit, harness_requirement_admits,
-  harness_required_capability,
+  harness_model_requirement_ref,
 }
-import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved }
+import gunbc.spark.serving_offer { ServingObserved, ServingUnobserved, spark_serving_readiness_of }
+import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch, LaunchObserved }
 import std.measure { token_count_value }
 import product.fabric.demand { ObservationReceiptRef }
 
@@ -161,10 +162,19 @@ test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -
 // route advertising nothing admitted -- must be unobserved, because an offer is bound only on an
 // observed readiness.
 fn w_ready(standing: HarnessBackendStanding) -> Bool {
-  match harness_serving_readiness(standing: standing, now: 1757200000) {
+  let launch = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "192.168.1.225:30000" as NonEmptyStr, process_start_field: "1757100000.5" as NonEmptyStr)
+  let seen = LaunchObserved { launch: launch, receipt: "test.claim.serving-routing" as ObservationReceiptRef }
+  let availability = harness_route_availability(endpoint: ServingRouteEndpoint { group: FabricGroupA, address: "192.168.1.225" as NonEmptyStr, port: 30000 }, before: seen, standing: standing, after: seen, now: "1757200000")
+  let admitted = match standing {
+    HarnessBackendServing { model: _, unit: _, readback: _ } => true
+    HarnessBackendModelNotAdmitted { advertised: _ } => false
+    HarnessBackendUnreachable { url: _ } => false
+    HarnessBackendUnreadable { cause: _ } => false
+  }
+  admitted && (match spark_serving_readiness_of(verdict: availability, launch: launch) {
     ServingObserved { ready_at: _, receipt: _ } => true
     ServingUnobserved { obligation: _ } => false
-  }
+  })
 }
 
 test fn a_route_that_does_not_answer_is_never_ready_and_one_that_answers_wrongly_is_not_either() -> Bool {
@@ -339,7 +349,7 @@ test fn an_exact_model_requirement_still_refuses_a_route_serving_another_model()
     && harness_requirement_admits(requirement: AnyAdmittedModel, observed: Glm53FlashOnVllm)
     && harness_requirement_admits(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, observed: Glm53FlashOnVllm)
     && !harness_requirement_admits(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }, observed: DeepseekV4FlashOnVllm)
-    && (harness_required_capability(requirement: AnyAdmittedModel) as String) != (harness_required_capability(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }) as String)
+    && (harness_model_requirement_ref(requirement: AnyAdmittedModel) as String) != (harness_model_requirement_ref(requirement: ExactServingUnit { unit: Glm53FlashOnVllm }) as String)
 }
 
 // ── 8. THE WORKING WINDOW FOLLOWS THE BOUND UNIT ──────────────────────────────────────────────

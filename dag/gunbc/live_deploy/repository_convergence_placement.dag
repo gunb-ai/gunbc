@@ -1,6 +1,6 @@
 module gunbc.live_deploy.repository_convergence_placement
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr, List }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -58,8 +58,19 @@ import extdeps.systemd.unit_file {
 import extdeps.access.posix_effective_principal_read_op { effective_posix_principal_read }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.spec {
-  deployment_slice_unit_name, DeploymentSpec, deployment_spec_srv1 }
+  deployment_slice_unit_name, DeploymentSpec }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  desired_deployment_for_instance_id,
+  DesiredDeploymentFound,
+  DesiredDeploymentUnknownInstanceId,
+  DesiredDeploymentRosterRefused,
+  DesiredRosterSameHostCollision,
+  DesiredRosterDuplicateInstanceId,
+  selected_deployment_spec,
+}
 import gunbc.live_deploy.repository_convergence { repository_converge_wet }
+import v2.std.collection { Present, Absent }
 
 // THE DEFECT THIS MODULE CLOSES IS A PLACEMENT DEFECT, NOT AN ADJUDICATION ONE.
 //
@@ -499,7 +510,7 @@ fn convergence_receipt_path(instance_root: String) -> String {
 // can be named by its MODULE rather than by its file.
 data convergence_placement_entry_path: String = "dag/gunbc/live_deploy/repository_convergence_placement.dag"
 
-data convergence_placement_entry_function: String = "repository_converge_srv1_owner_wet"
+data convergence_placement_entry_function: String = "repository_converge_owner_wet"
 
 // THE SOURCE-ROOT ROSTER IS THE SAME PAIR EVERY OTHER INVOCATION USES -- `dag` and `src/v2` -- and it
 // is spelled here against the runner checkout rather than against the target, which is the whole
@@ -521,6 +532,7 @@ fn convergence_exec_start(
     " --arg candidate=", candidate,
     " --arg object_source=", src,
     " --arg receipt=", receipt_path,
+    " --arg instance_id=", spec.instance_id as String,
   ], "")
 }
 
@@ -585,7 +597,7 @@ fn convergence_unit_doc(
 // is indistinguishable from a unit that never started, and those have different repairs -- one is a
 // misconfigured placement, the other a systemd failure. The deploy must be able to tell them apart,
 // so the refusals are REPORTED rather than merely exited.
-func placement_finish(receipt_path: String, receipt: ConvergencePlacementReceipt) -> ProcessExit {
+fn placement_finish(receipt_path: String, receipt: ConvergencePlacementReceipt) -> ProcessExit {
   let written = Filesystem.Write(
     path: receipt_path,
     content: placement_receipt_text(receipt: receipt),
@@ -632,7 +644,7 @@ fn placement_receipt_of_convergence(
   }
 }
 
-func placement_converge_with_operands(
+fn placement_converge_with_operands(
   receipt_path: String,
   operands: ConvergencePlacementOperands,
 ) -> ProcessExit {
@@ -650,7 +662,7 @@ func placement_converge_with_operands(
   )
 }
 
-func placement_converge_admitted(
+fn placement_converge_admitted(
   spec: DeploymentSpec,
   candidate: String,
   object_source: String,
@@ -671,7 +683,7 @@ func placement_converge_admitted(
   }
 }
 
-func placement_converge_for_spec(
+fn placement_converge_for_spec(
   spec: DeploymentSpec,
   candidate: String,
   object_source: String,
@@ -703,25 +715,42 @@ func placement_converge_for_spec(
   }
 }
 
-// THE RECEIPT PATH IS AN ARGUMENT AND IS ALSO DERIVED, WHICH IS NOT A CONTRADICTION. The unit
-// renders it from the spec through convergence_receipt_path, so production never spells it; it
-// remains a parameter so the acceptance matrix can point one execution at a scratch location
-// without a second entry point that differs from the production one in any other way.
-func repository_converge_srv1_owner_wet(
+// THE RECEIPT PATH IS THE WRITE LOCATION, NOT THE SELECTOR. Production renders it from the spec
+// through convergence_receipt_path so the unit never spells a second identity; it remains a
+// parameter so the acceptance matrix can point one execution at a scratch location. Which
+// deployment is converged is a caller-supplied instance_id, resolved by
+// gunbc.live_deploy.desired desired_deployment_for_instance_id before this fold runs.
+fn repository_converge_owner_wet(
   candidate: String,
   object_source: String,
   receipt: String,
+  instance_id: String,
 ) -> ProcessExit {
-  let spec = deployment_spec_srv1()
   if trim(s: receipt) == "" {
     exit_failure(reason: "--arg receipt=<path> is required -- the transition's outcome is written, not returned, because the deploy that ordered it runs in a different process")
   } else {
-    placement_converge_for_spec(
-      spec: spec,
-      candidate: candidate,
-      object_source: object_source,
-      receipt_path: receipt,
-    )
+    if trim(s: instance_id) == "" {
+      exit_failure(reason: "--arg instance_id=<id> is required -- selection sits before this fold, and the receipt path is not the selector")
+    } else {
+      match desired_deployment_for_instance_id(instance_id: instance_id) {
+        DesiredDeploymentUnknownInstanceId { instance_id: id } =>
+          exit_failure(reason: join(["repository-convergence: instance_id is not a desired-deployment: ", id], ""))
+        DesiredDeploymentRosterRefused { refusal } =>
+          match refusal {
+            DesiredRosterSameHostCollision { host } =>
+              exit_failure(reason: join(["repository-convergence: desired-deployment roster has a same-host collision on ", host], ""))
+            DesiredRosterDuplicateInstanceId { instance_id: dup } =>
+              exit_failure(reason: join(["repository-convergence: desired-deployment roster has a duplicate instance_id: ", dup], ""))
+          }
+        DesiredDeploymentFound { row } =>
+          placement_converge_for_spec(
+            spec: selected_deployment_spec(row: row),
+            candidate: candidate,
+            object_source: object_source,
+            receipt_path: receipt,
+          )
+      }
+    }
   }
 }
 
@@ -754,7 +783,7 @@ fn convergence_readback_of_text(text: String) -> ConvergenceReadback {
   }
 }
 
-func read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
+fn read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
   let read = Filesystem.Read(path: receipt_path)
   if !read.success {
     ConvergenceReadbackRefused {
@@ -771,7 +800,7 @@ func read_convergence_receipt(receipt_path: String) -> ConvergenceReadback {
 // the cases that matter: a unit that started and then refused for a typed reason exits nonzero here
 // with that reason NAMED, and a unit that appeared to succeed while writing no receipt is refused
 // rather than assumed.
-func repository_convergence_readback_wet(receipt: String) -> ProcessExit {
+fn repository_convergence_readback_wet(receipt: String) -> ProcessExit {
   if trim(s: receipt) == "" {
     exit_failure(reason: "--arg receipt=<path> is required -- the readback has no subject without it")
   } else {

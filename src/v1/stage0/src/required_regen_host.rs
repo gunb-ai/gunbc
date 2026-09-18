@@ -6324,6 +6324,156 @@ mod regen_convergence_host_instrument_tests {
             .collect()
     }
 
+    /// RED: the dependent mirror imports a symbol only the sibling introduces. On main the
+    /// planner installed the GenerationInput file alone, then `rebuild_from_installed` failed
+    /// E0432. After the fix both files are in the install set and the mock rustc-shaped check
+    /// sees them together; rebuild runs once.
+    #[test]
+    fn mixed_role_two_mirror_candidate_installs_all_then_rebuilds_once() {
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let rows = [
+            (
+                "fixture_producer.rs",
+                "fixture.producer",
+                "pub fn native_driver_producer_roster() {}\n",
+            ),
+            (
+                "fixture_subject.rs",
+                "fixture.subject",
+                "pub use crate::fixture_producer::native_driver_producer_roster;\n",
+            ),
+        ];
+        let (manifest, admitted) = fixture_manifest(&candidate, &rows);
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+        let modules = fixture_modules(&rows);
+        let generation_modules = ["fixture.producer".to_string()]
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let seed_members = rows
+            .iter()
+            .map(|row| row.0.to_string())
+            .collect::<BTreeSet<_>>();
+        let empty = BTreeSet::new();
+        let drifted: Vec<String> = rows.iter().map(|row| row.0.to_string()).collect();
+        let (kind, install_set, closure_id) = convergence_plan_from_model(
+            &model,
+            1,
+            &manifest.generation_id,
+            &manifest.candidate_tree_id,
+            &manifest.candidate_tree_digest,
+            &drifted,
+            &admitted,
+            &stage0,
+            &modules,
+            &generation_modules,
+            &empty,
+            &empty,
+            &seed_members,
+            &HashMap::new(),
+            &RegenEmissionScope::WholePopulation,
+            &[],
+            "seed-0",
+        )
+        .expect("mixed seed-embedded candidate is planned");
+        assert_eq!(
+            kind,
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut
+        );
+        assert_eq!(
+            install_set.iter().cloned().collect::<BTreeSet<_>>(),
+            drifted.iter().cloned().collect::<BTreeSet<_>>()
+        );
+        assert_eq!(closure_id, "seed-embedded-install-cut");
+
+        let mut rebuilds = 0usize;
+        install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &install_set,
+            &admitted,
+            &modules,
+            1,
+            kind,
+            "seed-0",
+            &manifest.generation_id,
+            &manifest.candidate_tree_id,
+            &manifest.candidate_tree_digest,
+            &closure_id,
+            &subject,
+            |root| {
+                rebuilds += 1;
+                let src = root.join("src/v1/stage0/src");
+                let producer = fs::read_to_string(src.join("fixture_producer.rs")).unwrap();
+                let dependent = fs::read_to_string(src.join("fixture_subject.rs")).unwrap();
+                if dependent.contains("native_driver_producer_roster")
+                    && !producer.contains("fn native_driver_producer_roster")
+                {
+                    return Err(
+                        "error[E0432]: unresolved import crate::fixture_producer::native_driver_producer_roster"
+                            .to_string(),
+                    );
+                }
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
+            || Ok("seed-1".to_string()),
+        )
+        .expect("installing the coherent pair rebuilds");
+        assert_eq!(rebuilds, 1, "the round rebuilds once after installing both");
+        fs::remove_dir_all(&workspace).unwrap();
+    }
+
+    /// Positive control: a single GenerationInput mirror still takes PromoteGenerationInputs.
+    #[test]
+    fn single_generation_input_still_promotes_alone() {
+        let (workspace, stage0, candidate, _) = fixture_workspace();
+        let rows = [(
+            "fixture_producer.rs",
+            "fixture.producer",
+            "pub fn native_driver_producer_roster() {}\n",
+        )];
+        let (manifest, admitted) = fixture_manifest(&candidate, &rows);
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+        let modules = fixture_modules(&rows);
+        let generation_modules = ["fixture.producer".to_string()]
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let seed_members = [rows[0].0.to_string()].into_iter().collect::<BTreeSet<_>>();
+        let empty = BTreeSet::new();
+        let drifted: Vec<String> = rows.iter().map(|row| row.0.to_string()).collect();
+        let (kind, install_set, closure_id) = convergence_plan_from_model(
+            &model,
+            1,
+            &manifest.generation_id,
+            &manifest.candidate_tree_id,
+            &manifest.candidate_tree_digest,
+            &drifted,
+            &admitted,
+            &stage0,
+            &modules,
+            &generation_modules,
+            &empty,
+            &empty,
+            &seed_members,
+            &HashMap::new(),
+            &RegenEmissionScope::WholePopulation,
+            &[],
+            "seed-0",
+        )
+        .expect("single generation-input candidate is planned");
+        assert_eq!(
+            kind,
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs
+        );
+        assert_eq!(install_set, drifted);
+        assert_eq!(closure_id, "generation-input-cut");
+        fs::remove_dir_all(&workspace).unwrap();
+    }
+
     /// THE DISCRIMINATING RED FOR `admit_install_target`, and the reason the wall is not a
     /// decoration: the forbidden state is authorable here even though no production roster can
     /// currently express it.
@@ -8531,6 +8681,7 @@ fn emit_dag_artifact_text(root_rel: &str) -> Result<String, String> {
     let entry = root.join(DAG_ARTIFACT_IDENTITY_SPECIMEN_BASENAME);
     let run = super::compile_emission(&super::CompileRequest {
         subject: super::CompileSubject::Entry(entry.to_string_lossy().to_string()),
+        root_demand: super::RootDemandDeclaration::default(),
         source_roots: vec![root.to_string_lossy().to_string()],
         primary_precedence: false,
         render_targets: vec![RenderTarget::Dag],

@@ -1,7 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
-import v1.compiler.infer_items { ItemKind, FnItem, FuncItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
+import v1.compiler.infer_items { ItemKind, FnItem, TypeItem, ServiceItem, DataItem, OtherItem, item_kind }
 import std.types { is_kernel_type }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.primitive_projection {
@@ -133,7 +133,6 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
           params: [],
           resolved_formals: KernelGroundedFormals { formals: [] },
           inferred: builtin_return,
-          is_async: false,
           output_provenance: [],
           variant_provenance: empty_map()
         }
@@ -303,9 +302,9 @@ fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallT
 // reads "declared" -- the authority-substitution geometry the outcome type exists to remove.
 //
 // THE KIND GATE EXCLUDES WHAT IS NOT CALLABLE; IT DOES NOT DEMAND PROOF OF WHAT IS.
-// `item_kind` reads FnItem and FuncItem off the presence of a BODY, and a census node is a
+// `item_kind` reads FnItem off the presence of a BODY, and a census node is a
 // borrowed declaration surface that carries a signature without one -- so a nullary fn reached
-// this way reads as OtherItem, and an admit-list of the two callable kinds refuses every member
+// this way reads as OtherItem, and an admit-list of the callable kind refuses every member
 // of the population this arm exists to serve. The call position is what establishes that the name
 // is being called; what the kind can still tell us is that the declaration is a TYPE, a SERVICE or
 // a DATA row, none of which a call may target.
@@ -647,7 +646,6 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
       params: node.params,
       resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: candidate.module_path, node: node) },
       inferred: return_type,
-      is_async: false,
       output_provenance: [],
       variant_provenance: empty_map()
     }
@@ -749,7 +747,6 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             params: node.params,
             resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: bd.owner_module_path, node: node) },
             inferred: raw_return,
-            is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
           }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
@@ -760,7 +757,6 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             params: node.params,
             resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: bd.owner_module_path, node: node) },
             inferred: qualified_return,
-            is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
           }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }

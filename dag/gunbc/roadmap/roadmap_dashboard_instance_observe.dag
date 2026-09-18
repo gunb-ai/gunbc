@@ -1,0 +1,173 @@
+module gunbc.roadmap_dashboard_instance_observe
+
+import std.algebra { trim }
+import std.types { String, Bool, List, FilePath }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.gunbc
+import gunbc.typed_argv_exec {
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+  typed_argv_probe_over_ssh,
+}
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardLocalProvision,
+  DashboardSshProvision,
+  dashboard_instance_controller_workdir,
+}
+
+// Observation-only host probes for a dashboard instance. Split out of
+// gunbc.roadmap_dashboard_instance_apply so serving can observe provider
+// readiness without importing the launcher (CONVERGENCE-ONE C5).
+// CONSUMERS: gunbc.roadmap_dashboard_instance_apply dashboard_target_exec,
+// gunbc.dashboard_provider_readiness observe_dashboard_provider_readiness.
+
+// DECLARED SCAFFOLD (review 44058, DESIGN 5). DashboardExecResult carries
+// failure as success: Bool plus prose. DISSOLVES ON: the apply pipeline
+// folding over a typed step outcome.
+
+type DashboardExecResult {
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+fn dashboard_exec_ok(stdout: String) -> DashboardExecResult {
+  DashboardExecResult { success: true, stdout: stdout, stderr: "" }
+}
+
+fn dashboard_exec_refused(detail: String) -> DashboardExecResult {
+  DashboardExecResult { success: false, stdout: "", stderr: detail }
+}
+
+fn dashboard_local_exec(
+  workdir: FilePath,
+  program: FilePath,
+  args: List<String>,
+) -> DashboardExecResult {
+  let result = gunbc.WitnessBin.Run(
+    workdir: workdir,
+    bin_path: program,
+    args: args,
+    expect: OutcomeIsData,
+  )
+  DashboardExecResult {
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  }
+}
+
+fn dashboard_target_probe(
+  instance: HostDashboardInstance,
+  program: FilePath,
+  args: List<String>,
+) -> DashboardExecResult {
+  match instance.provision_transport {
+    DashboardLocalProvision =>
+      dashboard_local_exec(
+        workdir: dashboard_instance_controller_workdir(instance: instance),
+        program: program,
+        args: args,
+      )
+    DashboardSshProvision { host } =>
+      match typed_argv_probe_over_ssh(
+        host: host,
+        argv: concat([program as String], args),
+      ) {
+        TypedArgvExecConverged { result } =>
+          DashboardExecResult {
+            success: result.success,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          }
+        TypedArgvExecRefused { reason } =>
+          dashboard_exec_refused(detail: reason)
+      }
+  }
+}
+
+type DashboardPathObservation
+  = PathObservedPresent
+  | PathObservedAbsent
+  | PathObservationRefused { reason: String }
+
+fn dashboard_exec_refusal_reason(label: String, r: DashboardExecResult) -> List<String> {
+  if r.success {
+    []
+  } else if trim(r.stdout) == "" && !(trim(r.stderr) == "") {
+    [join([label, " observation could not run: ", trim(r.stderr)], "")]
+  } else {
+    []
+  }
+}
+
+fn dashboard_target_path_observe(
+  instance: HostDashboardInstance,
+  flag: String,
+  path: FilePath,
+) -> DashboardPathObservation {
+  let r = dashboard_target_probe(
+    instance: instance,
+    program: instance.toolchain.path_test,
+    args: [flag, path as String],
+  )
+  if r.success {
+    PathObservedPresent
+  } else if trim(r.stdout) == "" && !(trim(r.stderr) == "") {
+    PathObservationRefused {
+      reason: join([
+        "path observation could not run for ",
+        path as String,
+        ": ",
+        trim(r.stderr),
+      ], ""),
+    }
+  } else {
+    PathObservedAbsent
+  }
+}
+
+fn dashboard_path_observation_refusal(obs: DashboardPathObservation) -> List<String> {
+  match obs {
+    PathObservedPresent => []
+    PathObservedAbsent => []
+    PathObservationRefused { reason } => [reason]
+  }
+}
+
+fn dashboard_observation_present_bit(obs: DashboardPathObservation) -> Bool {
+  match obs {
+    PathObservedPresent => true
+    PathObservedAbsent => false
+    PathObservationRefused { reason: _ } => false
+  }
+}
+
+fn dashboard_target_directory_present(
+  instance: HostDashboardInstance,
+  path: FilePath,
+) -> Bool {
+  dashboard_observation_present_bit(
+    obs: dashboard_target_path_observe(instance: instance, flag: "-d", path: path),
+  )
+}
+
+fn dashboard_target_file_present(
+  instance: HostDashboardInstance,
+  path: FilePath,
+) -> Bool {
+  dashboard_observation_present_bit(
+    obs: dashboard_target_path_observe(instance: instance, flag: "-f", path: path),
+  )
+}
+
+fn dashboard_probe_refused(r: DashboardExecResult) -> Bool {
+  !r.success && trim(r.stdout) == "" && !(trim(r.stderr) == "")
+}
+
+fn codex_probe_detail(out: String, err: String) -> String {
+  let o = trim(out)
+  let e = trim(err)
+  if o == "" { e } else if e == "" { o } else { join([o, e], " | ") }
+}

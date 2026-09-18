@@ -43,6 +43,7 @@ use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ContainerSpellingVerdict::{
     ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
 };
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{ExprError, ExprLiteral, NoExprData};
 use crate::v1_std_core::ExprErrorKind::{InternalExprError, SemanticExprError};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -57,8 +58,8 @@ pub use crate::v1_std_core::{
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, ErrorNode, ExprData,
-    ExprErrorKind, InferredNode, NewlineIndex, Node,
+    Cardinality, CompilerDiagnostic, Connective, ContainerSpellingVerdict, DeclarationMarker,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -92,6 +93,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -258,6 +260,7 @@ pub fn reground_alias_carrier_identity(
             has_non_tail_self_call: n.has_non_tail_self_call.clone(),
             match_pattern: n.match_pattern.clone(),
             module_item_kind: n.module_item_kind.clone(),
+            declaration_marker: n.declaration_marker.clone(),
             expr_data: n.expr_data.clone(),
             ident: None,
         })
@@ -291,6 +294,7 @@ pub fn structural_carrier_template_name(
                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                 match_pattern: n.match_pattern.clone(),
                 module_item_kind: n.module_item_kind.clone(),
+                declaration_marker: n.declaration_marker.clone(),
                 expr_data: n.expr_data.clone(),
                 ident: None,
             }),
@@ -480,6 +484,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
                         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                        declaration_marker: DeclarationMarker::Unmarked,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     }),
@@ -504,6 +509,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         has_non_tail_self_call: false,
                         match_pattern: std::option::Option::None,
                         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                        declaration_marker: DeclarationMarker::Unmarked,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     }),
@@ -521,6 +527,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             })),
@@ -558,6 +565,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             })]),
@@ -574,6 +582,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })),
@@ -625,6 +634,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::ExprError {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
@@ -662,6 +672,7 @@ pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -687,6 +698,7 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -721,6 +733,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 })]),
@@ -737,6 +750,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -782,6 +796,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                            declaration_marker: DeclarationMarker::Unmarked,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
@@ -808,6 +823,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                            declaration_marker: DeclarationMarker::Unmarked,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
@@ -825,6 +841,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
@@ -866,6 +883,7 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -899,6 +917,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -923,6 +942,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -940,6 +960,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -967,6 +988,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -1014,6 +1036,7 @@ pub fn algebra_method_field(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1044,6 +1067,7 @@ pub fn enrich_base_with_fields(
         has_non_tail_self_call: base.has_non_tail_self_call.clone(),
         match_pattern: base.match_pattern.clone(),
         module_item_kind: base.module_item_kind.clone(),
+        declaration_marker: base.declaration_marker.clone(),
         expr_data: base.expr_data.clone(),
         ident: None,
     })
@@ -2085,8 +2109,10 @@ pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
+pub fn normalize_access_type_node(mut __tco_loop_n: Rc<Node>) -> Rc<Node> {
     loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
             && has_structure.clone())
@@ -2098,7 +2124,7 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
         match unwrapped.clone() {
             Some(base) => {
                 let __tco_0 = base.clone();
-                n = __tco_0;
+                __tco_loop_n = __tco_0;
                 continue;
             }
             std::option::Option::None => {
@@ -2124,10 +2150,10 @@ pub fn node_type_shape_argument_list(
                         .collect::<Vec<_>>(),
                 );
                 if ((rest.clone().len() as i64) == 0) {
-                    head
+                    head.clone()
                 } else {
                     v1_rt::concat(
-                        head,
+                        head.clone(),
                         v1_rt::concat(
                             ",".to_string(),
                             node_type_shape_argument_list(rest.clone(), source_indices.clone()),
@@ -2291,11 +2317,17 @@ pub fn node_type_shape(
 }
 
 pub fn node_type_compatible(
-    mut left: Rc<Node>,
-    mut right: Rc<Node>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_left: Rc<Node>,
+    mut __tco_loop_right: Rc<Node>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut left = __tco_loop_left;
+        #[allow(unused_mut)]
+        let mut right = __tco_loop_right;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
@@ -2359,8 +2391,10 @@ pub fn node_type_compatible(
                                                     {
                                                         let __tco_0 = left_el.clone();
                                                         let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
+                                                        let __tco_2 = source_indices;
+                                                        __tco_loop_left = __tco_0;
+                                                        __tco_loop_right = __tco_1;
+                                                        __tco_loop_source_indices = __tco_2;
                                                         continue;
                                                     }
                                                 }
@@ -2416,8 +2450,10 @@ pub fn node_type_compatible(
                                                     {
                                                         let __tco_0 = left_el.clone();
                                                         let __tco_1 = right_el.clone();
-                                                        left = __tco_0;
-                                                        right = __tco_1;
+                                                        let __tco_2 = source_indices;
+                                                        __tco_loop_left = __tco_0;
+                                                        __tco_loop_right = __tco_1;
+                                                        __tco_loop_source_indices = __tco_2;
                                                         continue;
                                                     }
                                                 }
@@ -2446,8 +2482,10 @@ pub fn node_type_compatible(
                                         {
                                             let __tco_0 = left_inner.clone();
                                             let __tco_1 = right_inner.clone();
-                                            left = __tco_0;
-                                            right = __tco_1;
+                                            let __tco_2 = source_indices;
+                                            __tco_loop_left = __tco_0;
+                                            __tco_loop_right = __tco_1;
+                                            __tco_loop_source_indices = __tco_2;
                                             continue;
                                         }
                                     }
@@ -3031,17 +3069,17 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n)
+            crate::v1_std_core::with_required_cardinality(n.clone())
         } else {
             if ((n.name.clone() == "Optional".to_string())
                 && ((n.children.clone().len() as i64) == 1))
             {
                 match n.children.clone().first().cloned() {
                     Some(inner) => inner.clone(),
-                    std::option::Option::None => n,
+                    std::option::Option::None => n.clone(),
                 }
             } else {
-                n
+                n.clone()
             }
         }
     }
@@ -3089,11 +3127,17 @@ pub struct AlgebraFieldMatch {
 }
 
 pub fn first_matching_algebra_field(
-    mut n: Rc<Node>,
-    mut candidates: Rc<Vec<AlgebraFieldKind>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_n: Rc<Node>,
+    mut __tco_loop_candidates: Rc<Vec<AlgebraFieldKind>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
+        #[allow(unused_mut)]
+        let mut n = __tco_loop_n;
+        #[allow(unused_mut)]
+        let mut candidates = __tco_loop_candidates;
+        #[allow(unused_mut)]
+        let mut source_indices = __tco_loop_source_indices;
         match candidates.clone().first().cloned() {
             std::option::Option::None => {
                 break std::option::Option::None;
@@ -3111,14 +3155,18 @@ pub fn first_matching_algebra_field(
                         }));
                     }
                     std::option::Option::None => {
-                        let __tco_0 = Rc::new(
+                        let __tco_0 = n;
+                        let __tco_1 = Rc::new(
                             candidates
                                 .iter()
                                 .cloned()
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         );
-                        candidates = __tco_0;
+                        let __tco_2 = source_indices;
+                        __tco_loop_n = __tco_0;
+                        __tco_loop_candidates = __tco_1;
+                        __tco_loop_source_indices = __tco_2;
                         continue;
                     }
                 }

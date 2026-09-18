@@ -83,12 +83,3 @@ test fn only_direct_measurement_reports_as_measured() -> Bool {
     && !reading_is_measured(b: DerivedAtCommonWorkload { normalised_tokens: token_count(count: 16400), from_samples: 20 })
     && !reading_is_measured(b: PredictedOutsideMeasuredArm { requested_budget: 1024, measured_budgets: "2048, 8192, 16384" as NonEmptyStr })
 }
-
-test fn w_all_prefill_batch_sweep_claims_hold() -> Bool {
-  the_derived_law_reproduces_the_independent_fit()
-    && a_single_budget_population_refuses_rather_than_splitting_the_terms()
-    && the_real_population_spans_budgets_and_the_planted_one_does_not()
-    && too_few_probes_refuse_before_any_arithmetic()
-    && the_predicted_step_duration_matches_the_measured_co_tenant_stall()
-    && only_direct_measurement_reports_as_measured()
-}

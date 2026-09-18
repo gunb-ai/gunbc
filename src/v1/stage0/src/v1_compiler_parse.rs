@@ -57,6 +57,7 @@ pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::{TestMarked, Unmarked};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprFieldAccess, ExprForEach, ExprIf, ExprIndex,
     ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit,
@@ -80,9 +81,9 @@ use crate::v1_std_core::TokenShape::{
 };
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v1_std_core::{
-    arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
-    expr_var_name_at, field_access_base, field_access_field_at, field_access_spine,
-    field_binding_pattern, field_from_key_property_name, field_init_node_value,
+    arg_name_at, arg_value, authored_name_at, byte_to_line_col, empty_intern_table, error_type,
+    expr_call_func_at, expr_var_name_at, field_access_base, field_access_field_at,
+    field_access_spine, field_binding_pattern, field_from_key_property_name, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, file_transport_node, import_node, intern,
     intern_table_with_authored_token_ordinals, is_compiler_error, is_container_type, kernel_span,
@@ -98,9 +99,10 @@ pub use crate::v1_std_core::{
     variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
-    OperationModifier, ParsedModuleItemKind, StringPart, Token, TokenShape, UnaryOpKind,
+    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern,
+    NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token, TokenShape,
+    UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -339,6 +341,7 @@ pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: node.match_pattern.clone(),
         module_item_kind: node.module_item_kind.clone(),
+        declaration_marker: node.declaration_marker.clone(),
         expr_data: node.expr_data.clone(),
     })
 }
@@ -682,12 +685,20 @@ pub fn mint_parsed_optional_int_property(
 }
 
 pub fn mint_parsed_string_part_nodes(
-    mut parts: Rc<Vec<Rc<StringPart>>>,
-    mut ctx: Rc<ParseContext>,
-    mut span: Rc<SourceSpan>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_parts: Rc<Vec<Rc<StringPart>>>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_span: Rc<SourceSpan>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParsedNodesResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut parts = __tco_loop_parts;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut span = __tco_loop_span;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         match parts.clone().first().cloned() {
             Some(part) => {
                 let minted = mint_parsed_node_identity(ctx.clone());
@@ -711,10 +722,12 @@ pub fn mint_parsed_string_part_nodes(
                     let __tco_0 =
                         Rc::new(parts.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                     let __tco_1 = minted.ctx.clone();
-                    let __tco_2 = v1_rt::rc_list_push(acc, node.clone());
-                    parts = __tco_0;
-                    ctx = __tco_1;
-                    acc = __tco_2;
+                    let __tco_2 = span;
+                    let __tco_3 = v1_rt::rc_list_push(acc, node.clone());
+                    __tco_loop_parts = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_span = __tco_2;
+                    __tco_loop_acc = __tco_3;
                     continue;
                 }
             }
@@ -1646,14 +1659,103 @@ pub fn drop_leading_type_modifier(tokens: Rc<TokenStream>, modifier: String) -> 
     }
 }
 
-pub fn drop_leading_test_marker(tokens: Rc<TokenStream>) -> Rc<TokenStream> {
-    if (tok_is_ident_text(token_stream_first(tokens.clone()), "test".to_string())
+pub fn leads_with_test_marker(tokens: Rc<TokenStream>) -> bool {
+    (tok_is_ident_text(token_stream_first(tokens.clone()), "test".to_string())
         && (tok_keyword_text(token_stream_first(token_stream_advance(tokens.clone(), 1)))
             != "".to_string()))
+}
+
+pub fn test_marker_admits_form(form: Option<Rc<ItemForm>>) -> bool {
+    match form.clone() {
+        Some(f) => match f.body_kind.clone() {
+            BodyKind::ExprBody => true,
+            BodyKind::ValueBody => true,
+            BodyKind::BlockBody => false,
+            BodyKind::TypeBody => false,
+            BodyKind::NoBody => false,
+            BodyKind::ServiceBody => false,
+            BodyKind::ResourceBody => false,
+            BodyKind::AliasBody => false,
+        },
+        std::option::Option::None => false,
+    }
+}
+
+pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
-        token_stream_advance(tokens.clone(), 1)
-    } else {
-        tokens.clone()
+        let form = find_item_form(
+            ctx.env.clone().syntax_spec.clone().item_forms.clone(),
+            tok_keyword_text(token_stream_first(tokens.clone())),
+        );
+        if !test_marker_admits_form(form.clone()) {
+            {
+                let span = token_span(token_stream_first(tokens.clone()));
+                return Rc::new(ItemResult {
+                    item: Rc::new(Node {
+                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                        name: "<unknown>".to_string(),
+                        span: span.clone(),
+                        ident_span: Some(span.clone()),
+                        children: Rc::new(vec![]),
+                        params: Rc::new(vec![]),
+                        inferred: std::option::Option::None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: std::option::Option::None,
+                        connective: Connective::NoConnective,
+                        transport: std::option::Option::None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: std::option::Option::None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::ModuleItemUnrecognized,
+                        declaration_marker: DeclarationMarker::Unmarked,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    }),
+                    tokens: tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: Some(parse_error(
+                        "the `test` marker applies only to a fn or data item".to_string(),
+                        span.clone(),
+                    )),
+                });
+            }
+        }
+        let r = parse_unmarked_item(tokens.clone(), ctx.clone());
+        if has_err(r.err.clone()) {
+            return r;
+        }
+        let n = r.item.clone();
+        Rc::new(ItemResult {
+            item: Rc::new(Node {
+                occurrence_identity: n.occurrence_identity.clone(),
+                name: n.name.clone(),
+                ident: n.ident.clone(),
+                span: n.span.clone(),
+                ident_span: n.ident_span.clone(),
+                children: n.children.clone(),
+                connective: n.connective.clone(),
+                params: n.params.clone(),
+                inferred: n.inferred.clone(),
+                return_cardinality: n.return_cardinality.clone(),
+                uses: n.uses.clone(),
+                body: n.body.clone(),
+                transport: n.transport.clone(),
+                properties: n.properties.clone(),
+                type_annotation: n.type_annotation.clone(),
+                is_self_recursive: n.is_self_recursive.clone(),
+                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                match_pattern: n.match_pattern.clone(),
+                module_item_kind: n.module_item_kind.clone(),
+                declaration_marker: DeclarationMarker::TestMarked,
+                expr_data: n.expr_data.clone(),
+            }),
+            tokens: r.tokens.clone(),
+            ctx: r.ctx.clone(),
+            err: std::option::Option::None,
+        })
     }
 }
 
@@ -2082,14 +2184,16 @@ pub fn is_name_keyword(token: Rc<Token>, env: Rc<ParseEnvironment>) -> bool {
     }
 }
 
-pub fn skip_newlines(mut tokens: Rc<TokenStream>) -> Rc<TokenStream> {
+pub fn skip_newlines(mut __tco_loop_tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
         match token_stream_first(tokens.clone()) {
             Some(t) => {
                 if is_newline_shape(t.shape.clone()) {
                     {
                         let __tco_0 = token_stream_advance(tokens, 1);
-                        tokens = __tco_0;
+                        __tco_loop_tokens = __tco_0;
                         continue;
                     }
                 } else {
@@ -2436,6 +2540,7 @@ pub fn leaf_type_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2465,6 +2570,7 @@ pub fn literal_width_nat_type_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::ExprLiteral {
             value: Rc::new(LiteralValue::LitInt {
                 value: value.clone(),
@@ -2602,12 +2708,20 @@ pub fn parse_dotted_ident(tokens: Rc<TokenStream>, env: Rc<ParseEnvironment>) ->
 }
 
 pub fn parse_dotted_ident_rest(
-    mut tokens: Rc<TokenStream>,
-    mut acc: String,
-    mut span: Rc<SourceSpan>,
-    mut env: Rc<ParseEnvironment>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_acc: String,
+    mut __tco_loop_span: Rc<SourceSpan>,
+    mut __tco_loop_env: Rc<ParseEnvironment>,
 ) -> Rc<NameResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        #[allow(unused_mut)]
+        let mut span = __tco_loop_span;
+        #[allow(unused_mut)]
+        let mut env = __tco_loop_env;
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectDot))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = expect_name(__ec.clone(), env.clone());
@@ -2624,9 +2738,11 @@ pub fn parse_dotted_ident_rest(
                     let __tco_1 =
                         v1_rt::concat(v1_rt::concat(acc, ".".to_string()), r.name.clone());
                     let __tco_2 = extended.clone();
-                    tokens = __tco_0;
-                    acc = __tco_1;
-                    span = __tco_2;
+                    let __tco_3 = env;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_acc = __tco_1;
+                    __tco_loop_span = __tco_2;
+                    __tco_loop_env = __tco_3;
                     continue;
                 }
             }
@@ -3542,6 +3658,7 @@ pub fn parse_with_table_in_occurrence_scope(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     occurrence_allocator: OccurrenceIdAllocator,
+    env: Rc<ParseEnvironment>,
 ) -> Rc<ParseWithTableResult> {
     parse_with_table_at(
         tokens.clone(),
@@ -3551,7 +3668,7 @@ pub fn parse_with_table_in_occurrence_scope(
             occurrence_allocator.clone(),
         ),
         false,
-        dag_parse_environment(),
+        env.clone(),
     )
 }
 
@@ -3709,6 +3826,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -3727,11 +3845,17 @@ pub fn parse_imports(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Impor
 }
 
 pub fn parse_imports_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ImportsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
             let r = parse_import(tokens.clone(), ctx.clone());
@@ -3747,9 +3871,9 @@ pub fn parse_imports_acc(
                 let __tco_0 = r.tokens.clone();
                 let __tco_1 = parse_context_after_node(r.ctx.clone(), r.import.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.import.clone());
-                tokens = __tco_0;
-                ctx = __tco_1;
-                acc = __tco_2;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         } else {
@@ -3764,34 +3888,58 @@ pub fn parse_imports_acc(
 }
 
 pub fn last_consumed_token_end(
-    mut all: Rc<Vec<Rc<Token>>>,
-    mut from: i64,
-    mut until: i64,
-    mut end: Option<i64>,
+    mut __tco_loop_all: Rc<Vec<Rc<Token>>>,
+    mut __tco_loop_from: i64,
+    mut __tco_loop_until: i64,
+    mut __tco_loop_end: Option<i64>,
 ) -> Option<i64> {
     loop {
+        #[allow(unused_mut)]
+        let mut all = __tco_loop_all;
+        #[allow(unused_mut)]
+        let mut from = __tco_loop_from;
+        #[allow(unused_mut)]
+        let mut until = __tco_loop_until;
+        #[allow(unused_mut)]
+        let mut end = __tco_loop_end;
         if (from.clone() >= until.clone()) {
-            break end;
+            break end.clone();
         } else {
             match all.clone().get((from.clone()) as usize).cloned() {
                 std::option::Option::None => {
-                    let __tco_0 = (from + 1);
-                    from = __tco_0;
+                    let __tco_0 = all;
+                    let __tco_1 = (from + 1);
+                    let __tco_2 = until;
+                    let __tco_3 = end;
+                    __tco_loop_all = __tco_0;
+                    __tco_loop_from = __tco_1;
+                    __tco_loop_until = __tco_2;
+                    __tco_loop_end = __tco_3;
                     continue;
                 }
                 Some(t) => {
                     if is_newline_shape(t.shape.clone()) {
                         {
-                            let __tco_0 = (from + 1);
-                            from = __tco_0;
+                            let __tco_0 = all;
+                            let __tco_1 = (from + 1);
+                            let __tco_2 = until;
+                            let __tco_3 = end;
+                            __tco_loop_all = __tco_0;
+                            __tco_loop_from = __tco_1;
+                            __tco_loop_until = __tco_2;
+                            __tco_loop_end = __tco_3;
                             continue;
                         }
                     } else {
                         {
-                            let __tco_0 = (from + 1);
-                            let __tco_1 = Some(t.span.clone().end.clone());
-                            from = __tco_0;
-                            end = __tco_1;
+                            let __tco_0 = all;
+                            let __tco_1 = (from + 1);
+                            let __tco_2 = until;
+                            let __tco_3 = Some(t.span.clone().end.clone());
+                            __tco_loop_all = __tco_0;
+                            __tco_loop_from = __tco_1;
+                            __tco_loop_until = __tco_2;
+                            __tco_loop_end = __tco_3;
                             continue;
                         }
                     }
@@ -3802,11 +3950,17 @@ pub fn last_consumed_token_end(
 }
 
 pub fn parse_import_statement_extents_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<ParsedImportStatement>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<ParsedImportStatement>>>,
 ) -> Rc<ParsedImportStatements> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_keyword(token_stream_first(tokens.clone()), "import".to_string()) {
             let before = tokens.pos.clone();
@@ -3856,9 +4010,9 @@ pub fn parse_import_statement_extents_acc(
                                     imported_module: r.import.clone().name.clone(),
                                 }),
                             );
-                            tokens = __tco_0;
-                            ctx = __tco_1;
-                            acc = __tco_2;
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_ctx = __tco_1;
+                            __tco_loop_acc = __tco_2;
                             continue;
                         }
                     }
@@ -3917,11 +4071,17 @@ pub fn parse_items(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemsRe
 }
 
 pub fn parse_items_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ItemsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ItemsResult {
@@ -3944,9 +4104,9 @@ pub fn parse_items_acc(
                 let __tco_0 = r.tokens.clone();
                 let __tco_1 = parse_context_after_node(r.ctx.clone(), r.item.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.item.clone());
-                tokens = __tco_0;
-                ctx = __tco_1;
-                acc = __tco_2;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         }
@@ -4080,11 +4240,17 @@ pub fn parsed_name_leaf(
 }
 
 pub fn parse_import_names_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<NamesResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_rbrace(token_stream_first(tokens.clone())) {
             break Rc::new(NamesResult {
@@ -4113,10 +4279,12 @@ pub fn parse_import_names_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
             });
             {
-                let __tco_0 = minted.ctx.clone();
-                let __tco_1 = v1_rt::rc_list_push(acc, name_node.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, name_node.clone());
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         }
@@ -4144,7 +4312,15 @@ pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<R
 pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let tokens = skip_newlines(tokens.clone());
-        let tokens = drop_leading_test_marker(tokens.clone());
+        if leads_with_test_marker(tokens.clone()) {
+            return test_marked_item_result(token_stream_advance(tokens.clone(), 1), ctx.clone());
+        }
+        parse_unmarked_item(tokens.clone(), ctx.clone())
+    }
+}
+
+pub fn parse_unmarked_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+    {
         let tok = token_stream_first(tokens.clone());
         let kw = tok_keyword_text(tok.clone());
         let span = token_span(tok.clone());
@@ -4174,12 +4350,13 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+    declaration_marker: DeclarationMarker::Unmarked,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
     tokens: tokens.clone(),
     ctx: ctx.clone(),
-    err: Some(parse_error("expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)".to_string(), span.clone())),
+    err: Some(parse_error("expected item declaration (alias, type, fn, service, resource, data, extern, pattern, interface)".to_string(), span.clone())),
 }),
 }
     }
@@ -4359,6 +4536,7 @@ pub fn parse_item_by_form(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4469,6 +4647,7 @@ pub fn field_to_child_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4511,6 +4690,7 @@ pub fn variant_to_child_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4549,6 +4729,7 @@ pub fn outputs_to_inferred(
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -4612,6 +4793,7 @@ pub fn make_operation_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4659,6 +4841,7 @@ pub fn make_capability_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4686,6 +4869,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4732,6 +4916,7 @@ pub fn parse_type_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4778,6 +4963,7 @@ pub fn parse_type_after_kw(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4832,6 +5018,7 @@ pub fn parse_type_after_kw(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4884,6 +5071,7 @@ pub fn parse_type_after_kw(
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                            declaration_marker: DeclarationMarker::Unmarked,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -4928,6 +5116,7 @@ pub fn parse_type_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4991,6 +5180,7 @@ pub fn parse_type_body_from_prefix(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5043,6 +5233,7 @@ pub fn parse_type_body_from_prefix(
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                            declaration_marker: DeclarationMarker::Unmarked,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -5094,6 +5285,7 @@ pub fn type_item_from_alias_rhs(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -5117,6 +5309,7 @@ pub fn type_item_from_alias_rhs(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -5152,6 +5345,7 @@ pub fn parse_type_body_after_eq(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -5224,6 +5418,7 @@ pub fn parse_type_body_after_eq(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5314,6 +5509,7 @@ pub fn parse_type_body_after_eq(
                                     match_pattern: std::option::Option::None,
                                     module_item_kind:
                                         ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                                    declaration_marker: DeclarationMarker::Unmarked,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
@@ -5470,6 +5666,7 @@ pub fn try_where_clause(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5492,6 +5689,7 @@ pub fn try_where_clause(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5524,11 +5722,17 @@ pub fn parse_predicates(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Pr
 }
 
 pub fn parse_predicates_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<PredsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         let r = parse_single_predicate(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(PredsResult {
@@ -5543,7 +5747,11 @@ pub fn parse_predicates_acc(
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = skip_newlines(__ec.clone());
-                tokens = __tco_0;
+                let __tco_1 = ctx;
+                let __tco_2 = acc;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -6213,11 +6421,17 @@ pub fn parse_more_variants(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
 }
 
 pub fn parse_more_variants_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<VariantsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectPipe))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
@@ -6249,9 +6463,9 @@ pub fn parse_more_variants_acc(
                     let __tco_0 = r2.tokens.clone();
                     let __tco_1 = parse_context_after_node(r2.ctx.clone(), r2.variant.clone());
                     let __tco_2 = v1_rt::rc_list_push(acc, r2.variant.clone());
-                    tokens = __tco_0;
-                    ctx = __tco_1;
-                    acc = __tco_2;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_acc = __tco_2;
                     continue;
                 }
             }
@@ -6335,6 +6549,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6495,6 +6710,7 @@ pub fn parse_callable_type_expr(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -6508,11 +6724,17 @@ pub fn parse_callable_type_expr(
 }
 
 pub fn parse_callable_param_types(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParamsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         let r = parse_type_expr(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
@@ -6544,8 +6766,12 @@ pub fn parse_callable_param_types(
                     });
                 } else {
                     {
-                        let __tco_0 = minted.ctx.clone();
-                        ctx = __tco_0;
+                        let __tco_0 = tokens;
+                        let __tco_1 = minted.ctx.clone();
+                        let __tco_2 = acc;
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_acc = __tco_2;
                         continue;
                     }
                 }
@@ -6623,6 +6849,7 @@ pub fn finish_type_expr_from_name(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6685,11 +6912,17 @@ pub fn parse_optional_type_params(
 }
 
 pub fn collect_type_param_names(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut params: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TypeParamsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut params = __tco_loop_params;
         if tok_is_ident(token_stream_first(tokens.clone())) {
             let r = expect_ident(tokens.clone());
             let span = r.span.clone();
@@ -6711,9 +6944,9 @@ pub fn collect_type_param_names(
                     let __tco_0 = __ec.clone();
                     let __tco_1 = param_mint.ctx.clone();
                     let __tco_2 = next_params.clone();
-                    tokens = __tco_0;
-                    ctx = __tco_1;
-                    params = __tco_2;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_params = __tco_2;
                     continue;
                 }
                 EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -6743,11 +6976,17 @@ pub struct TypeArgsResult {
 }
 
 pub fn collect_type_args(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut args: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TypeArgsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut args = __tco_loop_args;
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_type_angle_arg(__ec.clone(), ctx.clone());
@@ -6763,9 +7002,9 @@ pub fn collect_type_args(
                     let __tco_0 = r.tokens.clone();
                     let __tco_1 = parse_context_after_node(r.ctx.clone(), r.type_expr.clone());
                     let __tco_2 = v1_rt::rc_list_push(args, r.type_expr.clone());
-                    tokens = __tco_0;
-                    ctx = __tco_1;
-                    args = __tco_2;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_args = __tco_2;
                     continue;
                 }
             }
@@ -6808,6 +7047,7 @@ pub fn maybe_optional(
                 has_non_tail_self_call: te.has_non_tail_self_call.clone(),
                 match_pattern: te.match_pattern.clone(),
                 module_item_kind: te.module_item_kind.clone(),
+                declaration_marker: te.declaration_marker.clone(),
                 expr_data: te.expr_data.clone(),
                 ident: None,
             });
@@ -6832,11 +7072,17 @@ pub fn parse_field_list(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
 }
 
 pub fn parse_field_list_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<FieldsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if ((tok_is_rbrace(tok.clone()) || tok_is_rparen(tok.clone())) || tok_is_eof(tok.clone())) {
@@ -6864,10 +7110,12 @@ pub fn parse_field_list_acc(
                     EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
                 });
                 {
-                    let __tco_0 = parse_context_after_node(r.ctx.clone(), r.field.clone());
-                    let __tco_1 = v1_rt::rc_list_push(acc, r.field.clone());
-                    ctx = __tco_0;
-                    acc = __tco_1;
+                    let __tco_0 = tokens;
+                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.field.clone());
+                    let __tco_2 = v1_rt::rc_list_push(acc, r.field.clone());
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_acc = __tco_2;
                     continue;
                 }
             } else {
@@ -7079,177 +7327,6 @@ pub fn parse_optional_from_key(
     }
 }
 
-pub fn parse_fn_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
-    {
-        let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "".to_string(),
-            span: start_span.clone(),
-            ident_span: std::option::Option::None,
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "fn".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        parse_fn_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
-    }
-}
-
-pub fn parse_fn_after_kw(
-    tokens: Rc<TokenStream>,
-    ctx: Rc<ParseContext>,
-    start_span: Rc<SourceSpan>,
-) -> Rc<ItemResult> {
-    {
-        let dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "".to_string(),
-            span: start_span.clone(),
-            ident_span: std::option::Option::None,
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = expect_ident(tokens.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let name = r.name.clone();
-        let name_span = r.span.clone();
-        let tokens = r.tokens.clone();
-        let named_dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: name.clone(),
-            span: start_span.clone(),
-            ident_span: Some(name_span.clone()),
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = parse_params(tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: named_dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let params = r.params.clone();
-        let tokens = r.tokens.clone();
-        let ctx = r.ctx.clone();
-        let ret = parse_optional_inferred(tokens.clone(), ctx.clone());
-        if has_err(ret.err.clone()) {
-            return Rc::new(ItemResult {
-                item: named_dummy.clone(),
-                tokens: ret.tokens.clone(),
-                ctx: ret.ctx.clone(),
-                err: ret.err.clone(),
-            });
-        }
-        let inferred = ret.inferred.clone();
-        let tokens = ret.tokens.clone();
-        let ctx = ret.ctx.clone();
-        let r = parse_item_block_body(skip_newlines(tokens.clone()), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: named_dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let body = r.expr.clone();
-        let minted = mint_parsed_node_identity(r.ctx.clone());
-        let item = Rc::new(Node {
-            occurrence_identity: minted.identity.clone(),
-            name: name.clone(),
-            span: start_span.clone(),
-            ident_span: Some(name_span.clone()),
-            children: Rc::new(vec![]),
-            params: params.clone(),
-            inferred: inferred.clone(),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: Some(body.clone()),
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        Rc::new(ItemResult {
-            item: item.clone(),
-            tokens: skip_newlines(r.tokens.clone()),
-            ctx: minted.ctx.clone(),
-            err: std::option::Option::None,
-        })
-    }
-}
-
 pub fn admit_callers_property_nonempty(field: Rc<Node>) -> bool {
     {
         let list_val = crate::v1_std_core::field_init_node_value(field.clone());
@@ -7339,7 +7416,7 @@ pub fn parse_fn_body_from_prefix(
             params: all_params.clone(),
             inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: prefix.uses.clone(),
             body: std::option::Option::None,
             connective: Connective::NoConnective,
             transport: std::option::Option::None,
@@ -7349,9 +7426,18 @@ pub fn parse_fn_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
+        if (((type_params.clone().len() as i64) > 0) && ((prefix.uses.clone().len() as i64) > 0)) {
+            return Rc::new(ItemResult {
+    item: named_dummy.clone(),
+    tokens: prefix.tokens.clone(),
+    ctx: prefix.ctx.clone(),
+    err: Some(parse_error(v1_rt::concat("generic effectful declaration is not realized: `".to_string(), v1_rt::concat(name.clone(), "` carries both type parameters and a `uses` row. No emitter plumbs type parameters through the effectful path -- the Rust, Python and Go effectful emitters each construct the resource-aware body directly and none routes through the generic-fn split. Declare it with type parameters and no `uses`, or with a `uses` row and no type parameters.".to_string())), name_span.clone())),
+});
+        }
         let tokens = skip_newlines(prefix.tokens.clone());
         let admit_r = parse_optional_admit_callers(tokens.clone(), ctx.clone());
         if has_err(admit_r.err.clone()) {
@@ -7419,7 +7505,7 @@ pub fn parse_fn_body_from_prefix(
             params: all_params.clone(),
             inferred: inferred.clone(),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: prefix.uses.clone(),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
             transport: std::option::Option::None,
@@ -7429,253 +7515,13 @@ pub fn parse_fn_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
             tokens: skip_newlines(body_result.tokens.clone()),
-            ctx: minted.ctx.clone(),
-            err: std::option::Option::None,
-        })
-    }
-}
-
-pub fn parse_func_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
-    {
-        let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "".to_string(),
-            span: start_span.clone(),
-            ident_span: std::option::Option::None,
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let kw = tok_keyword_text(token_stream_first(tokens.clone()));
-        let r = if (kw.clone() == "func".to_string()) {
-            expect(
-                tokens.clone(),
-                Rc::new(ExpectedToken::ExpectKeyword {
-                    text: "func".to_string(),
-                }),
-            )
-        } else {
-            if (kw.clone() == "pattern".to_string()) {
-                expect(
-                    tokens.clone(),
-                    Rc::new(ExpectedToken::ExpectKeyword {
-                        text: "pattern".to_string(),
-                    }),
-                )
-            } else {
-                if (kw.clone() == "interface".to_string()) {
-                    expect(
-                        tokens.clone(),
-                        Rc::new(ExpectedToken::ExpectKeyword {
-                            text: "interface".to_string(),
-                        }),
-                    )
-                } else {
-                    expect(
-                        tokens.clone(),
-                        Rc::new(ExpectedToken::ExpectKeyword {
-                            text: "func".to_string(),
-                        }),
-                    )
-                }
-            }
-        };
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let has_uses = (kw.clone() == "func".to_string());
-        let form = Rc::new(ItemForm {
-            kind: ItemFormKind::OtherForm,
-            keyword: kw.clone(),
-            has_type_params: false,
-            has_params: true,
-            has_return_type: true,
-            return_required: false,
-            has_uses: has_uses.clone(),
-            body_kind: BodyKind::BlockBody,
-        });
-        let prefix = parse_item_prefix(r.tokens.clone(), ctx.clone(), form.clone());
-        if has_err(prefix.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: prefix.tokens.clone(),
-                ctx: prefix.ctx.clone(),
-                err: prefix.err.clone(),
-            });
-        }
-        parse_block_body_from_prefix(prefix.clone(), start_span.clone())
-    }
-}
-
-pub fn parse_block_item_after_kw(
-    tokens: Rc<TokenStream>,
-    ctx: Rc<ParseContext>,
-    start_span: Rc<SourceSpan>,
-    form: Rc<ItemForm>,
-) -> Rc<ItemResult> {
-    {
-        let dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "".to_string(),
-            span: start_span.clone(),
-            ident_span: std::option::Option::None,
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = expect_ident(tokens.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let name = r.name.clone();
-        let name_span = r.span.clone();
-        let tokens = r.tokens.clone();
-        let named_dummy = Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: name.clone(),
-            span: start_span.clone(),
-            ident_span: Some(name_span.clone()),
-            children: Rc::new(vec![]),
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let r = parse_params(tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: named_dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let params = r.params.clone();
-        let tokens = r.tokens.clone();
-        let ctx = r.ctx.clone();
-        let ret = parse_optional_inferred(tokens.clone(), ctx.clone());
-        if has_err(ret.err.clone()) {
-            return Rc::new(ItemResult {
-                item: named_dummy.clone(),
-                tokens: ret.tokens.clone(),
-                ctx: ret.ctx.clone(),
-                err: ret.err.clone(),
-            });
-        }
-        let inferred = ret.inferred.clone();
-        let tokens = ret.tokens.clone();
-        let ctx = ret.ctx.clone();
-        let uses_r = if form.has_uses.clone() {
-            parse_uses_clause(skip_newlines(tokens.clone()), ctx.clone())
-        } else {
-            Rc::new(UsesResult {
-                uses: Rc::new(vec![]),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: std::option::Option::None,
-            })
-        };
-        if has_err(uses_r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: named_dummy.clone(),
-                tokens: uses_r.tokens.clone(),
-                ctx: uses_r.ctx.clone(),
-                err: uses_r.err.clone(),
-            });
-        }
-        let uses = uses_r.uses.clone();
-        let tokens = uses_r.tokens.clone();
-        let ctx = uses_r.ctx.clone();
-        let r = parse_item_block_body(skip_newlines(tokens.clone()), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ItemResult {
-                item: named_dummy.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let body = r.expr.clone();
-        let minted = mint_parsed_node_identity(r.ctx.clone());
-        let item = Rc::new(Node {
-            occurrence_identity: minted.identity.clone(),
-            name: name.clone(),
-            span: start_span.clone(),
-            ident_span: Some(name_span.clone()),
-            children: Rc::new(vec![]),
-            params: params.clone(),
-            inferred: inferred.clone(),
-            return_cardinality: Cardinality::Required,
-            uses: uses.clone(),
-            body: Some(body.clone()),
-            connective: Connective::NoConnective,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        Rc::new(ItemResult {
-            item: item.clone(),
-            tokens: skip_newlines(r.tokens.clone()),
             ctx: minted.ctx.clone(),
             err: std::option::Option::None,
         })
@@ -7712,6 +7558,7 @@ pub fn parse_block_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7745,6 +7592,7 @@ pub fn parse_block_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7782,6 +7630,7 @@ pub fn parse_no_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemUnrecognized,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7831,11 +7680,17 @@ pub fn parse_uses_list(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Use
 }
 
 pub fn parse_uses_list_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<UsesResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         let r = parse_uses_entry(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(UsesResult {
@@ -7850,7 +7705,11 @@ pub fn parse_uses_list_acc(
         match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = __ec.clone();
-                tokens = __tco_0;
+                let __tco_1 = ctx;
+                let __tco_2 = acc;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -7947,6 +7806,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     has_non_tail_self_call: r3.type_expr.clone().has_non_tail_self_call.clone(),
                     match_pattern: r3.type_expr.clone().match_pattern.clone(),
                     module_item_kind: r3.type_expr.clone().module_item_kind.clone(),
+                    declaration_marker: r3.type_expr.clone().declaration_marker.clone(),
                     expr_data: r3.type_expr.clone().expr_data.clone(),
                     ident: None,
                 });
@@ -8001,11 +7861,17 @@ pub fn parse_resource_config_args(
 }
 
 pub fn parse_resource_config_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ResConfigResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         if tok_is_rparen(token_stream_first(tokens.clone())) {
             return Rc::new(ResConfigResult {
                 fields: acc.clone(),
@@ -8056,8 +7922,10 @@ pub fn parse_resource_config_acc(
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = skip_newlines(__ec.clone());
                 let __tco_1 = minted.ctx.clone();
-                tokens = __tco_0;
-                ctx = __tco_1;
+                let __tco_2 = acc;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -8124,6 +7992,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -8170,6 +8039,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -8210,6 +8080,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -8291,6 +8162,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemService,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -8317,13 +8189,23 @@ pub fn parse_service_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
 }
 
 pub fn parse_service_entries(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut config: Option<Rc<ServiceConfig>>,
-    mut transport: Rc<Node>,
-    mut operations: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_config: Option<Rc<ServiceConfig>>,
+    mut __tco_loop_transport: Rc<Node>,
+    mut __tco_loop_operations: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ServiceBodyResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut config = __tco_loop_config;
+        #[allow(unused_mut)]
+        let mut transport = __tco_loop_transport;
+        #[allow(unused_mut)]
+        let mut operations = __tco_loop_operations;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_rbrace(tok.clone()) || tok_is_eof(tok.clone())) {
@@ -8389,9 +8271,13 @@ pub fn parse_service_entries(
                             let __tco_0 = r3.tokens.clone();
                             let __tco_1 = r2.ctx.clone();
                             let __tco_2 = Some(r2.config.clone());
-                            tokens = __tco_0;
-                            ctx = __tco_1;
-                            config = __tco_2;
+                            let __tco_3 = transport;
+                            let __tco_4 = operations;
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_ctx = __tco_1;
+                            __tco_loop_config = __tco_2;
+                            __tco_loop_transport = __tco_3;
+                            __tco_loop_operations = __tco_4;
                             continue;
                         }
                     } else {
@@ -8413,10 +8299,14 @@ pub fn parse_service_entries(
                             {
                                 let __tco_0 = r.tokens.clone();
                                 let __tco_1 = r.ctx.clone();
-                                let __tco_2 = r.transport.clone();
-                                tokens = __tco_0;
-                                ctx = __tco_1;
-                                transport = __tco_2;
+                                let __tco_2 = config;
+                                let __tco_3 = r.transport.clone();
+                                let __tco_4 = operations;
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_ctx = __tco_1;
+                                __tco_loop_config = __tco_2;
+                                __tco_loop_transport = __tco_3;
+                                __tco_loop_operations = __tco_4;
                                 continue;
                             }
                         } else {
@@ -8453,10 +8343,14 @@ pub fn parse_service_entries(
                             let __tco_0 = r.tokens.clone();
                             let __tco_1 =
                                 parse_context_after_node(r.ctx.clone(), r.operation.clone());
-                            let __tco_2 = v1_rt::rc_list_push(operations, r.operation.clone());
-                            tokens = __tco_0;
-                            ctx = __tco_1;
-                            operations = __tco_2;
+                            let __tco_2 = config;
+                            let __tco_3 = transport;
+                            let __tco_4 = v1_rt::rc_list_push(operations, r.operation.clone());
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_ctx = __tco_1;
+                            __tco_loop_config = __tco_2;
+                            __tco_loop_transport = __tco_3;
+                            __tco_loop_operations = __tco_4;
                             continue;
                         }
                     } else {
@@ -8508,15 +8402,29 @@ pub fn parse_service_config_block(
 }
 
 pub fn parse_config_fields(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut endpoint: Option<Rc<Node>>,
-    mut auth: Option<Rc<Node>>,
-    mut auth_input: Option<Rc<Node>>,
-    mut auth_source: Option<Rc<Node>>,
-    mut rate_limit: Option<Rc<Node>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_endpoint: Option<Rc<Node>>,
+    mut __tco_loop_auth: Option<Rc<Node>>,
+    mut __tco_loop_auth_input: Option<Rc<Node>>,
+    mut __tco_loop_auth_source: Option<Rc<Node>>,
+    mut __tco_loop_rate_limit: Option<Rc<Node>>,
 ) -> Rc<ConfigResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut endpoint = __tco_loop_endpoint;
+        #[allow(unused_mut)]
+        let mut auth = __tco_loop_auth;
+        #[allow(unused_mut)]
+        let mut auth_input = __tco_loop_auth_input;
+        #[allow(unused_mut)]
+        let mut auth_source = __tco_loop_auth_source;
+        #[allow(unused_mut)]
+        let mut rate_limit = __tco_loop_rate_limit;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -8602,28 +8510,88 @@ pub fn parse_config_fields(
             };
             match fname.clone().as_str() {
                 "endpoint" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    endpoint = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = Some(r3.expr.clone());
+                    let __tco_3 = auth;
+                    let __tco_4 = auth_input;
+                    let __tco_5 = auth_source;
+                    let __tco_6 = rate_limit;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_endpoint = __tco_2;
+                    __tco_loop_auth = __tco_3;
+                    __tco_loop_auth_input = __tco_4;
+                    __tco_loop_auth_source = __tco_5;
+                    __tco_loop_rate_limit = __tco_6;
                     continue;
                 }
                 "auth" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    auth = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = endpoint;
+                    let __tco_3 = Some(r3.expr.clone());
+                    let __tco_4 = auth_input;
+                    let __tco_5 = auth_source;
+                    let __tco_6 = rate_limit;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_endpoint = __tco_2;
+                    __tco_loop_auth = __tco_3;
+                    __tco_loop_auth_input = __tco_4;
+                    __tco_loop_auth_source = __tco_5;
+                    __tco_loop_rate_limit = __tco_6;
                     continue;
                 }
                 "auth_input" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    auth_input = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = endpoint;
+                    let __tco_3 = auth;
+                    let __tco_4 = Some(r3.expr.clone());
+                    let __tco_5 = auth_source;
+                    let __tco_6 = rate_limit;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_endpoint = __tco_2;
+                    __tco_loop_auth = __tco_3;
+                    __tco_loop_auth_input = __tco_4;
+                    __tco_loop_auth_source = __tco_5;
+                    __tco_loop_rate_limit = __tco_6;
                     continue;
                 }
                 "auth_source" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    auth_source = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = endpoint;
+                    let __tco_3 = auth;
+                    let __tco_4 = auth_input;
+                    let __tco_5 = Some(r3.expr.clone());
+                    let __tco_6 = rate_limit;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_endpoint = __tco_2;
+                    __tco_loop_auth = __tco_3;
+                    __tco_loop_auth_input = __tco_4;
+                    __tco_loop_auth_source = __tco_5;
+                    __tco_loop_rate_limit = __tco_6;
                     continue;
                 }
                 "rate_limit" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    rate_limit = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = endpoint;
+                    let __tco_3 = auth;
+                    let __tco_4 = auth_input;
+                    let __tco_5 = auth_source;
+                    let __tco_6 = Some(r3.expr.clone());
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_endpoint = __tco_2;
+                    __tco_loop_auth = __tco_3;
+                    __tco_loop_auth_input = __tco_4;
+                    __tco_loop_auth_source = __tco_5;
+                    __tco_loop_rate_limit = __tco_6;
                     continue;
                 }
                 _ => {
@@ -8834,17 +8802,35 @@ pub fn parse_rest_binding_body(
 }
 
 pub fn parse_rest_fields(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut base_url: Option<Rc<Node>>,
-    mut method: Option<Rc<Node>>,
-    mut path_template: Option<Rc<Node>>,
-    mut query: Option<Rc<Node>>,
-    mut request_body: Option<Rc<Node>>,
-    mut response_format: Option<Rc<Node>>,
-    mut headers: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_base_url: Option<Rc<Node>>,
+    mut __tco_loop_method: Option<Rc<Node>>,
+    mut __tco_loop_path_template: Option<Rc<Node>>,
+    mut __tco_loop_query: Option<Rc<Node>>,
+    mut __tco_loop_request_body: Option<Rc<Node>>,
+    mut __tco_loop_response_format: Option<Rc<Node>>,
+    mut __tco_loop_headers: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TransportResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut base_url = __tco_loop_base_url;
+        #[allow(unused_mut)]
+        let mut method = __tco_loop_method;
+        #[allow(unused_mut)]
+        let mut path_template = __tco_loop_path_template;
+        #[allow(unused_mut)]
+        let mut query = __tco_loop_query;
+        #[allow(unused_mut)]
+        let mut request_body = __tco_loop_request_body;
+        #[allow(unused_mut)]
+        let mut response_format = __tco_loop_response_format;
+        #[allow(unused_mut)]
+        let mut headers = __tco_loop_headers;
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -8923,43 +8909,139 @@ pub fn parse_rest_fields(
             ctx = r3.ctx.clone();
             if (fname.clone() == transport_url_key()) {
                 {
-                    let __tco_0 = Some(r3.expr.clone());
-                    base_url = __tco_0;
+                    let __tco_0 = tokens;
+                    let __tco_1 = ctx;
+                    let __tco_2 = Some(r3.expr.clone());
+                    let __tco_3 = method;
+                    let __tco_4 = path_template;
+                    let __tco_5 = query;
+                    let __tco_6 = request_body;
+                    let __tco_7 = response_format;
+                    let __tco_8 = headers;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_base_url = __tco_2;
+                    __tco_loop_method = __tco_3;
+                    __tco_loop_path_template = __tco_4;
+                    __tco_loop_query = __tco_5;
+                    __tco_loop_request_body = __tco_6;
+                    __tco_loop_response_format = __tco_7;
+                    __tco_loop_headers = __tco_8;
                     continue;
                 }
             } else {
                 if (fname.clone() == transport_method_key()) {
                     {
-                        let __tco_0 = Some(r3.expr.clone());
-                        method = __tco_0;
+                        let __tco_0 = tokens;
+                        let __tco_1 = ctx;
+                        let __tco_2 = base_url;
+                        let __tco_3 = Some(r3.expr.clone());
+                        let __tco_4 = path_template;
+                        let __tco_5 = query;
+                        let __tco_6 = request_body;
+                        let __tco_7 = response_format;
+                        let __tco_8 = headers;
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_base_url = __tco_2;
+                        __tco_loop_method = __tco_3;
+                        __tco_loop_path_template = __tco_4;
+                        __tco_loop_query = __tco_5;
+                        __tco_loop_request_body = __tco_6;
+                        __tco_loop_response_format = __tco_7;
+                        __tco_loop_headers = __tco_8;
                         continue;
                     }
                 } else {
                     if (fname.clone() == transport_path_template_key()) {
                         {
-                            let __tco_0 = Some(r3.expr.clone());
-                            path_template = __tco_0;
+                            let __tco_0 = tokens;
+                            let __tco_1 = ctx;
+                            let __tco_2 = base_url;
+                            let __tco_3 = method;
+                            let __tco_4 = Some(r3.expr.clone());
+                            let __tco_5 = query;
+                            let __tco_6 = request_body;
+                            let __tco_7 = response_format;
+                            let __tco_8 = headers;
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_ctx = __tco_1;
+                            __tco_loop_base_url = __tco_2;
+                            __tco_loop_method = __tco_3;
+                            __tco_loop_path_template = __tco_4;
+                            __tco_loop_query = __tco_5;
+                            __tco_loop_request_body = __tco_6;
+                            __tco_loop_response_format = __tco_7;
+                            __tco_loop_headers = __tco_8;
                             continue;
                         }
                     } else {
                         if (fname.clone() == transport_query_key()) {
                             {
-                                let __tco_0 = Some(r3.expr.clone());
-                                query = __tco_0;
+                                let __tco_0 = tokens;
+                                let __tco_1 = ctx;
+                                let __tco_2 = base_url;
+                                let __tco_3 = method;
+                                let __tco_4 = path_template;
+                                let __tco_5 = Some(r3.expr.clone());
+                                let __tco_6 = request_body;
+                                let __tco_7 = response_format;
+                                let __tco_8 = headers;
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_ctx = __tco_1;
+                                __tco_loop_base_url = __tco_2;
+                                __tco_loop_method = __tco_3;
+                                __tco_loop_path_template = __tco_4;
+                                __tco_loop_query = __tco_5;
+                                __tco_loop_request_body = __tco_6;
+                                __tco_loop_response_format = __tco_7;
+                                __tco_loop_headers = __tco_8;
                                 continue;
                             }
                         } else {
                             if (fname.clone() == transport_body_key()) {
                                 {
-                                    let __tco_0 = Some(r3.expr.clone());
-                                    request_body = __tco_0;
+                                    let __tco_0 = tokens;
+                                    let __tco_1 = ctx;
+                                    let __tco_2 = base_url;
+                                    let __tco_3 = method;
+                                    let __tco_4 = path_template;
+                                    let __tco_5 = query;
+                                    let __tco_6 = Some(r3.expr.clone());
+                                    let __tco_7 = response_format;
+                                    let __tco_8 = headers;
+                                    __tco_loop_tokens = __tco_0;
+                                    __tco_loop_ctx = __tco_1;
+                                    __tco_loop_base_url = __tco_2;
+                                    __tco_loop_method = __tco_3;
+                                    __tco_loop_path_template = __tco_4;
+                                    __tco_loop_query = __tco_5;
+                                    __tco_loop_request_body = __tco_6;
+                                    __tco_loop_response_format = __tco_7;
+                                    __tco_loop_headers = __tco_8;
                                     continue;
                                 }
                             } else {
                                 if (fname.clone() == transport_response_format_key()) {
                                     {
-                                        let __tco_0 = Some(r3.expr.clone());
-                                        response_format = __tco_0;
+                                        let __tco_0 = tokens;
+                                        let __tco_1 = ctx;
+                                        let __tco_2 = base_url;
+                                        let __tco_3 = method;
+                                        let __tco_4 = path_template;
+                                        let __tco_5 = query;
+                                        let __tco_6 = request_body;
+                                        let __tco_7 = Some(r3.expr.clone());
+                                        let __tco_8 = headers;
+                                        __tco_loop_tokens = __tco_0;
+                                        __tco_loop_ctx = __tco_1;
+                                        __tco_loop_base_url = __tco_2;
+                                        __tco_loop_method = __tco_3;
+                                        __tco_loop_path_template = __tco_4;
+                                        __tco_loop_query = __tco_5;
+                                        __tco_loop_request_body = __tco_6;
+                                        __tco_loop_response_format = __tco_7;
+                                        __tco_loop_headers = __tco_8;
                                         continue;
                                     }
                                 } else {
@@ -8977,8 +9059,24 @@ pub fn parse_rest_fields(
 }),
 };
                                         {
-                                            let __tco_0 = h.clone();
-                                            headers = __tco_0;
+                                            let __tco_0 = tokens;
+                                            let __tco_1 = ctx;
+                                            let __tco_2 = base_url;
+                                            let __tco_3 = method;
+                                            let __tco_4 = path_template;
+                                            let __tco_5 = query;
+                                            let __tco_6 = request_body;
+                                            let __tco_7 = response_format;
+                                            let __tco_8 = h.clone();
+                                            __tco_loop_tokens = __tco_0;
+                                            __tco_loop_ctx = __tco_1;
+                                            __tco_loop_base_url = __tco_2;
+                                            __tco_loop_method = __tco_3;
+                                            __tco_loop_path_template = __tco_4;
+                                            __tco_loop_query = __tco_5;
+                                            __tco_loop_request_body = __tco_6;
+                                            __tco_loop_response_format = __tco_7;
+                                            __tco_loop_headers = __tco_8;
                                             continue;
                                         }
                                     } else {
@@ -8994,13 +9092,27 @@ pub fn parse_rest_fields(
                                                 crate::v1_std_core::no_span(),
                                             );
                                             {
-                                                let __tco_0 = minted.ctx.clone();
-                                                let __tco_1 = v1_rt::concat(
+                                                let __tco_0 = tokens;
+                                                let __tco_1 = minted.ctx.clone();
+                                                let __tco_2 = base_url;
+                                                let __tco_3 = method;
+                                                let __tco_4 = path_template;
+                                                let __tco_5 = query;
+                                                let __tco_6 = request_body;
+                                                let __tco_7 = response_format;
+                                                let __tco_8 = v1_rt::concat(
                                                     headers,
                                                     Rc::new(vec![field.clone()]),
                                                 );
-                                                ctx = __tco_0;
-                                                headers = __tco_1;
+                                                __tco_loop_tokens = __tco_0;
+                                                __tco_loop_ctx = __tco_1;
+                                                __tco_loop_base_url = __tco_2;
+                                                __tco_loop_method = __tco_3;
+                                                __tco_loop_path_template = __tco_4;
+                                                __tco_loop_query = __tco_5;
+                                                __tco_loop_request_body = __tco_6;
+                                                __tco_loop_response_format = __tco_7;
+                                                __tco_loop_headers = __tco_8;
                                                 continue;
                                             }
                                         } else {
@@ -9035,12 +9147,20 @@ pub fn parse_shell_binding_body(
 }
 
 pub fn parse_shell_fields(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut argv: Rc<Vec<Rc<Node>>>,
-    mut stdin: Option<Rc<Node>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_argv: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_stdin: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut argv = __tco_loop_argv;
+        #[allow(unused_mut)]
+        let mut stdin = __tco_loop_stdin;
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -9121,10 +9241,14 @@ pub fn parse_shell_fields(
                     EatResult::EatUnchanged { tokens: _, .. } => r5.tokens.clone(),
                 };
                 {
-                    let __tco_0 = r4.ctx.clone();
-                    let __tco_1 = r4.exprs.clone();
-                    ctx = __tco_0;
-                    argv = __tco_1;
+                    let __tco_0 = tokens;
+                    let __tco_1 = r4.ctx.clone();
+                    let __tco_2 = r4.exprs.clone();
+                    let __tco_3 = stdin;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_argv = __tco_2;
+                    __tco_loop_stdin = __tco_3;
                     continue;
                 }
             } else {
@@ -9144,10 +9268,14 @@ pub fn parse_shell_fields(
                         EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
                     };
                     {
-                        let __tco_0 = r3.ctx.clone();
-                        let __tco_1 = Some(r3.expr.clone());
-                        ctx = __tco_0;
-                        stdin = __tco_1;
+                        let __tco_0 = tokens;
+                        let __tco_1 = r3.ctx.clone();
+                        let __tco_2 = argv;
+                        let __tco_3 = Some(r3.expr.clone());
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_argv = __tco_2;
+                        __tco_loop_stdin = __tco_3;
                         continue;
                     }
                 } else {
@@ -9185,12 +9313,20 @@ pub fn parse_file_binding_body(
 }
 
 pub fn parse_file_fields(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut base_path: Option<Rc<Node>>,
-    mut verb: Option<Rc<Node>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_base_path: Option<Rc<Node>>,
+    mut __tco_loop_verb: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut base_path = __tco_loop_base_path;
+        #[allow(unused_mut)]
+        let mut verb = __tco_loop_verb;
         tokens = skip_newlines(tokens.clone());
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy = crate::v1_std_core::local_transport_node(
@@ -9260,19 +9396,27 @@ pub fn parse_file_fields(
             };
             if ((fname.clone() == "path".to_string()) || (fname.clone() == transport_path_key())) {
                 {
-                    let __tco_0 = r3.ctx.clone();
-                    let __tco_1 = Some(r3.expr.clone());
-                    ctx = __tco_0;
-                    base_path = __tco_1;
+                    let __tco_0 = tokens;
+                    let __tco_1 = r3.ctx.clone();
+                    let __tco_2 = Some(r3.expr.clone());
+                    let __tco_3 = verb;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_base_path = __tco_2;
+                    __tco_loop_verb = __tco_3;
                     continue;
                 }
             } else {
                 if (fname.clone() == "verb".to_string()) {
                     {
-                        let __tco_0 = r3.ctx.clone();
-                        let __tco_1 = Some(r3.expr.clone());
-                        ctx = __tco_0;
-                        verb = __tco_1;
+                        let __tco_0 = tokens;
+                        let __tco_1 = r3.ctx.clone();
+                        let __tco_2 = base_path;
+                        let __tco_3 = Some(r3.expr.clone());
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_base_path = __tco_2;
+                        __tco_loop_verb = __tco_3;
                         continue;
                     }
                 } else {
@@ -9571,17 +9715,35 @@ pub fn parse_operation_v1_body(
 }
 
 pub fn parse_op_body_entries(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut inputs: Rc<Vec<Rc<Node>>>,
-    mut outputs: Rc<Vec<Rc<Node>>>,
-    mut modifier_props: Rc<Vec<Rc<Node>>>,
-    mut transport: Option<Rc<Node>>,
-    mut exit_props: Rc<Vec<Rc<Node>>>,
-    mut response_props: Rc<Vec<Rc<Node>>>,
-    mut mock_props: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_inputs: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_outputs: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_modifier_props: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_transport: Option<Rc<Node>>,
+    mut __tco_loop_exit_props: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_response_props: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_mock_props: Rc<Vec<Rc<Node>>>,
 ) -> Rc<OpBodyResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut inputs = __tco_loop_inputs;
+        #[allow(unused_mut)]
+        let mut outputs = __tco_loop_outputs;
+        #[allow(unused_mut)]
+        let mut modifier_props = __tco_loop_modifier_props;
+        #[allow(unused_mut)]
+        let mut transport = __tco_loop_transport;
+        #[allow(unused_mut)]
+        let mut exit_props = __tco_loop_exit_props;
+        #[allow(unused_mut)]
+        let mut response_props = __tco_loop_response_props;
+        #[allow(unused_mut)]
+        let mut mock_props = __tco_loop_mock_props;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let span = token_span(tok.clone());
@@ -9663,9 +9825,21 @@ pub fn parse_op_body_entries(
                             let __tco_0 = r3.tokens.clone();
                             let __tco_1 = r2.ctx.clone();
                             let __tco_2 = r2.fields.clone();
-                            tokens = __tco_0;
-                            ctx = __tco_1;
-                            inputs = __tco_2;
+                            let __tco_3 = outputs;
+                            let __tco_4 = modifier_props;
+                            let __tco_5 = transport;
+                            let __tco_6 = exit_props;
+                            let __tco_7 = response_props;
+                            let __tco_8 = mock_props;
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_ctx = __tco_1;
+                            __tco_loop_inputs = __tco_2;
+                            __tco_loop_outputs = __tco_3;
+                            __tco_loop_modifier_props = __tco_4;
+                            __tco_loop_transport = __tco_5;
+                            __tco_loop_exit_props = __tco_6;
+                            __tco_loop_response_props = __tco_7;
+                            __tco_loop_mock_props = __tco_8;
                             continue;
                         }
                     } else {
@@ -9724,10 +9898,22 @@ pub fn parse_op_body_entries(
                             {
                                 let __tco_0 = r3.tokens.clone();
                                 let __tco_1 = r2.ctx.clone();
-                                let __tco_2 = r2.fields.clone();
-                                tokens = __tco_0;
-                                ctx = __tco_1;
-                                outputs = __tco_2;
+                                let __tco_2 = inputs;
+                                let __tco_3 = r2.fields.clone();
+                                let __tco_4 = modifier_props;
+                                let __tco_5 = transport;
+                                let __tco_6 = exit_props;
+                                let __tco_7 = response_props;
+                                let __tco_8 = mock_props;
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_ctx = __tco_1;
+                                __tco_loop_inputs = __tco_2;
+                                __tco_loop_outputs = __tco_3;
+                                __tco_loop_modifier_props = __tco_4;
+                                __tco_loop_transport = __tco_5;
+                                __tco_loop_exit_props = __tco_6;
+                                __tco_loop_response_props = __tco_7;
+                                __tco_loop_mock_props = __tco_8;
                                 continue;
                             }
                         } else {
@@ -9740,13 +9926,25 @@ pub fn parse_op_body_entries(
                                 {
                                     let __tco_0 = token_stream_advance(tokens, 1);
                                     let __tco_1 = minted.ctx.clone();
-                                    let __tco_2 = v1_rt::rc_list_push(
+                                    let __tco_2 = inputs;
+                                    let __tco_3 = outputs;
+                                    let __tco_4 = v1_rt::rc_list_push(
                                         modifier_props,
                                         minted.property.clone(),
                                     );
-                                    tokens = __tco_0;
-                                    ctx = __tco_1;
-                                    modifier_props = __tco_2;
+                                    let __tco_5 = transport;
+                                    let __tco_6 = exit_props;
+                                    let __tco_7 = response_props;
+                                    let __tco_8 = mock_props;
+                                    __tco_loop_tokens = __tco_0;
+                                    __tco_loop_ctx = __tco_1;
+                                    __tco_loop_inputs = __tco_2;
+                                    __tco_loop_outputs = __tco_3;
+                                    __tco_loop_modifier_props = __tco_4;
+                                    __tco_loop_transport = __tco_5;
+                                    __tco_loop_exit_props = __tco_6;
+                                    __tco_loop_response_props = __tco_7;
+                                    __tco_loop_mock_props = __tco_8;
                                     continue;
                                 }
                             } else {
@@ -9759,13 +9957,25 @@ pub fn parse_op_body_entries(
                                     {
                                         let __tco_0 = token_stream_advance(tokens, 1);
                                         let __tco_1 = minted.ctx.clone();
-                                        let __tco_2 = v1_rt::rc_list_push(
+                                        let __tco_2 = inputs;
+                                        let __tco_3 = outputs;
+                                        let __tco_4 = v1_rt::rc_list_push(
                                             modifier_props,
                                             minted.property.clone(),
                                         );
-                                        tokens = __tco_0;
-                                        ctx = __tco_1;
-                                        modifier_props = __tco_2;
+                                        let __tco_5 = transport;
+                                        let __tco_6 = exit_props;
+                                        let __tco_7 = response_props;
+                                        let __tco_8 = mock_props;
+                                        __tco_loop_tokens = __tco_0;
+                                        __tco_loop_ctx = __tco_1;
+                                        __tco_loop_inputs = __tco_2;
+                                        __tco_loop_outputs = __tco_3;
+                                        __tco_loop_modifier_props = __tco_4;
+                                        __tco_loop_transport = __tco_5;
+                                        __tco_loop_exit_props = __tco_6;
+                                        __tco_loop_response_props = __tco_7;
+                                        __tco_loop_mock_props = __tco_8;
                                         continue;
                                     }
                                 } else {
@@ -9778,13 +9988,25 @@ pub fn parse_op_body_entries(
                                         {
                                             let __tco_0 = token_stream_advance(tokens, 1);
                                             let __tco_1 = minted.ctx.clone();
-                                            let __tco_2 = v1_rt::rc_list_push(
+                                            let __tco_2 = inputs;
+                                            let __tco_3 = outputs;
+                                            let __tco_4 = v1_rt::rc_list_push(
                                                 modifier_props,
                                                 minted.property.clone(),
                                             );
-                                            tokens = __tco_0;
-                                            ctx = __tco_1;
-                                            modifier_props = __tco_2;
+                                            let __tco_5 = transport;
+                                            let __tco_6 = exit_props;
+                                            let __tco_7 = response_props;
+                                            let __tco_8 = mock_props;
+                                            __tco_loop_tokens = __tco_0;
+                                            __tco_loop_ctx = __tco_1;
+                                            __tco_loop_inputs = __tco_2;
+                                            __tco_loop_outputs = __tco_3;
+                                            __tco_loop_modifier_props = __tco_4;
+                                            __tco_loop_transport = __tco_5;
+                                            __tco_loop_exit_props = __tco_6;
+                                            __tco_loop_response_props = __tco_7;
+                                            __tco_loop_mock_props = __tco_8;
                                             continue;
                                         }
                                     } else {
@@ -9819,10 +10041,22 @@ pub fn parse_op_body_entries(
                         {
                             let __tco_0 = r.tokens.clone();
                             let __tco_1 = r.ctx.clone();
-                            let __tco_2 = Some(r.transport.clone());
-                            tokens = __tco_0;
-                            ctx = __tco_1;
-                            transport = __tco_2;
+                            let __tco_2 = inputs;
+                            let __tco_3 = outputs;
+                            let __tco_4 = modifier_props;
+                            let __tco_5 = Some(r.transport.clone());
+                            let __tco_6 = exit_props;
+                            let __tco_7 = response_props;
+                            let __tco_8 = mock_props;
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_ctx = __tco_1;
+                            __tco_loop_inputs = __tco_2;
+                            __tco_loop_outputs = __tco_3;
+                            __tco_loop_modifier_props = __tco_4;
+                            __tco_loop_transport = __tco_5;
+                            __tco_loop_exit_props = __tco_6;
+                            __tco_loop_response_props = __tco_7;
+                            __tco_loop_mock_props = __tco_8;
                             continue;
                         }
                     } else {
@@ -9882,10 +10116,22 @@ pub fn parse_op_body_entries(
                             {
                                 let __tco_0 = r3.tokens.clone();
                                 let __tco_1 = r2.ctx.clone();
-                                let __tco_2 = r2.entries.clone();
-                                tokens = __tco_0;
-                                ctx = __tco_1;
-                                exit_props = __tco_2;
+                                let __tco_2 = inputs;
+                                let __tco_3 = outputs;
+                                let __tco_4 = modifier_props;
+                                let __tco_5 = transport;
+                                let __tco_6 = r2.entries.clone();
+                                let __tco_7 = response_props;
+                                let __tco_8 = mock_props;
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_ctx = __tco_1;
+                                __tco_loop_inputs = __tco_2;
+                                __tco_loop_outputs = __tco_3;
+                                __tco_loop_modifier_props = __tco_4;
+                                __tco_loop_transport = __tco_5;
+                                __tco_loop_exit_props = __tco_6;
+                                __tco_loop_response_props = __tco_7;
+                                __tco_loop_mock_props = __tco_8;
                                 continue;
                             }
                         } else {
@@ -9908,10 +10154,22 @@ pub fn parse_op_body_entries(
                                 {
                                     let __tco_0 = r.tokens.clone();
                                     let __tco_1 = r.ctx.clone();
-                                    let __tco_2 = r.responses.clone();
-                                    tokens = __tco_0;
-                                    ctx = __tco_1;
-                                    response_props = __tco_2;
+                                    let __tco_2 = inputs;
+                                    let __tco_3 = outputs;
+                                    let __tco_4 = modifier_props;
+                                    let __tco_5 = transport;
+                                    let __tco_6 = exit_props;
+                                    let __tco_7 = r.responses.clone();
+                                    let __tco_8 = mock_props;
+                                    __tco_loop_tokens = __tco_0;
+                                    __tco_loop_ctx = __tco_1;
+                                    __tco_loop_inputs = __tco_2;
+                                    __tco_loop_outputs = __tco_3;
+                                    __tco_loop_modifier_props = __tco_4;
+                                    __tco_loop_transport = __tco_5;
+                                    __tco_loop_exit_props = __tco_6;
+                                    __tco_loop_response_props = __tco_7;
+                                    __tco_loop_mock_props = __tco_8;
                                     continue;
                                 }
                             } else {
@@ -9937,10 +10195,22 @@ pub fn parse_op_body_entries(
                                     {
                                         let __tco_0 = r.tokens.clone();
                                         let __tco_1 = r.ctx.clone();
-                                        let __tco_2 = r.mocks.clone();
-                                        tokens = __tco_0;
-                                        ctx = __tco_1;
-                                        mock_props = __tco_2;
+                                        let __tco_2 = inputs;
+                                        let __tco_3 = outputs;
+                                        let __tco_4 = modifier_props;
+                                        let __tco_5 = transport;
+                                        let __tco_6 = exit_props;
+                                        let __tco_7 = response_props;
+                                        let __tco_8 = r.mocks.clone();
+                                        __tco_loop_tokens = __tco_0;
+                                        __tco_loop_ctx = __tco_1;
+                                        __tco_loop_inputs = __tco_2;
+                                        __tco_loop_outputs = __tco_3;
+                                        __tco_loop_modifier_props = __tco_4;
+                                        __tco_loop_transport = __tco_5;
+                                        __tco_loop_exit_props = __tco_6;
+                                        __tco_loop_response_props = __tco_7;
+                                        __tco_loop_mock_props = __tco_8;
                                         continue;
                                     }
                                 } else {
@@ -9996,8 +10266,22 @@ pub fn parse_op_body_entries(
                                         {
                                             let __tco_0 = skip_newlines(r3.tokens.clone());
                                             let __tco_1 = r3.ctx.clone();
-                                            tokens = __tco_0;
-                                            ctx = __tco_1;
+                                            let __tco_2 = inputs;
+                                            let __tco_3 = outputs;
+                                            let __tco_4 = modifier_props;
+                                            let __tco_5 = transport;
+                                            let __tco_6 = exit_props;
+                                            let __tco_7 = response_props;
+                                            let __tco_8 = mock_props;
+                                            __tco_loop_tokens = __tco_0;
+                                            __tco_loop_ctx = __tco_1;
+                                            __tco_loop_inputs = __tco_2;
+                                            __tco_loop_outputs = __tco_3;
+                                            __tco_loop_modifier_props = __tco_4;
+                                            __tco_loop_transport = __tco_5;
+                                            __tco_loop_exit_props = __tco_6;
+                                            __tco_loop_response_props = __tco_7;
+                                            __tco_loop_mock_props = __tco_8;
                                             continue;
                                         }
                                     } else {
@@ -10075,10 +10359,17 @@ pub fn int_to_string(value: i64) -> String {
     }
 }
 
-pub fn int_to_string_acc(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn int_to_string_acc(
+    mut __tco_loop_value: i64,
+    mut __tco_loop_acc: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
     loop {
+        #[allow(unused_mut)]
+        let mut value = __tco_loop_value;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         if (value.clone() == 0) {
-            break acc;
+            break acc.clone();
         } else {
             let rest = (value.clone() / 10);
             let digit = (value.clone() - (rest.clone() * 10));
@@ -10123,8 +10414,8 @@ pub fn int_to_string_acc(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Str
             {
                 let __tco_0 = rest.clone();
                 let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
-                value = __tco_0;
-                acc = __tco_1;
+                __tco_loop_value = __tco_0;
+                __tco_loop_acc = __tco_1;
                 continue;
             }
         }
@@ -10229,11 +10520,17 @@ pub fn parse_exit_entries(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
 }
 
 pub fn parse_exit_entries_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ExitEntriesResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -10309,10 +10606,12 @@ pub fn parse_exit_entries_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => desc_tokens.clone(),
             });
             {
-                let __tco_0 = minted.ctx.clone();
-                let __tco_1 = v1_rt::rc_list_push(acc, entry.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, entry.clone());
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         }
@@ -10324,11 +10623,17 @@ pub fn parse_operation_modifiers(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>)
 }
 
 pub fn parse_operation_modifiers_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ModsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         let kw = tok_keyword_text(token_stream_first(tokens.clone()));
         if (kw.clone() == "idempotent".to_string()) {
             let minted = mint_parsed_bool_property(
@@ -10340,9 +10645,9 @@ pub fn parse_operation_modifiers_acc(
                 let __tco_0 = token_stream_advance(tokens, 1);
                 let __tco_1 = minted.ctx.clone();
                 let __tco_2 = v1_rt::rc_list_push(acc, minted.property.clone());
-                tokens = __tco_0;
-                ctx = __tco_1;
-                acc = __tco_2;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         } else {
@@ -10356,9 +10661,9 @@ pub fn parse_operation_modifiers_acc(
                     let __tco_0 = token_stream_advance(tokens, 1);
                     let __tco_1 = minted.ctx.clone();
                     let __tco_2 = v1_rt::rc_list_push(acc, minted.property.clone());
-                    tokens = __tco_0;
-                    ctx = __tco_1;
-                    acc = __tco_2;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_acc = __tco_2;
                     continue;
                 }
             } else {
@@ -10372,9 +10677,9 @@ pub fn parse_operation_modifiers_acc(
                         let __tco_0 = token_stream_advance(tokens, 1);
                         let __tco_1 = minted.ctx.clone();
                         let __tco_2 = v1_rt::rc_list_push(acc, minted.property.clone());
-                        tokens = __tco_0;
-                        ctx = __tco_1;
-                        acc = __tco_2;
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_acc = __tco_2;
                         continue;
                     }
                 } else {
@@ -10595,11 +10900,17 @@ pub fn parse_response_entries(
 }
 
 pub fn parse_response_entries_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<RespEntriesResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -10666,10 +10977,12 @@ pub fn parse_response_entries_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
             });
             {
-                let __tco_0 = minted.ctx.clone();
-                let __tco_1 = v1_rt::rc_list_push(acc, entry.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, entry.clone());
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         }
@@ -10749,11 +11062,17 @@ pub fn parse_mock_response_entries(
 }
 
 pub fn parse_mock_response_entries_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<MockEntriesResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -10819,10 +11138,12 @@ pub fn parse_mock_response_entries_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => desc_tokens.clone(),
             });
             {
-                let __tco_0 = minted.ctx.clone();
-                let __tco_1 = v1_rt::rc_list_push(acc, entry.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = minted.ctx.clone();
+                let __tco_2 = v1_rt::rc_list_push(acc, entry.clone());
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         }
@@ -10851,6 +11172,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -10897,6 +11219,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -10930,6 +11253,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -10988,6 +11312,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemResource,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11001,12 +11326,20 @@ pub fn parse_resource_after_kw(
 }
 
 pub fn parse_resource_entries(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut properties: Rc<Vec<Rc<Node>>>,
-    mut capabilities: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_properties: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_capabilities: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ResPropResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut properties = __tco_loop_properties;
+        #[allow(unused_mut)]
+        let mut capabilities = __tco_loop_capabilities;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let span = token_span(tok.clone());
@@ -11041,10 +11374,12 @@ pub fn parse_resource_entries(
                             let __tco_0 = r.tokens.clone();
                             let __tco_1 =
                                 parse_context_after_node(r.ctx.clone(), r.capability.clone());
-                            let __tco_2 = v1_rt::rc_list_push(capabilities, r.capability.clone());
-                            tokens = __tco_0;
-                            ctx = __tco_1;
-                            capabilities = __tco_2;
+                            let __tco_2 = properties;
+                            let __tco_3 = v1_rt::rc_list_push(capabilities, r.capability.clone());
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_ctx = __tco_1;
+                            __tco_loop_properties = __tco_2;
+                            __tco_loop_capabilities = __tco_3;
                             continue;
                         }
                     } else {
@@ -11076,7 +11411,13 @@ pub fn parse_resource_entries(
                             }
                             {
                                 let __tco_0 = skip_newlines(r3.tokens.clone());
-                                tokens = __tco_0;
+                                let __tco_1 = ctx;
+                                let __tco_2 = properties;
+                                let __tco_3 = capabilities;
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_ctx = __tco_1;
+                                __tco_loop_properties = __tco_2;
+                                __tco_loop_capabilities = __tco_3;
                                 continue;
                             }
                         } else {
@@ -11108,7 +11449,13 @@ pub fn parse_resource_entries(
                                 }
                                 {
                                     let __tco_0 = skip_newlines(r3.tokens.clone());
-                                    tokens = __tco_0;
+                                    let __tco_1 = ctx;
+                                    let __tco_2 = properties;
+                                    let __tco_3 = capabilities;
+                                    __tco_loop_tokens = __tco_0;
+                                    __tco_loop_ctx = __tco_1;
+                                    __tco_loop_properties = __tco_2;
+                                    __tco_loop_capabilities = __tco_3;
                                     continue;
                                 }
                             } else {
@@ -11171,9 +11518,11 @@ pub fn parse_resource_entries(
                             let __tco_0 = skip_newlines(r3.tokens.clone());
                             let __tco_1 = minted.ctx.clone();
                             let __tco_2 = v1_rt::rc_list_push(properties, fi.clone());
-                            tokens = __tco_0;
-                            ctx = __tco_1;
-                            properties = __tco_2;
+                            let __tco_3 = capabilities;
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_ctx = __tco_1;
+                            __tco_loop_properties = __tco_2;
+                            __tco_loop_capabilities = __tco_3;
                             continue;
                         }
                     } else {
@@ -11429,12 +11778,20 @@ pub fn parse_input_output_blocks(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>)
 }
 
 pub fn parse_io_blocks_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut inputs: Rc<Vec<Rc<Node>>>,
-    mut outputs: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_inputs: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_outputs: Rc<Vec<Rc<Node>>>,
 ) -> Rc<IOResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut inputs = __tco_loop_inputs;
+        #[allow(unused_mut)]
+        let mut outputs = __tco_loop_outputs;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -11489,9 +11846,11 @@ pub fn parse_io_blocks_acc(
                     let __tco_0 = r3.tokens.clone();
                     let __tco_1 = r2.ctx.clone();
                     let __tco_2 = r2.fields.clone();
-                    tokens = __tco_0;
-                    ctx = __tco_1;
-                    inputs = __tco_2;
+                    let __tco_3 = outputs;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_inputs = __tco_2;
+                    __tco_loop_outputs = __tco_3;
                     continue;
                 }
             } else {
@@ -11535,10 +11894,12 @@ pub fn parse_io_blocks_acc(
                     {
                         let __tco_0 = r3.tokens.clone();
                         let __tco_1 = r2.ctx.clone();
-                        let __tco_2 = r2.fields.clone();
-                        tokens = __tco_0;
-                        ctx = __tco_1;
-                        outputs = __tco_2;
+                        let __tco_2 = inputs;
+                        let __tco_3 = r2.fields.clone();
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_inputs = __tco_2;
+                        __tco_loop_outputs = __tco_3;
                         continue;
                     }
                 } else {
@@ -11577,6 +11938,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11623,6 +11985,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11656,6 +12019,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11717,6 +12081,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11754,6 +12119,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11787,6 +12153,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11852,6 +12219,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemDataValue,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11915,11 +12283,17 @@ pub fn parse_param_list(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Pa
 }
 
 pub fn parse_param_list_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParamsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         let r = parse_param(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
@@ -11943,6 +12317,12 @@ pub fn parse_param_list_acc(
                     });
                 } else {
                     {
+                        let __tco_0 = tokens;
+                        let __tco_1 = ctx;
+                        let __tco_2 = acc;
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_acc = __tco_2;
                         continue;
                     }
                 }
@@ -12081,10 +12461,9 @@ pub struct HeadsDataValueSkipResult {
 }
 
 pub fn heads_token_starts_item(tok: Option<Rc<Token>>) -> bool {
-    (((((((((tok_is_keyword(tok.clone(), "alias".to_string())
+    ((((((((tok_is_keyword(tok.clone(), "alias".to_string())
         || tok_is_keyword(tok.clone(), "type".to_string()))
         || tok_is_keyword(tok.clone(), "fn".to_string()))
-        || tok_is_keyword(tok.clone(), "func".to_string()))
         || tok_is_keyword(tok.clone(), "service".to_string()))
         || tok_is_keyword(tok.clone(), "resource".to_string()))
         || tok_is_keyword(tok.clone(), "data".to_string()))
@@ -12094,14 +12473,26 @@ pub fn heads_token_starts_item(tok: Option<Rc<Token>>) -> bool {
 }
 
 pub fn heads_skip_data_value_tokens_at(
-    mut tokens: Rc<TokenStream>,
-    mut offset: i64,
-    mut braces: i64,
-    mut parens: i64,
-    mut brackets: i64,
-    mut seen: bool,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_offset: i64,
+    mut __tco_loop_braces: i64,
+    mut __tco_loop_parens: i64,
+    mut __tco_loop_brackets: i64,
+    mut __tco_loop_seen: bool,
 ) -> Rc<HeadsDataValueSkipResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut offset = __tco_loop_offset;
+        #[allow(unused_mut)]
+        let mut braces = __tco_loop_braces;
+        #[allow(unused_mut)]
+        let mut parens = __tco_loop_parens;
+        #[allow(unused_mut)]
+        let mut brackets = __tco_loop_brackets;
+        #[allow(unused_mut)]
+        let mut seen = __tco_loop_seen;
         let tok = token_stream_peek(tokens.clone(), offset.clone());
         if tok_is_eof(tok.clone()) {
             if (((seen.clone() && (braces.clone() == 0)) && (parens.clone() == 0))
@@ -12194,16 +12585,18 @@ pub fn heads_skip_data_value_tokens_at(
                             });
                         } else {
                             {
-                                let __tco_0 = (offset + 1);
-                                let __tco_1 = b.clone();
-                                let __tco_2 = p.clone();
-                                let __tco_3 = s.clone();
-                                let __tco_4 = true;
-                                offset = __tco_0;
-                                braces = __tco_1;
-                                parens = __tco_2;
-                                brackets = __tco_3;
-                                seen = __tco_4;
+                                let __tco_0 = tokens;
+                                let __tco_1 = (offset + 1);
+                                let __tco_2 = b.clone();
+                                let __tco_3 = p.clone();
+                                let __tco_4 = s.clone();
+                                let __tco_5 = true;
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_offset = __tco_1;
+                                __tco_loop_braces = __tco_2;
+                                __tco_loop_parens = __tco_3;
+                                __tco_loop_brackets = __tco_4;
+                                __tco_loop_seen = __tco_5;
                                 continue;
                             }
                         }
@@ -12230,10 +12623,14 @@ pub fn parse_data_value_heads_only(
 }
 
 pub fn heads_skip_block_tokens(
-    mut tokens: Rc<TokenStream>,
-    mut depth: i64,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_depth: i64,
 ) -> Rc<HeadsBlockSkipResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut depth = __tco_loop_depth;
         if (depth.clone() == 0) {
             return Rc::new(HeadsBlockSkipResult {
                 tokens: tokens.clone(),
@@ -12265,8 +12662,8 @@ pub fn heads_skip_block_tokens(
                         {
                             let __tco_0 = token_stream_advance(tokens, 1);
                             let __tco_1 = (depth + 1);
-                            tokens = __tco_0;
-                            depth = __tco_1;
+                            __tco_loop_tokens = __tco_0;
+                            __tco_loop_depth = __tco_1;
                             continue;
                         }
                     } else {
@@ -12274,14 +12671,16 @@ pub fn heads_skip_block_tokens(
                             {
                                 let __tco_0 = token_stream_advance(tokens, 1);
                                 let __tco_1 = (depth - 1);
-                                tokens = __tco_0;
-                                depth = __tco_1;
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_depth = __tco_1;
                                 continue;
                             }
                         } else {
                             {
                                 let __tco_0 = token_stream_advance(tokens, 1);
-                                tokens = __tco_0;
+                                let __tco_1 = depth;
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_depth = __tco_1;
                                 continue;
                             }
                         }
@@ -12409,11 +12808,17 @@ pub fn parse_stmts(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<StmtsRe
 }
 
 pub fn parse_stmts_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -12438,9 +12843,9 @@ pub fn parse_stmts_acc(
                 let __tco_0 = r.tokens.clone();
                 let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
-                tokens = __tco_0;
-                ctx = __tco_1;
-                acc = __tco_2;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         }
@@ -12589,6 +12994,7 @@ pub fn parse_constrained_assignment(
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -12677,6 +13083,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -12741,6 +13148,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -12768,12 +13176,20 @@ pub fn parse_expr_bp(
 }
 
 pub fn parse_expr_loop(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut lhs: Rc<Node>,
-    mut min_bp: i64,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_lhs: Rc<Node>,
+    mut __tco_loop_min_bp: i64,
 ) -> Rc<ExprResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut lhs = __tco_loop_lhs;
+        #[allow(unused_mut)]
+        let mut min_bp = __tco_loop_min_bp;
         ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         if tok_is_eof(token_stream_first(tokens.clone())) {
             break Rc::new(ExprResult {
@@ -12816,9 +13232,11 @@ pub fn parse_expr_loop(
                         let __tco_0 = post.tokens.clone();
                         let __tco_1 = post.ctx.clone();
                         let __tco_2 = post.expr.clone();
-                        tokens = __tco_0;
-                        ctx = __tco_1;
-                        lhs = __tco_2;
+                        let __tco_3 = min_bp;
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_lhs = __tco_2;
+                        __tco_loop_min_bp = __tco_3;
                         continue;
                     }
                 } else {
@@ -12866,9 +13284,11 @@ pub fn parse_expr_loop(
                                                 let __tco_0 = r.tokens.clone();
                                                 let __tco_1 = minted.ctx.clone();
                                                 let __tco_2 = new_lhs.clone();
-                                                tokens = __tco_0;
-                                                ctx = __tco_1;
-                                                lhs = __tco_2;
+                                                let __tco_3 = min_bp;
+                                                __tco_loop_tokens = __tco_0;
+                                                __tco_loop_ctx = __tco_1;
+                                                __tco_loop_lhs = __tco_2;
+                                                __tco_loop_min_bp = __tco_3;
                                                 continue;
                                             }
                                         } else {
@@ -12891,9 +13311,11 @@ pub fn parse_expr_loop(
                                                     let __tco_0 = r.tokens.clone();
                                                     let __tco_1 = r.ctx.clone();
                                                     let __tco_2 = r.expr.clone();
-                                                    tokens = __tco_0;
-                                                    ctx = __tco_1;
-                                                    lhs = __tco_2;
+                                                    let __tco_3 = min_bp;
+                                                    __tco_loop_tokens = __tco_0;
+                                                    __tco_loop_ctx = __tco_1;
+                                                    __tco_loop_lhs = __tco_2;
+                                                    __tco_loop_min_bp = __tco_3;
                                                     continue;
                                                 }
                                             } else {
@@ -12946,9 +13368,11 @@ pub fn parse_expr_loop(
                                                             let __tco_0 = r.tokens.clone();
                                                             let __tco_1 = minted.ctx.clone();
                                                             let __tco_2 = new_lhs.clone();
-                                                            tokens = __tco_0;
-                                                            ctx = __tco_1;
-                                                            lhs = __tco_2;
+                                                            let __tco_3 = min_bp;
+                                                            __tco_loop_tokens = __tco_0;
+                                                            __tco_loop_ctx = __tco_1;
+                                                            __tco_loop_lhs = __tco_2;
+                                                            __tco_loop_min_bp = __tco_3;
                                                             continue;
                                                         }
                                                     }
@@ -13012,13 +13436,23 @@ pub fn pipe_callee_path_is_applied(candidate: Rc<PipeCalleeResult>) -> bool {
 }
 
 pub fn parse_pipe_callee_rest(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut spine: Option<Rc<Node>>,
-    mut name: String,
-    mut name_span: Rc<SourceSpan>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_spine: Option<Rc<Node>>,
+    mut __tco_loop_name: String,
+    mut __tco_loop_name_span: Rc<SourceSpan>,
 ) -> Rc<PipeCalleeResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut spine = __tco_loop_spine;
+        #[allow(unused_mut)]
+        let mut name = __tco_loop_name;
+        #[allow(unused_mut)]
+        let mut name_span = __tco_loop_name_span;
         if tok_is_dot(token_stream_first(tokens.clone())) {
             let r = expect_name(token_stream_advance(tokens.clone(), 1), ctx.env.clone());
             if has_err(r.err.clone()) {
@@ -13062,11 +13496,11 @@ pub fn parse_pipe_callee_rest(
                 let __tco_2 = Some(next_spine.clone());
                 let __tco_3 = r.name.clone();
                 let __tco_4 = r.span.clone();
-                tokens = __tco_0;
-                ctx = __tco_1;
-                spine = __tco_2;
-                name = __tco_3;
-                name_span = __tco_4;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_spine = __tco_2;
+                __tco_loop_name = __tco_3;
+                __tco_loop_name_span = __tco_4;
                 continue;
             }
         } else {
@@ -13610,11 +14044,17 @@ pub fn parse_lambda_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<E
 }
 
 pub fn parse_lambda_stmts(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         if ((tok_is_rparen(tok.clone()) || tok_is_rbrace(tok.clone())) || tok_is_eof(tok.clone())) {
@@ -13638,9 +14078,9 @@ pub fn parse_lambda_stmts(
                 let __tco_0 = r.tokens.clone();
                 let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
                 let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
-                tokens = __tco_0;
-                ctx = __tco_1;
-                acc = __tco_2;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         }
@@ -14060,11 +14500,17 @@ pub fn parse_constraint_annotations(
 }
 
 pub fn parse_constraint_list(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ConstraintsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let tok = token_stream_first(tokens.clone());
         let is_constraint_kw = match tok.clone() {
@@ -14106,8 +14552,10 @@ pub fn parse_constraint_list(
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = __ec.clone();
                 let __tco_1 = minted.ctx.clone();
-                tokens = __tco_0;
-                ctx = __tco_1;
+                let __tco_2 = acc;
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -14326,11 +14774,17 @@ pub fn parse_arg_list(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Args
 }
 
 pub fn parse_arg_list_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ArgsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let r = parse_single_arg(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -14355,6 +14809,12 @@ pub fn parse_arg_list_acc(
                     });
                 } else {
                     {
+                        let __tco_0 = tokens;
+                        let __tco_1 = ctx;
+                        let __tco_2 = acc;
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_acc = __tco_2;
                         continue;
                     }
                 }
@@ -14635,12 +15095,20 @@ pub fn parse_expr_bp_no_brace(
 }
 
 pub fn parse_expr_loop_no_brace(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut lhs: Rc<Node>,
-    mut min_bp: i64,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_lhs: Rc<Node>,
+    mut __tco_loop_min_bp: i64,
 ) -> Rc<ExprResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut lhs = __tco_loop_lhs;
+        #[allow(unused_mut)]
+        let mut min_bp = __tco_loop_min_bp;
         ctx = parse_context_after_node(ctx.clone(), lhs.clone());
         let tok = token_stream_first(tokens.clone());
         if (tok_is_eof(tok.clone()) || tok_is_lbrace(tok.clone())) {
@@ -14693,9 +15161,11 @@ pub fn parse_expr_loop_no_brace(
                     let __tco_0 = r.tokens.clone();
                     let __tco_1 = minted.ctx.clone();
                     let __tco_2 = new_lhs.clone();
-                    tokens = __tco_0;
-                    ctx = __tco_1;
-                    lhs = __tco_2;
+                    let __tco_3 = min_bp;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_lhs = __tco_2;
+                    __tco_loop_min_bp = __tco_3;
                     continue;
                 }
             } else {
@@ -14719,9 +15189,11 @@ pub fn parse_expr_loop_no_brace(
                         let __tco_0 = r.tokens.clone();
                         let __tco_1 = r.ctx.clone();
                         let __tco_2 = r.expr.clone();
-                        tokens = __tco_0;
-                        ctx = __tco_1;
-                        lhs = __tco_2;
+                        let __tco_3 = min_bp;
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_lhs = __tco_2;
+                        __tco_loop_min_bp = __tco_3;
                         continue;
                     }
                 } else {
@@ -14769,9 +15241,11 @@ pub fn parse_expr_loop_no_brace(
                                                 let __tco_0 = r.tokens.clone();
                                                 let __tco_1 = minted.ctx.clone();
                                                 let __tco_2 = new_lhs.clone();
-                                                tokens = __tco_0;
-                                                ctx = __tco_1;
-                                                lhs = __tco_2;
+                                                let __tco_3 = min_bp;
+                                                __tco_loop_tokens = __tco_0;
+                                                __tco_loop_ctx = __tco_1;
+                                                __tco_loop_lhs = __tco_2;
+                                                __tco_loop_min_bp = __tco_3;
                                                 continue;
                                             }
                                         } else {
@@ -14794,9 +15268,11 @@ pub fn parse_expr_loop_no_brace(
                                                     let __tco_0 = r.tokens.clone();
                                                     let __tco_1 = r.ctx.clone();
                                                     let __tco_2 = r.expr.clone();
-                                                    tokens = __tco_0;
-                                                    ctx = __tco_1;
-                                                    lhs = __tco_2;
+                                                    let __tco_3 = min_bp;
+                                                    __tco_loop_tokens = __tco_0;
+                                                    __tco_loop_ctx = __tco_1;
+                                                    __tco_loop_lhs = __tco_2;
+                                                    __tco_loop_min_bp = __tco_3;
                                                     continue;
                                                 }
                                             } else {
@@ -14849,9 +15325,11 @@ pub fn parse_expr_loop_no_brace(
                                                             let __tco_0 = r.tokens.clone();
                                                             let __tco_1 = minted.ctx.clone();
                                                             let __tco_2 = new_lhs.clone();
-                                                            tokens = __tco_0;
-                                                            ctx = __tco_1;
-                                                            lhs = __tco_2;
+                                                            let __tco_3 = min_bp;
+                                                            __tco_loop_tokens = __tco_0;
+                                                            __tco_loop_ctx = __tco_1;
+                                                            __tco_loop_lhs = __tco_2;
+                                                            __tco_loop_min_bp = __tco_3;
                                                             continue;
                                                         }
                                                     }
@@ -14905,11 +15383,17 @@ pub fn parse_match_arms(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
 }
 
 pub fn parse_match_arms_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ArmsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -14936,10 +15420,12 @@ pub fn parse_match_arms_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.arm.clone());
-                let __tco_1 = v1_rt::rc_list_push(acc, r.arm.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.arm.clone());
+                let __tco_2 = v1_rt::rc_list_push(acc, r.arm.clone());
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
                 continue;
             }
         }
@@ -15063,11 +15549,17 @@ pub fn parse_match_arm_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
 }
 
 pub fn parse_match_arm_stmts(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -15100,9 +15592,9 @@ pub fn parse_match_arm_stmts(
                     let __tco_0 = r.tokens.clone();
                     let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
                     let __tco_2 = v1_rt::rc_list_push(acc, r.expr.clone());
-                    tokens = __tco_0;
-                    ctx = __tco_1;
-                    acc = __tco_2;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_acc = __tco_2;
                     continue;
                 }
             }
@@ -15110,8 +15602,15 @@ pub fn parse_match_arm_stmts(
     }
 }
 
-pub fn arm_start_after_qualified_path(mut tokens: Rc<TokenStream>, mut offset: i64) -> bool {
+pub fn arm_start_after_qualified_path(
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_offset: i64,
+) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut offset = __tco_loop_offset;
         if !peek_is_expected_at(
             tokens.clone(),
             offset.clone(),
@@ -15139,16 +15638,20 @@ pub fn arm_start_after_qualified_path(mut tokens: Rc<TokenStream>, mut offset: i
                                     );
                                 } else {
                                     {
-                                        let __tco_0 = (offset + 2);
-                                        offset = __tco_0;
+                                        let __tco_0 = tokens;
+                                        let __tco_1 = (offset + 2);
+                                        __tco_loop_tokens = __tco_0;
+                                        __tco_loop_offset = __tco_1;
                                         continue;
                                     }
                                 }
                             }
                         } else {
                             {
-                                let __tco_0 = (offset + 2);
-                                offset = __tco_0;
+                                let __tco_0 = tokens;
+                                let __tco_1 = (offset + 2);
+                                __tco_loop_tokens = __tco_0;
+                                __tco_loop_offset = __tco_1;
                                 continue;
                             }
                         }
@@ -15220,8 +15723,15 @@ pub fn peek_is_expected_at(
     }
 }
 
-pub fn scan_for_fat_arrow_after_braces(mut remaining: Rc<TokenStream>, mut depth: i64) -> bool {
+pub fn scan_for_fat_arrow_after_braces(
+    mut __tco_loop_remaining: Rc<TokenStream>,
+    mut __tco_loop_depth: i64,
+) -> bool {
     loop {
+        #[allow(unused_mut)]
+        let mut remaining = __tco_loop_remaining;
+        #[allow(unused_mut)]
+        let mut depth = __tco_loop_depth;
         if (depth.clone() <= 0) {
             match token_stream_first(remaining.clone()) {
                 Some(t) => {
@@ -15238,8 +15748,8 @@ pub fn scan_for_fat_arrow_after_braces(mut remaining: Rc<TokenStream>, mut depth
                         {
                             let __tco_0 = token_stream_advance(remaining, 1);
                             let __tco_1 = (depth + 1);
-                            remaining = __tco_0;
-                            depth = __tco_1;
+                            __tco_loop_remaining = __tco_0;
+                            __tco_loop_depth = __tco_1;
                             continue;
                         }
                     } else {
@@ -15247,14 +15757,16 @@ pub fn scan_for_fat_arrow_after_braces(mut remaining: Rc<TokenStream>, mut depth
                             {
                                 let __tco_0 = token_stream_advance(remaining, 1);
                                 let __tco_1 = (depth - 1);
-                                remaining = __tco_0;
-                                depth = __tco_1;
+                                __tco_loop_remaining = __tco_0;
+                                __tco_loop_depth = __tco_1;
                                 continue;
                             }
                         } else {
                             {
                                 let __tco_0 = token_stream_advance(remaining, 1);
-                                remaining = __tco_0;
+                                let __tco_1 = depth;
+                                __tco_loop_remaining = __tco_0;
+                                __tco_loop_depth = __tco_1;
                                 continue;
                             }
                         }
@@ -15529,11 +16041,17 @@ pub fn parse_variant_bindings_brace(
 }
 
 pub fn parse_variant_bindings_brace_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<BindingsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -15583,10 +16101,12 @@ pub fn parse_variant_bindings_brace_acc(
                         field_name_span.clone(),
                     );
                     {
-                        let __tco_0 = minted.ctx.clone();
-                        let __tco_1 = v1_rt::rc_list_push(acc, fb.clone());
-                        ctx = __tco_0;
-                        acc = __tco_1;
+                        let __tco_0 = tokens;
+                        let __tco_1 = minted.ctx.clone();
+                        let __tco_2 = v1_rt::rc_list_push(acc, fb.clone());
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_acc = __tco_2;
                         continue;
                     }
                 }
@@ -15612,10 +16132,12 @@ pub fn parse_variant_bindings_brace_acc(
                         field_name_span.clone(),
                     );
                     {
-                        let __tco_0 = field_mint.ctx.clone();
-                        let __tco_1 = v1_rt::rc_list_push(acc, fb.clone());
-                        ctx = __tco_0;
-                        acc = __tco_1;
+                        let __tco_0 = tokens;
+                        let __tco_1 = field_mint.ctx.clone();
+                        let __tco_2 = v1_rt::rc_list_push(acc, fb.clone());
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_acc = __tco_2;
                         continue;
                     }
                 }
@@ -15821,7 +16343,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                 let r3 =
                     parse_required_expression_after_separator(r2.tokens.clone(), tr.ctx.clone());
                 if has_err(r3.err.clone()) {
-                    return r3;
+                    return r3.clone();
                 }
                 let minted = mint_parsed_node_identity(r3.ctx.clone());
                 let node = Rc::new(Node {
@@ -15843,6 +16365,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::ExprLet),
                     ident: None,
                 });
@@ -15865,7 +16388,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                 }
                 let r3 = parse_required_expression_after_separator(r2.tokens.clone(), ctx.clone());
                 if has_err(r3.err.clone()) {
-                    return r3;
+                    return r3.clone();
                 }
                 parsed_expr_result(r3.tokens.clone(), r3.ctx.clone(), |identity| {
                     crate::v1_std_core::make_named_expr_node(
@@ -16093,15 +16616,29 @@ pub fn parse_field_init_list(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<FieldInitsResult> {
-    parse_field_init_list_acc(tokens.clone(), ctx.clone(), Rc::new(vec![]))
+    parse_field_init_list_acc(
+        tokens.clone(),
+        ctx.clone(),
+        Rc::new(vec![]),
+        v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
+    )
 }
 
 pub fn parse_field_init_list_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_seen: Rc<HashMap<String, Rc<SourceSpan>>>,
 ) -> Rc<FieldInitsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        #[allow(unused_mut)]
+        let mut seen = __tco_loop_seen;
         tokens = skip_newlines(tokens.clone());
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
@@ -16122,18 +16659,85 @@ pub fn parse_field_init_list_acc(
                     err: r.err.clone(),
                 });
             }
+            let key = r.field.clone().name.clone();
+            let duplicate = match v1_rt::map_get(&seen, key.clone()) {
+                Some(first_span) => {
+                    if (key.clone() == "_".to_string()) {
+                        std::option::Option::None
+                    } else {
+                        Some(parse_error(
+                            duplicate_field_init_message(
+                                ctx.clone(),
+                                key.clone(),
+                                first_span.clone(),
+                                r.field.clone().span.clone(),
+                            ),
+                            r.field.clone().span.clone(),
+                        ))
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            };
+            if has_err(duplicate.clone()) {
+                return Rc::new(FieldInitsResult {
+                    fields: Rc::new(vec![]),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: duplicate.clone(),
+                });
+            }
             let e = eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.field.clone());
-                let __tco_1 = v1_rt::rc_list_push(acc, r.field.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.field.clone());
+                let __tco_2 = v1_rt::rc_list_push(acc, r.field.clone());
+                let __tco_3 = v1_rt::rc_map_insert(seen, key.clone(), r.field.clone().span.clone());
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_acc = __tco_2;
+                __tco_loop_seen = __tco_3;
                 continue;
             }
+        }
+    }
+}
+
+pub fn duplicate_field_init_message(
+    ctx: Rc<ParseContext>,
+    field: String,
+    first: Rc<SourceSpan>,
+    again: Rc<SourceSpan>,
+) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat("duplicate field '".to_string(), field.clone()),
+                    "' in record literal: first at ".to_string(),
+                ),
+                field_init_position(ctx.clone(), first.clone()),
+            ),
+            ", again at ".to_string(),
+        ),
+        field_init_position(ctx.clone(), again.clone()),
+    )
+}
+
+pub fn field_init_position(ctx: Rc<ParseContext>, span: Rc<SourceSpan>) -> String {
+    match v1_rt::map_get(&ctx.source_indices.clone(), span.file.clone()) {
+        Some(index) => {
+            let lc = crate::v1_std_core::byte_to_line_col(index.clone(), span.start.clone());
+            v1_rt::concat(
+                v1_rt::concat(int_to_string(lc.line.clone()), ":".to_string()),
+                int_to_string(lc.col.clone()),
+            )
+        }
+        std::option::Option::None => {
+            v1_rt::concat("byte ".to_string(), int_to_string(span.start.clone()))
         }
     }
 }
@@ -16346,12 +16950,20 @@ pub fn parse_expr_list_until(
 }
 
 pub fn parse_expr_list_until_acc(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut end_expected: Rc<ExpectedToken>,
-    mut acc: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_end_expected: Rc<ExpectedToken>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ExprsResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut end_expected = __tco_loop_end_expected;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         let at_end_tag = match token_stream_first(tokens.clone()) {
             Some(t) => token_matches_expected(t.clone(), end_expected.clone()),
@@ -16380,10 +16992,14 @@ pub fn parse_expr_list_until_acc(
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
             });
             {
-                let __tco_0 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
-                let __tco_1 = v1_rt::rc_list_push(acc, r.expr.clone());
-                ctx = __tco_0;
-                acc = __tco_1;
+                let __tco_0 = tokens;
+                let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                let __tco_2 = end_expected;
+                let __tco_3 = v1_rt::rc_list_push(acc, r.expr.clone());
+                __tco_loop_tokens = __tco_0;
+                __tco_loop_ctx = __tco_1;
+                __tco_loop_end_expected = __tco_2;
+                __tco_loop_acc = __tco_3;
                 continue;
             }
         }
@@ -16562,11 +17178,17 @@ pub fn parse_fn_lambda(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
 }
 
 pub fn collect_fn_lambda_params(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<ParserParam>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<ParserParam>>>,
 ) -> Rc<IdentCollectResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         tokens = skip_newlines(tokens.clone());
         if tok_is_rparen(token_stream_first(tokens.clone())) {
             break Rc::new(IdentCollectResult {
@@ -16601,9 +17223,9 @@ pub fn collect_fn_lambda_params(
                                 span: name_r.span.clone(),
                             }),
                         );
-                        tokens = __tco_0;
-                        ctx = __tco_1;
-                        acc = __tco_2;
+                        __tco_loop_tokens = __tco_0;
+                        __tco_loop_ctx = __tco_1;
+                        __tco_loop_acc = __tco_2;
                         continue;
                     }
                 } else {
@@ -16675,11 +17297,17 @@ pub fn try_lambda_params(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<L
 }
 
 pub fn collect_lambda_idents(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut acc: Rc<Vec<Rc<ParserParam>>>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_acc: Rc<Vec<Rc<ParserParam>>>,
 ) -> Rc<IdentCollectResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
         if tok_is_ident(token_stream_first(tokens.clone())) {
             let tok = token_stream_first(tokens.clone());
             let minted = mint_parsed_node_identity(ctx.clone());
@@ -16699,9 +17327,9 @@ pub fn collect_lambda_idents(
                     let __tco_0 = __ec.clone();
                     let __tco_1 = minted.ctx.clone();
                     let __tco_2 = new_acc.clone();
-                    tokens = __tco_0;
-                    ctx = __tco_1;
-                    acc = __tco_2;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_acc = __tco_2;
                     continue;
                 }
                 EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -16783,12 +17411,20 @@ pub fn parse_string_interp(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
 }
 
 pub fn parse_interp_parts(
-    mut tokens: Rc<TokenStream>,
-    mut ctx: Rc<ParseContext>,
-    mut parts: Rc<Vec<Rc<StringPart>>>,
-    mut span: Rc<SourceSpan>,
+    mut __tco_loop_tokens: Rc<TokenStream>,
+    mut __tco_loop_ctx: Rc<ParseContext>,
+    mut __tco_loop_parts: Rc<Vec<Rc<StringPart>>>,
+    mut __tco_loop_span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
     loop {
+        #[allow(unused_mut)]
+        let mut tokens = __tco_loop_tokens;
+        #[allow(unused_mut)]
+        let mut ctx = __tco_loop_ctx;
+        #[allow(unused_mut)]
+        let mut parts = __tco_loop_parts;
+        #[allow(unused_mut)]
+        let mut span = __tco_loop_span;
         let r = parse_expr(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
@@ -16827,9 +17463,13 @@ pub fn parse_interp_parts(
                 };
                 {
                     let __tco_0 = token_stream_advance(tokens, 1);
-                    let __tco_1 = mid_parts.clone();
-                    tokens = __tco_0;
-                    parts = __tco_1;
+                    let __tco_1 = ctx;
+                    let __tco_2 = mid_parts.clone();
+                    let __tco_3 = span;
+                    __tco_loop_tokens = __tco_0;
+                    __tco_loop_ctx = __tco_1;
+                    __tco_loop_parts = __tco_2;
+                    __tco_loop_span = __tco_3;
                     continue;
                 }
             }

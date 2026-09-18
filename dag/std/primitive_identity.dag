@@ -34,8 +34,10 @@ import std.primitive_projection {
   primitive_projection_roster, primitive_projection_row_for_declaration,
   primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_empty_map,
   primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
+  primitive_type_declarer_qualified_names,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
+  primitive_data_init_decl_facts_live,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -1229,12 +1231,14 @@ data primitive_projection_target_canonical_names: List<String> = [
   "empty_map",
   "decl_facts",
   "decl_facts_at",
+  "type_declarer_qualified_names",
   "export_signature_facts",
   "data_decl_type_facts",
   "concept_decl_facts",
   "concept_decl_facts_live",
   "symbol_lexeme",
   "symbol_intern_lexeme",
+  "data_init_decl_facts_live",
 ]
 
 fn primitive_declared_definitions() -> List<PrimitiveDefinition> {
@@ -1549,8 +1553,11 @@ data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTrave
 // decl_facts_corpus_walk, whose final step sorts every fact by (rel_path, name, kind_ord) before
 // returning. decl_facts_at is that same census filtered on qualified_name with the surviving rows
 // left in place, so it inherits the order rather than choosing one -- a filter cannot reorder what
-// it does not rebuild. export_signature_facts derives from decl_facts_for_roots and preserves that
-// order.
+// it does not rebuild. type_declarer_qualified_names is the same reading one key over: it filters
+// that identical census on bare name and TypeItem kind and projects each surviving row's qualified
+// name, so it inherits the order for the same reason and for no separate one -- it rebuilds
+// nothing, and it marshals no declaration nodes at all. export_signature_facts derives from
+// decl_facts_for_roots and preserves that order.
 // concept_decl_facts and data_decl_type_facts route through decls_parse_only_fail_closed, which
 // sorts its module list (decls_parse_only_from_disk) or its inventory entries by source path
 // (decls_parse_only_from_inventory) before walking items in source order. concept_decl_facts_live
@@ -1561,6 +1568,8 @@ data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTrave
 data primitive_decl_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_decl_facts, order: CanonicalOrder }
 
 data primitive_decl_facts_at_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_decl_facts_at, order: CanonicalOrder }
+
+data primitive_type_declarer_qualified_names_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_type_declarer_qualified_names, order: CanonicalOrder }
 
 data primitive_export_signature_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_export_signature_facts, order: CanonicalOrder }
 
@@ -1585,6 +1594,11 @@ data primitive_symbol_lexeme_traversal: PrimitiveTraversalOrderFact = PrimitiveT
 
 data primitive_symbol_intern_lexeme_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_symbol_intern_lexeme, order: OrderFreeResult }
 
+// data_init_decl_facts_live is the sibling of concept_decl_facts_live:
+// eval_data_init_decl_facts_live walks for_each_live_registry_item over ctx modules and items, so
+// SourcePreservingOrder is the executed reading, not CanonicalOrder.
+data primitive_data_init_decl_facts_live_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_data_init_decl_facts_live, order: SourcePreservingOrder }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1593,12 +1607,14 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_empty_map_traversal,
   primitive_decl_facts_traversal,
   primitive_decl_facts_at_traversal,
+  primitive_type_declarer_qualified_names_traversal,
   primitive_export_signature_facts_traversal,
   primitive_data_decl_type_facts_traversal,
   primitive_concept_decl_facts_traversal,
   primitive_concept_decl_facts_live_traversal,
   primitive_symbol_lexeme_traversal,
   primitive_symbol_intern_lexeme_traversal,
+  primitive_data_init_decl_facts_live_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {

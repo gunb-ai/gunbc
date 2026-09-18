@@ -1,13 +1,19 @@
 module gunbc.harness.harness_backend
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { String, Bool, Int, List, NonEmptyStr, Timestamp, EpochSecs }
 import std.nat { Nat }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
+import std.measure { Second, second, second_count }
+import gunbc.serving.engine_progress { EngineProgressSample }
+import gunbc.serving.serving_availability {
+  ServingAvailability, ServingFrontDoorAvailabilityVerdict, FrontDoorRead, FrontDoorAnswered, FrontDoorDidNotAnswer, FrontDoorAnswerUnreadable,
+  serving_availability_bracketing_read,
+}
 import extdeps.vllm.metrics {
-  VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason,
+  VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason, GenerationTokensTotal,
   vllm_metric_name, vllm_waiting_reason_label, vllm_waiting_reason_capacity,
 }
 import extdeps.prometheus.client { ProcessStartTimeSeconds, prometheus_process_series_name }
@@ -51,6 +57,24 @@ import extdeps.languages.json.parse {
 // that is one GET away and answerable by us.
 
 data harness_models_path: String = "/v1/models"
+
+// HOW LONG A PROBE OF A SERVING FRONT DOOR MAY TAKE, AS HARNESS POLICY. Both probes are small GETs on
+// the site LAN (/v1/models and /metrics), measured sub-second on group A; the bound exists so that an
+// engine which accepts the connection and never answers stops being a candidate instead of holding
+// the roster gate, dispatch selection and placement open with no deadline at all -- which is what
+// the unbounded GET these probes used to make did. The number is this consumer's patience, not a
+// fact about vLLM (extdeps.http.client GetWithin takes it as an input for that reason).
+data harness_front_door_probe_bound: Second = second(count: 10)
+
+fn harness_bounded_get(url: String) -> HarnessBoundedRead {
+  let read = http.Client.GetWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
+  HarnessBoundedRead { body: read.body, success: read.success }
+}
+
+type HarnessBoundedRead {
+  body: String
+  success: Bool
+}
 
 // THE URL IS BUILT FROM THE ROUTE'S OWN ENDPOINT, port included. It used to be built from the
 // address plus one global port row, which made a second route on a second port unreachable without
@@ -105,7 +129,7 @@ fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
         "route is reachable but advertises no model this harness is admitted to ask; it advertises: ", a,
       ], "")
     HarnessBackendUnreachable { url: u } =>
-      join(["backend did not answer ", u], "")
+      join(["backend did not answer successfully within ", to_string(second_count(s: harness_front_door_probe_bound)), "s: ", u], "")
     HarnessBackendUnreadable { cause: c } =>
       join(["backend answered but the model list was unreadable: ", c], "")
   }
@@ -130,7 +154,7 @@ fn harness_standing_detail(standing: HarnessBackendStanding) -> String {
 // like an Ollama daemon with an empty store, and both have answered this probe on this fleet.
 fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStanding {
   let url = harness_models_url(endpoint: endpoint)
-  let read = http.Client.Get(url: url as NonEmptyStr)
+  let read = harness_bounded_get(url: url)
   if !read.success {
     HarnessBackendUnreachable { url: url }
   } else {
@@ -150,6 +174,22 @@ fn harness_observe_replica(endpoint: ServingRouteEndpoint) -> HarnessBackendStan
       }
     }
   }
+}
+
+// WHAT THE MODELS PROBE ESTABLISHED ABOUT THE FRONT DOOR, AND NOTHING ABOUT ADMISSION. Serving and
+// model-not-admitted are both answers; whether this harness may use the model is decided separately.
+fn harness_models_front_door(standing: HarnessBackendStanding) -> FrontDoorRead {
+  match standing {
+    HarnessBackendServing { model: _, unit: _, readback: _ } => FrontDoorAnswered
+    HarnessBackendModelNotAdmitted { advertised: _ } => FrontDoorAnswered
+    HarnessBackendUnreachable { url: u } => FrontDoorDidNotAnswer { url: u as NonEmptyStr, bound: harness_front_door_probe_bound }
+    HarnessBackendUnreadable { cause: c } => FrontDoorAnswerUnreadable { cause: join(["the route's model list was unreadable: ", c], "") as NonEmptyStr }
+  }
+}
+
+// THE ROUTE'S AVAILABILITY AS PLACEMENT READS IT: launch, then models, then launch again.
+fn harness_route_availability(endpoint: ServingRouteEndpoint, before: VllmEndpointProcessLaunchObservation, standing: HarnessBackendStanding, after: VllmEndpointProcessLaunchObservation, now: Timestamp) -> ServingFrontDoorAvailabilityVerdict {
+  serving_availability_bracketing_read(endpoint: endpoint, before: before, front_door: harness_models_front_door(standing: standing), after: after, now: now)
 }
 
 // THE ROSTER IS OBSERVED ONE ROUTE AT A TIME AND THE ANSWER KEEPS BOTH HALVES. An earlier fold
@@ -448,24 +488,61 @@ fn harness_launch_from_body(group: FabricGroup, address: String, body: String) -
   }
 }
 
+// THE COUNTER TRAVELS AS THE EXPORTED FIELD, NEVER AS A NUMBER. harness_gauge_count refuses an exponent
+// rendering by design, and prometheus switches to one past seven integer digits -- measured on the
+// enrolled group B head 2026-09-14, vllm:prompt_tokens_total 9.7885348e+07 -- so a parsed reader would
+// go permanently unreadable on exactly the long-lived engines this is for. Equality between two readings
+// of one exporter is the whole operation, which is the discipline vllm_endpoint_process_launch already
+// applies to the process-start field.
+fn harness_counter_field(body: String, metric: VllmServingMetric) -> NonEmptyStr? {
+  match harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""), selector: SeriesByName) {
+    Absent => none
+    Present { value: field } => {
+      let t = trim(s: field)
+      if t == "" { none } else { Present { value: t as NonEmptyStr } }
+    }
+  }
+}
+
+// BOTH FACTS OR NEITHER. A running gauge with no counter cannot say whether work advanced, and a counter
+// with no running gauge cannot tell an idle engine from a stalled one, so a half reading is no reading --
+// the same law harness_queue_from_body holds for its two gauges.
+fn harness_progress_sample(body: String, at: EpochSecs) -> EngineProgressSample? {
+  match harness_gauge_value(body: body, metric: NumRequestsRunning) {
+    Absent => none
+    Present { value: running_text } =>
+      match harness_gauge_count(text: running_text) {
+        Absent => none
+        Present { value: running } =>
+          match harness_counter_field(body: body, metric: GenerationTokensTotal) {
+            Absent => none
+            Present { value: generation } => Present { value: EngineProgressSample { running: running, generation_field: generation, at: at } }
+          }
+      }
+  }
+}
+
 type HarnessEngineReading {
   queue: ServingQueueReading
   launch: VllmEndpointProcessLaunchObservation
+  progress: EngineProgressSample?
 }
 
-fn harness_observe_engine(endpoint: ServingRouteEndpoint) -> HarnessEngineReading {
+fn harness_observe_engine_at(endpoint: ServingRouteEndpoint, at: EpochSecs) -> HarnessEngineReading {
   let url = harness_metrics_url(endpoint: endpoint)
   let group = endpoint.group
-  let read = http.Client.Get(url: url as NonEmptyStr)
+  let read = harness_bounded_get(url: url)
   if !read.success {
     HarnessEngineReading {
       queue: QueueDepthUnread { obligation: join(["the metrics endpoint at ", url, " did not answer"], "") as NonEmptyStr },
       launch: LaunchUnobserved { group: group, obligation: join(["the metrics endpoint at ", url, " did not answer, so which launch is serving is unknown"], "") as NonEmptyStr },
+      progress: none,
     }
   } else {
     HarnessEngineReading {
       queue: harness_queue_from_body(body: read.body),
       launch: harness_launch_from_body(group: group, address: serving_route_endpoint_wire(e: endpoint) as String, body: read.body),
+      progress: harness_progress_sample(body: read.body, at: at),
     }
   }
 }

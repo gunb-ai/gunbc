@@ -52,7 +52,6 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
-  byte_limb_hash_peano_digest,
   combine_hash,
   content_hash,
   node_synthetic,
@@ -80,7 +79,7 @@ import v2.std.provenance {
   SpanIndex,
   origin_event_from_source,
   span_index_empty,
-  span_index_merge,
+  span_index_adopt,
   span_index_record
 }
 import v2.std.collection {
@@ -98,10 +97,11 @@ import v2.std.optional {
   Present
 }
 import std.algebra { Cons, Empty, FreeSemigroup }
-import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_reverse, list_snoc_item, list_tail, unique }
+import v2.std.algebra { HeadAbsent, HeadFound, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_head, list_reverse, list_snoc_item, list_tail, unique, zip_eq }
 import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
 import std.realization { Materialization }
+import v2.std.integer { integer_int_content_digest }
 import v2.compiler.materialization_carriers {
   parse_table_memo_artifact_kind,
   parse_table_memo_provider_id,
@@ -142,9 +142,22 @@ import v2.std.grammar {
   grammar_to_node
 }
 
+// THE MEMO FRAME. `frame` names every occurrence id recorded since the innermost memoized
+// production started: a mint is one FrameMinted, and a memo hit or miss inside the frame is one
+// FrameNested sharing the inner frame's list (a snoc, never a copy). A memo hit replays exactly
+// its stored frame into the current index instead of merging the stored index whole. That is
+// exact for every consumer: a node the hit returns carries only ids minted or replayed inside
+// the memoized frame, so every id it can look up is in the replayed frame; entries the stored
+// index held from before the frame belong to a different parse path, no node on this path
+// references them, and the span index is read only by lookup(id).
+type ParseProvFrameItem
+  = FrameMinted { id: OccurrenceId }
+  | FrameNested { frame: List<ParseProvFrameItem> }
+
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: v2.std.provenance.SpanIndex
+  frame: List<ParseProvFrameItem>
 }
 
 type ParseArtifact {
@@ -522,6 +535,33 @@ fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
   }
 }
 
+fn parse_memo_stats_empty() -> ParseMemoStats {
+  ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+}
+
+// THE PARSE'S OWN MEMO ACCOUNTING, CARRIED BESIDE ITS RESULT AND NOT INSIDE IT.
+//
+// WHY NOT A FIELD ON ParseArtifact, which is the shorter change. ParseArtifact answers WHAT was
+// parsed; the memo counters answer HOW the parse was executed, which is a realization fact about
+// one run and not a property of the tree. DESIGN section 3 keeps interface and realization as two
+// facts, so putting a counter on the semantic artifact would make every consumer of a parse result
+// carry a measurement it has no use for, and would make the artifact's identity depend on how many
+// times a memo happened to be consulted.
+//
+// AND THE COUNTERS MUST SURVIVE A REFUSAL, which a field on the accepted value cannot do. The
+// expensive case this instrument exists to read is a file that spends seconds in parse and THEN
+// rejects; an Outcome's Rejected arm carries no ParseArtifact, so the stats would be lost exactly
+// where they are most wanted. This carrier holds the outcome and the accounting side by side, so
+// both arms report.
+//
+// THE UNMEASURED ENTRY POINT IS A PROJECTION OF THIS ONE, never a second parse: parse_module_prepared
+// is `.outcome` of the measured fold, so there is one implementation and no caller pays a second
+// parse to be measured.
+type ParseProductionMeasured {
+  outcome: Outcome<ParseArtifact>
+  memo: ParseMemoStats
+}
+
 fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
   ParseTableRealization {
     artifact_kind: table.artifact_kind,
@@ -590,21 +630,14 @@ fn parse_grammar_digest(validated: ValidatedGrammarRoot) -> Hash {
   )
 }
 
-// Route through chars(s:): the emitted realization needs the boundary conversion — emitted
-// fold_list<T, _> cannot infer T from a host-carrier lexeme (E0282) without it — and the
-// interpreted chars builtin grounds every string realization (native compact string and
-// Empty/Cons chain alike, via free_monoid_to_string) to the same Int codepoints fold_list
-// itself would read, so the digest is realization-stable on both routes.
-fn parse_lexeme_digest(lexeme: Lexeme) -> Hash {
-  fold_list(
-    xs: chars(s: lexeme),
-    empty: symbol_identity_digest(sym: ^parse_lexeme_digest_nil),
-    cons: fn(acc, ch) {
-      combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
-    }
-  )
-}
-
+// ONE DIGEST PER TOKEN FIELD, NOT ONE HASH STEP PER UNIT OF MAGNITUDE. The stream digest used to
+// send both offsets and every lexeme codepoint through the single-byte-limb digest: unary in the
+// value (a codepoint near 100 cost ~100 combine_hash calls), and one shared tag for every value
+// above 255. On the native route that made the eager fill in parse_table_for_production_analyzed
+// 28% of the process (perf --children, bounded K=16 root, 2026-09-14), and it made offsets past
+// byte 255 and every non-Latin-1 codepoint collide in the seed interpreter's cross-parse memo key
+// (v1_interpreter parse_table_memo_scope_and_key reads this field). Offsets and positions now go
+// through the Int content authority and the lexeme through its interned symbol.
 fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
   fold_list(
     xs: all_tokens,
@@ -619,10 +652,10 @@ fn parse_token_stream_digest(all_tokens: List<Token>) -> Hash {
           ),
           b: combine_hash(
             a: combine_hash(
-              a: byte_limb_hash_peano_digest(limb: tok.start),
-              b: byte_limb_hash_peano_digest(limb: tok.end)
+              a: integer_int_content_digest(value: tok.start),
+              b: integer_int_content_digest(value: tok.end)
             ),
-            b: parse_lexeme_digest(lexeme: tok.lexeme)
+            b: symbol_identity_digest(sym: symbol_intern_lexeme(lexeme: tok.lexeme))
           )
         )
       )
@@ -685,7 +718,7 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
   combine_hash(
     a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
     b: combine_hash(
-      a: byte_limb_hash_peano_digest(limb: key.position),
+      a: integer_int_content_digest(value: key.position),
       b: symbol_identity_digest(sym: key.production)
     )
   )
@@ -719,10 +752,30 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
 fn parse_prov_initial() -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: occurrence_id_allocator_initial(),
-    index: span_index_empty()
+    index: span_index_empty(),
+    frame: Empty
   }
 }
 
+fn parse_prov_replay_frame(
+  base: v2.std.provenance.SpanIndex,
+  incoming: v2.std.provenance.SpanIndex,
+  frame: List<ParseProvFrameItem>
+) -> v2.std.provenance.SpanIndex {
+  fold_list(
+    xs: frame,
+    empty: base,
+    cons: fn(acc, item) {
+      match item {
+        FrameMinted { id: id } => span_index_adopt(base: acc, incoming: incoming, id: id)
+        FrameNested { frame: inner } => parse_prov_replay_frame(base: acc, incoming: incoming, frame: inner)
+      }
+    }
+  )
+}
+
+// A memo hit: `incoming` is the stored result of the memoized frame, whose `frame` is that
+// frame's own record (the miss started it empty).
 fn parse_prov_merge(
   base: ParseProvenanceState,
   incoming: ParseProvenanceState
@@ -734,7 +787,22 @@ fn parse_prov_merge(
         alloc: incoming.alloc
       )
     ),
-    index: span_index_merge(base: base.index, incoming: incoming.index)
+    index: parse_prov_replay_frame(base: base.index, incoming: incoming.index, frame: incoming.frame),
+    frame: list_snoc_item(xs: base.frame, item: FrameNested { frame: incoming.frame })
+  }
+}
+
+// A memo miss: the production parses in a fresh frame so its memo entry records only its own ids.
+fn parse_prov_enter_frame(prov: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState { alloc: prov.alloc, index: prov.index, frame: Empty }
+}
+
+// Returning from a miss: the caller's frame gains the inner frame as one nested item.
+fn parse_prov_leave_frame(outer: ParseProvenanceState, inner: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState {
+    alloc: inner.alloc,
+    index: inner.index,
+    frame: list_snoc_item(xs: outer.frame, item: FrameNested { frame: inner.frame })
   }
 }
 
@@ -753,7 +821,11 @@ fn parse_mint_from_source(
   let index = span_index_record(index: prov.index, id: minted.id, event: event)
   ParseMintSourceResult {
     id: minted.id,
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -852,7 +924,11 @@ fn parse_stamp_derived_conj(
       ],
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -869,7 +945,11 @@ fn parse_stamp_derived_repeat(
       acc_nodes: acc_nodes,
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -891,7 +971,11 @@ fn parse_wrap_production_captured(
       ],
       occurrence_id: node_occurrence_identity_minted(id: minted.id)
     ),
-    prov: ParseProvenanceState { alloc: minted.alloc, index: index }
+    prov: ParseProvenanceState {
+      alloc: minted.alloc,
+      index: index,
+      frame: list_snoc_item(xs: prov.frame, item: FrameMinted { id: minted.id })
+    }
   }
 }
 
@@ -1185,7 +1269,7 @@ fn parse_nonterminal_memoized_core(
             all_tokens: all_tokens,
             root: root,
             table: table_miss,
-            prov: prov
+            prov: parse_prov_enter_frame(prov: prov)
           )
           let table_after_memo = parse_table_insert(
             table: parse_expr_result_table(result: inner),
@@ -1199,7 +1283,7 @@ fn parse_nonterminal_memoized_core(
               let stamped = parse_wrap_production_captured(
                 production: production,
                 captured: captured,
-                prov: inner_prov
+                prov: parse_prov_leave_frame(outer: prov, inner: inner_prov)
               )
               ParseExprAccepted {
                 remaining: remaining,
@@ -1333,6 +1417,7 @@ type GrammarFirstAnalysis {
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
   grammar_digest: Hash
   productions_by_name: Map<Symbol, GrammarProduction>
+  choice_residue: List<GrammarChoiceAmbiguityRow>
 }
 
 fn grammar_empty_terminal_list() -> List<Symbol> {
@@ -1523,194 +1608,644 @@ fn compute_production_first_rows(
   )
 }
 
-fn choice_branches_ambiguous(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> Bool {
-  if left.nullable && right.nullable {
-    true
-  } else {
-    !is_empty(xs: first_list_intersect(left: left.terminals, right: right.terminals))
-  }
+// A prepared grammar expression is the parse-time carrier for FIRST knowledge and for the
+// execution plan of each ordered Choice. Nested binary Choice spines are flattened here into one
+// ordered alternative list; runtime interprets that plan and does not scan FIRST, flatten, or
+// inspect authored production names.
+type TokenPrefixRow {
+  prefix: List<Symbol>
+  next: PreparedChoicePlan
 }
 
-// A prepared grammar expression is the parse-time carrier for FIRST knowledge: the grammar is
-// fixed for a whole parse, so each Choice node's branch folds (and its ambiguity verdict) are
-// pure functions of the grammar and are computed ONCE here, at preparation, bottom-up — every
-// node's fold combines its children's already-computed folds in O(union) instead of re-walking
-// the subtree. The pre-hoisting dispatch recomputed expr_first_fold on both branches at every
-// Choice node at every token position: right-nested choice chains made that O(k^2) per position
-// with O(t^2) union constants, measured as the dominant self-hosted parse cost (2026-09-09,
-// required-v2-native lane work: 209s -> 33s on a 315KB table module from the algebra carrier
-// fixes, then 33s -> 14s from this hoist, forecast by a pointer-keyed memo probe).
+type PreparedChoicePlan
+  = ChoiceByToken {
+      on_token: Map<Symbol, PreparedChoicePlan>
+      on_other: PreparedChoicePlan
+      on_end: PreparedChoicePlan
+    }
+  | ChoiceSharedPrefix {
+      prefix: PreparedGrammarExpr
+      suffix: PreparedChoicePlan
+    }
+  | ChoiceTokenPrefix { rows: List<TokenPrefixRow> }
+  | ChoiceOrderedBacktrack {
+      alternatives: List<PreparedGrammarExpr>
+    }
+  | ChoiceParseOne { expr: PreparedGrammarExpr }
+  | ChoiceReject
+
 type PreparedGrammarExpr
   = PreparedTerminal { token_class: Symbol, stamp: TerminalStampMode }
   | PreparedNonterminal { production: Symbol }
   | PreparedSequence { left: PreparedGrammarExpr, right: PreparedGrammarExpr }
-  | PreparedChoice {
-      left: PreparedGrammarExpr,
-      right: PreparedGrammarExpr,
-      left_first: GrammarExprFirstFold,
-      right_first: GrammarExprFirstFold,
-      ambiguous: Bool
-    }
+  | PreparedChoice { plan: PreparedChoicePlan, first: GrammarExprFirstFold }
   | PreparedOptional { element: PreparedGrammarExpr }
   | PreparedRepeat { element: PreparedGrammarExpr }
 
 type PreparedExprFold {
   tree: PreparedGrammarExpr
   first: GrammarExprFirstFold
+  residue: List<GrammarChoiceAmbiguityRow>
+}
+
+// list_head HeadFound { value: alt } on List<PreparedExprFold> / List<TokenPrefixRow> types alt as T,
+// so a field read is unwritable. fold_list over GrammarProduction instantiates (p.name in
+// compute_grammar_first_analysis_given). These projectors instantiate the record at a typed
+// parameter; they are not a second meaning of the fields. Class:
+// gunbc.recurring_failure_mode.list_head_bound_record_element_stays_t.
+fn prepared_expr_fold_tree(alt: PreparedExprFold) -> PreparedGrammarExpr { alt.tree }
+fn prepared_expr_fold_first(alt: PreparedExprFold) -> GrammarExprFirstFold { alt.first }
+fn prepared_expr_fold_residue(alt: PreparedExprFold) -> List<GrammarChoiceAmbiguityRow> { alt.residue }
+fn token_prefix_row_prefix(row: TokenPrefixRow) -> List<Symbol> { row.prefix }
+fn token_prefix_row_next(row: TokenPrefixRow) -> PreparedChoicePlan { row.next }
+
+fn concat_prepared_alt_residue(alts: List<PreparedExprFold>) -> List<GrammarChoiceAmbiguityRow> {
+  match list_head(xs: alts) {
+    HeadAbsent => std.algebra.Empty
+    HeadFound { value: alt } =>
+      match list_tail(xs: alts) {
+        TailAbsent => prepared_expr_fold_residue(alt: alt)
+        TailFound { tail: rest } =>
+          list_append(left: prepared_expr_fold_residue(alt: alt), right: concat_prepared_alt_residue(alts: rest))
+      }
+  }
+}
+
+fn flatten_choice_exprs(expr: GrammarExpr) -> List<GrammarExpr> {
+  match expr {
+    Choice { left: left, right: right } =>
+      list_append(left: flatten_choice_exprs(expr: left), right: flatten_choice_exprs(expr: right))
+    _ => Cons { head: expr, tail: std.algebra.Empty }
+  }
+}
+
+fn prepared_stamp_eq(left: TerminalStampMode, right: TerminalStampMode) -> Bool {
+  match left {
+    StampClass =>
+      match right {
+        StampClass => true
+        StampLexeme => false
+        StampBinding { binding: _ } => false
+      }
+    StampLexeme =>
+      match right {
+        StampLexeme => true
+        StampClass => false
+        StampBinding { binding: _ } => false
+      }
+    StampBinding { binding: lb } =>
+      match right {
+        StampBinding { binding: rb } => lb == rb
+        StampClass => false
+        StampLexeme => false
+      }
+  }
+}
+
+fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr) -> Bool {
+  match left {
+    PreparedTerminal { token_class: lc, stamp: ls } =>
+      match right {
+        PreparedTerminal { token_class: rc, stamp: rs } =>
+          (lc == rc) && prepared_stamp_eq(left: ls, right: rs)
+        _ => false
+      }
+    PreparedNonterminal { production: lp } =>
+      match right {
+        PreparedNonterminal { production: rp } => lp == rp
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGrammarExpr> {
+  match expr {
+    PreparedSequence { left: left, right: _ } =>
+      match left {
+        PreparedTerminal { token_class: _, stamp: _ } => optional_present(value: left)
+        PreparedNonterminal { production: _ } => optional_present(value: left)
+        _ => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn choice_alts_union_first(alts: List<PreparedExprFold>) -> GrammarExprFirstFold {
+  choice_alts_union_first_from(
+    alts: alts,
+    acc: GrammarExprFirstFold { terminals: grammar_empty_terminal_list(), nullable: false }
+  )
+}
+
+fn choice_alts_union_first_from(
+  alts: List<PreparedExprFold>,
+  acc: GrammarExprFirstFold
+) -> GrammarExprFirstFold {
+  match list_head(xs: alts) {
+    HeadAbsent => acc
+    HeadFound { value: alt } =>
+      match list_tail(xs: alts) {
+        TailAbsent => expr_first_fold_choice(left: acc, right: prepared_expr_fold_first(alt: alt))
+        TailFound { tail: rest } =>
+          choice_alts_union_first_from(
+            alts: rest,
+            acc: expr_first_fold_choice(left: acc, right: prepared_expr_fold_first(alt: alt))
+          )
+      }
+  }
+}
+
+fn choice_alts_terminal_universe(alts: List<PreparedExprFold>) -> List<Symbol> {
+  choice_alts_union_first(alts: alts).terminals
+}
+
+// Flattened n-way: a token bucket is every alternative that can start on that token, in authored
+// order, plus every nullable alternative (they match empty after a FIRST-alt rejects). Ordered
+// Choice is try-left-then-right; a nullable sibling is not dropped because the nullable count is 1.
+fn choice_alts_for_present_token(alts: List<PreparedExprFold>, token_class: Symbol) -> List<PreparedExprFold> {
+  match list_head(xs: alts) {
+    HeadAbsent => std.algebra.Empty
+    HeadFound { value: alt } =>
+      let first = prepared_expr_fold_first(alt: alt)
+      let keep =
+        if symbol_list_contains(xs: first.terminals, item: token_class) {
+          true
+        } else {
+          first.nullable
+        }
+      let more = match list_tail(xs: alts) {
+        TailAbsent => std.algebra.Empty
+        TailFound { tail: rest } => choice_alts_for_present_token(alts: rest, token_class: token_class)
+      }
+      list_append(
+        left: if keep {
+          Cons { head: alt, tail: std.algebra.Empty }
+        } else {
+          std.algebra.Empty
+        },
+        right: more
+      )
+  }
+}
+
+fn choice_alts_nullable(alts: List<PreparedExprFold>) -> List<PreparedExprFold> {
+  match list_head(xs: alts) {
+    HeadAbsent => std.algebra.Empty
+    HeadFound { value: alt } =>
+      let first = prepared_expr_fold_first(alt: alt)
+      let more = match list_tail(xs: alts) {
+        TailAbsent => std.algebra.Empty
+        TailFound { tail: rest } => choice_alts_nullable(alts: rest)
+      }
+      list_append(
+        left: if first.nullable {
+          Cons { head: alt, tail: std.algebra.Empty }
+        } else {
+          std.algebra.Empty
+        },
+        right: more
+      )
+  }
+}
+
+fn choice_alt_trees(alts: List<PreparedExprFold>) -> List<PreparedGrammarExpr> {
+  match list_head(xs: alts) {
+    HeadAbsent => std.algebra.Empty
+    HeadFound { value: alt } =>
+      list_append(
+        left: Cons { head: prepared_expr_fold_tree(alt: alt), tail: std.algebra.Empty },
+        right: match list_tail(xs: alts) {
+          TailAbsent => std.algebra.Empty
+          TailFound { tail: rest } => choice_alt_trees(alts: rest)
+        }
+      )
+  }
+}
+
+fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<List<Symbol>> {
+  if need == 0 {
+    optional_present(value: std.algebra.Empty)
+  } else {
+    match expr {
+      PreparedTerminal { token_class: token_class, stamp: _ } =>
+        if need == 1 {
+          optional_present(value: Cons { head: token_class, tail: std.algebra.Empty })
+        } else {
+          optional_absent()
+        }
+      PreparedSequence { left: left, right: right } =>
+        match left {
+          PreparedTerminal { token_class: token_class, stamp: _ } =>
+            if need == 1 {
+              optional_present(value: Cons { head: token_class, tail: std.algebra.Empty })
+            } else {
+              match prepared_terminal_prefix(expr: right, need: need - 1) {
+                Present { value: rest } =>
+                  optional_present(value: Cons { head: token_class, tail: rest })
+                Absent => optional_absent()
+              }
+            }
+          _ => optional_absent()
+        }
+      _ => optional_absent()
+    }
+  }
+}
+
+fn token_prefix_row_conflicts(rows: List<TokenPrefixRow>, prefix: List<Symbol>) -> Bool {
+  match list_head(xs: rows) {
+    HeadAbsent => false
+    HeadFound { value: row } =>
+      if zip_eq(a: token_prefix_row_prefix(row: row), b: prefix, eq: fn(x, y) { x == y }) {
+        true
+      } else {
+        match list_tail(xs: rows) {
+          TailAbsent => false
+          TailFound { tail: rest } => token_prefix_row_conflicts(rows: rest, prefix: prefix)
+        }
+      }
+  }
+}
+
+fn choice_token_prefix_rows(alts: List<PreparedExprFold>, need: Int) -> Optional<List<TokenPrefixRow>> {
+  choice_token_prefix_rows_from(alts: alts, need: need, rows: std.algebra.Empty)
+}
+
+fn choice_token_prefix_rows_from(
+  alts: List<PreparedExprFold>,
+  need: Int,
+  rows: List<TokenPrefixRow>
+) -> Optional<List<TokenPrefixRow>> {
+  match list_head(xs: alts) {
+    HeadAbsent => optional_present(value: rows)
+    HeadFound { value: alt } =>
+      match prepared_terminal_prefix(expr: prepared_expr_fold_tree(alt: alt), need: need) {
+        Absent => optional_absent()
+        Present { value: prefix } =>
+          if token_prefix_row_conflicts(rows: rows, prefix: prefix) {
+            optional_absent()
+          } else {
+            match list_tail(xs: alts) {
+              TailAbsent =>
+                optional_present(value: list_snoc_item(
+                  xs: rows,
+                  item: TokenPrefixRow { prefix: prefix, next: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) } }
+                ))
+              TailFound { tail: rest } =>
+                choice_token_prefix_rows_from(
+                  alts: rest,
+                  need: need,
+                  rows: list_snoc_item(
+                    xs: rows,
+                    item: TokenPrefixRow { prefix: prefix, next: ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) } }
+                  )
+                )
+            }
+          }
+      }
+  }
+}
+
+fn choice_shared_prefix_suffixes(
+  alts: List<PreparedExprFold>,
+  prefix: PreparedGrammarExpr,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<Symbol>>
+) -> Optional<List<PreparedExprFold>> {
+  choice_shared_prefix_suffixes_from(
+    alts: alts,
+    prefix: prefix,
+    nullable_set: nullable_set,
+    first_rows: first_rows,
+    suffixes: std.algebra.Empty
+  )
+}
+
+fn choice_shared_prefix_suffixes_from(
+  alts: List<PreparedExprFold>,
+  prefix: PreparedGrammarExpr,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<Symbol>>,
+  suffixes: List<PreparedExprFold>
+) -> Optional<List<PreparedExprFold>> {
+  match list_head(xs: alts) {
+    HeadAbsent => optional_present(value: suffixes)
+    HeadFound { value: alt } =>
+      match prepared_expr_fold_tree(alt: alt) {
+        PreparedSequence { left: left, right: right } =>
+          if prepared_prefix_atom_eq(left: left, right: prefix) {
+            let next_suffixes = list_snoc_item(
+              xs: suffixes,
+              item: PreparedExprFold {
+                tree: right,
+                first: expr_first_fold_from_prepared(
+                  expr: right,
+                  nullable_set: nullable_set,
+                  first_rows: first_rows
+                ),
+                residue: std.algebra.Empty
+              }
+            )
+            match list_tail(xs: alts) {
+              TailAbsent => optional_present(value: next_suffixes)
+              TailFound { tail: rest } =>
+                choice_shared_prefix_suffixes_from(
+                  alts: rest,
+                  prefix: prefix,
+                  nullable_set: nullable_set,
+                  first_rows: first_rows,
+                  suffixes: next_suffixes
+                )
+            }
+          } else {
+            optional_absent()
+          }
+        _ => optional_absent()
+      }
+  }
+}
+
+fn expr_first_fold_from_prepared(
+  expr: PreparedGrammarExpr,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<Symbol>>
+) -> GrammarExprFirstFold {
+  match expr {
+    PreparedTerminal { token_class: token_class, stamp: _ } =>
+      expr_first_fold_terminal(token_class: token_class)
+    PreparedNonterminal { production: production } =>
+      expr_first_fold_nonterminal(name: production, nullable_set: nullable_set, first_rows: first_rows)
+    PreparedSequence { left: left, right: right } =>
+      expr_first_fold_sequence(
+        left: expr_first_fold_from_prepared(expr: left, nullable_set: nullable_set, first_rows: first_rows),
+        right: expr_first_fold_from_prepared(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      )
+    PreparedChoice { plan: _, first: first } => first
+    PreparedOptional { element: element } =>
+      expr_first_fold_optional(
+        element: expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+      )
+    PreparedRepeat { element: element } =>
+      expr_first_fold_repeat(
+        element: expr_first_fold_from_prepared(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+      )
+  }
+}
+
+fn ordered_backtrack_row(
+  production: Symbol,
+  alts: List<PreparedExprFold>
+) -> GrammarChoiceAmbiguityRow {
+  let empty_first = GrammarExprFirstFold { terminals: grammar_empty_terminal_list(), nullable: false }
+  let left = match list_head(xs: alts) {
+    HeadFound { value: alt } => prepared_expr_fold_first(alt: alt)
+    HeadAbsent => empty_first
+  }
+  let right = match list_tail(xs: alts) {
+    TailFound { tail: rest } => choice_alts_union_first_from(alts: rest, acc: empty_first)
+    TailAbsent => empty_first
+  }
+  GrammarChoiceAmbiguityRow {
+    production: production,
+    left_first_terminals: left.terminals,
+    right_first_terminals: right.terminals,
+    overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
+    both_nullable: left.nullable && right.nullable
+  }
+}
+
+fn ordered_backtrack_emit(alts: List<PreparedExprFold>) -> PreparedChoicePlan {
+  ChoiceOrderedBacktrack { alternatives: choice_alt_trees(alts: alts) }
+}
+
+fn authored_choice_site_residue(alts: List<PreparedExprFold>, production: Symbol) -> List<GrammarChoiceAmbiguityRow> {
+  match list_tail(xs: alts) {
+    TailAbsent => std.algebra.Empty
+    TailFound { tail: rest } =>
+      if is_empty(xs: rest) {
+        std.algebra.Empty
+      } else {
+        let row = ordered_backtrack_row(production: production, alts: alts)
+        let here = if !is_empty(xs: row.overlap_terminals) || row.both_nullable {
+          Cons { head: row, tail: std.algebra.Empty }
+        } else {
+          std.algebra.Empty
+        }
+        list_append(
+          left: here,
+          right: authored_choice_site_residue(alts: rest, production: production)
+        )
+      }
+  }
+}
+
+fn compile_choice_alts(
+  alts: List<PreparedExprFold>,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<Symbol>>,
+  token_dispatch: Bool
+) -> PreparedChoicePlan {
+  match length(xs: alts) {
+    0 => ChoiceReject
+    1 =>
+      match list_head(xs: alts) {
+        HeadFound { value: alt } =>
+          ChoiceParseOne { expr: prepared_expr_fold_tree(alt: alt) }
+        HeadAbsent => ChoiceReject
+      }
+    _ =>
+      match list_head(xs: alts) {
+        HeadAbsent => ChoiceReject
+        HeadFound { value: first_alt } =>
+          match prepared_sequence_left_atom(expr: prepared_expr_fold_tree(alt: first_alt)) {
+            Present { value: prefix } =>
+              match choice_shared_prefix_suffixes(
+                alts: alts,
+                prefix: prefix,
+                nullable_set: nullable_set,
+                first_rows: first_rows
+              ) {
+                Present { value: suffixes } =>
+                  ChoiceSharedPrefix {
+                    prefix: prefix,
+                    suffix: compile_choice_plan(
+                      alts: suffixes,
+                      nullable_set: nullable_set,
+                      first_rows: first_rows,
+                      token_dispatch: token_dispatch
+                    )
+                  }
+                Absent =>
+                  match choice_token_prefix_rows(alts: alts, need: 2) {
+                    Present { value: rows } => ChoiceTokenPrefix { rows: rows }
+                    Absent => ordered_backtrack_emit(alts: alts)
+                  }
+              }
+            Absent =>
+              match choice_token_prefix_rows(alts: alts, need: 2) {
+                Present { value: rows } => ChoiceTokenPrefix { rows: rows }
+                Absent => ordered_backtrack_emit(alts: alts)
+              }
+          }
+      }
+  }
+}
+
+fn compile_choice_plan(
+  alts: List<PreparedExprFold>,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<Symbol>>,
+  token_dispatch: Bool
+) -> PreparedChoicePlan {
+  if token_dispatch {
+      let universe = choice_alts_terminal_universe(alts: alts)
+      let on_token = fold_list(
+        xs: universe,
+        empty: empty_map(),
+        cons: fn(acc, token_class) {
+          map_insert(
+            m: acc,
+            key: token_class,
+            value: compile_choice_alts(
+              alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
+              nullable_set: nullable_set,
+              first_rows: first_rows,
+              token_dispatch: token_dispatch
+            )
+          )
+        }
+      )
+      let on_nullable = compile_choice_alts(
+        alts: choice_alts_nullable(alts: alts),
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        token_dispatch: token_dispatch
+      )
+      ChoiceByToken {
+        on_token: on_token,
+        on_other: on_nullable,
+        on_end: on_nullable
+      }
+  } else {
+    ordered_backtrack_emit(alts: alts)
+  }
 }
 
 fn prepare_grammar_expr(
   expr: GrammarExpr,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
+  first_rows: Map<Symbol, List<Symbol>>,
+  production: Symbol,
+  token_dispatch: Bool
 ) -> PreparedExprFold {
   match expr {
     Terminal { token_class: token_class, stamp: stamp } =>
       PreparedExprFold {
         tree: PreparedTerminal { token_class: token_class, stamp: stamp },
-        first: expr_first_fold_terminal(token_class: token_class)
+        first: expr_first_fold_terminal(token_class: token_class),
+        residue: std.algebra.Empty
       }
-    Nonterminal { production: production } =>
+    Nonterminal { production: production_name } =>
       PreparedExprFold {
-        tree: PreparedNonterminal { production: production },
-        first: expr_first_fold_nonterminal(name: production, nullable_set: nullable_set, first_rows: first_rows)
+        tree: PreparedNonterminal { production: production_name },
+        first: expr_first_fold_nonterminal(name: production_name, nullable_set: nullable_set, first_rows: first_rows),
+        residue: std.algebra.Empty
       }
     Sequence { left: left, right: right } =>
-      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows)
-      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedSequence { left: left_prepared.tree, right: right_prepared.tree },
-        first: expr_first_fold_sequence(left: left_prepared.first, right: right_prepared.first)
+        first: expr_first_fold_sequence(left: left_prepared.first, right: right_prepared.first),
+        residue: list_append(left: left_prepared.residue, right: right_prepared.residue)
       }
     Choice { left: left, right: right } =>
-      let left_prepared = prepare_grammar_expr(expr: left, nullable_set: nullable_set, first_rows: first_rows)
-      let right_prepared = prepare_grammar_expr(expr: right, nullable_set: nullable_set, first_rows: first_rows)
+      let alts = flatten_choice_exprs(expr: Choice { left: left, right: right })
+      let prepared_alts = fold_list(
+        xs: alts,
+        empty: std.algebra.Empty,
+        cons: fn(acc, alt) {
+          list_snoc_item(
+            xs: acc,
+            item: prepare_grammar_expr(expr: alt, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
+          )
+        }
+      )
+      let compiled = compile_choice_plan(
+        alts: prepared_alts,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        token_dispatch: token_dispatch
+      )
+      let union_first = choice_alts_union_first(alts: prepared_alts)
       PreparedExprFold {
         tree: PreparedChoice {
-          left: left_prepared.tree,
-          right: right_prepared.tree,
-          left_first: left_prepared.first,
-          right_first: right_prepared.first,
-          ambiguous: choice_branches_ambiguous(left: left_prepared.first, right: right_prepared.first)
+          plan: compiled,
+          first: union_first
         },
-        first: expr_first_fold_choice(left: left_prepared.first, right: right_prepared.first)
+        first: union_first,
+        residue: list_append(
+          left: concat_prepared_alt_residue(alts: prepared_alts),
+          right: authored_choice_site_residue(alts: prepared_alts, production: production)
+        )
       }
     Optional { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedOptional { element: element_prepared.tree },
-        first: expr_first_fold_optional(element: element_prepared.first)
+        first: expr_first_fold_optional(element: element_prepared.first),
+        residue: element_prepared.residue
       }
     Repeat { element: element } =>
-      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows)
+      let element_prepared = prepare_grammar_expr(expr: element, nullable_set: nullable_set, first_rows: first_rows, production: production, token_dispatch: token_dispatch)
       PreparedExprFold {
         tree: PreparedRepeat { element: element_prepared.tree },
-        first: expr_first_fold_repeat(element: element_prepared.first)
+        first: expr_first_fold_repeat(element: element_prepared.first),
+        residue: element_prepared.residue
       }
   }
 }
 
-// The on-the-fly arm for tables whose analysis did not carry prepared trees (parse_table_empty
-// and test-built tables): identical folds, computed at call time. Tables built by
-// parse_table_for_production_analyzed always resolve Present here — both maps are folded from
-// the same root.productions, so Absent-after-Holds is unreachable by construction, and this arm
-// computes the same value rather than widening anything.
+fn parse_table_token_dispatch(table: ParseTable, production: Symbol) -> Bool {
+  match map_lookup(m: table.first_rows, key: production) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The on-the-fly arm for tables whose analysis did not carry prepared trees
+// (`parse_table_empty` and test-built tables). Token dispatch is compiled only when
+// this production is a key in `first_rows`. An empty map is not "every nonterminal
+// has empty FIRST / not nullable" — that would mint `ChoiceByToken { on_token: {},
+// on_other: ChoiceReject }` and reject NT-headed Choice with empty diagnostics.
+// When the key is absent the Choice plan is ordered backtrack, the pre-cutover
+// interpreter. Analyzed tables always resolve Present here.
 fn parse_table_prepared_expr(table: ParseTable, production: GrammarProduction) -> PreparedGrammarExpr {
   match v2.std.collection.map_get(m: table.prepared_exprs, key: production.name) {
     Accepted { value: Present { value: prepared }, diagnostics: _ } => prepared
     Accepted { value: Absent, diagnostics: _ } =>
-      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows).tree
+      prepare_grammar_expr(
+        expr: production.expression,
+        nullable_set: table.nullable_set,
+        first_rows: table.first_rows,
+        production: production.name,
+        token_dispatch: parse_table_token_dispatch(table: table, production: production.name)
+      ).tree
     Rejected { diagnostics: _ } =>
-      prepare_grammar_expr(expr: production.expression, nullable_set: table.nullable_set, first_rows: table.first_rows).tree
+      prepare_grammar_expr(
+        expr: production.expression,
+        nullable_set: table.nullable_set,
+        first_rows: table.first_rows,
+        production: production.name,
+        token_dispatch: parse_table_token_dispatch(table: table, production: production.name)
+      ).tree
   }
 }
 
-fn append_choice_ambiguity_row(
-  acc: List<GrammarChoiceAmbiguityRow>,
-  production: Symbol,
-  left: GrammarExprFirstFold,
-  right: GrammarExprFirstFold
-) -> List<GrammarChoiceAmbiguityRow> {
-  if choice_branches_ambiguous(left: left, right: right) {
-    list_snoc_item(
-      xs: acc,
-      item: GrammarChoiceAmbiguityRow {
-        production: production,
-        left_first_terminals: left.terminals,
-        right_first_terminals: right.terminals,
-        overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
-        both_nullable: left.nullable && right.nullable
-      }
-    )
-  } else {
-    acc
-  }
-}
-
-fn collect_choice_ambiguities_in_expr(
-  expr: GrammarExpr,
-  production: Symbol,
-  nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>,
-  acc: List<GrammarChoiceAmbiguityRow>
-) -> List<GrammarChoiceAmbiguityRow> {
-  match expr {
-    Terminal { token_class: _, stamp: _ } => acc
-    Nonterminal { production: _ } => acc
-    Sequence { left: left, right: right } =>
-      collect_choice_ambiguities_in_expr(
-        expr: right,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: collect_choice_ambiguities_in_expr(
-          expr: left,
-          production: production,
-          nullable_set: nullable_set,
-          first_rows: first_rows,
-          acc: acc
-        )
-      )
-    Choice { left: left, right: right } => {
-      let left_first = expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows)
-      let right_first = expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)
-      let acc1 = append_choice_ambiguity_row(
-        acc: acc,
-        production: production,
-        left: left_first,
-        right: right_first
-      )
-      collect_choice_ambiguities_in_expr(
-        expr: right,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: collect_choice_ambiguities_in_expr(
-          expr: left,
-          production: production,
-          nullable_set: nullable_set,
-          first_rows: first_rows,
-          acc: acc1
-        )
-      )
-    }
-    Optional { element: element } =>
-      collect_choice_ambiguities_in_expr(
-        expr: element,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: acc
-      )
-    Repeat { element: element } =>
-      collect_choice_ambiguities_in_expr(
-        expr: element,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
-        acc: acc
-      )
-  }
+type AnalysisPrepAcc {
+  prepared_exprs: Map<Symbol, PreparedGrammarExpr>
+  residue: List<GrammarChoiceAmbiguityRow>
 }
 
 fn compute_grammar_first_analysis_given(
@@ -1718,22 +2253,30 @@ fn compute_grammar_first_analysis_given(
   nullable_set: List<Symbol>
 ) -> GrammarFirstAnalysis {
   let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
+  let prep = fold_list(
+    xs: root.productions,
+    empty: AnalysisPrepAcc { prepared_exprs: empty_map(), residue: std.algebra.Empty },
+    cons: fn(acc, p) {
+      let folded = prepare_grammar_expr(
+        expr: p.expression,
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        production: p.name,
+        token_dispatch: true
+      )
+      AnalysisPrepAcc {
+        prepared_exprs: map_insert(m: acc.prepared_exprs, key: p.name, value: folded.tree),
+        residue: list_append(left: acc.residue, right: folded.residue)
+      }
+    }
+  )
   GrammarFirstAnalysis {
     nullable_set: nullable_set,
     first_rows: first_rows,
-    prepared_exprs: fold_list(
-      xs: root.productions,
-      empty: empty_map(),
-      cons: fn(acc, p) {
-        map_insert(
-          m: acc,
-          key: p.name,
-          value: prepare_grammar_expr(expr: p.expression, nullable_set: nullable_set, first_rows: first_rows).tree
-        )
-      }
-    ),
+    prepared_exprs: prep.prepared_exprs,
     grammar_digest: parse_grammar_digest(validated: ValidatedGrammarRoot { root: root }),
-    productions_by_name: grammar_production_index(productions: root.productions)
+    productions_by_name: grammar_production_index(productions: root.productions),
+    choice_residue: prep.residue
   }
 }
 
@@ -1745,19 +2288,7 @@ fn grammar_choice_ambiguity_roster_from_analysis(
   root: GrammarRoot,
   analysis: GrammarFirstAnalysis
 ) -> List<GrammarChoiceAmbiguityRow> {
-  fold_list(
-    xs: root.productions,
-    empty: std.algebra.Empty,
-    cons: fn(acc, p) {
-      collect_choice_ambiguities_in_expr(
-        expr: p.expression,
-        production: p.name,
-        nullable_set: analysis.nullable_set,
-        first_rows: analysis.first_rows,
-        acc: acc
-      )
-    }
-  )
+  analysis.choice_residue
 }
 
 fn grammar_choice_ambiguity_roster(root: GrammarRoot) -> List<GrammarChoiceAmbiguityRow> {
@@ -2319,118 +2850,199 @@ fn parse_expr_sequence(
   }
 }
 
-fn parse_choice_residue_backtrack(
-  left: PreparedGrammarExpr,
-  right: PreparedGrammarExpr,
+fn parse_choice_ordered_backtrack(
+  alternatives: List<PreparedGrammarExpr>,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  match parse_expr_with_first(
-    expr: left,
-    tokens: tokens,
-    all_tokens: all_tokens,
-    root: root,
-    table: table,
-    prov: prov
-  ) {
-    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
-      ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
-    ParseExprRejected { diagnostics: _, table: table1 } =>
-      parse_expr_with_first(
-        expr: right,
+  match list_head(xs: alternatives) {
+    HeadAbsent => ParseExprRejected { diagnostics: [], table: table }
+    HeadFound { value: alt } =>
+      match parse_expr_with_first(
+        expr: alt,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
-        table: table1,
+        table: table,
         prov: prov
-      )
+      ) {
+        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
+        ParseExprRejected { diagnostics: diags, table: table1 } =>
+          match list_tail(xs: alternatives) {
+            TailAbsent => ParseExprRejected { diagnostics: diags, table: table1 }
+            TailFound { tail: rest_alts } =>
+              parse_choice_ordered_backtrack(
+                alternatives: rest_alts,
+                tokens: tokens,
+                all_tokens: all_tokens,
+                root: root,
+                table: table1,
+                prov: prov
+              )
+          }
+      }
   }
 }
 
-fn parse_choice_on_present_token(
-  left: PreparedGrammarExpr,
-  right: PreparedGrammarExpr,
-  tok: Token,
-  tokens: List<Token>,
-  all_tokens: List<Token>,
-  root: GrammarRoot,
-  table: ParseTable,
-  prov: ParseProvenanceState,
-  left_first: GrammarExprFirstFold,
-  right_first: GrammarExprFirstFold
-) -> ParseExprResult {
-  if symbol_list_contains(xs: left_first.terminals, item: tok.class) && !symbol_list_contains(xs: right_first.terminals, item: tok.class) {
-    parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+fn token_classes_take(tokens: List<Token>, need: Int) -> Optional<List<Symbol>> {
+  if need == 0 {
+    optional_present(value: std.algebra.Empty)
   } else {
-    if symbol_list_contains(xs: right_first.terminals, item: tok.class) && !symbol_list_contains(xs: left_first.terminals, item: tok.class) {
-      parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-    } else {
-      if left_first.nullable && symbol_list_contains(xs: right_first.terminals, item: tok.class) {
-        parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-      } else {
-        parse_choice_residue_backtrack(
-          left: left,
-          right: right,
-          tokens: tokens,
-          all_tokens: all_tokens,
-          root: root,
-          table: table,
-          prov: prov
-        )
-      }
+    match parse_token_first(tokens: tokens) {
+      Absent => optional_absent()
+      Present { value: tok } =>
+        match list_tail(xs: tokens) {
+          TailAbsent =>
+            if need == 1 {
+              optional_present(value: Cons { head: tok.class, tail: std.algebra.Empty })
+            } else {
+              optional_absent()
+            }
+          TailFound { tail: rest } =>
+            match token_classes_take(tokens: rest, need: need - 1) {
+              Absent => optional_absent()
+              Present { value: more } =>
+                optional_present(value: Cons { head: tok.class, tail: more })
+            }
+        }
     }
   }
 }
 
-fn parse_choice_first_dispatch(
-  left: PreparedGrammarExpr,
-  right: PreparedGrammarExpr,
-  left_first: GrammarExprFirstFold,
-  right_first: GrammarExprFirstFold,
-  ambiguous: Bool,
+fn choice_token_prefix_select(rows: List<TokenPrefixRow>, prefix: List<Symbol>) -> Optional<PreparedChoicePlan> {
+  match list_head(xs: rows) {
+    HeadAbsent => optional_absent()
+    HeadFound { value: row } =>
+      if zip_eq(a: token_prefix_row_prefix(row: row), b: prefix, eq: fn(x, y) { x == y }) {
+        optional_present(value: token_prefix_row_next(row: row))
+      } else {
+        match list_tail(xs: rows) {
+          TailAbsent => optional_absent()
+          TailFound { tail: rest } => choice_token_prefix_select(rows: rest, prefix: prefix)
+        }
+      }
+  }
+}
+
+fn parse_choice_plan(
+  plan: PreparedChoicePlan,
   tokens: List<Token>,
   all_tokens: List<Token>,
   root: GrammarRoot,
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  if ambiguous {
-    parse_choice_residue_backtrack(
-      left: left,
-      right: right,
-      tokens: tokens,
-      all_tokens: all_tokens,
-      root: root,
-      table: table,
-      prov: prov
-    )
-  } else {
-    match parse_token_first(tokens: tokens) {
-      Absent =>
-        if left_first.nullable {
-          parse_expr_with_first(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-        } else if right_first.nullable {
-          parse_expr_with_first(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
-        } else {
-          ParseExprRejected { diagnostics: [], table: table }
-        }
-      Present { value: tok } =>
-        parse_choice_on_present_token(
-          left: left,
-          right: right,
-          tok: tok,
-          tokens: tokens,
-          all_tokens: all_tokens,
-          root: root,
-          table: table,
-          prov: prov,
-          left_first: left_first,
-          right_first: right_first
-        )
-    }
+  match plan {
+    ChoiceReject => ParseExprRejected { diagnostics: [], table: table }
+    ChoiceParseOne { expr: expr } =>
+      parse_expr_with_first(
+        expr: expr,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    ChoiceOrderedBacktrack { alternatives: alternatives } =>
+      parse_choice_ordered_backtrack(
+        alternatives: alternatives,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      )
+    ChoiceSharedPrefix { prefix: prefix, suffix: suffix } =>
+      match parse_expr_with_first(
+        expr: prefix,
+        tokens: tokens,
+        all_tokens: all_tokens,
+        root: root,
+        table: table,
+        prov: prov
+      ) {
+        ParseExprRejected { diagnostics: diags, table: table1 } =>
+          ParseExprRejected { diagnostics: diags, table: table1 }
+        ParseExprAccepted { remaining: rest, captured: cap_prefix, diagnostics: diags1, prov: prov1, table: table1 } =>
+          match parse_choice_plan(
+            plan: suffix,
+            tokens: rest,
+            all_tokens: all_tokens,
+            root: root,
+            table: table1,
+            prov: prov1
+          ) {
+            ParseExprRejected { diagnostics: diags2, table: table2 } =>
+              ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2), table: table2 }
+            ParseExprAccepted { remaining: rest2, captured: cap_suffix, diagnostics: diags2, prov: prov2, table: table2 } =>
+              let stamped = parse_stamp_derived_conj(cap1: cap_prefix, cap2: cap_suffix, prov: prov2)
+              ParseExprAccepted {
+                remaining: rest2,
+                captured: stamped.node,
+                diagnostics: list_append(left: diags1, right: diags2),
+                prov: stamped.prov,
+                table: table2
+              }
+          }
+      }
+    ChoiceTokenPrefix { rows: rows } =>
+      match list_head(xs: rows) {
+        HeadAbsent => ParseExprRejected { diagnostics: [], table: table }
+        HeadFound { value: first_row } =>
+          match token_classes_take(tokens: tokens, need: length(xs: token_prefix_row_prefix(row: first_row))) {
+            Absent => ParseExprRejected { diagnostics: [], table: table }
+            Present { value: prefix } =>
+              match choice_token_prefix_select(rows: rows, prefix: prefix) {
+                Absent => ParseExprRejected { diagnostics: [], table: table }
+                Present { value: next_plan } =>
+                  parse_choice_plan(
+                    plan: next_plan,
+                    tokens: tokens,
+                    all_tokens: all_tokens,
+                    root: root,
+                    table: table,
+                    prov: prov
+                  )
+              }
+          }
+      }
+    ChoiceByToken { on_token: on_token, on_other: on_other, on_end: on_end } =>
+      match parse_token_first(tokens: tokens) {
+        Absent =>
+          parse_choice_plan(
+            plan: on_end,
+            tokens: tokens,
+            all_tokens: all_tokens,
+            root: root,
+            table: table,
+            prov: prov
+          )
+        Present { value: tok } =>
+          match map_lookup(m: on_token, key: tok.class) {
+            Present { value: next } =>
+              parse_choice_plan(
+                plan: next,
+                tokens: tokens,
+                all_tokens: all_tokens,
+                root: root,
+                table: table,
+                prov: prov
+              )
+            Absent =>
+              parse_choice_plan(
+                plan: on_other,
+                tokens: tokens,
+                all_tokens: all_tokens,
+                root: root,
+                table: table,
+                prov: prov
+              )
+          }
+      }
   }
 }
 
@@ -2582,13 +3194,9 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    PreparedChoice { left: left, right: right, left_first: left_first, right_first: right_first, ambiguous: ambiguous } =>
-      parse_choice_first_dispatch(
-        left: left,
-        right: right,
-        left_first: left_first,
-        right_first: right_first,
-        ambiguous: ambiguous,
+    PreparedChoice { plan: plan, first: _ } =>
+      parse_choice_plan(
+        plan: plan,
         tokens: tokens,
         all_tokens: all_tokens,
         root: root,
@@ -2628,7 +3236,13 @@ fn parse_expr(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   parse_expr_with_first(
-    expr: prepare_grammar_expr(expr: expr, nullable_set: table.nullable_set, first_rows: table.first_rows).tree,
+    expr: prepare_grammar_expr(
+      expr: expr,
+      nullable_set: table.nullable_set,
+      first_rows: table.first_rows,
+      production: root.start,
+      token_dispatch: parse_table_token_dispatch(table: table, production: root.start)
+    ).tree,
     tokens: tokens,
     all_tokens: all_tokens,
     root: root,
@@ -2671,6 +3285,20 @@ fn parse_production_prepared(
   analysis: GrammarFirstAnalysis,
   production_name: Symbol
 ) -> Outcome<ParseArtifact> {
+  parse_production_prepared_measured(
+    tokens: tokens,
+    validated: validated,
+    analysis: analysis,
+    production_name: production_name
+  ).outcome
+}
+
+fn parse_production_prepared_measured(
+  tokens: List<Token>,
+  validated: ValidatedGrammarRoot,
+  analysis: GrammarFirstAnalysis,
+  production_name: Symbol
+) -> ParseProductionMeasured {
   let root = validated.root
   match grammar_lookup_production(root: root, name: production_name) {
     Holds { value: production } =>
@@ -2684,32 +3312,44 @@ fn parse_production_prepared(
         table: table,
         prov: prov
       ) {
-        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: final_table } =>
           if is_empty(xs: remaining) {
             let stamped = parse_wrap_production_captured(
               production: production,
               captured: captured,
               prov: inner_prov
             )
-            Accepted {
-              value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
-              diagnostics: parse_diags_to_diagnostics(diags: diags)
+            ParseProductionMeasured {
+              outcome: Accepted {
+                value: ParseArtifact { tree: stamped.node, span_index: stamped.prov.index },
+                diagnostics: parse_diags_to_diagnostics(diags: diags)
+              },
+              memo: parse_table_memo_stats(table: final_table)
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(tokens: remaining)) }
+            ParseProductionMeasured {
+              outcome: Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(tokens: remaining)) },
+              memo: parse_table_memo_stats(table: final_table)
+            }
           }
-        ParseExprRejected { diagnostics: diags, table: _ } =>
-          Rejected {
-            diagnostics: parse_diags_to_non_empty(
-              diags: diags,
-              default: parse_e1_syntax_error_diagnostic(
-                at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
+        ParseExprRejected { diagnostics: diags, table: final_table } =>
+          ParseProductionMeasured {
+            outcome: Rejected {
+              diagnostics: parse_diags_to_non_empty(
+                diags: diags,
+                default: parse_e1_syntax_error_diagnostic(
+                  at: node_locus(node: grammar_to_node(grammar: ModeledGrammar { root: root }))
+                )
               )
-            )
+            },
+            memo: parse_table_memo_stats(table: final_table)
           }
       }
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
+      ParseProductionMeasured {
+        outcome: Rejected { diagnostics: diagnostics_singleton(d: d) },
+        memo: parse_memo_stats_empty()
+      }
   }
 }
 
@@ -2779,41 +3419,71 @@ fn overlap_residue_stage_from_parse_grammar(grammar: ParseGrammar) -> Optional<N
   }
 }
 
+// The unmeasured door, retained for every caller that does not own a clock or a relay, and defined
+// as the projection of the measured fold rather than restated beside it.
 fn parse_module_prepared(
   tokens: TokenStream,
   prepared: PreparedGrammar,
   validation_residue: Diagnostics
 ) -> Outcome<ParseArtifact> {
+  parse_module_prepared_measured(
+    tokens: tokens,
+    prepared: prepared,
+    validation_residue: validation_residue
+  ).outcome
+}
+
+// A VOID GRAMMAR CONSULTS NO MEMO, so its accounting is empty rather than absent: the counters are
+// zero because nothing was looked up, which is an answer. Reporting no stats at all would make a
+// void parse indistinguishable from a parse whose stats were dropped.
+fn parse_module_prepared_measured(
+  tokens: TokenStream,
+  prepared: PreparedGrammar,
+  validation_residue: Diagnostics
+) -> ParseProductionMeasured {
   let ntok = token_stream_remaining_count(stream: tokens)
   match prepared {
     PreparedVoidGrammar =>
       if ntok == 0 {
-        Accepted {
-          value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty() },
-          diagnostics: validation_residue
+        ParseProductionMeasured {
+          outcome: Accepted {
+            value: ParseArtifact { tree: grammar_to_node(grammar: VoidGrammar), span_index: span_index_empty() },
+            diagnostics: validation_residue
+          },
+          memo: parse_memo_stats_empty()
         }
       } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(
-            d: parse_g0_tokens_remain_diagnostic(tokens: token_stream_remaining(stream: tokens))
-          )
+        ParseProductionMeasured {
+          outcome: Rejected {
+            diagnostics: diagnostics_singleton(
+              d: parse_g0_tokens_remain_diagnostic(tokens: token_stream_remaining(stream: tokens))
+            )
+          },
+          memo: parse_memo_stats_empty()
         }
       }
     PreparedModeled { modeled: modeled } =>
-      match parse_production_prepared(
+      let measured = parse_production_prepared_measured(
         tokens: token_stream_remaining(stream: tokens),
         validated: modeled.validated,
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start
-      ) {
+      )
+      match measured.outcome {
         Accepted { value: artifact, diagnostics: parse_diags } =>
-          Accepted {
-            value: artifact,
-            diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
+          ParseProductionMeasured {
+            outcome: Accepted {
+              value: artifact,
+              diagnostics: diagnostics_merge(outer: validation_residue, inner: parse_diags)
+            },
+            memo: measured.memo
           }
         Rejected { diagnostics: parse_rejected } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
+          ParseProductionMeasured {
+            outcome: Rejected {
+              diagnostics: rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
+            },
+            memo: measured.memo
           }
       }
   }

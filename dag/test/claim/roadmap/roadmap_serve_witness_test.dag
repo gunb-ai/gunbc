@@ -324,17 +324,6 @@ test fn witness_known_methods_parse() -> Bool {
   }
 }
 
-test fn roadmap_serve_instance_keystone_holds() -> Bool {
-  witness_serve_table_selection()
-    && witness_asset_route_serves_modeled_js()
-    && witness_dispatch_status_total()
-    && witness_preview_dispatch_refuses_before_effects()
-    && witness_instance_route_names_posture_and_paths()
-    && witness_live_table_builds_ready_routes()
-    && witness_malformed_route_literal_refuses_table()
-    && witness_unknown_method_folds_501_response()
-}
-
 // ── The approval routes: opening the link is not deciding ────────────────────────────────────
 // THE PAIR EXISTS SO THESE TWO ARE DISTINGUISHABLE. A GET at the approval URL must render and
 // stop; everything that fetches a URL without a person behind it -- link previews, mail scanners,
@@ -354,9 +343,13 @@ test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
     && string_contains(s: r.body, pattern: "abc123")
 }
 
-// THE POST IS A DIFFERENT ROUTE, and it must not answer 200 while the broker is undeployed: a
-// route that reported success here would tell the operator they had approved something no store
-// recorded. It refuses with 501 until the keyring, decision store and publisher exist.
+// THE POST IS A DIFFERENT ROUTE, and it must not answer 200 while the deployment cannot vouch for
+// the identity header: a route that reported success here would tell the operator they had
+// approved something no store recorded, or that someone who set a header had. It now reaches the
+// store's fold (gunbc.auth.approval_decision_store redeem_over_store) and refuses on
+// approval_identity_trust -- 503 with the blocker named -- rather than the 501 it answered while
+// the store did not exist. When the deployment row flips to established, this test's expected
+// status moves with it and the segment below becomes a real redemption.
 test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() -> Bool {
   let r = roadmap_serve_respond(
     method_label: "POST",
@@ -365,7 +358,8 @@ test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() ->
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  r.status == 501
+  r.status == 503
+    && string_contains(s: r.body, pattern: "identity header cannot be trusted on this deployment")
     && !string_contains(s: r.body, pattern: "does not decide anything")
 }
 
@@ -429,6 +423,7 @@ fn caller_supplied_plan_fixture() -> RoadmapAuthorityProjection {
       ],
     },
     accepted: [],
+    withheld: [],
   }
 }
 
