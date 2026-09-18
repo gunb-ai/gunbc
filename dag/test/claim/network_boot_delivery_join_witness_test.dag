@@ -5,7 +5,7 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.uri { Uri, Https }
-import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.toolchain.types { Aarch64, X86_64, Wasm32 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_subject {
@@ -218,6 +218,29 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
   }
 }
 
+test fn mismatched_chainloader_architecture_does_not_establish() -> Bool {
+  match site_pxe_edge_standing(
+    edge: SitePxeEdge {
+      site: "onboarding-segment" as SiteIdentity,
+      admitted_architectures: first_slice_admitted_architectures,
+      discovery: SiteNativeDhcp,
+      bootstrap_transport: ArchitectureChainloader {
+        architecture: Wasm32,
+        filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+        chainloader_digest: content_hash_of_value(value: "ipxe-wrong-arch-fixture"),
+      },
+      global_endpoint_reachability: GlobalHttpsEndpointReachable { observation: obs, observed_at: 1788000000000 },
+    },
+    client_architecture: Aarch64,
+    observation: obs,
+    observed_at: 1788000000000,
+  ) {
+    SitePxeEdgeArchitectureRefused { architecture: a } => a == Wasm32
+    SitePxeEdgeEstablished { receipt: _ } => false
+    SitePxeEdgeUnestablished => false
+  }
+}
+
 test fn unknown_architecture_does_not_establish() -> Bool {
   match site_pxe_edge_standing(
     edge: reachable_edge(discovery: SiteNativeDhcp),
@@ -285,6 +308,40 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
   }
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootSourceOverride)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+  }
+}
+
+test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestIdentified {
+      identity: SignedBootManifestIdentity {
+        target_unit: "BRD-OTHER-UNIT" as UnitKey,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
   }
 }
