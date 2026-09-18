@@ -314,12 +314,13 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // THE ROSTER IS SUPPLIED AT GENERATION 0 -- every claimed group's resting row, which is what the
 // authority log folds to when no transition is recorded -- so the claim stays hermetic while the
 // real group_report producer and the binding that maps it over the roster both execute. The
-// live read of the log itself goes over the fleet and is the wet entry's.
+// live entry, which reads that roster from the event log first, is executed by
+// test.claim.spark.fabric_capacity_standing_wet_witness on the local-repo wet lane.
 fn w_resting_current() -> List<CurrentAuthority> {
   map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none })
 }
 
-test fn the_live_entry_point_runs_its_real_producer_and_refuses_today() -> Bool {
+test fn the_verdict_over_the_resting_roster_runs_its_real_producer_and_refuses_today() -> Bool {
   let live = group_report(group: FabricGroupA)
   match fabric_capacity_standing_current(current: w_resting_current()) {
     ExitSuccess => false

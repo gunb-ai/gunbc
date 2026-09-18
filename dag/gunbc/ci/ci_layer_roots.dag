@@ -374,6 +374,10 @@ data excl_local_repo_wet_bash_materialized_reason: String = "real host-effect ex
 
 data excl_local_repo_wet_bash_materialized_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Exec.Run over a sealed transport script and the emitted-bytes assertions are re-checked under a fixed mock -- which the transport_script_stdin_byte_fidelity note already refuses as vacuous for a byte-fidelity claim -- OR the bin-witness wet class regains an executing per-PR consumer; then these fns re-enroll there, drop off local_repo_wet_schedule, and this row deletes")
 
+data excl_local_repo_wet_executor_identity_reason: String = "real host-effect execution witness whose effects are the EXECUTOR'S OWN IDENTITY AND EVENT-LOG READ: the instrument entry reads the executing host's hostname (shell.Exec.RunArgv, no mock_response), resolves that host's event log layout, and reads each claimed group's serving authority from the log before judging any standing (gunbc.instruments.fabric_capacity_standing fabric_capacity_standing over gunbc.spark.pair_serving_authority_log). No temporary repository is built and nothing is written; on a runner that is no dashboard host the read refuses at the layout step and the entry reports every group unread, which is the route the claim asserts. It is the wet half of the pairing obligation whose hermetic half is test.claim.spark.fabric_capacity_standing_witness over a supplied roster."
+
+data excl_local_repo_wet_executor_identity_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.Exec.RunArgv and the event-log head read, so the instrument entry can be driven hermetically with a fixed executor and a fixed partition head; then the claim re-enrolls as an ordinary hermetic discovery row, drops off local_repo_wet_schedule, and this row deletes")
+
 data excl_local_repo_wet_host_probe_reason: String = "real host-effect execution witness whose ONLY effect is a READ-ONLY HOST PATH PROBE (shell.PosixCommandV.Check, i.e. command -v) -- refused by the hermetic envelope (no mock_response for operation Check), so excluded from the discovery corpus and executed by the required floor's local-repo wet lane. THIS IS A DISTINCT ADMITTED EFFECT, NOT THE THROWAWAY-REPOSITORY PROPERTY excl_local_repo_wet_reason NAMES: these fns build no temporary repository and write nothing. What they share with that class, and what admits them to the same lane, is the negative half -- no network, no cargo, no remote host, no install media. THE VERDICT IS HOST-INDEPENDENT ON THE TOOL-PRESENCE AXIS, MEASURED RATHER THAN ASSUMED (2026-09-02, PR #10055): every arm of both fns returns the literal true, and the npm fn was executed on one host in both conditions -- probe found, and probe exit=127 with sh still resolvable -- returning the same verdict in each. So admitting them imports no host-conditional red. The residual red these fns CAN produce is route-unreachability (no shell at all: TypeError failed to execute sh), which is the same reachability risk every member of this lane already carries and is not specific to the probed tool. PROVENANCE CARRIED FORWARD from the bin-wet row this replaces: falsifier Codex materialization reuses the same PosixCommandV.Check.exists path (migrated off shell.Which.Check, crisp-wren-896, PR #8590)."
 
 data excl_local_repo_wet_host_probe_dissolve: DissolutionCondition = unbound_dissolution(description: "mock_response coverage lands for shell.PosixCommandV.Check, so observe_host_cli_dependency can be asserted under a fixed mock; then these fns re-enroll as ordinary hermetic discovery rows, drop off local_repo_wet_schedule, and this row deletes")
@@ -918,6 +922,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: LocalRepoWetLane,
     reason: excl_local_repo_wet_reason,
     dissolution: excl_local_repo_wet_dissolve},
+  WitnessExclusionRow {
+    pattern: "fabric_capacity_standing_wet_witness_test.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_local_repo_wet_executor_identity_reason,
+    dissolution: excl_local_repo_wet_executor_identity_dissolve},
   WitnessExclusionRow {
     pattern: "devboot_text_blob_real_execution_witness_test.dag",
     classification: LocalRepoWetLane,
