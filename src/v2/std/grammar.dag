@@ -1741,42 +1741,6 @@ fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
   }
 }
 
-fn grammar_symbol_map_put(m: Map<Symbol, Bool>, sym: Symbol) -> Map<Symbol, Bool> {
-  map_insert(m: m, key: sym, value: true)
-}
-
-fn grammar_symbol_list_put(m: Map<Symbol, Bool>, xs: List<Symbol>) -> Map<Symbol, Bool> {
-  fold_list(
-    xs: xs,
-    empty: m,
-    cons: fn(acc, sym) { grammar_symbol_map_put(m: acc, sym: sym) }
-  )
-}
-
-fn grammar_node_atom_identities(n: Node) -> List<Symbol> {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(n0) {
-        match n0.kind {
-          TypeNode { connective: Atom { identity: id } } =>
-            Cons { head: id, tail: Empty }
-          _ => Empty
-        }
-      },
-      step: fn(acc, _e, child) { list_append(left: acc, right: child) }
-    }
-  )
-}
-
-fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Symbol, Bool> {
-  grammar_symbol_list_put(m: m, xs: grammar_node_atom_identities(n: n))
-}
-
-fn grammar_carried_symbol_map(grammar: ParseGrammar) -> Map<Symbol, Bool> {
-  grammar_node_insert_atom_identities(m: empty_map(), n: grammar_to_node(grammar: grammar))
-}
-
 type GrammarInterpretationDirection
   = GrammarInterpretBackward
   | GrammarInterpretForward
