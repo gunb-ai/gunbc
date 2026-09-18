@@ -1,8 +1,12 @@
 module v2.test.compiler.pipeline.lower_stage
 
+import v2.compiler.translate { translate }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.test.compiler.pipeline.stage_bridge { pipeline_lower_add_fixture_relationship_holds }
+import v2.std.node { well_formed }
+import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -10,5 +14,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // canonical rust_add_inferred_tree fixture. Match corpus lower lives in long lane.
 
 test fn pipeline_lower_add_fixture_relationship_green() -> Bool {
-  pipeline_lower_add_fixture_relationship_holds()
+  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
+    Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
+    Rejected { diagnostics: _ } => false
+  }
 }
