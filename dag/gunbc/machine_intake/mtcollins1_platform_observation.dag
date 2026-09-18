@@ -3,17 +3,22 @@ module gunbc.machine_intake_mtcollins1_platform_observation
 import std.types { Bool, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.measure { rpm, watt }
-import gunbc.machine_intake_power_supply { PowerSupplyStanding, power_supplies_redundant }
+import gunbc.machine_intake_power_supply { PowerSupplyStanding, both_supplies_have_ac }
 import gunbc.machine_intake_ethernet {
   AttachmentUnobserved,
   BaseboardOnboard,
   BmcDedicated,
+  ConfiguredLink,
   FunctionUnobserved,
   ObservedEthernetLan,
   EthernetFunctionBinding,
   PhysicalEthernetPort,
+  PortUnitUnobserved,
   ethernet_ports_are_distinct,
+  observed_lans_have_distinct_addresses,
 }
+import extdeps.network.ipv4 { ipv4_address }
+import extdeps.network.mac { mac_address }
 
 // PLATFORM FACTS OBSERVED WHILE DOING SOMETHING ELSE, which is why they are recorded here rather
 // than left in a session transcript. None of these was the object of a measurement; each surfaced
@@ -100,13 +105,22 @@ data mtcollins1_power_redundancy_observed_at: NonEmptyStr = "2026-09-06T02:30Z"
 // DHCP client does neither. A second management address that answers to the same credentials is
 // also a second reachable surface, which is a fact an access policy should know about the unit.
 // Bindings inhabit gunbc.machine_intake_ethernet so a second platform does not re-author a Bool.
+// Redundancy is a property of independent power paths, not of this fold. This fold
+// only answers whether two distinct sensor rows both report AC.
+
 data mtcollins1_dedicated_mgmt_port: PhysicalEthernetPort = PhysicalEthernetPort {
+  unit: PortUnitUnobserved {
+    discriminator: "mtcollins1 BMC ports: board serial is not bound on this observation row",
+  },
   panel_label: "dedicated BMC management RJ45",
   connector_label: "RJ45",
   attachment: BaseboardOnboard,
 }
 
 data mtcollins1_second_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
+  unit: PortUnitUnobserved {
+    discriminator: "mtcollins1 BMC ports: board serial is not bound on this observation row",
+  },
   panel_label: "second BMC controller interface",
   connector_label: "RJ45",
   attachment: AttachmentUnobserved {
@@ -119,8 +133,10 @@ data mtcollins1_dedicated_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
     port: mtcollins1_dedicated_mgmt_port,
     function: BmcDedicated,
   },
-  address: "192.168.1.228",
-  mac: "28:c1:3c:8a:d6:4c",
+  network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 228),
+  link: ConfiguredLink {
+    configured: mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 76),
+  },
 }
 
 data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
@@ -130,8 +146,10 @@ data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
       discriminator: "Second BMC IP on the same controller. Not classified as dedicated management. NCSI versus a second PHY is unobserved.",
     },
   },
-  address: "192.168.1.231",
-  mac: "28:c1:3c:8a:d6:4d",
+  network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 231),
+  link: ConfiguredLink {
+    configured: mac_address(octet1: 40, octet2: 193, octet3: 60, octet4: 138, octet5: 214, octet6: 77),
+  },
 }
 
 fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
@@ -139,8 +157,7 @@ fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
     a: mtcollins1_dedicated_bmc_lan.binding.port,
     b: mtcollins1_second_bmc_lan.binding.port,
   )
-    && (mtcollins1_dedicated_bmc_lan.address as String) != (mtcollins1_second_bmc_lan.address as String)
-    && (mtcollins1_dedicated_bmc_lan.mac as String) != (mtcollins1_second_bmc_lan.mac as String)
+    && observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan)
     && mtcollins1_dedicated_bmc_lan.binding.function == BmcDedicated
     && match mtcollins1_second_bmc_lan.binding.function {
       FunctionUnobserved { discriminator: _ } => true
@@ -160,11 +177,11 @@ data mtcollins1_psu2_if_corded: PowerSupplyStanding = PowerSupplyStanding {
 }
 
 fn mtcollins1_power_redundancy_probe() -> ProcessExit {
-  if power_supplies_redundant(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_standing) {
-    return exit_failure(reason: "power redundancy: the measured rows were reported REDUNDANT, but PSU2 asserts [Power Supply AC lost] with 0 W output and 0 RPM")
+  if both_supplies_have_ac(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_standing) {
+    return exit_failure(reason: "both-AC probe: the measured rows were reported as both having AC, but PSU2 asserts [Power Supply AC lost] with 0 W output and 0 RPM")
   }
-  if power_supplies_redundant(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_if_corded) == false {
-    return exit_failure(reason: "power redundancy: two present, powered supplies were NOT reported redundant, so the check cannot distinguish the corded case and its verdict on the live rows carries no information")
+  if both_supplies_have_ac(a: mtcollins1_psu1_standing, b: mtcollins1_psu2_if_corded) == false {
+    return exit_failure(reason: "both-AC probe: two present, powered supplies were NOT reported as both having AC, so the check cannot distinguish the corded case and its verdict on the live rows carries no information")
   }
   return ExitSuccess
 }

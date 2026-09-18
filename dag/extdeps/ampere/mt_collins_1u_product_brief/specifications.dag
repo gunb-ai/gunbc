@@ -12,7 +12,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.ampere.mt_collins_1u_product_brief.subject {
   MtCollins1UPublicProductBrief, mt_collins_1u_public_product_brief, mt_collins_1u_brief_authority,
 }
-import extdeps.standards.nic_attachment { NamedOnboardController, OnboardNetworkController }
+import extdeps.standards.nic_attachment { NamedOnboardController, NamedOnboardPhy, OnboardPhyUnstated, OnboardControllerUnstated, OnboardNetworkController }
 
 data extdeps_external_authority_anchor: ExternalAuthority = mt_collins_1u_brief_authority
 
@@ -41,13 +41,19 @@ data mt_collins_1u_specifications_subject: MtCollins1UPublicProductBrief = mt_co
 
 data mt_collins_1u_onboard_data_network: OnboardNetworkController = OnboardNetworkController {
   controller: NamedOnboardController { part: "Intel i350" },
+  phy: OnboardPhyUnstated {
+    read_obligation: "The Mt. Collins 1U brief names Intel i350 as the host data controller. It does not name a PHY OPN. Discriminator: a board silkscreen, FRU, or ethtool/lspci census of a unit of this class.",
+  },
   port_count: 2,
   per_port_bandwidth: bandwidth(count: 1000000000),
   purpose: "host data networking",
 }
 
 data mt_collins_1u_bmc_manageability_network: OnboardNetworkController = OnboardNetworkController {
-  controller: NamedOnboardController { part: "Realtek RTL8211E" },
+  controller: OnboardControllerUnstated {
+    read_obligation: "The Mt. Collins 1U brief names Realtek RTL8211E on the BMC manageability port. That part is a PHY. The MAC/controller OPN is unstated. Discriminator: a board silkscreen, FRU, or lspci census of a unit of this class.",
+  },
+  phy: NamedOnboardPhy { part: "Realtek RTL8211E" },
   port_count: 1,
   per_port_bandwidth: bandwidth(count: 1000000000),
   purpose: "BMC manageability port",

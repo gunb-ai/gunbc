@@ -2,6 +2,9 @@ module gunbc.machine_intake_ethernet
 
 import std.types { Bool, NonEmptyStr, String }
 import extdeps.standards.nic_attachment { NicAttachmentClass }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address_eq }
+import extdeps.network.mac { Eui48Address }
+import gunbc.machine_intake_subject { UnitKey }
 
 // ONE PHYSICAL CONNECTOR IS NOT ONE FUNCTION. Mt. Collins initially misread a second BMC
 // address as the host PXE interface. Mt. Jade's rear panel can carry a dedicated BMC RJ45
@@ -9,13 +12,19 @@ import extdeps.standards.nic_attachment { NicAttachmentClass }
 // "is dedicated management" cannot represent that. Connector identity and function bindings
 // are therefore separate types. Expansion-card attachment is the standard
 // NicAttachmentClass, not a second PcieCem/OcpNic3 spelling.
+// Panel text is an observation. Identity is unit + locator + attachment.
 
 type EthernetAttachment
   = BaseboardOnboard
   | NicClass { class: NicAttachmentClass }
   | AttachmentUnobserved { discriminator: NonEmptyStr }
 
+type EthernetPortUnit
+  = PortOnUnit { key: UnitKey }
+  | PortUnitUnobserved { discriminator: NonEmptyStr }
+
 type PhysicalEthernetPort {
+  unit: EthernetPortUnit
   panel_label: NonEmptyStr
   connector_label: NonEmptyStr
   attachment: EthernetAttachment
@@ -33,21 +42,50 @@ type EthernetFunctionBinding {
   function: EthernetFunction
 }
 
+type EthernetLinkAddress
+  = ConfiguredLink { configured: Eui48Address }
+  | PermanentAndConfigured { permanent: Eui48Address, configured: Eui48Address }
+
 type ObservedEthernetLan {
   binding: EthernetFunctionBinding
-  address: NonEmptyStr
-  mac: NonEmptyStr
+  network_address: Ipv4Address
+  link: EthernetLinkAddress
+}
+
+fn ethernet_port_units_agree(a: EthernetPortUnit, b: EthernetPortUnit) -> Bool {
+  match a {
+    PortOnUnit { key: ka } =>
+      match b {
+        PortOnUnit { key: kb } => (ka as String) == (kb as String)
+        PortUnitUnobserved { discriminator: _ } => false
+      }
+    PortUnitUnobserved { discriminator: da } =>
+      match b {
+        PortOnUnit { key: _ } => false
+        PortUnitUnobserved { discriminator: db } => (da as String) == (db as String)
+      }
+  }
+}
+
+fn ethernet_ports_are_the_same_connector(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {
+  ethernet_port_units_agree(a: a.unit, b: b.unit)
+    && (a.panel_label as String) == (b.panel_label as String)
+    && (a.connector_label as String) == (b.connector_label as String)
+    && a.attachment == b.attachment
 }
 
 fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {
-  (a.panel_label as String) != (b.panel_label as String)
+  ethernet_ports_are_the_same_connector(a: a, b: b) == false
 }
 
 fn ethernet_port_may_carry_multiple_functions(
   a: EthernetFunctionBinding,
   b: EthernetFunctionBinding,
 ) -> Bool {
-  (a.port.panel_label as String) == (b.port.panel_label as String)
-    && (a.port.connector_label as String) == (b.port.connector_label as String)
+  ethernet_ports_are_the_same_connector(a: a.port, b: b.port)
     && (a.function == b.function) == false
+}
+
+fn observed_lans_have_distinct_addresses(a: ObservedEthernetLan, b: ObservedEthernetLan) -> Bool {
+  ipv4_address_eq(a: a.network_address, b: b.network_address) == false
 }

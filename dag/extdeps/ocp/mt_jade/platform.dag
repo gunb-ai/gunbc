@@ -20,7 +20,7 @@ import std.measure {
   millimeter,
   rack_unit,
 }
-import extdeps.standards.nic_attachment { NamedOnboardController, OnboardNetworkController }
+import extdeps.standards.nic_attachment { NamedOnboardPhy, OnboardControllerUnstated, OnboardNetworkController }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, CitedFigureStanding, TranscribedUncited }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
 import extdeps.bmc.endpoint { BmcFirmwareFamily, AmiMegaRac, OpenBmc }
@@ -444,7 +444,10 @@ type MtJadeBmcManagementNetwork {
 
 data mt_jade_bmc_management_network: MtJadeBmcManagementNetwork = MtJadeBmcManagementNetwork {
   network: OnboardNetworkController {
-    controller: NamedOnboardController { part: mt_jade_bmc_ethernet_phy.ordering_part_number },
+    controller: OnboardControllerUnstated {
+      read_obligation: "OCP Mt. Jade Rev 1.0 names RTL8211E as the BMC Ethernet PHY and AST2500 as the BMC. It does not name a MAC/controller OPN for the manageability port. Discriminator: a board silkscreen, FRU, or lspci census of a unit of this class.",
+    },
+    phy: NamedOnboardPhy { part: mt_jade_bmc_ethernet_phy.ordering_part_number },
     port_count: 1,
     per_port_bandwidth: bandwidth(count: 1000000000),
     purpose: "BMC manageability",

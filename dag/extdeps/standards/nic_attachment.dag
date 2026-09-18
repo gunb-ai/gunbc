@@ -29,8 +29,13 @@ type OnboardControllerIdentity
   = NamedOnboardController { part: NonEmptyStr }
   | OnboardControllerUnstated { read_obligation: NonEmptyStr }
 
+type OnboardPhyIdentity
+  = NamedOnboardPhy { part: NonEmptyStr }
+  | OnboardPhyUnstated { read_obligation: NonEmptyStr }
+
 type OnboardNetworkController {
   controller: OnboardControllerIdentity
+  phy: OnboardPhyIdentity
   port_count: Nat
   per_port_bandwidth: Bandwidth
   purpose: NonEmptyStr
