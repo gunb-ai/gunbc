@@ -78,6 +78,7 @@ type NetworkBootManifestVerificationClass
   | ManifestVerificationWrongMessage
   | ManifestVerificationWrongTarget
   | ManifestVerificationWrongArchitecture
+  | ManifestVerificationWrongFirmwareClass
   | ManifestVerificationExpired
   | ManifestVerificationNotYetValid
   | ManifestVerificationReplay
@@ -100,12 +101,6 @@ type NetworkBootManifestRefusal
   | ManifestJoinWrongTarget
   | ManifestJoinWrongAttempt
 
-// An authored plan cannot inhabit MeasuredNetworkBootFact. The class travels on
-// the receipt so an unrostered DeclarationRef cannot silently establish.
-type NetworkBootEvidenceClass
-  = MeasuredNetworkBootFact
-  | NonEstablishingNetworkBootPredecessor
-
 data network_boot_requirements_all: List<NetworkBootRequirement> = [
   NetworkBootBootSourceOverride,
   NetworkBootClientBootMode,
@@ -120,13 +115,13 @@ type FleetBootServiceReceipt {
   https_boot_endpoint: Uri
   origin_custom_domain: Uri
   signing_key_identity: NonEmptyStr
-  evidence_class: NetworkBootEvidenceClass
   observation: DeclarationRef
   observed_at: EpochMs
 }
 
 type FleetBootServiceStanding
   = FleetBootServiceEstablished { receipt: FleetBootServiceReceipt }
+  | FleetBootServicePredecessor { observation: DeclarationRef }
   | FleetBootServiceUnestablished
 
 // DHCP filenames and URLs are routing hints. They never become identity or integrity evidence.
@@ -216,24 +211,24 @@ type ObservedDhcpPxeClient {
 type ObservedClientBootModeReceipt {
   target: BootDeliveryTarget
   client: ObservedDhcpPxeClient
-  evidence_class: NetworkBootEvidenceClass
   observation: DeclarationRef
   observed_at: EpochMs
 }
 
 type ObservedClientBootModeStanding
   = ClientBootModeObserved { receipt: ObservedClientBootModeReceipt }
+  | ClientBootModePredecessor { observation: DeclarationRef }
   | ClientBootModeUnobserved
 
 type NetworkBootBootControlReceipt {
   target: BootDeliveryTarget
-  evidence_class: NetworkBootEvidenceClass
   observation: DeclarationRef
   observed_at: EpochMs
 }
 
 type BootControlReceiptStanding
   = BootControlObserved { receipt: NetworkBootBootControlReceipt }
+  | BootControlPredecessor { observation: DeclarationRef }
   | BootControlUnobserved
 
 // One canonical signed ticket. Verification of signature and digests is 0D; this slice
@@ -260,13 +255,11 @@ type SignedBootManifestIdentity {
 type SignedBootManifestStanding
   = SignedBootManifestVerified {
       identity: SignedBootManifestIdentity
-      evidence_class: NetworkBootEvidenceClass
       observation: DeclarationRef
       observed_at: EpochMs
     }
   | SignedBootManifestIdentified {
       identity: SignedBootManifestIdentity
-      evidence_class: NetworkBootEvidenceClass
       observation: DeclarationRef
       observed_at: EpochMs
     }
@@ -316,109 +309,93 @@ fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRe
 // barebones) as first candidate and Mt. Collins after CD as fallback. No UnitKey
 // is minted here.
 // Production consumer of this join: BoundBootDeliveryEvidence.network_boot, read
-// by gunbc.boot_artifact_delivery pxe_chain_candidate. That field is minted by
-// join_network_boot_delivery once one production assembler holds fleet + site +
-// client + control + a SignedBootManifestVerified ticket together. 0B/0C/0D each
-// own one receipt family and cannot call the join without assembling the others
-// (0D importing this module to wrap a ticket is not a join consumer). Trigger:
-// the intake evidence assembler that fills BoundBootDeliveryEvidence for a live
-// unit — not 0C/0D landing their PRs.
+// by gunbc.boot_artifact_delivery pxe_chain_candidate. 0C does not call this
+// function: it owns only the site edge and binds NetworkBootJoinInputs.site
+// when the first boot offer is observed from the srv4 edge. 0B/0D likewise own
+// one receipt family. The mint is the intake assembler that holds fleet + site
+// + client + control + SignedBootManifestVerified together.
 fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliveryStanding {
   match inputs.fleet {
     FleetBootServiceUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
+    FleetBootServicePredecessor { observation: o } =>
+      NetworkBootDeliveryEvidenceRefused { axis: NetworkBootServingInfrastructure, observation: o }
     FleetBootServiceEstablished { receipt: fleet } =>
-      match fleet.evidence_class {
-        NonEstablishingNetworkBootPredecessor =>
-          NetworkBootDeliveryEvidenceRefused { axis: NetworkBootServingInfrastructure, observation: fleet.observation }
-        MeasuredNetworkBootFact =>
-          match inputs.site {
-            SitePxeEdgeUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
-            SitePxeEdgeArchitectureRefused { architecture: a } => NetworkBootDeliveryArchitectureRefused { architecture: a }
-            SitePxeEdgeEstablished { receipt: _ } =>
-              match inputs.client {
-                ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
-                ClientBootModeObserved { receipt: client } =>
-                  match client.evidence_class {
-                    NonEstablishingNetworkBootPredecessor =>
-                      NetworkBootDeliveryEvidenceRefused { axis: NetworkBootClientBootMode, observation: client.observation }
-                    MeasuredNetworkBootFact =>
-                      match client.client.arch {
-                        UefiX86_64 => NetworkBootDeliveryClientModeRefused { arch: UefiX86_64 }
-                        BiosX86 => NetworkBootDeliveryClientModeRefused { arch: BiosX86 }
-                        HttpBootX86_64 => NetworkBootDeliveryClientModeRefused { arch: HttpBootX86_64 }
-                        HttpBootArm64 => NetworkBootDeliveryClientModeRefused { arch: HttpBootArm64 }
-                        UefiArm64 =>
-                          if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
-                            NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
-                          } else {
-                            match inputs.boot_control {
-                              BootControlUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
-                              BootControlObserved { receipt: control } =>
-                                match control.evidence_class {
-                                  NonEstablishingNetworkBootPredecessor =>
-                                    NetworkBootDeliveryEvidenceRefused { axis: NetworkBootBootSourceOverride, observation: control.observation }
-                                  MeasuredNetworkBootFact =>
-                                    if same_boot_delivery_target(left: control.target, right: inputs.target) == false {
-                                      NetworkBootDeliveryTargetMismatch { axis: NetworkBootBootSourceOverride }
+      match inputs.site {
+        SitePxeEdgeUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
+        SitePxeEdgeArchitectureRefused { architecture: a } => NetworkBootDeliveryArchitectureRefused { architecture: a }
+        SitePxeEdgeEstablished { receipt: _ } =>
+          match inputs.client {
+            ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
+            ClientBootModePredecessor { observation: o } =>
+              NetworkBootDeliveryEvidenceRefused { axis: NetworkBootClientBootMode, observation: o }
+            ClientBootModeObserved { receipt: client } =>
+              match client.client.arch {
+                UefiX86_64 => NetworkBootDeliveryClientModeRefused { arch: UefiX86_64 }
+                BiosX86 => NetworkBootDeliveryClientModeRefused { arch: BiosX86 }
+                HttpBootX86_64 => NetworkBootDeliveryClientModeRefused { arch: HttpBootX86_64 }
+                HttpBootArm64 => NetworkBootDeliveryClientModeRefused { arch: HttpBootArm64 }
+                UefiArm64 =>
+                  if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
+                    NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
+                  } else {
+                    match inputs.boot_control {
+                      BootControlUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
+                      BootControlPredecessor { observation: o } =>
+                        NetworkBootDeliveryEvidenceRefused { axis: NetworkBootBootSourceOverride, observation: o }
+                      BootControlObserved { receipt: control } =>
+                        if same_boot_delivery_target(left: control.target, right: inputs.target) == false {
+                          NetworkBootDeliveryTargetMismatch { axis: NetworkBootBootSourceOverride }
+                        } else {
+                          match inputs.manifest {
+                            SignedBootManifestAbsent => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                            SignedBootManifestIdentified { identity: _, observation: _, observed_at: _ } =>
+                              NetworkBootDeliveryManifestRefused { cause: ManifestUnsignedIdentity }
+                            SignedBootManifestVerificationRefused { observation: refused_obs, observed_at: _, class: vclass } =>
+                              NetworkBootDeliveryManifestRefused {
+                                cause: ManifestVerificationRefused { class: vclass, observation: refused_obs },
+                              }
+                            SignedBootManifestVerified { identity: id, observation: manifest_obs, observed_at: manifest_at } =>
+                              if architecture_is_aarch64(a: id.architecture) == false {
+                                NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongArchitecture { architecture: id.architecture } }
+                              } else {
+                                if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
+                                  NetworkBootDeliveryManifestRefused { cause: ManifestJoinDigestDisagrees }
+                                } else {
+                                  if manifest_at < id.not_before {
+                                    NetworkBootDeliveryManifestRefused {
+                                      cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
+                                    }
+                                  } else {
+                                    if manifest_at >= id.expiry {
+                                      NetworkBootDeliveryManifestRefused {
+                                        cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
+                                      }
                                     } else {
-                                      match inputs.manifest {
-                                        SignedBootManifestAbsent => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
-                                        SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } =>
-                                          NetworkBootDeliveryManifestRefused { cause: ManifestUnsignedIdentity }
-                                        SignedBootManifestVerificationRefused { observation: refused_obs, observed_at: _, class: vclass } =>
-                                          NetworkBootDeliveryManifestRefused {
-                                            cause: ManifestVerificationRefused { class: vclass, observation: refused_obs },
+                                      if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
+                                        NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
+                                      } else {
+                                        if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
+                                          NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
+                                        } else {
+                                          NetworkBootDeliveryEstablished {
+                                            evidence: NetworkBootDeliveryEstablishment {
+                                              target: inputs.target,
+                                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
+                                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
+                                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
+                                              boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
+                                              artifact_digest: inputs.artifact_digest,
+                                            },
                                           }
-                                        SignedBootManifestVerified { identity: id, evidence_class: man_class, observation: manifest_obs, observed_at: manifest_at } =>
-                                          match man_class {
-                                            NonEstablishingNetworkBootPredecessor =>
-                                              NetworkBootDeliveryEvidenceRefused { axis: NetworkBootBootArtifacts, observation: manifest_obs }
-                                            MeasuredNetworkBootFact =>
-                                              if architecture_is_aarch64(a: id.architecture) == false {
-                                                NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongArchitecture { architecture: id.architecture } }
-                                              } else {
-                                                if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
-                                                  NetworkBootDeliveryManifestRefused { cause: ManifestJoinDigestDisagrees }
-                                                } else {
-                                                  if manifest_at < id.not_before {
-                                                    NetworkBootDeliveryManifestRefused {
-                                                      cause: ManifestJoinNotYetValid { not_before: id.not_before, observed_at: manifest_at },
-                                                    }
-                                                  } else {
-                                                    if manifest_at >= id.expiry {
-                                                      NetworkBootDeliveryManifestRefused {
-                                                        cause: ManifestJoinExpired { expiry: id.expiry, observed_at: manifest_at },
-                                                      }
-                                                    } else {
-                                                      if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
-                                                        NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget }
-                                                      } else {
-                                                        if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
-                                                          NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongAttempt }
-                                                        } else {
-                                                          NetworkBootDeliveryEstablished {
-                                                            evidence: NetworkBootDeliveryEstablishment {
-                                                              target: inputs.target,
-                                                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
-                                                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
-                                                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
-                                                              boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
-                                                              artifact_digest: inputs.artifact_digest,
-                                                            },
-                                                          }
-                                                        }
-                                                      }
-                                                    }
-                                                  }
-                                                }
-                                              }
-                                          }
+                                        }
                                       }
                                     }
+                                  }
                                 }
-                            }
+                              }
                           }
-                      }
+                        }
+                    }
                   }
               }
           }
