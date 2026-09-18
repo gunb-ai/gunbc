@@ -668,10 +668,12 @@ fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
 // the line establishes that direct GPU-memory RDMA was DISABLED for the named HCA, not how many host
 // stages the transfer then takes. On a unified-memory SoC that difference is not academic.
 //
-// THE ENABLED SPELLING IS NOT GROUNDED IN A CAPTURE. Every `Disabled` instance here comes from real
-// Group B output; no run in this repository has produced the `Enabled` form, so its exact spelling is
-// inferred from the disabled one's shape. TRIGGER: the first capture from a platform that enables it.
-// SUFFICIENT FOR: the positive arm's reader is exercised against bytes a producer actually emitted.
+// THE GRAMMAR IS NCCL'S OWN FORMAT STRING, NOT AN INFERENCE FROM ONE SPELLING. NVIDIA/nccl
+// src/graph/topo.cc (master at v2.32.3-1, read 2026-09-18) emits
+//   INFO(NCCL_NET, "NET/%s : GPU Direct RDMA %s for HCA %d '%s'", ..., gdrSupport ? "Enabled" : "Disabled", ...)
+// so the state token is exactly `Enabled` or `Disabled` and is followed by ` for `. Every `Disabled`
+// instance in this repository comes from real Group B output; the `Enabled` form is grounded in that
+// format string, not yet in a capture from this fleet.
 type NcclGpuMemoryPath
   = NcclGpuDirectEnabled { read_from: NonEmptyStr }
   | NcclGpuDirectDisabled { read_from: NonEmptyStr }
@@ -681,8 +683,8 @@ type NcclGpuMemoryPath
 // the presence of a kernel module, which is the inference this axis exists to retire -- module
 // presence is an implementation-presence read and never a capability read.
 data nccl_gdr_marker: String = "GPU Direct RDMA "
-data nccl_gdr_state_disabled: String = "Disabled"
-data nccl_gdr_state_enabled: String = "Enabled"
+data nccl_gdr_state_disabled: String = "Disabled for "
+data nccl_gdr_state_enabled: String = "Enabled for "
 
 // NOT A GDR LINE AND A GDR LINE THIS MODULE CANNOT READ ARE DIFFERENT FACTS, and collapsing them is
 // the defect the channel reader above was already repaired for (NcclChannelNotAChannelLine versus

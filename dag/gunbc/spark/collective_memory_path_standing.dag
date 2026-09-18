@@ -72,7 +72,7 @@ fn collective_memory_path_standing(
       match capability {
         GpuDirectRdmaCapabilityUnread { cause: c } =>
           MemoryPathStandingUnread { cause: join(["the platform capability is unread, so a staged path cannot be told from a supported one: ", c as String], "") as NonEmptyStr }
-        GpuDirectRdmaDeviceUnsupported { platform: p, capability_receipt: r } =>
+        GpuDirectRdmaDeviceUnsupported { platform: p, dma_buf: _, capability_receipt: r } =>
           match path {
             NcclGpuDirectDisabled { read_from: l } =>
               MemoryPathStagedAsPlatformRequires { platform: p, capability_receipt: r, observed_from: l }

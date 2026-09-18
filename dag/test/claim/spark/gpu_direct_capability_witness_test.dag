@@ -102,7 +102,7 @@ data gb10: NonEmptyStr = "a unified-memory platform" as NonEmptyStr
 
 test fn w_both_attributes_zero_is_unsupported() -> Bool {
   match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 0 }) {
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } => true
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
   }
@@ -111,7 +111,7 @@ test fn w_both_attributes_zero_is_unsupported() -> Bool {
 test fn w_peer_memory_support_names_its_mechanism() -> Bool {
   match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 1 }, dma_buf: CudaQuerySucceeded { value: 0 }) {
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } => true
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => false
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
   }
 }
@@ -123,7 +123,7 @@ test fn w_peer_memory_support_names_its_mechanism() -> Bool {
 // end-to-end capability (review 5243531470).
 test fn w_dma_buf_alone_does_not_overturn_an_unsupported_device() -> Bool {
   match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 1 }) {
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } => true
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
   }
@@ -135,7 +135,7 @@ test fn w_dma_buf_alone_does_not_overturn_an_unsupported_device() -> Bool {
 test fn w_a_failed_decider_query_leaves_the_capability_unread() -> Bool {
   match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQueryFailed { stage: CudaAttributeQueryStage, result_code: 3, raw_reply: "116 0 0 3 -1" as NonEmptyStr }, dma_buf: CudaQuerySucceeded { value: 0 }) {
     GpuDirectRdmaCapabilityUnread { cause: _ } => true
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => false
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } => false
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } => false
   }
 }
@@ -145,7 +145,7 @@ test fn w_a_failed_decider_query_leaves_the_capability_unread() -> Bool {
 // DMA-BUF could be read changes nothing about the answer.
 test fn w_a_failed_secondary_query_does_not_unread_a_decided_negative() -> Bool {
   match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQueryFailed { stage: CudaAttributeQueryStage, result_code: 3, raw_reply: "116 0 0 3 -1" as NonEmptyStr }) {
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } => true
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } => false
   }
@@ -324,7 +324,7 @@ test fn w_a_device_unsupported_reply_folds_to_unsupported_with_no_defect() -> Bo
     dma_buf: cuda_attribute_outcome(a: DmaBufSupportedAttribute, stdout: "124 0 0 0 0"),
   )
   match capability {
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } =>
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } =>
       no_defect_established(s: collective_memory_path_standing(capability: capability, observed: staged))
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
@@ -341,7 +341,7 @@ test fn w_a_probe_that_could_not_run_is_unread_and_not_unsupported() -> Bool {
     dma_buf: cuda_attribute_outcome(a: DmaBufSupportedAttribute, stdout: ""),
   ) {
     GpuDirectRdmaCapabilityUnread { cause: _ } => true
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => false
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } => false
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } => false
   }
 }
@@ -460,6 +460,33 @@ test fn w_disagreeing_nccl_lines_contradict_rather_than_go_unread() -> Bool {
         EvidenceContradicts { cause: _ } => true
         _ => false
       }
+    _ => false
+  }
+}
+
+// A KNOWN STATE WORD WITH MORE AFTER IT IS NOT THAT STATE. NCCL's format string is
+// "GPU Direct RDMA %s for HCA ..." with %s exactly Enabled or Disabled, so a prefix match would read
+// `DisabledButUnknown` as disabled. Both prefixed spellings must be unreadable.
+test fn w_a_disabled_prefixed_unknown_state_is_unreadable() -> Bool {
+  match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA DisabledButUnknown for HCA 0 'rocep1s0f1'") {
+    NcclGpuDirectLineUnreadable { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn w_an_enabled_prefixed_unknown_state_is_unreadable() -> Bool {
+  match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA EnabledPartial for HCA 0 'rocep1s0f1'") {
+    NcclGpuDirectLineUnreadable { cause: _ } => true
+    _ => false
+  }
+}
+
+// 124 IS KEPT WHEN 116 SAYS NO, so a device answering 0 to the APIs and 1 to DMA-BUF is not retained
+// as the same value as one answering 0 to both.
+test fn w_an_unsupported_device_keeps_its_dma_buf_reading() -> Bool {
+  match gpu_direct_rdma_capability(platform: gb10, device_api: CudaQuerySucceeded { value: 0 }, dma_buf: CudaQuerySucceeded { value: 1 }) {
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: d, capability_receipt: _ } =>
+      match d { BoolRead { value: v } => v, BoolUnread { cause: _ } => false }
     _ => false
   }
 }

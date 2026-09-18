@@ -17,7 +17,9 @@ import gunbc.spark.collective_memory_path_standing {
 }
 import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
 import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability }
-import gunbc.spark.serving_rank_observe { RankGpuDirectCapabilityReceipt }
+import gunbc.spark.serving_rank_observe {
+  RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, rank_nccl_memory_path_receipt, observed_rank_subjects_agree,
+}
 import extdeps.nvidia.nccl {
   nccl_gpu_memory_path_of_text,
   NcclRoceGidSelection, NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
@@ -191,16 +193,23 @@ type RankStanding
 // exit, which reports rather than qualifies. Absent when the log that carries the GDR lines could not
 // be captured or the transport itself was unread.
 type RankMemoryPathFacet sole_constructor {
-  incarnation: NonEmptyStr
+  from: ObservedRankSubject
   standing: CollectiveMemoryPathStanding
   defect: MemoryPathDefectStanding
 }
+
+// A CAPABILITY AND AN NCCL READING FROM DIFFERENT SUBJECTS ARE NOT A STANDING. The join compares the
+// two receipts' subjects -- host and container incarnation -- and refuses by name when they differ,
+// rather than stamping one side's identity onto a result built partly from the other.
+type RankMemoryPathReading
+  = RankMemoryPathRead { facet: RankMemoryPathFacet }
+  | RankMemoryPathProvenanceMismatch { capability_from: ObservedRankSubject, nccl_from: ObservedRankSubject }
 
 type RankReport sole_constructor {
   subject: ObservedRankSubject
   lines: List<String>
   standing: RankStanding
-  memory_path: RankMemoryPathFacet?
+  memory_path: RankMemoryPathReading?
 }
 
 fn rank_standing_is_read(s: RankStanding) -> Bool {
@@ -243,7 +252,7 @@ fn rank_startup_facet(
 {
   match log {
     RankLogRefused { refusal: r } => RankStartupRefused { refusal: r }
-    RankLogCaptured { text: t } =>
+    RankLogCaptured { from: _, text: t } =>
       match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
         RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
         RankRevisionRead { revision: rev } =>
@@ -275,24 +284,30 @@ fn rank_startup_facet(
 // only on a device that could register and a runtime that did not.
 data glm_group_b_desired_memory_path: DesiredCollectiveMemoryPath = DirectRegistrationWhereDevicePermits
 
-fn rank_memory_path_facet(receipt: RankGpuDirectCapabilityReceipt, captured: String) -> RankMemoryPathFacet {
-  let standing = collective_memory_path_standing(
-    capability: receipt.capability,
-    observed: nccl_gpu_memory_path_of_text(captured_text: captured),
-  )
-  RankMemoryPathFacet {
-    incarnation: receipt.incarnation,
-    standing: standing,
-    defect: memory_path_defect_standing(policy: glm_group_b_desired_memory_path, s: standing),
+fn rank_memory_path_reading(capability: RankGpuDirectCapabilityReceipt, nccl: RankNcclMemoryPathReceipt) -> RankMemoryPathReading {
+  if observed_rank_subjects_agree(a: capability.from, b: nccl.from) {
+    let standing = collective_memory_path_standing(capability: capability.capability, observed: nccl.reading)
+    RankMemoryPathRead { facet: RankMemoryPathFacet {
+      from: capability.from,
+      standing: standing,
+      defect: memory_path_defect_standing(policy: glm_group_b_desired_memory_path, s: standing),
+    } }
+  } else {
+    RankMemoryPathProvenanceMismatch { capability_from: capability.from, nccl_from: nccl.from }
   }
 }
 
-fn rank_memory_path_text(f: RankMemoryPathFacet) -> String {
-  match f.defect {
-    DefectEstablished { cause: c } => join(["DEFECT: ", c as String], "")
-    EvidenceContradicts { cause: c } => join(["CONTRADICTION: ", c as String], "")
-    DefectStandingUnread { cause: c } => join(["unread: ", c as String], "")
-    NoDefectEstablished { because: _ } => memory_path_standing_text(s: f.standing) as String
+fn rank_memory_path_text(r: RankMemoryPathReading) -> String {
+  match r {
+    RankMemoryPathProvenanceMismatch { capability_from: c, nccl_from: n } =>
+      join(["PROVENANCE MISMATCH: the capability was read from ", observed_rank_subject_text(s: c), " and the NCCL lines from ", observed_rank_subject_text(s: n), ", so no memory-path standing is drawn"], "")
+    RankMemoryPathRead { facet: f } =>
+      match f.defect {
+        DefectEstablished { cause: c } => join(["DEFECT: ", c as String], "")
+        EvidenceContradicts { cause: c } => join(["CONTRADICTION: ", c as String], "")
+        DefectStandingUnread { cause: c } => join(["unread: ", c as String], "")
+        NoDefectEstablished { because: _ } => memory_path_standing_text(s: f.standing) as String
+      }
   }
 }
 
@@ -345,7 +360,7 @@ fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankS
           lines: [rank_observation_refusal_text(r: r)],
           standing: RankNotFullyRead { what: "the container log could not be captured" as NonEmptyStr },
         }
-        RankLogCaptured { text: t } =>
+        RankLogCaptured { from: _, text: t } =>
           match rank_transport_from_log(subject: subject, container: c, captured: t) {
             RankTransportRefused { refusal: r } => RankTransportFacet {
               lines: [rank_observation_refusal_text(r: r)],
@@ -357,15 +372,15 @@ fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankS
             }
           }
       }
-      let memory_path = match log {
-        RankLogRefused { refusal: _ } => none
-        RankLogCaptured { text: t } =>
-          Present { value: rank_memory_path_facet(
-            receipt: observe_rank_gpu_direct_capability(ctx: ctx, subject: pinned, platform: spark_gb10_platform),
-            captured: t,
+      let memory_path = match rank_nccl_memory_path_receipt(log: log) {
+        Absent => none
+        Present { value: nccl } =>
+          Present { value: rank_memory_path_reading(
+            capability: observe_rank_gpu_direct_capability(ctx: ctx, subject: pinned, platform: spark_gb10_platform),
+            nccl: nccl,
           ) }
       }
-      let memory_lines = match memory_path { Absent => [] as List<String>, Present { value: f } => [rank_memory_path_text(f: f)] }
+      let memory_lines = match memory_path { Absent => [] as List<String>, Present { value: r } => [rank_memory_path_text(r: r)] }
       let startup = match rank_startup_facet(ctx: ctx, subject: pinned, container: c, log: log) {
         RankStartupRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
         RankStartupObserved { reading: sr } => RankFacet {

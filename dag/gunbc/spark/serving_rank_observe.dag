@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { TokenCount, ConcurrentRequestHundredths }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.python { PythonProgramText, python_run_program_argv }
 import extdeps.nvidia.cuda_driver {
@@ -24,6 +24,7 @@ import extdeps.docker.container_inspect {
   container_maps_device, container_adds_capability, container_unlocks_memlock, verbs_shape_wire,
 }
 import extdeps.nvidia.nccl {
+  NcclGpuMemoryPathReading, nccl_gpu_memory_path_of_text,
   NcclTransportVerdict, NcclTransportRead, NcclTransportRefused, NcclTransportReading,
   NcclRealizedTransport, nccl_realized_transport_wire, nccl_transport_verdict,
   nccl_transport_refusal_text,
@@ -312,8 +313,11 @@ data rank_transport_step: NonEmptyStr = "nccl-transport-readback" as NonEmptyStr
 // SO THE CAPTURE IS ITS OWN STEP AND THE TWO FOLDS ARE PURE. Each fold takes the text, which is also
 // what makes both of them exercisable from a fixture without a host: the witness over the 2026-09-16
 // captures calls exactly these two functions with exactly these arguments.
+// THE CAPTURE CARRIES THE SUBJECT IT WAS TAKEN FROM, so a reading derived from the text can be
+// joined only against evidence from the same host and container incarnation (side-chat review of
+// #11560: coherence enforced by a call path is not coherence enforced by the values).
 type RankLogCapture
-  = RankLogCaptured { text: String }
+  = RankLogCaptured { from: ObservedRankSubject, text: String }
   | RankLogRefused { refusal: RankObservationRefusal }
 
 fn capture_rank_log(ctx: SparkMaterializeContext, subject: ObservedRankSubject, step: NonEmptyStr) -> RankLogCapture
@@ -321,7 +325,7 @@ fn capture_rank_log(ctx: SparkMaterializeContext, subject: ObservedRankSubject, 
 {
   match rank_leg(ctx: ctx, subject: subject, step: step, command: docker_logs_command(name: subject.container)) {
     RankLegFailed { refusal: r, stderr: _ } => RankLogRefused { refusal: r }
-    RankLegRan { stdout: out } => RankLogCaptured { text: out }
+    RankLegRan { stdout: out } => RankLogCaptured { from: subject, text: out }
   }
 }
 
@@ -363,7 +367,7 @@ fn observe_rank_transport(
 {
   match capture_rank_log(ctx: ctx, subject: subject, step: rank_transport_step) {
     RankLogRefused { refusal: r } => RankTransportRefused { refusal: r }
-    RankLogCaptured { text: out } => rank_transport_from_log(subject: subject, container: container, captured: out)
+    RankLogCaptured { from: _, text: out } => rank_transport_from_log(subject: subject, container: container, captured: out)
   }
 }
 
@@ -400,11 +404,19 @@ fn nccl_transport_read_from(t: NcclRealizedTransport) -> NonEmptyStr {
 // because zero is what an unsupported device says.
 data rank_gpu_direct_step: NonEmptyStr = "cuda-device-attribute" as NonEmptyStr
 
+// EACH LEG KEEPS WHAT THE PROBE PRINTED BESIDE WHAT IT WAS READ AS. A successful outcome retains only
+// the value, so the raw reply is carried here -- the receipt must hold the evidence, not only the
+// conclusion derived from it.
+type RankCudaAttributeReading {
+  reply: String
+  outcome: CudaQueryOutcome
+}
+
 fn observe_rank_cuda_attribute(
   ctx: SparkMaterializeContext,
   subject: ObservedRankSubject,
   a: CudaDeviceAttribute,
-) -> CudaQueryOutcome
+) -> RankCudaAttributeReading
   uses net: Network
 {
   match rank_leg(
@@ -413,18 +425,20 @@ fn observe_rank_cuda_attribute(
     step: rank_gpu_direct_step,
     command: docker_exec_command(name: subject.container, env: [], argv: cuda_device_attribute_argv(a: a)),
   ) {
-    RankLegFailed { refusal: r, stderr: _ } =>
-      CudaQueryUnparsed { cause: rank_observation_refusal_text(r: r) as NonEmptyStr }
-    RankLegRan { stdout: out } => cuda_attribute_outcome(a: a, stdout: out)
+    RankLegFailed { refusal: r, stderr: err } =>
+      RankCudaAttributeReading { reply: err, outcome: CudaQueryUnparsed { cause: rank_observation_refusal_text(r: r) as NonEmptyStr } }
+    RankLegRan { stdout: out } => RankCudaAttributeReading { reply: out, outcome: cuda_attribute_outcome(a: a, stdout: out) }
   }
 }
 
-// THE RECEIPT NAMES THE INCARNATION IT WAS READ FROM. Its caller passes a subject pinned to the
-// inspected container's immutable id, so both queries -- and the log the memory-path line is read
-// from -- address one container incarnation: a stop and recreate between legs makes the later legs
-// refuse on a missing id rather than silently joining an old log to a new container's capability.
-type RankGpuDirectCapabilityReceipt sole_constructor {
-  incarnation: NonEmptyStr
+// THE RECEIPT NAMES THE SUBJECT IT WAS READ FROM AND KEEPS BOTH ATTRIBUTE READINGS. Its caller passes
+// a subject pinned to the inspected container's immutable id; the join in
+// gunbc.spark.glm_group_b_relaunch_cli refuses to combine it with NCCL evidence from any other
+// subject, so an incoherent pair is refused by value, not merely avoided by the call path.
+type RankGpuDirectCapabilityReceipt {
+  from: ObservedRankSubject
+  device_api: RankCudaAttributeReading
+  dma_buf: RankCudaAttributeReading
   capability: GpuDirectRdmaCapability
 }
 
@@ -435,14 +449,33 @@ fn observe_rank_gpu_direct_capability(
 ) -> RankGpuDirectCapabilityReceipt
   uses net: Network
 {
+  let device_api = observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: GpuDirectRdmaSupportedAttribute)
+  let dma_buf = observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: DmaBufSupportedAttribute)
   RankGpuDirectCapabilityReceipt {
-    incarnation: subject.container,
-    capability: gpu_direct_rdma_capability(
-      platform: platform,
-      device_api: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: GpuDirectRdmaSupportedAttribute),
-      dma_buf: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: DmaBufSupportedAttribute),
-    ),
+    from: subject,
+    device_api: device_api,
+    dma_buf: dma_buf,
+    capability: gpu_direct_rdma_capability(platform: platform, device_api: device_api.outcome, dma_buf: dma_buf.outcome),
   }
+}
+
+// THE NCCL SIDE'S RECEIPT, BUILT ONLY FROM A TYPED CAPTURE, so its subject is the one the log was
+// actually read from rather than one a caller supplies beside a bare string.
+type RankNcclMemoryPathReceipt {
+  from: ObservedRankSubject
+  reading: NcclGpuMemoryPathReading
+}
+
+fn rank_nccl_memory_path_receipt(log: RankLogCapture) -> RankNcclMemoryPathReceipt? {
+  match log {
+    RankLogRefused { refusal: _ } => none
+    RankLogCaptured { from: f, text: t } =>
+      Present { value: RankNcclMemoryPathReceipt { from: f, reading: nccl_gpu_memory_path_of_text(captured_text: t) } }
+  }
+}
+
+fn observed_rank_subjects_agree(a: ObservedRankSubject, b: ObservedRankSubject) -> Bool {
+  host_identity_eq(a: a.host, b: b.host) && (a.container as String) == (b.container as String)
 }
 
 // ── (b) THE ENGINE'S STARTUP RESIDUALS, AND THE REVISION THAT EMITTED THEM ────────────────────

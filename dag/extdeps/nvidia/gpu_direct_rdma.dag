@@ -31,6 +31,7 @@ import extdeps.nvidia.cuda_driver {
 type GpuDirectRdmaCapability
   = GpuDirectRdmaDeviceUnsupported {
       platform: NonEmptyStr
+      dma_buf: BoolReading
       capability_receipt: NonEmptyStr
     }
   | GpuDirectRdmaDevicePrerequisiteMet {
@@ -78,7 +79,9 @@ fn outcome_receipt(a: CudaDeviceAttribute, o: CudaQueryOutcome) -> NonEmptyStr {
 }
 
 // THE DEVICE-API ATTRIBUTE IS ASKED FIRST AND ALONE DECIDES THE NEGATIVE. The DMA-BUF reading is
-// carried beside a positive answer as its own reading, and an unread DMA-BUF attribute does NOT
+// carried beside EITHER answer as its own reading -- a device that says no to 116 may still say yes
+// to 124, and three different 124 answers must not collapse into one retained value -- and an
+// unread DMA-BUF attribute does NOT
 // unread the device-API fact: "the device supports the GPUDirect APIs" stays true whether or not the
 // adjacent question could be answered (side-chat review of #11560, 2026-09-18).
 fn gpu_direct_rdma_capability(
@@ -100,7 +103,11 @@ fn gpu_direct_rdma_capability(
       } else {
         GpuDirectRdmaDeviceUnsupported {
           platform: platform,
-          capability_receipt: outcome_receipt(a: GpuDirectRdmaSupportedAttribute, o: device_api),
+          dma_buf: attribute_bool(a: DmaBufSupportedAttribute, o: dma_buf),
+          capability_receipt: join([
+            outcome_receipt(a: GpuDirectRdmaSupportedAttribute, o: device_api) as String, "; ",
+            outcome_receipt(a: DmaBufSupportedAttribute, o: dma_buf) as String,
+          ], "") as NonEmptyStr,
         }
       }
   }
@@ -113,7 +120,7 @@ fn gpu_direct_rdma_capability_wire(c: GpuDirectRdmaCapability) -> NonEmptyStr {
         BoolRead { value: v } => if v { "device-prerequisite-met-with-dma-buf" as NonEmptyStr } else { "device-prerequisite-met" as NonEmptyStr }
         BoolUnread { cause: _ } => "device-prerequisite-met-dma-buf-unread" as NonEmptyStr
       }
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => "device-unsupported" as NonEmptyStr
+    GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } => "device-unsupported" as NonEmptyStr
     GpuDirectRdmaCapabilityUnread { cause: _ } => "unread" as NonEmptyStr
   }
 }
