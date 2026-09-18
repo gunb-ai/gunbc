@@ -6,6 +6,7 @@ import std.measure {
   ByteSize, byte_size_count, Bandwidth, bandwidth_count, Nanosecond, nanosecond_count,
 }
 import product.placement_supply { HostIdentity }
+import product.fabric.identity { FabricIdentity, OfferKey }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.storage.types { PcieLink, Gen5 }
 
@@ -119,18 +120,27 @@ type RankCurveProducer
 
 type NcclTestsDtype = NcclTestsHalf | NcclTestsDtypeUnread
 
-type CollectiveProtocolKey {
+type DtypeJoin
+  = DtypeAgrees
+  | DtypeDiffers
+  | DtypeUnread
+
+type CollectiveProtocol {
   instrument: CollectiveInstrument
   size_semantics: NcclTestsSizeSemantics
   dtype: NcclTestsDtype
   rank_count: Nat
+}
+
+type CollectiveObservationIdentity {
+  protocol: CollectiveProtocol
   run_identity: NonEmptyStr
 }
 
 type CollectiveCurveReading
   = CollectiveCurveRead {
       samples: List<CollectiveSample>,
-      protocol: CollectiveProtocolKey,
+      observation: CollectiveObservationIdentity,
       small_message_shape: CollectiveSmallMessageShape,
       engine_buffer_mode: EngineBufferModeStanding,
       per_layer_all_reduce_count: PerLayerAllReduceCountStanding,
@@ -194,25 +204,37 @@ fn size_semantics_eq(a: NcclTestsSizeSemantics, b: NcclTestsSizeSemantics) -> Bo
   }
 }
 
-fn dtype_eq(a: NcclTestsDtype, b: NcclTestsDtype) -> Bool {
+fn dtype_join(a: NcclTestsDtype, b: NcclTestsDtype) -> DtypeJoin {
   match a {
+    NcclTestsDtypeUnread => DtypeUnread
     NcclTestsHalf => match b {
-      NcclTestsHalf => true
-      NcclTestsDtypeUnread => false
-    }
-    NcclTestsDtypeUnread => match b {
-      NcclTestsDtypeUnread => true
-      NcclTestsHalf => false
+      NcclTestsHalf => DtypeAgrees
+      NcclTestsDtypeUnread => DtypeUnread
     }
   }
 }
 
-fn protocol_key_eq(a: CollectiveProtocolKey, b: CollectiveProtocolKey) -> Bool {
+fn protocol_eq(a: CollectiveProtocol, b: CollectiveProtocol) -> Bool {
   collective_instrument_eq(a: a.instrument, b: b.instrument)
     && size_semantics_eq(a: a.size_semantics, b: b.size_semantics)
-    && dtype_eq(a: a.dtype, b: b.dtype)
+    && match dtype_join(a: a.dtype, b: b.dtype) {
+      DtypeAgrees => true
+      DtypeDiffers => false
+      DtypeUnread => false
+    }
     && a.rank_count == b.rank_count
-    && (a.run_identity as String) == (b.run_identity as String)
+}
+
+fn size_semantics_rank_count_holds(protocol: CollectiveProtocol) -> Bool {
+  match protocol.size_semantics {
+    EachRankContributesTheSizeColumn => true
+    TotalBufferSplitPerPeer { rank_count: n } => n == protocol.rank_count
+  }
+}
+
+fn protocol_matches_roster(protocol: CollectiveProtocol, expected: List<HostIdentity>) -> Bool {
+  size_semantics_rank_count_holds(protocol: protocol)
+    && (protocol.rank_count as Int) == expected.length()
 }
 
 // ONE HOST. Accelerator count and memory here are that host's, not the serving group's.
@@ -235,12 +257,12 @@ type CollectiveGroupAdvertised {
   expected_ranks: List<HostIdentity>
   latency_ceiling: Nanosecond
   latency_message_bytes: ByteSize
-  all_reduce_protocol: CollectiveProtocolKey
+  all_reduce_protocol: CollectiveProtocol
   bandwidth_floor: Bandwidth
   bandwidth_message_bytes: ByteSize
   all_to_all_latency_ceiling: Nanosecond
   all_to_all_message_bytes: ByteSize
-  all_to_all_protocol: CollectiveProtocolKey
+  all_to_all_protocol: CollectiveProtocol
   rank_symmetry_max_latency_multiple: Nat
 }
 
@@ -437,45 +459,69 @@ fn sample_stricter_latency(s: CollectiveSample) -> Nanosecond {
   }
 }
 
-fn curve_protocol_key(reading: CollectiveCurveReading) -> CollectiveProtocolKey? {
+fn curve_protocol(reading: CollectiveCurveReading) -> CollectiveProtocol? {
   match reading {
     CollectiveCurveUnread { because: _ } => none
     CollectiveCurveRead {
       samples: _,
-      protocol: p,
+      observation: obs,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
       window: _,
-    } => Present { value: p }
+    } => Present { value: obs.protocol }
+  }
+}
+
+fn protocol_population_unread_reason(
+  protocol: CollectiveProtocol,
+  expected: List<HostIdentity>,
+) -> NonEmptyStr? {
+  if !size_semantics_rank_count_holds(protocol: protocol) {
+    Present {
+      value: "the size-column rank_count is not the protocol rank_count" as NonEmptyStr,
+    }
+  } else {
+    if (protocol.rank_count as Int) == expected.length() {
+      none
+    } else {
+      Present {
+        value: "the protocol rank_count is not the expected roster" as NonEmptyStr,
+      }
+    }
   }
 }
 
 fn qualify_collective_latency(
   ceiling: Nanosecond,
   at: ByteSize,
-  required: CollectiveProtocolKey,
+  expected: List<HostIdentity>,
+  required: CollectiveProtocol,
   reading: CollectiveCurveReading,
 ) -> CollectiveLatencyStanding {
-  match reading {
+  match protocol_population_unread_reason(protocol: required, expected: expected) {
+    Present { value: b } => CollectiveLatencyUnread { ceiling: ceiling, because: b }
+    Absent => match reading {
     CollectiveCurveUnread { because: b } =>
       CollectiveLatencyUnread { ceiling: ceiling, because: b }
     CollectiveCurveRead {
       samples: samples,
-      protocol: _,
+      observation: _,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
       window: _,
     } =>
-      match curve_protocol_key(reading: reading) {
+      match curve_protocol(reading: reading) {
         Absent => CollectiveLatencyUnread {
           ceiling: ceiling,
           because: "the curve named no protocol key" as NonEmptyStr,
         }
-        Present { value: key } => if protocol_key_eq(a: key, b: required) {
+        Present { value: key } => match protocol_population_unread_reason(protocol: key, expected: expected) {
+          Present { value: b } => CollectiveLatencyUnread { ceiling: ceiling, because: b }
+          Absent => if protocol_eq(a: key, b: required) {
           match sample_at_message_bytes(samples: samples, want: at) {
             Absent => CollectiveLatencyUnread {
               ceiling: ceiling,
@@ -496,34 +542,41 @@ fn qualify_collective_latency(
             because: "the curve's operation and size column are not the advertised protocol key" as NonEmptyStr,
           }
         }
+        }
       }
+    }
   }
 }
 
 fn qualify_collective_bandwidth(
   floor: Bandwidth,
   at: ByteSize,
-  required: CollectiveProtocolKey,
+  expected: List<HostIdentity>,
+  required: CollectiveProtocol,
   reading: CollectiveCurveReading,
 ) -> CollectiveBandwidthStanding {
-  match reading {
+  match protocol_population_unread_reason(protocol: required, expected: expected) {
+    Present { value: b } => CollectiveBandwidthUnread { floor: floor, because: b }
+    Absent => match reading {
     CollectiveCurveUnread { because: b } =>
       CollectiveBandwidthUnread { floor: floor, because: b }
     CollectiveCurveRead {
       samples: samples,
-      protocol: _,
+      observation: _,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
       primitive_attribution: _,
       window: _,
     } =>
-      match curve_protocol_key(reading: reading) {
+      match curve_protocol(reading: reading) {
         Absent => CollectiveBandwidthUnread {
           floor: floor,
           because: "the curve named no protocol key" as NonEmptyStr,
         }
-        Present { value: key } => if protocol_key_eq(a: key, b: required) {
+        Present { value: key } => match protocol_population_unread_reason(protocol: key, expected: expected) {
+          Present { value: b } => CollectiveBandwidthUnread { floor: floor, because: b }
+          Absent => if protocol_eq(a: key, b: required) {
           match sample_at_message_bytes(samples: samples, want: at) {
             Absent => CollectiveBandwidthUnread {
               floor: floor,
@@ -541,7 +594,9 @@ fn qualify_collective_bandwidth(
             because: "the curve's operation and size column are not the advertised protocol key" as NonEmptyStr,
           }
         }
+        }
       }
+    }
   }
 }
 
@@ -550,7 +605,7 @@ fn reading_window(reading: CollectiveCurveReading) -> CollectiveWindowStanding {
     CollectiveCurveUnread { because: b } => WindowStandingUnread { because: b }
     CollectiveCurveRead {
       samples: _,
-      protocol: _,
+      observation: _,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -565,7 +620,7 @@ fn reading_attribution(reading: CollectiveCurveReading) -> CollectivePrimitiveAt
     CollectiveCurveUnread { because: _ } => CollectivePrimitiveAttributionUnestablished
     CollectiveCurveRead {
       samples: _,
-      protocol: _,
+      observation: _,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -653,12 +708,41 @@ fn first_copied_group_curve(ranks: List<RankCollectiveReading>) -> HostIdentity?
   }
 }
 
-fn first_protocol_mismatch(want: CollectiveProtocolKey, ranks: List<RankCollectiveReading>) -> HostIdentity? {
+fn curve_observation(reading: CollectiveCurveReading) -> CollectiveObservationIdentity? {
+  match reading {
+    CollectiveCurveUnread { because: _ } => none
+    CollectiveCurveRead {
+      samples: _,
+      observation: obs,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+      primitive_attribution: _,
+      window: _,
+    } => Present { value: obs }
+  }
+}
+
+fn first_run_mismatch(want: NonEmptyStr, ranks: List<RankCollectiveReading>) -> HostIdentity? {
   match ranks.first() {
     Absent => none
-    Present { value: r } => match curve_protocol_key(reading: r.curve) {
+    Present { value: r } => match curve_observation(reading: r.curve) {
       Absent => Present { value: r.rank }
-      Present { value: key } => if protocol_key_eq(a: key, b: want) {
+      Present { value: obs } => if (obs.run_identity as String) == (want as String) {
+        first_run_mismatch(want: want, ranks: ranks.skip(n: 1))
+      } else {
+        Present { value: r.rank }
+      }
+    }
+  }
+}
+
+fn first_protocol_mismatch(want: CollectiveProtocol, ranks: List<RankCollectiveReading>) -> HostIdentity? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => match curve_protocol(reading: r.curve) {
+      Absent => Present { value: r.rank }
+      Present { value: key } => if protocol_eq(a: key, b: want) {
         first_protocol_mismatch(want: want, ranks: ranks.skip(n: 1))
       } else {
         Present { value: r.rank }
@@ -698,14 +782,16 @@ fn host_receipt_nodes(receipts: List<HostQualificationReceipt>) -> List<HostIden
 fn qualify_rank_symmetry(
   expected: List<HostIdentity>,
   ranks: List<RankCollectiveReading>,
-  required: CollectiveProtocolKey,
+  required: CollectiveProtocol,
 ) -> RankSymmetryStanding {
   if expected.length() == 0 {
     RankSymmetryUnread {
       because: "the group advertisement named no expected ranks; symmetry is unread without a roster" as NonEmptyStr,
     }
   } else {
-    match first_duplicate_host(seen: [], rest: expected) {
+    match protocol_population_unread_reason(protocol: required, expected: expected) {
+      Present { value: b } => RankSymmetryUnread { because: b }
+      Absent => match first_duplicate_host(seen: [], rest: expected) {
       Present { value: _ } => RankSymmetryUnread {
         because: "the expected roster names a host twice; uniqueness is unread, not symmetric" as NonEmptyStr,
       }
@@ -729,8 +815,23 @@ fn qualify_rank_symmetry(
                 Present { value: _ } => RankSymmetryUnread {
                   because: "rank curves do not share the advertised protocol key" as NonEmptyStr,
                 }
-                Absent => RankSymmetryUnread {
-                  because: "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr,
+                Absent => match ranks.first() {
+                  Absent => RankSymmetryUnread {
+                    because: "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr,
+                  }
+                  Present { value: r } => match curve_observation(reading: r.curve) {
+                    Absent => RankSymmetryUnread {
+                      because: "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr,
+                    }
+                    Present { value: obs } => match first_run_mismatch(want: obs.run_identity, ranks: ranks) {
+                      Present { value: _ } => RankSymmetryUnread {
+                        because: "rank curves do not share a run identity" as NonEmptyStr,
+                      }
+                      Absent => RankSymmetryUnread {
+                        because: "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr,
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -738,6 +839,7 @@ fn qualify_rank_symmetry(
         }
       }
     }
+  }
   }
 }
 
@@ -835,18 +937,21 @@ fn qualify_collective_group(
     collective_latency: qualify_collective_latency(
       ceiling: advertised.latency_ceiling,
       at: advertised.latency_message_bytes,
+      expected: advertised.expected_ranks,
       required: advertised.all_reduce_protocol,
       reading: measured.collective,
     ),
     collective_bandwidth: qualify_collective_bandwidth(
       floor: advertised.bandwidth_floor,
       at: advertised.bandwidth_message_bytes,
+      expected: advertised.expected_ranks,
       required: advertised.all_reduce_protocol,
       reading: measured.collective,
     ),
     all_to_all_latency: qualify_collective_latency(
       ceiling: advertised.all_to_all_latency_ceiling,
       at: advertised.all_to_all_message_bytes,
+      expected: advertised.expected_ranks,
       required: advertised.all_to_all_protocol,
       reading: measured.all_to_all,
     ),
@@ -935,14 +1040,17 @@ fn admit_qualified_group(receipt: CollectiveGroupReceipt) -> GroupQualificationA
 // group admission; assemble_candidate_field excludes GroupNotQualified by name. Wiring a live Spark
 // SupplierOffer is a declared frontier (review 5246424986 item 6); Group B in this change is a
 // historical demonstration of the vocabulary.
-type OfferDeliveryClaim
+type OfferDeliveryClaim<P>
   = OfferDoesNotClaimNodeDelivery
-  | OfferClaimsNodeDelivery { admission: GroupQualificationAdmission }
+  | OfferClaimsNodeDelivery {
+      offer: FabricIdentity<P, OfferKey>,
+      admission: GroupQualificationAdmission,
+    }
 
-fn claimed_delivery_refusals(claim: OfferDeliveryClaim) -> List<QualificationRefusal>? {
+fn claimed_delivery_refusals<P>(claim: OfferDeliveryClaim<P>) -> List<QualificationRefusal>? {
   match claim {
     OfferDoesNotClaimNodeDelivery => none
-    OfferClaimsNodeDelivery { admission: a } => match a {
+    OfferClaimsNodeDelivery { offer: _, admission: a } => match a {
       GroupQualified { receipt: _ } => none
       GroupNotQualified { receipt: _, refusals: r } => Present { value: r }
     }

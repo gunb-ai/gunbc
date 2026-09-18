@@ -9,7 +9,9 @@ import extdeps.ethernet.link_mode {
 import extdeps.storage.types { PcieLink, Gen5 }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
-  CollectiveCurveReading, CollectiveProtocolKey,
+  CollectiveCurveReading, CollectiveProtocol, CollectiveObservationIdentity,
+  NcclTestsDtypeUnread, DtypeAgrees, DtypeDiffers, DtypeUnread,
+  protocol_eq, dtype_join,
   HostAdvertisedDelivery, HostMeasuredDelivery,
   CollectiveGroupAdvertised, CollectiveGroupMeasured,
   AdvertisedSparkConnectX7PerPort, AdvertisedDiscreteAdapterSku,
@@ -55,23 +57,28 @@ data fx_node: HostIdentity = "fixture-node" as HostIdentity
 fn fx_pcie16() -> PcieLink { PcieLink { generation: Gen5, lane_count: 16 } }
 fn fx_pcie4() -> PcieLink { PcieLink { generation: Gen5, lane_count: 4 } }
 
-fn fx_all_reduce_protocol() -> CollectiveProtocolKey {
-  CollectiveProtocolKey {
+fn fx_all_reduce_protocol() -> CollectiveProtocol {
+  CollectiveProtocol {
     instrument: NcclTestsAllReducePerf,
     size_semantics: EachRankContributesTheSizeColumn,
     dtype: NcclTestsHalf,
     rank_count: 2,
-    run_identity: "fixture-all-reduce" as NonEmptyStr,
   }
 }
 
-fn fx_all_to_all_protocol() -> CollectiveProtocolKey {
-  CollectiveProtocolKey {
+fn fx_all_to_all_protocol() -> CollectiveProtocol {
+  CollectiveProtocol {
     instrument: NcclTestsAllToAllPerf,
     size_semantics: TotalBufferSplitPerPeer { rank_count: 2 },
     dtype: NcclTestsHalf,
     rank_count: 2,
-    run_identity: "fixture-all-to-all" as NonEmptyStr,
+  }
+}
+
+fn fx_observation(protocol: CollectiveProtocol, run: String) -> CollectiveObservationIdentity {
+  CollectiveObservationIdentity {
+    protocol: protocol,
+    run_identity: run as NonEmptyStr,
   }
 }
 
@@ -110,7 +117,7 @@ fn fx_sample() -> CollectiveSample {
 fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
   CollectiveCurveRead {
     samples: samples,
-    protocol: fx_all_reduce_protocol(),
+    observation: fx_observation(protocol: fx_all_reduce_protocol(), run: "fixture-all-reduce"),
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
@@ -124,7 +131,7 @@ fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
 fn fx_all_to_all_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
   CollectiveCurveRead {
     samples: samples,
-    protocol: fx_all_to_all_protocol(),
+    observation: fx_observation(protocol: fx_all_to_all_protocol(), run: "fixture-all-to-all"),
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
@@ -491,7 +498,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
       samples: samples,
-      protocol: proto,
+      observation: proto,
       small_message_shape: shape,
       engine_buffer_mode: buf,
       per_layer_all_reduce_count: layers,
@@ -505,7 +512,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
             && nanosecond_count(n: s.in_place_latency) == 108420
             && nanosecond_count(n: s.out_of_place_latency) == 179540
             && nanosecond_count(n: s.in_place_latency) != nanosecond_count(n: s.out_of_place_latency)
-            && match proto.size_semantics {
+            && match proto.protocol.size_semantics {
               EachRankContributesTheSizeColumn => true
               TotalBufferSplitPerPeer { rank_count: _ } => false
             }
@@ -553,7 +560,7 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
       samples: ar,
-      protocol: ar_proto,
+      observation: ar_proto,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -563,7 +570,7 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
       CollectiveCurveUnread { because: _ } => false
       CollectiveCurveRead {
         samples: a2a,
-        protocol: a2a_proto,
+        observation: a2a_proto,
         small_message_shape: _,
         engine_buffer_mode: _,
         per_layer_all_reduce_count: _,
@@ -579,11 +586,11 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
                 && byte_size_count(b: ar0.message_bytes) == 8192
                 && nanosecond_count(n: ar0.in_place_latency) == 108420
                 && nanosecond_count(n: a2a0.in_place_latency) == 20150
-                && match ar_proto.size_semantics {
+                && match ar_proto.protocol.size_semantics {
                   EachRankContributesTheSizeColumn => true
                   TotalBufferSplitPerPeer { rank_count: _ } => false
                 }
-                && match a2a_proto.size_semantics {
+                && match a2a_proto.protocol.size_semantics {
                   TotalBufferSplitPerPeer { rank_count: n } => n == 4
                   EachRankContributesTheSizeColumn => false
                 }
@@ -781,6 +788,7 @@ test fn all_to_all_is_not_scored_on_all_reduce_protocol() -> Bool {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 100000),
     at: byte_size(count: 8192),
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
     required: fx_all_reduce_protocol(),
     reading: fx_all_to_all_curve(samples: [fx_sample()]),
   ) {
@@ -812,6 +820,53 @@ test fn ib_cited_only_on_nccl_tests_does_not_qualify() -> Bool {
         HostRegisteredIbFallbackUnread { because: _ } => false
         HostRegisteredIbFallbackCitedOnServingRuntime { nccl: _ } => false
       }
+  }
+}
+
+test fn unread_dtypes_do_not_compare_equal() -> Bool {
+  let unread = CollectiveProtocol {
+    instrument: NcclTestsAllReducePerf,
+    size_semantics: EachRankContributesTheSizeColumn,
+    dtype: NcclTestsDtypeUnread,
+    rank_count: 2,
+  }
+  match dtype_join(a: NcclTestsDtypeUnread, b: NcclTestsDtypeUnread) {
+    DtypeUnread => true
+    DtypeAgrees => false
+    DtypeDiffers => false
+  } && !protocol_eq(a: unread, b: unread)
+}
+
+test fn a_size_column_rank_count_that_is_not_the_protocol_rank_count_is_unread() -> Bool {
+  match qualify_collective_latency(
+    ceiling: nanosecond(count: 1000),
+    at: byte_size(count: 8),
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+    required: CollectiveProtocol {
+      instrument: NcclTestsAllToAllPerf,
+      size_semantics: TotalBufferSplitPerPeer { rank_count: 4 },
+      dtype: NcclTestsHalf,
+      rank_count: 2,
+    },
+    reading: fx_all_to_all_curve(samples: [fx_sample()]),
+  ) {
+    CollectiveLatencyUnread { ceiling: _, because: _ } => true
+    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
+    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
+  }
+}
+
+test fn a_protocol_rank_count_that_is_not_the_roster_is_unread() -> Bool {
+  match qualify_collective_latency(
+    ceiling: nanosecond(count: 1000),
+    at: byte_size(count: 8),
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity, "rank-2" as HostIdentity, "rank-3" as HostIdentity],
+    required: fx_all_reduce_protocol(),
+    reading: fx_curve(samples: [fx_sample()]),
+  ) {
+    CollectiveLatencyUnread { ceiling: _, because: _ } => true
+    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
+    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
   }
 }
 

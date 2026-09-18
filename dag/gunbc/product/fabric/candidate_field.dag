@@ -2,7 +2,7 @@ module product.fabric.candidate_field
 
 import std.types { List, EpochSecs }
 import std.decl_ref { DeclarationRef }
-import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseRefusal, admit_provider_use,
@@ -23,7 +23,8 @@ import product.fabric.selection {
   PermitNamesAnotherDemand,
 }
 import product.fabric.node_qualification {
-  OfferDeliveryClaim, QualificationRefusal, claimed_delivery_refusals,
+  OfferDeliveryClaim, OfferDoesNotClaimNodeDelivery, OfferClaimsNodeDelivery,
+  QualificationRefusal, claimed_delivery_refusals,
 }
 
 // THE CANDIDATE FIELD IS ASSEMBLED BEFORE ANY PRICE EXISTS, AND THIS MODULE'S IMPORT LIST IS THE
@@ -90,7 +91,7 @@ import product.fabric.node_qualification {
 type FieldRequest<P> {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
-  delivery: OfferDeliveryClaim
+  delivery: OfferDeliveryClaim<P>
 }
 
 // ONE ARM PER PRODUCER, which is why there is no single NotAdmitted arm. Each of these is reached
@@ -117,12 +118,14 @@ type FieldExclusionCause<P>
       subject_demand: FabricIdentity<P, DemandKey>,
     }
   | FieldNodeNotQualified { refusals: List<QualificationRefusal> }
+  | FieldDeliveryClaimNamesAnotherOffer { claim_names: FabricIdentity<P, OfferKey> }
 
-// FieldNodeNotQualified is minted by assemble_candidate_field when FieldRequest.delivery is
-// OfferClaimsNodeDelivery of a GroupNotQualified admission. Group B is a historical demonstration
-// of that seam (group_b_delivery_claim), not a live Spark SupplierOffer. TRIGGER for the selection
-// path: a Spark rail SupplierOffer carries a group admission instead of OfferDoesNotClaimNodeDelivery.
-// SUFFICIENT FOR: an unqualified group is excluded from the priced field by name.
+// FieldNodeNotQualified is minted when FieldRequest.delivery is OfferClaimsNodeDelivery of the
+// SAME offer identity and a GroupNotQualified admission. A claim naming another offer is
+// FieldDeliveryClaimNamesAnotherOffer. Group B is a historical demonstration bound to
+// group_b_claimed_offer. TRIGGER: a Spark rail SupplierOffer carries OfferClaimsNodeDelivery of
+// its own FabricIdentity. SUFFICIENT FOR: an unqualified group is excluded by name, and a claim
+// cannot ride a different offer.
 
 type FieldExclusion<P> {
   offer: FabricIdentity<P, OfferKey>
@@ -208,12 +211,25 @@ fn field_entry_delivery<P>(
   facts: ProviderRouteFacts,
   request: FieldRequest<P>,
 ) -> FieldEntry<P> {
-  match claimed_delivery_refusals(claim: request.delivery) {
-    Absent => field_entry_admitted(
+  match request.delivery {
+    OfferDoesNotClaimNodeDelivery => field_entry_admitted(
       sanctions: sanctions, active: active, scope: scope,
       decision_receipt: decision_receipt, facts: facts, request: request)
-    Present { value: r } =>
-      excluded_entry(offer: request.offer.id, cause: FieldNodeNotQualified { refusals: r })
+    OfferClaimsNodeDelivery { offer: named, admission: _ } =>
+      if fabric_identity_eq(left: request.offer.id, right: named) {
+        match claimed_delivery_refusals(claim: request.delivery) {
+          Absent => field_entry_admitted(
+            sanctions: sanctions, active: active, scope: scope,
+            decision_receipt: decision_receipt, facts: facts, request: request)
+          Present { value: r } =>
+            excluded_entry(offer: request.offer.id, cause: FieldNodeNotQualified { refusals: r })
+        }
+      } else {
+        excluded_entry(
+          offer: request.offer.id,
+          cause: FieldDeliveryClaimNamesAnotherOffer { claim_names: named },
+        )
+      }
   }
 }
 

@@ -8,11 +8,12 @@ import gunbc.fleet_intent_network {
 }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_50gbase_cr2 }
 import extdeps.storage.types { PcieLink, Gen5 }
+import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery,
   HostAdvertisedDelivery, HostMeasuredDelivery,
   CollectiveGroupAdvertised, CollectiveGroupMeasured,
-  AdvertisedSparkConnectX7PerPort, CollectiveProtocolKey, AdvertisedPcie,
+  AdvertisedSparkConnectX7PerPort, CollectiveProtocol, CollectiveObservationIdentity, AdvertisedPcie,
   CountUnread, ByteSizeUnread, LinkModeRead, PcieLinkRead,
   CollectiveCurveRead, CollectiveSample, NcclTestsAllReducePerf, NcclTestsAllToAllPerf,
   SmallMessageStepThenPlateau, SmallMessageShapeUncharacterized,
@@ -118,19 +119,27 @@ fn group_b_all_to_all_half_curve() -> List<CollectiveSample> {
   ]
 }
 
-data group_b_all_reduce_protocol: CollectiveProtocolKey = CollectiveProtocolKey {
+data group_b_all_reduce_protocol: CollectiveProtocol = CollectiveProtocol {
   instrument: NcclTestsAllReducePerf,
   size_semantics: EachRankContributesTheSizeColumn,
   dtype: NcclTestsHalf,
   rank_count: 4,
-  run_identity: "group-b-all-reduce-half-2026-09-18" as NonEmptyStr,
 }
 
-data group_b_all_to_all_protocol: CollectiveProtocolKey = CollectiveProtocolKey {
+data group_b_all_to_all_protocol: CollectiveProtocol = CollectiveProtocol {
   instrument: NcclTestsAllToAllPerf,
   size_semantics: TotalBufferSplitPerPeer { rank_count: 4 },
   dtype: NcclTestsHalf,
   rank_count: 4,
+}
+
+data group_b_all_reduce_observation: CollectiveObservationIdentity = CollectiveObservationIdentity {
+  protocol: group_b_all_reduce_protocol,
+  run_identity: "group-b-all-reduce-half-2026-09-18" as NonEmptyStr,
+}
+
+data group_b_all_to_all_observation: CollectiveObservationIdentity = CollectiveObservationIdentity {
+  protocol: group_b_all_to_all_protocol,
   run_identity: "group-b-all-to-all-half-2026-09-18" as NonEmptyStr,
 }
 
@@ -175,7 +184,7 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
   group: CollectiveGroupMeasured {
     collective: CollectiveCurveRead {
       samples: group_b_all_reduce_half_curve(),
-      protocol: group_b_all_reduce_protocol,
+      observation: group_b_all_reduce_observation,
       small_message_shape: SmallMessageStepThenPlateau { step_at: byte_size(count: 16384) },
       engine_buffer_mode: EngineBufferModeUnestablished,
       per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
@@ -184,7 +193,7 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
     },
     all_to_all: CollectiveCurveRead {
       samples: group_b_all_to_all_half_curve(),
-      protocol: group_b_all_to_all_protocol,
+      observation: group_b_all_to_all_observation,
       small_message_shape: SmallMessageShapeUncharacterized,
       engine_buffer_mode: EngineBufferModeUnestablished,
       per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
@@ -216,6 +225,12 @@ fn group_b_group_admission() -> GroupQualificationAdmission {
   )
 }
 
-data group_b_delivery_claim: OfferDeliveryClaim = OfferClaimsNodeDelivery {
+data group_b_claimed_offer: FabricIdentity<NonEmptyStr, OfferKey> = FabricIdentity {
+  principal: "gunbc",
+  key: "group-b-historical",
+}
+
+data group_b_delivery_claim: OfferDeliveryClaim<NonEmptyStr> = OfferClaimsNodeDelivery {
+  offer: group_b_claimed_offer,
   admission: group_b_group_admission(),
 }

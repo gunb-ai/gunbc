@@ -51,11 +51,11 @@ import product.fabric.candidate_field {
   FieldRouteNotModeled, FieldRouteAmbiguous, FieldRouteFactsNameAnotherRoute,
   FieldUseRefused, FieldDispatchInputsNameAnotherOffer, FieldPermitNamesAnotherOffer,
   FieldPermitNamesAnotherRoute, FieldPermitNamesAnotherWork, FieldPermitNamesAnotherDemand,
-  FieldNodeNotQualified,
+  FieldNodeNotQualified, FieldDeliveryClaimNamesAnotherOffer,
   assemble_candidate_field,
 }
 import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery, OfferDeliveryClaim }
-import gunbc.spark.group_b_node_qualification { group_b_delivery_claim }
+import gunbc.spark.group_b_node_qualification { group_b_delivery_claim, group_b_claimed_offer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -371,7 +371,7 @@ fn s_request_with_delivery(
   key: OfferKey,
   route: ProviderRoute,
   amount: MoneyAmountMicro,
-  delivery: OfferDeliveryClaim,
+  delivery: OfferDeliveryClaim<NonEmptyStr>,
 ) -> FieldRequest<NonEmptyStr> {
   FieldRequest {
     offer: s_offer(key: key, route: route, amount: amount),
@@ -523,6 +523,7 @@ fn s_exclusion_tag(c: FieldExclusionCause<NonEmptyStr>) -> String {
     FieldPermitNamesAnotherWork { permit_work: _, subject_work: _ } => "permit-names-another-work"
     FieldPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
     FieldNodeNotQualified { refusals: _ } => "node-not-qualified"
+    FieldDeliveryClaimNamesAnotherOffer { claim_names: _ } => "delivery-claim-names-another-offer"
   }
 }
 
@@ -544,7 +545,7 @@ test fn w_the_one_modeled_route_survives_the_field() -> Bool {
   s_admitted_keys(field: s_default_field()) == ["spill-hetzner-cax41"]
 }
 
-test fn w_an_offer_claiming_unqualified_node_delivery_is_excluded() -> Bool {
+test fn w_an_offer_claiming_another_offers_delivery_is_excluded() -> Bool {
   let field = s_field(
     routes: s_modeled_routes(),
     sanctions: [s_sanction(route: s_hetzner_route())],
@@ -558,7 +559,29 @@ test fn w_an_offer_claiming_unqualified_node_delivery_is_excluded() -> Bool {
     ],
   )
   s_admitted_keys(field: field) == []
-    && s_excluded_keys(field: field, tag: "node-not-qualified") == ["spill-hetzner-cax41"]
+    && s_excluded_keys(field: field, tag: "delivery-claim-names-another-offer") == ["spill-hetzner-cax41"]
+}
+
+test fn w_an_offer_claiming_its_own_unqualified_node_delivery_is_excluded() -> Bool {
+  let field = s_field(
+    routes: [
+      OfferRouteRow {
+        offer: group_b_claimed_offer,
+        facts: s_facts(route: s_hetzner_route()),
+      },
+    ],
+    sanctions: [s_sanction(route: s_hetzner_route())],
+    requests: [
+      s_request_with_delivery(
+        key: "group-b-historical",
+        route: s_hetzner_route(),
+        amount: money_amount_micro(count: 4000),
+        delivery: group_b_delivery_claim,
+      ),
+    ],
+  )
+  s_admitted_keys(field: field) == []
+    && s_excluded_keys(field: field, tag: "node-not-qualified") == ["group-b-historical"]
 }
 
 // RED - AN UNCLASSIFIED ROUTE REFUSES RATHER THAN DEFAULTING. Three of four providers have no
