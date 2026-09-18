@@ -518,11 +518,31 @@ fn function_value_target(texpr: Node, visible: Map<String, String>, source_indic
         Present { value: _ } => none
         Absent => visible_or_qualified_key(visible: visible, name: dotted_reference_text(texpr: texpr, source_indices: source_indices))
       }
-    ExprCall { call_semantics: cs, descent_evidence: _ } => call_semantics_source_target(semantics: cs)
+    ExprCall { call_semantics: cs, descent_evidence: _ } =>
+      match cs {
+        Present { value: _ } => call_semantics_source_target(semantics: cs)
+        Absent => visible_or_qualified_key(visible: visible, name: expr_call_func_at(texpr: texpr, source_indices: source_indices))
+      }
+    ExprMethodCall { method_semantics: ms } =>
+      match ms {
+        Present { value: _ } => none
+        Absent =>
+          match texpr.children |> first {
+            Present { value: receiver } => visible_or_qualified_key(visible: visible, name: concat(dotted_reference_text(texpr: receiver, source_indices: source_indices), ".", expr_method_name_at(texpr: texpr, source_indices: source_indices)))
+            Absent => none
+          }
+      }
     _ => none
   }
 }
 
+// AN UNINFERRED CALL IS STILL A REFERENCE. v1 retains a parameter or field default without inferring
+// it, so a call written there carries no CallSemantics, and the parser keeps a bare callee on the
+// call node's own name with only the arguments in children -- a walk over children never sees it. A
+// qualified call in the same position parses as a method call on the module path. Both resolve
+// through the same bare-or-qualified lookup a value uses (review 67713). An inferred method call is
+// a real method on a value and carries MethodSemantics, so it never reaches this arm.
+//
 // A QUALIFIED NAME IS ALREADY A DECLARATION KEY. Inference rewrites `module.leaf` into an ExprVar
 // whose kernel span is the dotted declaration key, and the visible map is keyed by bare spellings,
 // so a qualified test taken as a value missed the lookup and refused nothing (review 67685). A
@@ -562,7 +582,9 @@ fn test_references_in_expr(module_name: String, referrer: String, texpr: Node, t
 // EVERY EXPRESSION-BEARING POSITION OF A DECLARATION, not just its body. A parameter default and a
 // field default are resolved expressions retained on the typed node, so a test taken as a default
 // value is a reference the body walk alone never visits (found in review of gunbc#11505). Walking
-// the item's own params and children covers both, so the subject is the declaration rather than a
+// the item's own params and children REACHES both; what a default contains is uninferred, so
+// function_value_target decides a bare or qualified value, call or method-call spelling there by
+// name rather than by resolved target (review 67713). The subject is the declaration rather than a
 // hand-picked list of the places a reference may hide.
 fn declaration_test_references(item: Node, module_name: String, test_keys: Map<String, Bool>, visible: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> List<TestReferenceOccurrence> {
   let referrer = authored_name_at(source_indices: source_indices, node: item)

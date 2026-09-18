@@ -81,3 +81,20 @@ test fn a_qualified_test_value_is_refused() -> Bool {
 test fn a_qualified_test_as_a_default_is_refused() -> Bool {
   blocking_subject_count_for(source: qualified_default_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default.helper") == 1
 }
+
+// A test CALLED in a default is a reference. A default is not inferred, so its call carries no
+// resolved target and the callee lives on the call node's name, not in its children (review 67713).
+data default_call_source: String = "module wall.fixture.default_call\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(x: Bool = leaf()) -> Bool { x }\n"
+
+// The QUALIFIED call in a default, which parses as a method call on the module path.
+data qualified_default_call_source: String = "module wall.fixture.qualified_default_call\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(x: Bool = wall.fixture.qualified_default_call.leaf()) -> Bool { x }\n"
+
+// DISCRIMINATING RED: a test called in a parameter default refuses.
+test fn a_test_called_in_a_default_is_refused() -> Bool {
+  blocking_subject_count_for(source: default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.default_call.helper") == 1
+}
+
+// DISCRIMINATING RED: a qualified test called in a parameter default refuses.
+test fn a_qualified_test_called_in_a_default_is_refused() -> Bool {
+  blocking_subject_count_for(source: qualified_default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default_call.helper") == 1
+}

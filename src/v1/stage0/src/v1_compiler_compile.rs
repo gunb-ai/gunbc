@@ -654,7 +654,35 @@ pub fn function_value_target(
         },
         ExprData::ExprCall {
             call_semantics: cs, ..
-        } => call_semantics_source_target(cs.clone()),
+        } => match cs.clone() {
+            Some(_) => call_semantics_source_target(cs.clone()),
+            std::option::Option::None => visible_or_qualified_key(
+                visible.clone(),
+                crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
+            ),
+        },
+        ExprData::ExprMethodCall {
+            method_semantics: ms,
+            ..
+        } => match ms.clone() {
+            Some(_) => std::option::Option::None,
+            std::option::Option::None => match texpr.children.clone().first().cloned() {
+                Some(receiver) => visible_or_qualified_key(
+                    visible.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            dotted_reference_text(receiver.clone(), source_indices.clone()),
+                            ".".to_string(),
+                        ),
+                        crate::v1_std_core::expr_method_name_at(
+                            texpr.clone(),
+                            source_indices.clone(),
+                        ),
+                    ),
+                ),
+                std::option::Option::None => std::option::Option::None,
+            },
+        },
         _ => std::option::Option::None,
     }
 }
