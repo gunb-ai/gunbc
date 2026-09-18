@@ -35,10 +35,10 @@ import gunbc.cloudflare.r2_origin {
   cloudflare_bootstrap_custody_intervention,
   cloudflare_bootstrap_custody_version,
   fabric_durable_origin_standing,
-  DurableOriginAllocated,
-  DurableOriginUnallocated,
-  DurableOriginStanding,
-  DurableOriginBucket,
+  R2OriginAllocated,
+  R2OriginUnallocated,
+  R2OriginStanding,
+  R2OriginBucket,
   FabricDurableOrigin,
   BucketPurpose,
   R2BucketAllocation,
@@ -53,6 +53,7 @@ import gunbc.cloudflare.r2_origin {
   cloudflare_bootstrap_custody_secret_id,
   FabricCommitManifestsAndContentAddressedOutputs,
   DigestKeyedBootArtifacts,
+  bucket_purpose_admission,
   OriginCredentialStanding,
   OriginCredentialPinned,
   OriginCredentialUnminted,
@@ -335,8 +336,8 @@ test fn r2_bucket_colliding_roster_serves_no_value() -> Bool {
 // spelled in one place; this is the join that proves it stayed that way.
 test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
   match fabric_durable_origin_standing() {
-    DurableOriginUnallocated { purpose: _ } => false
-    DurableOriginAllocated { bucket: bucket } =>
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: bucket } =>
       match bucket.read_credential {
         OriginCredentialUnminted { mint_entry: _ } => false
         OriginCredentialPinned { access_key_id: access_key_id, token_value: locus } =>
@@ -347,7 +348,7 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
             && (access_key_id as String) == (fabric_durable_origin_read_access_key_id as String)
       }
         && (bucket.bucket_name as String) == (declared_bucket_name())
-        && match bucket.admits {
+        && match bucket_purpose_admission(purpose: bucket.purpose) {
              FabricCommitManifestsAndContentAddressedOutputs {} => true
              DigestKeyedBootArtifacts {} => false
            }
@@ -360,8 +361,8 @@ test fn r2_origin_bucket_read_credential_is_the_minted_container() -> Bool {
 // the read test above) rather than leaving a stale expectation green.
 test fn r2_origin_bucket_write_credential_is_unminted_and_names_its_mint_entry() -> Bool {
   match fabric_durable_origin_standing() {
-    DurableOriginUnallocated { purpose: _ } => false
-    DurableOriginAllocated { bucket: bucket } =>
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: bucket } =>
       match bucket.write_credential {
         OriginCredentialPinned { access_key_id: _, token_value: _ } => false
         OriginCredentialUnminted { mint_entry: entry } =>
@@ -413,8 +414,8 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
 // fleet_secrets_project_number stays put.
 test fn r2_origin_read_pin_names_this_project_version() -> Bool {
   match fabric_durable_origin_standing() {
-    DurableOriginUnallocated { purpose: _ } => false
-    DurableOriginAllocated { bucket: bucket } =>
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: bucket } =>
       match bucket.read_credential {
         OriginCredentialUnminted { mint_entry: _ } => false
         OriginCredentialPinned { access_key_id: _, token_value: locus } =>
@@ -427,12 +428,12 @@ test fn r2_origin_read_pin_names_this_project_version() -> Bool {
   }
 }
 
-fn origin_with_latest_read_pin() -> DurableOriginStanding {
-  DurableOriginAllocated {
-    bucket: DurableOriginBucket {
+fn origin_with_latest_read_pin() -> R2OriginStanding {
+  R2OriginAllocated {
+    bucket: R2OriginBucket {
       bucket_name: "gunbai-fabric-origin",
       jurisdiction: R2JurisdictionDefault,
-      admits: FabricCommitManifestsAndContentAddressedOutputs {},
+      purpose: FabricDurableOrigin {},
       read_credential: OriginCredentialPinned {
         access_key_id: fabric_durable_origin_read_access_key_id,
         token_value: secret_ref_pin_version(

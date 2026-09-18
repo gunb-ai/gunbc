@@ -39,10 +39,10 @@ import gunbc.cloudflare.r2_token_mint {
 }
 import gunbc.cloudflare.r2_origin {
   CloudflareAccountId,
-  DurableOriginBucket,
-  DurableOriginStanding,
-  DurableOriginAllocated,
-  DurableOriginUnallocated,
+  R2OriginBucket,
+  R2OriginStanding,
+  R2OriginAllocated,
+  R2OriginUnallocated,
   BucketPurpose,
   bucket_purpose_key,
   fabric_durable_origin_standing,
@@ -172,7 +172,7 @@ fn r2_origin_token_name_suffix(profile: R2OriginTokenProfile) -> String {
   }
 }
 
-fn r2_origin_token_name(profile: R2OriginTokenProfile, bucket: DurableOriginBucket) -> String {
+fn r2_origin_token_name(profile: R2OriginTokenProfile, bucket: R2OriginBucket) -> String {
   join([bucket.bucket_name as String, r2_origin_token_name_suffix(profile: profile)], "")
 }
 
@@ -183,7 +183,7 @@ fn r2_origin_token_secret_id(profile: R2OriginTokenProfile) -> NonEmptyStr {
   }
 }
 
-fn r2_origin_token_credential(profile: R2OriginTokenProfile, bucket: DurableOriginBucket) -> OriginCredentialStanding {
+fn r2_origin_token_credential(profile: R2OriginTokenProfile, bucket: R2OriginBucket) -> OriginCredentialStanding {
   match profile {
     R2OriginObjectRead => bucket.read_credential
     R2OriginObjectWrite => bucket.write_credential
@@ -350,7 +350,7 @@ fn classify_r2_mint(
   profile: R2OriginTokenProfile,
   account: FleetCloudflareAccountStanding,
   custody: BootstrapCustodyStanding,
-  origin: DurableOriginStanding,
+  origin: R2OriginStanding,
   container: R2MintContainerAdmission,
 ) -> R2MintPreconditions {
   match container_admission_refusal(container: container) {
@@ -362,9 +362,9 @@ fn classify_r2_mint(
       R2MintBootstrapCustodyUnrecorded { intervention: intervention }
     BootstrapCustodyPinned { locus: locus } =>
       match origin {
-        DurableOriginUnallocated { purpose: purpose } =>
+        R2OriginUnallocated { purpose: purpose } =>
           R2MintOriginUnallocated { purpose: purpose }
-        DurableOriginAllocated { bucket: bucket } =>
+        R2OriginAllocated { bucket: bucket } =>
       match account {
         CloudflareAccountUnallocated { company: _, intervention: intervention } =>
           R2MintAccountUnallocated { intervention: intervention }
@@ -551,10 +551,10 @@ fn origin_credential_pin_is_exact(credential: OriginCredentialStanding) -> Bool 
   }
 }
 
-fn origin_read_pin_is_exact(origin: DurableOriginStanding) -> Bool {
+fn origin_read_pin_is_exact(origin: R2OriginStanding) -> Bool {
   match origin {
-    DurableOriginUnallocated { purpose: _ } => false
-    DurableOriginAllocated { bucket: bucket } =>
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: bucket } =>
       origin_credential_pin_is_exact(credential: bucket.read_credential)
   }
 }
@@ -915,10 +915,10 @@ fn run_object_write() -> ProcessExit uses net: Network {
   mint_origin_token_and_store(profile: R2OriginObjectWrite)
 }
 
-fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: DurableOriginStanding) -> Bool {
+fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> Bool {
   match origin {
-    DurableOriginUnallocated { purpose: _ } => false
-    DurableOriginAllocated { bucket: bucket } =>
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: bucket } =>
       origin_credential_pin_is_exact(credential: r2_origin_token_credential(profile: profile, bucket: bucket))
   }
 }

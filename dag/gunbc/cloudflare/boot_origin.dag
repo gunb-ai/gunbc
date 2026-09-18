@@ -1,6 +1,6 @@
 module gunbc.cloudflare.boot_origin
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, Int, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Hash, Fnv1a64, Sha1Hash, Sha512Hash, Sha256Digest }
 import std.human_intervention {
   HumanIntervention,
@@ -139,23 +139,38 @@ fn boot_origin_hostname_standing() -> BootOriginHostnameStanding {
 // (extdeps.cloudflare.r2 r2_custom_domain_reading).
 data r2_dev_host_suffix: String = ".r2.dev"
 
-fn host_is_r2_dev(locator: String) -> Bool {
-  locator == "r2.dev"
-    || starts_with(s: locator, prefix: "r2.dev/")
-    || ends_with(s: locator, suffix: r2_dev_host_suffix)
-    || string_contains(s: locator, pattern: join([r2_dev_host_suffix, "/"], ""))
+fn host_is_r2_dev(host: String) -> Bool {
+  host == "r2.dev" || ends_with(s: host, suffix: r2_dev_host_suffix)
+}
+
+// THE CUSTOM DOMAIN IS A BARE HOST, and anything else refuses rather than being guessed at. The
+// admitted spelling is lowercase LDH (a-z, 0-9, '-', '.'): no port, no path, no trailing slash, no
+// uppercase. That makes the r2.dev comparison exact over a host instead of a substring over a fused
+// locator, and it makes the key join below unable to emit a double slash.
+fn host_code_point_is_canonical(cp: Int) -> Bool {
+  (cp >= 97 && cp <= 122) || (cp >= 48 && cp <= 57) || cp == 45 || cp == 46
+}
+
+fn host_is_canonical(host: String) -> Bool {
+  host != ""
+    && (host |> chars |> all(c => host_code_point_is_canonical(cp: c)))
+    && !starts_with(s: host, prefix: ".")
+    && !ends_with(s: host, suffix: ".")
 }
 
 type BootReadbackLocator
   = BootReadbackAt { url: Uri }
   | BootReadbackRefusedR2Dev { locator: NonEmptyStr, ground: FactCitation }
   | BootReadbackRefusedNotHttps {}
+  | BootReadbackRefusedNonCanonicalHost { locator: NonEmptyStr }
 
 fn boot_readback_locator(receipt: FleetBootServiceReceipt, key: NonEmptyStr) -> BootReadbackLocator {
   let domain = receipt.origin_custom_domain
   if !uri_scheme_is_https(s: domain.scheme) {
     BootReadbackRefusedNotHttps {}
-  } else if host_is_r2_dev(locator: domain.locator as String) {
+  } else if !host_is_canonical(host: domain.locator as String) {
+    BootReadbackRefusedNonCanonicalHost { locator: domain.locator }
+  } else if host_is_r2_dev(host: domain.locator as String) {
     BootReadbackRefusedR2Dev { locator: domain.locator, ground: r2_custom_domain_citation }
   } else {
     BootReadbackAt {
@@ -187,10 +202,6 @@ fn classify_boot_readback(object: BootBundleObject, observation: BootReadbackObs
     BootReadbackUnserved { cause: c } => BootObjectReadBackUnavailable { key: key, cause: c }
   }
 }
-
-// THE CACHE POLICY FOLLOWS FROM IMMUTABILITY. A digest-keyed object never changes, so the edge may
-// hold it indefinitely (RFC 8246 immutable); there is nothing to purge because no key is re-pointed.
-data boot_origin_cache_control: NonEmptyStr = "public, max-age=31536000, immutable"
 
 // THE SEPARATION, AS ONE FOLD. Distinct buckets, and public read admitted to the boot purpose only.
 fn boot_origin_is_separate_from_durable_origin() -> Bool {

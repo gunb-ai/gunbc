@@ -4,16 +4,17 @@ import std.types { Bool, NonEmptyStr, String, list_length }
 import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.uri { Uri, uri_https, uri_scheme_is_https, uri_scheme_inhabitants }
+import extdeps.uri { Uri, Http, uri_https }
 import gunbc.network_boot_delivery { FleetBootServiceReceipt, NonEstablishingNetworkBootPredecessor }
 import gunbc.cloudflare.r2_origin {
   fabric_boot_origin_standing,
   fabric_durable_origin_standing,
-  DurableOriginAllocated,
-  DurableOriginUnallocated,
+  R2OriginAllocated,
+  R2OriginUnallocated,
   OriginCredentialPinned,
   OriginCredentialUnminted,
   DigestKeyedBootArtifacts,
+  bucket_purpose_admission,
   FabricCommitManifestsAndContentAddressedOutputs,
   fabric_boot_origin_read_secret_id,
   fabric_boot_origin_write_secret_id,
@@ -40,6 +41,7 @@ import gunbc.cloudflare.boot_origin {
   BootReadbackAt,
   BootReadbackRefusedR2Dev,
   BootReadbackRefusedNotHttps,
+  BootReadbackRefusedNonCanonicalHost,
   classify_boot_readback,
   BootReadbackServed,
   BootReadbackUnserved,
@@ -139,6 +141,7 @@ test fn readback_addresses_the_receipt_custom_domain() -> Bool {
     BootReadbackAt { url: u } => (u.locator as String) == join(["boot-origin.example.test/sha256/", digest_a_hex], "")
     BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
     BootReadbackRefusedNotHttps {} => false
+    BootReadbackRefusedNonCanonicalHost { locator: _ } => false
   }
 }
 
@@ -147,6 +150,7 @@ test fn readback_refuses_r2_dev() -> Bool {
     BootReadbackAt { url: _ } => false
     BootReadbackRefusedR2Dev { locator: _, ground: g } => (g.fact.decl_name as String) == "r2_custom_domain_reading"
     BootReadbackRefusedNotHttps {} => false
+    BootReadbackRefusedNonCanonicalHost { locator: _ } => false
   }
 }
 
@@ -185,10 +189,10 @@ test fn boot_origin_credentials_are_disjoint_and_unminted() -> Bool {
     && !((fabric_boot_origin_read_secret_id as String) == (fabric_durable_origin_read_secret_id as String))
     && !((fabric_boot_origin_write_secret_id as String) == (fabric_durable_origin_write_secret_id as String))
   let standing = match fabric_boot_origin_standing() {
-    DurableOriginUnallocated { purpose: _ } => false
-    DurableOriginAllocated { bucket: b } =>
+    R2OriginUnallocated { purpose: _ } => false
+    R2OriginAllocated { bucket: b } =>
       (b.bucket_name as String) == "gunbai-fabric-boot"
-        && match b.admits {
+        && match bucket_purpose_admission(purpose: b.purpose) {
              FabricCommitManifestsAndContentAddressedOutputs {} => false
              DigestKeyedBootArtifacts {} => true
            }
@@ -200,9 +204,13 @@ test fn boot_origin_credentials_are_disjoint_and_unminted() -> Bool {
   disjoint && standing
 }
 
-// The readback's TLS gate: exactly one scheme inhabitant is https, so plain http refuses.
-test fn only_https_is_a_readback_scheme() -> Bool {
-  list_length(items: uri_scheme_inhabitants() |> filter(s => uri_scheme_is_https(s: s))) == 1
+test fn readback_refuses_plain_http() -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: Uri { scheme: Http, locator: "boot-origin.example.test" }), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: _ } => false
+    BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
+    BootReadbackRefusedNotHttps {} => true
+    BootReadbackRefusedNonCanonicalHost { locator: _ } => false
+  }
 }
 
 fn refuses_secret(candidate: BootPublicationCandidate) -> Bool {
@@ -217,4 +225,22 @@ test fn public_bucket_refuses_secret_material() -> Bool {
     && refuses_secret(candidate: CandidateCloudToken)
     && refuses_secret(candidate: CandidateInstallSecret)
     && !refuses_secret(candidate: CandidateBootArtifact { object: kernel_a() })
+}
+
+fn refuses_non_canonical(locator: NonEmptyStr) -> Bool {
+  match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: locator)), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+    BootReadbackAt { url: _ } => false
+    BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
+    BootReadbackRefusedNotHttps {} => false
+    BootReadbackRefusedNonCanonicalHost { locator: _ } => true
+  }
+}
+
+// review 67763: case and port spellings of r2.dev, and a trailing slash, must not reach BootReadbackAt.
+test fn readback_refuses_non_canonical_host_spellings() -> Bool {
+  refuses_non_canonical(locator: "pub-0123.R2.dev")
+    && refuses_non_canonical(locator: "pub-0123.r2.dev:443")
+    && refuses_non_canonical(locator: "pub-0123.r2.dev:443/")
+    && refuses_non_canonical(locator: "boot-origin.example.test/")
+    && !refuses_non_canonical(locator: "boot-origin.example.test")
 }

@@ -82,7 +82,7 @@ fn fleet_cloudflare_account_standing() -> FleetCloudflareAccountStanding {
 // manifest read back from a disposable cache establishes nothing, so the origin has to be a named
 // place with a stated admission. Widening it later is a change to this row, which is exactly the
 // visibility a bucket that quietly became a general dumping ground would not have.
-type DurableOriginAdmission
+type OriginAdmission
   = FabricCommitManifestsAndContentAddressedOutputs {}
   | DigestKeyedBootArtifacts {}
 
@@ -109,10 +109,10 @@ type OriginCredentialStanding
       mint_entry: DeclarationRef
     }
 
-type DurableOriginBucket {
+type R2OriginBucket {
   bucket_name: NonEmptyStr
   jurisdiction: R2Jurisdiction
-  admits: DurableOriginAdmission
+  purpose: BucketPurpose
   read_credential: OriginCredentialStanding
   write_credential: OriginCredentialStanding
 }
@@ -154,6 +154,15 @@ fn bucket_purpose_key(purpose: BucketPurpose) -> String {
   match purpose {
     FabricDurableOrigin {} => "fabric-durable-origin"
     FabricBootOrigin {} => "fabric-boot-origin"
+  }
+}
+
+// WHAT A BUCKET ADMITS IS DERIVED FROM ITS PURPOSE, never carried beside it, so a durable bucket
+// with boot admission (or the reverse) has no constructor.
+fn bucket_purpose_admission(purpose: BucketPurpose) -> OriginAdmission {
+  match purpose {
+    FabricDurableOrigin {} => FabricCommitManifestsAndContentAddressedOutputs {}
+    FabricBootOrigin {} => DigestKeyedBootArtifacts {}
   }
 }
 
@@ -219,22 +228,22 @@ data fabric_durable_origin_write_secret_id: NonEmptyStr = "cloudflare-r2-origin-
 // AN UNALLOCATED PURPOSE HAS NO BUCKET, AND THAT IS AN ARM RATHER THAN A DEFAULT. Reconstructing a
 // name at this seam is the derivation the roster exists to forbid, and returning an empty one would
 // address the account's root instead of a bucket.
-type DurableOriginStanding
-  = DurableOriginAllocated { bucket: DurableOriginBucket }
-  | DurableOriginUnallocated { purpose: BucketPurpose }
+type R2OriginStanding
+  = R2OriginAllocated { bucket: R2OriginBucket }
+  | R2OriginUnallocated { purpose: BucketPurpose }
 
 // DEFAULT JURISDICTION, STATED RATHER THAN DEFAULTED. Eu, Us, Fedramp, and FedrampHigh are
 // data-residency commitments this fleet has not made and cannot honour, and picking one would assert
 // a compliance boundary nothing enforces.
-fn fabric_durable_origin_standing() -> DurableOriginStanding {
+fn fabric_durable_origin_standing() -> R2OriginStanding {
   match allocated_bucket_name(purpose: FabricDurableOrigin {}) {
-    Absent => DurableOriginUnallocated { purpose: FabricDurableOrigin {} }
+    Absent => R2OriginUnallocated { purpose: FabricDurableOrigin {} }
     Present { value: name } =>
-      DurableOriginAllocated {
-        bucket: DurableOriginBucket {
+      R2OriginAllocated {
+        bucket: R2OriginBucket {
           bucket_name: name,
           jurisdiction: R2JurisdictionDefault,
-          admits: FabricCommitManifestsAndContentAddressedOutputs {},
+          purpose: FabricDurableOrigin {},
           read_credential: OriginCredentialPinned {
             access_key_id: fabric_durable_origin_read_access_key_id,
             token_value: secret_ref_pin_version(
@@ -334,15 +343,15 @@ data fabric_boot_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin
 
 data fabric_boot_origin_write_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin-write-token"
 
-fn fabric_boot_origin_standing() -> DurableOriginStanding {
+fn fabric_boot_origin_standing() -> R2OriginStanding {
   match allocated_bucket_name(purpose: FabricBootOrigin {}) {
-    Absent => DurableOriginUnallocated { purpose: FabricBootOrigin {} }
+    Absent => R2OriginUnallocated { purpose: FabricBootOrigin {} }
     Present { value: name } =>
-      DurableOriginAllocated {
-        bucket: DurableOriginBucket {
+      R2OriginAllocated {
+        bucket: R2OriginBucket {
           bucket_name: name,
           jurisdiction: R2JurisdictionDefault,
-          admits: DigestKeyedBootArtifacts {},
+          purpose: FabricBootOrigin {},
           read_credential: OriginCredentialUnminted {
             mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_read_secret_id"),
           },

@@ -31,9 +31,9 @@ import gunbc.cloudflare.r2_origin {
   CloudflareAccountAllocated,
   CloudflareAccountUnallocated,
   fleet_cloudflare_account_standing,
-  DurableOriginBucket,
-  DurableOriginAllocated,
-  DurableOriginUnallocated,
+  R2OriginBucket,
+  R2OriginAllocated,
+  R2OriginUnallocated,
   fabric_durable_origin_standing,
   bucket_purpose_key,
   OriginCredentialStanding,
@@ -86,7 +86,7 @@ import gunbc.fabric_m0_origin_readback {
 //
 // THE PUT IS CREATE-IF-ABSENT, DERIVED FROM THE ADMISSION RATHER THAN CHOSEN. The origin admits
 // commit manifests and content-addressed outputs (gunbc.cloudflare.r2_origin
-// DurableOriginAdmission): a content-addressed object at its own digest is byte-identical to any
+// OriginAdmission): a content-addressed object at its own digest is byte-identical to any
 // earlier write, and a manifest slot is written once per attempt, so no admitted object is ever
 // legitimately OVERWRITTEN. If-None-Match: * makes that a store-side refusal (412) instead of a
 // convention. A 412 is reported as its own arm -- the object is already there, which for both
@@ -190,7 +190,7 @@ type OriginTarget
     }
   | OriginTargetRefused { cause: NonEmptyStr }
 
-fn origin_credential_for(direction: OriginDirection, bucket: DurableOriginBucket) -> OriginCredentialStanding {
+fn origin_credential_for(direction: OriginDirection, bucket: R2OriginBucket) -> OriginCredentialStanding {
   match direction {
     OriginRead => bucket.read_credential
     OriginWrite => bucket.write_credential
@@ -233,9 +233,9 @@ fn resolve_origin_target(direction: OriginDirection, key: NonEmptyStr) -> Origin
       OriginTargetRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
     CloudflareAccountAllocated { company: _, account_id: account_id } =>
       match fabric_durable_origin_standing() {
-        DurableOriginUnallocated { purpose: purpose } =>
+        R2OriginUnallocated { purpose: purpose } =>
           OriginTargetRefused { cause: concat("NO BUCKET ALLOCATED FOR ", bucket_purpose_key(purpose: purpose)) as NonEmptyStr }
-        DurableOriginAllocated { bucket: bucket } =>
+        R2OriginAllocated { bucket: bucket } =>
           match origin_credential_for(direction: direction, bucket: bucket) {
             OriginCredentialUnminted { mint_entry: entry } =>
               OriginTargetRefused {
