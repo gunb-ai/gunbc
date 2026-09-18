@@ -11,7 +11,7 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.algebra { trim }
-import std.measure { Second, second, second_count, Minute, minute }
+import std.measure { Second, second, second_count, Minute, minute, hardware_thread_count_value }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.scoped_authorization {
   AttemptIdentity, AuthorizationRequest,
@@ -41,6 +41,8 @@ import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff, mtcollins1_bmc_username }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc, mtcollins1_edac_topology }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.clock_read { clock_now_probed_at }
@@ -337,9 +339,12 @@ fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSub
   string_contains(s: capture, pattern: concat("GUNBC-HOST-CAPTURE ", subject.machine as String))
     && string_contains(s: capture, pattern: " end ")
     && string_contains(s: capture, pattern: "----SECTION nproc----")
-    && string_contains(s: capture, pattern: "\n160\n")
-    && string_contains(s: capture, pattern: "ghes_edac")
-    && string_contains(s: capture, pattern: "24.04.3")
+    && string_contains(
+      s: capture,
+      pattern: concat("\n", concat(hardware_thread_count_value(t: mtcollins1_nproc) as String, "\n")),
+    )
+    && string_contains(s: capture, pattern: mtcollins1_edac_topology.driver_name as String)
+    && string_contains(s: capture, pattern: noble_numbat_2404_3_live_server_arm64.point_release as String)
 }
 
 fn mtcollins1_boot_await_capture_terminal(
