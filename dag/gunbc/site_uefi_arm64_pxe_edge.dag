@@ -29,7 +29,6 @@ import gunbc.network_boot_delivery {
   ArchitectureChainloader,
   BootDiscoveryHint,
   DhcpFilenameHint,
-  PresignedUrlAvailabilityFence,
   GlobalHttpsReachability,
   GlobalHttpsEndpointReachable,
   GlobalHttpsEndpointUnreachable,
@@ -86,7 +85,6 @@ fn site_discovery_outcome(offer: SiteDhcpOfferObservation, hint: BootDiscoveryHi
 fn offered_filename_matches_hint(offered: NonEmptyStr, hint: BootDiscoveryHint) -> Bool {
   match hint {
     DhcpFilenameHint { filename: expected } => offered as String == expected as String
-    PresignedUrlAvailabilityFence { uri: _ } => false
   }
 }
 
