@@ -52,6 +52,8 @@ import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
+import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
+import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.http.client
@@ -294,7 +296,7 @@ fn mtcollins1_sol_activate_held(
   if capture_path == "" {
     return exit_failure(reason: "mtcollins1 boot: SOL capture path unset; refusing acquire")
   }
-  spawned = diagnostic.ipmi.Tool.SolActivateHeld(
+  spawned = gunbc.machine_intake.sol_hold.ActivateHeld(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
@@ -302,7 +304,7 @@ fn mtcollins1_sol_activate_held(
     pid_path: pid_path as NonEmptyStr,
   )
   if !spawned.success {
-    return exit_failure(reason: concat("mtcollins1 boot: SOL activate held refused: ", spawned.stdout))
+    return exit_failure(reason: concat(dissolution_description(condition: mtcollins1_sol_hold_shell_emit_dissolution_trigger), concat(" mtcollins1 boot: SOL activate held refused: ", spawned.stdout)))
   }
   let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_sol_settle)
   if mtcollins1_boot_sol_is_held(pid_path: pid_path) {

@@ -461,7 +461,7 @@ jobs:
       - name: Mt. Collins unit 1 approval-gated diskless boot (file request, poll, grant, attach, CD handoff)
         id: mtcollins1_boot
         run: |
-          # 🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, PINNED BMC and submission-MAC secret versions fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk, ipmitool sol activate held in background. The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential/SOL runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          # 🟡 dissolve-on: gunbc_ci_mtcollins1_boot_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, PINNED BMC and submission-MAC secret versions fetched over curl, 0600 files under RUNNER_TEMP with a trap armed BEFORE the credentials touch disk. SOL hold is gunbc.machine_intake.sol_hold ActivateHeld (its own scaffold). The pipeline steps are modeled (gunbc_ci_mtcollins1_boot_credential_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           set -euo pipefail
           umask 077
           HDR_FILE="$RUNNER_TEMP/mtcollins1-boot-auth-header"
