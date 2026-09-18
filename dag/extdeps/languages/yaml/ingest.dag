@@ -107,19 +107,6 @@ fn yaml_indent_at(lines: List<String>, index: Int) -> Int {
   }
 }
 
-fn yaml_line_is_full_comment_at_indent(lines: List<String>, index: Int, indent: Int) -> Bool {
-  if !yaml_has_line_at(lines: lines, index: index) {
-    false
-  } else if yaml_indent_at(lines: lines, index: index) != indent {
-    false
-  } else {
-    starts_with(
-      s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent),
-      prefix: "#"
-    )
-  }
-}
-
 // OUTSIDE A SCALAR, A BLANK LINE OR A FULL-LINE COMMENT CARRIES NO CONTENT AT ANY INDENTATION
 // (YAML 1.2.2 section 6.6, l-comment). Block-literal bodies never pass through here -- they are
 // collected by yaml_collect_literal_lines_from, where blank and `#` lines ARE content -- so skipping
@@ -139,16 +126,6 @@ fn yaml_line_is_ignorable(lines: List<String>, index: Int) -> Bool {
 fn yaml_skip_ignorable_lines(lines: List<String>, index: Int) -> Int {
   if yaml_line_is_ignorable(lines: lines, index: index) {
     yaml_skip_ignorable_lines(lines: lines, index: index + 1)
-  } else {
-    index
-  }
-}
-
-fn yaml_skip_full_comments_at_indent(lines: List<String>, index: Int, indent: Int) -> Int {
-  if yaml_line_is_ignorable(lines: lines, index: index) {
-    yaml_skip_ignorable_lines(lines: lines, index: index)
-  } else if yaml_line_is_full_comment_at_indent(lines: lines, index: index, indent: indent) {
-    yaml_skip_full_comments_at_indent(lines: lines, index: index + 1, indent: indent)
   } else {
     index
   }
@@ -284,7 +261,7 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
 }
 
 fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: current }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
@@ -325,7 +302,7 @@ fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqI
 }
 
 fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: current }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
@@ -342,7 +319,7 @@ fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<
 }
 
 fn yaml_parse_block(lines: List<String>, index: Int, indent: Int) -> YamlBlockResult {
-  let current = yaml_skip_full_comments_at_indent(lines: lines, index: index, indent: indent)
+  let current = yaml_skip_ignorable_lines(lines: lines, index: index)
   if !yaml_has_line_at(lines: lines, index: current) {
     YamlBlockRejected { reason: "expected a YAML block, found end of input" }
   } else if yaml_indent_at(lines: lines, index: current) != indent {
