@@ -12771,9 +12771,16 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
 // is a fabricated realization. The arm now asks the same predicate the signature asks, so the two
 // agree by construction; where it declines, the op is a host seam with no realization in this
 // target and emits the generated refusal body the seam ruling prescribes -- a panic naming the seam,
-// never a call into a binding that does not exist. The realized arm is currently UNINHABITED by
-// the corpus (no `.dag` source in the seed or the closure spells a receiver the predicate accepts),
-// so its positive control is not authorable today; that is recorded, not papered over.
+// never a call into a binding that does not exist. The realized arm is INHABITED by a service
+// reached through its bare name (`Filesystem.Read`), which the predicate accepts since
+// infer_var_binding_kind recognizes the service-root local; its positive control is
+// test.claim.self_host_emitted_call_target_realization_witness_test
+// w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter. THIS REFUSAL
+// NOW HAS NO SOURCE-AUTHORABLE INPUT: a service operation's receiver is always the service's own
+// name (a service is not a type, so it cannot arrive as a parameter), and both the qualified and the
+// bare path stamp it. It stays as the fail-closed arm rather than a fallthrough, and its next-rung
+// trigger is a proof that ServiceMethodSemantics without a stamped receiver is unconstructible, at
+// which point this arm dissolves into that construction (DESIGN 4b, dissolution on climb).
 fn rust_unrealized_service_op_refusal(service_name: String, method: String, module_name: String) -> String {
   concat("panic!(\"unrealized host seam: service op ", service_name, ".", method, " in ", module_name, ": the Rust realization binds a service only through an async fn parameter, and this function declares none\")")
 }

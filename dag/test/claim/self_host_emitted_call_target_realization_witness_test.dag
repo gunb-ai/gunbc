@@ -686,18 +686,27 @@ test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
   )
 }
 
-// SERVICE OP WITHOUT A REALIZATION, THE DISCRIMINATING RED. `Filesystem.Read(path:)` inside a fn
-// the signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound
-// name in a non-async fn, the only `.await?` in the whole closure. It is a host seam with no
-// realization in this target and must emit the generated refusal body naming the seam. The realized
-// arm has no positive control here because no source in the corpus spells a receiver the signature
-// authority accepts; that absence is recorded in rust_unrealized_service_op_refusal's note.
-test fn w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound_binding() -> Bool {
+// A SERVICE OP REACHED THROUGH ITS BARE NAME IS REALIZED, AND THE TWO AUTHORITIES AGREE. This row
+// was the discriminating red for the opposite outcome: `Filesystem.Read(path:)` inside a fn the
+// signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound name in
+// a non-async fn -- and the method-call arm was taught to emit the "unrealized host seam" refusal
+// instead. The fn was only judged service-free because a service imported by its BARE name never
+// reached derived service demand (gunbc.recurring_failure_mode
+// bare_imported_service_invisible_to_derived_demand): the scope fold made `Filesystem` a local, and
+// the signature authority never saw the call. With that repaired, the fn IS effectful by derivation,
+// the signature makes it `async` and binds the service as a parameter, and the method-call arm asks
+// the same predicate and realizes the call against that binding. So the row flips from the refusal to
+// the realized arm's positive control, which its note recorded as not authorable until now, and it
+// still discriminates: before the repair this exact source emitted the refusal this row excludes.
+// The refusal it used to pin has no source-authorable input left -- a service operation's receiver is
+// always the service's own name, and both the qualified and the bare path now stamp it -- which
+// v1.compiler.emit_rust rust_unrealized_service_op_refusal records.
+test fn w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.service_op_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String { let read = Filesystem.Read(path: path)\n read.content }\n",
     "src/test_claim_service_op_probe.rs",
-    ["unrealized host seam: service op Filesystem.Read"],
-    [".await?"]
+    ["pub async fn probe(", "filesystem: &Filesystem", "filesystem.read(path.clone()).await?"],
+    ["unrealized host seam"]
   )
 }
 
