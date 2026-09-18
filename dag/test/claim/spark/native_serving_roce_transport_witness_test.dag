@@ -21,7 +21,7 @@ import gunbc.spark.native_serving_apply {
   spark_native_incumbent_restored_word, spark_native_unit_removed_word,
   SparkNativeStage, NativeStagePreflight, NativeStagePreserve, NativeStageMetadataCleanup,
   NativeStageApply, NativeStageReadback, NativeStageCommit,
-  spark_native_stage_has_mutated_the_serving_arm,
+  spark_native_stage_has_mutated_the_serving_arm, spark_native_stage_created_removable_artifacts,
   spark_native_readback_disagreements, spark_native_image_readback_gap,
 }
 import product.placement_supply { host_identity_eq }
@@ -421,7 +421,45 @@ test fn w_a_second_transaction_cannot_remove_the_first_ones_evidence() -> Bool {
            && string_contains(s: sc, pattern: "'B'"))
     && string_contains(s: b_commit, pattern: "FENCE-REFUSED-no-fence-on-this-host")
     && string_contains(s: b_rollback, pattern: "FENCE-REFUSED-no-fence-on-this-host")
-    && !string_contains(s: b_cleanup, pattern: "FENCE-REFUSED-no-fence-on-this-host")
+    && string_contains(s: b_cleanup, pattern: "metadata-cleanup-noop-this-transaction-holds-no-fence-here")
+}
+
+// ── THE REFUSAL MAY NOT ERASE THE THING IT IS REFUSING ABOUT ─────────────────────────────────
+//
+// THE HOLE THIS IS THE RED FOR WAS OPENED BY THE FIX FOR THE PREVIOUS ONE, WHICH IS WHY IT NEEDS ITS
+// OWN ROW. An incumbent restore renames the ordinary fence to an unresolved-rollback marker, and
+// preflight refuses on that marker, correctly. But that refusal routed into the metadata cleanup,
+// whose guard did not REQUIRE a fence -- so with the ordinary fence gone the guard passed, and the rm
+// list, which named the unresolved marker, deleted it. A third invocation then found nothing and
+// adopted the unverified recovery as its baseline. Run 1 restores, run 2 refuses AND erases, run 3
+// proceeds: the protection removed by the code path the protection triggered.
+//
+// FOUR PROPERTIES CLOSE IT AND EACH IS ASSERTED SEPARATELY, because they fail independently.
+// Preflight owes no cleanup at all (it creates nothing but a /run candidate). An absent ordinary
+// fence makes cleanup a NO-OP rather than permission to delete the fixed paths -- that inference is
+// the defect itself, so the no-op arm is asserted by name. The unresolved marker is not in the
+// removal list at ALL, rather than guarded out of it. And preflight still refuses on it, which is
+// what makes the marker's survival mean something on the next run.
+test fn w_a_refusal_cannot_erase_the_unresolved_rollback_marker() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let cleanup = spark_native_metadata_cleanup_script(unit_name: st.unit_name, transaction_id: "t-1")
+          let preflight = spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, spec: st.launch.container, host_model_path: st.launch.host_model_path)
+          let rollback = spark_native_rollback_script(unit_name: st.unit_name, transaction_id: "t-1")
+          spark_native_stage_created_removable_artifacts(st: NativeStagePreflight) == false
+            && spark_native_stage_created_removable_artifacts(st: NativeStagePreserve)
+            && string_contains(s: cleanup, pattern: "metadata-cleanup-noop-this-transaction-holds-no-fence-here")
+            && !string_contains(s: cleanup, pattern: ".gunbc-unresolved-rollback")
+            && string_contains(s: preflight, pattern: ".gunbc-unresolved-rollback")
+            && string_contains(s: preflight, pattern: "PREFLIGHT-REFUSED-unresolved-transaction-artifact")
+            && string_contains(s: rollback, pattern: ".gunbc-unresolved-rollback")
+        }
+      }
+  }
 }
 
 // ── PREFLIGHT VALIDATES THE HOST-SIDE REALIZATION, NOT ONLY THE UNIT'S SYNTAX ─────────────────
@@ -529,5 +567,6 @@ test fn w_all_native_roce_transport_claims_hold() -> Bool {
     && w_a_second_transaction_cannot_remove_the_first_ones_evidence()
     && w_preflight_tests_every_device_and_bind_source_by_name()
     && w_a_host_disposition_comes_from_its_own_leg()
+    && w_a_refusal_cannot_erase_the_unresolved_rollback_marker()
 }
 

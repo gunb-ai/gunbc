@@ -302,6 +302,22 @@ fn spark_native_stage_wire(st: SparkNativeStage) -> NonEmptyStr {
 // SO THE PREDICATE IS ABOUT THE SUBJECT, NOT ABOUT WHETHER BYTES WERE WRITTEN SOMEWHERE. A stage that
 // has not mutated the serving arm owes a metadata cleanup and a refusal; a stage that has owes a
 // rollback.
+// AND A STAGE THAT CREATED NOTHING OWES NO CLEANUP EITHER. Preflight writes one candidate unit under
+// /run -- a tmpfs path that is not a unit search directory and that the host discards on reboot -- and
+// reads everything else. Running a removal pass after a preflight refusal is a leg that can only find
+// artifacts belonging to somebody else, which is how the unresolved-rollback marker came to be deleted
+// by the very refusal that was protecting it. A preflight failure therefore stops, and says so.
+fn spark_native_stage_created_removable_artifacts(st: SparkNativeStage) -> Bool {
+  match st {
+    NativeStagePreflight => false
+    NativeStagePreserve => true
+    NativeStageMetadataCleanup => false
+    NativeStageApply => true
+    NativeStageReadback => true
+    NativeStageCommit => true
+  }
+}
+
 fn spark_native_stage_has_mutated_the_serving_arm(st: SparkNativeStage) -> Bool {
   match st {
     NativeStagePreflight => false
@@ -574,22 +590,41 @@ fn spark_native_preserve_script(unit_name: NonEmptyStr, transaction_id: String) 
   ], "")
 }
 
-// THE METADATA CLEANUP, WHICH IS WHAT A PRE-ACTUATION FAILURE OWES INSTEAD OF A ROLLBACK. It removes
-// only this transaction's own artifacts and never names the unit, the container or systemd. A host
-// that was never preserved has nothing to remove and says so rather than failing: this stage runs on
-// the whole arm after a partial preserve, so most of its hosts legitimately have nothing.
+// ── THE METADATA CLEANUP, AND THE THREE THINGS IT MAY NOT DO ─────────────────────────────────
 //
-// AND IT IS THE LEG THE OWNERSHIP GUARD EXISTS FOR. The interleaving that made this necessary is B's
-// cleanup deleting A's fence and backup after B refused on A's fence -- a refusal that destroys the
-// evidence the refusal was protecting. The guard reads the fence and refuses on a foreign one, so
-// this leg cannot remove what it did not write; the fence is deliberately NOT required, because a
-// host whose preserve never ran has none and has nothing to protect.
+// WHAT IT IS FOR. A failure before the serving arm is mutated owes the removal of this transaction's
+// own artifacts and nothing else -- never a rollback, which restarts units and would reload the arm
+// over a failure that touched nothing.
+//
+// THE HOLE THIS CLOSES, WHICH THE PREVIOUS REVISION OPENED WHILE FIXING SOMETHING ELSE. An incumbent
+// restore renames the ordinary fence to an unresolved-rollback marker, and preflight refuses on that
+// marker -- correctly. But the refusal routed here, and this script's guard did not REQUIRE a fence,
+// so with the ordinary fence gone the guard passed and the rm list -- which named the unresolved
+// marker -- deleted it. A third run then found nothing and adopted the unverified recovery as its
+// baseline. The protection was removed by the code path the protection triggered.
+//
+// SO THIS SCRIPT NOW HAS THREE REFUSALS AND ONE OF THEM IS A NO-OP:
+//
+//   NO ORDINARY FENCE IS A NO-OP, NOT PERMISSION. Preserve's FIRST effect is the fence write, so a
+//   host with no fence is a host on which this transaction created nothing. It exits zero -- this
+//   stage runs over the whole arm after a partial preserve and most hosts legitimately have nothing
+//   -- and it removes NOTHING. An absent lock is not a licence to delete the paths a lock would have
+//   guarded, which is exactly the inference the previous spelling made.
+//
+//   A FOREIGN FENCE REFUSES AND TOUCHES NOTHING. That is another transaction's rollback evidence.
+//
+//   THE UNRESOLVED-ROLLBACK MARKER IS NEVER IN THE REMOVAL LIST AT ALL. Not guarded, not conditional
+//   -- absent. It records that a rollback restored a unit and got an exec start and that nothing
+//   established the arm recovered, and it leaves only by an independently verified recovery or an
+//   explicit operator disposition. A generic cleanup is neither.
 fn spark_native_metadata_cleanup_script(unit_name: NonEmptyStr, transaction_id: String) -> String {
   let u = spark_native_unit_path(unit_name: unit_name)
   join([
     "set -e\n",
-    spark_native_fence_guard(unit_name: unit_name, transaction_id: transaction_id, require_fence: false),
-    "rm -f ", u, spark_native_fence_suffix, " ", u, spark_native_incumbent_suffix, " ", u, spark_native_absent_marker_suffix, " ", u, spark_native_unresolved_rollback_suffix, "\n",
+    "if [ ! -e ", u, spark_native_fence_suffix, " ]; then echo metadata-cleanup-noop-this-transaction-holds-no-fence-here; exit 0; fi\n",
+    "held=$(cat ", u, spark_native_fence_suffix, ")\n",
+    "if [ \"$held\" != ", shell_quote(arg: transaction_id), " ]; then echo FENCE-REFUSED-held-by-another-transaction-$held; exit 1; fi\n",
+    "rm -f ", u, spark_native_fence_suffix, " ", u, spark_native_incumbent_suffix, " ", u, spark_native_absent_marker_suffix, "\n",
     "rm -f ", spark_native_readback_dir, "/", spark_native_incumbent_inspect_name, " ", spark_native_readback_dir, "/", spark_native_incumbent_absent_name, " ", spark_native_readback_dir, "/incumbent.err\n",
     "echo metadata-removed\n",
   ], "")
@@ -1022,6 +1057,10 @@ fn spark_native_refuse_before_actuation(
 ) -> SparkNativeArmTransaction
   uses net: Network
 {
+  if !spark_native_stage_created_removable_artifacts(st: stage) {
+    NativeArmRefusedBeforeActuation { stage: stage, receipt: join([so_far, "  THE SERVING ARM WAS NOT MUTATED, and this stage created nothing on any host, so no removal pass ran. Any transaction artifact still present belongs to an earlier run and is what this refusal is about.
+"], "") }
+  } else {
   match spark_native_run_stage(
     trust: trust, path: path, administrator: administrator,
     credential_file_name: "gunbc-spark-native-cleanup-admin-password" as NonEmptyStr,
@@ -1034,6 +1073,7 @@ fn spark_native_refuse_before_actuation(
         so_far, "  THE SERVING ARM WAS NOT MUTATED.\n",
         spark_native_stage_body(st: NativeStageMetadataCleanup, outcomes: cleanups),
       ], "") }
+  }
   }
 }
 
