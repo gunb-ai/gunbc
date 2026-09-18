@@ -2,7 +2,9 @@ module gunbc.network_boot_manifest_broker
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { serialize_content_hash }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.materialization_provider { length_prefixed_encode }
 import extdeps.uri { uri_wire }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
@@ -284,3 +286,24 @@ fn signed_boot_manifest_standing(
       }
   }
 }
+
+// Issuance and redemption are pure folds with no production caller yet: the
+// broker is the 0D receipt family, and the lane that mints a ticket at attempt
+// admission and the boot authority that redeems it at fetch time are the
+// consumers that retire these rows. Counted in the census, not in prose.
+data network_boot_manifest_broker_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_manifest_broker", decl_name: "issue_signed_boot_manifest"),
+    reason: "issue_signed_boot_manifest is called only by its witness; no production fold mints a SignedBootManifestTicket for an admitted intake attempt, so no ticket the broker signs ever reaches a client",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an intake attempt admission fold in gunbc.machine_intake calls issue_signed_boot_manifest with claims built from the admitted attempt and the fleet signing key from boot_manifest_mac_key_secret_ref, and binds the BootManifestIssued ticket into the boot offer the site edge serves; a witness that issues against a hand-built identity does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_manifest_broker", decl_name: "redeem_signed_boot_manifest"),
+    reason: "redeem_signed_boot_manifest and signed_boot_manifest_standing are called only by their witness; no production fold redeems a presented ticket, so SignedBootManifestVerified is never minted on a path that reaches join_network_boot_delivery",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the boot-authority fetch handler for the global HTTPS boot origin calls redeem_signed_boot_manifest on the ticket a client presents, with the BootManifestExpectation built from the fleet trust root and the spent-nonce ledger, and the resulting signed_boot_manifest_standing is the manifest arm of the NetworkBootJoinInputs the intake assembler joins; a witness that redeems a ticket it issued in the same claim does not fire this"
+    )
+  ),
+]

@@ -62,6 +62,7 @@ import product.data_category { data_category_frontier_rows }
 import product.fabric.job_admission { job_admission_frontier_rows }
 import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
 import gunbc.network_boot_delivery { network_boot_delivery_join_frontier_rows }
+import gunbc.network_boot_manifest_broker { network_boot_manifest_broker_frontier_rows }
 import gunbc.github_app_acquisition { github_app_human_step_frontier_rows }
 import gunbc.instruments.github_app_acquire {
   census_app_installation_route_frontier_rows,
@@ -123,6 +124,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     arm_ci_seller_census_later_consumer_frontier_rows,
     runner_canary_executed_evidence_frontier,
     network_boot_delivery_join_frontier_rows,
+    network_boot_manifest_broker_frontier_rows,
   ]
 }
 

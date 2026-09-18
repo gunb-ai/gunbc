@@ -28,7 +28,10 @@ import gunbc.network_boot_delivery {
   BootstrapTrustObservation,
   bootstrap_trust_standing,
 }
+import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.network_boot_manifest_broker {
+  network_boot_manifest_broker_frontier_rows,
   SignedBootManifestClaims,
   SignedBootManifestTicket,
   BootManifestIssued,
@@ -367,4 +370,16 @@ test fn legacy_bios_x86_ticket_projects_its_published_dhcp_class() -> Bool {
       }
     BootManifestIssuanceRefused { cause: _ } => false
   }
+}
+
+fn census_contains_frontier_subject(row: FrontierRow) -> Bool {
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+}
+
+test fn broker_frontier_rows_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: network_boot_manifest_broker_frontier_rows)
+}
+
+test fn broker_frontier_rows_are_in_the_census() -> Bool {
+  all(network_boot_manifest_broker_frontier_rows, row => census_contains_frontier_subject(row: row))
 }
