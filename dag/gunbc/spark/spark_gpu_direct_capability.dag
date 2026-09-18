@@ -1,14 +1,8 @@
 module gunbc.spark.spark_gpu_direct_capability
 
 import std.types { Bool, String, NonEmptyStr, List }
-import extdeps.nvidia.cuda_driver {
-  CudaQueryOutcome, CudaQuerySucceeded,
-  CudaDeviceAttribute, GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute,
-  cuda_device_attribute_argv,
-}
-import extdeps.nvidia.gpu_direct_rdma {
-  GpuDirectRdmaCapability, gpu_direct_rdma_capability, gpu_direct_rdma_capability_wire,
-}
+import extdeps.nvidia.cuda_driver { CudaQueryOutcome, CudaQuerySucceeded }
+import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability, gpu_direct_rdma_capability }
 
 // ── WHAT THE GB10 DEVICES ANSWERED, AND WHEN ───────────────────────────────────────────────────
 //
@@ -19,10 +13,15 @@ import extdeps.nvidia.gpu_direct_rdma {
 // failure of the probe -- the distinction that decides whether a disabled GPUDirect path is a
 // supported state or a broken one.
 //
-// THE PRODUCER IS NAMED RATHER THAN THE NUMBERS TRANSCRIBED as prose: `cuda_device_attribute_argv`
-// renders the exact argv that re-derives each of these, so a reader who doubts a row runs the row's
-// own producer. What is stored here is the ANSWER at a stated time on a stated host, which is what a
-// receipt is; what is not stored is any derived claim about what the answer implies.
+// THESE ARE AUTHORED LITERALS AND NOT YET A PRODUCER, WHICH IS A DECLARED FRONTIER RATHER THAN A
+// CLAIM TO HAVE EXECUTED. The values were returned by a real query on a real host at a stated time,
+// and the argv that re-derives them is rendered by extdeps.nvidia.cuda_driver
+// `cuda_device_attribute_argv` -- a consumer that wants it imports it from there rather than through
+// a second name here. What is missing is the route that RUNS that argv and folds its stdout through
+// `cuda_attribute_outcome` into these rows, so the reading refreshes instead of being re-typed.
+// TRIGGER: the observe route gaining a device-capability leg beside its container and log legs, at
+// which point these rows become the fold's output and this block deletes. SUFFICIENT FOR: a
+// capability reading that cannot silently outlive a driver or image change on the host it describes.
 data spark_gb10_platform: NonEmptyStr = "NVIDIA GB10 Grace Blackwell (DGX Spark), unified LPDDR5X" as NonEmptyStr
 
 data spark_gb10_capability_read_provenance: NonEmptyStr = "cuDeviceGetAttribute on device 0 inside glm-native-tp4 on spark-0c75 (192.168.1.236), NVRM 580.173.02, read 2026-09-18; both queries returned CUresult 0" as NonEmptyStr
@@ -35,12 +34,3 @@ data spark_gb10_gpu_direct_capability: GpuDirectRdmaCapability = gpu_direct_rdma
   device_api: spark_gb10_peer_memory_outcome,
   dma_buf: spark_gb10_dma_buf_outcome,
 )
-
-// THE ARGV THAT RE-DERIVES EACH READING, so the citation is a producer rather than a sentence.
-fn spark_gpu_direct_capability_argv(a: CudaDeviceAttribute) -> List<String> {
-  cuda_device_attribute_argv(a: a)
-}
-
-fn spark_gb10_capability_wire() -> NonEmptyStr {
-  gpu_direct_rdma_capability_wire(c: spark_gb10_gpu_direct_capability)
-}
