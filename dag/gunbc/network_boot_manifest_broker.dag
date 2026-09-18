@@ -1,6 +1,6 @@
 module gunbc.network_boot_manifest_broker
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, String, to_string }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { serialize_content_hash }
 import std.decl_ref { DeclarationRef }
 import std.materialization_provider { length_prefixed_encode }

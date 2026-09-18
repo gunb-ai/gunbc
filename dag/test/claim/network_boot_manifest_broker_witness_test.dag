@@ -129,6 +129,45 @@ fn expectation_at(spent: List<SpentAttemptNonce>) -> BootManifestExpectation {
   expectation_when(spent: spent, at: 1788001800000)
 }
 
+fn identity_with_attempt_and_nonce(attempt_id: IntakeAttemptId, nonce: String) -> SignedBootManifestIdentity {
+  let id = good_identity()
+  SignedBootManifestIdentity {
+    target_unit: id.target_unit,
+    attempt_id: attempt_id,
+    nonce: nonce,
+    architecture: id.architecture,
+    boot_mode: id.boot_mode,
+    chainloader_digest: id.chainloader_digest,
+    kernel_digest: id.kernel_digest,
+    initrd_digest: id.initrd_digest,
+    root_digest: id.root_digest,
+    kernel_cmdline: id.kernel_cmdline,
+    not_before: id.not_before,
+    expiry: id.expiry,
+    signing_key_identity: id.signing_key_identity,
+    callback_identity: id.callback_identity,
+  }
+}
+
+// The pair collides under a separator join (attempt_id ++ US ++ nonce is
+// the same text for both), so it is red for any preimage that does not
+// bind field boundaries independently of field content.
+test fn claims_that_collide_under_a_separator_join_have_distinct_signing_inputs() -> Bool {
+  let us = from_code_point(cp: 31)
+  let a = identity_with_attempt_and_nonce(attempt_id: concat("intake", concat(us, "x")) as IntakeAttemptId, nonce: "n")
+  let b = identity_with_attempt_and_nonce(attempt_id: "intake" as IntakeAttemptId, nonce: concat("x", concat(us, "n")))
+  let separator_joined_a = join([a.attempt_id as String, a.nonce], us)
+  let separator_joined_b = join([b.attempt_id as String, b.nonce], us)
+  match signed_boot_manifest_signing_input(c: claims_for(id: a)) {
+    Absent => false
+    Present { value: pa } =>
+      match signed_boot_manifest_signing_input(c: claims_for(id: b)) {
+        Absent => false
+        Present { value: pb } => separator_joined_a == separator_joined_b && pa != pb
+      }
+  }
+}
+
 fn good_identity() -> SignedBootManifestIdentity {
   identity_for(target: unit, arch: Aarch64, root_digest: root(), nbf: 1788000000000, exp: 1788003600000)
 }
