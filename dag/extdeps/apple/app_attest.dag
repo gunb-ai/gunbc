@@ -191,6 +191,7 @@ type AttestationImplementationAnswer
       bundle_version: NonEmptyStr,
     }
   | AttestationImplementationRefused { cause: AttestationRefusal }
+  | AttestationImplementationAaguidMismatch
 
 type AssertionImplementationAnswer
   = AssertionImplementationVerified { counter: Int, validation_category: Int, bundle_version: NonEmptyStr }
@@ -257,7 +258,7 @@ fn app_attest_verify_under(
       client_data as String,
       key_id as String,
       app_id as String,
-      app_attest_is_production(e: environment),
+      app_attest_aaguid_hex(e: environment) as String,
       anchor.root_pem as String,
       now_epoch as Int,
     ),
@@ -269,10 +270,13 @@ fn app_attest_verify_under(
   )
 }
 
-fn app_attest_is_production(e: AppAttestEnvironment) -> Bool {
+// THE AAGUID EACH ENVIRONMENT PUTS IN THE AUTHENTICATOR DATA, as the 16 octets in lowercase hex:
+// "appattestdevelop", or "appattest" followed by seven 0x00. This is the wire fact step 7 compares,
+// so the environment reaches the implementation as its AAGUID rather than as a flag.
+fn app_attest_aaguid_hex(e: AppAttestEnvironment) -> NonEmptyStr {
   match e {
-    AppAttestDevelopment => false
-    AppAttestProduction => true
+    AppAttestDevelopment => "617070617474657374646576656c6f70" as NonEmptyStr
+    AppAttestProduction => "61707061747465737400000000000000" as NonEmptyStr
   }
 }
 
@@ -310,6 +314,7 @@ fn app_attest_attestation_of(
 ) -> AttestationVerification {
   match answer {
     AttestationImplementationRefused { cause } => AttestationRefused { cause: cause }
+    AttestationImplementationAaguidMismatch => AttestationRefused { cause: AttestationEnvironmentUnexpected { expected: environment } }
     AttestationImplementationVerified { public_key_point_b64url, validation_category, receipt_b64, bundle_version } =>
       attestation_verification_from_implementation(
         key_id: key_id,

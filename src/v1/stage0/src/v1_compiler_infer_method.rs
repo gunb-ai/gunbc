@@ -354,9 +354,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     }), Rc::new(BuiltinParam {
-        name: "production".to_string(),
+        name: "expected_aaguid_hex".to_string(),
         ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "Bool".to_string(),
+        name: "String".to_string(),
     }),
     }), Rc::new(BuiltinParam {
         name: "root_pem".to_string(),

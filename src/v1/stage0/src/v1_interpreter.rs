@@ -19738,7 +19738,7 @@ macro_rules! v1_builtin_arms {
                     expect_value_str($positional.get(1).copied(), "app_attest_verify_attestation client_data")?.as_str(),
                     expect_value_str($positional.get(2).copied(), "app_attest_verify_attestation key_id")?.as_str(),
                     expect_value_str($positional.get(3).copied(), "app_attest_verify_attestation app_id")?.as_str(),
-                    expect_bool($positional.get(4).copied(), "app_attest_verify_attestation production")?,
+                    expect_value_str($positional.get(4).copied(), "app_attest_verify_attestation expected_aaguid_hex")?.as_str(),
                     expect_value_str($positional.get(5).copied(), "app_attest_verify_attestation root_pem")?.as_str(),
                     expect_int($positional.get(6).copied(), "app_attest_verify_attestation now")?,
                 )))
@@ -22743,7 +22743,7 @@ fn app_attest_verify_attestation(
     client_data: &[u8],
     key_id: &[u8],
     app_id: &str,
-    production: bool,
+    expected_aaguid: &[u8],
     root_pem: &str,
     now: i64,
 ) -> Result<AppAttestAttested, AppAttestAttestationRefusal> {
@@ -22819,13 +22819,9 @@ fn app_attest_verify_attestation(
     if parsed.counter != 0 {
         return Err(R::CounterNonZero(parsed.counter));
     }
-    // 7. The AAGUID names the environment the entitlement selected.
-    let aaguid: &[u8] = if production {
-        b"appattest\0\0\0\0\0\0\0"
-    } else {
-        b"appattestdevelop"
-    };
-    if parsed.aaguid != aaguid {
+    // 7. The AAGUID is the one the caller's environment names (extdeps.apple.app_attest
+    // app_attest_aaguid_hex).
+    if parsed.aaguid != expected_aaguid {
         return Err(R::EnvironmentUnexpected);
     }
     // 8. The credential id is the key id.
@@ -22942,7 +22938,7 @@ fn app_attest_attestation_answer(
     client_data: &str,
     key_id_b64: &str,
     app_id: &str,
-    production: bool,
+    expected_aaguid_hex: &str,
     root_pem: &str,
     now: i64,
 ) -> Value {
@@ -22972,12 +22968,24 @@ fn app_attest_attestation_answer(
             )],
         );
     };
+    let Some(expected_aaguid) = hex::decode(expected_aaguid_hex)
+        .ok()
+        .filter(|a| a.len() == 16)
+    else {
+        return refused(
+            "AttestationUndecodable",
+            vec![(
+                "cause",
+                str_value("expected AAGUID is not 16 octets of hex".to_string()),
+            )],
+        );
+    };
     match app_attest_verify_attestation(
         &attestation,
         client_data.as_bytes(),
         &key_id,
         app_id,
-        production,
+        &expected_aaguid,
         root_pem,
         now,
     ) {
@@ -23022,21 +23030,13 @@ fn app_attest_attestation_answer(
             "AttestationCounterNonZero",
             vec![("counter", Value::Int(i64::from(counter)))],
         ),
-        Err(R::EnvironmentUnexpected) => refused(
-            "AttestationEnvironmentUnexpected",
-            vec![(
-                "expected",
-                app_attest_variant(
-                    ctx,
-                    "AppAttestEnvironment",
-                    if production {
-                        "AppAttestProduction"
-                    } else {
-                        "AppAttestDevelopment"
-                    },
-                    vec![],
-                ),
-            )],
+        // The environment is the .dag's fact; the host saw only its AAGUID, so the mismatch is its
+        // own answer arm and the .dag names the expected environment.
+        Err(R::EnvironmentUnexpected) => app_attest_variant(
+            ctx,
+            "AttestationImplementationAnswer",
+            "AttestationImplementationAaguidMismatch",
+            vec![],
         ),
         Err(R::CredentialIdMismatch) => refused(
             "AttestationCredentialIdMismatch",
@@ -23419,22 +23419,6 @@ fn expect_fma_contraction_policy_wire(val: Option<&Value>, context: &str) -> Int
                 "{context} requires FmaContractionRefused | FmaContractionPermitted, got {}",
                 other.type_label()
             ),
-        }),
-    }
-}
-
-fn expect_bool(val: Option<&Value>, context: &str) -> InterpResult<bool> {
-    match val {
-        Some(Value::Bool(b)) => Ok(*b),
-        Some(v) => Err(InterpError::TypeError {
-            msg: format!(
-                "{} expects a bool argument, got {}",
-                context,
-                v.type_label()
-            ),
-        }),
-        None => Err(InterpError::TypeError {
-            msg: format!("{} requires a bool argument", context),
         }),
     }
 }
