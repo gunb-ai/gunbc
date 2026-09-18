@@ -50,7 +50,7 @@ import v2.extdeps.languages.dag {
   namespace_graft_unwrap_module_working_root,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
-  parse_subtree_has_production,
+  parse_subtree_locate_production,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_kw_then_ident_from_captured,
   qualified_name_from_module_node
@@ -330,19 +330,19 @@ fn namespace_graft_unit_captured(unit: Node) -> Node? {
 // (`type Box = Leaf | Cell { … }`, `type Foo = Bar {}`) takes the same arm. Narrowing
 // by type_alias_rhs Named-rehomed records (unchosen choice arm) and broke Flag+Rec.
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
-  if parse_subtree_has_production(root: unit, emitted: ^dag_surface_field_decl_block) {
-    optional_absent()
-  } else {
-    match namespace_graft_type_decl_name(unit: unit) {
-      Absent => optional_absent()
-      Present { value: type_name } =>
-        optional_present(
-          value: Edge {
-            label: Named { name: type_name },
-            target: namespace_graft_type_decl_target(captured: unit)
-          }
-        )
-    }
+  match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_field_decl_block) {
+    Present { value: _ } => optional_absent()
+    Absent =>
+      match namespace_graft_type_decl_name(unit: unit) {
+        Absent => optional_absent()
+        Present { value: type_name } =>
+          optional_present(
+            value: Edge {
+              label: Named { name: type_name },
+              target: namespace_graft_type_decl_target(captured: unit)
+            }
+          )
+      }
   }
 }
 
@@ -415,18 +415,8 @@ fn namespace_graft_residual_decl_units(units: List<Node>) -> List<Node> {
 // (the type shell was dropped). Neither arm is a refusal. Rehome type/data onto
 // Named containment first; reconstruct remains only when nothing first-class
 // survived (import-only and the lost-forest refusal still sit on that empty path).
-fn namespace_graft_is_declaration_target(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Arrow } => true
-    TypeNode { connective: Conj } => true
-    TypeNode { connective: Disj } => true
-    _ =>
-      fold(node.children, init: false, f: fn(found, e) {
-        found || namespace_graft_is_declaration_target(node: e.target)
-      })
-  }
-}
-
+// Flatten keeps an existing Named member when its target subtree holds an Arrow
+// (fn) or Disj (coproduct). A bare Conj is not a declaration (records stay residual).
 fn namespace_graft_keep_flattened_member_edge(
   productions: List<GrammarProduction>,
   edge: Edge
@@ -440,7 +430,21 @@ fn namespace_graft_keep_flattened_member_edge(
       } else if namespace_graft_is_machinery_symbol(productions: productions, sym: sym) {
         false
       } else {
-        namespace_graft_is_declaration_target(node: edge.target)
+        fold(
+          node_subtree_nodes(root: edge.target),
+          init: false,
+          f: fn(found, n) {
+            if found {
+              true
+            } else {
+              match n.kind {
+                TypeNode { connective: Arrow } => true
+                TypeNode { connective: Disj } => true
+                _ => false
+              }
+            }
+          }
+        )
       }
     Positional => false
   }

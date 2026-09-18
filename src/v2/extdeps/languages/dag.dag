@@ -4621,13 +4621,6 @@ fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseS
   }
 }
 
-fn parse_subtree_has_production(root: Node, emitted: Symbol) -> Bool {
-  match parse_subtree_locate_production(root: root, emitted: emitted) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn dag_surface_kw_then_ident_node_from_captured(captured: Node) -> Outcome<Node> {
   match find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
