@@ -96,7 +96,8 @@ type ScenarioShortfall<P> {
 // absorb (an empty set would admit vacuously). Undeclared or ambiguous domains: record where that
 // capacity physically sits. Shared offer: two demand classes draw on one offer, and summing it into
 // both would sell it twice - joint allocation is not modeled here, so it refuses rather than
-// double counting. Shortfall: buy, exercise or spread supply until the named scenario survives.
+// double counting. Mixed requirements: one demand's supply was proved against more than one shape, so
+// its grants are not one commodity and cannot be summed. Shortfall: buy, exercise or spread supply until the named scenario survives.
 type FailureScenarioRefusal<P>
   = NoFailureScenariosDeclared
   | OfferFailureDomainsUndeclared { offer: FabricIdentity<P, OfferKey> }
@@ -104,6 +105,7 @@ type FailureScenarioRefusal<P>
   | OfferSharedAcrossDemands { offer: FabricIdentity<P, OfferKey> }
   | ScenarioNamesUnknownOffer { scenario: DeclarationRef, offer: FabricIdentity<P, OfferKey> }
   | CapacityListedTwiceForOneSubject { offer: FabricIdentity<P, OfferKey>, demand: FabricIdentity<P, DemandKey>, work: FabricIdentity<P, WorkKey> }
+  | CapacityProvedForDifferentRequirements { demand: FabricIdentity<P, DemandKey>, work: FabricIdentity<P, WorkKey> }
   | ScenarioNotSurvived { shortfall: ScenarioShortfall<P> }
 
 // WHAT A SURVIVAL COVERED, CARRIED RATHER THAN LEFT TO BE RECONSTRUCTED. "The reserve holds" is not
@@ -287,6 +289,24 @@ fn sharing_refusals<P>(capacities: List<AdmittedCapacity<P>>, supplies: List<Dem
   shared_offer_scan(remaining: capacities, reported: [], supplies: supplies)
 }
 
+// ONE DEMAND'S SUPPLY MUST HAVE BEEN PROVED FOR ONE REQUIREMENTS VALUE, checked before anything is
+// summed. A capacity is admitted against the ExecutionRequirements its caller supplied, and WorkKey is
+// a caller-chosen brand rather than a key derived from those requirements, so two offers admitted for
+// the same demand and work under different requirements - eight threads and sixteen - would otherwise
+// be added into one reserve (review 67819). That is the disagreement the no-requirements-on-demand
+// repair exists to make visible, moved to between two sealed carriers; this is where it is seen.
+fn requirements_refusals<P>(supply: DemandSupply<P>) -> List<FailureScenarioRefusal<P>> {
+  match supply.eligible.first() {
+    Absent => []
+    Present { value: first } =>
+      if count(filter(supply.eligible, c => c.requirements != first.requirements)) > 0 {
+        [CapacityProvedForDifferentRequirements { demand: supply.demand.demand, work: supply.demand.work }]
+      } else {
+        []
+      }
+  }
+}
+
 // One refusal per duplicated subject rather than one per duplicate row, for the same reason the
 // sharing scan reports each shared offer once.
 // THE SCAN IS KEYED ON THE SAME SUBJECT THE REFUSAL IS. An earlier revision suppressed on offer id
@@ -359,7 +379,10 @@ fn admit_failure_scenarios<P>(
       ),
       concat(
         flat_map(scenarios, sc => unknown_offer_refusals(capacities: capacities, scenario: sc)),
-        sharing_refusals(capacities: capacities, supplies: supplies),
+        concat(
+          sharing_refusals(capacities: capacities, supplies: supplies),
+          flat_map(supplies, sup => requirements_refusals(supply: sup)),
+        ),
       ),
     ),
   )

@@ -36,7 +36,7 @@ import product.fabric.failure_scenario_admission {
   FailureScenarioAdmission, FailureScenariosSurvived, FailureScenariosRefused, CoveredSubject,
   FailureScenarioRefusal, NoFailureScenariosDeclared, OfferFailureDomainsUndeclared,
   OfferFailureDomainsAmbiguous, OfferSharedAcrossDemands, ScenarioNotSurvived,
-  ScenarioNamesUnknownOffer, CapacityListedTwiceForOneSubject,
+  ScenarioNamesUnknownOffer, CapacityListedTwiceForOneSubject, CapacityProvedForDifferentRequirements,
   admit_failure_scenarios,
 }
 
@@ -351,6 +351,7 @@ fn tag(x: FailureScenarioRefusal<NonEmptyStr>) -> String {
     OfferSharedAcrossDemands { offer: o } => join(["shared:", (o.key as NonEmptyStr)], "")
     ScenarioNamesUnknownOffer { scenario: _, offer: o } => join(["unknown-offer:", (o.key as NonEmptyStr)], "")
     CapacityListedTwiceForOneSubject { offer: o, demand: _, work: _ } => join(["duplicate:", (o.key as NonEmptyStr)], "")
+    CapacityProvedForDifferentRequirements { demand: _, work: w } => join(["mixed-requirements:", (w.key as NonEmptyStr)], "")
     ScenarioNotSurvived { shortfall: s } => join(["short:", s.scenario.decl_name], "")
   }
 }
@@ -374,6 +375,7 @@ fn shortfall_numbers(a: FailureScenarioAdmission<NonEmptyStr>) -> List<Int> {
         OfferSharedAcrossDemands { offer: _ } => []
         ScenarioNamesUnknownOffer { scenario: _, offer: _ } => []
         CapacityListedTwiceForOneSubject { offer: _, demand: _, work: _ } => []
+        CapacityProvedForDifferentRequirements { demand: _, work: _ } => []
       })
   }
 }
@@ -621,4 +623,45 @@ test fn w_a_duplicate_hidden_behind_another_demands_row_is_still_named() -> Bool
     demands: one_demand(),
     scenarios: absorbed_scenarios()))
     == ["duplicate:cloud-x"]
+}
+
+// review 67819's case: the same demand and work, two offers each admitted through the real fold, one
+// against the eight-thread requirements and one against sixteen. Summing them would call two shapes
+// one reserve, so the fold refuses before any grant is added.
+fn requirements_at(threads: Int) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: shape(threads: hardware_thread_count(count: threads)),
+    capabilities: caps(),
+    trust_domain: trust(),
+    isolation: IsolationProfile { guarantees: [] },
+  }
+}
+
+fn capacity_at(key: OfferKey, route: ProviderRoute, threads: Int) -> List<AdmittedCapacity<NonEmptyStr>> {
+  match admit_capacity(
+    routes: route_rows(offers: offers()),
+    sanctions: sanctions(),
+    active: posture(),
+    scope: scope(work: "committed-ci"),
+    decision_receipt: r(name: "fsa_decision_receipt"),
+    exercises: exercises(),
+    readiness_requirement: RequireExercisedRoute,
+    at: now,
+    requirements: requirements_at(threads: threads),
+    offer: offer(key: key, route: route, grants: 10),
+  ) {
+    CapacityAdmittedForOrdinaryWork { capacity: c } => [c]
+    RouteExercisePlacementAdmitted { placement: _ } => []
+    CapacityRefused { refusal: _ } => []
+  }
+}
+
+test fn w_capacity_proved_for_different_requirements_is_not_one_reserve() -> Bool {
+  let mixed = concat(
+    capacity_at(key: "owned-node-1", route: owned_route(), threads: 8),
+    capacity_at(key: "cloud-x", route: cloud_x_route(), threads: 16))
+  count(mixed) == 2
+    && tags(a: admit_with_capacity(capacities: mixed, demands: one_demand(), scenarios: absorbed_scenarios()))
+      == ["mixed-requirements:committed-ci"]
 }
