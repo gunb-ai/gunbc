@@ -43,6 +43,7 @@ import gunbc.spark.vllm_runtime_image_build {
   SparkHostAnswered, SparkHostIdentityMismatch, SparkHostIdentityUnjoinable,
   SparkHostUnreachable, SparkHostUnresolved,
   classify_reported_hostname, spark_host_answered,
+  spark_reachability_verdict, SparkReachabilityVerdict, SparkReachabilityAllAnswered, SparkReachabilityNoAdmissibleHost, SparkReachabilitySomeUnanswered,
 }
 import gunbc.spark.host_commitment { spark_host_is_unplaced, SparkHostAdmitted, SparkHostRefused, admit_unplaced_host, admit_unplaced_host_among }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
@@ -573,3 +574,25 @@ test fn an_adopted_image_does_not_claim_this_run_built_it() -> Bool {
   vllm_image_provenance_wire(p: BuiltByThisRun) as String == "built-by-this-run"
     && string_contains(s: vllm_image_provenance_wire(p: AdoptedUnderExpectedTag) as String, pattern: "UNESTABLISHED")
 }
+
+// THE REACHABILITY VERDICT REFUSES A POPULATION OF ZERO. The wet root used to gate on a fold starting at
+// true, so a run that probed nobody exited zero with a receipt carrying no probe lines -- and nobody is
+// exactly what production has to probe once every Spark unit is placed. The three arms are pinned
+// against supplied readings: empty refuses by name, all-answered admits, and one unreachable host among
+// answered ones is the partial arm rather than either of the others.
+fn verdict_word(v: SparkReachabilityVerdict) -> String {
+  match v {
+    SparkReachabilityAllAnswered => "all"
+    SparkReachabilityNoAdmissibleHost => "none"
+    SparkReachabilitySomeUnanswered => "some"
+  }
+}
+
+test fn the_reachability_verdict_refuses_an_empty_population_rather_than_passing() -> Bool {
+  let ok = SparkHostAnswered { host: "srv10" as HostIdentity, endpoint: "192.168.1.237" as NonEmptyStr, reported_hostname: "spark-fixture" as NonEmptyStr }
+  let down = SparkHostUnreachable { host: "srv11" as HostIdentity, endpoint: "192.168.1.238" as NonEmptyStr, cause: "fixture" }
+  verdict_word(v: spark_reachability_verdict(readings: [])) == "none"
+    && verdict_word(v: spark_reachability_verdict(readings: [ok])) == "all"
+    && verdict_word(v: spark_reachability_verdict(readings: [ok, down])) == "some"
+}
+
