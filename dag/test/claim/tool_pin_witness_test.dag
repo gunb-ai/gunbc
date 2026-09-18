@@ -25,6 +25,7 @@ import extdeps.pin {
   pin_value_eq,
 }
 import extdeps.tools.pin { admit_legacy_cli_tool, cli_tool_pin_key_of }
+import extdeps.apt { package_cargo, package_jq }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -35,13 +36,13 @@ data other_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-19
 data cargo_tool: CliTool = CliTool {
   name: "cargo",
   min_version: Absent,
-  installable_via: [SourceApt],
+  installable_via: [SourceApt { package: package_cargo }],
 }
 
 data jq_tool: CliTool = CliTool {
   name: "jq",
   min_version: Absent,
-  installable_via: [SourceApt],
+  installable_via: [SourceApt { package: package_jq }],
 }
 
 data authored_pin: Pin<CliTool> = Pin {
