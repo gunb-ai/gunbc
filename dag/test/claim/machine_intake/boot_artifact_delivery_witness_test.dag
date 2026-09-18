@@ -5,6 +5,7 @@ import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
+import extdeps.provisioning.network_boot { NativeDhcpBootOptions }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.external_authority { ExternalAuthority }
@@ -139,7 +140,7 @@ import gunbc.network_boot_delivery {
   ObservedClientBootModeReceipt,
   ObservedDhcpPxeClient,
   SignedBootManifestIdentity,
-  SiteNativeDhcp,
+  SiteAnsweredDhcp,
   SitePxeEdge,
   SitePxeEdgeReceipt,
   first_slice_admitted_architectures,
@@ -1150,7 +1151,7 @@ fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> N
         edge: SitePxeEdge {
           site: site,
           admitted_architectures: first_slice_admitted_architectures,
-          discovery: SiteNativeDhcp,
+          discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
           bootstrap_transport: ArchitectureChainloader {
             architecture: Aarch64,
             filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
