@@ -158,7 +158,7 @@ fn converge_review_sheet_all(
   writer: ServiceAccountEmail,
   drive_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ReviewSheetConvergeReport uses net: Network {
+) -> ReviewSheetConvergeReport uses net: Network, fs: std.resources.Filesystem {
   ReviewSheetConvergeReport {
     sheets_api: converge_service_enablement(
       token: token,
@@ -320,7 +320,7 @@ fn converge_drive_half(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> DriveHalfReport uses net: Network {
+) -> DriveHalfReport uses net: Network, fs: std.resources.Filesystem {
   DriveHalfReport {
     membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
     spreadsheet: converge_review_spreadsheet(
@@ -346,7 +346,7 @@ fn drive_half_text(r: DriveHalfReport) -> String {
   )
 }
 
-fn converge_drive_half_cli() -> ProcessExit uses net: Network {
+fn converge_drive_half_cli() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   match calling_home_resolution() {
     HomeUnresolved { cause: c } => exit_failure(reason: c as String)
     HomeResolved { project_id: _, writer: w } =>

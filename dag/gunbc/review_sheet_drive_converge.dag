@@ -633,12 +633,17 @@ fn decide_with_declared_id(
                 }
               }
             SheetDuplicated { file_ids: ids } =>
-              if any(ids, i => i == (declared_id as String)) {
-                plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
-              } else {
-                Refuse {
-                  reason: join(["the superseded-marker search names ", join(ids, ", "), " and an operator declared ", declared_id as String, ", which is none of them"], "") as NonEmptyStr,
-                }
+              Refuse {
+                reason: join(
+                  [
+                    "the superseded-marker search names ",
+                    join(ids, ", "),
+                    " and an operator declared ",
+                    declared_id as String,
+                    "; migrating one of several would leave the others on the superseded marker and invisible to every later run -- the next run would find the migrated file, answer Noop, and never consult the superseded field again. A declaration written BEFORE this search is not a selection among files the search then found, so which lineage is real is an operator's to settle with all of these in view",
+                  ],
+                  "",
+                ) as NonEmptyStr,
               }
             SheetAbsent => plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)
             SheetSearchUnreadable { reason: _ } => plan_declared_migration(policy: policy, declared_id: declared_id, marker_value: marker_value)

@@ -493,6 +493,41 @@ test fn a_declared_id_does_not_bypass_an_unreadable_current_search() -> Bool {
   }
 }
 
+// A DUPLICATED SUPERSEDED FIND REFUSES EVEN WHEN THE DECLARED ID IS ONE OF THEM. An earlier cut
+// treated membership as adjudication and migrated, which abandons the other files: the next run
+// finds the migrated one, answers Noop, never consults the superseded field again, and they go dark
+// with success reported. The refusal must name EVERY id, because the operator has to settle this
+// with all of them in view.
+test fn a_declared_id_among_superseded_duplicates_still_refuses() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-A"), w_file(id: "legacy-B")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "legacy-A" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "legacy-A")
+        && string_contains(s: r as String, pattern: "legacy-B")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
 // THE AGREEMENT CONTROL, without which a fold that refused every declared id would satisfy both
 // claims above while making the id route dead.
 test fn a_declared_id_agreeing_with_the_superseded_find_migrates() -> Bool {
