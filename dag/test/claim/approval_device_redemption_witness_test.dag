@@ -1,7 +1,9 @@
 module test.claim.approval_device_redemption_witness_test
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, Timestamp }
+import std.types { String, NonEmptyStr, Timestamp, Secret }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.crypto.mac { MacKey, HmacSha256, mac_sign, MacSigned, MacKeyMaterialNotHex }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
 import extdeps.apple.apns {
   ApnsStatusUnlisted,
@@ -17,6 +19,15 @@ import gunbc.auth.approval_device_redemption {
   DeviceRedemptionSigningInput, RedemptionChallenge, EnrolmentChallenge, MobileIos, MobileAndroid,
   PushProviderAccepted, PushProviderRefused, PushRegistrationInvalid, PushProviderUnreached, PushProviderUndecodable,
   push_outcome_of_apns, device_redemption_signing_input, enrolment_transcript,
+  DeviceEnrollment, EnrollmentActive, EnrollmentRevoked, IosAppAttestBoundDecisionKey, IosAppAttestAssertion, SignedRedemption,
+  PlatformProofVerified, PlatformProofRefused, DeviceAdmitted, DeviceNotAdmitted,
+  DeviceSignedForAnotherRequest, DeviceChallengeExpired, DeviceChallengeNotIssuedHere, DeviceCapabilityRefused,
+  DeviceSignatureRefused, DevicePlatformProofRefused, DeviceEnrollmentRevoked, DeviceEnrollmentForAnotherOperator,
+  device_redemption_admission, redeem_device_over_store, redemption_challenge_message, approval_device_audience,
+}
+import gunbc.auth.approval_capability { approval_capability_signing_input }
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, stored_request_json, claims_for, approval_mac_key_id, approval_operator_login, ApprovalKeyLoaded,
 }
 
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
@@ -27,7 +38,7 @@ fn redemption_input(verb_approve: Bool, enrollment: NonEmptyStr, nonce: NonEmpty
   device_redemption_signing_input(i: DeviceRedemptionSigningInput {
     audience: "srv1.tailecbe08.ts.net",
     enrollment_id: enrollment,
-    challenge: RedemptionChallenge { challenge_id: "c1", nonce: nonce, expires_at: "2026-09-18T12:05:00Z" as Timestamp },
+    challenge: RedemptionChallenge { expires_at: "2026-09-18T12:05:00Z" as Timestamp, nonce_hex: nonce },
     escalation_id: "esc-1",
     request_revision: "r1",
     stored_request_text: request_text,
@@ -148,6 +159,197 @@ test fn witness_well_formed_true_verdict_names_its_message() -> Bool {
 test fn witness_false_verdict_is_invalid() -> Bool {
   match signature_verification_from_implementation(key: key_a, key_octets: 65, signature: sig, signature_octets: 64, message: "m", implementation_verified: false) {
     SignatureInvalid { suite: _ } => true
+    _ => false
+  }
+}
+
+// ── Admission: every gate of the device route, with real MACs, no store ──────────────────────
+// The key and request are the store witness's fixtures (approval_decision_store_witness_test); the
+// challenge nonce and capability tag are minted here by mac_sign under that key, so each refusal
+// below differs from the admitted control in exactly one input.
+data fx_key_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+fn fx_key() -> MacKey {
+  MacKey { id: approval_mac_key_id, suite: HmacSha256, material: fx_key_hex as Secret }
+}
+
+fn fx_request() -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: "esc-mtc1-boot-1",
+    request_revision: "sha256:abababababababababababababababababababababababababababababababab",
+    attempt: "mtc1-boot-attempt-1" as AttemptIdentity,
+    requester: "eager-owl-205",
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    destructive: true,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: "2026-09-17T20:00:00Z",
+    key_id: approval_mac_key_id,
+  }
+}
+
+data fx_observed_at: Timestamp = "2026-09-17T10:00:00Z"
+data fx_challenge_expiry: Timestamp = "2026-09-17T10:05:00Z"
+
+fn mac_hex(message: NonEmptyStr) -> NonEmptyStr {
+  match mac_sign(key: fx_key(), message: message) {
+    MacSigned { tag: t } => t.hex
+    MacKeyMaterialNotHex { key_id: _ } => "not-hex"
+  }
+}
+
+fn fx_enrollment(standing_active: Bool, login: NonEmptyStr) -> DeviceEnrollment {
+  DeviceEnrollment {
+    enrollment_id: "enr-1",
+    operator_login: login,
+    decision_key: key_a,
+    evidence: IosAppAttestBoundDecisionKey { attest_key_id: "attest-1", attestation_b64: "ATT" },
+    standing: if standing_active { EnrollmentActive } else { EnrollmentRevoked { revoked_at: "2026-09-17T09:00:00Z", reason: "lost phone" } },
+  }
+}
+
+fn fx_signing_input(request_text: NonEmptyStr, expiry: Timestamp, nonce: NonEmptyStr, tag: NonEmptyStr) -> DeviceRedemptionSigningInput {
+  DeviceRedemptionSigningInput {
+    audience: approval_device_audience,
+    enrollment_id: "enr-1",
+    challenge: RedemptionChallenge { expires_at: expiry, nonce_hex: nonce },
+    escalation_id: fx_request().escalation_id,
+    request_revision: fx_request().request_revision,
+    stored_request_text: request_text,
+    decision: ProposeApprove,
+    capability_text: approval_capability_signing_input(c: claims_for(request: fx_request(), decision: ProposeApprove)),
+    capability_tag: tag,
+  }
+}
+
+fn fx_nonce() -> NonEmptyStr {
+  mac_hex(message: redemption_challenge_message(escalation_id: fx_request().escalation_id, request_revision: fx_request().request_revision, enrollment_id: "enr-1", expires_at: fx_challenge_expiry))
+}
+
+fn fx_tag() -> NonEmptyStr {
+  mac_hex(message: approval_capability_signing_input(c: claims_for(request: fx_request(), decision: ProposeApprove)))
+}
+
+fn fx_good_input() -> DeviceRedemptionSigningInput {
+  fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: fx_challenge_expiry, nonce: fx_nonce(), tag: fx_tag())
+}
+
+// A verdict as the bound verifier would report it: over `message`, under `key`.
+fn verdict(key: VerifyingKey, message: NonEmptyStr) -> SignatureVerification {
+  signature_verification_from_implementation(key: key, key_octets: 65, signature: sig, signature_octets: 64, message: message, implementation_verified: true)
+}
+
+fn admit(input: DeviceRedemptionSigningInput, signature: SignatureVerification, platform_ok: Bool) -> DeviceAdmission {
+  device_redemption_admission(
+    key: fx_key(),
+    enrollment: fx_enrollment(standing_active: true, login: approval_operator_login),
+    request: fx_request(),
+    redemption: SignedRedemption { signing_input: input, signature: sig, platform_proof: IosAppAttestAssertion { assertion_b64: "ASSERT" } },
+    signature: signature,
+    platform: if platform_ok { PlatformProofVerified } else { PlatformProofRefused { detail: "assertion counter did not increase" } },
+    observed_at: fx_observed_at,
+  )
+}
+
+// THE POSITIVE CONTROL: every gate passes and the claims admitted are the stored request's.
+test fn witness_device_admission_admits_the_exact_signed_request() -> Bool {
+  match admit(input: fx_good_input(), signature: verdict(key: key_a, message: device_redemption_signing_input(i: fx_good_input())), platform_ok: true) {
+    DeviceAdmitted { claims: cl } => cl.escalation_id == fx_request().escalation_id && cl.request_revision == fx_request().request_revision
+    DeviceNotAdmitted { outcome: _ } => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_different_displayed_request() -> Bool {
+  let i = fx_signing_input(request_text: "{\"kind\":\"request\"}", expiry: fx_challenge_expiry, nonce: fx_nonce(), tag: fx_tag())
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), platform_ok: true) {
+    DeviceNotAdmitted { outcome: DeviceSignedForAnotherRequest { field: f } } => f as String == "stored_request_text"
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_an_expired_challenge() -> Bool {
+  let i = fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: "2026-09-17T09:59:00Z", nonce: fx_nonce(), tag: fx_tag())
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), platform_ok: true) {
+    DeviceNotAdmitted { outcome: DeviceChallengeExpired { expires_at: _, observed_at: _ } } => true
+    _ => false
+  }
+}
+
+// A nonce the server did not mint -- here, one MAC'd over a different expiry -- is refused even
+// though everything else, including the device signature, is valid.
+test fn witness_device_admission_refuses_a_challenge_not_issued_here() -> Bool {
+  let forged = mac_hex(message: redemption_challenge_message(escalation_id: fx_request().escalation_id, request_revision: fx_request().request_revision, enrollment_id: "enr-1", expires_at: "2026-09-17T11:00:00Z"))
+  let i = fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: fx_challenge_expiry, nonce: forged, tag: fx_tag())
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), platform_ok: true) {
+    DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_capability_for_the_other_verb() -> Bool {
+  let deny_tag = mac_hex(message: approval_capability_signing_input(c: claims_for(request: fx_request(), decision: ProposeDeny)))
+  let i = fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: fx_challenge_expiry, nonce: fx_nonce(), tag: deny_tag)
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), platform_ok: true) {
+    DeviceNotAdmitted { outcome: DeviceCapabilityRefused { cause: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_signature_over_other_bytes() -> Bool {
+  match admit(input: fx_good_input(), signature: verdict(key: key_a, message: "something else"), platform_ok: true) {
+    DeviceNotAdmitted { outcome: DeviceSignatureRefused { verification: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_signature_under_another_key() -> Bool {
+  match admit(input: fx_good_input(), signature: verdict(key: key_b, message: device_redemption_signing_input(i: fx_good_input())), platform_ok: true) {
+    DeviceNotAdmitted { outcome: DeviceSignatureRefused { verification: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_an_invalid_signature_verdict() -> Bool {
+  let invalid = signature_verification_from_implementation(key: key_a, key_octets: 65, signature: sig, signature_octets: 64, message: device_redemption_signing_input(i: fx_good_input()), implementation_verified: false)
+  match admit(input: fx_good_input(), signature: invalid, platform_ok: true) {
+    DeviceNotAdmitted { outcome: DeviceSignatureRefused { verification: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_failed_platform_proof() -> Bool {
+  match admit(input: fx_good_input(), signature: verdict(key: key_a, message: device_redemption_signing_input(i: fx_good_input())), platform_ok: false) {
+    DeviceNotAdmitted { outcome: DevicePlatformProofRefused { detail: _ } } => true
+    _ => false
+  }
+}
+
+// These two refuse before the store is read, so the nonexistent root is never touched.
+test fn witness_device_redemption_refuses_a_revoked_enrollment_before_the_store() -> Bool {
+  match redeem_device_over_store(
+    root: "/nonexistent/approvals",
+    keyring: ApprovalKeyLoaded { key: fx_key() },
+    enrollment: fx_enrollment(standing_active: false, login: approval_operator_login),
+    redemption: SignedRedemption { signing_input: fx_good_input(), signature: sig, platform_proof: IosAppAttestAssertion { assertion_b64: "ASSERT" } },
+    signature: verdict(key: key_a, message: device_redemption_signing_input(i: fx_good_input())),
+    platform: PlatformProofVerified,
+    observed_at: fx_observed_at,
+  ) {
+    DeviceEnrollmentRevoked { enrollment_id: e } => e as String == "enr-1"
+    _ => false
+  }
+}
+
+test fn witness_device_redemption_refuses_an_enrollment_for_another_operator() -> Bool {
+  match redeem_device_over_store(
+    root: "/nonexistent/approvals",
+    keyring: ApprovalKeyLoaded { key: fx_key() },
+    enrollment: fx_enrollment(standing_active: true, login: "someone-else@example.com"),
+    redemption: SignedRedemption { signing_input: fx_good_input(), signature: sig, platform_proof: IosAppAttestAssertion { assertion_b64: "ASSERT" } },
+    signature: verdict(key: key_a, message: device_redemption_signing_input(i: fx_good_input())),
+    platform: PlatformProofVerified,
+    observed_at: fx_observed_at,
+  ) {
+    DeviceEnrollmentForAnotherOperator { enrolled: _, expected: _ } => true
     _ => false
   }
 }

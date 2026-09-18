@@ -3,7 +3,7 @@ module gunbc.auth.approval_device_redemption
 import std.types { NonEmptyStr, String, Timestamp, Int }
 import std.logic { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.crypto.signature { VerifyingKey, SignatureBytes }
+import extdeps.crypto.signature { VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified }
 import extdeps.apple.apns {
   ApnsSendOutcome, ApnsAccepted, ApnsRefused, ApnsUnreached, ApnsUndecodable,
   ApnsEnvironment, ApnsTopic, ApnsDeviceToken, ApnsRefusalClass,
@@ -13,7 +13,20 @@ import extdeps.apple.apns {
 import extdeps.apple.app_attest { AttestKeyId }
 import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
-import gunbc.auth.approval_capability { ProposedDecision, proposed_decision_name, signing_field_separator }
+import gunbc.auth.approval_capability {
+  ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator,
+  ApprovalCapability, ApprovalCapabilityClaims, CapabilityRefusal, CapabilityAuthentic, CapabilityRefused,
+  approval_capability_signing_input, verify_capability, capability_refusal_reason, utc_instant_before,
+}
+import gunbc.auth.approval_broker { BrokerDecision, BrokerApproved, BrokerDenied, ExecutionObligation }
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, stored_request_json, observe_escalation,
+  EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable,
+  ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal,
+  claims_for, commit_broker_decision, StoreWritten, StoreSlotOccupied, StoreRefused,
+  approval_capability_expectation, approval_operator_login,
+}
+import extdeps.crypto.mac { MacKey, MacVerified, mac_verify }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 
 // ── What this module is ──────────────────────────────────────────────────────────────────────
@@ -153,10 +166,28 @@ type ApprovalPushHint {
 // server owns decided_at -- a client clock can neither backdate a decision nor extend an expiry.
 data approval_redemption_protocol: NonEmptyStr = "gunbc.approval-redemption.v1" as NonEmptyStr
 
+// STATELESS: nonce_hex is the server's MAC, under the capability key it already holds, over
+// redemption_challenge_message. Nothing is stored to issue it and nothing to check it -- the server
+// recomputes. Replay needs no challenge ledger: the decision slot's CAS admits one decision per
+// escalation, and the App Attest counter refuses a replayed assertion.
 type RedemptionChallenge {
-  challenge_id: NonEmptyStr
-  nonce: NonEmptyStr
   expires_at: Timestamp
+  nonce_hex: NonEmptyStr
+}
+
+data approval_redemption_challenge_protocol: NonEmptyStr = "gunbc.approval-redemption-challenge.v1" as NonEmptyStr
+
+fn redemption_challenge_message(escalation_id: NonEmptyStr, request_revision: NonEmptyStr, enrollment_id: NonEmptyStr, expires_at: Timestamp) -> NonEmptyStr {
+  join(
+    [
+      approval_redemption_challenge_protocol as String,
+      escalation_id as String,
+      request_revision as String,
+      enrollment_id as String,
+      expires_at,
+    ],
+    signing_field_separator,
+  ) as NonEmptyStr
 }
 
 // stored_request_text is gunbc.auth.approval_decision_store stored_request_json of the record the
@@ -182,8 +213,8 @@ fn device_redemption_signing_input(i: DeviceRedemptionSigningInput) -> NonEmptyS
       approval_redemption_protocol as String,
       i.audience as String,
       i.enrollment_id as String,
-      i.challenge.challenge_id as String,
-      i.challenge.nonce as String,
+      i.challenge.expires_at,
+      i.challenge.nonce_hex as String,
       i.escalation_id as String,
       i.request_revision as String,
       i.stored_request_text as String,
@@ -249,6 +280,230 @@ fn push_outcome_of_apns(o: ApnsSendOutcome) -> PushProviderOutcome {
       }
     ApnsUnreached { cause } => PushProviderUnreached { provider: ProviderApns, cause: cause }
     ApnsUndecodable { status, cause } => PushProviderUndecodable { provider: ProviderApns, status: status, cause: cause }
+  }
+}
+
+// ── The device routes ────────────────────────────────────────────────────────────────────────
+// ONE SPELLING OF EACH PATH, read by the server's route table and checked by the app's fixture, so
+// neither side coins its own. All four sit under /approve/device beside the existing /approve
+// route, which they do not touch.
+data approval_device_enrol_path: NonEmptyStr = "/approve/device/enrol" as NonEmptyStr
+data approval_device_pending_path: NonEmptyStr = "/approve/device/pending" as NonEmptyStr
+data approval_device_request_path_prefix: NonEmptyStr = "/approve/device/requests/" as NonEmptyStr
+data approval_device_redeem_path: NonEmptyStr = "/approve/device/redeem" as NonEmptyStr
+
+// ── Redemption over the store ────────────────────────────────────────────────────────────────
+// THE DEVICE ROUTE'S FOLD, BESIDE redeem_over_store AND REUSING ITS PARTS: the same slot read
+// (observe_escalation), the same claims (claims_for), the same capability verification
+// (verify_capability) and the same generation-2 commit (commit_broker_decision). Nothing in the
+// store or broker changes; this route differs only in WHAT ADMITS -- a verified device signature
+// under an active enrolment of the expected operator, never the capability alone -- and so in what
+// decided_by can name.
+//
+// ORDER, each stage narrowing what the next may assume: the enrolment must be active and name the
+// expected operator; the escalation must be filed and pending; the signed bytes must be exactly the
+// server's own renderings of THAT request, THAT capability and a live challenge this server minted;
+// the capability must verify; the device signature must verify over those bytes under the enrolled
+// key; the platform proof must verify over the same bytes. Only then is the decision committed, with
+// decided_at the server's clock. The verifier verdicts arrive as parameters because verification is
+// the bound realization's (ecdsa_verification_realization_frontier); this fold's job is the joins.
+type DeviceRedemptionOutcome
+  = DeviceRedeemed { decision: BrokerDecision }
+  | DeviceAlreadyDecided { decision: BrokerDecision }
+  | DeviceEnrollmentRevoked { enrollment_id: NonEmptyStr }
+  | DeviceEnrollmentForAnotherOperator { enrolled: NonEmptyStr, expected: NonEmptyStr }
+  | DeviceEscalationNotFiled { escalation_id: NonEmptyStr }
+  | DeviceStoreUnreadable { detail: NonEmptyStr }
+  | DeviceKeyringUnavailable { cause: ApprovalKeyringRefusal }
+  | DeviceSignedForAnotherRequest { field: NonEmptyStr }
+  | DeviceChallengeExpired { expires_at: Timestamp, observed_at: Timestamp }
+  | DeviceChallengeNotIssuedHere
+  | DeviceCapabilityRefused { cause: CapabilityRefusal }
+  | DeviceSignatureRefused { verification: SignatureVerification }
+  | DevicePlatformProofRefused { detail: NonEmptyStr }
+  | DeviceLostTheRace
+  | DeviceCommitRefused { detail: NonEmptyStr }
+
+fn device_redemption_reason(o: DeviceRedemptionOutcome) -> NonEmptyStr {
+  match o {
+    DeviceRedeemed { decision: d } => match d {
+      BrokerApproved { escalation_id: _, revision: _, decided_by: _, decided_at: _, obligation: _ } => "approved and recorded" as NonEmptyStr
+      BrokerDenied { escalation_id: _, revision: _, decided_by: _, decided_at: _, reason: _ } => "denied and recorded" as NonEmptyStr
+    }
+    DeviceAlreadyDecided { decision: _ } => "this escalation was already decided; nothing changed" as NonEmptyStr
+    DeviceEnrollmentRevoked { enrollment_id: _ } => "this device's enrolment has been revoked" as NonEmptyStr
+    DeviceEnrollmentForAnotherOperator { enrolled: _, expected: _ } => "this device is enrolled for a different operator than the one this request names" as NonEmptyStr
+    DeviceEscalationNotFiled { escalation_id: _ } => "no request is filed under this escalation" as NonEmptyStr
+    DeviceStoreUnreadable { detail: d } => d
+    DeviceKeyringUnavailable { cause: _ } => "the server's capability key is unavailable" as NonEmptyStr
+    DeviceSignedForAnotherRequest { field: f } => join(["the signed bytes do not match the stored request: ", f as String], "") as NonEmptyStr
+    DeviceChallengeExpired { expires_at: _, observed_at: _ } => "the challenge expired; reopen the request and decide again" as NonEmptyStr
+    DeviceChallengeNotIssuedHere => "the challenge was not issued by this server" as NonEmptyStr
+    DeviceCapabilityRefused { cause: c } => capability_refusal_reason(r: c) as NonEmptyStr
+    DeviceSignatureRefused { verification: _ } => "the device signature did not verify under the enrolled key" as NonEmptyStr
+    DevicePlatformProofRefused { detail: d } => d
+    DeviceLostTheRace => "another decision landed first; this one changed nothing" as NonEmptyStr
+    DeviceCommitRefused { detail: d } => d
+  }
+}
+
+// The server's own rendering of what the device must have signed, from the STORED request and the
+// server's key. A device that signed anything else signed for another request.
+fn expected_signing_fields_agree(
+  signed: DeviceRedemptionSigningInput,
+  enrollment: DeviceEnrollment,
+  request: StoredApprovalRequest,
+  capability_text: NonEmptyStr,
+) -> String {
+  if signed.audience != approval_device_audience { "audience" }
+  else if signed.enrollment_id != enrollment.enrollment_id { "enrollment_id" }
+  else if signed.escalation_id != request.escalation_id { "escalation_id" }
+  else if signed.request_revision != request.request_revision { "request_revision" }
+  else if (signed.stored_request_text as String) != stored_request_json(r: request) { "stored_request_text" }
+  else if signed.capability_text != capability_text { "capability_text" }
+  else { "" }
+}
+
+data approval_device_audience: NonEmptyStr = "gunbc.roadmap_serve/device-redemption" as NonEmptyStr
+
+fn redeem_device_over_store(
+  root: NonEmptyStr,
+  keyring: ApprovalKeyringRead,
+  enrollment: DeviceEnrollment,
+  redemption: SignedRedemption,
+  signature: SignatureVerification,
+  platform: PlatformProofVerification,
+  observed_at: Timestamp,
+) -> DeviceRedemptionOutcome {
+  let signed = redemption.signing_input
+  match enrollment.standing {
+    EnrollmentRevoked { revoked_at: _, reason: _ } => DeviceEnrollmentRevoked { enrollment_id: enrollment.enrollment_id }
+    EnrollmentActive =>
+      if enrollment.operator_login != approval_operator_login {
+        DeviceEnrollmentForAnotherOperator { enrolled: enrollment.operator_login, expected: approval_operator_login }
+      } else {
+        match observe_escalation(root: root, escalation_id: signed.escalation_id) {
+          EscalationNotFiled => DeviceEscalationNotFiled { escalation_id: signed.escalation_id }
+          EscalationUnreadable { detail: d } => DeviceStoreUnreadable { detail: d }
+          EscalationDecided { decision: d } => DeviceAlreadyDecided { decision: d }
+          EscalationPending { request: req } =>
+            match keyring {
+              ApprovalKeyringRefused { cause: c } => DeviceKeyringUnavailable { cause: c }
+              ApprovalKeyLoaded { key: key } =>
+                redeem_pending_with_key(root: root, key: key, enrollment: enrollment, request: req, redemption: redemption, signature: signature, platform: platform, observed_at: observed_at)
+            }
+        }
+      }
+  }
+}
+
+// EVERY GATE, AND NO EFFECT. Split from the commit so that the whole admission -- including the
+// accepting path -- is decidable without a store, and so that the commit cannot be reached except
+// through DeviceAdmitted.
+type DeviceAdmission
+  = DeviceAdmitted { claims: ApprovalCapabilityClaims }
+  | DeviceNotAdmitted { outcome: DeviceRedemptionOutcome }
+
+fn device_redemption_admission(
+  key: MacKey,
+  enrollment: DeviceEnrollment,
+  request: StoredApprovalRequest,
+  redemption: SignedRedemption,
+  signature: SignatureVerification,
+  platform: PlatformProofVerification,
+  observed_at: Timestamp,
+) -> DeviceAdmission {
+  let signed = redemption.signing_input
+  let claims = claims_for(request: request, decision: signed.decision)
+  let capability_text = approval_capability_signing_input(c: claims)
+  let mismatch = expected_signing_fields_agree(signed: signed, enrollment: enrollment, request: request, capability_text: capability_text)
+  if mismatch != "" {
+    DeviceNotAdmitted { outcome: DeviceSignedForAnotherRequest { field: mismatch as NonEmptyStr } }
+  } else if !utc_instant_before(a: observed_at, b: signed.challenge.expires_at) {
+    DeviceNotAdmitted { outcome: DeviceChallengeExpired { expires_at: signed.challenge.expires_at, observed_at: observed_at } }
+  } else {
+    let challenge_message = redemption_challenge_message(escalation_id: request.escalation_id, request_revision: request.request_revision, enrollment_id: enrollment.enrollment_id, expires_at: signed.challenge.expires_at)
+    match mac_verify(key: key, message: challenge_message, tag_hex: signed.challenge.nonce_hex) {
+      MacVerified { verified: _ } =>
+        match verify_capability(
+          capability: ApprovalCapability { claims: claims, tag_b64url: signed.capability_tag },
+          expectation: approval_capability_expectation,
+          mac_result: mac_verify(key: key, message: capability_text, tag_hex: signed.capability_tag),
+          observed_at: observed_at,
+        ) {
+          CapabilityRefused { cause: c } => DeviceNotAdmitted { outcome: DeviceCapabilityRefused { cause: c } }
+          CapabilityAuthentic { claims: cl } =>
+            match device_signature_joins(signature: signature, enrollment: enrollment, signed_bytes: device_redemption_signing_input(i: signed)) {
+              DeviceSignatureDoesNotJoin => DeviceNotAdmitted { outcome: DeviceSignatureRefused { verification: signature } }
+              DeviceSignatureJoins =>
+                match platform {
+                  PlatformProofRefused { detail: d } => DeviceNotAdmitted { outcome: DevicePlatformProofRefused { detail: d } }
+                  PlatformProofVerified => DeviceAdmitted { claims: cl }
+                }
+            }
+        }
+      _ => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
+    }
+  }
+}
+
+fn redeem_pending_with_key(
+  root: NonEmptyStr,
+  key: MacKey,
+  enrollment: DeviceEnrollment,
+  request: StoredApprovalRequest,
+  redemption: SignedRedemption,
+  signature: SignatureVerification,
+  platform: PlatformProofVerification,
+  observed_at: Timestamp,
+) -> DeviceRedemptionOutcome {
+  match device_redemption_admission(key: key, enrollment: enrollment, request: request, redemption: redemption, signature: signature, platform: platform, observed_at: observed_at) {
+    DeviceNotAdmitted { outcome: o } => o
+    DeviceAdmitted { claims: cl } => commit_device_decision(root: root, claims: cl, request: request, decided_by: enrollment.operator_login, observed_at: observed_at)
+  }
+}
+
+// THE SIGNATURE JOINS only when the verified evidence names the ENROLLED key and EXACTLY the bytes
+// this server rendered -- the same message-and-key join extdeps.crypto.signature SignedMessage exists
+// for. A verified signature under some other key, or over some other message, admits nothing.
+type DeviceSignatureJoin
+  = DeviceSignatureJoins
+  | DeviceSignatureDoesNotJoin
+
+fn device_signature_joins(signature: SignatureVerification, enrollment: DeviceEnrollment, signed_bytes: NonEmptyStr) -> DeviceSignatureJoin {
+  match signature {
+    SignatureVerified { verified: v } =>
+      if v.message == signed_bytes && v.key.point_b64url == enrollment.decision_key.point_b64url && v.key.suite == enrollment.decision_key.suite {
+        DeviceSignatureJoins
+      } else {
+        DeviceSignatureDoesNotJoin
+      }
+    _ => DeviceSignatureDoesNotJoin
+  }
+}
+
+// The platform proof's verdict, reduced to what this fold consumes. The realization builds it from
+// extdeps.apple.app_attest AssertionVerified (checking its client_data equals the signed bytes and
+// storing its counter) or, on Android, from the signature alone.
+type PlatformProofVerification
+  = PlatformProofVerified
+  | PlatformProofRefused { detail: NonEmptyStr }
+
+fn commit_device_decision(root: NonEmptyStr, claims: ApprovalCapabilityClaims, request: StoredApprovalRequest, decided_by: NonEmptyStr, observed_at: Timestamp) -> DeviceRedemptionOutcome {
+  let decision = match claims.decision {
+    ProposeApprove => BrokerApproved {
+      escalation_id: claims.escalation_id, revision: claims.request_revision, decided_by: decided_by, decided_at: observed_at,
+      obligation: ExecutionObligation { authority: claims.authority, intent_revision: claims.request_revision, execute_by: request.expires_at },
+    }
+    ProposeDeny => BrokerDenied {
+      escalation_id: claims.escalation_id, revision: claims.request_revision, decided_by: decided_by, decided_at: observed_at,
+      reason: "denied by the operator on the enrolled device",
+    }
+  }
+  match commit_broker_decision(root: root, decision: decision) {
+    StoreWritten => DeviceRedeemed { decision: decision }
+    StoreSlotOccupied => DeviceLostTheRace
+    StoreRefused { detail: d } => DeviceCommitRefused { detail: d }
   }
 }
 

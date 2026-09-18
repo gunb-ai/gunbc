@@ -24,7 +24,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //     under extdeps.apple.secure_enclave BiometryCurrentSet.
 //   * It certifies nothing about any other key. The link from the attested app to the decision key
 //     is made by the enrolment protocol: the clientDataHash the app attests over commits to the
-//     decision key and the one-time enrolment code (gunbc.auth.approval_push).
+//     decision key and the one-time enrolment code (gunbc.auth.approval_device_redemption).
 data attestation_proves_the_app_not_the_person_note: NonEmptyStr = "An App Attest attestation certifies a Secure Enclave key belonging to a genuine instance of one team id + bundle id on Apple hardware. It carries no biometric gate and says nothing about other keys; binding it to the biometric-gated decision key is the enrolment protocol's job, through the clientDataHash."
 
 type AttestKeyId = NonEmptyStr where brand("AttestKeyId")
@@ -75,3 +75,20 @@ type AttestationVerification
   | AttestationRefused { cause: AttestationRefusal }
 
 data app_attest_unavailable_in_simulator_note: NonEmptyStr = "DCAppAttestService.isSupported is false in the Simulator and on devices without a Secure Enclave; the app must refuse enrolment there rather than enrolling without an attestation."
+
+// ── Assertions ───────────────────────────────────────────────────────────────────────────────
+// Each later request carries an assertion: CBOR { signature, authenticatorData } produced by
+// generateAssertion(keyId, clientDataHash). Apple's server checks, in order: the signature over
+// SHA256(authenticatorData || clientDataHash) verifies under the public key stored at attestation;
+// the RP ID hash equals SHA256(app id); the counter is STRICTLY greater than the last one stored --
+// the replay refusal. Success names the counter the server must now store, and the client data it
+// was made over, so it cannot be paired with another request's bytes.
+type AssertionRefusal
+  = AssertionSignatureInvalid
+  | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
+  | AssertionCounterNotIncreasing { stored: Int, presented: Int }
+  | AssertionUndecodable { cause: String }
+
+type AssertionVerification
+  = AssertionVerified { key_id: AttestKeyId, counter: Int, client_data: NonEmptyStr }
+  | AssertionRefused { cause: AssertionRefusal }
