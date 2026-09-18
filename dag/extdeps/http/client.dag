@@ -43,6 +43,21 @@ fn http_client_get_argv(url: NonEmptyStr) -> List<String> {
   ]
 }
 
+// THE SAME GET WITH THE CALLER'S DEADLINE, for callers that run curl over a remote shell (the
+// GetWithin operation is the local-transport twin): the deadline is the caller's policy, never this
+// module's number, exactly as the annotation above GetWithin states.
+fn http_client_get_argv_within(url: NonEmptyStr, max_time: Second) -> List<String> {
+  [
+    "curl",
+    "-fsS",
+    "--connect-timeout",
+    http_client_localhost_connect_timeout_flag(),
+    "--max-time",
+    http_client_max_time_flag(max_time: max_time) as String,
+    url as String,
+  ]
+}
+
 // THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one DESIGN
 // section 3 draws between an interface fact and a policy fact. How long a caller is willing to wait
 // for ITS backend is the caller's business; curl's ability to bound a request is ours. A number

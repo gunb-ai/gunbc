@@ -2,7 +2,7 @@ module gunbc.live_deploy.readiness
 
 import std.types { String, Bool, Int, NonEmptyStr, List, CommitSha }
 import std.evaluation_budget { LimitSet, LimitUnset }
-import std.measure { positive_millisecond_count }
+import std.measure { positive_millisecond_count, Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import std.content_hash { Fnv1a64Structural }
 import gunbc.live_deploy.candidate { CandidateRelease }
@@ -77,6 +77,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import extdeps.http.client
+import extdeps.http.client { http_client_get_argv_within, http_client_max_time_flag }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type ServiceReadyEvidence {
@@ -154,23 +155,25 @@ fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -
 // take, disagreeing by 24x (DESIGN 3). The bound is twice the wall limit: the request in service
 // plus the probe's own, each within what the unit promises. A unit with no wall limit cannot
 // ground a deadline, and the probe refuses rather than guessing one.
-fn live_deploy_healthz_probe_deadline_seconds(spec: DeploymentSpec) -> Int? {
+fn live_deploy_healthz_probe_deadline(spec: DeploymentSpec) -> Second? {
   match spec.service.serve_wall_limit {
     LimitUnset => none
-    LimitSet { limit: l } => Present { value: (2 * positive_millisecond_count(m: l) + 999) / 1000 }
+    LimitSet { limit: l } => Present { value: second(count: (2 * positive_millisecond_count(m: l) + 999) / 1000) }
   }
 }
 
+data healthz_probe_deadline_ungrounded: String = "the serve unit declares no wall limit, so no probe deadline can be derived from it"
+
 fn live_deploy_healthz_get_local(port: Int, spec: DeploymentSpec) -> HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
-  match live_deploy_healthz_probe_deadline_seconds(spec: spec) {
-    Absent => HealthzProbeRefused { probe_error: "the serve unit declares no wall limit, so no probe deadline can be derived from it" }
-    Present { value: seconds } => {
-      let got = http.Client.GetWithin(url: url, max_seconds: to_string(seconds) as NonEmptyStr)
+  match live_deploy_healthz_probe_deadline(spec: spec) {
+    Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
+    Present { value: deadline } => {
+      let got = http.Client.GetWithin(url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
       healthz_effective_read_from_get(
         success: got.success,
         body: got.body,
-        error: join(["http client GET failed within the ", to_string(seconds), " s probe deadline derived from the serve wall limit"], "")
+        error: join(["http client GET failed within the ", http_client_max_time_flag(max_time: deadline) as String, " s probe deadline derived from the serve wall limit"], "")
       )
     }
   }
@@ -190,21 +193,33 @@ fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> Healthz
 
 fn live_deploy_healthz_get_fleet_ssh(
   port: Int,
+  spec: DeploymentSpec,
   target: SshTarget,
   context: FleetSshExecutionContext,
 ) -> HealthzEffectiveRead {
-  healthz_effective_read_from_outcome(
-    outcome: typed_argv_exec_over_fleet_ssh(
-      target: target,
-      context: context,
-      argv: http_client_get_argv(url: live_deploy_health_url_for_port(port: port)),
-    ),
-  )
+  match live_deploy_healthz_probe_deadline(spec: spec) {
+    Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
+    Present { value: deadline } =>
+      healthz_effective_read_from_outcome(
+        outcome: typed_argv_exec_over_fleet_ssh(
+          target: target,
+          context: context,
+          argv: http_client_get_argv_within(url: live_deploy_health_url_for_port(port: port), max_time: deadline),
+        ),
+      )
+  }
 }
 
-fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffectiveRead {
+fn live_deploy_healthz_get_ssh(port: Int, spec: DeploymentSpec, host: NonEmptyStr) -> HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
-  let argv = http_client_get_argv(url: url)
+  match live_deploy_healthz_probe_deadline(spec: spec) {
+    Absent => HealthzProbeRefused { probe_error: healthz_probe_deadline_ungrounded }
+    Present { value: deadline } => live_deploy_healthz_get_ssh_within(url: url, host: host, deadline: deadline)
+  }
+}
+
+fn live_deploy_healthz_get_ssh_within(url: NonEmptyStr, host: NonEmptyStr, deadline: Second) -> HealthzEffectiveRead {
+  let argv = http_client_get_argv_within(url: url, max_time: deadline)
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => HealthzProbeRefused { probe_error: why }
     Absent =>
@@ -224,8 +239,8 @@ fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffective
 fn live_deploy_healthz_get_for_port(port: Int, spec: DeploymentSpec, transport: HostEffectTransport) -> HealthzEffectiveRead {
   match transport {
     LocalShell => live_deploy_healthz_get_local(port: port, spec: spec)
-    SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
-    FleetSsh { target: t, context: c } => live_deploy_healthz_get_fleet_ssh(port: port, target: t, context: c)
+    SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, spec: spec, host: h)
+    FleetSsh { target: t, context: c } => live_deploy_healthz_get_fleet_ssh(port: port, spec: spec, target: t, context: c)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HealthzProbeRefused {
         probe_error: "health probe refused EmitArtifactThenThinRun transport",
