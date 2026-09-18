@@ -1025,6 +1025,9 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         ReceiverTypeUnestablished { method: s(), span: no_span() },
         AlgebraApplicationEvidenceUnavailable { receiver_type: s(), argument_index: 0, span: no_span() },
         FrontierOccurrenceBudgetExceeded { method: s(), receiver_type: s(), declared: 0, observed: 0, span: no_span() },
+        TestCodeReferenced { referrer: s(), target: s(), span: no_span() },
+        TestCodeReferenceAdmitted { referrer: s(), target: s(), span: no_span() },
+        TestCodeReferenceBudgetMismatch { referrer: s(), declared: 0, observed: 0, span: no_span() },
         MissingField { field: s(), type_name: s(), span: no_span() },
         NonExhaustiveMatch { missing: istrings(), span: no_span() },
         CircularDependency { modules: istrings(), span: no_span() },
@@ -1508,6 +1511,11 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => {
             "FrontierOccurrenceBudgetExceeded"
         }
+        CompilerDiagnostic::TestCodeReferenced { .. } => "TestCodeReferenced",
+        CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => "TestCodeReferenceAdmitted",
+        CompilerDiagnostic::TestCodeReferenceBudgetMismatch { .. } => {
+            "TestCodeReferenceBudgetMismatch"
+        }
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => {
             "MethodExistenceFrontierAdmitted"
         }
@@ -1598,6 +1606,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { method, .. } => method.clone(),
         CompilerDiagnostic::ReceiverTypeUnestablished { method, .. } => method.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method, .. } => method.clone(),
+        CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
+        CompilerDiagnostic::TestCodeReferenceAdmitted { referrer, .. } => referrer.clone(),
+        CompilerDiagnostic::TestCodeReferenceBudgetMismatch { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),

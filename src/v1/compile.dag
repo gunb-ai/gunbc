@@ -470,6 +470,11 @@ fn call_target_declaration_key(target: CallTargetIdentity) -> String? {
 // so it never reaches this lookup. Import-all is expanded against the target module's own
 // declarations rather than from import syntax, because identity reconstructed from the import list
 // alone cannot see a wildcard (found in review of gunbc#11505).
+//
+// PRECEDENCE IS THE RESOLVER'S, LOWEST TO HIGHEST: a wildcard import, then a named import, then the
+// module's own declaration. The map is built in that order because map_merge lets its overlay win;
+// folding own declarations first let a wildcard overwrite them, attributing a local name to an
+// imported test and refusing a reference that never left the module (review 67649).
 fn module_declaration_keys(m: TypedModule, module_name: String, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
   m.items |> fold(init: empty_map(), f: (acc, item) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: item), concat(module_name, ".", authored_name_at(source_indices: source_indices, node: item)))
@@ -477,19 +482,22 @@ fn module_declaration_keys(m: TypedModule, module_name: String, source_indices: 
 }
 
 fn visible_declaration_keys(m: TypedModule, module_name: String, modules_by_name: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
-  let own = module_declaration_keys(m: m, module_name: module_name, source_indices: source_indices)
-  module_imports(n: m.module) |> fold(init: own, f: (acc, imp) =>
-    if import_is_all(n: imp) {
+  let wildcard = module_imports(n: m.module)
+    |> filter(imp => import_is_all(n: imp))
+    |> fold(init: empty_map(), f: (acc, imp) =>
       match map_get(modules_by_name, authored_name_at(source_indices: source_indices, node: imp)) {
         Present { value: tm } => map_merge(acc, module_declaration_keys(m: tm, module_name: authored_name_at(source_indices: source_indices, node: imp), source_indices: source_indices))
         Absent => acc
       }
-    } else {
+    )
+  let named = module_imports(n: m.module)
+    |> filter(imp => !import_is_all(n: imp))
+    |> fold(init: wildcard, f: (acc, imp) =>
       import_specific_names_at(n: imp, source_indices: source_indices) |> fold(init: acc, f: (inner, name) =>
         map_insert(inner, name, concat(authored_name_at(source_indices: source_indices, node: imp), ".", name))
       )
-    }
-  )
+    )
+  map_merge(named, module_declaration_keys(m: m, module_name: module_name, source_indices: source_indices))
 }
 
 // A NAME THAT INFERENCE NEVER TYPED is still a reference. v1 resolves and retains a parameter or

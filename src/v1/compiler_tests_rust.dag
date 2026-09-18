@@ -4894,6 +4894,12 @@ fn ct_test_marker_item_kind_test() -> String {
   )
 }
 
+// THE ONE WALL ROW THAT STAYS OFF THE FLOOR, AND WHY. Every other red and control of the wall runs on
+// the floor in test.claim.test_reference_wall_witness; their compiler_tests copies were deleted when
+// those were enrolled (review 67649). The identity-grain swap cannot move: it must compile a module
+// that carries a real ledger row, and on the floor such a module collides with the loaded corpus and
+// the census refuses rather than answers. It runs in no CI step. Next-rung trigger: a census probe
+// that can compile a fixture under a module name the corpus already holds, or inject its own ledger.
 fn ct_test_reference_wall_test() -> String {
   concat(
     "    // Diagnostics carry Rc and cannot cross the thread boundary, so the compile runs inside the thread\n",
@@ -4922,21 +4928,6 @@ fn ct_test_reference_wall_test() -> String {
     "        rx.recv_timeout(std::time::Duration::from_secs(120)).expect(\"compile hung\")\n",
     "    }\n",
     "\n",
-    "    // THE DISCRIMINATING RED: an unrostered call to a test fn refuses, from a test fn AND from an\n",
-    "    // ordinary fn, and it is the blocking variant rather than the admitted one.\n",
-    "    #[test]\n",
-    "    fn a_call_to_a_test_fn_is_refused() {\n",
-    "        let tags = test_reference_tags(\"wall.fixture.unrostered\", \"test fn leaf() -> Bool {\\n  true\\n}\\n\\ntest fn rollup() -> Bool {\\n  leaf()\\n}\\n\\nfn helper() -> Bool {\\n  leaf()\\n}\\n\");\n",
-    "        assert_eq!(tags, vec![\"referenced blocking=true\".to_string(), \"referenced blocking=true\".to_string()]);\n",
-    "    }\n",
-    "\n",
-    "    // POSITIVE CONTROL: a test fn calling an ordinary fn is the intended shape and draws nothing.\n",
-    "    #[test]\n",
-    "    fn a_test_fn_calling_an_ordinary_fn_is_admitted() {\n",
-    "        let tags = test_reference_tags(\"wall.fixture.clean\", \"fn helper() -> Bool {\\n  true\\n}\\n\\ntest fn uses_helper() -> Bool {\\n  helper()\\n}\\n\");\n",
-    "        assert!(tags.is_empty(), \"{:?}\", tags);\n",
-    "    }\n",
-    "\n",
     "    // IDENTITY GRAIN: swapping a row's target for another test fn under the same referrer keeps the\n",
     "    // count equal and must still refuse -- a new target has no row. Its own row is then paid down too.\n",
     "    #[test]\n",
@@ -4948,24 +4939,6 @@ fn ct_test_reference_wall_test() -> String {
     "        assert!(tags.contains(&\"referenced blocking=true\".to_string()), \"{:?}\", tags);\n",
     "        assert!(tags.contains(&format!(\"mismatch declared={} observed=0 blocking=true\", row.occurrences)), \"{:?}\", tags);\n",
     "    }\n\n",
-    "    // A test fn taken as a function VALUE is a reference: it is how a test reaches a caller\n",
-    "    // without a call site.\n",
-    "    #[test]\n",
-    "    fn a_test_fn_used_as_a_value_is_refused() {\n",
-    "        let tags = test_reference_tags(\"wall.fixture.value\", \"test fn leaf() -> Bool {\\n  true\\n}\\n\\nfn pick() -> fn() -> Bool {\\n  leaf\\n}\\n\");\n",
-    "        assert_eq!(tags, vec![\"referenced blocking=true\".to_string()]);\n",
-    "    }\n\n",
-    "    // THE RATCHET: a ledger row whose module compiles with a different count refuses, here in the\n",
-    "    // paid-down direction (the row declares references, the module now has none).\n",
-    "    #[test]\n",
-    "    fn a_ledger_row_whose_count_differs_is_refused() {\n",
-    "        let debt = crate::v1_compiler_compile::test_reference_debt();\n",
-    "        let row = debt.get(0).cloned().expect(\"ledger has rows\");\n",
-    "        let tags = test_reference_tags(&row.module_name, \"fn helper() -> Bool {\\n  true\\n}\\n\");\n",
-    "        let expected: Vec<String> = debt.iter().filter(|r| r.module_name == row.module_name).map(|r| format!(\"mismatch declared={} observed=0 blocking=true\", r.occurrences)).collect();\n",
-    "        assert!(!expected.is_empty());\n",
-    "        assert_eq!(tags, expected, \"every row of a paid-down module refuses at identity grain\");\n",
-    "    }\n",
     "\n"
   )
 }

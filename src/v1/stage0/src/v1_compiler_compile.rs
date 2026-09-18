@@ -7,6 +7,9 @@ pub use crate::std_compiler_entry::CompilerEntryDriver;
 use crate::std_compiler_entry::CompilerEntryDriver::RetainedHostCliKernel;
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+pub use crate::std_dissolution::unbound_dissolution;
+pub use crate::std_dissolution::DissolutionCondition;
+use crate::std_dissolution::DissolutionCondition::*;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -32,6 +35,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue, ParseEnvironment};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
+pub use crate::std_types::NonEmptyStr;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
@@ -84,9 +88,11 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{
-    InternalError, OccurrenceTransportViolation, OwnershipViolation,
+    InternalError, OccurrenceTransportViolation, OwnershipViolation, TestCodeReferenceAdmitted,
+    TestCodeReferenceBudgetMismatch, TestCodeReferenced,
 };
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
+use crate::v1_std_core::DeclarationMarker::{TestMarked, Unmarked};
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::ExprErrorKind::*;
 use crate::v1_std_core::FieldAccessStyle::*;
@@ -98,7 +104,10 @@ use crate::v1_std_core::MethodSemantics::{
 };
 use crate::v1_std_core::StringPart::*;
 use crate::v1_std_core::UnaryOpKind::*;
-use crate::v1_std_core::VarBindingKind::*;
+use crate::v1_std_core::VarBindingKind::{
+    FunctionValueBinding, LocalValueBinding, MatchBoundBinding, ServiceValueBinding,
+    VariantValueBinding,
+};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at,
     build_newline_index, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
@@ -113,8 +122,8 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompileResult, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
+    DeclarationMarker, ErrorNode, ExprData, ExprErrorKind, FieldAccessStyle, FieldSummary,
+    FieldValueShape, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node,
     ResolvedCallFormal, StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
@@ -389,6 +398,675 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
     pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TestReferenceOccurrence {
+    pub module_name: String,
+    pub referrer: String,
+    pub target: String,
+    pub span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TestReferenceDebtRow {
+    pub module_name: String,
+    pub referrer: String,
+    pub target: String,
+    pub occurrences: i64,
+    pub dissolution: Rc<DissolutionCondition>,
+}
+
+pub fn test_reference_debt_dissolution() -> Rc<DissolutionCondition> {
+    crate::std_dissolution::unbound_dissolution("the reference is removed: a roll-up test that only re-asserts enrolled tests is deleted, or the shared logic moves into an ordinary fn that both callers use; the row is then deleted, which the equality budget forces".to_string())
+}
+
+pub fn test_reference_row(
+    module_name: String,
+    referrer: String,
+    target: String,
+    occurrences: i64,
+) -> Rc<TestReferenceDebtRow> {
+    Rc::new(TestReferenceDebtRow {
+        module_name: module_name.clone(),
+        referrer: referrer.clone(),
+        target: target.clone(),
+        occurrences: occurrences.clone(),
+        dissolution: test_reference_debt_dissolution(),
+    })
+}
+
+pub fn test_reference_debt() -> Rc<Vec<Rc<TestReferenceDebtRow>>> {
+    Rc::new(vec![test_reference_row("wall.fixture.paid_down".to_string(), "reader".to_string(), "wall.fixture.paid_down.leaf".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "test.claim.compute_board_admission_witness.w_a_coherent_fixture_is_admitted".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_every_recorded_implementation_run_was_accepted".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_every_recorded_run_was_accepted".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_the_executed_deck_is_what_the_product_emits_today".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_the_executed_verilog_is_what_the_product_emits_today".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_the_placed_constraints_are_what_the_product_emits_today".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "v2.test.claim.translate_underived_refusal.cross_language_compile_python_to_typescript_round_trip_holds".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "v2.test.claim.verilog_interlock_emission_test.w_expression_perturbation_changes_the_bytes".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "v2.test.claim.verilog_interlock_emission_test.w_interlock_emits_expected_bytes_through_the_generic_fold".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "v2.test.claim.verilog_interlock_emission_test.w_token_spine_reads_back_to_the_same_emitted_node".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "v2.test.long.accumulator_copy_compile_gate.gate_green_identity_accepts_clean".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "v2.test.long.accumulator_copy_compile_gate.gate_red_quadratic_rejects".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "<import>".to_string(), "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "test.claim.compute_board_admission_witness.w_a_coherent_fixture_is_admitted".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_every_recorded_implementation_run_was_accepted".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_every_recorded_run_was_accepted".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_the_executed_deck_is_what_the_product_emits_today".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_the_executed_verilog_is_what_the_product_emits_today".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "test.claim.compute_board_simulation_receipt_witness.w_the_placed_constraints_are_what_the_product_emits_today".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "v2.test.claim.translate_underived_refusal.cross_language_compile_python_to_typescript_round_trip_holds".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "v2.test.claim.verilog_interlock_emission_test.w_expression_perturbation_changes_the_bytes".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "v2.test.claim.verilog_interlock_emission_test.w_interlock_emits_expected_bytes_through_the_generic_fold".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "v2.test.claim.verilog_interlock_emission_test.w_token_spine_reads_back_to_the_same_emitted_node".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "v2.test.long.accumulator_copy_compile_gate.gate_green_identity_accepts_clean".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "v2.test.long.accumulator_copy_compile_gate.gate_red_quadratic_rejects".to_string(), 1), test_reference_row("gunbc.demo.semantic_system_readout".to_string(), "readout_sections".to_string(), "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_absent_shape_refuses_silhouette".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_catalog_evidence_cannot_buy_placement_clearance".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_evidence_spendability_discriminates".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_mounting_axis_needs_no_shape_or_envelope".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_naming_is_alias_with_sku_unread".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_proof_load_receipt_is_load_bearing".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_real_row_axis_is_not_yet_locatable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_real_row_refuses_lift_role_on_axis".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_relayed_reading_makes_envelope_spendable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_search_summary_envelope_is_not_spendable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "<import>".to_string(), "test.claim.climbing_hold_catalog_witness.witness_source_reading_survives_conversion".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_absent_shape_refuses_silhouette".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_catalog_evidence_cannot_buy_placement_clearance".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_evidence_spendability_discriminates".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_mounting_axis_needs_no_shape_or_envelope".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_naming_is_alias_with_sku_unread".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_proof_load_receipt_is_load_bearing".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_real_row_axis_is_not_yet_locatable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_real_row_refuses_lift_role_on_axis".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_relayed_reading_makes_envelope_spendable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_search_summary_envelope_is_not_spendable".to_string(), 1), test_reference_row("test.claim.climbing_hold_witness_roster".to_string(), "climbing_hold_witness_outcomes".to_string(), "test.claim.climbing_hold_catalog_witness.witness_source_reading_survives_conversion".to_string(), 1), test_reference_row("test.claim.materialization_provider_consumer_hand_rust_witness".to_string(), "<import>".to_string(), "test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union".to_string(), 1), test_reference_row("test.claim.materialization_provider_consumer_hand_rust_witness".to_string(), "<import>".to_string(), "test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact".to_string(), 1), test_reference_row("test.claim.materialization_provider_consumer_hand_rust_witness".to_string(), "witness_model_refusal_controls_remain_distinct".to_string(), "test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union".to_string(), 1), test_reference_row("test.claim.materialization_provider_consumer_hand_rust_witness".to_string(), "witness_model_refusal_controls_remain_distinct".to_string(), "test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact".to_string(), 1), test_reference_row("test.claim.native_witness_transition_receipt_witness".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds".to_string(), 1), test_reference_row("test.claim.native_witness_transition_receipt_witness".to_string(), "cited_evidence_declaration_is_an_executing_witness".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds".to_string(), 1), test_reference_row("test.claim.spark.serving_arm_launch_witness_test".to_string(), "w_all_serving_arm_launch_claims_hold".to_string(), "test.claim.spark.serving_arm_launch_witness_test.w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory".to_string(), 1), test_reference_row("test.claim.spark.serving_arm_launch_witness_test".to_string(), "w_all_serving_arm_launch_claims_hold".to_string(), "test.claim.spark.serving_arm_launch_witness_test.w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer".to_string(), 1), test_reference_row("test.claim.spark.serving_arm_launch_witness_test".to_string(), "w_all_serving_arm_launch_claims_hold".to_string(), "test.claim.spark.serving_arm_launch_witness_test.w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory".to_string(), 1), test_reference_row("test.claim.spark.serving_arm_launch_witness_test".to_string(), "w_all_serving_arm_launch_claims_hold".to_string(), "test.claim.spark.serving_arm_launch_witness_test.w_every_rank_keeps_the_transport_evidence_producer_on".to_string(), 1), test_reference_row("test.claim.spark.serving_arm_launch_witness_test".to_string(), "w_all_serving_arm_launch_claims_hold".to_string(), "test.claim.spark.serving_arm_launch_witness_test.w_every_rank_names_this_fleets_leg_and_hca".to_string(), 1), test_reference_row("test.claim.spark.serving_arm_launch_witness_test".to_string(), "w_all_serving_arm_launch_claims_hold".to_string(), "test.claim.spark.serving_arm_launch_witness_test.w_the_engine_argv_states_the_profiles_batching_bounds".to_string(), 1), test_reference_row("test.claim.spark.serving_arm_launch_witness_test".to_string(), "w_all_serving_arm_launch_claims_hold".to_string(), "test.claim.spark.serving_arm_launch_witness_test.w_the_group_b_arm_plans_exactly_four_ranks".to_string(), 1), test_reference_row("test.claim.spark.serving_arm_launch_witness_test".to_string(), "w_all_serving_arm_launch_claims_hold".to_string(), "test.claim.spark.serving_arm_launch_witness_test.w_the_utilisation_argv_is_the_profiles_value_at_full_precision".to_string(), 1), test_reference_row("v2.test.claim.compiler.compile_eval_thesis_proof".to_string(), "isolate_t1_holds".to_string(), "v2.test.claim.compiler.compile_eval_thesis_proof.compile_eval_bool_reaches_node_value_holds".to_string(), 1), test_reference_row("v2.test.claim.compiler.compile_eval_thesis_proof".to_string(), "isolate_t2_holds".to_string(), "v2.test.claim.compiler.compile_eval_thesis_proof.compile_eval_bool_via_compile_entry_refuses_underived_holds".to_string(), 1), test_reference_row("v2.test.claim.compiler.compile_eval_thesis_proof".to_string(), "isolate_t3_holds".to_string(), "v2.test.claim.compiler.compile_eval_thesis_proof.compile_eval_unit_unrepresentable_red_holds".to_string(), 1), test_reference_row("v2.test.claim.generated_conformance_floor".to_string(), "<import>".to_string(), "v2.test.generated.language_behavior_equivalence.witness_dag_surface_language_identity".to_string(), 1), test_reference_row("v2.test.claim.generated_conformance_floor".to_string(), "<import>".to_string(), "v2.test.generated.language_behavior_equivalence.witness_lbe_conj_snapshot_pass".to_string(), 1), test_reference_row("v2.test.claim.generated_conformance_floor".to_string(), "<import>".to_string(), "v2.test.generated.language_behavior_equivalence.witness_lbe_disj_snapshot_pass".to_string(), 1), test_reference_row("v2.test.claim.generated_conformance_floor".to_string(), "<import>".to_string(), "v2.test.generated.language_behavior_equivalence.witness_lbe_transform_snapshot_pass".to_string(), 1), test_reference_row("v2.test.claim.generated_conformance_floor".to_string(), "<import>".to_string(), "v2.test.generated.language_behavior_equivalence.witness_testgen_schedules_three_lbe_generators".to_string(), 1), test_reference_row("v2.test.claim.generated_conformance_floor".to_string(), "generated_wishlist_dispatched_count_holds".to_string(), "v2.test.generated.testgen_category_wishlist.dispatched_non_tautological_generator_count_is_four".to_string(), 1), test_reference_row("v2.test.claim.generated_conformance_floor".to_string(), "generated_wishlist_pending_count_holds".to_string(), "v2.test.generated.testgen_category_wishlist.pending_non_tautological_generator_count_is_three".to_string(), 1), test_reference_row("v2.test.compiler.pipeline.stage_bridge".to_string(), "<import>".to_string(), "v2.test.manual.rust_add_emit_translate".to_string(), 1), test_reference_row("v2.test.complexity_gate.budget_roster_completeness".to_string(), "complexity_budget_roster_family_gate_holds".to_string(), "v2.test.complexity_gate.budget_roster_completeness.complexity_budget_roster_unrated_declared_budget_semantic_red_holds".to_string(), 1), test_reference_row("v2.test.discrimination_gate.discrimination_roster".to_string(), "discrimination_family_gate".to_string(), "v2.test.discrimination_gate.discrimination_roster.mixed_input_non_perturbed_control_correctly_rejected".to_string(), 1), test_reference_row("v2.test.discrimination_gate.discrimination_roster".to_string(), "discrimination_family_gate".to_string(), "v2.test.discrimination_gate.discrimination_roster.negative_control_correctly_rejected".to_string(), 1), test_reference_row("v2.test.discrimination_gate.discrimination_roster".to_string(), "discrimination_family_gate".to_string(), "v2.test.discrimination_gate.discrimination_roster.non_perturbed_control_correctly_rejected".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "<import>".to_string(), "v2.test.execution.emit_on_demand_family_crate_witness".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_green_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_green_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_green_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "<import>".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "native_selected_logic_interpreter_oracle_holds".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_green_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "native_selected_logic_interpreter_oracle_holds".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_green_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "native_selected_logic_interpreter_oracle_holds".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_green_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "native_selected_logic_planted_red_oracle_holds".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "native_selected_logic_planted_red_oracle_holds".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds".to_string(), 1), test_reference_row("v2.test.execution.native_selected_witness_bundle_production".to_string(), "native_selected_logic_planted_red_oracle_holds".to_string(), "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds".to_string(), 1), test_reference_row("v2.test.grounding_typescript.sg_claims".to_string(), "ts_g2_sg5_absence_fail_closed_holds".to_string(), "v2.test.grounding_typescript.sg_claims.ts_g2_sg5_collection_realization_absence_holds".to_string(), 1), test_reference_row("v2.test.lens_application.sg_claims".to_string(), "lens_application_introspect_advisory_holds".to_string(), "v2.test.lens_application.apply_lens_introspect_rejection_is_advisory.apply_lens_introspect_rejection_is_advisory_claim_holds".to_string(), 1), test_reference_row("v2.test.lens_application.sg_claims".to_string(), "lens_application_synthesis_gap_polynomial_holds".to_string(), "v2.test.lens_synthesis.synthesis_gap_polynomial.synthesis_gap_poly_lens_non_empty".to_string(), 1), test_reference_row("v2.test.lens_cost.bounded_summation".to_string(), "claim_bounded_summation".to_string(), "v2.test.lens_cost.bounded_summation.bounded_summation_expr_authority_holds".to_string(), 1), test_reference_row("v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner".to_string(), "p9_registry_owner_receipt_holds".to_string(), "v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner.p9_registry_fn_names_unique".to_string(), 1), test_reference_row("v2.test.lens_idempotency.sg_claims".to_string(), "lens_idempotency_write_effect_holds".to_string(), "v2.test.lens_idempotency.write_effect.idempotency_write_effect_claim_holds".to_string(), 1), test_reference_row("v2.test.lens_non_fold_residue.non_fold_residue_test".to_string(), "witness_non_fold_residue_synthetic_unrostered_red_holds".to_string(), "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_synthetic_unrostered_red_holds".to_string(), 1), test_reference_row("v2.test.lens_non_fold_residue.non_fold_residue_test".to_string(), "witness_non_fold_residue_wildcard_red_fixture_holds".to_string(), "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_wildcard_red_fixture_holds".to_string(), 1), test_reference_row("v2.test.lens_structural_resolution.binds_to_resolved".to_string(), "binds_to_resolved_claim_passes".to_string(), "v2.test.lens_structural_resolution.binds_to_resolved.binds_to_resolved_claim_holds".to_string(), 1), test_reference_row("v2.test.long.door_real_module_probe".to_string(), "quad_with_peer_greens_under_namespace_only_projection".to_string(), "v2.test.long.door_real_module_probe.quad_namespace_only_resolve_accepts_holds".to_string(), 1), test_reference_row("v2.test.long.door_real_module_probe".to_string(), "quad_with_peer_import_scoped_reds_ambiguous_export_holds".to_string(), "v2.test.long.door_real_module_probe.quad_import_scoped_admission_reds_ambiguous_export_holds".to_string(), 1), test_reference_row("v2.test.long.parse_table_memo_governed_witness".to_string(), "witness_door_insert_then_lookup_refused_for_recompute_table".to_string(), "v2.test.long.parse_table_memo_governed_witness.witness_door_insert_refused_for_recompute_table".to_string(), 1), test_reference_row("v2.test.long.parse_table_memo_governed_witness".to_string(), "witness_door_insert_then_lookup_refused_for_recompute_table".to_string(), "v2.test.long.parse_table_memo_governed_witness.witness_door_lookup_refused_for_recompute_table".to_string(), 1), test_reference_row("v2.test.long.parse_table_memo_governed_witness".to_string(), "witness_door_lookup_then_insert_refused_for_recompute_table".to_string(), "v2.test.long.parse_table_memo_governed_witness.witness_door_insert_refused_for_recompute_table".to_string(), 1), test_reference_row("v2.test.long.parse_table_memo_governed_witness".to_string(), "witness_door_lookup_then_insert_refused_for_recompute_table".to_string(), "v2.test.long.parse_table_memo_governed_witness.witness_door_lookup_refused_for_recompute_table".to_string(), 1), test_reference_row("v2.test.long.pick_ingested_probe".to_string(), "pick_probe_eval_equals_holds".to_string(), "v2.test.long.pick_ingested_structural_lowering.pick_ingested_pick_false_executes_holds".to_string(), 1), test_reference_row("v2.test.long.pick_ingested_probe".to_string(), "pick_probe_eval_equals_holds".to_string(), "v2.test.long.pick_ingested_structural_lowering.pick_ingested_pick_true_executes_holds".to_string(), 1), test_reference_row("v2.test.long.pick_ingested_probe".to_string(), "pick_probe_pipeline_resolves_holds".to_string(), "v2.test.long.pick_ingested_structural_lowering.pick_ingested_pipeline_resolves_holds".to_string(), 1), test_reference_row("v2.test.long.pick_ingested_probe".to_string(), "pick_probe_swapped_arms_structural_red_holds".to_string(), "v2.test.long.pick_ingested_structural_lowering.pick_ingested_normalized_swapped_arms_structural_red_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(), "<import>".to_string(), "v2.test.manual.body_lowering_projection_call.body_lowering_field_access_postfix_rejects".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(), "<import>".to_string(), "v2.test.manual.body_lowering_projection_call.body_lowering_normalize_accepts_projection_module".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(), "<import>".to_string(), "v2.test.manual.body_lowering_projection_call.body_lowering_projection_lowers_to_transform".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(), "wave1_gate1_a1_projection_call_lowers_witness_holds".to_string(), "v2.test.manual.body_lowering_projection_call.body_lowering_projection_lowers_to_transform".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(), "wave1_gate1_a1_projection_call_normalize_accepts_witness_holds".to_string(), "v2.test.manual.body_lowering_projection_call.body_lowering_normalize_accepts_projection_module".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_a1_projection_call_witness".to_string(), "wave1_gate1_a1_projection_field_access_refuses_witness_holds".to_string(), "v2.test.manual.body_lowering_projection_call.body_lowering_field_access_postfix_rejects".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(), "<import>".to_string(), "v2.test.long.bind_eval_by_execution.bind_census_ingested_executes_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(), "<import>".to_string(), "v2.test.long.bind_eval_by_execution.bind_census_ingested_wrong_value_red_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(), "<import>".to_string(), "v2.test.long.loop_eval_by_execution.loop_census_ingested_executes_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(), "<import>".to_string(), "v2.test.long.loop_eval_by_execution.loop_census_ingested_wrong_value_red_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(), "wave1_gate1_d_ingested_bind_executes_witness_holds".to_string(), "v2.test.long.bind_eval_by_execution.bind_census_ingested_executes_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(), "wave1_gate1_d_ingested_bind_executes_witness_holds".to_string(), "v2.test.long.bind_eval_by_execution.bind_census_ingested_wrong_value_red_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(), "wave1_gate1_d_ingested_loop_executes_witness_holds".to_string(), "v2.test.long.loop_eval_by_execution.loop_census_ingested_executes_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness".to_string(), "wave1_gate1_d_ingested_loop_executes_witness_holds".to_string(), "v2.test.long.loop_eval_by_execution.loop_census_ingested_wrong_value_red_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_general_body_producer_witness".to_string(), "wave1_gate1_ingested_match_normalize_yields_match_holds".to_string(), "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_has_match_holds".to_string(), 1), test_reference_row("v2.test.long.wave1_gate1_general_body_producer_witness".to_string(), "wave1_gate1_ingested_match_resolves_holds".to_string(), "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_resolves_holds".to_string(), 1), test_reference_row("v2.test.manual.cross_language_add_python_to_typescript".to_string(), "<import>".to_string(), "v2.test.manual.typescript_effect_io_emit.ts_effect_io_emit_holds".to_string(), 1), test_reference_row("v2.test.manual.cross_language_add_python_to_typescript".to_string(), "cross_language_add_python_to_typescript_chain_status_holds".to_string(), "v2.test.manual.typescript_effect_io_emit.ts_effect_io_emit_holds".to_string(), 1), test_reference_row("v2.test.manual.field_access_emit".to_string(), "field_access_emit_holds_keystone".to_string(), "v2.test.manual.field_access_emit.field_access_emit_holds".to_string(), 1), test_reference_row("v2.test.manual.field_access_emit".to_string(), "field_access_grammar_inverse_holds_keystone".to_string(), "v2.test.manual.field_access_emit.field_access_grammar_inverse_holds".to_string(), 1), test_reference_row("v2.test.manual.field_access_emit".to_string(), "field_access_ingest_via_coerce_holds_keystone".to_string(), "v2.test.manual.field_access_emit.field_access_ingest_via_coerce_matches_canonical".to_string(), 1), test_reference_row("v2.test.manual.inhabitant_neutralization".to_string(), "<import>".to_string(), "v2.test.manual.ingest_bridge.ingest_cross_language_compile_accepts_holds".to_string(), 1), test_reference_row("v2.test.manual.inhabitant_neutralization".to_string(), "inhabitant_neutralization_same_language_cross_language_compile_accepts_holds".to_string(), "v2.test.manual.ingest_bridge.ingest_cross_language_compile_accepts_holds".to_string(), 1), test_reference_row("v2.test.manual.record_construct_emit".to_string(), "record_construct_emit_holds_keystone".to_string(), "v2.test.manual.record_construct_emit.record_construct_emit_holds".to_string(), 1), test_reference_row("v2.test.manual.record_construct_emit".to_string(), "record_construct_grammar_inverse_holds_keystone".to_string(), "v2.test.manual.record_construct_emit.record_construct_grammar_inverse_holds".to_string(), 1), test_reference_row("v2.test.manual.record_construct_emit".to_string(), "record_construct_ingest_via_coerce_holds_keystone".to_string(), "v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_matches_canonical".to_string(), 1), test_reference_row("v2.test.manual.rust_wire_serde_naming_policy_test".to_string(), "unified_claim_rust_wire_serde_naming_discriminates".to_string(), "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_naming_discriminates".to_string(), 1), test_reference_row("v2.test.manual.rust_wire_serde_naming_policy_test".to_string(), "unified_claim_rust_wire_serde_screaming_snake".to_string(), "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_screaming_snake_holds".to_string(), 1), test_reference_row("v2.test.manual.rust_wire_serde_naming_policy_test".to_string(), "unified_claim_rust_wire_serde_snake_case".to_string(), "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_snake_case_holds".to_string(), 1), test_reference_row("v2.test.manual.sg_rc_layering".to_string(), "sg_rc_f1_dual_boundary_holds".to_string(), "v2.test.manual.sg_rc_layering.sg_rc_f1_value_dual_boundary_holds".to_string(), 1), test_reference_row("v2.test.manual.typescript_descriptor_node_run_support".to_string(), "<import>".to_string(), "v2.test.manual.add_body_emit_typescript".to_string(), 1), test_reference_row("v2.test.synthesis_gate.optimality_gap_completeness".to_string(), "<import>".to_string(), "v2.test.lens_synthesis.synthesis_gap_polynomial".to_string(), 1)])
+}
+
+pub fn test_reference_import_referrer() -> String {
+    "<import>".to_string()
+}
+
+pub fn test_marked_declaration_keys(
+    typed: Rc<ResolvedGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    typed.modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, m: Rc<TypedModule>| {
+            Rc::new({
+                let mut __result = Vec::new();
+                for item in m.items.clone().iter().cloned() {
+                    if (item.declaration_marker.clone() == DeclarationMarker::TestMarked) {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .fold(acc, |inner: Rc<HashMap<String, bool>>, item: Rc<Node>| {
+                v1_rt::rc_map_insert(
+                    inner,
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                m.module.clone(),
+                            ),
+                            ".".to_string(),
+                        ),
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                    ),
+                    true,
+                )
+            })
+        },
+    )
+}
+
+pub fn call_semantics_source_target(semantics: Option<Rc<CallSemantics>>) -> Option<String> {
+    match semantics.clone() {
+        Some(s) => match (*s.clone()).clone() {
+            CallSemantics::PlainCallSemantics { target: t, .. } => {
+                call_target_declaration_key(t.clone())
+            }
+            CallSemantics::ResolvedDirectCallSemantics { target: t, .. } => {
+                call_target_declaration_key(t.clone())
+            }
+            CallSemantics::LookupCallSemantics { target: t, .. } => {
+                call_target_declaration_key(t.clone())
+            }
+            CallSemantics::FunctionValueCallSemantics => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn call_target_declaration_key(target: Rc<CallTargetIdentity>) -> Option<String> {
+    match (*target.clone()).clone() {
+        CallTargetIdentity::SourceDeclarationCall {
+            owner_module_path: owner,
+            decl_name: decl,
+            ..
+        } => Some(v1_rt::concat(
+            v1_rt::concat(owner.clone(), ".".to_string()),
+            decl.clone(),
+        )),
+        CallTargetIdentity::RuntimePrimitiveCall { .. } => std::option::Option::None,
+        CallTargetIdentity::LocallyBoundCall { name: _, .. } => std::option::Option::None,
+        CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
+    }
+}
+
+pub fn module_declaration_keys(
+    m: Rc<TypedModule>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, String>> {
+    m.items.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, item: Rc<Node>| {
+            v1_rt::rc_map_insert(
+                acc,
+                crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                v1_rt::concat(
+                    v1_rt::concat(module_name.clone(), ".".to_string()),
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                ),
+            )
+        },
+    )
+}
+
+pub fn visible_declaration_keys(
+    m: Rc<TypedModule>,
+    module_name: String,
+    modules_by_name: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, String>> {
+    {
+        let wildcard = Rc::new({
+            let mut __result = Vec::new();
+            for imp in crate::v1_std_core::module_imports(m.module.clone())
+                .iter()
+                .cloned()
+            {
+                if crate::v1_std_core::import_is_all(imp.clone()) {
+                    __result.push(imp);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, imp: Rc<Node>| match v1_rt::map_get(
+                &modules_by_name,
+                crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone()),
+            ) {
+                Some(tm) => v1_rt::rc_map_merge(
+                    acc.clone(),
+                    module_declaration_keys(
+                        tm.clone(),
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone()),
+                        source_indices.clone(),
+                    ),
+                ),
+                std::option::Option::None => acc.clone(),
+            },
+        );
+        let named = Rc::new({
+            let mut __result = Vec::new();
+            for imp in crate::v1_std_core::module_imports(m.module.clone())
+                .iter()
+                .cloned()
+            {
+                if !crate::v1_std_core::import_is_all(imp.clone()) {
+                    __result.push(imp);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold(
+            wildcard.clone(),
+            |acc: Rc<HashMap<String, String>>, imp: Rc<Node>| {
+                crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone())
+                    .iter()
+                    .cloned()
+                    .fold(acc, |inner: Rc<HashMap<String, String>>, name: String| {
+                        v1_rt::rc_map_insert(
+                            inner,
+                            name.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        imp.clone(),
+                                    ),
+                                    ".".to_string(),
+                                ),
+                                name.clone(),
+                            ),
+                        )
+                    })
+            },
+        );
+        v1_rt::rc_map_merge(
+            named.clone(),
+            module_declaration_keys(m.clone(), module_name.clone(), source_indices.clone()),
+        )
+    }
+}
+
+pub fn function_value_target(
+    texpr: Rc<Node>,
+    visible: Rc<HashMap<String, String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: bk, ..
+        } => match bk.clone() {
+            Some(kind) => match (*kind.clone()).clone() {
+                VarBindingKind::FunctionValueBinding => v1_rt::map_get(
+                    &visible,
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
+                ),
+                VarBindingKind::LocalValueBinding => std::option::Option::None,
+                VarBindingKind::VariantValueBinding { parent_enum: _, .. } => {
+                    std::option::Option::None
+                }
+                VarBindingKind::MatchBoundBinding => std::option::Option::None,
+                VarBindingKind::ServiceValueBinding => std::option::Option::None,
+            },
+            std::option::Option::None => v1_rt::map_get(
+                &visible,
+                crate::v1_std_core::authored_name_at(source_indices.clone(), texpr.clone()),
+            ),
+        },
+        ExprData::ExprCall {
+            call_semantics: cs, ..
+        } => call_semantics_source_target(cs.clone()),
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn test_references_in_expr(
+    module_name: String,
+    referrer: String,
+    texpr: Rc<Node>,
+    test_keys: Rc<HashMap<String, bool>>,
+    visible: Rc<HashMap<String, String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here =
+            match function_value_target(texpr.clone(), visible.clone(), source_indices.clone()) {
+                Some(key) => {
+                    if v1_rt::map_contains_key(&test_keys, key.clone()) {
+                        Rc::new(vec![Rc::new(TestReferenceOccurrence {
+                            module_name: module_name.clone(),
+                            referrer: referrer.clone(),
+                            target: key.clone(),
+                            span: texpr.span.clone(),
+                        })])
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                std::option::Option::None => Rc::new(vec![]),
+            };
+        v1_rt::concat(
+            here.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for child in texpr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*test_references_in_expr(
+                            module_name.clone(),
+                            referrer.clone(),
+                            child.clone(),
+                            test_keys.clone(),
+                            visible.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        )
+    })
+}
+
+pub fn declaration_test_references(
+    item: Rc<Node>,
+    module_name: String,
+    test_keys: Rc<HashMap<String, bool>>,
+    visible: Rc<HashMap<String, String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
+    {
+        let referrer = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+        let in_body = match item.body.clone() {
+            Some(body) => test_references_in_expr(
+                module_name.clone(),
+                referrer.clone(),
+                body.clone(),
+                test_keys.clone(),
+                visible.clone(),
+                source_indices.clone(),
+            ),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        let in_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.extend(
+                    (*test_references_in_expr(
+                        module_name.clone(),
+                        referrer.clone(),
+                        p.clone(),
+                        test_keys.clone(),
+                        visible.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let in_children = Rc::new({
+            let mut __result = Vec::new();
+            for c in item.children.clone().iter().cloned() {
+                __result.extend(
+                    (*test_references_in_expr(
+                        module_name.clone(),
+                        referrer.clone(),
+                        c.clone(),
+                        test_keys.clone(),
+                        visible.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(in_body.clone(), in_params.clone()),
+            in_children.clone(),
+        )
+    }
+}
+
+pub fn module_test_references(
+    m: Rc<TypedModule>,
+    modules_by_name: Rc<HashMap<String, Rc<TypedModule>>>,
+    test_keys: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
+    {
+        let module_name =
+            crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone());
+        let visible = visible_declaration_keys(
+            m.clone(),
+            module_name.clone(),
+            modules_by_name.clone(),
+            source_indices.clone(),
+        );
+        let decl_refs = Rc::new({
+            let mut __result = Vec::new();
+            for item in m.items.clone().iter().cloned() {
+                __result.extend(
+                    (*declaration_test_references(
+                        item.clone(),
+                        module_name.clone(),
+                        test_keys.clone(),
+                        visible.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let member_refs = Rc::new({
+            let mut __result = Vec::new();
+            for imp in crate::v1_std_core::module_imports(m.module.clone())
+                .iter()
+                .cloned()
+            {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for key in Rc::new({
+                            let mut __result = Vec::new();
+                            for key in Rc::new({
+                                let mut __result = Vec::new();
+                                for name in crate::v1_std_core::import_specific_names_at(
+                                    imp.clone(),
+                                    source_indices.clone(),
+                                )
+                                .iter()
+                                .cloned()
+                                {
+                                    __result.push(v1_rt::concat(
+                                        v1_rt::concat(
+                                            crate::v1_std_core::authored_name_at(
+                                                source_indices.clone(),
+                                                imp.clone(),
+                                            ),
+                                            ".".to_string(),
+                                        ),
+                                        name.clone(),
+                                    ));
+                                }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
+                                if v1_rt::map_contains_key(&test_keys, key.clone()) {
+                                    __result.push(key);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(Rc::new(TestReferenceOccurrence {
+                                module_name: module_name.clone(),
+                                referrer: test_reference_import_referrer(),
+                                target: key.clone(),
+                                span: imp.span.clone(),
+                            }));
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        v1_rt::concat(decl_refs.clone(), member_refs.clone())
+    }
+}
+
+pub fn test_reference_key(module_name: String, referrer: String, target: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(module_name.clone(), "|".to_string()),
+                referrer.clone(),
+            ),
+            "|".to_string(),
+        ),
+        target.clone(),
+    )
+}
+
+pub fn test_reference_occurrence_key(o: Rc<TestReferenceOccurrence>) -> String {
+    test_reference_key(o.module_name.clone(), o.referrer.clone(), o.target.clone())
+}
+
+pub fn test_reference_occurrence_diag(
+    o: Rc<TestReferenceOccurrence>,
+    debt_keys: Rc<HashMap<String, bool>>,
+) -> Rc<ErrorNode> {
+    {
+        let referrer = v1_rt::concat(
+            v1_rt::concat(o.module_name.clone(), ".".to_string()),
+            o.referrer.clone(),
+        );
+        if v1_rt::map_contains_key(&debt_keys, test_reference_occurrence_key(o.clone())) {
+            crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::TestCodeReferenceAdmitted {
+                    referrer: referrer.clone(),
+                    target: o.target.clone(),
+                    span: o.span.clone(),
+                }),
+                o.module_name.clone(),
+            )
+        } else {
+            crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::TestCodeReferenced {
+                    referrer: referrer.clone(),
+                    target: o.target.clone(),
+                    span: o.span.clone(),
+                }),
+                o.module_name.clone(),
+            )
+        }
+    }
+}
+
+pub fn observed_test_reference_count(counts: Rc<HashMap<String, i64>>, key: String) -> i64 {
+    match v1_rt::map_get(&counts, key.clone()) {
+        Some(n) => n.clone(),
+        std::option::Option::None => 0,
+    }
+}
+
+pub fn test_reference_budget_diag(
+    row: Rc<TestReferenceDebtRow>,
+    counts: Rc<HashMap<String, i64>>,
+    first_spans: Rc<HashMap<String, Rc<SourceSpan>>>,
+    compiled_modules: Rc<HashMap<String, Rc<SourceSpan>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match v1_rt::map_get(&compiled_modules, row.module_name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(module_span) => {
+            let key = test_reference_key(
+                row.module_name.clone(),
+                row.referrer.clone(),
+                row.target.clone(),
+            );
+            let observed = observed_test_reference_count(counts.clone(), key.clone());
+            if (observed.clone() == row.occurrences.clone()) {
+                Rc::new(vec![])
+            } else {
+                {
+                    let span = match v1_rt::map_get(&first_spans, key.clone()) {
+                        Some(s) => s.clone(),
+                        std::option::Option::None => module_span.clone(),
+                    };
+                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::TestCodeReferenceBudgetMismatch {
+                            referrer: v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(row.module_name.clone(), ".".to_string()),
+                                        row.referrer.clone(),
+                                    ),
+                                    " -> ".to_string(),
+                                ),
+                                row.target.clone(),
+                            ),
+                            declared: row.occurrences.clone(),
+                            observed: observed.clone(),
+                            span: span.clone(),
+                        }),
+                        row.module_name.clone(),
+                    )])
+                }
+            }
+        }
+    }
+}
+
+pub fn test_reference_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let test_keys = test_marked_declaration_keys(typed.clone(), source_indices.clone());
+        let modules_by_name = typed.modules.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
+                    m.clone(),
+                )
+            },
+        );
+        let compiled_modules = typed.modules.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
+            |acc: Rc<HashMap<String, Rc<SourceSpan>>>, m: Rc<TypedModule>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), m.module.clone()),
+                    m.module.clone().span.clone(),
+                )
+            },
+        );
+        let occurrences = Rc::new({
+            let mut __result = Vec::new();
+            for m in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*module_test_references(
+                        m.clone(),
+                        modules_by_name.clone(),
+                        test_keys.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let counts = occurrences.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, i64>(),
+            |acc: Rc<HashMap<String, i64>>, o: Rc<TestReferenceOccurrence>| {
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    test_reference_occurrence_key(o.clone()),
+                    (observed_test_reference_count(
+                        acc.clone(),
+                        test_reference_occurrence_key(o.clone()),
+                    ) + 1),
+                )
+            },
+        );
+        let first_spans = occurrences.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
+            |acc: Rc<HashMap<String, Rc<SourceSpan>>>, o: Rc<TestReferenceOccurrence>| {
+                if v1_rt::map_contains_key(&acc, test_reference_occurrence_key(o.clone())) {
+                    acc.clone()
+                } else {
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        test_reference_occurrence_key(o.clone()),
+                        o.span.clone(),
+                    )
+                }
+            },
+        );
+        let debt = test_reference_debt();
+        let debt_keys = debt.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, r: Rc<TestReferenceDebtRow>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    test_reference_key(r.module_name.clone(), r.referrer.clone(), r.target.clone()),
+                    true,
+                )
+            },
+        );
+        let occurrence_diags = Rc::new({
+            let mut __result = Vec::new();
+            for o in occurrences.iter().cloned() {
+                __result.push(test_reference_occurrence_diag(o.clone(), debt_keys.clone()));
+            }
+            __result
+        });
+        let budget_diags = Rc::new({
+            let mut __result = Vec::new();
+            for r in debt.iter().cloned() {
+                __result.extend(
+                    (*test_reference_budget_diag(
+                        r.clone(),
+                        counts.clone(),
+                        first_spans.clone(),
+                        compiled_modules.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        v1_rt::concat(occurrence_diags.clone(), budget_diags.clone())
+    }
 }
 
 pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
@@ -3246,6 +3924,8 @@ pub fn compile_to_resolved_with_options(
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
+                let test_reference_diags =
+                    test_reference_diagnostics(typed.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
@@ -3253,14 +3933,17 @@ pub fn compile_to_resolved_with_options(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    frontend.diagnostics.clone(),
-                                    fill.diagnostics.clone(),
+                                    v1_rt::concat(
+                                        frontend.diagnostics.clone(),
+                                        fill.diagnostics.clone(),
+                                    ),
+                                    norm_diags.clone(),
                                 ),
-                                norm_diags.clone(),
+                                all_diags.clone(),
                             ),
-                            all_diags.clone(),
+                            ownership_diags.clone(),
                         ),
-                        ownership_diags.clone(),
+                        test_reference_diags.clone(),
                     ),
                     source_indices: source_indices.clone(),
                     complexity: complexity.clone(),
