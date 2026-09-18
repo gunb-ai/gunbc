@@ -46,10 +46,17 @@ import product.fabric.route_readiness {
 // The ceiling is unchanged and stated: this establishes that the screens RAN and agreed, never that
 // the observations handed to them were honestly taken - that stays a boundary obligation on whoever
 // produced them.
+// THE CARRIER KEEPS THE SUBJECT IT PROVED AGAINST, not only the answer. Fungibility is established
+// against a particular ExecutionRequirements and the permit is minted for a particular demand and
+// work; a carrier that dropped the requirements would let a consumer join it to a demand whose shape
+// it was never checked against - eight threads admitted, sixteen counted - and one that dropped the
+// demand would let capacity permitted for customer A be counted for customer B on the strength of a
+// shared work identity (side review of this chain).
 type AdmittedCapacity<P> sole_constructor {
   offer: SupplierOffer<P>
   demand: FabricIdentity<P, DemandKey>
   work: FabricIdentity<P, WorkKey>
+  requirements: ExecutionRequirements
   permit: ProviderUsePermit<P>
   readiness: RouteReadiness
   evidence: OfferEvidence
@@ -76,41 +83,6 @@ type CapacityAdmission<P>
   = CapacityAdmitted { capacity: AdmittedCapacity<P> }
   | CapacityRefused { refusal: CapacityRefusal<P> }
 
-fn evidence_is_current(evidence: OfferEvidence) -> Bool {
-  match evidence {
-    ObservedSupply { observed_at: _, receipt: _ } => true
-    QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => true
-    UnobservedSupply { obligation: _ } => false
-  }
-}
-
-fn unobserved_obligation(evidence: OfferEvidence, fallback: DeclarationRef) -> DeclarationRef {
-  match evidence {
-    ObservedSupply { observed_at: _, receipt: _ } => fallback
-    QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => fallback
-    UnobservedSupply { obligation: o } => o
-  }
-}
-
-fn readiness_is_admitted(readiness: RouteReadiness) -> Bool {
-  match readiness {
-    RouteReady { exercise: _ } => true
-    RouteAdmittedForItsOwnExercise { route: _ } => true
-    RouteNeverExercised { route: _ } => false
-    RouteExerciseExpired { route: _, latest_valid_through: _, at: _ } => false
-  }
-}
-
-fn fungibility_is_admitted(f: OfferFungibility) -> Bool {
-  match f {
-    Fungible => true
-    TrustDomainMismatch { required: _, offered: _ } => false
-    CapabilitiesNotOffered { required: _, offered: _ } => false
-    IsolationNotProvided { missing: _ } => false
-    ShapeAxesNotCovered { unmet: _ } => false
-  }
-}
-
 // THE ORDER IS THE ONE THE INPUTS FORCE, and the cheapest refusals sit earliest so an operator is
 // told the earliest unmet fact rather than the last one: a route nobody modeled is a different
 // errand from a permit on the wrong subject, and reporting the second when the first is true sends
@@ -135,34 +107,57 @@ fn admit_capacity<P>(
     OfferRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr } =>
       CapacityRefused { refusal: CapacityRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr } }
     OfferRouteModeled { facts: facts } =>
-      if !evidence_is_current(evidence: offer.evidence) {
-        CapacityRefused {
-          refusal: CapacitySupplyUnobserved {
-            offer: offer.id,
-            obligation: unobserved_obligation(evidence: offer.evidence, fallback: decision_receipt),
-          },
-        }
-      } else {
-        let readiness = route_readiness(
-          exercises: exercises, requirement: readiness_requirement,
-          route: facts.route, work: scope.work, at: at)
-        match readiness {
-          RouteNeverExercised { route: r } =>
-            CapacityRefused { refusal: CapacityRouteNeverExercised { offer: offer.id, route: r } }
-          RouteExerciseExpired { route: r, latest_valid_through: v, at: t } =>
-            CapacityRefused {
-              refusal: CapacityRouteExerciseExpired { offer: offer.id, route: r, latest_valid_through: v, at: t },
-            }
-          RouteReady { exercise: _ } =>
-            admit_use_for(
-              sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
-              facts: facts, requirements: requirements, offer: offer, readiness: readiness)
-          RouteAdmittedForItsOwnExercise { route: _ } =>
-            admit_use_for(
-              sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
-              facts: facts, requirements: requirements, offer: offer, readiness: readiness)
-        }
+      match offer.evidence {
+        UnobservedSupply { obligation: o } =>
+          CapacityRefused { refusal: CapacitySupplyUnobserved { offer: offer.id, obligation: o } }
+        ObservedSupply { observed_at: _, receipt: _ } =>
+          admit_ready_offer(
+            sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+            facts: facts, exercises: exercises, readiness_requirement: readiness_requirement, at: at,
+            requirements: requirements, offer: offer)
+        QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } =>
+          admit_ready_offer(
+            sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+            facts: facts, exercises: exercises, readiness_requirement: readiness_requirement, at: at,
+            requirements: requirements, offer: offer)
       }
+  }
+}
+
+// THE READINESS COPRODUCT IS MATCHED ONCE AND ITS PAYLOAD IS CARRIED, rather than read twice through
+// a Bool: the admitted arms put the readiness they decided on the sealed carrier, and the refused
+// arms hand back the route and instants they already hold.
+fn admit_ready_offer<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  exercises: List<RouteExercise>,
+  readiness_requirement: RouteReadinessRequirement<P>,
+  at: EpochSecs,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+) -> CapacityAdmission<P> {
+  match route_readiness(
+    exercises: exercises, requirement: readiness_requirement,
+    route: facts.route, work: scope.work, at: at) {
+    RouteNeverExercised { route: r } =>
+      CapacityRefused { refusal: CapacityRouteNeverExercised { offer: offer.id, route: r } }
+    RouteExerciseExpired { route: r, latest_valid_through: v, at: t } =>
+      CapacityRefused {
+        refusal: CapacityRouteExerciseExpired { offer: offer.id, route: r, latest_valid_through: v, at: t },
+      }
+    RouteReady { exercise: e } =>
+      admit_use_for(
+        sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+        facts: facts, requirements: requirements, offer: offer,
+        readiness: RouteReady { exercise: e })
+    RouteAdmittedForItsOwnExercise { route: r } =>
+      admit_use_for(
+        sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+        facts: facts, requirements: requirements, offer: offer,
+        readiness: RouteAdmittedForItsOwnExercise { route: r })
   }
 }
 
@@ -176,10 +171,16 @@ fn admit_use_for<P>(
   offer: SupplierOffer<P>,
   readiness: RouteReadiness,
 ) -> CapacityAdmission<P> {
-  let fungibility = offer_fungibility_for(requirements: requirements, offer: offer)
-  if !fungibility_is_admitted(f: fungibility) {
-    CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: fungibility } }
-  } else {
+  match offer_fungibility_for(requirements: requirements, offer: offer) {
+    TrustDomainMismatch { required: rq, offered: of } =>
+      CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: TrustDomainMismatch { required: rq, offered: of } } }
+    CapabilitiesNotOffered { required: rq, offered: of } =>
+      CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: CapabilitiesNotOffered { required: rq, offered: of } } }
+    IsolationNotProvided { missing: m } =>
+      CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: IsolationNotProvided { missing: m } } }
+    ShapeAxesNotCovered { unmet: u } =>
+      CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: ShapeAxesNotCovered { unmet: u } } }
+    Fungible =>
     match admit_provider_use(
       roster: sanctions,
       facts: facts,
@@ -207,6 +208,7 @@ fn admit_use_for<P>(
                 offer: offer,
                 demand: scope.demand,
                 work: scope.work,
+                requirements: requirements,
                 permit: permit,
                 readiness: readiness,
                 evidence: offer.evidence,

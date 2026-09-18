@@ -3,8 +3,7 @@ module product.fabric.failure_scenario_admission
 import std.types { Bool, Int, List, EpochSecs }
 import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
-import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, fabric_identity_eq }
-import product.fabric.work { ExecutionRequirements }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.capacity_admission { AdmittedCapacity }
 
 // COMMITTED DEMAND IS ADMITTED ONLY IF IT SURVIVES THE FAILURES WE DECLARE WE WILL ABSORB.
@@ -53,26 +52,28 @@ type FailureScenario<P> {
   lost_offers: List<FabricIdentity<P, OfferKey>>
 }
 
-// DEMAND CARRIES ITS STANDING, AND THE SYMMETRY WITH SUPPLY IS THE POINT. #11532 gave supply a third
-// evidence arm because PLANNED supply could not honestly inhabit ObservedSupply. Demand has the same
-// two states and had only one spelling: a quantity derived from illustrative planning figures - an
-// unnegotiated slot shape, an assumed pool, an uncited failure rate - inhabited CommittedDemand and
-// could therefore produce FailureScenariosSurvived, which reads as "this reserve is covered" when
-// what was established is "these assumptions fit each other" (gunbc-private#141, side review).
+// A COMMITTED DEMAND IS COMMITTED BY CONSTRUCTION, NOT BY A FIELD THAT COULD SAY OTHERWISE.
 //
-// Only a committed demand can survive a scenario here. A planned one REFUSES, with its obligations
-// carried, and whoever wants the counterfactual answers it in a planning carrier of its own that
-// names the assumptions it made - never by minting a commitment.
-type DemandStanding
-  = DemandCommitted { receipt: DeclarationRef }
-  | DemandPlanned { obligations: List<DeclarationRef> }
-
+// An earlier revision gave this type a DemandStanding field with a DemandPlanned arm, so
+// `CommittedDemand { standing: DemandPlanned { .. } }` was writable and a runtime refusal caught it.
+// That is validation standing where construction was available, and it is also a meaning fork: one
+// name covering both a commitment and a planning figure, with the difference carried in a field
+// (DESIGN sections 3 and 5; review 67483). The name now means what it says - the receipt is what a
+// caller must have to build one, and a demand assembled from planning figures cannot inhabit this
+// type at all. Whoever wants the counterfactual answers it in a planning carrier of their own that
+// names the assumptions it made, which is what gunbc-private#141 does.
+//
 // grants is committed concurrent grants of this work's requirements; margin is the operational
 // headroom required above it. Both are in the unit of SupplierOffer.quantity_bound.
+// NO requirements FIELD, AND THAT IS THE REPAIR RATHER THAN AN OMISSION. The requirements a capacity
+// was admitted against live on the capacity that proved them (product.fabric.capacity_admission), so
+// a second copy here could disagree with them - admitted at eight threads, counted against sixteen -
+// and nothing in the join would see it. One fact, one home: this demand says WHO is asking and HOW
+// MUCH, and the capacity says what it was proved for.
 type CommittedDemand<P> {
+  demand: FabricIdentity<P, DemandKey>
   work: FabricIdentity<P, WorkKey>
-  requirements: ExecutionRequirements
-  standing: DemandStanding
+  receipt: DeclarationRef
   grants: Int
   margin: Int
 }
@@ -95,7 +96,6 @@ type FailureScenarioRefusal<P>
   | OfferFailureDomainsAmbiguous { offer: FabricIdentity<P, OfferKey> }
   | OfferSharedAcrossDemands { offer: FabricIdentity<P, OfferKey> }
   | ScenarioNamesUnknownOffer { scenario: DeclarationRef, offer: FabricIdentity<P, OfferKey> }
-  | DemandIsNotCommitted { work: FabricIdentity<P, WorkKey>, obligations: List<DeclarationRef> }
   | ScenarioNotSurvived { shortfall: ScenarioShortfall<P> }
 
 type FailureScenarioAdmission<P>
@@ -126,10 +126,14 @@ fn capacity_domains<P>(roster: List<OfferFailureDomains<P>>, capacity: AdmittedC
   )
 }
 
-// A capacity is admitted FOR one work, so the supply a demand may draw on is the capacity admitted
-// for that demand's work. Nothing is re-screened: the screens ran in capacity_admission.
+// A capacity is admitted FOR one demand and one work, so the supply a demand may draw on is the
+// capacity admitted for BOTH of its identities. Matching on work alone would count capacity whose
+// permit was minted for another customer's demand that happens to share a work identity. Nothing is
+// re-screened: the screens ran in capacity_admission.
 fn eligible_capacity<P>(capacities: List<AdmittedCapacity<P>>, demand: CommittedDemand<P>) -> List<AdmittedCapacity<P>> {
-  filter(capacities, c => fabric_identity_eq(left: c.work, right: demand.work))
+  filter(capacities, c =>
+    fabric_identity_eq(left: c.work, right: demand.work)
+      && fabric_identity_eq(left: c.demand, right: demand.demand))
 }
 
 fn domain_is_lost(lost: List<DeclarationRef>, domain: DeclarationRef) -> Bool {
@@ -158,15 +162,6 @@ fn surviving_grants<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureSc
 type DemandSupply<P> {
   demand: CommittedDemand<P>
   eligible: List<AdmittedCapacity<P>>
-}
-
-// A PLANNED DEMAND IS REFUSED BEFORE ANY SCENARIO IS EVALUATED, so no arithmetic over assumed
-// quantities can reach a survival result.
-fn demand_standing_refusals<P>(demand: CommittedDemand<P>) -> List<FailureScenarioRefusal<P>> {
-  match demand.standing {
-    DemandCommitted { receipt: _ } => []
-    DemandPlanned { obligations: o } => [DemandIsNotCommitted { work: demand.work, obligations: o }]
-  }
 }
 
 // EVERY NAMED CAPACITY MUST BE IN THE ROSTER, checked before any scenario is evaluated. This is the
@@ -255,10 +250,7 @@ fn admit_failure_scenarios<P>(
       flat_map(capacities, c => domain_refusals(roster: domains, capacity: c)),
       concat(
         flat_map(scenarios, sc => unknown_offer_refusals(capacities: capacities, scenario: sc)),
-        concat(
-          flat_map(demands, d => demand_standing_refusals(demand: d)),
-          sharing_refusals(capacities: capacities, supplies: supplies),
-        ),
+        sharing_refusals(capacities: capacities, supplies: supplies),
       ),
     ),
   )

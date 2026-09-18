@@ -33,7 +33,6 @@ import product.fabric.route_readiness { RouteExercise }
 import product.fabric.failure_scenario_admission {
   OfferFailureDomains, FailureScenario, CommittedDemand,
   FailureScenarioAdmission, FailureScenariosSurvived, FailureScenariosRefused,
-  DemandStanding, DemandCommitted, DemandPlanned, DemandIsNotCommitted,
   FailureScenarioRefusal, NoFailureScenariosDeclared, OfferFailureDomainsUndeclared,
   OfferFailureDomainsAmbiguous, OfferSharedAcrossDemands, ScenarioNotSurvived,
   ScenarioNamesUnknownOffer,
@@ -145,9 +144,20 @@ fn exercises() -> List<RouteExercise> { [exercise(route: owned_route()), exercis
 
 fn demand(caps: CapabilityManifestRef, key: WorkKey) -> CommittedDemand<NonEmptyStr> {
   CommittedDemand {
+    demand: FabricIdentity { principal: "gunbc", key: "fsa-demand" },
     work: FabricIdentity { principal: "gunbc", key: key },
-    requirements: requirements(caps: caps),
-    standing: DemandCommitted { receipt: r(name: "fsa_demand_receipt") },
+    receipt: r(name: "fsa_demand_receipt"),
+    grants: 15,
+    margin: 5,
+  }
+}
+
+// A second customer's demand over the SAME work: same shape, different demand identity.
+fn other_customer_demand(key: WorkKey) -> CommittedDemand<NonEmptyStr> {
+  CommittedDemand {
+    demand: FabricIdentity { principal: "gunbc", key: "fsa-other-demand" },
+    work: FabricIdentity { principal: "gunbc", key: key },
+    receipt: r(name: "fsa_demand_receipt"),
     grants: 15,
     margin: 5,
   }
@@ -155,15 +165,6 @@ fn demand(caps: CapabilityManifestRef, key: WorkKey) -> CommittedDemand<NonEmpty
 
 data fsa_demand_receipt: NonEmptyStr = "fsa-demand-receipt"
 
-fn planned_demand(key: WorkKey) -> CommittedDemand<NonEmptyStr> {
-  CommittedDemand {
-    work: FabricIdentity { principal: "gunbc", key: key },
-    requirements: requirements(caps: caps()),
-    standing: DemandPlanned { obligations: [r(name: "fsa_demand_receipt")] },
-    grants: 15,
-    margin: 5,
-  }
-}
 
 fn scenario(name: String, lost: List<DeclarationRef>) -> FailureScenario<NonEmptyStr> {
   FailureScenario { scenario: r(name: name), lost: lost, lost_offers: [] }
@@ -317,11 +318,19 @@ fn admit(
 ) -> FailureScenarioAdmission<NonEmptyStr> {
   admit_failure_scenarios(
     capacities: flat_map(demands, d =>
-      capacity_for(offers: offers, exercises: exercises, work: (d.work.key as WorkKey), caps: d.requirements.capabilities)),
+      capacity_for(offers: offers, exercises: exercises, work: (d.work.key as WorkKey), caps: caps())),
     domains: domains,
     demands: demands,
     scenarios: scenarios,
   )
+}
+
+fn admit_with_capacity(
+  capacities: List<AdmittedCapacity<NonEmptyStr>>,
+  demands: List<CommittedDemand<NonEmptyStr>>,
+  scenarios: List<FailureScenario<NonEmptyStr>>,
+) -> FailureScenarioAdmission<NonEmptyStr> {
+  admit_failure_scenarios(capacities: capacities, domains: domains(), demands: demands, scenarios: scenarios)
 }
 
 fn survived(a: FailureScenarioAdmission<NonEmptyStr>) -> Bool {
@@ -338,7 +347,6 @@ fn tag(x: FailureScenarioRefusal<NonEmptyStr>) -> String {
     OfferFailureDomainsAmbiguous { offer: o } => join(["ambiguous:", (o.key as NonEmptyStr)], "")
     OfferSharedAcrossDemands { offer: o } => join(["shared:", (o.key as NonEmptyStr)], "")
     ScenarioNamesUnknownOffer { scenario: _, offer: o } => join(["unknown-offer:", (o.key as NonEmptyStr)], "")
-    DemandIsNotCommitted { work: w, obligations: _ } => join(["planned-demand:", (w.key as NonEmptyStr)], "")
     ScenarioNotSurvived { shortfall: s } => join(["short:", s.scenario.decl_name], "")
   }
 }
@@ -361,12 +369,16 @@ fn shortfall_numbers(a: FailureScenarioAdmission<NonEmptyStr>) -> List<Int> {
         OfferFailureDomainsAmbiguous { offer: _ } => []
         OfferSharedAcrossDemands { offer: _ } => []
         ScenarioNamesUnknownOffer { scenario: _, offer: _ } => []
-        DemandIsNotCommitted { work: _, obligations: _ } => []
       })
   }
 }
 
 fn one_demand() -> List<CommittedDemand<NonEmptyStr>> { [demand(caps: caps(), key: "committed-ci")] }
+
+// Capacity admitted for THIS witness's demand identity ("fsa-demand", the one scope() names).
+fn capacity_admitted_for_the_witness_demand() -> List<AdmittedCapacity<NonEmptyStr>> {
+  capacity_for(offers: offers(), exercises: exercises(), work: "committed-ci", caps: caps())
+}
 
 // A node, a circuit and the whole owned site are each absorbed: losing the site leaves exactly the
 // exercised external route's 20, which is the required 15 + 5.
@@ -412,9 +424,24 @@ test fn w_supply_counted_for_two_demands_refuses() -> Bool {
   tags(a: a) == ["shared:owned-node-1", "shared:owned-node-2", "shared:cloud-x"]
 }
 
-test fn w_a_demand_no_offer_can_run_is_short_in_every_scenario() -> Bool {
-  let foreign = [demand(caps: "gunbc.capabilities.gpu-runtime", key: "committed-gpu")]
-  shortfall_numbers(a: admit(offers: offers(), domains: domains(), exercises: exercises(), demands: foreign, scenarios: [site_and_cloud_x()])) == [0, 20]
+// A demand whose requirements no offer can run admits no capacity at all, so every scenario is short
+// by the whole reserve. The requirements live on the capacity that proved them, so this is asked of
+// capacity_for rather than of a requirements field on the demand.
+test fn w_a_demand_no_offer_can_run_admits_no_capacity() -> Bool {
+  count(capacity_for(offers: offers(), exercises: exercises(), work: "committed-gpu", caps: "gunbc.capabilities.gpu-runtime")) == 0
+    && shortfall_numbers(a: admit_with_capacity(
+      capacities: [],
+      demands: [demand(caps: caps(), key: "committed-gpu")],
+      scenarios: [site_and_cloud_x()])) == [0, 20]
+}
+
+// CAPACITY PERMITTED FOR ONE CUSTOMER'S DEMAND IS NOT ANOTHER'S, even over the same work: the join is
+// both identities, so the second customer sees nothing and is short by the whole reserve.
+test fn w_capacity_admitted_for_one_demand_does_not_count_for_another() -> Bool {
+  shortfall_numbers(a: admit_with_capacity(
+    capacities: capacity_admitted_for_the_witness_demand(),
+    demands: [other_customer_demand(key: "committed-ci")],
+    scenarios: [site_and_cloud_x()])) == [0, 20]
 }
 
 // A PLANNED FLEET IS NOT CAPACITY AT ALL NOW: the screens run in product.fabric.capacity_admission,
@@ -441,15 +468,11 @@ test fn w_unobserved_supply_is_never_admitted_as_capacity() -> Bool {
     && count(capacity_for(offers: offers(), exercises: exercises(), work: "committed-ci", caps: caps())) == 3
 }
 
-// A PLANNED DEMAND CANNOT SURVIVE ANYTHING. The same supply that absorbs every declared scenario for a
-// committed demand refuses outright when the demand is a planning figure, because a survival over
-// assumed quantities reads as a covered reserve and is not one.
-test fn w_a_planned_demand_refuses_rather_than_surviving() -> Bool {
-  tags(a: admit(
-    offers: offers(), domains: domains(), exercises: exercises(),
-    demands: [planned_demand(key: "planned-ci")], scenarios: absorbed_scenarios()))
-    == ["planned-demand:planned-ci"]
-}
+// NO CLAIM THAT A PLANNED DEMAND REFUSES, AND THAT IS THE POINT: after review 67483 a planning
+// figure cannot inhabit CommittedDemand at all, so the state has no spelling here to be red about
+// (DESIGN section 4b - ask whether the red is authorable before writing the check). What answers the
+// planning question instead is gunbc-private#141's own RepairIntervalPlanAssessment, which carries
+// the assumptions it rests on and cannot say "survived".
 
 // A SCENARIO CITES THE CLAIM THAT OWNS IT, which is a declaration this module really carries, so the
 // citation resolves without minting an anchor row for it. review 67458 is right that the two anchor
