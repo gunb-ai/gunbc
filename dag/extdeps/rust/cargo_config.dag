@@ -1,0 +1,151 @@
+module extdeps.cargo_config
+
+import std.types { Bool, String, List, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.toml.types {
+  TomlValue, TomlKeyValue, TomlEntry, TomlTable, TomlDocument,
+  TomlString, TomlInteger, TomlBool, TomlInlineTable,
+  toml_strings
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/reference/config.html"
+  }
+}
+
+// CARGO'S CONFIGURATION FILE IS CARGO'S INTERFACE, and what this module owns is the RELATION
+// between a key and the value that may stand under it -- not the key spellings and the value
+// constructors side by side for a consumer to pair up. An earlier revision exported
+// `cargo_config_jobs_key` and `cargo_config_rustflags_value` independently and let the repository
+// join them with generic TOML entry constructors; `jobs` paired with the rustflags array, and an
+// `[env]` row placed in the build table, were both still well-typed. Cargo owning the names while
+// the consumer owns the schema leaves the wrong construction writable, which is validation
+// standing where construction was available (DESIGN section 5).
+//
+// So the entry points below take TYPED CARGO FACTS -- a job count as an Int, rustflags as a list
+// of rustc arguments, env rows as records -- and produce whole tables. A caller cannot spell a
+// key, cannot choose which value stands under one, and cannot put an env row in `[build]`: those
+// states have no constructor here.
+//
+// SCOPE, stated so absence is not read as a claim: `[build]` jobs/rustflags and `[env]` are what
+// this repository's committed configuration uses. Cargo's config schema is far larger, and the
+// rest is added as rows when a consumer needs one.
+
+data cargo_config_build_table: String = "build"
+data cargo_config_env_table: String = "env"
+data cargo_config_jobs_key: String = "jobs"
+data cargo_config_rustflags_key: String = "rustflags"
+data cargo_config_env_value_key: String = "value"
+data cargo_config_env_force_key: String = "force"
+
+// `[env]` rows carry the FORCE flag because the distinction is cargo's, not the caller's: an
+// unforced row is a default the surrounding environment overrides, a forced one wins over it.
+type CargoConfigEnvVar {
+  name: String
+  value: String
+  force: Bool
+}
+
+// The annotation travels WITH the row it describes rather than being matched to it by name at
+// render time, which would be a second, positional way to say which note belongs to which row.
+type CargoAnnotatedEnvVar {
+  var: CargoConfigEnvVar
+  leading_comments: List<String>
+  trailing_comment: String?
+}
+
+// `[build]` as cargo defines it, at the grain this repository writes: a parallelism bound and the
+// rustc arguments every invocation carries. `jobs: Absent` means cargo's own default rather than a
+// zero, so the key is omitted instead of written with a fabricated value.
+type CargoBuildConfig {
+  jobs: Int?
+  rustflags: List<String>
+}
+
+type CargoBuildAnnotations {
+  jobs_comment: String?
+  rustflags_comments: List<String>
+}
+
+fn cargo_config_env_value(var: CargoConfigEnvVar) -> TomlValue {
+  TomlInlineTable {
+    entries: [
+      TomlKeyValue { key: cargo_config_env_value_key, value: TomlString { value: var.value } },
+      TomlKeyValue { key: cargo_config_env_force_key, value: TomlBool { value: var.force } }
+    ]
+  }
+}
+
+fn cargo_config_env_entry(row: CargoAnnotatedEnvVar) -> TomlEntry {
+  TomlEntry {
+    leading_comments: row.leading_comments,
+    pair: TomlKeyValue { key: row.var.name, value: cargo_config_env_value(var: row.var) },
+    trailing_comment: row.trailing_comment
+  }
+}
+
+fn cargo_config_jobs_entries(jobs: Int?, comment: String?) -> List<TomlEntry> {
+  match jobs {
+    Absent => []
+    Present { value: count } => [TomlEntry {
+      leading_comments: [],
+      pair: TomlKeyValue { key: cargo_config_jobs_key, value: TomlInteger { value: count } },
+      trailing_comment: comment
+    }]
+  }
+}
+
+// Cargo reads `rustflags` as a LIST of rustc arguments -- the space-joined RUSTFLAGS environment
+// variable is the other channel, same meaning, different spelling -- so the list shape is bound to
+// the key here and never chosen by a caller.
+fn cargo_config_rustflags_entries(flags: List<String>, comments: List<String>) -> List<TomlEntry> {
+  if (flags |> count) == 0 {
+    []
+  } else {
+    [TomlEntry {
+      leading_comments: comments,
+      pair: TomlKeyValue { key: cargo_config_rustflags_key, value: toml_strings(values: flags) },
+      trailing_comment: none
+    }]
+  }
+}
+
+fn cargo_config_build_section(build: CargoBuildConfig, annotations: CargoBuildAnnotations) -> TomlTable {
+  TomlTable {
+    name: Present { value: cargo_config_build_table },
+    leading_comments: [],
+    entries: concat(
+      cargo_config_jobs_entries(jobs: build.jobs, comment: annotations.jobs_comment),
+      cargo_config_rustflags_entries(flags: build.rustflags, comments: annotations.rustflags_comments)
+    )
+  }
+}
+
+fn cargo_config_env_section(rows: List<CargoAnnotatedEnvVar>) -> TomlTable {
+  TomlTable {
+    name: Present { value: cargo_config_env_table },
+    leading_comments: [],
+    entries: rows |> map(cargo_config_env_entry)
+  }
+}
+
+// THE WHOLE FILE, assembled from cargo's own sections. A consumer hands over facts and prose and
+// receives a document; the section order, the key spellings and the key-to-value relation are all
+// cargo's, in this module, and none of them is reachable from the call site.
+fn cargo_config_document(
+  preamble_comments: List<String>,
+  build: CargoBuildConfig,
+  build_annotations: CargoBuildAnnotations,
+  env: List<CargoAnnotatedEnvVar>
+) -> TomlDocument {
+  TomlDocument {
+    preamble_comments: preamble_comments,
+    tables: concat(
+      [cargo_config_build_section(build: build, annotations: build_annotations)],
+      if (env |> count) == 0 { [] } else { [cargo_config_env_section(rows: env)] }
+    )
+  }
+}
