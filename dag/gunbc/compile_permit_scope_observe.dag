@@ -12,6 +12,7 @@ import gunbc.host_effect { HostEffectTransport }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
 import gunbc.compile_permit_scope {
@@ -124,6 +125,8 @@ fn read_permit_scope_property(
 ) -> PermitScopePropertyRead {
   match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
     SystemdPropertyCaptured { value: raw } => PermitScopePropertyText { text: trim(raw) }
+    SystemdPropertyBlank =>
+      PermitScopePropertyUnreadable { cause: "the unit property was blank" as NonEmptyStr }
     SystemdPropertyCaptureRefused { reason: why } =>
       PermitScopePropertyUnreadable { cause: why as NonEmptyStr }
   }

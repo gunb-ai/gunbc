@@ -2,6 +2,7 @@ module extdeps.crypto.mac
 
 import std.types { NonEmptyStr, String, Secret, Int }
 import std.logic { Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -47,6 +48,21 @@ fn mac_suite_tag_octets(s: MacSuite) -> Int {
   match s {
     HmacSha256 => 32
   }
+}
+
+// THE KEY SIZE IS THE SUITE'S FACT, NOT A KEYRING'S. RFC 2104 §3 recommends a key no shorter than
+// the hash output L and says keys longer than L add no strength, so the minted key is exactly L =
+// 32 octets for SHA-256; the hex spelling a keyring file holds is two digits per octet. Both the
+// minter and every file reader derive from these two rows, so a 31-octet mint and a 64-hex check
+// cannot drift apart.
+fn mac_suite_key_size(s: MacSuite) -> ByteSize {
+  match s {
+    HmacSha256 => byte_size(count: 32)
+  }
+}
+
+fn mac_key_material_hex_length(s: MacSuite) -> Int {
+  2 * byte_size_count(b: mac_suite_key_size(s: s))
 }
 
 // THE KEY IS NAMED, NOT CARRIED. A MacKeyId selects a key from the verifier's configured keyring;

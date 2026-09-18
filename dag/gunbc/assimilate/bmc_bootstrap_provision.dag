@@ -6,7 +6,7 @@ module gunbc.assimilate.bmc_bootstrap_provision
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyReconciliation, GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired,
-  reconcile_gcp_policy, gcp_binding_cells, no_gcp_cells, GcpPolicyRepresentationLossy
+  reconcile_gcp_policy, gcp_binding_cells, no_gcp_cells, GcpPolicyRepresentationLossy, gcp_policy_from_wire
 }
 
 data bmc_assimilate_service_deps: List<GcpService> = [
@@ -71,7 +71,7 @@ pattern bmc_bootstrap_provision_srv3() -> {
     project_id: bmc_secrets_project_id,
     secret: bmc_srv3_secret_name,
     policy: bmc_secret_iam_bindings_reconciled_policy(
-      observed: GcpPolicy { bindings: observed_policy.bindings, etag: observed_policy.etag, version: observed_policy.version }
+      observed: gcp_policy_from_wire(bindings: observed_policy.bindings, etag: observed_policy.etag, version: observed_policy.version)
     )
   )
 
