@@ -1,6 +1,6 @@
 module gunbc.network_boot_manifest_broker
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, String, Secret }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, serialize_content_hash }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import extdeps.crypto.mac {
@@ -21,7 +21,6 @@ import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equ
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
   SignedBootManifestIdentity,
-  BootDiscoveryHint,
   BootstrapTrustStanding,
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
@@ -115,15 +114,6 @@ type BootManifestRefusal
 type BootManifestVerification
   = BootManifestAuthentic { claims: SignedBootManifestClaims }
   | BootManifestRefused { cause: BootManifestRefusal }
-
-type PublicBootOriginObject {
-  digest: ContentHash
-  availability_fence: BootDiscoveryHint
-}
-
-type PublicOriginAdmission
-  = PublicOriginAdmitted { object: PublicBootOriginObject }
-  | PublicOriginRefusedSecretMaterial
 
 fn epoch_ms_text(t: EpochMs) -> String {
   to_string(t)
@@ -315,34 +305,4 @@ fn redeem_signed_boot_manifest(ticket: SignedBootManifestTicket, key: MacKey, ex
     expectation: expectation,
     mac_result: mac_verify(key: key, message: signed_boot_manifest_signing_input(c: ticket.claims), tag_hex: ticket.tag_hex),
   )
-}
-
-fn admit_public_boot_origin_object(
-  digest: ContentHash,
-  availability_fence: BootDiscoveryHint,
-  host_credential: Secret?,
-  cloud_token: Secret?,
-  install_secret: Secret?,
-) -> PublicOriginAdmission {
-  match host_credential {
-    Present { value: _ } => PublicOriginRefusedSecretMaterial
-    Absent =>
-      match cloud_token {
-        Present { value: _ } => PublicOriginRefusedSecretMaterial
-        Absent =>
-          match install_secret {
-            Present { value: _ } => PublicOriginRefusedSecretMaterial
-            Absent => PublicOriginAdmitted {
-              object: PublicBootOriginObject { digest: digest, availability_fence: availability_fence },
-            }
-          }
-      }
-  }
-}
-
-fn discovery_hint_is_not_identity(hint: BootDiscoveryHint, unit: UnitKey) -> Bool {
-  match hint {
-    DhcpFilenameHint { filename: f } => f as String != unit as String
-    PresignedUrlAvailabilityFence { uri: u } => u.locator != unit as String
-  }
 }

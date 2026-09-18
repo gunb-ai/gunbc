@@ -3,14 +3,11 @@ module test.claim.network_boot_manifest_broker_witness
 import std.types { Bool, Int, List, NonEmptyStr, Secret }
 import std.content_hash { ContentHash, content_hash_of_value }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_implementation }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 import gunbc.network_boot_delivery {
   SignedBootManifestIdentity,
-  DhcpFilenameHint,
-  PresignedUrlAvailabilityFence,
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
   BootstrapTrustUnestablished,
@@ -37,14 +34,10 @@ import gunbc.network_boot_manifest_broker {
   ManifestMacRefused,
   ManifestDigestDisagrees,
   ManifestVerifiedKeyDisagrees,
-  PublicOriginAdmitted,
-  PublicOriginRefusedSecretMaterial,
   issue_signed_boot_manifest,
   redeem_signed_boot_manifest,
   verify_signed_boot_manifest,
   signed_boot_manifest_signing_input,
-  admit_public_boot_origin_object,
-  discovery_hint_is_not_identity,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -281,60 +274,6 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
         _ => false
       }
     BootManifestAuthentic { claims: _ } => false
-  }
-}
-
-test fn dhcp_filename_is_not_unit_identity() -> Bool {
-  discovery_hint_is_not_identity(
-    hint: DhcpFilenameHint { filename: "snponly.efi" },
-    unit: unit,
-  )
-    && discovery_hint_is_not_identity(
-      hint: PresignedUrlAvailabilityFence { uri: Uri { scheme: Https, locator: "boot-origin.example.test/root" } },
-      unit: unit,
-    )
-}
-
-test fn public_origin_refuses_host_credentials_tokens_and_install_secrets() -> Bool {
-  match admit_public_boot_origin_object(
-    digest: root(),
-    availability_fence: DhcpFilenameHint { filename: "snponly.efi" },
-    host_credential: none,
-    cloud_token: none,
-    install_secret: none,
-  ) {
-    PublicOriginAdmitted { object: _ } =>
-      match admit_public_boot_origin_object(
-        digest: root(),
-        availability_fence: DhcpFilenameHint { filename: "snponly.efi" },
-        host_credential: Present { value: "bmc-password" as Secret },
-        cloud_token: none,
-        install_secret: none,
-      ) {
-        PublicOriginRefusedSecretMaterial =>
-          match admit_public_boot_origin_object(
-            digest: root(),
-            availability_fence: DhcpFilenameHint { filename: "snponly.efi" },
-            host_credential: none,
-            cloud_token: Present { value: "cloud-token" as Secret },
-            install_secret: none,
-          ) {
-            PublicOriginRefusedSecretMaterial =>
-              match admit_public_boot_origin_object(
-                digest: root(),
-                availability_fence: DhcpFilenameHint { filename: "snponly.efi" },
-                host_credential: none,
-                cloud_token: none,
-                install_secret: Present { value: "install-secret" as Secret },
-              ) {
-                PublicOriginRefusedSecretMaterial => true
-                PublicOriginAdmitted { object: _ } => false
-              }
-            PublicOriginAdmitted { object: _ } => false
-          }
-        PublicOriginAdmitted { object: _ } => false
-      }
-    PublicOriginRefusedSecretMaterial => false
   }
 }
 
