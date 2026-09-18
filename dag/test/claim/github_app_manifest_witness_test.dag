@@ -127,7 +127,24 @@ import gunbc.github_app_acquisition {
   RegistrationInstructionReady,
   RegistrationInstructionUnavailable,
   census_app_registration_instruction,
+  CustodyAddressed,
+  CustodyNameNotPathSafe,
+  custody_handoff_addressing,
+  custody_identity_document,
+  custody_name_is_path_safe,
+  census_app_custody_handoff_directory,
+  census_app_private_key_custody,
+  AcquisitionRecordRead,
+  AcquisitionRecordConflict,
+  AcquisitionRecordUnparseable,
+  acquisition_record_from_document,
+  reconcile_acquisition_record,
+  app_registration_submit_intervention,
+  app_registration_capture_intervention,
+  adopted_app_key_supply_intervention,
+  census_app_identity,
 }
+import std.human_intervention { EveryProvision, human_intervention_frequency_eq }
 import gunbc.instruments.github_app_acquire {
   HandoffValueRead,
   HandoffValueMissing,
@@ -531,7 +548,7 @@ test fn w_never_acquired_without_a_code_refuses_and_names_the_human_step() -> Bo
   match classified.decision {
     Refuse { reason: r } =>
       (classified.verdict == Absent)
-        && string_contains(s: r as String, pattern: "app_registration_intervention")
+        && string_contains(s: r as String, pattern: "app_registration_submit_intervention")
     Apply { plan: _ } => false
     Noop => false
   }
@@ -764,9 +781,9 @@ data probe_issuance: GitHubAppCredentialIssuance = CredentialIssuedOnce {
   app_id: GitHubAppId { value: 4242 },
   slug: census_slug,
   pem: "-----BEGIN RSA PRIVATE KEY-----" as Secret,
-  webhook_secret: Present { value: "ws" as Secret },
+  webhook_secret: Present { value: "WEBHOOK-SECRET-BYTES" as Secret },
   client_id: "Iv1.deadbeef" as NonEmptyStr,
-  client_secret: "cs" as Secret,
+  client_secret: "CLIENT-SECRET-BYTES" as Secret,
 }
 
 // A SUCCESSFUL EXCHANGE DOES NOT MINT CONVERGENCE. The issuance below is the actuator's own report
@@ -916,4 +933,155 @@ test fn w_installation_token_request_renders_its_narrowings_and_names_its_endpoi
     && (installation_token_request_body(request: omitted) == "{}")
     && (installation_token_request_url(request: omitted)
           == "https://api.github.com/app/installations/77/access_tokens")
+}
+
+// ----- credential custody -----
+
+// THE SLUG COMES FROM GITHUB AND IS INTERPOLATED INTO THE PATH THE PRIVATE KEY IS WRITTEN TO, so a
+// separator or a parent reference in it would put that key outside the git-ignored handoff directory
+// -- in the checkout, or anywhere on the filesystem. This is the red for that wall.
+test fn w_a_slug_that_escapes_the_handoff_directory_is_refused() -> Bool {
+  let traversal = match custody_handoff_addressing(name: "../../etc/evil" as NonEmptyStr) {
+    CustodyNameNotPathSafe { name: s } => (s as String) == "../../etc/evil"
+    CustodyAddressed { paths: _ } => false
+  }
+  let separator = match custody_handoff_addressing(name: "org/app" as NonEmptyStr) {
+    CustodyNameNotPathSafe { name: _ } => true
+    CustodyAddressed { paths: _ } => false
+  }
+  let dotted = !custody_name_is_path_safe(name: "app.name" as NonEmptyStr)
+  let ordinary = custody_name_is_path_safe(name: "gunbc-global-census" as NonEmptyStr)
+  traversal && separator && dotted && ordinary
+}
+
+test fn w_every_custody_path_sits_under_the_ignored_handoff_directory() -> Bool {
+  match custody_handoff_addressing(name: "gunbc-global-census" as NonEmptyStr) {
+    CustodyNameNotPathSafe { name: _ } => false
+    CustodyAddressed { paths: p } =>
+      starts_with(p.pem, prefix: concat(census_app_custody_handoff_directory, "/"))
+        && starts_with(p.client_secret, prefix: concat(census_app_custody_handoff_directory, "/"))
+        && starts_with(p.webhook_secret, prefix: concat(census_app_custody_handoff_directory, "/"))
+        && starts_with(p.identity, prefix: concat(census_app_custody_handoff_directory, "/"))
+        && (p.pem != p.client_secret)
+        && (p.pem != p.webhook_secret)
+        && (p.pem != p.identity)
+  }
+}
+
+// THE IDENTITY DOCUMENT IS WHAT TURNS FOUR OPAQUE FILES INTO A RECOVERABLE APP. It carries the exact
+// acquisition record the NEXT run parses and the Secret Manager destinations, and it must carry NO secret
+// -- an operator who cats it beside the pem should learn where things go, not what they are.
+test fn w_the_custody_identity_document_carries_the_record_edit_and_no_secret() -> Bool {
+  let doc = custody_identity_document(issuance: probe_issuance)
+  string_contains(s: doc, pattern: "record=AppAcquired { app_id: GitHubAppId { value: 4242 }, slug: \"gunbc-global-census\" }")
+    && string_contains(s: doc, pattern: "client_id=Iv1.deadbeef")
+    && string_contains(s: doc, pattern: concat("destination_pem_secret=", census_app_private_key_custody.secret as String))
+    && !string_contains(s: doc, pattern: "BEGIN RSA PRIVATE KEY")
+    && !string_contains(s: doc, pattern: "CLIENT-SECRET-BYTES")
+    && !string_contains(s: doc, pattern: "WEBHOOK-SECRET-BYTES")
+}
+
+// ----- the acquisition record is READ, not transcribed -----
+
+// THE ROUND TRIP THAT DELETES A HUMAN STEP. The custody identity document the actuation writes is the
+// same document the next run parses, so the app id and slug never pass through a person. This claim
+// is the red for that: it fails if the writer stops emitting a field the reader needs, which is
+// exactly the drift a hand-transcription step used to hide.
+test fn w_the_written_identity_document_parses_back_into_the_acquisition_record() -> Bool {
+  match acquisition_record_from_document(
+    path: ".gunbc/probe.identity",
+    content_document: custody_identity_document(issuance: probe_issuance),
+  ) {
+    AcquisitionRecordRead { record: r, source: _ } =>
+      match r {
+        AppAcquired { app_id: id, slug: s } =>
+          (id.value == 4242) && ((s as String) == "gunbc-global-census")
+        AppNeverAcquired => false
+      }
+    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+    AcquisitionRecordUnparseable { path: _, cause: _ } => false
+  }
+}
+
+// A HALF-WRITTEN HANDOFF MUST NOT READ AS "NEVER ACQUIRED". That reading would authorize a
+// registration duplicating the App the file is about -- the duplicate-mint class arriving through the
+// parse instead of through the decision.
+test fn w_a_handoff_missing_its_app_id_refuses_rather_than_reading_as_never_acquired() -> Bool {
+  match acquisition_record_from_document(path: ".gunbc/probe.identity", content_document: "slug=gunbc-global-census\n") {
+    AcquisitionRecordUnparseable { path: _, cause: c } =>
+      string_contains(s: c as String, pattern: "app_id")
+    AcquisitionRecordRead { record: _, source: _ } => false
+    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+  }
+}
+
+// TWO SOURCES NAMING DIFFERENT APPS IS A CONFLICT, NOT A PRECEDENCE RULE. Silently preferring either
+// would hide that this converge has two answers to which App it is about.
+test fn w_an_adoption_row_and_a_handoff_naming_different_apps_conflict() -> Bool {
+  let handoff = acquisition_record_from_document(
+    path: ".gunbc/probe.identity",
+    content_document: custody_identity_document(issuance: probe_issuance),
+  )
+  let conflicting = match reconcile_acquisition_record(
+    declared: AppAcquired { app_id: GitHubAppId { value: 9 }, slug: "some-other-app" as NonEmptyStr },
+    from_handoff: Present { value: handoff },
+  ) {
+    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
+      ((d as String) == "some-other-app") && ((h as String) == "gunbc-global-census")
+    AcquisitionRecordRead { record: _, source: _ } => false
+    AcquisitionRecordUnparseable { path: _, cause: _ } => false
+  }
+  let adoption_alone = match reconcile_acquisition_record(
+    declared: AppAcquired { app_id: GitHubAppId { value: 9 }, slug: "adopted-app" as NonEmptyStr },
+    from_handoff: none,
+  ) {
+    AcquisitionRecordRead { record: r, source: _ } =>
+      match r {
+        AppAcquired { app_id: _, slug: s } => (s as String) == "adopted-app"
+        AppNeverAcquired => false
+      }
+    AcquisitionRecordConflict { declared_slug: _, handoff_slug: _ } => false
+    AcquisitionRecordUnparseable { path: _, cause: _ } => false
+  }
+  conflicting && adoption_alone
+}
+
+// ----- the human steps are split, one per act, and keyed on the App -----
+
+// THE BUNDLE WAS THE DEFECT. One identity covering submit, capture and transcribe made a step that a
+// redirect catcher could take today look as irreducible as the one GitHub genuinely requires a human
+// for. Three identities, three subjects, and every one keyed on the App rather than the fleet -- so a
+// second App this fleet adopts does not discharge the first App's steps.
+test fn w_the_human_steps_are_separate_identities_keyed_on_the_app() -> Bool {
+  let submit = app_registration_submit_intervention(
+    identity: census_app_identity,
+    url: "https://github.com/organizations/gunb-ai/settings/apps/new?state=n",
+    manifest_document: "{}",
+  )
+  let capture = app_registration_capture_intervention(identity: census_app_identity)
+  let supply = adopted_app_key_supply_intervention(identity: census_app_identity)
+  ((submit.identity as String) == "github-app-submit-gunbc-global-census")
+    && ((capture.identity as String) == "github-app-capture-code-gunbc-global-census")
+    && ((supply.identity as String) == "github-app-supply-pem-gunbc-global-census")
+    && ((submit.identity as String) != (capture.identity as String))
+    && human_intervention_frequency_eq(a: submit.frequency, b: EveryProvision)
+    && human_intervention_frequency_eq(a: capture.frequency, b: EveryProvision)
+    && ((submit.subject as String) == "gunbc-global-census")
+}
+
+// THE CAPTURE STEP MUST NOT CLAIM TO BE IRREDUCIBLE, because it is not: a redirect catcher takes the
+// code today with no browser automation. Presenting a design choice as a constraint is what this
+// assertion exists to prevent, and it reds if the instruction is softened back into a limitation.
+test fn w_the_capture_step_declares_itself_a_choice_and_submit_declares_the_consent() -> Bool {
+  let capture = app_registration_capture_intervention(identity: census_app_identity)
+  let supply = adopted_app_key_supply_intervention(identity: census_app_identity)
+  let submit = app_registration_submit_intervention(
+    identity: census_app_identity,
+    url: "https://x",
+    manifest_document: "{}",
+  )
+  string_contains(s: capture.instruction as String, pattern: "A DECLARED CHOICE, NOT A LIMIT")
+    && string_contains(s: capture.instruction as String, pattern: "redirect catcher")
+    && string_contains(s: submit.instruction as String, pattern: "ownership consent")
+    && string_contains(s: supply.instruction as String, pattern: "does not dissolve with browser automation")
 }

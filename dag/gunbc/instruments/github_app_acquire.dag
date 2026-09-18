@@ -6,11 +6,11 @@ import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.upsert_decision {
   ObservationVerdict,
-  UpsertDecision,
   Converged,
   Absent,
   Drifted,
@@ -26,9 +26,18 @@ import std.human_intervention {
 }
 import gunbc.ensure { EnsureObserveOnly, EnsureMayApply }
 import gunbc.github_app_acquisition {
+  GitHubAppAcquisitionRecord,
   AppNeverAcquired,
   AppAcquired,
-  census_app_acquisition_record,
+  census_app_declared_adoption,
+  census_app_identity,
+  AcquisitionRecordReading,
+  AcquisitionRecordRead,
+  AcquisitionRecordConflict,
+  AcquisitionRecordUnparseable,
+  acquisition_record_from_document,
+  reconcile_acquisition_record,
+  app_registration_capture_intervention,
   CensusAppReadAddress,
   ReadAddressedAt,
   ReadNotAddressable,
@@ -39,7 +48,6 @@ import gunbc.github_app_acquisition {
   AppRecordUnreadable,
   AppNotYetAddressable,
   observe_census_app,
-  CensusAppPlan,
   classify_census_app,
   CensusAppExchangeOutcome,
   ExchangeIssued,
@@ -56,10 +64,17 @@ import gunbc.github_app_acquisition {
   RegistrationInstructionReady,
   RegistrationInstructionUnavailable,
   census_app_registration_instruction,
+  CustodyHandoffPaths,
+  CustodyAddressed,
+  CustodyNameNotPathSafe,
+  custody_handoff_addressing,
+  custody_identity_document,
+  census_app_custody_handoff_directory,
 }
 import extdeps.github.app {
   GitHubAppManifestCode,
   GitHubAppManifestState,
+  GitHubAppId,
   GitHubAppCredentialIssuance,
   CredentialIssuedOnce,
   GitHubAppInstallation,
@@ -196,27 +211,82 @@ fn intervention_text(intervention: HumanIntervention) -> String {
   join(["HUMAN STEP ", intervention.identity as String, ": ", intervention.instruction as String], "")
 }
 
+// THE ACQUISITION RECORD IS OBSERVED HERE, WHICH IS WHY NO HUMAN TRANSCRIBES IT. The handoff the
+// actuation wrote is read back and parsed; a declared adoption row is the other source, for an App
+// created before this converge existed. Two answers naming different Apps is a Conflict rather than
+// a precedence rule (DESIGN 3), and an unparseable handoff refuses rather than reading as "never
+// acquired" -- which would authorize a registration duplicating the App the file is about.
+fn observed_acquisition_reading() -> AcquisitionRecordReading uses fs: std.resources.Filesystem {
+  match custody_handoff_addressing(name: census_app_identity.name) {
+    CustodyNameNotPathSafe { name: s } =>
+      AcquisitionRecordUnparseable {
+        path: s as String,
+        cause: "the declared App name is not safe to address a handoff file with" as NonEmptyStr,
+      }
+    CustodyAddressed { paths: paths } => {
+      let read = Filesystem.Read(path: paths.identity)
+      reconcile_acquisition_record(
+        declared: census_app_declared_adoption,
+        from_handoff: if read.success {
+          Present { value: acquisition_record_from_document(path: paths.identity, content_document: read.content) }
+        } else {
+          none
+        },
+      )
+    }
+  }
+}
+
+fn acquisition_reading_exit(reading: AcquisitionRecordReading) -> ProcessExit {
+  match reading {
+    AcquisitionRecordRead { record: _, source: _ } =>
+      exit_failure(reason: "acquisition_reading_exit reached with a successful reading")
+    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
+      exit_failure(reason: join([
+        "census_app_declared_adoption names App ", d as String,
+        " and the custody handoff names ", h as String,
+        "; two answers to which App this converge is about, and neither is preferred silently. Reconcile them before any converge is authorized.",
+      ], ""))
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      exit_failure(reason: join([
+        "the custody handoff at ", p, " could not be read as an acquisition record: ", c as String,
+        ". Refusing rather than reading it as never-acquired, which would authorize a registration duplicating the App that file is about.",
+      ], ""))
+  }
+}
+
 // ENTRY ONE: WHAT THE HUMAN MUST DO, DERIVED RATHER THAN REMEMBERED. It exits non-zero because the
 // App is not converged when this is the answer, and a zero here would report an acquisition that has
 // not happened. When the App IS already acquired it exits zero and produces no registration URL at
 // all - which is the adoption path seen from the human's side.
 fn census_app_registration_instruction_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
-  match census_app_acquisition_record {
-    AppAcquired { app_id: _, slug: s } => ExitSuccess
-    AppNeverAcquired =>
-      match read_handoff_value(path: census_app_state_path) {
-        HandoffValueMissing { path: p, cause: c } =>
-          exit_failure(reason: join([
-            "no registration state nonce at ", p, " (", c,
-            "); write an unguessable random string there first, then re-run. It binds the code GitHub returns to this request.",
-          ], ""))
-        HandoffValueEmpty { path: p } =>
-          exit_failure(reason: join(["registration state nonce at ", p, " is empty"], ""))
-        HandoffValueRead { value: state } =>
-          match census_app_registration_instruction(state: state as GitHubAppManifestState) {
-            RegistrationInstructionUnavailable { reason: r } => exit_failure(reason: r as String)
-            RegistrationInstructionReady { intervention: i } =>
-              exit_failure(reason: intervention_text(intervention: i))
+  match observed_acquisition_reading() {
+    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
+      acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
+    AcquisitionRecordRead { record: record, source: _ } =>
+      match record {
+        AppAcquired { app_id: _, slug: _ } => ExitSuccess
+        AppNeverAcquired =>
+          match read_handoff_value(path: census_app_state_path) {
+            HandoffValueMissing { path: p, cause: c } =>
+              exit_failure(reason: join([
+                "no registration state nonce at ", p, " (", c,
+                "); write an unguessable random string there first, then re-run. It binds the code GitHub returns to this request.",
+              ], ""))
+            HandoffValueEmpty { path: p } =>
+              exit_failure(reason: join(["registration state nonce at ", p, " is empty"], ""))
+            HandoffValueRead { value: state } =>
+              match census_app_registration_instruction(state: state as GitHubAppManifestState) {
+                RegistrationInstructionUnavailable { reason: r } => exit_failure(reason: r as String)
+                RegistrationInstructionReady { intervention: i } =>
+                  exit_failure(reason: join([
+                    intervention_text(intervention: i),
+                    " || ",
+                    intervention_text(intervention: app_registration_capture_intervention(identity: census_app_identity)),
+                  ], ""))
+              }
           }
       }
   }
@@ -239,13 +309,6 @@ fn observe_census_app_live(address: CensusAppReadAddress) -> CensusAppObservatio
   }
 }
 
-fn decision_text(decision: UpsertDecision<CensusAppPlan>) -> String {
-  match decision {
-    Noop => "noop"
-    Apply { plan: _ } => "apply"
-    Refuse { reason: r } => join(["refuse: ", r as String], "")
-  }
-}
 
 fn verdict_text(verdict: ObservationVerdict) -> String {
   match verdict {
@@ -261,13 +324,26 @@ fn verdict_text(verdict: ObservationVerdict) -> String {
 // ENTRY TWO: OBSERVE AND DECIDE, WITHOUT ACTUATING. EnsureObserveOnly is passed as a literal here
 // because that is what this entry point IS - the policy is the instrument's identity, not a knob.
 // The acquiring entry below passes EnsureMayApply for the same reason.
-fn census_app_observe_receipt() -> ProcessExit uses net: Network {
+fn census_app_observe_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+  match observed_acquisition_reading() {
+    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
+      acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
+    AcquisitionRecordRead { record: record, source: _ } =>
+      census_app_observe_classified(record: record)
+  }
+}
+
+fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessExit
+  uses net: Network
+{
   let observation = observe_census_app_live(
-    address: census_app_read_address(record: census_app_acquisition_record),
+    address: census_app_read_address(record: record),
   )
   let classified = classify_census_app(
     policy: EnsureObserveOnly,
-    record: census_app_acquisition_record,
+    record: record,
     observation: observation,
     code: none,
   )
@@ -302,7 +378,127 @@ fn acquisition_readback_live(issuance: GitHubAppCredentialIssuance) -> CensusApp
   )
 }
 
-fn readback_exit(readback: CensusAppReadback) -> ProcessExit {
+// THE PRIVATE KEY IS WRITTEN BEFORE ANYTHING ELSE HAPPENS TO IT, AND THAT ORDERING IS THE POINT.
+// An earlier cut ran the readback first and handed the issuance to a diagnostic that told the
+// operator to store the pem -- while the Secret values themselves were never written anywhere and
+// could not appear in that diagnostic. So a successful exchange followed by ANY later refusal, a
+// disagreeing readback included, destroyed the only copy of a key no endpoint reissues (review
+// 67436). Persisting first makes every downstream outcome survivable: the worst case becomes an App
+// whose credentials are on disk and whose record needs reconciling, not an App nobody can ever
+// authenticate as.
+//
+// WriteOwnerOnly RATHER THAN Write, because the file is a private key and a default-mode file in a
+// shared checkout is a plaintext credential every process on the host can read.
+type IssuedCredentialCustody
+  = CredentialsHandedOff { paths: CustodyHandoffPaths }
+  | CredentialPersistRefused { path: String, cause: String }
+  | CredentialNameUnsafe { name: NonEmptyStr }
+
+fn write_secret_file(path: String, value: Secret) -> String {
+  let wrote = Filesystem.WriteOwnerOnly(path: path, content: value as String)
+  if wrote.success { "" } else { wrote.error }
+}
+
+fn persist_issued_credentials(
+  custody_name: NonEmptyStr,
+  issuance: GitHubAppCredentialIssuance,
+) -> IssuedCredentialCustody
+  uses fs: std.resources.Filesystem
+{
+  match issuance {
+    CredentialIssuedOnce { app_id: _, slug: _, pem: pem, webhook_secret: hook, client_id: _, client_secret: client } =>
+      match custody_handoff_addressing(name: custody_name) {
+        CustodyNameNotPathSafe { name: s } => CredentialNameUnsafe { name: s }
+        CustodyAddressed { paths: paths } => {
+          let pem_error = write_secret_file(path: paths.pem, value: pem)
+          if pem_error != "" {
+            CredentialPersistRefused { path: paths.pem, cause: pem_error }
+          } else {
+            let client_error = write_secret_file(path: paths.client_secret, value: client)
+            if client_error != "" {
+              CredentialPersistRefused { path: paths.client_secret, cause: client_error }
+            } else {
+              let hook_error = match hook {
+                Absent => ""
+                Present { value: h } => write_secret_file(path: paths.webhook_secret, value: h)
+              }
+              if hook_error != "" {
+                CredentialPersistRefused { path: paths.webhook_secret, cause: hook_error }
+              } else {
+                let identity = Filesystem.Write(
+                  path: paths.identity,
+                  content: custody_identity_document(issuance: issuance),
+                )
+                if identity.success {
+                  CredentialsHandedOff { paths: paths }
+                } else {
+                  CredentialPersistRefused { path: paths.identity, cause: identity.error }
+                }
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+// WriteOwnerOnly IS CREATE-ONLY, SO THE PATHS ARE CHECKED WHILE THE CODE IS STILL UNSPENT. Setting a
+// mode at creation is meaningless on an existing path, so the operation refuses rather than
+// clobbering - which is right, because the alternative is overwriting a private key that may be the
+// only copy of a DIFFERENT App's. But discovering that AFTER the exchange would spend a one-shot code
+// and then fail the write, producing the unrecoverable outcome below for a cause that was visible
+// beforehand. So the preflight runs first: a stale handoff file is an ordinary refusal with the code
+// still live and the remedy obvious, instead of a lost App.
+type CustodyPreflight
+  = CustodyPathsClear { paths: CustodyHandoffPaths }
+  | CustodyPathOccupied { path: String }
+  | CustodyPreflightSlugUnsafe { slug: NonEmptyStr }
+
+fn custody_path_occupied(path: String) -> Bool {
+  Filesystem.Read(path: path).success
+}
+
+fn custody_preflight(name: NonEmptyStr) -> CustodyPreflight uses fs: std.resources.Filesystem {
+  match custody_handoff_addressing(name: name) {
+    CustodyNameNotPathSafe { name: s } => CustodyPreflightSlugUnsafe { slug: s }
+    CustodyAddressed { paths: paths } =>
+      if custody_path_occupied(path: paths.pem) {
+        CustodyPathOccupied { path: paths.pem }
+      } else if custody_path_occupied(path: paths.client_secret) {
+        CustodyPathOccupied { path: paths.client_secret }
+      } else if custody_path_occupied(path: paths.webhook_secret) {
+        CustodyPathOccupied { path: paths.webhook_secret }
+      } else {
+        CustodyPathsClear { paths: paths }
+      }
+  }
+}
+
+// A FAILED PERSIST IS THE WORST OUTCOME THIS FLOW HAS AND IT SAYS SO IN THOSE WORDS. The App exists,
+// its key was in a reply this process is about to discard, and the process cannot print the key to
+// rescue it - Secret is opaque to diagnostics by construction, which is correct and is exactly why
+// the write had to succeed. The remedy named is the only one that exists: delete the App and start
+// over, because an App whose key was never stored can never be authenticated as.
+fn custody_failure_exit(custody: IssuedCredentialCustody) -> ProcessExit {
+  match custody {
+    CredentialsHandedOff { paths: _ } =>
+      exit_failure(reason: "custody_failure_exit reached with a successful handoff")
+    CredentialNameUnsafe { name: s } =>
+      exit_failure(reason: join([
+        "THE APP WAS CREATED AND ITS CREDENTIALS COULD NOT BE STORED. GitHub returned slug ",
+        s as String,
+        ", which is not safe to interpolate into a handoff path, so nothing was written. The private key existed only in that reply and is now gone. Delete the App in its settings and re-run the flow; it cannot be authenticated as.",
+      ], ""))
+    CredentialPersistRefused { path: p, cause: c } =>
+      exit_failure(reason: join([
+        "THE APP WAS CREATED AND ITS CREDENTIALS COULD NOT BE STORED. Writing ",
+        p, " failed: ", c,
+        ". The private key was returned once and no endpoint returns it again, and it cannot be printed here. Delete the App in its settings and re-run the flow after fixing the write; it cannot be authenticated as.",
+      ], ""))
+  }
+}
+
+fn readback_exit(readback: CensusAppReadback, paths: CustodyHandoffPaths) -> ProcessExit {
   match readback {
     ReadbackConverged { record: r } =>
       match r {
@@ -311,18 +507,28 @@ fn readback_exit(readback: CensusAppReadback) -> ProcessExit {
         AppAcquired { app_id: id, slug: s } =>
           exit_failure(reason: join(
             [
-              "ACQUIRED AND READ BACK. Record it in gunbc.github_app_acquisition census_app_acquisition_record as AppAcquired { app_id: GitHubAppId { value: ",
+              "ACQUIRED AND READ BACK. The credentials are on disk at ",
+              paths.pem, ", ", paths.client_secret, ", ", paths.webhook_secret,
+              " and the App's identity at ", paths.identity,
+              ". MOVE THEM TO THEIR DECLARED SECRET MANAGER SITES AND DELETE THE LOCAL COPIES: they are plaintext in the checkout, and the private key was returned once and no endpoint returns it again. The acquisition record needs NO source edit -- the identity document beside them carries app id ",
               to_string(id.value),
-              " }, slug: \"",
+              " and slug ",
               s as String,
-              "\" }, and write the pem, webhook secret and client secret to their declared custody sites NOW: the private key was returned once and no endpoint returns it again. This run exits non-zero because the source record still says AppNeverAcquired, so the flow is not converged until that edit lands.",
+              ", and the next run reads it. This run exits non-zero because the credentials are still sitting in the checkout, which is not the converged state.",
             ],
             "",
           ))
       }
     ReadbackDisagrees { agreement: _ } =>
-      exit_failure(reason: "the exchange reported success and the independent public read disagrees with the declared manifest")
-    ReadbackUnavailable { reason: r } => exit_failure(reason: r as String)
+      exit_failure(reason: join([
+        "the exchange reported success and the independent public read disagrees with the declared manifest. The credentials ARE stored at ",
+        paths.pem, " and beside it, so nothing is lost; reconcile the App against the manifest before recording it.",
+      ], ""))
+    ReadbackUnavailable { reason: r } =>
+      exit_failure(reason: join([
+        r as String,
+        " -- the credentials ARE stored at ", paths.pem, " and beside it, so the App is recoverable whatever the read says.",
+      ], ""))
   }
 }
 
@@ -330,8 +536,20 @@ fn readback_exit(readback: CensusAppReadback) -> ProcessExit {
 // readback addressed at the slug the exchange returned and performed through the same public-record
 // read the observation used, not through the exchange's own reply.
 fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
+  match observed_acquisition_reading() {
+    AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
+      acquisition_reading_exit(reading: AcquisitionRecordConflict { declared_slug: d, handoff_slug: h })
+    AcquisitionRecordUnparseable { path: p, cause: c } =>
+      acquisition_reading_exit(reading: AcquisitionRecordUnparseable { path: p, cause: c })
+    AcquisitionRecordRead { record: record, source: _ } => census_app_acquire_for(record: record)
+  }
+}
+
+fn census_app_acquire_for(record: GitHubAppAcquisitionRecord) -> ProcessExit
+  uses net: Network, fs: std.resources.Filesystem
+{
   let observation = observe_census_app_live(
-    address: census_app_read_address(record: census_app_acquisition_record),
+    address: census_app_read_address(record: record),
   )
   let admission = admit_manifest_code(
     issued: read_handoff_value(path: census_app_state_path),
@@ -346,16 +564,20 @@ fn census_app_acquire_receipt() -> ProcessExit uses net: Network, fs: std.resour
         "); the code came back from a different registration flow and is refused rather than spent",
       ], ""))
     ManifestCodeUnavailable { reason: r } =>
-      census_app_acquire_without_code(observation: observation, reason: r)
+      census_app_acquire_without_code(record: record, observation: observation, reason: r)
     ManifestCodeAdmitted { code: code } =>
-      census_app_acquire_with_code(observation: observation, code: code)
+      census_app_acquire_with_code(record: record, observation: observation, code: code)
   }
 }
 
-fn census_app_acquire_without_code(observation: CensusAppObservation, reason: String) -> ProcessExit {
+fn census_app_acquire_without_code(
+  record: GitHubAppAcquisitionRecord,
+  observation: CensusAppObservation,
+  reason: String,
+) -> ProcessExit {
   let classified = classify_census_app(
     policy: EnsureMayApply,
-    record: census_app_acquisition_record,
+    record: record,
     observation: observation,
     code: none,
   )
@@ -369,12 +591,13 @@ fn census_app_acquire_without_code(observation: CensusAppObservation, reason: St
 }
 
 fn census_app_acquire_with_code(
+  record: GitHubAppAcquisitionRecord,
   observation: CensusAppObservation,
   code: GitHubAppManifestCode,
-) -> ProcessExit uses net: Network {
+) -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   let classified = classify_census_app(
     policy: EnsureMayApply,
-    record: census_app_acquisition_record,
+    record: record,
     observation: observation,
     code: Present { value: code },
   )
@@ -393,7 +616,7 @@ fn census_app_acquire_with_code(
         ExchangeReplyIncomplete { issuance: _ } =>
           exit_failure(reason: "the conversion answered 201 with a reply missing the slug or client id, so the App it created cannot be addressed")
         ExchangeIssued { issuance: issuance } =>
-          readback_exit(readback: acquisition_readback_live(issuance: issuance))
+          persist_then_read_back(issuance: issuance)
       }
   }
 }
@@ -545,3 +768,107 @@ data census_app_installation_route_frontier_rows: List<FrontierRow> = [
     )
   )
 ]
+
+data census_app_custody_handoff_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "persist_issued_credentials"),
+    reason: "the credentials are written to git-ignored files under .gunbc rather than to the SecretRef sites gunbc.github_app_acquisition declares, because gunbc.secret_provision_actuator reaches Secret Manager AddVersion through a WIF-authorized identity a local acquire run does not hold. The write EXECUTES and the key is durable before the readback runs; what is unfinished is the second hop, and the operator performs it by hand today",
+    dissolution: unbound_dissolution(
+      description: "dissolves when this function writes the issued pem, webhook secret and client secret through gunbc.secret_provision_actuator to census_app_private_key_custody, census_app_webhook_secret_custody and census_app_client_secret_custody, reading back the exact minted version and verifying payload identity, so no plaintext copy is written to the checkout at all. A run that writes the files and separately calls AddVersion does not fire this -- the row retires when the local hop is GONE, not when a second one is added beside it"
+    )
+  )
+]
+
+// THE EXECUTING RECEIPT FOR THE CUSTODY WRITE, and it exists because every other claim about
+// persist_issued_credentials would otherwise be a claim about values this repository authored. The
+// acquire path's write runs exactly once in the life of the App and cannot be rehearsed against
+// GitHub, so the pairing obligation (DESIGN 3, a supplied input is a hypothesis about a boundary;
+// the inhabitance claim is what makes it a reading) is discharged here instead: a probe issuance
+// goes through THE SAME function the acquire path calls, the bytes are read back from disk, and the
+// files are removed. Deleting the Filesystem.WriteOwnerOnly call makes this fail.
+//
+// THE PROBE SLUG IS DELIBERATELY NOT THE CENSUS APP'S, so this receipt can never overwrite a real
+// credential; the readback compares against the probe bytes and the removal is asserted, because a
+// receipt that leaves a file named like a private key behind is worse than no receipt.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function custody_write_receipt
+data custody_probe_slug: NonEmptyStr = "probe-custody-receipt-not-a-real-app"
+
+data custody_probe_pem_bytes: String = "-----BEGIN RSA PRIVATE KEY-----probe-not-a-key-----END RSA PRIVATE KEY-----"
+
+data custody_probe_issuance: GitHubAppCredentialIssuance = CredentialIssuedOnce {
+  app_id: GitHubAppId { value: 0 },
+  slug: custody_probe_slug,
+  pem: custody_probe_pem_bytes as Secret,
+  webhook_secret: Present { value: "probe-webhook-secret" as Secret },
+  client_id: "Iv1.probe" as NonEmptyStr,
+  client_secret: "probe-client-secret" as Secret,
+}
+
+fn custody_probe_cleanup(paths: CustodyHandoffPaths) -> Bool {
+  shell.Remove.RecursiveForce(path: paths.pem).success
+    && shell.Remove.RecursiveForce(path: paths.client_secret).success
+    && shell.Remove.RecursiveForce(path: paths.webhook_secret).success
+    && shell.Remove.RecursiveForce(path: paths.identity).success
+}
+
+fn custody_write_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+  match persist_issued_credentials(custody_name: custody_probe_slug, issuance: custody_probe_issuance) {
+    CredentialNameUnsafe { name: s } =>
+      exit_failure(reason: join(["the probe slug was refused as unsafe: ", s as String], ""))
+    CredentialPersistRefused { path: p, cause: c } =>
+      exit_failure(reason: join(["the custody write refused at ", p, ": ", c], ""))
+    CredentialsHandedOff { paths: paths } => {
+      let pem_read = Filesystem.Read(path: paths.pem)
+      let identity_read = Filesystem.Read(path: paths.identity)
+      let removed = custody_probe_cleanup(paths: paths)
+      if !pem_read.success {
+        exit_failure(reason: join(["the pem was reported written and could not be read back at ", paths.pem], ""))
+      } else if pem_read.content != custody_probe_pem_bytes {
+        exit_failure(reason: join(["the bytes read back from ", paths.pem, " are not the bytes handed to the write"], ""))
+      } else if !identity_read.success {
+        exit_failure(reason: join(["the identity document was not written at ", paths.identity], ""))
+      } else if !string_contains(s: identity_read.content, pattern: "record=AppAcquired") {
+        exit_failure(reason: "the identity document does not carry the acquisition-record edit the operator must make")
+      } else if !removed {
+        exit_failure(reason: join(["the probe credentials were written and could not be removed; plaintext remains under ", census_app_custody_handoff_directory], ""))
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}
+
+// THE ISSUED SLUG IS ONLY KNOWN AFTER THE EXCHANGE, so its preflight runs here rather than before the
+// POST - but it still runs BEFORE any byte is written, so an occupied path is reported as an occupied
+// path with the credentials still in hand rather than as a half-finished write. The instruction it
+// carries is the recoverable one: move the existing files aside and re-run is impossible (the code is
+// spent), so it says to copy the credentials out of the REPLY, which the operator cannot do -- and
+// that is precisely why the check exists and why it is loud.
+fn persist_then_read_back(issuance: GitHubAppCredentialIssuance) -> ProcessExit
+  uses net: Network, fs: std.resources.Filesystem
+{
+  match custody_preflight(name: census_app_identity.name) {
+    CustodyPreflightSlugUnsafe { slug: s } =>
+      custody_failure_exit(custody: CredentialNameUnsafe { name: s })
+    CustodyPathOccupied { path: p } =>
+      custody_failure_exit(custody: CredentialPersistRefused {
+        path: p,
+        cause: "a file already exists there and WriteOwnerOnly is create-only, so nothing was overwritten",
+      })
+    CustodyPathsClear { paths: _ } =>
+      match persist_issued_credentials(custody_name: census_app_identity.name, issuance: issuance) {
+        CredentialNameUnsafe { name: s } =>
+          custody_failure_exit(custody: CredentialNameUnsafe { name: s })
+        CredentialPersistRefused { path: p, cause: c } =>
+          custody_failure_exit(custody: CredentialPersistRefused { path: p, cause: c })
+        CredentialsHandedOff { paths: paths } =>
+          readback_exit(
+            readback: acquisition_readback_live(issuance: issuance),
+            paths: paths,
+          )
+      }
+  }
+}

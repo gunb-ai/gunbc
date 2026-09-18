@@ -105,6 +105,39 @@ pub fn uri_wire(uri: Rc<Uri>) -> String {
     v1_rt::concat(uri_scheme_wire(uri.scheme.clone()), uri.locator.clone())
 }
 
+pub fn uri_from_wire(url: String) -> Option<Rc<Uri>> {
+    {
+        let s = crate::std_algebra::trim(url.clone());
+        match (*parse_href_scheme(s.clone())).clone() {
+            ParsedHrefScheme::RelativeHref => std::option::Option::None,
+            ParsedHrefScheme::UnknownHref => std::option::Option::None,
+            ParsedHrefScheme::HrefScheme { scheme: scheme, .. } => {
+                let prefix = uri_scheme_wire(scheme.clone());
+                if v1_rt::starts_with(s.clone(), prefix.clone()) {
+                    Some(Rc::new(Uri {
+                        scheme: scheme.clone(),
+                        locator: Rc::new(
+                            Rc::new(
+                                s.clone()
+                                    .split(&prefix.clone())
+                                    .map(|s| s.to_string())
+                                    .collect::<Vec<_>>(),
+                            )
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                        )
+                        .join(&prefix.clone()),
+                    }))
+                } else {
+                    std::option::Option::None
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParsedHrefScheme {

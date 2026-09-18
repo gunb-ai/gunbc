@@ -5,6 +5,7 @@ import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
   FleetOnce,
+  EveryProvision,
   NoDischargeSiteModeled,
 }
 import std.upsert_decision {
@@ -19,8 +20,12 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
+import std.algebra { trim }
 import gunbc.ensure { EnsurePolicy, EnsureObserveOnly, EnsureMayApply }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import extdeps.uri { Uri, uri_https }
 import extdeps.github.app {
@@ -134,6 +139,17 @@ data census_app_default_events: List<GitHubWebhookEvent> = [
 // it never reaches the name.
 data census_app_name: NonEmptyStr = "gunbc-global-census"
 
+// THE MANIFEST'S IDENTITY, MADE A TYPE RATHER THAN LEFT AS TWO LOOSE FACTS. What makes "the App we
+// meant" re-findable is the NAME (unique across GitHub, so upstream refuses a second registration
+// under it) together with WHERE it is registered (a user App and an organization App of the same
+// name are different registrations under different consent holders). Every human step and every
+// registration URL takes this rather than the bare name, so a second App this fleet adopts carries
+// its own identity instead of borrowing the census App's.
+type GitHubAppDeclaredIdentity {
+  name: NonEmptyStr
+  target: GitHubAppRegistrationTarget
+}
+
 data census_app_homepage: Uri = uri_https(locator: "github.com/gunb-ai/gunbc")
 
 // A WEBHOOK URL WITH NO RECEIVER IS STILL A DECLARED URL. It points at the repository rather than at
@@ -151,6 +167,11 @@ data census_app_hook_url: Uri = uri_https(locator: "github.com/gunb-ai/gunbc/blo
 data census_app_redirect_url: Uri = uri_https(locator: "gunb.ai/github-app-manifest-return")
 
 data census_app_registration_target: GitHubAppRegistrationTarget = RegisterUnderOrganization { organization: "gunb-ai" }
+
+data census_app_identity: GitHubAppDeclaredIdentity = GitHubAppDeclaredIdentity {
+  name: census_app_name,
+  target: census_app_registration_target,
+}
 
 data census_app_manifest: GitHubAppManifest = GitHubAppManifest {
   name: census_app_name,
@@ -209,6 +230,96 @@ fn census_app_custody() -> GitHubAppCustody {
   }
 }
 
+// CUSTODY HAS TWO HOPS AND THE MODEL SAYS SO, BECAUSE A CONVERGE THAT LOSES THE PEM HAS LOST THE APP.
+// The declared DESTINATION is the SecretRef above, in GCP Secret Manager. This process cannot write
+// there: gunbc.secret_provision_actuator reaches AddVersion through a WIF-authorized identity that a
+// local acquire run does not hold, and that is its own converge. What this process CAN do -- and
+// must, because the exchange returns the private key once and no endpoint returns it again -- is put
+// the bytes somewhere durable before it exits.
+//
+// SO THE FIRST HOP IS A FILE, AND CALLING IT THE DESTINATION WOULD BE THE LIE. It is a HANDOFF, in
+// the same sense and the same directory as the code and state files the operator hands inward: the
+// operator moves it to Secret Manager and deletes it. The frontier row on the instrument's write
+// names the AddVersion route that dissolves this hop.
+//
+// WHY THIS IS NOT PROSE ASSERTING A CONSUMER. An earlier cut of this module said the secrets "are
+// written to the custody sites by gunbc.secret_provision" -- and nothing in the closure imported or
+// called it, so the acquire path read the pem out of the reply, told the operator to store it, and
+// dropped it. That is specification-without-execution on the one value in this flow that cannot be
+// re-obtained (caught by review 67436). The paths below are consumed by an executing write.
+data census_app_custody_handoff_directory: String = ".gunbc"
+
+// THE HANDOFF IS ADDRESSED BY THE DECLARED NAME, NOT BY THE RETURNED SLUG, and getting this backwards
+// is a bug this module briefly had. The slug is only known AFTER the exchange, so a slug-keyed write
+// and a name-keyed read find each other only when GitHub's name-to-slug transformation happens to be
+// the identity -- which this module explicitly refuses to assume anywhere else. The NAME is what is
+// known on both sides of the exchange and is the identity by which this whole flow is re-findable, so
+// it addresses the files; the slug lives INSIDE the identity document, where it is data rather than
+// a path.
+//
+// IT IS STILL CHECKED RATHER THAN TRUSTED. The name is declared here today, but the check costs
+// nothing and the carrier is reachable with any NonEmptyStr: a name carrying a separator or a parent
+// reference would write the private key outside the git-ignored handoff directory.
+fn custody_name_is_path_safe(name: NonEmptyStr) -> Bool {
+  !string_contains(s: name as String, pattern: "/")
+    && !string_contains(s: name as String, pattern: "\\")
+    && !string_contains(s: name as String, pattern: ".")
+    && !((name as String) == "")
+}
+
+type CustodyHandoffPaths {
+  pem: String
+  webhook_secret: String
+  client_secret: String
+  identity: String
+}
+
+type CustodyHandoffAddressing
+  = CustodyAddressed { paths: CustodyHandoffPaths }
+  | CustodyNameNotPathSafe { name: NonEmptyStr }
+
+fn custody_handoff_path(name: NonEmptyStr, suffix: String) -> String {
+  join([census_app_custody_handoff_directory, "/github-app-", name as String, suffix], "")
+}
+
+fn custody_handoff_addressing(name: NonEmptyStr) -> CustodyHandoffAddressing {
+  if custody_name_is_path_safe(name: name) {
+    CustodyAddressed {
+      paths: CustodyHandoffPaths {
+        pem: custody_handoff_path(name: name, suffix: ".pem"),
+        webhook_secret: custody_handoff_path(name: name, suffix: ".webhook-secret"),
+        client_secret: custody_handoff_path(name: name, suffix: ".client-secret"),
+        identity: custody_handoff_path(name: name, suffix: ".identity"),
+      }
+    }
+  } else {
+    CustodyNameNotPathSafe { name: name }
+  }
+}
+
+// THE IDENTITY FILE IS NOT A SECRET AND IS THE ACQUISITION RECORD ITSELF. Without it an operator
+// holding three secret files cannot say which App they belong to -- but more than that, this document
+// is what the NEXT run parses to learn that the App exists, which is why no human transcribes an id
+// into source. It carries a record= line in the shape census_app_declared_adoption takes, so an
+// operator ADOPTING an App can write that one line by hand and get the same reading.
+fn custody_identity_document(issuance: GitHubAppCredentialIssuance) -> String {
+  match issuance {
+    CredentialIssuedOnce { app_id: id, slug: s, pem: _, webhook_secret: _, client_id: cid, client_secret: _ } =>
+      join(
+        [
+          "app_id=", to_string(id.value), "\n",
+          "slug=", s as String, "\n",
+          "client_id=", cid as String, "\n",
+          "record=AppAcquired { app_id: GitHubAppId { value: ", to_string(id.value), " }, slug: \"", s as String, "\" }\n",
+          "destination_pem_secret=", census_app_private_key_custody.secret as String, "\n",
+          "destination_webhook_secret=", census_app_webhook_secret_custody.secret as String, "\n",
+          "destination_client_secret=", census_app_client_secret_custody.secret as String, "\n",
+        ],
+        "",
+      )
+  }
+}
+
 // THE SLUG IS NOT DERIVABLE FROM THE NAME AND THIS MODULE DOES NOT PRETEND IT IS. GitHub publishes
 // no rule for the name-to-slug transformation, so inventing one would make the public readback address
 // an App we guessed at - and a 404 from a wrong guess is indistinguishable from a 404 for an App that
@@ -221,23 +332,157 @@ type GitHubAppAcquisitionRecord
   = AppNeverAcquired
   | AppAcquired { app_id: GitHubAppId, slug: NonEmptyStr }
 
-data census_app_acquisition_record: GitHubAppAcquisitionRecord = AppNeverAcquired
+// THE ACQUISITION RECORD IS READ, NOT TRANSCRIBED (operator ruling, 2026-09-18). An earlier cut
+// declared it here as AppNeverAcquired and instructed the operator to hand-copy the app id and slug
+// out of a diagnostic into this row. That is the converge's OWN OUTPUT: the conversion response
+// carries both, so asking a human to retype them is asking them to be the wire, and it put the one
+// fact the next run's observation is addressed by behind a source edit nobody would notice was
+// missing. The actuation writes them to the custody handoff beside the pem, and the observation
+// parses them back from there.
+//
+// THE DECLARED ROW SURVIVES FOR ONE CASE AND IT IS NOT A FALLBACK: ADOPTION. An App created by hand
+// before this converge existed has no handoff file, and naming it here is how the operator brings it
+// under the model -- at which point the agreement fold and the drift arms do the rest without a
+// second mechanism. So the two sources answer different questions: the file says "this converge
+// acquired one", the row says "this fleet already had one". A row naming an App the file also names
+// is a Conflict rather than a precedence rule, because two answers to one question is the fork
+// DESIGN 3 forbids and silently preferring one would hide it.
+data census_app_declared_adoption: GitHubAppAcquisitionRecord = AppNeverAcquired
 
-// THE HUMAN STEP EXISTS AND THE MODEL SAYS SO. GitHub requires the account or organization OWNER to
-// submit the manifest form; there is no API that creates an App, and no credential this fleet could
-// hold that would substitute for that consent. It is FleetOnce rather than EveryProvision because one
-// App serves every installation the census acquires - which is the whole economic point of this lane,
-// and is the fact a per-run cost would misprice.
-fn app_registration_intervention(url: String, manifest_document: String) -> HumanIntervention {
+type AcquisitionRecordReading
+  = AcquisitionRecordRead { record: GitHubAppAcquisitionRecord, source: NonEmptyStr }
+  | AcquisitionRecordConflict { declared_slug: NonEmptyStr, handoff_slug: NonEmptyStr }
+  | AcquisitionRecordUnparseable { path: String, cause: NonEmptyStr }
+
+fn acquisition_record_field(document: String, key: String) -> String? {
+  fold(split(s: document, delimiter: "\n"), init: none, f: fn(found, line) {
+    match found {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if starts_with(line, prefix: concat(key, "=")) {
+          match split(s: line, delimiter: "=") |> skip(n: 1) |> first {
+            Absent => none
+            Present { value: v } => Present { value: trim(v) }
+          }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+// THE PARSE IS TOTAL AND REFUSES RATHER THAN PARTIALLY BELIEVING A HANDOFF FILE. A document carrying
+// a slug but no app id describes an App this converge cannot address by id, and answering
+// AppNeverAcquired for it would authorize a registration that duplicates the App the file is about -
+// the exact class the Conflict arm exists to prevent, arriving through the reading instead.
+fn acquisition_record_from_document(path: String, content_document: String) -> AcquisitionRecordReading {
+  match acquisition_record_field(document: content_document, key: "slug") {
+    Absent =>
+      AcquisitionRecordUnparseable { path: path, cause: "custody handoff names no slug" as NonEmptyStr }
+    Present { value: slug } =>
+      if slug == "" {
+        AcquisitionRecordUnparseable { path: path, cause: "custody handoff slug is empty" as NonEmptyStr }
+      } else {
+        match acquisition_record_field(document: content_document, key: "app_id") {
+          Absent =>
+            AcquisitionRecordUnparseable { path: path, cause: "custody handoff names no app_id" as NonEmptyStr }
+          Present { value: raw_id } =>
+            match parse_int(raw_id) {
+              Absent =>
+                AcquisitionRecordUnparseable {
+                  path: path,
+                  cause: concat("custody handoff app_id is not an integer: ", raw_id) as NonEmptyStr,
+                }
+              Present { value: id } =>
+                AcquisitionRecordRead {
+                  record: AppAcquired { app_id: GitHubAppId { value: id }, slug: slug as NonEmptyStr },
+                  source: path as NonEmptyStr,
+                }
+            }
+        }
+      }
+  }
+}
+
+fn reconcile_acquisition_record(
+  declared: GitHubAppAcquisitionRecord,
+  from_handoff: AcquisitionRecordReading?,
+) -> AcquisitionRecordReading {
+  match from_handoff {
+    Absent =>
+      AcquisitionRecordRead {
+        record: declared,
+        source: "gunbc.github_app_acquisition census_app_declared_adoption" as NonEmptyStr,
+      }
+    Present { value: reading } =>
+      match reading {
+        AcquisitionRecordUnparseable { path: p, cause: c } =>
+          AcquisitionRecordUnparseable { path: p, cause: c }
+        AcquisitionRecordConflict { declared_slug: d, handoff_slug: h } =>
+          AcquisitionRecordConflict { declared_slug: d, handoff_slug: h }
+        AcquisitionRecordRead { record: handoff_record, source: src } =>
+          match declared {
+            AppNeverAcquired => AcquisitionRecordRead { record: handoff_record, source: src }
+            AppAcquired { app_id: _, slug: declared_slug } =>
+              match handoff_record {
+                AppNeverAcquired => AcquisitionRecordRead { record: declared, source: src }
+                AppAcquired { app_id: _, slug: handoff_slug } =>
+                  if (declared_slug as String) == (handoff_slug as String) {
+                    AcquisitionRecordRead { record: handoff_record, source: src }
+                  } else {
+                    AcquisitionRecordConflict { declared_slug: declared_slug, handoff_slug: handoff_slug }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE HUMAN STEPS, SPLIT ONE PER ACT, EACH WITH ITS OWN TRIGGER (operator ruling, 2026-09-18).
+// An earlier cut bundled four things into ONE FleetOnce identity with NoDischargeSiteModeled: submit
+// the form, paste the manifest, copy the code out of the address bar, and hand-transcribe the app id
+// and slug into a data row. They are not the same kind of thing, and bundling them made the whole
+// group look irreducible when only one of them is.
+//
+// THE TEST A HUMAN STEP MUST PASS is that it truly cannot be automated, and out-of-band is admissible
+// only when it is modeled as a HumanIntervention AND it passes that test. Browser automation is a
+// named future path, so a step that a browser could drive is not permanent and owes its trigger; a
+// step that no capability we could build would remove is, and says so. Of the four:
+//
+//   SUBMIT  - irreducibly human TODAY. GitHub requires the account or organization OWNER to submit
+//             the manifest form; there is no API that creates an App. Dissolves on browser
+//             automation driving that form under an owner session. Pasting the manifest is the same
+//             act, not a second one.
+//   CAPTURE - NOT irreducible, and modeling it as such would be presenting a design choice as a
+//             constraint. It is human only because census_app_redirect_url points at a host with
+//             nothing behind it; a redirect catcher, even a localhost listener, takes code and state
+//             today with no browser automation and no capability this repository lacks. It is
+//             therefore a DECLARED CHOICE with its trigger, not a fact about GitHub.
+//   RECORD  - deleted, not modeled. The conversion response carries the id and the slug, so asking a
+//             human to type them into a data row is asking them to be the wire. The acquisition
+//             record is now READ from the custody handoff the actuation writes.
+//   SUPPLY  - genuinely permanent, and it is the one step browser automation does not touch. An
+//             ADOPTED App's private key was returned once at its creation and no endpoint reissues
+//             it, so there is nothing to click: only the operator can produce those bytes.
+//
+// AND THE IDENTITY KEYS ON THE APP, NOT THE FLEET. FleetOnce was right for exactly one App and wrong
+// the moment a second exists or an existing hand-made App is adopted, which is a case this fleet
+// wants. EveryProvision is the honest axis: registering an App is paid once per App provisioned, and
+// it multiplies with the number of Apps rather than being paid once ever.
+fn app_registration_submit_intervention(
+  identity: GitHubAppDeclaredIdentity,
+  url: String,
+  manifest_document: String,
+) -> HumanIntervention {
   HumanIntervention {
-    identity: join(["github-app-register-", census_app_name as String], "") as HumanInterventionIdentity,
-    frequency: FleetOnce,
-    subject: census_app_name,
+    identity: join(["github-app-submit-", identity.name as String], "") as HumanInterventionIdentity,
+    frequency: EveryProvision,
+    subject: identity.name,
     instruction: join(
       [
         "Open ",
         url,
-        " while signed in as an owner of the target account, paste the manifest below into the form's manifest field, and submit. GitHub redirects to a URL carrying ?code=; hand that code to the conversion step within one hour, after which it expires. Then record the returned app id and slug in census_app_acquisition_record. MANIFEST: ",
+        " while signed in as an owner of the target account, paste the manifest below into the form's manifest field, and submit. GitHub requires ownership consent to create an App and exposes no API for it, so this step is the one act in this flow nothing here can perform. MANIFEST: ",
         manifest_document,
       ],
       "",
@@ -245,6 +490,67 @@ fn app_registration_intervention(url: String, manifest_document: String) -> Huma
     completion_evidence: NoDischargeSiteModeled,
   }
 }
+
+fn app_registration_capture_intervention(identity: GitHubAppDeclaredIdentity) -> HumanIntervention {
+  HumanIntervention {
+    identity: join(["github-app-capture-code-", identity.name as String], "") as HumanInterventionIdentity,
+    frequency: EveryProvision,
+    subject: identity.name,
+    instruction: join(
+      [
+        "After submitting, GitHub redirects to ",
+        uri_wire(uri: census_app_redirect_url) as String,
+        " with ?code= and &state= in the address bar and nothing serving that URL. Copy the code and the state into the handoff files the acquire entry point names, within one hour of the click. THIS STEP IS A DECLARED CHOICE, NOT A LIMIT: a redirect catcher would take both values automatically with no browser automation, and until one exists the operator pays this.",
+      ],
+      "",
+    ) as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+fn adopted_app_key_supply_intervention(identity: GitHubAppDeclaredIdentity) -> HumanIntervention {
+  HumanIntervention {
+    identity: join(["github-app-supply-pem-", identity.name as String], "") as HumanInterventionIdentity,
+    frequency: EveryProvision,
+    subject: identity.name,
+    instruction: join(
+      [
+        "This App was created outside this converge, so its private key was returned once at ITS creation and no endpoint reissues it. Place a pem this fleet holds for it at the custody handoff path, or generate a NEW key in the App's settings and place that. This step does not dissolve with browser automation: there is nothing to click, because the original bytes no longer exist anywhere GitHub will show them.",
+      ],
+      "",
+    ) as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// THE THREE HUMAN STEPS AS FRONTIER ROWS, so the dissolution census can see them. A bare
+// DissolutionCondition beside an intervention is a promise nothing counts; a row enrolled in
+// gunbc.census_closure_frontier is one the census reports until its trigger fires. The third row is
+// deliberately a PERMANENT entry rather than an omission: a step no capability retires still belongs
+// in the roster, because leaving it out reads as "no human step here".
+data github_app_human_step_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_registration_submit_intervention"),
+    reason: "SUBMIT is irreducibly human today: GitHub requires the account or organization owner to submit the manifest form and exposes no API that creates an App, so no credential this fleet could hold substitutes for it",
+    dissolution: unbound_dissolution(
+      description: "dissolves when browser automation drives https://github.com/organizations/<org>/settings/apps/new under an owner session, fills the manifest field from app_manifest_json_document and submits it, so census_app_registration_instruction stops producing an instruction and the converge performs the submission. A Playwright dependency being modeled does not fire this; the form being driven end to end does"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_registration_capture_intervention"),
+    reason: "CAPTURE is a DECLARED CHOICE and not a constraint, and it is rostered so it is not mistaken for one: the operator copies code and state out of the address bar only because census_app_redirect_url points at a host this fleet does not serve. A redirect catcher, a localhost listener included, takes both values today with no browser automation and no capability this repository lacks",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a redirect catcher receives GitHub's redirect and writes the code and state where the acquire entry point reads them, so the operator never touches the address bar. It needs no browser automation, which is why this row is a choice rather than a limit; it retires when census_app_redirect_url points at something this fleet serves"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "adopted_app_key_supply_intervention"),
+    reason: "SUPPLY is PERMANENT under the modeled world and is rostered as such rather than omitted. GitHub returns an App private key once at creation and exposes no endpoint that reissues it, so for an App created outside this converge no capability retrieves the original bytes -- browser automation included, because there is nothing to click",
+    dissolution: unbound_dissolution(
+      description: "does NOT dissolve with browser automation and is not awaiting one. The only thing that ends it is generating a NEW key in the App's settings, which is itself the human act this row names, so the row retires only if GitHub begins reissuing existing private keys -- an upstream change, not a capability this fleet can build"
+    )
+  )
+]
 
 type AppRegistrationInstruction
   = RegistrationInstructionReady { intervention: HumanIntervention }
@@ -258,7 +564,7 @@ fn census_app_registration_instruction(state: GitHubAppManifestState) -> AppRegi
       }
     AppManifestRendered { document: document } =>
       match app_manifest_registration_url(
-        target: census_app_registration_target,
+        target: census_app_identity.target,
         state: state as NonEmptyStr,
       ) {
         RegistrationUrlStateUnencodable { cause: _ } =>
@@ -267,7 +573,11 @@ fn census_app_registration_instruction(state: GitHubAppManifestState) -> AppRegi
           }
         RegistrationUrlBuilt { url: url } =>
           RegistrationInstructionReady {
-            intervention: app_registration_intervention(url: url, manifest_document: document)
+            intervention: app_registration_submit_intervention(
+              identity: census_app_identity,
+              url: url,
+              manifest_document: document,
+            )
           }
       }
   }
@@ -469,7 +779,7 @@ fn classify_census_app(
                 [
                   "census App ",
                   s as String,
-                  " is recorded as acquired and the public app record is absent; a registration here would mint a SECOND App with a different private key while the first one's name stays spent. Read the App's settings page and reconcile census_app_acquisition_record before any converge is authorized",
+                  " is recorded as acquired and the public app record is absent; a registration here would mint a SECOND App with a different private key while the first one's name stays spent. Read the App's settings page and reconcile the custody handoff (or census_app_declared_adoption, if this App was adopted) before any converge is authorized",
                 ],
                 "",
               ) as NonEmptyStr
@@ -487,7 +797,7 @@ fn classify_census_app(
                 [
                   "a public App already answers at slug ",
                   observed.slug,
-                  " while census_app_acquisition_record says this fleet never acquired one; either the record is stale or the name is held by someone else, and neither is repaired by registering again",
+                  " while neither the custody handoff nor census_app_declared_adoption says this fleet acquired one; either this fleet holds an App it has not recorded, or the name is held by someone else, and neither is repaired by registering again",
                 ],
                 "",
               ) as NonEmptyStr
@@ -595,7 +905,7 @@ fn census_app_not_acquired_classification(
           UpsertClassification {
             verdict: Absent,
             decision: Refuse {
-              reason: "census App is not acquired and no manifest code is in hand; the owner must submit the manifest form first, which is what app_registration_intervention instructs" as NonEmptyStr
+              reason: "census App is not acquired and no manifest code is in hand; the owner must submit the manifest form first, which is what app_registration_submit_intervention instructs" as NonEmptyStr
             },
           }
         Present { value: c } =>
@@ -671,8 +981,8 @@ fn classify_census_app_exchange(
 }
 
 // WHAT THE OPERATOR MUST RECORD AFTER A SUCCESSFUL EXCHANGE, projected from the issuance rather than
-// retyped. The secrets themselves are written to the custody sites by gunbc.secret_provision; what
-// belongs in SOURCE is the App's identity, because the next converge's observation is addressed by it.
+// retyped. What belongs in SOURCE is the App's IDENTITY, because the next converge's observation is
+// addressed by it; the secrets go to the custody sites below and never into a declaration.
 fn acquisition_record_from_issuance(issuance: GitHubAppCredentialIssuance) -> GitHubAppAcquisitionRecord {
   match issuance {
     CredentialIssuedOnce { app_id: id, slug: s, pem: _, webhook_secret: _, client_id: _, client_secret: _ } =>
