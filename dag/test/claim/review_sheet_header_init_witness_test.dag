@@ -64,6 +64,16 @@ import gunbc.review_sheet_header_init {
 //     a_bounded_request_is_refused_by_the_assessment goes RED, because decision_label separates
 //     request-rejected from readback-rejected; the readback claims stay GREEN under that flatten,
 //     which is why the bounded-request specimen is carried separately from the malformed ones.
+//
+// Each row above was RUN, and each run refused naming the claim that row lists first. Two notes on
+// the executed forms, because the table would otherwise read as stronger than what was measured.
+// Row (b) was applied as an explicit `!= " "` exemption on the occupancy filter: the tempting
+// spelling, a trim before the comparison, is not a mutation at all -- the substrate has no `trim`,
+// so it fails to compile and discriminates nothing. Row (d) was applied by replacing the
+// review_sheet_ensure_assess call with a ReviewSheetProjectionClassified built straight from
+// grid_from_value_rows, which is precisely the shape a module that decided those facts for itself
+// would have, and the unqualified-readback specimen went red under it while every emptiness claim
+// stayed green.
 
 data specimen_tab: NonEmptyStr = "Buyer Review" as NonEmptyStr
 

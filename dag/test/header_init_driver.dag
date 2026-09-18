@@ -1,0 +1,41 @@
+module test.header_init_driver
+import std.types { Bool }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import test.claim.review_sheet_header_init_witness {
+  blank_tab_writes_the_schema_header_row_in_schema_order,
+  blank_tab_header_write_is_tab_qualified_at_row_one,
+  an_all_empty_grid_is_still_blank,
+  a_blank_header_row_over_data_is_not_blank,
+  whitespace_in_the_header_row_is_content,
+  whitespace_below_the_header_row_is_content,
+  a_populated_tab_hands_off_rather_than_writing,
+  an_unqualified_readback_is_refused_by_the_assessment,
+  a_readback_of_another_tab_is_refused_by_the_assessment,
+  a_bounded_request_is_refused_by_the_assessment,
+}
+
+fn header_init_main() -> ProcessExit {
+  if !blank_tab_writes_the_schema_header_row_in_schema_order() {
+    exit_failure(reason: "blank_tab_writes_the_schema_header_row_in_schema_order")
+  } else if !blank_tab_header_write_is_tab_qualified_at_row_one() {
+    exit_failure(reason: "blank_tab_header_write_is_tab_qualified_at_row_one")
+  } else if !an_all_empty_grid_is_still_blank() {
+    exit_failure(reason: "an_all_empty_grid_is_still_blank")
+  } else if !a_blank_header_row_over_data_is_not_blank() {
+    exit_failure(reason: "a_blank_header_row_over_data_is_not_blank")
+  } else if !whitespace_in_the_header_row_is_content() {
+    exit_failure(reason: "whitespace_in_the_header_row_is_content")
+  } else if !whitespace_below_the_header_row_is_content() {
+    exit_failure(reason: "whitespace_below_the_header_row_is_content")
+  } else if !a_populated_tab_hands_off_rather_than_writing() {
+    exit_failure(reason: "a_populated_tab_hands_off_rather_than_writing")
+  } else if !an_unqualified_readback_is_refused_by_the_assessment() {
+    exit_failure(reason: "an_unqualified_readback_is_refused_by_the_assessment")
+  } else if !a_readback_of_another_tab_is_refused_by_the_assessment() {
+    exit_failure(reason: "a_readback_of_another_tab_is_refused_by_the_assessment")
+  } else if !a_bounded_request_is_refused_by_the_assessment() {
+    exit_failure(reason: "a_bounded_request_is_refused_by_the_assessment")
+  } else {
+    ExitSuccess
+  }
+}
