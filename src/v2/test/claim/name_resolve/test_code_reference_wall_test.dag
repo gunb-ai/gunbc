@@ -7,10 +7,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // claim reports the head refusal reason or ACCEPTED, so a red that refuses for some OTHER reason (an
 // unbound name, a malformed root) does not pass for the wall.
 //
-// The owner ruling (2026-09-16/17) has two halves, and each has a red and a control here: a
-// test-marked declaration may be referenced by NOTHING, a test fn in the same module included; and
-// serving code may not depend on any declaration of a module that declares tests, while another
-// test module may.
+// The owner ruling (2026-09-16/17): a test-marked declaration may be referenced by NOTHING, a test fn
+// in the same module included. The wall is ITEM-scoped: an unmarked declaration is ordinary code even
+// in a module that declares tests (a whole-module rule is wrong in both directions, the lesson of the
+// v1 wall in gunbc#11505). The shapes below are the ones v1's reviewers found one per round, each
+// with its red or its control: same-module and cross-module references, a QUALIFIED path to a test
+// fn, precedence of a module's own declaration over an imported one of the same name, and a
+// reference from a parameter default -- which v2 cannot express at all (it refuses at parse).
 //
 // WHY THE ROOTS ARE SUPPLIED (DESIGN section 3). Producing two roots from source costs two tokenize,
 // parse and normalize passes (about 120k eval steps for two one-line modules) before resolution
@@ -257,15 +260,6 @@ test fn serving_code_calling_another_modules_test_fn_is_refused_holds() -> Bool 
   ) == "resolve_reason_test_code_referenced"
 }
 
-// RED: serving code depending on an UNMARKED declaration of a module that declares tests.
-test fn serving_code_depending_on_a_test_module_is_refused_holds() -> Bool {
-  wall_resolve(
-    subject_segment: ^serving,
-    subject: serving_module_with_body(body: wall_atom(identity: ^shared_fixture)),
-    peer: peer_test_module()
-  ) == "resolve_reason_serving_code_depends_on_test_code"
-}
-
 // CONTROL: the intended shape, a test fn calling an ordinary fn, resolves.
 test fn test_fn_calling_an_ordinary_fn_resolves_holds() -> Bool {
   wall_resolve_alone(
@@ -294,28 +288,63 @@ test fn a_local_binder_shadowing_a_test_fn_resolves_holds() -> Bool {
   ) == "ACCEPTED"
 }
 
-// CONTROL for the dependency half: the same reference from the same serving module resolves once the
-// peer declares no tests, so the red above is about the peer's test code and nothing else.
-test fn serving_code_depending_on_a_serving_module_resolves_holds() -> Bool {
+// CONTROL, ITEM SCOPE: an unmarked declaration of a module that declares tests is ordinary code, and
+// serving code may reference it.
+test fn an_ordinary_declaration_of_a_test_module_resolves_holds() -> Bool {
   wall_resolve(
     subject_segment: ^serving,
     subject: serving_module_with_body(body: wall_atom(identity: ^shared_fixture)),
-    peer: peer_serving_module()
+    peer: peer_test_module()
   ) == "ACCEPTED"
 }
 
-// CONTROL: a test module may depend on another test module's ordinary declarations.
-test fn test_module_depending_on_a_test_module_resolves_holds() -> Bool {
+// `wall.peer.peer_leaf` as a qualified-path node, the spine qualified_name_from_node reads.
+fn wall_qualified(segments: List<Symbol>) -> Node {
+  fold_list_node(xs: segments, item_node: fn(sym) { wall_atom(identity: sym) })
+}
+
+// RED: a QUALIFIED path to another module's test fn is refused at the qualified-path door
+// (v2.compiler.resolve try_resolve_qualified_name_node), which binds by the whole path rather than a
+// bare name. v2 lowering does not yet carry a qualified path in a fn BODY (`= wall.peer.peer_leaf`
+// lowers to the atom `wall`; tracked as its own defect), so this supplies the node the door reads.
+test fn a_qualified_path_to_a_test_fn_is_refused_holds() -> Bool {
   wall_resolve(
-    subject_segment: ^consumer,
+    subject_segment: ^serving,
+    subject: serving_module_with_body(body: wall_qualified(segments: [^wall, ^peer, ^peer_leaf])),
+    peer: peer_test_module()
+  ) == "resolve_reason_test_code_referenced"
+}
+
+// CONTROL, PRECEDENCE: a module's own declaration beats a same-named declaration elsewhere. The
+// subject declares an ordinary `peer_leaf`; the peer's `peer_leaf` is a test fn. The subject's
+// reference binds to its own, so it resolves.
+test fn a_modules_own_declaration_beats_a_same_named_test_fn_holds() -> Bool {
+  wall_resolve(
+    subject_segment: ^serving,
     subject: wall_tree(
-      root: wall_module_root(leaf_segment: ^consumer, members: [
-        wall_member(name: ^consumer_holds, body: wall_atom(identity: ^shared_fixture))
+      root: wall_module_root(leaf_segment: ^serving, members: [
+        wall_member(name: ^peer_leaf, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^uses_peer, body: wall_atom(identity: ^peer_leaf))
       ]),
-      marked: [^consumer_holds]
+      marked: []
     ),
     peer: peer_test_module()
   ) == "ACCEPTED"
 }
 
+data default_reference_source: String = "module m\nfn f(x: T = g()) -> T = x\n"
 
+// A reference from a parameter DEFAULT cannot be written in v2: the grammar has no default, and the
+// source refuses at parse, before resolution could miss it. If this ever parses, the default has
+// become a place a reference can hide, and it needs its own red.
+test fn a_parameter_default_is_refused_at_parse_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: default_reference_source, file: ^wall_default_file, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}

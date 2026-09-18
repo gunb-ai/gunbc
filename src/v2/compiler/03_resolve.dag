@@ -5,7 +5,6 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.std.declaration_marker {
   ReachesNoTestCode,
   ReachesTestMarkedDeclaration,
-  ReachesTestModuleFromServingCode,
   TestCodeIndex,
   test_code_index_add_module,
   test_code_index_empty,
@@ -472,16 +471,16 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
         match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
           Present { value: resolved_node } =>
             optional_present(
-              value: Accepted {
-                value: canonical_atom(
-                  identity: symbol_index_node_identity(
-                    node: resolved_node,
-                    fallback: ^resolve_reason_unbound_symbol
-                  ),
-                  occurrence_id: n.occurrence_id
+              value: resolve_atom_bound(
+                ctx: ctx,
+                n: n,
+                canonical: symbol_index_node_identity(
+                  node: resolved_node,
+                  fallback: ^resolve_reason_unbound_symbol
                 ),
-                diagnostics: pending
-              }
+                path: path,
+                pending: pending
+              )
             )
           Absent =>
             optional_present(
@@ -527,10 +526,11 @@ fn test_code_referenced_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   }
 }
 
-// THE WALL (owner ruling 2026-09-16/17): `test` segregates test code from serving code. No code may
-// reference a test-marked declaration, a test fn in the same module included, and serving code may
-// not depend on any declaration of a module that declares tests. Both are decided here, where the
-// reference binds, from the path it bound to, and both refuse with the reference's own locus.
+// THE WALL (owner ruling 2026-09-16/17): `test` segregates test code from serving code, and no code
+// may reference a test-marked declaration, a test fn in the same module included. It is decided here,
+// where the reference binds, from the path it bound to, and it refuses with the reference's own locus.
+// Every door that binds a module-level name reaches this function: the root scope, the symbol index,
+// and a qualified path (try_resolve_qualified_name_node).
 fn resolve_atom_bound(
   ctx: ResolveContext,
   n: Node,
@@ -538,7 +538,7 @@ fn resolve_atom_bound(
   path: QualifiedName,
   pending: Diagnostics
 ) -> Outcome<Node> {
-  match test_code_reach(index: ctx.namespace.test_code, subject: ctx.namespace.declared_in, path: path) {
+  match test_code_reach(index: ctx.namespace.test_code, path: path) {
     ReachesNoTestCode =>
       Accepted {
         value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
@@ -549,13 +549,6 @@ fn resolve_atom_bound(
         diagnostics: rejected_with_pending(
           pending: pending,
           rejected: diagnostics_singleton(d: test_code_referenced_diagnostic(reason: ^resolve_reason_test_code_referenced, n: n))
-        )
-      }
-    ReachesTestModuleFromServingCode =>
-      Rejected {
-        diagnostics: rejected_with_pending(
-          pending: pending,
-          rejected: diagnostics_singleton(d: test_code_referenced_diagnostic(reason: ^resolve_reason_serving_code_depends_on_test_code, n: n))
         )
       }
   }
