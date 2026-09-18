@@ -443,9 +443,20 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // consulted, so while the number was the runner row's, any move to that row propagated to a host
 // whose runner allocation may have been REFUSED. Decoupling removes the propagation rather than
 // gating it: there is no longer a runner-derived number here to leak.
-data live_deploy_slice_memory_max: ByteSize = byte_size(17179869184)
+// THE ENVELOPE IS SIZED FROM THE UNIT'S OWN MEASURED PEAK, not from the 3.46 GB the 2026-09-12
+// note cited. With swap forbidden below, the bound stopped being decorative: at the 16 GiB bound the
+// serve process -- which systemd's unit accounting reported at "8.1G memory peak, 9.6G memory swap
+// peak" for its previous incarnation -- was OOM-killed inside the slice on 2026-09-18 23:07 UTC, and
+// the deployed-tree convergence oneshot ("5.2G memory peak") beside its restart at 23:44. Swap had
+// been absorbing the ~2 GB the serve workload exceeds the old bound by, silently. The instrument is
+// the unit's journal "Consumed ... memory peak, ... memory swap peak" line (systemd unit accounting)
+// for gunbc-roadmap.service and gunbc-tree-sync.service; re-derive there. 32 GiB max / 30 GiB high
+// covers serve peak + convergence peak concurrently (~23 GB) with headroom that is still one
+// sixteenth of the host; why the serve footprint grew from 3.46 GB to ~18 GB is a demand question
+// (DESIGN section 2) this row does not answer and does not hide.
+data live_deploy_slice_memory_max: ByteSize = byte_size(34359738368)
 
-data live_deploy_slice_memory_high: ByteSize = byte_size(16106127360)
+data live_deploy_slice_memory_high: ByteSize = byte_size(32212254720)
 
 // THE SLICE FORBIDS SWAP, because the deployment is a latency-bound operator-facing service and a
 // swapped page is a stall on the request path, not a memory saving. The host it shares (srv1) also
