@@ -1730,8 +1730,70 @@ fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Sym
   )
 }
 
+fn grammar_expr_insert_atom_identities(m: Map<Symbol, Bool>, expr: GrammarExpr) -> Map<Symbol, Bool> {
+  match expr {
+    Terminal { token_class: token_class, stamp: stamp } =>
+      match stamp {
+        StampBinding { binding: b } =>
+          grammar_symbol_map_put(
+            m: grammar_symbol_map_put(m: m, sym: token_class),
+            sym: b
+          )
+        StampClass => grammar_symbol_map_put(m: m, sym: token_class)
+        StampLexeme =>
+          grammar_symbol_map_put(
+            m: grammar_symbol_map_put(m: m, sym: token_class),
+            sym: ^grammar_terminal_stamp_lexeme
+          )
+      }
+    Nonterminal { production: production } =>
+      grammar_symbol_map_put(m: m, sym: production)
+    Sequence { left: left, right: right } =>
+      grammar_expr_insert_atom_identities(
+        m: grammar_expr_insert_atom_identities(m: m, expr: left),
+        expr: right
+      )
+    Choice { left: left, right: right } =>
+      grammar_expr_insert_atom_identities(
+        m: grammar_expr_insert_atom_identities(m: m, expr: left),
+        expr: right
+      )
+    Optional { element: element } =>
+      grammar_expr_insert_atom_identities(m: m, expr: element)
+    Repeat { element: element } =>
+      grammar_expr_insert_atom_identities(m: m, expr: element)
+  }
+}
+
+fn grammar_production_insert_atom_identities(
+  m: Map<Symbol, Bool>,
+  production: GrammarProduction
+) -> Map<Symbol, Bool> {
+  grammar_node_insert_atom_identities(
+    m: grammar_expr_insert_atom_identities(
+      m: grammar_symbol_map_put(m: m, sym: production.name),
+      expr: production.expression
+    ),
+    n: production.emitted
+  )
+}
+
+fn grammar_root_insert_atom_identities(m: Map<Symbol, Bool>, root: GrammarRoot) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: root.productions,
+    empty: grammar_symbol_map_put(m: m, sym: root.start),
+    cons: fn(acc, production) {
+      grammar_production_insert_atom_identities(m: acc, production: production)
+    }
+  )
+}
+
 fn grammar_carried_symbol_map(grammar: ParseGrammar) -> Map<Symbol, Bool> {
-  grammar_node_insert_atom_identities(m: empty_map(), n: grammar_to_node(grammar: grammar))
+  match grammar {
+    VoidGrammar => empty_map()
+    ModeledGrammar { root: root } =>
+      grammar_root_insert_atom_identities(m: empty_map(), root: root)
+  }
 }
 
 fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
