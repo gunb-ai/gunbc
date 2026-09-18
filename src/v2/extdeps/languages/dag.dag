@@ -83,7 +83,8 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   WhitespaceChar,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_member,
+  symbol_intern_lexeme
 }
 import v2.std.node {
   Arrow,
@@ -449,8 +450,10 @@ fn dag_int_literal_lex_rule() -> LexRule {
 // ShLitFloat. v2 G0 had only the integer arm, so `1.8` tokenized as int + dot + int. Postfix
 // field access demands a binding name after `.`, so the primary failed, the fn_decl failed as a
 // top-level item, the module `repeat` stopped, and `parse_g0_tokens_remain` pointed at leftover
-// `fn` — the first remaining token, not the float. Longest-match prefers this over the integer
-// prefix; ties would go to the later rule, so this row sits before the integer rule.
+// `fn` — the first remaining token, not the float. The float pattern is strictly longer than the
+// integer prefix, so longest-match selects it regardless of list order. Equal-length ties go to
+// the LATER rule (`v2.compiler.tokenize`); these two patterns never tie, so this row is not
+// placed to win a tie.
 fn dag_float_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^dag_token_float_literal,
@@ -1293,7 +1296,7 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
     right: dag_grammar_choice(
       left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
       right: dag_grammar_choice(
-        left: dag_grammar_terminal(token_class: ^dag_token_float_literal),
+        left: dag_grammar_terminal_lexeme(token_class: ^dag_token_float_literal),
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
@@ -1448,7 +1451,7 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
           right: dag_grammar_choice(
-            left: dag_grammar_terminal(token_class: ^dag_token_float_literal),
+            left: dag_grammar_terminal_lexeme(token_class: ^dag_token_float_literal),
             right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
           )
         )
@@ -3136,6 +3139,27 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenc
           correction: Unavailable { reason: CorrectionNotModeled }
         }
       )
+  }
+}
+
+// Lexeme capture, not IEEE decode. Int literals inhabit DecimalMagnitude; floats do not yet.
+// The lexer already matched `digits '.' digits`, so the source text is the value until a
+// float-magnitude home exists. Identity stays `dag_token_float_literal` so 1.8 and 2.5 are not
+// the same class-stamped atom.
+fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_float_literal } },
+    children: [
+      Edge {
+        label: Named { name: ^float_literal_lexeme_field },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      }
+    ],
+    occurrence_id: occurrence_id
   }
 }
 
