@@ -1,5 +1,6 @@
 module gunbc.gha_yaml_fold_pilot
 
+import gunbc.action_use_admission { checkout_action }
 
 data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job {
   id: "pilot",
@@ -20,7 +21,7 @@ data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job
     UsesStep {
       name: Absent,
       id: Absent,
-      uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
+      uses: checkout_action,
       with: Absent,
       env: Absent,
       if_condition: Absent,

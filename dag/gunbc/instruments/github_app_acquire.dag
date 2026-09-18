@@ -648,7 +648,7 @@ fn census_app_acquire_with_code(
     Refuse { reason: r } =>
       exit_failure(reason: join([verdict_text(verdict: classified.verdict), ": ", r as String], ""))
     Apply { plan: plan } =>
-      match custody_preflight(name: census_app_identity.name) {
+      match custody_preflight(name: plan.custody_name) {
         CustodyPreflightNameUnsafe { name: n } =>
           exit_failure(reason: join([
             "the custody name ", n as String,
@@ -670,7 +670,7 @@ fn census_app_acquire_with_code(
             ExchangeReplyIncomplete { issuance: _ } =>
               exit_failure(reason: "the conversion answered 201 with a reply missing the slug or client id, so the App it created cannot be addressed")
             ExchangeIssued { issuance: issuance } =>
-              persist_then_read_back(issuance: issuance)
+              persist_then_read_back(custody_name: plan.custody_name, issuance: issuance)
           }
       }
   }
@@ -945,10 +945,13 @@ fn custody_write_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
 // false authority for the sequencing, and it justified exactly the loss the preflight exists to
 // prevent: a stale handoff file meant creating the App and then refusing its key (review 67573,
 // DESIGN 4c -- an annotation may not assert what the construction does not do).
-fn persist_then_read_back(issuance: GitHubAppCredentialIssuance) -> ProcessExit
+fn persist_then_read_back(
+  custody_name: NonEmptyStr,
+  issuance: GitHubAppCredentialIssuance,
+) -> ProcessExit
   uses net: Network, fs: std.resources.Filesystem
 {
-  match persist_issued_credentials(custody_name: census_app_identity.name, issuance: issuance) {
+  match persist_issued_credentials(custody_name: custody_name, issuance: issuance) {
     CredentialNameUnsafe { name: s } =>
       custody_failure_exit(custody: CredentialNameUnsafe { name: s })
     CredentialPersistRefused { path: p, cause: c } =>
