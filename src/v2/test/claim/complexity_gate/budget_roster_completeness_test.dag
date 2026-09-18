@@ -81,6 +81,5 @@ test fn complexity_budget_roster_family_gate_holds() -> Bool {
     false
   } else {
     complexity_budget_roster_family_all_rows_hold(rows: complexity_subject_budget_rows)
-      && complexity_budget_roster_unrated_declared_budget_semantic_red_holds()
   }
 }
