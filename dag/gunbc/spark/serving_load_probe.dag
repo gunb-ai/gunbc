@@ -39,6 +39,7 @@ import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
 }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 
 // ── THROUGHPUT QUALIFICATION FOR THE SERVING SUBJECT (design #11540, serving side) ────────────
 //
@@ -462,6 +463,21 @@ fn derive_rate_honest(
   }
 }
 
+type DecodeCorroboration
+  = CorroborationNotApplicable { because: NonEmptyStr }
+  | CorroborationUnread { because: NonEmptyStr }
+
+fn decode_corroboration_for_protocol(req: VllmBenchServeRequest) -> DecodeCorroboration {
+  match req.max_concurrency {
+    Present { value: 1 } =>
+      CorroborationUnread { because: "a single-stream run can be compared to the transcribed 49 ms/token bound; this observation has not yet produced that figure" as NonEmptyStr }
+    Present { value: _ } =>
+      CorroborationNotApplicable { because: "the holistic protocol is not a single-stream measurement, so it cannot corroborate or falsify the 49 ms/token bound" as NonEmptyStr }
+    Absent =>
+      CorroborationNotApplicable { because: "unbounded concurrency is not a single-stream measurement" as NonEmptyStr }
+  }
+}
+
 type ServingLoadObservation {
   subject: ServingPerformanceSubjectStanding
   protocol: VllmBenchServeRequest
@@ -477,6 +493,7 @@ type ServingLoadObservation {
   iteration_tokens_booked: HistogramDelta
   ledger: OperationLedger
   admission: AdmissionCost
+  corroboration: DecodeCorroboration
   rate: DerivedRate
   raw_before: NonEmptyStr
   raw_after: NonEmptyStr
@@ -515,6 +532,7 @@ fn serving_load_observation(
     iteration_tokens_booked: histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal),
     ledger: ledger,
     admission: glm_native_workload_admission,
+    corroboration: decode_corroboration_for_protocol(req: protocol),
     rate: derive_rate_honest(
       ledger: ledger,
       continuity: continuity,
@@ -548,9 +566,17 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "iteration_tokens booked (not occupancy): ", histogram_text(d: o.iteration_tokens_booked), "\n",
     "ledger: ", ledger_text(l: o.ledger), "\n",
     "admission: ", admission_text(a: o.admission), "\n",
+    "corroboration: ", corroboration_text(c: o.corroboration), "\n",
     "rate: ", rate_text(r: o.rate), "\n",
     "saturation decided from this run: ", if saturation_from_one_run(obs: o) { "yes" } else { "no" }, "\n",
   ], "")
+}
+
+fn corroboration_text(c: DecodeCorroboration) -> String {
+  match c {
+    CorroborationNotApplicable { because: b } => join(["not-applicable ", b as String], "")
+    CorroborationUnread { because: b } => join(["unread ", b as String], "")
+  }
 }
 
 fn occupancy_text(t: OccupancyTrace) -> String {
@@ -687,7 +713,16 @@ data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_requ
   ignore_eos: true,
 )
 
-data glm_native_declared_shared_traffic: NonEmptyStr = "gunbc.harness.harness_cli harness_probe_cli may POST a real turn mid-window; drain snapshot is not exclusion" as NonEmptyStr
+data glm_native_declared_shared_traffic: NonEmptyStr = "gunbc.harness.harness_cli harness_probe_cli may POST a turn, and proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers on these ranks; drain snapshot is not exclusion" as NonEmptyStr
+
+// TRANSCRIBED BOUND, NOT A READING. Parent derived ~10.7 GB active weights / ~9-11 ms memory-bandwidth
+// floor from the checkpoint config (45 layers, hidden 4096, 288 routed experts, top-8 + 1 shared, fp8)
+// and measured 48.9 ms single-stream. Until those config rows are cited, the 49 ms figure stays
+// TranscribedUncited and is not consumed as a rate.
+data glm_native_single_stream_decode_bound_millis: Nat = 49
+data glm_native_single_stream_decode_bound_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read the served GLM-5.3-Flash checkpoint config for layer count, hidden size, routed experts, top-k and shared expert, and the independent single-stream measurement this 49 ms/token bound was transcribed from; the 9-11 ms memory-bandwidth floor is a derived bound from that config, not a serving reading" as NonEmptyStr
+}
 
 // max_num_seqs is 16 on the live units (parent reverted the out-of-band 64 edit).
 data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(

@@ -18,6 +18,7 @@ import extdeps.vllm.bench_serve {
   vllm_bench_serve_request, vllm_bench_serve_arguments, vllm_bench_serve_uses_poisson_idle_gaps,
 }
 import extdeps.vllm.kv_layout { AdmissionCostUnestablished, AdmissionCostBlocks }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import gunbc.spark.serving_load_probe {
   DrainObservedIdle,
   ExclusionNotEstablished,
@@ -34,6 +35,10 @@ import gunbc.spark.serving_load_probe {
   OccupancySampled, OccupancyUnsampled, OccupancySample,
   ClientOutputTokensUnread, ClientOutputTokensObserved,
   glm_native_workload_admission,
+  glm_native_declared_shared_traffic,
+  glm_native_single_stream_decode_bound_millis,
+  glm_native_single_stream_decode_bound_standing,
+  decode_corroboration_for_protocol, CorroborationNotApplicable, CorroborationUnread,
 }
 
 data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
@@ -86,6 +91,11 @@ test fn a_quiet_drain_is_not_an_isolated_window() -> Bool {
     WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
     WindowIsolationUnread { cause: _, drain: _ } => false
   }
+}
+
+test fn declared_shared_traffic_names_the_harness_probe_and_nccl_tests() -> Bool {
+  string_contains(s: glm_native_declared_shared_traffic as String, pattern: "harness_probe_cli")
+    && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "nccl-tests")
 }
 
 test fn isolated_window_refuses_without_exclusion() -> Bool {
@@ -266,6 +276,23 @@ test fn a_long_context_protocol_does_not_mint_an_admission_ceiling() -> Bool {
         AdmissionCostBlocks { blocks: _ } => false
       }
     AdmissionCostBlocks { blocks: _ } => false
+  }
+}
+
+test fn one_run_does_not_decide_saturation() -> Bool {
+  let obs = fx_obs(ledger: closed_ok())
+  !saturation_from_one_run(obs: obs) && !observation_rate_is_stored_separately(obs: obs)
+}
+
+test fn the_holistic_protocol_does_not_corroborate_the_single_stream_bound() -> Bool {
+  match decode_corroboration_for_protocol(req: glm_native_holistic_protocol) {
+    CorroborationNotApplicable { because: _ } =>
+      glm_native_single_stream_decode_bound_millis == 49
+        && match glm_native_single_stream_decode_bound_standing {
+          TranscribedUncited { read_obligation: _ } => true
+          CitedToAuthority { authority: _ } => false
+        }
+    CorroborationUnread { because: _ } => false
   }
 }
 
