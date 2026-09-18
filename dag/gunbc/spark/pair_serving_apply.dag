@@ -205,13 +205,13 @@ fn spark_pair_apply_plan_under(r: SparkPairRealization, authority: PairServingGr
 fn spark_pair_apply_plan_current(r: SparkPairRealization, current: List<CurrentAuthority>) -> SparkPairApplyPlan {
   match current_authority_for(current: current, group: spark_pair_realization_group(r: r)) {
     Absent => spark_pair_apply_plan_under(r: r, authority: none)
-    Present { value: CurrentAuthorityUnread { group: _, step: _, reason: _ } } =>
-      match current_authority_for(current: current, group: spark_pair_realization_group(r: r)) {
-        Present { value: c } => SparkPairApplyRefused { cause: join(["the serving authority could not be read, so nothing is converged: ", current_authority_wire(c: c)], "") }
-        Absent => spark_pair_apply_plan_under(r: r, authority: none)
+    Present { value: c } =>
+      match c {
+        CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
+          SparkPairApplyRefused { cause: join(["the serving authority could not be read, so nothing is converged: ", current_authority_wire(c: c)], "") }
+        CurrentAuthorityRead { authority: a, head: _, generation: _ } =>
+          spark_pair_apply_plan_under(r: r, authority: Present { value: a })
       }
-    Present { value: CurrentAuthorityRead { authority: a, head: _, generation: _ } } =>
-      spark_pair_apply_plan_under(r: r, authority: Present { value: a })
   }
 }
 
