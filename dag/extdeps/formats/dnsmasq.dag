@@ -23,7 +23,8 @@ type DnsmasqDirective =
   | DnsmasqDhcpRangeProxy { network_address: String }
   | DnsmasqDhcpMatchSet { tag: String, option: String, value: String }
   | DnsmasqDhcpOptionForceTag { tag: String, option: String, value: String }
-  | DnsmasqDhcpBootTag { tag: String, target: String }
+  | DnsmasqDhcpHostSetTag { mac: String, tag: String }
+  | DnsmasqDhcpBootTags { tags: List<String>, target: String }
 
 data dnsmasq_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -36,8 +37,10 @@ fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
       concat(concat(concat("dhcp-match=set:", tag), concat(",", option)), concat(",", value))
     DnsmasqDhcpOptionForceTag { tag: tag, option: option, value: value } =>
       concat(concat(concat("dhcp-option-force=tag:", tag), concat(",", option)), concat(",", value))
-    DnsmasqDhcpBootTag { tag: tag, target: target } =>
-      concat(concat("dhcp-boot=tag:", tag), concat(",", target))
+    DnsmasqDhcpHostSetTag { mac: mac, tag: tag } =>
+      concat(concat("dhcp-host=", mac), concat(",set:", tag))
+    DnsmasqDhcpBootTags { tags: tags, target: target } =>
+      concat(concat("dhcp-boot=", fold(tags, init: "", f: (acc, t) => concat(acc, concat(concat("tag:", t), ",")))), target)
   }
 }
 
