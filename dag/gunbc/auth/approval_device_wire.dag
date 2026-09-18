@@ -2,8 +2,11 @@ module gunbc.auth.approval_device_wire
 
 import std.types { NonEmptyStr, String, Timestamp, Int, List }
 import std.measure { Second, second }
-import extdeps.crypto.signature { VerifyingKey }
-import extdeps.apple.apns { ApnsCustomKey }
+import extdeps.crypto.signature { VerifyingKey, SignatureBytes }
+import extdeps.apple.apns { ApnsCustomKey, ApnsEnvironment, ApnsTopic, ApnsDeviceToken }
+import extdeps.apple.app_attest { AttestKeyId }
+import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
+import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, proposed_decision_name }
 
 // ── What this module is ──────────────────────────────────────────────────────────────────────
@@ -111,8 +114,9 @@ data approval_device_audience: NonEmptyStr = "gunbc.roadmap_serve/device-redempt
 
 // stored_request_text is gunbc.auth.approval_decision_store stored_request_json of the record the
 // app displayed, byte for byte; capability_text is approval_capability_signing_input of the
-// capability for the chosen verb; capability_tag_hex is that capability's MAC tag in the lowercase
-// hex the existing /approve segment and mac_verify both use. The server re-renders all three from
+// capability for the chosen verb; capability_tag_b64url is that capability's tag in its canonical
+// wire spelling (gunbc.auth.approval_capability ApprovalCapability tag_b64url), which the server
+// converts through capability_tag_hex before mac_verify -- the one declared inverse. The server re-renders all three from
 // the STORED request and refuses any disagreement, so the device signs no third spelling.
 type DeviceRedemptionSigningInput {
   audience: NonEmptyStr
@@ -123,7 +127,7 @@ type DeviceRedemptionSigningInput {
   stored_request_text: NonEmptyStr
   decision: ProposedDecision
   capability_text: NonEmptyStr
-  capability_tag_hex: NonEmptyStr
+  capability_tag_b64url: NonEmptyStr
 }
 
 fn device_redemption_signing_input(i: DeviceRedemptionSigningInput) -> NonEmptyStr {
@@ -138,7 +142,7 @@ fn device_redemption_signing_input(i: DeviceRedemptionSigningInput) -> NonEmptyS
     i.stored_request_text as String,
     proposed_decision_name(d: i.decision) as String,
     i.capability_text as String,
-    i.capability_tag_hex as String,
+    i.capability_tag_b64url as String,
   ])
 }
 
@@ -149,4 +153,51 @@ data approval_device_enrol_path: NonEmptyStr = "/approve/device/enrol" as NonEmp
 data approval_device_pending_path: NonEmptyStr = "/approve/device/pending" as NonEmptyStr
 data approval_device_request_path_prefix: NonEmptyStr = "/approve/device/requests/" as NonEmptyStr
 data approval_device_redeem_path: NonEmptyStr = "/approve/device/redeem" as NonEmptyStr
+
+// ── Request bodies ───────────────────────────────────────────────────────────────────────────
+// DECLARED FRONTIER, stated once for every type in this section: they are the JSON bodies of the
+// device routes, decoded by the route handlers that gunbc.auth.approval_device_redemption
+// approval_device_routes_frontier names, and constructed by the app (ios_realization_frontier). No
+// fold in this change reads them; the trigger is those handlers landing.
+// Push registration is SEPARATE from enrolment: a token rotates (reinstall, restore, APNs 410)
+// without changing who is enrolled or which key decides, and revoking an enrolment must end its
+// authority whatever push tokens still exist.
+type PushRegistration
+  = ApnsRegistration { environment: ApnsEnvironment, topic: ApnsTopic, token: ApnsDeviceToken }
+  | FcmRegistration { project: FcmProjectId, token: FcmRegistrationToken }
+
+// What the app PRESENTS at enrolment: raw, unverified.
+type PresentedEnrollmentEvidence
+  = IosAppAttestAttestation { attest_key_id: AttestKeyId, attestation_b64: NonEmptyStr }
+  | AndroidKeyAttestationChain { chain: AndroidAttestationChain }
+
+// THE ENROLMENT POST BODY. The server reads the code's slot, verifies the evidence over
+// enrolment_transcript, and derives the login from the code; nothing here names a person.
+type EnrolmentRequest {
+  code: NonEmptyStr
+  platform: MobilePlatform
+  decision_key: VerifyingKey
+  evidence: PresentedEnrollmentEvidence
+  push: PushRegistration
+}
+
+// Per-redemption platform proof. iOS: an App Attest assertion whose client data is EXACTLY the
+// signing input. THE ASSERTION COUNTER IS NOT STORED, a stated departure from Apple's recommended
+// flow: Apple uses it to refuse replay, and a redemption replay is already refused twice -- the
+// challenge is server-minted, expiring and bound to one escalation revision, and the decision slot
+// admits one decision per escalation. Storing it would add one CAS generation per approval against
+// the store's generation probe bound, for no refusal the route lacks. (Reads are the exception, and
+// their residual is stated at device_read_client_data.)
+type PlatformRedemptionProof
+  = IosAppAttestAssertion { assertion_b64: NonEmptyStr }
+  | AndroidDecisionKeyOnly
+
+// THE REDEEM POST BODY: the wire carrier only. The server turns signature and platform_proof into
+// seam-minted verdicts and hands admission those verdicts with signing_input; admission never reads
+// these raw fields, so there is one representation of each proof on each side of the seam.
+type SignedRedemption {
+  signing_input: DeviceRedemptionSigningInput
+  signature: SignatureBytes
+  platform_proof: PlatformRedemptionProof
+}
 

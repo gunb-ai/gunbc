@@ -115,35 +115,45 @@ data app_attest_unavailable_in_simulator_note: NonEmptyStr = "DCAppAttestService
 
 // ── Assertions ───────────────────────────────────────────────────────────────────────────────
 // Each later request carries an assertion: CBOR { signature, authenticatorData } produced by
-// generateAssertion(keyId, clientDataHash). The checks: the signature over
-// SHA256(authenticatorData || clientDataHash) verifies under the STORED public key; the RP ID hash
-// equals SHA256(App ID); the counter is strictly greater than the stored one; the client data
-// carries the server's challenge. The consumer decides whether it stores the counter -- see
-// gunbc.auth.approval_device_redemption for this deployment's reasoning.
+// generateAssertion(keyId, clientDataHash). Apple's procedure: (1) clientDataHash = SHA256(clientData);
+// (2) nonce = SHA256(authenticatorData || clientDataHash); (3) the signature verifies for nonce under
+// the STORED public key; (4) the RP ID hash equals SHA256(App ID); (5) the counter exceeds the
+// previous assertion's; (6) the embedded challenge matches the one issued; (7) validationCategory
+// and (8) bundleVersion, from the extensions CBOR. Only after all eight does Apple call it trusted.
+//
+// THIS MODULE'S SUCCESS IS NAMED FOR LESS, deliberately: AssertionAuthentic covers steps 1-4, 7 and
+// 8 -- the parts a verifier can decide from the assertion, the client data and the stored key.
+// Step 5 needs the previous counter and step 6 needs the issued challenge; both are the CONSUMER'S
+// state, so the counter is carried out for the consumer to compare (or to state why it does not) and
+// the client data is carried out for the consumer to join to its challenge. A value named for full
+// trust would claim checks this producer cannot make.
 type AssertionRefusal
   = AssertionSignatureInvalid
   | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
-  | AssertionCounterNotIncreasing { stored: Int, presented: Int }
+  | AssertionValidationCategoryRefused { category: Int }
+  | AssertionBundleVersionAbsent
   | AssertionUndecodable { cause: String }
 
-type VerifiedAssertion sole_constructor {
+type AuthenticAssertion sole_constructor {
   key_id: AttestKeyId
+  public_key_point_b64url: NonEmptyStr
   counter: Int
   client_data: NonEmptyStr
 }
 
 type AssertionVerification
-  = AssertionVerified { verified: VerifiedAssertion }
+  = AssertionAuthentic { authentic: AuthenticAssertion }
   | AssertionRefused { cause: AssertionRefusal }
 
 fn assertion_verification_from_implementation(
   key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
   counter: Int,
   client_data: NonEmptyStr,
   refusal: AssertionRefusal?,
 ) -> AssertionVerification {
   match refusal {
     Present { value: r } => AssertionRefused { cause: r }
-    Absent => AssertionVerified { verified: VerifiedAssertion { key_id: key_id, counter: counter, client_data: client_data } }
+    Absent => AssertionAuthentic { authentic: AuthenticAssertion { key_id: key_id, public_key_point_b64url: public_key_point_b64url, counter: counter, client_data: client_data } }
   }
 }

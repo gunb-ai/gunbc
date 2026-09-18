@@ -9,6 +9,7 @@ import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, Propos
 import gunbc.auth.approval_device_wire {
   DeviceRedemptionSigningInput, RedemptionChallenge, MobilePlatform, MobileIos, MobileAndroid,
   device_redemption_signing_input, enrolment_transcript, platform_wire, approval_device_audience,
+  device_read_client_data, approval_device_pending_path, approval_device_request_path_prefix,
 }
 
 // ── The cross-language byte contract ─────────────────────────────────────────────────────────
@@ -49,7 +50,7 @@ fn redemption_vector(name: NonEmptyStr, decision: ProposedDecision, stored_reque
       stored_request_text: stored_request_text,
       decision: decision,
       capability_text: join(["gunbc.approval-capability.v1", "gunbc.roadmap_serve", "gunbc.auth.approval_broker"], signing_field_separator) as NonEmptyStr,
-      capability_tag_hex: "d1f1f1034370302f1405bd0bcd71e907c079ead5bf912da095cbe110d7876663",
+      capability_tag_b64url: "0fHxA0NwMC8UBb0LzXHpB8B56tW_kS2glcvhENeHZmM=",
     },
   }
 }
@@ -87,7 +88,7 @@ fn redemption_vector_json(v: RedemptionVector) -> JsonValue {
       json_kv(key: "stored_request_text", value: json_string(s: i.stored_request_text as String)),
       json_kv(key: "decision", value: json_string(s: proposed_decision_name(d: i.decision) as String)),
       json_kv(key: "capability_text", value: json_string(s: i.capability_text as String)),
-      json_kv(key: "capability_tag_hex", value: json_string(s: i.capability_tag_hex as String)),
+      json_kv(key: "capability_tag_b64url", value: json_string(s: i.capability_tag_b64url as String)),
     ])),
     json_kv(key: "expected", value: json_string(s: device_redemption_signing_input(i: i) as String)),
   ])
@@ -105,12 +106,38 @@ fn enrolment_vector_json(v: EnrolmentVector) -> JsonValue {
   ])
 }
 
+// The read transcript an App Attest assertion covers on the two authenticated GETs.
+type ReadVector {
+  name: NonEmptyStr
+  path: NonEmptyStr
+  enrollment_id: NonEmptyStr
+  requested_at: Timestamp
+}
+
+data read_vectors: List<ReadVector> = [
+  ReadVector { name: "pending", path: approval_device_pending_path, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+  ReadVector { name: "request", path: join([approval_device_request_path_prefix as String, "esc-mtc1-boot-1"], "") as NonEmptyStr, enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp },
+]
+
+fn read_vector_json(v: ReadVector) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: v.name as String)),
+    json_kv(key: "input", value: json_object(members: [
+      json_kv(key: "path", value: json_string(s: v.path as String)),
+      json_kv(key: "enrollment_id", value: json_string(s: v.enrollment_id as String)),
+      json_kv(key: "requested_at", value: json_string(s: v.requested_at)),
+    ])),
+    json_kv(key: "expected", value: json_string(s: device_read_client_data(path: v.path, enrollment_id: v.enrollment_id, requested_at: v.requested_at) as String)),
+  ])
+}
+
 fn approval_device_vectors_json() -> String {
   concat(
     serialize_json(v: json_object(members: [
       json_kv(key: "framing", value: json_string(s: "each field as <code point count>:<field>, concatenated")),
       json_kv(key: "redemption", value: json_array(elements: map(redemption_vectors, v => redemption_vector_json(v: v)))),
       json_kv(key: "enrolment", value: json_array(elements: map(enrolment_vectors, v => enrolment_vector_json(v: v)))),
+      json_kv(key: "read", value: json_array(elements: map(read_vectors, v => read_vector_json(v: v)))),
     ])),
     "\n",
   )

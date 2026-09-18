@@ -1,27 +1,25 @@
 module gunbc.auth.approval_device_redemption
 
-import std.types { NonEmptyStr, String, Timestamp, Int }
+import std.types { NonEmptyStr, String, Timestamp, Int, List }
 import std.logic { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.crypto.signature { VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified }
+import extdeps.crypto.signature { VerifyingKey, SignatureVerification, SignatureVerified }
 import extdeps.apple.apns {
   ApnsSendOutcome, ApnsAccepted, ApnsRefused, ApnsUnreached, ApnsUndecodable,
-  ApnsEnvironment, ApnsTopic, ApnsDeviceToken, ApnsRefusalClass,
+  ApnsRefusalClass,
   ApnsBadRequest, ApnsAuthenticationRefused, ApnsBadPath, ApnsBadMethod, ApnsTokenUnregistered,
   ApnsPayloadTooLarge, ApnsTooManyRequests, ApnsServerError, ApnsServiceUnavailable, ApnsStatusUnlisted,
 }
 import extdeps.apple.app_attest {
   AttestKeyId, AttestationVerification, AttestationVerified, AttestationRefused, AttestationRefusal,
-  AssertionVerification, AssertionVerified, AssertionRefused, AssertionRefusal,
+  AssertionVerification, AssertionAuthentic, AssertionRefused, AssertionRefusal,
 }
 import extdeps.apple.secure_enclave { EnclaveKeyAccessPolicy, BiometryCurrentSet }
-import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
-import extdeps.android.key_attestation { AndroidAttestationChain }
 import extdeps.crypto.mac { MacKey, MacVerified, mac_verify }
 import gunbc.auth.approval_capability {
   ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name,
   ApprovalCapability, ApprovalCapabilityClaims, CapabilityRefusal, CapabilityAuthentic, CapabilityRefused,
-  approval_capability_signing_input, verify_capability, capability_refusal_reason, utc_instant_before,
+  approval_capability_signing_input, verify_capability, capability_refusal_reason, utc_instant_before, capability_tag_hex,
 }
 import gunbc.auth.approval_broker { BrokerDecision, BrokerApproved, BrokerDenied, ExecutionObligation }
 import gunbc.auth.approval_decision_store {
@@ -29,12 +27,24 @@ import gunbc.auth.approval_decision_store {
   EscalationNotFiled, EscalationPending, EscalationDecided, EscalationUnreadable,
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal,
   claims_for, commit_broker_decision, StoreWritten, StoreSlotOccupied, StoreRefused,
-  approval_capability_expectation, approval_operator_login,
+  approval_capability_expectation, approval_operator_login, json_field_string,
 }
 import gunbc.auth.approval_device_wire {
   MobilePlatform, MobileIos, MobileAndroid, enrolment_transcript, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
+import gunbc.durable_cas_file_store {
+  OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  file_compare_and_set, observe_cas_slot_state,
+}
+import std.durable_compare_and_set {
+  cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
+  ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_next, cas_generation_count,
+}
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import extdeps.crypto.signature { EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 
 // ── What this module is ──────────────────────────────────────────────────────────────────────
@@ -56,16 +66,6 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_vers
 // enrolment, an admitted redemption -- is minted by exactly one fold here, and every effect that
 // depends on it (enrolment commit, decision commit) takes that value and nothing looser. A caller
 // cannot reach the decision commit with raw claims and a login it chose.
-
-// ── Identity evidence ────────────────────────────────────────────────────────────────────────
-// Named by MECHANISM. The two Legacy arms are what the existing /approve route admits today; they
-// exist exactly as long as that route and the ntfy loop do, and are deleted at cutover
-// (approval_device_cutover_frontier). The device arm carries the sole-constructed enrolment, so
-// "names a person" cannot be claimed by picking a constructor.
-type RedemptionIdentityEvidence
-  = EnrolledDeviceProof { enrollment: VerifiedDeviceEnrollment }
-  | LegacyTailnetProxyHeader { presented_login: NonEmptyStr }
-  | LegacyCapabilityBearer { residual: NonEmptyStr }
 
 // ── Enrolment ────────────────────────────────────────────────────────────────────────────────
 // The operator's explicit act on one phone, admitted by a ONE-TIME CODE the dashboard issues. The
@@ -102,18 +102,6 @@ type EnrolmentSlotStanding
   | EnrolmentRevoked { enrollment: VerifiedDeviceEnrollment, revoked_at: Timestamp, reason: NonEmptyStr }
   | EnrolmentCodeUnknown
   | EnrolmentSlotUnreadable { detail: NonEmptyStr }
-
-// Push registration is SEPARATE from enrolment: a token rotates (reinstall, restore, APNs 410)
-// without changing who is enrolled or which key decides, and revoking an enrolment must end its
-// authority whatever push tokens still exist.
-type PushRegistration
-  = ApnsRegistration { environment: ApnsEnvironment, topic: ApnsTopic, token: ApnsDeviceToken }
-  | FcmRegistration { project: FcmProjectId, token: FcmRegistrationToken }
-
-// What the app PRESENTS at enrolment: raw, unverified.
-type PresentedEnrollmentEvidence
-  = IosAppAttestAttestation { attest_key_id: AttestKeyId, attestation_b64: NonEmptyStr }
-  | AndroidKeyAttestationChain { chain: AndroidAttestationChain }
 
 // What the server KEEPS once verified: the facts later checks need, never the raw object. iOS keeps
 // the App Attest key's id and public key (every later assertion verifies under it) and the receipt
@@ -193,23 +181,6 @@ fn enrolment_admission(
   }
 }
 
-// Per-redemption platform proof. iOS: an App Attest assertion whose client data is EXACTLY the
-// signing input. THE ASSERTION COUNTER IS NOT STORED, a stated departure from Apple's recommended
-// flow: Apple uses it to refuse replay, and a redemption replay is already refused twice -- the
-// challenge is server-minted, expiring and bound to one escalation revision, and the decision slot
-// admits one decision per escalation. Storing it would add one CAS generation per approval against
-// the store's generation probe bound, for no refusal the route lacks. (Reads are the exception, and
-// their residual is stated at device_read_client_data.)
-type PlatformRedemptionProof
-  = IosAppAttestAssertion { assertion_b64: NonEmptyStr }
-  | AndroidDecisionKeyOnly
-
-type SignedRedemption {
-  signing_input: DeviceRedemptionSigningInput
-  signature: SignatureBytes
-  platform_proof: PlatformRedemptionProof
-}
-
 // ── Push provider outcome ────────────────────────────────────────────────────────────────────
 // Named for what a provider can establish: it ACCEPTED the message. Not delivered, not displayed,
 // never consent. retryable is Apple's reading of its own status, not a policy here.
@@ -272,6 +243,7 @@ type DeviceRedemptionOutcome
   | DeviceSignedForAnotherRequest { field: NonEmptyStr }
   | DeviceChallengeExpired { expires_at: Timestamp, observed_at: Timestamp }
   | DeviceChallengeNotIssuedHere
+  | DeviceCapabilityTagMalformed
   | DeviceCapabilityRefused { cause: CapabilityRefusal }
   | DeviceSignatureRefused { verification: SignatureVerification }
   | DevicePlatformProofRefused { cause: AssertionRefusal }
@@ -297,6 +269,7 @@ fn device_redemption_reason(o: DeviceRedemptionOutcome) -> NonEmptyStr {
     DeviceSignedForAnotherRequest { field: f } => join(["the signed bytes do not match the stored request: ", f as String], "") as NonEmptyStr
     DeviceChallengeExpired { expires_at: _, observed_at: _ } => "the challenge expired; reopen the request and decide again" as NonEmptyStr
     DeviceChallengeNotIssuedHere => "the challenge was not issued by this server" as NonEmptyStr
+    DeviceCapabilityTagMalformed => "the capability tag is not its canonical base64url spelling" as NonEmptyStr
     DeviceCapabilityRefused { cause: c } => capability_refusal_reason(r: c) as NonEmptyStr
     DeviceSignatureRefused { verification: _ } => "the device signature did not verify under the enrolled key" as NonEmptyStr
     DevicePlatformProofRefused { cause: _ } => "the app-instance assertion did not verify" as NonEmptyStr
@@ -350,17 +323,22 @@ fn device_signature_joins(signature: SignatureVerification, enrollment: Verified
   }
 }
 
-// THE PLATFORM PROOF JOINS to the enrolment's own verified evidence: an iOS assertion must be from
-// the enrolled App Attest key and over exactly the signed bytes. Android has no verifier, so it
+// THE PLATFORM PROOF JOINS to the enrolment's own verified evidence: an iOS assertion must be
+// authentic under the enrolled App Attest key AND its stored public key, and over exactly the signed
+// bytes. THIS IS THE PRODUCT'S REPLAY AUTHORITY, not Apple's counter: an authentic assertion is
+// admitted without comparing its counter to a stored one (Apple's step 5, which
+// extdeps.apple.app_attest AssertionAuthentic deliberately does not claim), because the signed bytes
+// carry a server-minted, expiring challenge bound to one escalation revision and the decision slot
+// admits one decision per escalation. Android has no verifier, so it
 // refuses rather than passing on the signature alone.
 fn platform_proof_disagreement(enrollment: VerifiedDeviceEnrollment, assertion: AssertionVerification, signed_bytes: NonEmptyStr) -> DeviceRedemptionOutcome? {
   match enrollment.evidence {
     AndroidAttestedDecisionKey => Present { value: DevicePlatformUnrealized }
-    IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: _, receipt_b64: _ } =>
+    IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: pk, receipt_b64: _ } =>
       match assertion {
         AssertionRefused { cause: c } => Present { value: DevicePlatformProofRefused { cause: c } }
-        AssertionVerified { verified: v } =>
-          if v.key_id != k { Present { value: DevicePlatformProofWrongKey } }
+        AssertionAuthentic { authentic: v } =>
+          if v.key_id != k || v.public_key_point_b64url != pk { Present { value: DevicePlatformProofWrongKey } }
           else if v.client_data != signed_bytes { Present { value: DevicePlatformProofForOtherBytes } }
           else { none }
       }
@@ -372,12 +350,11 @@ fn device_redemption_admission(
   key: MacKey,
   enrollment: VerifiedDeviceEnrollment,
   request: StoredApprovalRequest,
-  redemption: SignedRedemption,
+  signed: DeviceRedemptionSigningInput,
   signature: SignatureVerification,
   assertion: AssertionVerification,
   observed_at: Timestamp,
 ) -> DeviceAdmission {
-  let signed = redemption.signing_input
   let signed_bytes = device_redemption_signing_input(i: signed)
   let claims = claims_for(request: request, decision: signed.decision)
   let capability_text = approval_capability_signing_input(c: claims)
@@ -392,10 +369,13 @@ fn device_redemption_admission(
     let challenge_message = redemption_challenge_message(escalation_id: request.escalation_id, request_revision: request.request_revision, enrollment_id: enrollment.enrollment_id, expires_at: signed.challenge.expires_at)
     match mac_verify(key: key, message: challenge_message, tag_hex: signed.challenge.nonce_hex) {
       MacVerified { verified: _ } =>
+        match capability_tag_hex(capability: ApprovalCapability { claims: claims, tag_b64url: signed.capability_tag_b64url }) {
+          Absent => DeviceNotAdmitted { outcome: DeviceCapabilityTagMalformed }
+          Present { value: tag_hex } =>
         match verify_capability(
-          capability: ApprovalCapability { claims: claims, tag_b64url: signed.capability_tag_hex },
+          capability: ApprovalCapability { claims: claims, tag_b64url: signed.capability_tag_b64url },
           expectation: approval_capability_expectation,
-          mac_result: mac_verify(key: key, message: capability_text, tag_hex: signed.capability_tag_hex),
+          mac_result: mac_verify(key: key, message: capability_text, tag_hex: tag_hex),
           observed_at: observed_at,
         ) {
           CapabilityRefused { cause: c } => DeviceNotAdmitted { outcome: DeviceCapabilityRefused { cause: c } }
@@ -413,6 +393,7 @@ fn device_redemption_admission(
                 }
               }
             }
+        }
         }
       _ => DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere }
     }
@@ -445,12 +426,11 @@ fn redeem_device_over_store(
   root: NonEmptyStr,
   keyring: ApprovalKeyringRead,
   enrolment: EnrolmentSlotStanding,
-  redemption: SignedRedemption,
+  signed: DeviceRedemptionSigningInput,
   signature: SignatureVerification,
   assertion: AssertionVerification,
   observed_at: Timestamp,
 ) -> DeviceRedemptionOutcome {
-  let signed = redemption.signing_input
   match enrolment {
     EnrolmentRevoked { enrollment: e, revoked_at: _, reason: _ } => DeviceEnrollmentRevoked { enrollment_id: e.enrollment_id }
     EnrolmentCodeUnspent { challenge: _ } => DeviceEnrollmentUnknown
@@ -465,12 +445,193 @@ fn redeem_device_over_store(
           match keyring {
             ApprovalKeyringRefused { cause: c } => DeviceKeyringUnavailable { cause: c }
             ApprovalKeyLoaded { key: key } =>
-              match device_redemption_admission(key: key, enrollment: enrollment, request: req, redemption: redemption, signature: signature, assertion: assertion, observed_at: observed_at) {
+              match device_redemption_admission(key: key, enrollment: enrollment, request: req, signed: signed, signature: signature, assertion: assertion, observed_at: observed_at) {
                 DeviceNotAdmitted { outcome: o } => o
                 DeviceAdmitted { admitted: a } => commit_admitted_redemption(root: root, admitted: a)
               }
           }
       }
+  }
+}
+
+// ── The enrolment store ──────────────────────────────────────────────────────────────────────
+// ONE CAS SLOT PER CODE, keyed by the code: generation 1 is the issued code, generation 2 the
+// enrolment it became, generation 3 that enrolment's revocation. Each write expects the generation
+// before it, so a code is consumed at most once, an enrolment exists only by consuming its code, and
+// a revocation lands only on a live enrolment. Records are owner-only, as the approval store's are.
+//
+// READING A PERSISTED ENROLMENT RE-MINTS VerifiedDeviceEnrollment, which is why the parse lives in
+// this module: the only bytes it trusts are this store's own, written only by commit_enrolment from
+// an EnrolmentAdmitted value, under a root no other principal can write.
+data approval_device_store_root: NonEmptyStr = "/var/lib/gunbc/approval-devices"
+
+type DeviceStoreWrite
+  = DeviceStoreWritten
+  | DeviceStoreSlotOccupied
+  | DeviceStoreRefused { detail: NonEmptyStr }
+
+fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected_generation: Int, payload: NonEmptyStr) -> DeviceStoreWrite {
+  let expected = if expected_generation == 0 { ExpectSlotAbsent }
+    else if expected_generation == 1 { ExpectSlotGeneration { generation: cas_generation_first() } }
+    else { ExpectSlotGeneration { generation: cas_generation_next(g: cas_generation_first()) } }
+  match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => DeviceStoreRefused { detail: "enrolment code is not slot-addressable" }
+    DerivedPayloadAdmitted { verified: v } =>
+      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
+        CasCommitted { committed: _ } => DeviceStoreWritten
+        CasPreconditionFailed { expected: _, observed: _ } => DeviceStoreSlotOccupied
+        CasStoreRefused { cause: _ } => DeviceStoreRefused { detail: "device store refused the publication" }
+      }
+  }
+}
+
+fn enrolment_code_json(c: EnrolmentChallenge) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "kind", value: json_string(s: "code")),
+    json_kv(key: "code", value: json_string(s: c.code as String)),
+    json_kv(key: "issued_to_login", value: json_string(s: c.issued_to_login as String)),
+    json_kv(key: "issued_at", value: json_string(s: c.issued_at)),
+    json_kv(key: "expires_at", value: json_string(s: c.expires_at)),
+  ]))
+}
+
+fn enrolment_members(kind: String, e: VerifiedDeviceEnrollment) -> List<JsonKeyValue> {
+  let evidence = match e.evidence {
+    IosAttestedAppInstance { attest_key_id: k, attest_public_key_b64url: pk, receipt_b64: r } => [
+      json_kv(key: "attest_key_id", value: json_string(s: k as String)),
+      json_kv(key: "attest_public_key_b64url", value: json_string(s: pk as String)),
+      json_kv(key: "receipt_b64", value: json_string(s: r as String)),
+    ]
+    AndroidAttestedDecisionKey => []
+  }
+  concat_lists([
+    json_kv(key: "kind", value: json_string(s: kind)),
+    json_kv(key: "enrollment_id", value: json_string(s: e.enrollment_id as String)),
+    json_kv(key: "operator_login", value: json_string(s: e.operator_login as String)),
+    json_kv(key: "platform", value: json_string(s: platform_wire(p: e.platform) as String)),
+    json_kv(key: "decision_key_point_b64url", value: json_string(s: e.decision_key.point_b64url as String)),
+    json_kv(key: "enrolled_at", value: json_string(s: e.enrolled_at)),
+  ], evidence)
+}
+
+fn enrolment_json(e: VerifiedDeviceEnrollment) -> String {
+  serialize_json(v: json_object(members: enrolment_members(kind: "enrolled", e: e)))
+}
+
+fn revocation_json(e: VerifiedDeviceEnrollment, revoked_at: Timestamp, reason: NonEmptyStr) -> String {
+  serialize_json(v: json_object(members: concat_lists(enrolment_members(kind: "revoked", e: e), [
+    json_kv(key: "revoked_at", value: json_string(s: revoked_at)),
+    json_kv(key: "reason", value: json_string(s: reason as String)),
+  ])))
+}
+
+// A required string field, or "" when absent -- the caller checks every required key first, so a
+// missing field is an unreadable record, never a defaulted one.
+fn field_or_empty(v: JsonValue, key: String) -> String {
+  match json_field_string(v: v, key: key) { Present { value: s } => s  Absent => "" }
+}
+
+fn first_missing(v: JsonValue, keys: List<String>) -> String {
+  fold(keys, init: "", f: (acc, k) => if acc != "" { acc } else if field_or_empty(v: v, key: k) == "" { k } else { "" })
+}
+
+data enrolment_required_keys: List<String> = ["enrollment_id", "operator_login", "platform", "decision_key_point_b64url", "enrolled_at", "attest_key_id", "attest_public_key_b64url", "receipt_b64"]
+
+fn parse_enrolment_fields(v: JsonValue) -> VerifiedDeviceEnrollment? {
+  if first_missing(v: v, keys: enrolment_required_keys) != "" || field_or_empty(v: v, key: "platform") != "ios" {
+    none
+  } else {
+    Present { value: VerifiedDeviceEnrollment {
+      enrollment_id: field_or_empty(v: v, key: "enrollment_id") as NonEmptyStr,
+      operator_login: field_or_empty(v: v, key: "operator_login") as NonEmptyStr,
+      platform: MobileIos,
+      decision_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: field_or_empty(v: v, key: "decision_key_point_b64url") as NonEmptyStr },
+      evidence: IosAttestedAppInstance {
+        attest_key_id: field_or_empty(v: v, key: "attest_key_id") as AttestKeyId,
+        attest_public_key_b64url: field_or_empty(v: v, key: "attest_public_key_b64url") as NonEmptyStr,
+        receipt_b64: field_or_empty(v: v, key: "receipt_b64") as NonEmptyStr,
+      },
+      enrolled_at: field_or_empty(v: v, key: "enrolled_at"),
+    } }
+  }
+}
+
+// The record kind must agree with the generation it sits at; a disagreement is unreadable, never
+// reinterpreted.
+fn parse_enrolment_record(text: String, generation: Int) -> EnrolmentSlotStanding {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => EnrolmentSlotUnreadable { detail: "enrolment record is not a JSON document" }
+    JsonDocumentParsed { value: v } => {
+      let kind = field_or_empty(v: v, key: "kind")
+      if kind == "code" && generation == 1 {
+        if first_missing(v: v, keys: ["code", "issued_to_login", "issued_at", "expires_at"]) != "" {
+          EnrolmentSlotUnreadable { detail: "issued code record lacks a field" }
+        } else {
+          EnrolmentCodeUnspent { challenge: EnrolmentChallenge {
+            code: field_or_empty(v: v, key: "code") as NonEmptyStr,
+            issued_to_login: field_or_empty(v: v, key: "issued_to_login") as NonEmptyStr,
+            issued_at: field_or_empty(v: v, key: "issued_at"),
+            expires_at: field_or_empty(v: v, key: "expires_at"),
+          } }
+        }
+      } else if kind == "enrolled" && generation == 2 {
+        match parse_enrolment_fields(v: v) {
+          Present { value: e } => EnrolmentCodeConsumed { enrollment: e }
+          Absent => EnrolmentSlotUnreadable { detail: "enrolment record lacks a field or names an unrealized platform" }
+        }
+      } else if kind == "revoked" && generation == 3 {
+        match parse_enrolment_fields(v: v) {
+          Absent => EnrolmentSlotUnreadable { detail: "revocation record lacks an enrolment field" }
+          Present { value: e } =>
+            if first_missing(v: v, keys: ["revoked_at", "reason"]) != "" { EnrolmentSlotUnreadable { detail: "revocation record lacks revoked_at or reason" } }
+            else { EnrolmentRevoked { enrollment: e, revoked_at: field_or_empty(v: v, key: "revoked_at"), reason: field_or_empty(v: v, key: "reason") as NonEmptyStr } }
+        }
+      } else {
+        EnrolmentSlotUnreadable { detail: "enrolment record kind disagrees with its generation" }
+      }
+    }
+  }
+}
+
+fn observe_enrolment_slot(root: NonEmptyStr, code: NonEmptyStr) -> EnrolmentSlotStanding {
+  match observe_cas_slot_state(root: root, key: code) {
+    CasObservedUnreadable { cause: c } => EnrolmentSlotUnreadable { detail: concat("enrolment slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent => EnrolmentCodeUnknown
+      CasReadablePresent { version: ver } => parse_enrolment_record(text: ver.value as String, generation: cas_generation_count(g: ver.generation))
+    }
+  }
+}
+
+// The enrolment id is "enr-" + code, so the slot a redemption names is recovered from it.
+fn code_of_enrollment_id(enrollment_id: NonEmptyStr) -> String {
+  if starts_with(s: enrollment_id as String, prefix: "enr-") { substring(s: enrollment_id as String, start: 4, end: string_length(s: enrollment_id as String)) } else { "" }
+}
+
+fn observe_enrollment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> EnrolmentSlotStanding {
+  let code = code_of_enrollment_id(enrollment_id: enrollment_id)
+  if code == "" { EnrolmentCodeUnknown } else { observe_enrolment_slot(root: root, code: code as NonEmptyStr) }
+}
+
+fn issue_enrolment_code(root: NonEmptyStr, challenge: EnrolmentChallenge) -> DeviceStoreWrite {
+  device_store_write(root: root, key: challenge.code, expected_generation: 0, payload: enrolment_code_json(c: challenge) as NonEmptyStr)
+}
+
+// THE ONLY ENROLMENT WRITE, and it takes the admitted value: consuming the code and creating the
+// enrolment are this one CAS, expecting the issued generation.
+fn commit_enrolment(root: NonEmptyStr, admitted: EnrolmentAdmission) -> DeviceStoreWrite {
+  match admitted {
+    EnrolmentRefused { cause: _ } => DeviceStoreRefused { detail: "nothing admitted to commit" }
+    EnrolmentAdmitted { enrollment: e } =>
+      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected_generation: 1, payload: enrolment_json(e: e) as NonEmptyStr)
+  }
+}
+
+fn revoke_enrolment(root: NonEmptyStr, standing: EnrolmentSlotStanding, revoked_at: Timestamp, reason: NonEmptyStr) -> DeviceStoreWrite {
+  match standing {
+    EnrolmentCodeConsumed { enrollment: e } =>
+      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected_generation: 2, payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
+    _ => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
   }
 }
 
@@ -485,15 +646,15 @@ data approval_apns_auth_key_secret_ref: SecretRef = secret_ref_pin_version(
 
 // ── Frontiers ────────────────────────────────────────────────────────────────────────────────
 data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: a dashboard enrolment-code issuer; POST approval_device_enrol_path consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); assertion-authenticated reads at approval_device_pending_path and approval_device_request_path_prefix that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path through redeem_device_over_store; and file_and_notify's APNs publish, authenticated by a cached extdeps.apple.apns apns_provider_token minted from approval_apns_auth_key_secret_ref, rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login",
+  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: a dashboard enrolment-code issuer (issue_enrolment_code); POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire EnrolmentRequest and storing its PushRegistration, consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); reads at approval_device_pending_path and approval_device_request_path_prefix authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; and file_and_notify's APNs publish, authenticated by a cached extdeps.apple.apns apns_provider_token minted from approval_apns_auth_key_secret_ref, rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login",
 )
 
 data app_attest_verification_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "an App Attest attestation and assertion verifier (CBOR decode, X.509 chain to the pinned Apple App Attestation Root CA, App ID prefix RP ID, validation category and bundle version) behind extdeps.apple.app_attest attestation_verification_from_implementation and assertion_verification_from_implementation -- SUFFICIENT FOR the device routes to mint AttestationVerified and AssertionVerified from real bytes (SignatureVerified is minted from real bytes by extdeps.crypto.signature p256_ecdsa_verify)",
+  description: "an App Attest attestation and assertion verifier (CBOR decode, X.509 chain to the pinned Apple App Attestation Root CA, App ID prefix RP ID, validation category and bundle version) behind extdeps.apple.app_attest attestation_verification_from_implementation and assertion_verification_from_implementation -- SUFFICIENT FOR the device routes to mint AttestationVerified and AssertionAuthentic from real bytes (SignatureVerified is minted from real bytes by extdeps.crypto.signature p256_ecdsa_verify)",
 )
 
 data ios_realization_frontier: DissolutionCondition = unbound_dissolution(
-  description: "the SwiftUI client at apps/approve-ios generating its decision key in the Secure Enclave under BiometryCurrentSet, attesting with App Attest over enrolment_transcript, registering for APNs, fetching with assertion-authenticated reads, and redeeming with SignedRedemption, its byte builders checked against gunbc.auth.approval_device_redemption_fixtures vectors, built and uploaded to TestFlight -- SUFFICIENT FOR one physical-phone approval to read back with decided_by naming the enrolled login",
+  description: "the SwiftUI client at apps/approve-ios generating its decision key in the Secure Enclave under approval_decision_key_access_policy, attesting with App Attest over enrolment_transcript, registering for APNs, fetching with assertion-authenticated reads, and redeeming with SignedRedemption, its byte builders checked against gunbc.auth.approval_device_redemption_fixtures vectors, built and uploaded to TestFlight -- SUFFICIENT FOR one physical-phone approval to read back with decided_by naming the enrolled login",
 )
 
 data approval_target_frontier: DissolutionCondition = unbound_dissolution(
@@ -501,7 +662,7 @@ data approval_target_frontier: DissolutionCondition = unbound_dissolution(
 )
 
 data approval_device_cutover_frontier: DissolutionCondition = unbound_dissolution(
-  description: "one real approval decided on the enrolled phone reads back from the store with decided_by naming the login, after which ONE change routes file_and_notify to APNs, deletes the ntfy publish, the bearer-only /approve route and the two Legacy arms of RedemptionIdentityEvidence together -- SUFFICIENT FOR no admitted redemption to lack an attributable principal and for a disclosed capability to admit nothing without the enrolled device",
+  description: "one real approval decided on the enrolled phone reads back from the store with decided_by naming the login, after which ONE change routes file_and_notify to APNs, deletes the ntfy publish, the bearer-only /approve route and gunbc.auth.approval_broker IdentityAttribution's header arms together -- SUFFICIENT FOR no admitted redemption to lack an attributable principal and for a disclosed capability to admit nothing without the enrolled device",
 )
 
 data android_realization_frontier: DissolutionCondition = unbound_dissolution(
