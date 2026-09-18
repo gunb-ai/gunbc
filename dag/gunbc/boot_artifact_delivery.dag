@@ -103,6 +103,7 @@ import gunbc.install_transport_qualification {
   TransportProbeObservation,
 }
 import gunbc.network_boot_delivery {
+  NetworkBootArchitectureRefusal,
   NetworkBootDeliveryArchitectureRefused,
   NetworkBootDeliveryClientModeRefused,
   NetworkBootDeliveryEstablished,
@@ -355,7 +356,7 @@ type BootDeliveryCandidateIneligibility
   | CandidateUefiHttpUnestablished { missing: List<UefiHttpRequirement> }
   | CandidateNetworkBootUnestablished { missing: List<NetworkBootRequirement> }
   | CandidateNetworkBootEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
-  | CandidateNetworkBootArchitectureRefused { architecture: Architecture }
+  | CandidateNetworkBootArchitectureRefused { cause: NetworkBootArchitectureRefusal }
   | CandidateNetworkBootClientModeRefused { arch: DhcpProcessorArchitecture }
   | CandidateNetworkBootTargetMismatch { axis: NetworkBootRequirement }
   | CandidateNetworkBootManifestRefused { cause: NetworkBootManifestRefusal }
@@ -672,8 +673,8 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
     NetworkBootDeliveryUnestablished { missing: m } => CandidateIneligible { cause: CandidateNetworkBootUnestablished { missing: m } }
     NetworkBootDeliveryEvidenceRefused { axis: axis, observation: observation } =>
       CandidateIneligible { cause: CandidateNetworkBootEvidenceRefused { axis: axis, observation: observation } }
-    NetworkBootDeliveryArchitectureRefused { architecture: a } =>
-      CandidateIneligible { cause: CandidateNetworkBootArchitectureRefused { architecture: a } }
+    NetworkBootDeliveryArchitectureRefused { cause: cause } =>
+      CandidateIneligible { cause: CandidateNetworkBootArchitectureRefused { cause: cause } }
     NetworkBootDeliveryClientModeRefused { arch: arch } =>
       CandidateIneligible { cause: CandidateNetworkBootClientModeRefused { arch: arch } }
     NetworkBootDeliveryTargetMismatch { axis: axis } =>
@@ -830,7 +831,7 @@ fn build_boot_artifact_delivery(
           Present { value: BuiltBootArtifactDelivery { candidate: candidate, delivery: PxeChainBoot { evidence: e }, selected: SelectedFromNetworkBootEstablishment { establishment: e } } }
         NetworkBootDeliveryUnestablished { missing: _ } => none
         NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => none
-        NetworkBootDeliveryArchitectureRefused { architecture: _ } => none
+        NetworkBootDeliveryArchitectureRefused { cause: _ } => none
         NetworkBootDeliveryClientModeRefused { arch: _ } => none
         NetworkBootDeliveryTargetMismatch { axis: _ } => none
         NetworkBootDeliveryManifestRefused { cause: _ } => none

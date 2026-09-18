@@ -23,7 +23,8 @@ import gunbc.network_boot_delivery {
   SitePxeEdgeStanding,
   SitePxeEdgeEstablished,
   SitePxeEdgeUnestablished,
-  SitePxeEdgeArchitectureRefused,
+  SitePxeEdgeClientArchitectureNotAdmitted,
+  SitePxeEdgeChainloaderMismatch,
   SiteBootstrapDiscovery,
   SiteBootstrapTransport,
   ArchitectureChainloader,
@@ -181,7 +182,8 @@ type SiteEdgeClientAdmission
   = SiteEdgeClientAdmitted { standing: SitePxeEdgeStanding }
   | SiteEdgeUnknownMachineRefused { mac: NonEmptyStr }
   | SiteEdgeUnknownArchitectureRefused { arch_code: Int }
-  | SiteEdgeArchitectureRefusedByEdge { architecture: Architecture }
+  | SiteEdgeClientArchitectureNotAdmitted { architecture: Architecture }
+  | SiteEdgeChainloaderMismatch { client: Architecture, chainloader: Architecture }
   | SiteEdgeDiscoveryRefused { refusal: SiteDiscoveryRefusal }
   | SiteEdgeNotEstablished { standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityAxis> }
 
@@ -228,7 +230,8 @@ fn site_edge_admission_of_standing(standing: SitePxeEdgeStanding, unreachable: L
   match standing {
     SitePxeEdgeEstablished { receipt: _ } => SiteEdgeClientAdmitted { standing: standing }
     SitePxeEdgeUnestablished => SiteEdgeNotEstablished { standing: standing, unreachable: unreachable }
-    SitePxeEdgeArchitectureRefused { architecture: a } => SiteEdgeArchitectureRefusedByEdge { architecture: a }
+    SitePxeEdgeClientArchitectureNotAdmitted { architecture: a } => SiteEdgeClientArchitectureNotAdmitted { architecture: a }
+    SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } => SiteEdgeChainloaderMismatch { client: c, chainloader: l }
   }
 }
 
