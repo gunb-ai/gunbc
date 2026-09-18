@@ -160,7 +160,6 @@ data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
     all_to_all_latency_ceiling: nanosecond(count: 100000),
     all_to_all_message_bytes: byte_size(count: 8192),
     all_to_all_protocol: group_b_all_to_all_protocol,
-    rank_symmetry_max_latency_multiple: 2,
   },
 }
 

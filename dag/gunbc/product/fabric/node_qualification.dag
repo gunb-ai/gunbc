@@ -271,7 +271,6 @@ type CollectiveGroupAdvertised {
   all_to_all_latency_ceiling: Nanosecond
   all_to_all_message_bytes: ByteSize
   all_to_all_protocol: CollectiveProtocol
-  rank_symmetry_max_latency_multiple: Nat
 }
 
 type CollectiveGroupMeasured {
@@ -327,10 +326,22 @@ type CollectiveBandwidthStanding
   | CollectiveBandwidthFallsShort { floor: Bandwidth, measured: Bandwidth }
   | CollectiveBandwidthUnread { floor: Bandwidth, because: NonEmptyStr }
 
+// Rank-local symmetry is unread until RankLocalCollectiveReceipt exists. There is no Agrees or
+// FallsShort constructor: a RankLocalCollectiveCurve tag is not that producer. Discriminating
+// reds are the unread reasons. TRIGGER: mint RankLocalCollectiveReceipt from rank-local output.
+// SUFFICIENT FOR: Agrees/FallsShort and an advertised latency multiple become reachable.
 type RankSymmetryStanding
-  = RankSymmetryAgrees { rank_count: Int }
-  | RankSymmetryFallsShort { degraded: HostIdentity }
-  | RankSymmetryUnread { because: NonEmptyStr }
+  = RankSymmetryUnread { because: NonEmptyStr }
+
+data rank_symmetry_unread_no_expected_ranks: NonEmptyStr = "the group advertisement named no expected ranks; symmetry is unread without a roster" as NonEmptyStr
+data rank_symmetry_unread_duplicate_expected: NonEmptyStr = "the expected roster names a host twice; uniqueness is unread, not symmetric" as NonEmptyStr
+data rank_symmetry_unread_duplicate_measured: NonEmptyStr = "measured ranks name a host twice; uniqueness is unread, not symmetric" as NonEmptyStr
+data rank_symmetry_unread_missing_rank: NonEmptyStr = "an expected rank has no independent curve; nccl-tests group output is not a per-rank producer" as NonEmptyStr
+data rank_symmetry_unread_extra_rank: NonEmptyStr = "a measured rank is not on the expected roster" as NonEmptyStr
+data rank_symmetry_unread_copied_curve: NonEmptyStr = "a rank carries a copied group-wide curve, not a rank-local producer" as NonEmptyStr
+data rank_symmetry_unread_protocol_mismatch: NonEmptyStr = "rank curves do not share the advertised protocol key" as NonEmptyStr
+data rank_symmetry_unread_run_mismatch: NonEmptyStr = "rank curves do not share a run identity" as NonEmptyStr
+data rank_symmetry_unread_awaits_rank_local_receipt: NonEmptyStr = "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr
 
 type HostQualificationReceipt {
   node: HostIdentity
@@ -793,50 +804,29 @@ fn qualify_rank_symmetry(
   required: CollectiveProtocol,
 ) -> RankSymmetryStanding {
   if expected.length() == 0 {
-    RankSymmetryUnread {
-      because: "the group advertisement named no expected ranks; symmetry is unread without a roster" as NonEmptyStr,
-    }
+    RankSymmetryUnread { because: rank_symmetry_unread_no_expected_ranks }
   } else {
     match protocol_population_unread_reason(protocol: required, expected: expected) {
       Present { value: b } => RankSymmetryUnread { because: b }
       Absent => match first_duplicate_host(seen: [], rest: expected) {
-      Present { value: _ } => RankSymmetryUnread {
-        because: "the expected roster names a host twice; uniqueness is unread, not symmetric" as NonEmptyStr,
-      }
-      Absent => match first_duplicate_host(seen: [], rest: map(ranks, r => r.rank)) {
-        Present { value: _ } => RankSymmetryUnread {
-          because: "measured ranks name a host twice; uniqueness is unread, not symmetric" as NonEmptyStr,
-        }
-        Absent => match first_missing_expected_rank(expected: expected, ranks: ranks) {
-          Present { value: _ } => RankSymmetryUnread {
-            because: "an expected rank has no independent curve; nccl-tests group output is not a per-rank producer" as NonEmptyStr,
-          }
-          Absent => match first_extra_measured_rank(expected: expected, ranks: ranks) {
-            Present { value: _ } => RankSymmetryUnread {
-              because: "a measured rank is not on the expected roster" as NonEmptyStr,
-            }
-            Absent => match first_copied_group_curve(ranks: ranks) {
-              Present { value: _ } => RankSymmetryUnread {
-                because: "a rank carries a copied group-wide curve, not a rank-local producer" as NonEmptyStr,
-              }
-              Absent => match first_protocol_mismatch(want: required, ranks: ranks) {
-                Present { value: _ } => RankSymmetryUnread {
-                  because: "rank curves do not share the advertised protocol key" as NonEmptyStr,
-                }
-                Absent => match ranks.first() {
-                  Absent => RankSymmetryUnread {
-                    because: "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr,
-                  }
-                  Present { value: r } => match curve_observation(reading: r.curve) {
-                    Absent => RankSymmetryUnread {
-                      because: "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr,
-                    }
-                    Present { value: obs } => match first_run_mismatch(want: obs.run_identity, ranks: ranks) {
-                      Present { value: _ } => RankSymmetryUnread {
-                        because: "rank curves do not share a run identity" as NonEmptyStr,
-                      }
-                      Absent => RankSymmetryUnread {
-                        because: "rank-local evidence is unread until RankLocalCollectiveReceipt is minted from rank-local output; a RankLocalCollectiveCurve tag is not that producer" as NonEmptyStr,
+        Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_duplicate_expected }
+        Absent => match first_duplicate_host(seen: [], rest: map(ranks, r => r.rank)) {
+          Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_duplicate_measured }
+          Absent => match first_missing_expected_rank(expected: expected, ranks: ranks) {
+            Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_missing_rank }
+            Absent => match first_extra_measured_rank(expected: expected, ranks: ranks) {
+              Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_extra_rank }
+              Absent => match first_copied_group_curve(ranks: ranks) {
+                Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_copied_curve }
+                Absent => match first_protocol_mismatch(want: required, ranks: ranks) {
+                  Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_protocol_mismatch }
+                  Absent => match ranks.first() {
+                    Absent => RankSymmetryUnread { because: rank_symmetry_unread_awaits_rank_local_receipt }
+                    Present { value: r } => match curve_observation(reading: r.curve) {
+                      Absent => RankSymmetryUnread { because: rank_symmetry_unread_awaits_rank_local_receipt }
+                      Present { value: obs } => match first_run_mismatch(want: obs.run_identity, ranks: ranks) {
+                        Present { value: _ } => RankSymmetryUnread { because: rank_symmetry_unread_run_mismatch }
+                        Absent => RankSymmetryUnread { because: rank_symmetry_unread_awaits_rank_local_receipt }
                       }
                     }
                   }
@@ -847,7 +837,6 @@ fn qualify_rank_symmetry(
         }
       }
     }
-  }
   }
 }
 
@@ -1132,8 +1121,6 @@ fn bandwidth_refusal(s: CollectiveBandwidthStanding) -> List<QualificationRefusa
 
 fn symmetry_refusal(s: RankSymmetryStanding) -> List<QualificationRefusal> {
   match s {
-    RankSymmetryAgrees { rank_count: _ } => []
-    RankSymmetryFallsShort { degraded: _ } => [RankSymmetryDidNotHold { standing: s }]
     RankSymmetryUnread { because: _ } => [RankSymmetryDidNotHold { standing: s }]
   }
 }

@@ -34,7 +34,10 @@ import product.fabric.node_qualification {
   NicPcieFallsShort, NicPcieUnread, NicPcieAgrees, NicPcieOfferUngrounded,
   NicPcieExceeds, NicPcieDiffers,
   CollectiveLatencyUnread, CollectiveLatencyAgrees, CollectiveBandwidthUnread,
-  RankSymmetryUnread, RankSymmetryFallsShort, RankSymmetryAgrees,
+  RankSymmetryUnread, RankSymmetryStanding,
+  rank_symmetry_unread_duplicate_expected, rank_symmetry_unread_missing_rank,
+  rank_symmetry_unread_copied_curve, rank_symmetry_unread_protocol_mismatch,
+  rank_symmetry_unread_awaits_rank_local_receipt,
   RankLocalCollectiveCurve, GroupWideCurveCopiedOntoRank,
   HostQualified, HostNotQualified, GroupQualified, GroupNotQualified,
   HostQualificationAdmission, GroupQualificationAdmission,
@@ -52,6 +55,12 @@ import gunbc.spark.group_b_node_qualification {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn symmetry_because(s: RankSymmetryStanding, want: NonEmptyStr) -> Bool {
+  match s {
+    RankSymmetryUnread { because: b } => (b as String) == (want as String)
+  }
+}
 
 data fx_node: HostIdentity = "fixture-node" as HostIdentity
 
@@ -101,7 +110,6 @@ fn fx_advertised() -> AdvertisedNodeOffer {
       all_to_all_latency_ceiling: nanosecond(count: 1000),
       all_to_all_message_bytes: byte_size(count: 8),
       all_to_all_protocol: fx_all_to_all_protocol(),
-      rank_symmetry_max_latency_multiple: 2,
     },
   }
 }
@@ -197,31 +205,8 @@ test fn a_fully_read_agreeing_node_is_qualified() -> Bool {
     HostNotQualified { receipt: _, refusals: _ } => false
   } && match fx_admit_group(m: fx_measured_all_agree()) {
     GroupQualified { receipt: _ } => false
-    GroupNotQualified { receipt: r, refusals: _ } => match r.rank_symmetry {
-      RankSymmetryUnread { because: _ } => true
-      RankSymmetryAgrees { rank_count: _ } => false
-      RankSymmetryFallsShort { degraded: _ } => false
-    }
-  }
-}
-
-
-fn fx_rank_pair_advertised() -> AdvertisedNodeOffer {
-  let a = fx_advertised()
-  AdvertisedNodeOffer {
-    host: a.host,
-    group: CollectiveGroupAdvertised {
-      expected_ranks: ["rank-fast" as HostIdentity, "rank-slow" as HostIdentity],
-      latency_ceiling: a.group.latency_ceiling,
-      latency_message_bytes: a.group.latency_message_bytes,
-      all_reduce_protocol: a.group.all_reduce_protocol,
-      bandwidth_floor: a.group.bandwidth_floor,
-      bandwidth_message_bytes: a.group.bandwidth_message_bytes,
-      all_to_all_latency_ceiling: a.group.all_to_all_latency_ceiling,
-      all_to_all_message_bytes: a.group.all_to_all_message_bytes,
-      all_to_all_protocol: a.group.all_to_all_protocol,
-      rank_symmetry_max_latency_multiple: a.group.rank_symmetry_max_latency_multiple,
-    },
+    GroupNotQualified { receipt: r, refusals: _ } =>
+      symmetry_because(s: r.rank_symmetry, want: rank_symmetry_unread_awaits_rank_local_receipt)
   }
 }
 
@@ -246,25 +231,6 @@ fn fx_pair_hosts() -> List<HostQualificationAdmission> {
       receipt: qualify_host(
         node: "rank-1" as HostIdentity,
         advertised: fx_advertised().host,
-        measured: fx_measured_all_agree().host,
-      ),
-    ),
-  ]
-}
-
-fn fx_rank_pair_hosts() -> List<HostQualificationAdmission> {
-  [
-    admit_qualified_host(
-      receipt: qualify_host(
-        node: "rank-fast" as HostIdentity,
-        advertised: fx_rank_pair_advertised().host,
-        measured: fx_measured_all_agree().host,
-      ),
-    ),
-    admit_qualified_host(
-      receipt: qualify_host(
-        node: "rank-slow" as HostIdentity,
-        advertised: fx_rank_pair_advertised().host,
         measured: fx_measured_all_agree().host,
       ),
     ),
@@ -346,15 +312,6 @@ fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDel
   }
 }
 
-fn fx_slow_sample() -> CollectiveSample {
-  CollectiveSample {
-    message_bytes: byte_size(count: 8),
-    bus_bandwidth: bandwidth(count: 200),
-    in_place_latency: nanosecond(count: 5000),
-    out_of_place_latency: nanosecond(count: 5000),
-  }
-}
-
 test fn unread_evidence_is_not_qualification() -> Bool {
   let unread = MeasuredNodeDelivery {
     host: HostMeasuredDelivery {
@@ -388,9 +345,8 @@ test fn unread_evidence_is_not_qualification() -> Bool {
           CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
         }
         && match r.rank_symmetry {
-          RankSymmetryUnread { because: _ } => true
-          RankSymmetryAgrees { rank_count: _ } => false
-          RankSymmetryFallsShort { degraded: _ } => false
+          RankSymmetryUnread { because: b } =>
+            (b as String) == (rank_symmetry_unread_missing_rank as String)
         }
     GroupQualified { receipt: _ } => false
   }
@@ -428,39 +384,6 @@ test fn fewer_accelerators_than_advertised_falls_short() -> Bool {
     AcceleratorCountFallsShort { advertised: a, measured: m } => a == 4 && m == 3
     AcceleratorCountAgrees { count: _ } => false
     AcceleratorCountUnread { advertised: _, because: _ } => false
-  }
-}
-
-test fn a_degraded_rank_is_named_not_averaged() -> Bool {
-  match fx_admit_group_for(
-    advertised: fx_rank_pair_advertised(),
-    m: fx_measured_with_ranks(ranks: [
-      fx_rank(id: "rank-fast", sample: fx_sample()),
-      fx_rank(id: "rank-slow", sample: fx_slow_sample()),
-    ]),
-    hosts: fx_rank_pair_hosts(),
-  ) {
-    GroupQualified { receipt: _ } => false
-    GroupNotQualified { receipt: r, refusals: _ } => match r.rank_symmetry {
-      RankSymmetryUnread { because: _ } => true
-      RankSymmetryFallsShort { degraded: _ } => false
-      RankSymmetryAgrees { rank_count: _ } => false
-    }
-  }
-}
-
-test fn a_slow_rank_listed_first_is_still_degraded() -> Bool {
-  match qualify_rank_symmetry(
-    expected: ["rank-fast" as HostIdentity, "rank-slow" as HostIdentity],
-    ranks: [
-      fx_rank(id: "rank-slow", sample: fx_slow_sample()),
-      fx_rank(id: "rank-fast", sample: fx_sample()),
-    ],
-    required: fx_all_reduce_protocol(),
-  ) {
-    RankSymmetryUnread { because: _ } => true
-    RankSymmetryFallsShort { degraded: _ } => false
-    RankSymmetryAgrees { rank_count: _ } => false
   }
 }
 
@@ -642,18 +565,16 @@ test fn claiming_group_b_delivery_on_an_offer_is_refused() -> Bool {
 }
 
 test fn a_partly_missing_expected_rank_is_unread_not_agrees() -> Bool {
-  match qualify_rank_symmetry(
-    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity, "rank-2" as HostIdentity, "rank-3" as HostIdentity],
-    ranks: [
-      fx_rank(id: "rank-0", sample: fx_sample()),
-      fx_rank(id: "rank-1", sample: fx_sample()),
-    ],
-    required: fx_all_reduce_protocol(),
-  ) {
-    RankSymmetryUnread { because: _ } => true
-    RankSymmetryAgrees { rank_count: _ } => false
-    RankSymmetryFallsShort { degraded: _ } => false
-  }
+  symmetry_because(
+    s: qualify_rank_symmetry(
+      expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+      ranks: [
+        fx_rank(id: "rank-0", sample: fx_sample()),
+      ],
+      required: fx_all_reduce_protocol(),
+    ),
+    want: rank_symmetry_unread_missing_rank,
+  )
 }
 
 test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
@@ -693,96 +614,66 @@ test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> B
 }
 
 test fn a_copied_group_curve_labelled_rank_local_is_unread() -> Bool {
-  match qualify_rank_symmetry(
-    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
-    ranks: [
-      fx_rank(id: "rank-0", sample: fx_sample()),
-      fx_rank(id: "rank-1", sample: fx_sample()),
-    ],
-    required: fx_all_reduce_protocol(),
-  ) {
-    RankSymmetryUnread { because: _ } => true
-    RankSymmetryAgrees { rank_count: _ } => false
-    RankSymmetryFallsShort { degraded: _ } => false
-  }
+  symmetry_because(
+    s: qualify_rank_symmetry(
+      expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+      ranks: [
+        fx_rank(id: "rank-0", sample: fx_sample()),
+        fx_rank(id: "rank-1", sample: fx_sample()),
+      ],
+      required: fx_all_reduce_protocol(),
+    ),
+    want: rank_symmetry_unread_awaits_rank_local_receipt,
+  )
 }
 
 test fn a_copied_group_curve_is_not_rank_local() -> Bool {
-  match qualify_rank_symmetry(
-    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
-    ranks: [
-      fx_rank(id: "rank-0", sample: fx_sample()),
-      RankCollectiveReading {
-        rank: "rank-1" as HostIdentity,
-        curve: fx_curve(samples: [fx_sample()]),
-        producer: GroupWideCurveCopiedOntoRank,
-      },
-    ],
-    required: fx_all_reduce_protocol(),
-  ) {
-    RankSymmetryUnread { because: _ } => true
-    RankSymmetryAgrees { rank_count: _ } => false
-    RankSymmetryFallsShort { degraded: _ } => false
-  }
+  symmetry_because(
+    s: qualify_rank_symmetry(
+      expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+      ranks: [
+        fx_rank(id: "rank-0", sample: fx_sample()),
+        RankCollectiveReading {
+          rank: "rank-1" as HostIdentity,
+          curve: fx_curve(samples: [fx_sample()]),
+          producer: GroupWideCurveCopiedOntoRank,
+        },
+      ],
+      required: fx_all_reduce_protocol(),
+    ),
+    want: rank_symmetry_unread_copied_curve,
+  )
 }
 
 test fn duplicate_expected_ranks_are_unread_not_symmetric() -> Bool {
-  match qualify_rank_symmetry(
-    expected: ["rank-0" as HostIdentity, "rank-0" as HostIdentity],
-    ranks: [
-      fx_rank(id: "rank-0", sample: fx_sample()),
-    ],
-    required: fx_all_reduce_protocol(),
-  ) {
-    RankSymmetryUnread { because: _ } => true
-    RankSymmetryAgrees { rank_count: _ } => false
-    RankSymmetryFallsShort { degraded: _ } => false
-  }
+  symmetry_because(
+    s: qualify_rank_symmetry(
+      expected: ["rank-0" as HostIdentity, "rank-0" as HostIdentity],
+      ranks: [
+        fx_rank(id: "rank-0", sample: fx_sample()),
+      ],
+      required: fx_all_reduce_protocol(),
+    ),
+    want: rank_symmetry_unread_duplicate_expected,
+  )
 }
 
 test fn rank_curves_with_a_different_protocol_are_unread() -> Bool {
-  match qualify_rank_symmetry(
-    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
-    ranks: [
-      fx_rank(id: "rank-0", sample: fx_sample()),
-      RankCollectiveReading {
-        rank: "rank-1" as HostIdentity,
-        curve: fx_all_to_all_curve(samples: [fx_sample()]),
-        producer: RankLocalCollectiveCurve,
-      },
-    ],
-    required: fx_all_reduce_protocol(),
-  ) {
-    RankSymmetryUnread { because: _ } => true
-    RankSymmetryAgrees { rank_count: _ } => false
-    RankSymmetryFallsShort { degraded: _ } => false
-  }
-}
-
-test fn rank_symmetry_compares_the_advertised_size_not_each_curve_head() -> Bool {
-  match qualify_rank_symmetry(
-    expected: ["rank-fast" as HostIdentity, "rank-other" as HostIdentity],
-    ranks: [
-      fx_rank(id: "rank-fast", sample: fx_sample()),
-      RankCollectiveReading {
-        rank: "rank-other" as HostIdentity,
-        curve: fx_curve(samples: [
-          CollectiveSample {
-            message_bytes: byte_size(count: 1048576),
-            bus_bandwidth: bandwidth(count: 200),
-            in_place_latency: nanosecond(count: 4494060),
-            out_of_place_latency: nanosecond(count: 4494060),
-          },
-        ]),
-        producer: RankLocalCollectiveCurve,
-      },
-    ],
-    required: fx_all_reduce_protocol(),
-  ) {
-    RankSymmetryUnread { because: _ } => true
-    RankSymmetryFallsShort { degraded: _ } => false
-    RankSymmetryAgrees { rank_count: _ } => false
-  }
+  symmetry_because(
+    s: qualify_rank_symmetry(
+      expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+      ranks: [
+        fx_rank(id: "rank-0", sample: fx_sample()),
+        RankCollectiveReading {
+          rank: "rank-1" as HostIdentity,
+          curve: fx_all_to_all_curve(samples: [fx_sample()]),
+          producer: RankLocalCollectiveCurve,
+        },
+      ],
+      required: fx_all_reduce_protocol(),
+    ),
+    want: rank_symmetry_unread_protocol_mismatch,
+  )
 }
 
 test fn all_to_all_is_not_scored_on_all_reduce_protocol() -> Bool {
