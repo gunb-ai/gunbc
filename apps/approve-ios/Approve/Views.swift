@@ -16,7 +16,7 @@ struct EnrolView: View {
 
     var body: some View {
         Form {
-            Section("One-time code from the dashboard") {
+            Section("One-time code printed by the enrol command on srv1") {
                 TextField("code", text: $code).keyboardType(.numberPad)
             }
             Section {

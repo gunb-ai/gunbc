@@ -41,7 +41,7 @@ fixes on first build.
 
 ## Flow
 
-- **Enrol**: type the dashboard's one-time code (it is the challenge identifier) → refuse unless App Attest is
+- **Enrol**: type the one-time code printed by the enrol command the operator runs over SSH on srv1 (it is the challenge identifier; it is not shown on the dashboard) → refuse unless App Attest is
   supported → create the enclave key → generate the App Attest key → attest with
   `clientDataHash = SHA256(enrolment_transcript)` → register for APNs → `POST /approve/device/enrol`.
 - **Inbox**: `GET /approve/device/pending` on open, pull-to-refresh, and on push, authenticated by an App Attest assertion over `device_read_client_data` (headers `X-Approval-Assertion`, `X-Approval-Enrollment`, `X-Approval-Requested-At`; 60 s skew). The push carries only
