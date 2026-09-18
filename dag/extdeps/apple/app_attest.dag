@@ -38,16 +38,21 @@ type AppAttestEnvironment
 
 // ── Validation, in Apple's order ─────────────────────────────────────────────────────────────
 // The attestation object is CBOR { fmt: "apple-appattest", attStmt: { x5c, receipt }, authData }.
-// Apple lists the checks; each failure is its own refusal because each is a different incident.
+// Apple's current procedure; each failure is its own refusal because each is a different incident.
 //
 //   1. x5c chains to the Apple App Attestation Root CA
 //   2. nonce = SHA256(authData || clientDataHash)
 //   3. nonce equals the credential certificate extension OID 1.2.840.113635.100.8.2
 //   4. SHA256(credential public key) equals the key id
-//   5. authData RP ID hash equals SHA256(<team id>.<bundle id>)
+//   5. authData RP ID hash equals SHA256(App ID) -- App ID prefix, ".", bundle id
 //   6. authData counter is 0
 //   7. AAGUID names the expected environment
-//   8. authData credential id equals the key id
+//   8. authData credentialId equals the key id
+//   9. apple_validation_category_01 (UInt32, extensions CBOR) names an admitted launch category
+//  10. apple_bundle_version_01 (String, extensions CBOR) is the distributed app version
+//
+// The server then STORES the credential public key and the receipt: the key verifies every later
+// assertion, and the receipt is the handle for Apple's fraud-metric call.
 type AttestationRefusal
   = AttestationFormatUnexpected { declared: String }
   | AttestationChainUntrusted { detail: String }
@@ -57,38 +62,88 @@ type AttestationRefusal
   | AttestationCounterNonZero { counter: Int }
   | AttestationEnvironmentUnexpected { expected: AppAttestEnvironment }
   | AttestationCredentialIdMismatch { declared: AttestKeyId }
+  | AttestationValidationCategoryRefused { category: Int }
+  | AttestationBundleVersionAbsent
   | AttestationUndecodable { cause: String }
 
 data apple_app_attest_root_ca_note: NonEmptyStr = "The trust anchor is Apple's App Attestation Root CA, published at www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem. It is pinned by the verifier's configuration, never taken from the attestation's own x5c."
 
 data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
 
-// The app id the RP ID hash commits to is "<team id>.<bundle id>".
-fn app_attest_app_id(team_id: NonEmptyStr, bundle_id: NonEmptyStr) -> NonEmptyStr {
-  join([team_id as String, bundle_id as String], ".") as NonEmptyStr
+// THE APP ID IS "<App ID prefix>.<bundle id>". Apple: the prefix is USUALLY the 10-character team
+// identifier, and is read from the app's Identifier entry in the developer account -- so it is its
+// own fact, not a second name for the team id, and the verifier is configured with it directly.
+type AppIdPrefix = NonEmptyStr where brand("AppIdPrefix")
+
+fn app_attest_app_id(prefix: AppIdPrefix, bundle_id: NonEmptyStr) -> NonEmptyStr {
+  join([prefix as String, bundle_id as String], ".") as NonEmptyStr
 }
 
-// Success names the attested key and the clientDataHash it was attested over, so a verified
-// attestation cannot be paired afterwards with a different enrolment's client data.
+// ── Verified facts, minted only at the seam ──────────────────────────────────────────────────
+// Same boundary as extdeps.crypto.mac VerifiedMessage: nothing outside this module constructs a
+// verified attestation or assertion, and each names what it was verified OVER, so a success cannot
+// be paired afterwards with another enrolment's or another request's bytes.
+type VerifiedAttestation sole_constructor {
+  key_id: AttestKeyId
+  public_key_point_b64url: NonEmptyStr
+  receipt_b64: NonEmptyStr
+  environment: AppAttestEnvironment
+  client_data: NonEmptyStr
+}
+
 type AttestationVerification
-  = AttestationVerified { key_id: AttestKeyId, client_data_hash_hex: NonEmptyStr, environment: AppAttestEnvironment }
+  = AttestationVerified { verified: VerifiedAttestation }
   | AttestationRefused { cause: AttestationRefusal }
+
+fn attestation_verification_from_implementation(
+  key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
+  receipt_b64: NonEmptyStr,
+  environment: AppAttestEnvironment,
+  client_data: NonEmptyStr,
+  refusal: AttestationRefusal?,
+) -> AttestationVerification {
+  match refusal {
+    Present { value: r } => AttestationRefused { cause: r }
+    Absent => AttestationVerified {
+      verified: VerifiedAttestation { key_id: key_id, public_key_point_b64url: public_key_point_b64url, receipt_b64: receipt_b64, environment: environment, client_data: client_data }
+    }
+  }
+}
 
 data app_attest_unavailable_in_simulator_note: NonEmptyStr = "DCAppAttestService.isSupported is false in the Simulator and on devices without a Secure Enclave; the app must refuse enrolment there rather than enrolling without an attestation."
 
 // ── Assertions ───────────────────────────────────────────────────────────────────────────────
 // Each later request carries an assertion: CBOR { signature, authenticatorData } produced by
-// generateAssertion(keyId, clientDataHash). Apple's server checks, in order: the signature over
-// SHA256(authenticatorData || clientDataHash) verifies under the public key stored at attestation;
-// the RP ID hash equals SHA256(app id); the counter is STRICTLY greater than the last one stored --
-// the replay refusal. Success names the counter the server must now store, and the client data it
-// was made over, so it cannot be paired with another request's bytes.
+// generateAssertion(keyId, clientDataHash). The checks: the signature over
+// SHA256(authenticatorData || clientDataHash) verifies under the STORED public key; the RP ID hash
+// equals SHA256(App ID); the counter is strictly greater than the stored one; the client data
+// carries the server's challenge. The consumer decides whether it stores the counter -- see
+// gunbc.auth.approval_device_redemption for this deployment's reasoning.
 type AssertionRefusal
   = AssertionSignatureInvalid
   | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
   | AssertionCounterNotIncreasing { stored: Int, presented: Int }
   | AssertionUndecodable { cause: String }
 
+type VerifiedAssertion sole_constructor {
+  key_id: AttestKeyId
+  counter: Int
+  client_data: NonEmptyStr
+}
+
 type AssertionVerification
-  = AssertionVerified { key_id: AttestKeyId, counter: Int, client_data: NonEmptyStr }
+  = AssertionVerified { verified: VerifiedAssertion }
   | AssertionRefused { cause: AssertionRefusal }
+
+fn assertion_verification_from_implementation(
+  key_id: AttestKeyId,
+  counter: Int,
+  client_data: NonEmptyStr,
+  refusal: AssertionRefusal?,
+) -> AssertionVerification {
+  match refusal {
+    Present { value: r } => AssertionRefused { cause: r }
+    Absent => AssertionVerified { verified: VerifiedAssertion { key_id: key_id, counter: counter, client_data: client_data } }
+  }
+}
