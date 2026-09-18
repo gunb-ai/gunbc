@@ -2,7 +2,6 @@ module v2.test.claim.namespace_xl0.cross_module_reference_resolution
 
 import v2.compiler.name_resolve {
   Admission,
-  ResolutionContext,
   ResolutionSubject,
   resolution_context,
   resolve_with_admission_context_policy
@@ -166,33 +165,61 @@ fn xl0r_admission(subject: String) -> Admission {
   }
 }
 
-// THE SECOND SHARED SEAM, AND WHY IT IS STILL NOT THE STAGE THE ROWS NAME. The first floor run of
-// this file (gunbc#11582, run 35317696454) reached every verdict and was REFUSED on cost: each
-// resolve row performed ~92k eval steps against the 72,300-step budget for work arriving after the
-// cut. What those steps were was root validation and the symbol-index fill over seven modules --
-// v2.compiler.name_resolve resolution_context, the production hand-off that
-// resolve_with_admission builds once and then resolves ONE subject through. Re-deriving it per
-// claim is the class gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame
-// names, and the remedy is the same seam production uses: the CONTEXT is the nullary warm producer
-// (enrolled beside the ingest in v2.workflow.floor_pure_producer_share), and
-// resolve_with_admission_context_policy -- the resolution of the admitted subject, which is what
-// every row below asserts on -- runs per claim.
-fn xl0r_resolution_context() -> Outcome<ResolutionContext> {
+// THE SHARE POINT IS THE RESOLVED OUTCOME PER SUBJECT, AND THE ROAD HERE IS RECORDED BECAUSE THE
+// NEXT AUTHOR WILL WALK IT. gunbc#11582's first floor run (35317696454) reached every verdict and
+// refused on COST: each resolve row spent ~92k eval steps against the 72,300-step line for work
+// arriving after the cut, with the ingest already served. The second run (35327371663) tried to
+// share v2.compiler.name_resolve resolution_context and was refused
+// PureProducerShareWarmNotStored: the value carries the LanguageModel, whose
+// canonical_symbols.member is a CLOSURE, and the cross-claim store serves values, not functions --
+// a fair refusal of a non-portable producer, not an obstacle. Measured beside it (claim_batch on
+// the same file): the context is ~12k steps and resolving even a one-fn subject is ~64k, so a
+// portable context would still leave every row over the line. Resolution of the smallest subject
+// costs more than a new witness may spend; that is the resolver's cost profile and is not this
+// file's to repair.
+//
+// So each subject's resolution is a NULLARY WARM PRODUCER (one per subject, enrolled in
+// v2.workflow.floor_pure_producer_share beside the ingest), executed by the floor's preparation --
+// the real path, run once, refused loudly there if it cannot run -- and the rows below read the
+// Outcome<Node> it produced. This is the shape v2.compiler.self_host.direct_rust_door_fixture
+// direct_rust_door_specimen_resolved already inhabits for a resolved specimen. The values are
+// Nodes and located diagnostics, portable to the bottom.
+fn xl0r_resolve_subject(subject: String) -> Outcome<Node> {
   match xl0r_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      resolution_context(lm: dag_language_model(), roots: roots)
+      resolve_with_admission_context_policy(
+        context: resolution_context(lm: dag_language_model(), roots: roots),
+        admission: xl0r_admission(subject: subject),
+        index: source_root_index_empty(),
+        active_roots: Empty,
+        policy: default_name_resolution_policy()
+      )
   }
 }
 
-fn xl0r_resolve_subject(subject: String) -> Outcome<Node> {
-  resolve_with_admission_context_policy(
-    context: xl0r_resolution_context(),
-    admission: xl0r_admission(subject: subject),
-    index: source_root_index_empty(),
-    active_roots: Empty,
-    policy: default_name_resolution_policy()
-  )
+fn xl0r_resolved_local_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_local_consumer")
+}
+
+fn xl0r_resolved_declared_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_declared_consumer")
+}
+
+fn xl0r_resolved_undeclared_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_undeclared_consumer")
+}
+
+fn xl0r_resolved_data_target_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_data_target_consumer")
+}
+
+fn xl0r_resolved_field_access_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_field_access_consumer")
+}
+
+fn xl0r_resolved_shadowing_consumer() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_shadowing_consumer")
 }
 
 fn xl0r_resolved_atom_present(root: Node, identity: Symbol) -> Bool {
@@ -221,7 +248,7 @@ test fn the_resolution_fixture_ingests_holds() -> Bool {
 // is about the cross-module chain and not about this route being dead. It is its own module so
 // that the primary's verdict cannot leak into it.
 test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool {
-  match xl0r_resolve_subject(subject: "v2.test.xl0r_local_consumer") {
+  match xl0r_resolved_local_consumer() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -233,7 +260,7 @@ test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool
 // before the resolver's fallback repair it was Accepted carrying `resolve_reason_unbound_symbol` AS
 // THE IDENTITY, which the second conjunct is here to keep unwritable.
 test fn a_cross_module_reference_to_a_declared_fn_resolves_holds() -> Bool {
-  match xl0r_resolve_subject(subject: "v2.test.xl0r_declared_consumer") {
+  match xl0r_resolved_declared_consumer() {
     Accepted { value: resolved, diagnostics: _ } =>
       xl0r_resolved_atom_present(root: resolved, identity: ^xl0r_provided_fn)
         && !xl0r_resolved_atom_present(root: resolved, identity: ^resolve_reason_unbound_symbol)
@@ -244,7 +271,7 @@ test fn a_cross_module_reference_to_a_declared_fn_resolves_holds() -> Bool {
 // THE BOUNDARY: the same chain shape naming a declaration that does not exist refuses, at resolve,
 // with the unbound-symbol reason -- reassembling the chain widened nothing.
 test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool {
-  match xl0r_resolve_subject(subject: "v2.test.xl0r_undeclared_consumer") {
+  match xl0r_resolved_undeclared_consumer() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
   }
@@ -254,7 +281,7 @@ test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool
 // data declaration is not grafted into the containment tree. This reds when declaration grafting
 // lands, and must then be re-stated as resolving.
 test fn a_cross_module_reference_to_a_data_declaration_refuses_today() -> Bool {
-  match xl0r_resolve_subject(subject: "v2.test.xl0r_data_target_consumer") {
+  match xl0r_resolved_data_target_consumer() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
   }
@@ -274,7 +301,7 @@ test fn a_cross_module_reference_to_a_data_declaration_refuses_today() -> Bool {
 // enrolled as a today-row so the day the projection arm lands, this reds and gets re-stated as
 // resolving. What this row rules out is the silent arm: a local field access must not be Accepted.
 test fn a_local_field_access_refuses_unbound_today() -> Bool {
-  match xl0r_resolve_subject(subject: "v2.test.xl0r_field_access_consumer") {
+  match xl0r_resolved_field_access_consumer() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
   }
@@ -288,7 +315,7 @@ test fn a_local_field_access_refuses_unbound_today() -> Bool {
 // reason that happened to be the safe verdict. This row states the standing the arm actually has
 // today, and reds when unique-on-chain lands, which is the trigger it names.
 test fn a_binder_shadowing_a_root_segment_is_not_yet_refused_today() -> Bool {
-  match xl0r_resolve_subject(subject: "v2.test.xl0r_shadowing_consumer") {
+  match xl0r_resolved_shadowing_consumer() {
     Accepted { value: resolved, diagnostics: _ } =>
       xl0r_resolved_atom_present(root: resolved, identity: ^xl0r_provided_fn)
     Rejected { diagnostics: _ } => false
