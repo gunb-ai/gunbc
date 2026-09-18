@@ -555,3 +555,49 @@ fn harness_observe_engine_at(endpoint: ServingRouteEndpoint, at: EpochSecs) -> H
     }
   }
 }
+
+fn text_labeled_field(body: String, label: String) -> String? {
+  let needle = join([label, ":"], "")
+  let lines = split(s: body, delimiter: "\n")
+  let matching = filter(lines, l => starts_with(s: trim(s: l), prefix: needle))
+  if length(matching) != 1 {
+    none
+  } else {
+    match first(matching) {
+      Absent => none
+      Present { value: line } => {
+        let parts = split(s: line, delimiter: ":")
+        if length(parts) < 2 {
+          none
+        } else {
+          last(parts)
+        }
+      }
+    }
+  }
+}
+
+fn text_field_last_word(body: String, label: String) -> String? {
+  match text_labeled_field(body: body, label: label) {
+    Absent => none
+    Present { value: t } => last(split(s: trim(s: t), delimiter: " "))
+  }
+}
+
+fn text_labeled_count(body: String, label: String) -> Nat? {
+  match text_field_last_word(body: body, label: label) {
+    Absent => none
+    Present { value: last_word } => harness_gauge_count(text: trim(s: last_word))
+  }
+}
+
+fn text_labeled_head_count(body: String, label: String) -> Nat? {
+  match text_field_last_word(body: body, label: label) {
+    Absent => none
+    Present { value: last_word } =>
+      match first(split(s: trim(s: last_word), delimiter: ".")) {
+        Absent => none
+        Present { value: whole } => harness_gauge_count(text: whole)
+      }
+  }
+}

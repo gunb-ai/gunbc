@@ -1,7 +1,7 @@
 module gunbc.spark.serving_load_probe_cli
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat }
+import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -23,19 +23,22 @@ import gunbc.spark.serving_load_probe {
   glm_native_declared_shared_traffic, glm_native_smoke_protocol,
   serving_load_observation, serving_load_observation_text,
   drain_from_queue, window_from_drain, counter_continuity,
-  ArrivalSkewUnread,
   occupancy_trace_from_endpoint_scrapes,
-  OperationLedger, LedgerClosed, LedgerIncomplete,
-  ClientOutputTokensUnread,
-  ClientBenchLatencyUnread,
+  ledger_from_bench_stdout, client_output_from_bench_stdout, scrape_millis_from_bench_stdout,
+  client_latency_from_bench_stdout, arrival_from_protocol,
+  client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout,
+  client_second_bucket_peak_establishes_foreign_work, itl_tail_cause_is_unestablished,
+  ClientConcurrencyUnread,
+  WindowSharedWithDeclaredTraffic, WindowIsolated, WindowIsolationUnread,
   RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
 }
 
 // ── THE INHABITANCE ROUTE ─────────────────────────────────────────────────────────────────────
 //
 // Witnesses supply metric bodies. This function is the one that drives `vllm bench serve` against
-// the live native GLM head and folds receipts. The arm is shared with operator interactive
-// sessions; a drain of zero is not exclusivity. This fold records that standing and still runs.
+// the live native GLM head and folds receipts. A non-idle drain REFUSES the start. An idle start
+// is still WindowSharedWithDeclaredTraffic because operator/harness/nccl traffic may arrive during
+// the run. The rate is parsed from bench duration and Total generated tokens, not from exit_ok.
 //
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/spark/serving_load_probe_cli.dag --function glm_native_serving_load_wet
@@ -75,14 +78,6 @@ fn body_is_failure(body: String) -> Bool {
   starts_with(s: body, prefix: "UNREACHABLE ") || starts_with(s: body, prefix: "FAILED ")
 }
 
-fn ledger_from_bench(exit_ok: Bool, offered: Nat) -> OperationLedger {
-  if exit_ok {
-    LedgerClosed { offered: offered, completed: offered, failed: 0, failed_after_tokens: 0 }
-  } else {
-    LedgerIncomplete { because: "vllm bench serve did not exit 0, so whether any request emitted tokens and then failed is unknown; the rate is not denominated in tokens" as NonEmptyStr }
-  }
-}
-
 fn glm_native_serving_load_wet() -> ProcessExit
   uses net: Network
 {
@@ -97,6 +92,10 @@ fn glm_native_serving_load_wet() -> ProcessExit
         drain: drain,
         traffic_receipt: glm_native_declared_shared_traffic,
       )
+      match window {
+        WindowIsolationUnread { cause: c, drain: _ } => exit_failure(reason: c as String)
+        WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => exit_failure(reason: "an isolated window is not this arm's inhabitance path")
+        WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => {
       let bench = spark_remote_run(ctx: ctx, argv: bench_exec_argv())
       let after = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-after")
       if body_is_failure(body: after) {
@@ -114,24 +113,32 @@ fn glm_native_serving_load_wet() -> ProcessExit
             let before_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: before)
             let after_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: after)
             let occ = occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after)
+            let ledger = ledger_from_bench_stdout(body: bench_text, offered: glm_native_smoke_protocol.num_prompts)
+            let client_output = client_output_from_bench_stdout(body: bench_text)
+            let bucket = match glm_native_smoke_protocol.max_concurrency {
+              Absent => ClientConcurrencyUnread { cause: "the smoke protocol did not declare max-concurrency" as NonEmptyStr }
+              Present { value: c } => client_bucket_peak_from_bench_stdout(body: bench_text, client_max_concurrency: c)
+            }
+            let itl = client_itl_from_bench_stdout(body: bench_text)
             let obs = serving_load_observation(
               subject: glm_native_live_subject_standing(),
               protocol: glm_native_smoke_protocol,
               window: window,
               continuity: counter_continuity(before: before_launch, after: after_launch),
-              arrival: ArrivalSkewUnread { cause: "vllm bench serve stdout is not yet parsed for per-request start skew" as NonEmptyStr },
+              arrival: arrival_from_protocol(req: glm_native_smoke_protocol),
               occupancy: occ,
-              client_output: ClientOutputTokensUnread { cause: "vllm bench serve stdout is not yet parsed for completed output tokens" as NonEmptyStr },
-              before_at: 0,
-              after_at: 1,
+              client_output: client_output,
+              scrape_millis: scrape_millis_from_bench_stdout(body: bench_text),
               before_body: before,
               after_body: after,
-              ledger: ledger_from_bench(exit_ok: bench_ok, offered: 4),
-              client_latency: ClientBenchLatencyUnread { cause: "vllm bench serve stdout is not yet parsed for TTFT/TPOT/ITL" as NonEmptyStr },
+              ledger: ledger,
+              client_latency: client_latency_from_bench_stdout(body: bench_text, contended: true),
             )
             let body = join([
               "glm native serving-load wet at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
               serving_load_observation_text(o: obs),
+              "\nbucket_peak_establishes_foreign_work=", if client_second_bucket_peak_establishes_foreign_work(p: bucket) { "yes" } else { "no" }, "\n",
+              "itl_tail_cause_unestablished=", if itl_tail_cause_is_unestablished(d: itl) { "yes" } else { "no" }, "\n",
               "\n--- bench ---\n", bench_text, "\n",
             ], "")
             let w = Filesystem.Write(path: glm_native_serving_load_receipt_path, content: body)
@@ -146,6 +153,8 @@ fn glm_native_serving_load_wet() -> ProcessExit
                 RateUnreadable { because: _ } => exit_failure(reason: body)
               }
             }
+      }
+        }
       }
     }
   }, attempt_raw: glm_native_serving_load_attempt_raw, credential_file_name: "gunbc-glm-native-serving-load-admin-password" as NonEmptyStr)

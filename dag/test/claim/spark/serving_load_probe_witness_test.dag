@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, EpochSecs, List }
 import std.nat { Nat }
 import v2.std.algebra { length, filter }
 import v2.std.optional { Present, Absent }
-import std.measure { token_count }
+import std.measure { token_count, token_count_value }
 import product.capacity.lease { LeaseGrant, lease_fence_of, lease_grant, LeasePolicy, FencedResource }
 import product.capacity.event_chain { EventId }
 import product.fabric.demand { ObservationReceiptRef }
@@ -20,12 +20,12 @@ import extdeps.vllm.bench_serve {
 import extdeps.vllm.kv_layout { AdmissionCostUnestablished, AdmissionCostBlocks }
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import gunbc.spark.serving_load_probe {
-  DrainObservedIdle,
+  DrainObservedIdle, DrainNotIdle,
   ExclusionNotEstablished, ExclusionEstablished,
   WindowIsolated, WindowSharedWithDeclaredTraffic, WindowIsolationUnread,
   window_from_drain, isolated_window, drain_from_queue,
   ArmInService, ArmOutOfService,
-  OperationLedger, LedgerClosed, ledger_admits_token_denomination,
+  OperationLedger, LedgerClosed, LedgerIncomplete, ledger_admits_token_denomination,
   RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
   ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
   TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, generation_token_delta,
@@ -50,10 +50,14 @@ import gunbc.spark.serving_load_probe {
   glm_native_wiring_smoke_protocol, glm_native_contended_sweep_c1, glm_native_contended_sweep_c2,
   glm_native_contended_sweep_c16, glm_native_contended_sweep_points,
   glm_native_contended_elasticity_steps, elasticity_still_buying_throughput,
-  glm_native_wet_smoke_itl_is_contention_tail_receipt, glm_native_wet_smoke_peak_proves_shared_window,
   glm_native_wet_smoke_is_not_sweep_c1_protocol, glm_native_wet_smoke_rate_is_output_tokens,
   glm_native_ttft_would_bind_on_this_sweep,
-  glm_native_window_standing_specimen, window_standing_gap_is_operator_traffic,
+  glm_native_window_standing_specimen, window_standing_gap_is_unattributed,
+  cap_2_bucket_peak_4_is_not_foreign_work, SuccessfulClientRequestSecondBucketPeak,
+  ClientItlDistributionObserved, ClientItlDistributionUnread, itl_tail_cause_is_unestablished,
+  ledger_from_bench_stdout, client_output_from_bench_stdout, scrape_millis_from_bench_stdout,
+  client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout,
+  ClientOutputTokensObserved,
   pinned_load_protocol_matches, bench_output_len, glm_native_sweep_num_prompts,
   glm_native_holistic_execution, LongContextModelledOnly, LongContextRunnable,
   glm_native_elasticity_8_to_16,
@@ -99,6 +103,16 @@ fn closed_ok() -> OperationLedger {
 
 fn closed_failed_after_tokens() -> OperationLedger {
   LedgerClosed { offered: 4, completed: 3, failed: 0, failed_after_tokens: 1 }
+}
+
+test fn a_busy_drain_refuses_the_window() -> Bool {
+  let d = drain_from_queue(q: harness_queue_from_body(body: fx_busy))
+  match window_from_drain(drain: d, traffic_receipt: "fx" as NonEmptyStr) {
+    WindowIsolationUnread { cause: _, drain: DrainNotIdle { running: n } } => n == 3
+    WindowIsolationUnread { cause: _, drain: _ } => false
+    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
+    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
+  }
 }
 
 test fn a_quiet_drain_is_not_an_isolated_window() -> Bool {
@@ -204,8 +218,7 @@ fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
     arrival: tight_arrival(),
     occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0, prompt_tokens: 0 }] },
     client_output: ClientOutputTokensUnread { cause: "fixture has no client token total" as NonEmptyStr },
-    before_at: 100,
-    after_at: 102,
+    scrape_millis: Present { value: 2000 },
     before_body: fx_idle,
     after_body: fx_after,
     ledger: ledger,
@@ -334,12 +347,58 @@ test fn a_64_out_wiring_receipt_is_not_the_128_out_sweep_protocol() -> Bool {
     && !pinned_load_protocol_matches(a: glm_native_wiring_smoke_protocol, b: glm_native_contended_sweep_c2.protocol)
 }
 
-test fn wet_smoke_itl_p99_is_the_contention_tail() -> Bool {
-  glm_native_wet_smoke_itl_is_contention_tail_receipt()
+data fx_bench_stdout: String = join([
+  "============ Serving Benchmark Result ============\n",
+  "Successful requests:                     4\n",
+  "Failed requests:                         0\n",
+  "Benchmark duration (s):                  22.75\n",
+  "Total input tokens:                      1072\n",
+  "Total generated tokens:                  512\n",
+  "Request throughput (req/s):              0.18\n",
+  "Output token throughput (tok/s):         22.51\n",
+  "Total Token throughput (tok/s):          69.64\n",
+  "Peak concurrent requests:                4.00\n",
+  "---------------Time to First Token----------------\n",
+  "Mean TTFT (ms):                          996.40\n",
+  "-----Time per Output Token (excl. 1st token)------\n",
+  "Mean TPOT (ms):                          82.10\n",
+  "---------------Inter-token Latency----------------\n",
+  "Mean ITL (ms):                           83.20\n",
+  "Median ITL (ms):                         82.10\n",
+  "P99 ITL (ms):                            165.00\n",
+], "")
+
+test fn a_cap_2_second_bucket_peak_4_does_not_establish_foreign_work() -> Bool {
+  cap_2_bucket_peak_4_is_not_foreign_work(p: SuccessfulClientRequestSecondBucketPeak {
+    client_max_concurrency: token_count_value(t: token_count(count: 2)),
+    bucket_peak: token_count_value(t: token_count(count: 4)),
+  })
 }
 
-test fn peak_concurrency_above_the_client_cap_proves_a_shared_window() -> Bool {
-  glm_native_wet_smoke_peak_proves_shared_window()
+test fn parsed_itl_distribution_does_not_establish_a_cause() -> Bool {
+  let d = client_itl_from_bench_stdout(body: fx_bench_stdout)
+  match d {
+    ClientItlDistributionObserved { mean_milli: mean_m, median_milli: med, p99_milli: p99, cause: _ } =>
+      mean_m == 83 && med == 82 && p99 == 165 && itl_tail_cause_is_unestablished(d: d)
+    ClientItlDistributionUnread { cause: _ } => false
+  }
+}
+
+test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
+  match ledger_from_bench_stdout(body: fx_bench_stdout, offered: token_count_value(t: token_count(count: 4))) {
+    LedgerClosed { offered: o, completed: c, failed: f, failed_after_tokens: t } =>
+      o == 4 && c == 4 && f == 0 && t == 0
+        && match client_output_from_bench_stdout(body: fx_bench_stdout) {
+          ClientOutputTokensUnread { cause: _ } => false
+          ClientOutputTokensObserved { tokens: n } =>
+            n == 512
+              && match scrape_millis_from_bench_stdout(body: fx_bench_stdout) {
+                Absent => false
+                Present { value: ms } => ms == 22750
+              }
+        }
+    LedgerIncomplete { because: _ } => false
+  }
 }
 
 test fn wet_smoke_tpot_is_not_a_protocol_match_to_sweep_c1() -> Bool {
@@ -374,7 +433,7 @@ test fn ttft_would_bind_concurrency_before_throughput_on_this_sweep() -> Bool {
 test fn the_49_vs_81_ms_gap_is_why_window_standing_is_a_field() -> Bool {
   glm_native_window_standing_specimen.quieter_engine_tpot_milli == 49
     && glm_native_window_standing_specimen.contended_client_c1_tpot_milli == 81
-    && window_standing_gap_is_operator_traffic(s: glm_native_window_standing_specimen)
+    && window_standing_gap_is_unattributed(s: glm_native_window_standing_specimen)
 }
 
 test fn long_context_stays_modelled_until_the_arm_is_out_of_service() -> Bool {

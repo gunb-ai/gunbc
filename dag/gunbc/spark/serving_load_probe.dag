@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List, EpochSecs, Int }
 import std.nat { Nat }
 import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
-import v2.std.algebra { length, filter, list_map }
+import v2.std.algebra { list_map }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import product.capacity.lease { LeaseGrant }
@@ -24,6 +24,7 @@ import extdeps.vllm.bench_serve {
 import gunbc.harness.harness_backend {
   harness_gauge_value, harness_labelled_gauge_value, harness_gauge_count,
   harness_histogram_statistic_value, harness_launch_from_body, harness_queue_from_body,
+  text_labeled_count, text_labeled_head_count, text_field_last_word,
 }
 import gunbc.serving.turn_admission {
   ServingQueueReading, QueueDepthRead, QueueDepthUnread,
@@ -97,14 +98,18 @@ type ArmServiceStanding
   = ArmInService { because: NonEmptyStr }
   | ArmOutOfService { how: NonEmptyStr }
 
-// A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT. It is not exclusion and it is not out-of-service:
-// the operator serves interactive work on this arm, harness_probe_cli can POST a turn, and
-// nccl-tests can allocate GPU buffers. WindowSharedWithDeclaredTraffic is the DEFAULT standing.
+// A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT, not exclusion. The probe still refuses to START on a
+// non-idle queue: that would mix already-running foreign requests into the client window without a
+// join. An idle start under declared operator/harness/nccl traffic remains
+// WindowSharedWithDeclaredTraffic, because arrivals during the run are still possible.
 fn window_from_drain(drain: DrainReceipt, traffic_receipt: NonEmptyStr) -> ProbeWindowStanding {
   match drain {
     DrainUnread { cause: c } => WindowIsolationUnread { cause: c, drain: drain }
-    DrainNotIdle { running: _ } =>
-      WindowSharedWithDeclaredTraffic { traffic_receipt: traffic_receipt, drain: drain }
+    DrainNotIdle { running: n } =>
+      WindowIsolationUnread {
+        cause: join(["the engine already had ", to_string(n), " running requests; the probe refuses a non-idle start"], "") as NonEmptyStr,
+        drain: drain,
+      }
     DrainObservedIdle =>
       WindowSharedWithDeclaredTraffic { traffic_receipt: traffic_receipt, drain: drain }
   }
@@ -565,8 +570,7 @@ fn serving_load_observation(
   arrival: ArrivalSkew,
   occupancy: OccupancyTrace,
   client_output: ClientOutputTokens,
-  before_at: EpochSecs,
-  after_at: EpochSecs,
+  scrape_millis: Nat?,
   before_body: String,
   after_body: String,
   ledger: OperationLedger,
@@ -598,7 +602,7 @@ fn serving_load_observation(
     capacity_claim: capacity_claim_for_window(window: window),
     rate: derive_rate_honest(
       ledger: ledger,
-      scrape_millis: scrape_interval_millis(before_at: before_at, after_at: after_at),
+      scrape_millis: scrape_millis,
       client_output: client_output,
     ),
     raw_before: before_body as NonEmptyStr,
@@ -912,45 +916,142 @@ data glm_native_wet_smoke_client_latency: ClientBenchLatency = ClientBenchLatenc
   standing: glm_native_wet_smoke_standing
 }
 
-type ClientItlTail
-  = ItlTailUnread { cause: NonEmptyStr }
-  | ItlMeanMedianP99 { mean_milli: Nat, median_milli: Nat, p99_milli: Nat }
+type ItlTailCause
+  = ItlTailCauseUnestablished { because: NonEmptyStr }
 
-data glm_native_wet_smoke_itl: ClientItlTail = ItlMeanMedianP99 {
-  mean_milli: 83
-  median_milli: 82
-  p99_milli: 165
-}
+type ClientItlDistribution
+  = ClientItlDistributionUnread { cause: NonEmptyStr }
+  | ClientItlDistributionObserved { mean_milli: Nat, median_milli: Nat, p99_milli: Nat, cause: ItlTailCause }
 
-fn itl_p99_is_contention_tail(t: ClientItlTail) -> Bool {
-  match t {
-    ItlTailUnread { cause: _ } => false
-    ItlMeanMedianP99 { mean_milli: _, median_milli: med, p99_milli: p99 } =>
-      p99 >= (med * 2)
+fn itl_tail_cause_is_unestablished(d: ClientItlDistribution) -> Bool {
+  match d {
+    ClientItlDistributionUnread { cause: _ } => true
+    ClientItlDistributionObserved { mean_milli: _, median_milli: _, p99_milli: _, cause: ItlTailCauseUnestablished { because: _ } } => true
   }
 }
 
-type PeakConcurrencyReceipt
-  = PeakConcurrencyUnread { cause: NonEmptyStr }
-  | PeakConcurrencyObserved { client_max_concurrency: Nat, engine_peak_concurrent_requests: Nat }
+// vLLM bench serve's max_concurrent_requests is a whole-second bucket peak over THIS CLIENT's
+// successful request spans. Two sequential waves of two can print 4 with exact concurrency 2 and
+// zero foreign work. The field cannot mint engine concurrency or a shared-window proof.
+type ClientRequestConcurrencyStanding
+  = ClientConcurrencyUnread { cause: NonEmptyStr }
+  | SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: Nat, bucket_peak: Nat }
 
-data glm_native_wet_smoke_peak_concurrency: PeakConcurrencyReceipt = PeakConcurrencyObserved {
-  client_max_concurrency: 2
-  engine_peak_concurrent_requests: 4
-}
-
-fn foreign_in_flight_at_peak(p: PeakConcurrencyReceipt) -> Nat? {
+fn client_second_bucket_peak_establishes_foreign_work(p: ClientRequestConcurrencyStanding) -> Bool {
   match p {
-    PeakConcurrencyUnread { cause: _ } => none
-    PeakConcurrencyObserved { client_max_concurrency: c, engine_peak_concurrent_requests: e } =>
-      if e > c { Present { value: e - c } } else { Present { value: c - c } }
+    ClientConcurrencyUnread { cause: _ } => false
+    SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: _, bucket_peak: _ } => false
   }
 }
 
-fn peak_concurrency_proves_shared_window(p: PeakConcurrencyReceipt) -> Bool {
-  match foreign_in_flight_at_peak(p: p) {
-    Absent => false
-    Present { value: n } => n > 0
+fn cap_2_bucket_peak_4_is_not_foreign_work(p: ClientRequestConcurrencyStanding) -> Bool {
+  match p {
+    ClientConcurrencyUnread { cause: _ } => false
+    SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: c, bucket_peak: b } =>
+      c == token_count_value(t: token_count(count: 2))
+        && b == token_count_value(t: token_count(count: 4))
+        && !client_second_bucket_peak_establishes_foreign_work(p: p)
+  }
+}
+
+fn bench_labeled_nat(body: String, label: String) -> Nat? {
+  text_labeled_count(body: body, label: label)
+}
+
+fn bench_labeled_milli_from_seconds(body: String, label: String) -> Nat? {
+  match text_field_last_word(body: body, label: label) {
+    Absent => none
+    Present { value: last_word } => field_to_milli(field: last_word)
+  }
+}
+
+fn bench_labeled_whole_milli(body: String, label: String) -> Nat? {
+  text_labeled_head_count(body: body, label: label)
+}
+
+fn ledger_from_bench_stdout(body: String, offered: Nat) -> OperationLedger {
+  match bench_labeled_nat(body: body, label: "Successful requests") {
+    Absent => LedgerIncomplete { because: "vllm bench serve stdout carried no unique Successful requests line" as NonEmptyStr }
+    Present { value: completed } =>
+      match bench_labeled_nat(body: body, label: "Failed requests") {
+        Absent => LedgerIncomplete { because: "vllm bench serve stdout carried no unique Failed requests line, so failed-after-tokens standing is unknown" as NonEmptyStr }
+        Present { value: failed } =>
+          if (completed + failed) != offered {
+            LedgerIncomplete { because: "successful plus failed requests did not equal the offered prompt count" as NonEmptyStr }
+          } else if failed == 0 {
+            LedgerClosed { offered: offered, completed: completed, failed: failed, failed_after_tokens: 0 }
+          } else {
+            LedgerIncomplete { because: "failed requests were reported and the summary does not distinguish failed-after-tokens from failed-with-no-tokens" as NonEmptyStr }
+          }
+      }
+  }
+}
+
+fn client_output_from_bench_stdout(body: String) -> ClientOutputTokens {
+  match bench_labeled_nat(body: body, label: "Total generated tokens") {
+    Absent => ClientOutputTokensUnread { cause: "vllm bench serve stdout carried no unique Total generated tokens line" as NonEmptyStr }
+    Present { value: t } => ClientOutputTokensObserved { tokens: t }
+  }
+}
+
+fn scrape_millis_from_bench_stdout(body: String) -> Nat? {
+  bench_labeled_milli_from_seconds(body: body, label: "Benchmark duration (s)")
+}
+
+fn client_itl_from_bench_stdout(body: String) -> ClientItlDistribution {
+  match bench_labeled_whole_milli(body: body, label: "Mean ITL (ms)") {
+    Absent => ClientItlDistributionUnread { cause: "vllm bench serve stdout carried no unique Mean ITL (ms) line" as NonEmptyStr }
+    Present { value: mean_m } =>
+      match bench_labeled_whole_milli(body: body, label: "Median ITL (ms)") {
+        Absent => ClientItlDistributionUnread { cause: "vllm bench serve stdout carried no unique Median ITL (ms) line" as NonEmptyStr }
+        Present { value: med } =>
+          match bench_labeled_whole_milli(body: body, label: "P99 ITL (ms)") {
+            Absent => ClientItlDistributionUnread { cause: "vllm bench serve stdout carried no unique P99 ITL (ms) line" as NonEmptyStr }
+            Present { value: p99 } =>
+              ClientItlDistributionObserved { mean_milli: mean_m, median_milli: med, p99_milli: p99, cause: ItlTailCauseUnestablished { because: "client stream ITL is elapsed time between SSE messages; cause is unestablished until an attributed engine or scheduler population joins it" as NonEmptyStr } }
+          }
+      }
+  }
+}
+
+fn client_bucket_peak_from_bench_stdout(body: String, client_max_concurrency: Nat) -> ClientRequestConcurrencyStanding {
+  match bench_labeled_nat(body: body, label: "Peak concurrent requests") {
+    Absent => ClientConcurrencyUnread { cause: "vllm bench serve stdout carried no unique Peak concurrent requests line" as NonEmptyStr }
+    Present { value: peak } =>
+      SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: client_max_concurrency, bucket_peak: peak }
+  }
+}
+
+fn arrival_from_protocol(req: VllmBenchServeRequest) -> ArrivalSkew {
+  match req.arrival {
+    SendAllImmediately => ArrivalSkewObserved { max_stagger_millis: 0 }
+    PoissonProcess { millirequests_per_second: _, burstiness_milli: _ } =>
+      ArrivalSkewUnread { cause: "Poisson starts are not parsed from vllm bench serve stdout until per-request start_times are retained" as NonEmptyStr }
+  }
+}
+
+fn client_latency_from_bench_stdout(body: String, contended: Bool) -> ClientBenchLatency {
+  match bench_labeled_milli_from_seconds(body: body, label: "Output token throughput (tok/s)") {
+    Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Output token throughput (tok/s) line" as NonEmptyStr }
+    Present { value: th } =>
+      match bench_labeled_whole_milli(body: body, label: "Mean TPOT (ms)") {
+        Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Mean TPOT (ms) line" as NonEmptyStr }
+        Present { value: tpot } =>
+          match bench_labeled_whole_milli(body: body, label: "Mean TTFT (ms)") {
+            Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Mean TTFT (ms) line" as NonEmptyStr }
+            Present { value: ttft } =>
+              ClientBenchLatencyReported {
+                output_throughput_milli_tok_per_s: th,
+                tpot_milli: tpot,
+                itl_milli: bench_labeled_whole_milli(body: body, label: "Mean ITL (ms)"),
+                ttft_milli: ttft,
+                contended: contended,
+                standing: TranscribedUncited {
+                  read_obligation: "this arm is a live parse of vllm bench serve stdout, not a transcribed figure; re-run glm_native_serving_load_wet to re-derive" as NonEmptyStr
+                },
+              }
+          }
+      }
   }
 }
 
@@ -989,23 +1090,6 @@ fn glm_native_wet_smoke_rate() -> DerivedRate {
     scrape_millis: Present { value: glm_native_wet_smoke_duration_millis },
     client_output: glm_native_wet_smoke_client_output,
   )
-}
-
-fn glm_native_wet_smoke_itl_is_contention_tail_receipt() -> Bool {
-  itl_p99_is_contention_tail(t: glm_native_wet_smoke_itl)
-    && match glm_native_wet_smoke_itl {
-      ItlTailUnread { cause: _ } => false
-      ItlMeanMedianP99 { mean_milli: mean_m, median_milli: med, p99_milli: p99 } =>
-        mean_m == 83 && med == 82 && p99 == 165
-    }
-}
-
-fn glm_native_wet_smoke_peak_proves_shared_window() -> Bool {
-  peak_concurrency_proves_shared_window(p: glm_native_wet_smoke_peak_concurrency)
-    && match foreign_in_flight_at_peak(p: glm_native_wet_smoke_peak_concurrency) {
-      Absent => false
-      Present { value: n } => n == 2
-    }
 }
 
 fn glm_native_wet_smoke_is_not_sweep_c1_protocol() -> Bool {
@@ -1201,8 +1285,6 @@ data glm_native_ttft_binds_concurrency: ContendedLatencyFloorHint = TtftWouldBin
   }
 }
 
-// Same subject, same single-stream protocol shape, different window: quieter engine 48.9 ms vs
-// contended client c=1 TPOT 80.7 ms. The gap is the operator's traffic. Window standing is a field.
 type WindowStandingGapSpecimen {
   quieter_engine_tpot_milli: Nat
   contended_client_c1_tpot_milli: Nat
@@ -1213,7 +1295,10 @@ data glm_native_window_standing_specimen: WindowStandingGapSpecimen = WindowStan
   contended_client_c1_tpot_milli: 81,
 }
 
-fn window_standing_gap_is_operator_traffic(s: WindowStandingGapSpecimen) -> Bool {
+// Same subject, same single-stream protocol shape, different window: quieter engine 48.9 ms vs
+// contended client c=1 TPOT 80.7 ms. The gap is observed; its cause is unestablished until an
+// overlapping lease or engine-population join attributes it.
+fn window_standing_gap_is_unattributed(s: WindowStandingGapSpecimen) -> Bool {
   s.contended_client_c1_tpot_milli > s.quieter_engine_tpot_milli
 }
 
