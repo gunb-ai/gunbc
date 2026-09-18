@@ -28,36 +28,36 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the current authority at generation 1; a second transition decided against the state the first
 // one LEFT is stale, carries the state now current, and appends nothing.
 
-fn with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+fn alr_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
   let observed = scenario(dir.path)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && observed && cleaned.success
 }
 
-fn witness_layout(dir: FilePath) -> EventLogLayout {
+fn alr_witness_layout(dir: FilePath) -> EventLogLayout {
   event_log_layout(root: dir, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
 }
 
-fn witness_remote_ready(dir: FilePath) -> Bool {
+fn alr_witness_remote_ready(dir: FilePath) -> Bool {
   git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: join([dir as String, "/remote.git"], "") as FilePath).exit_code == 0
 }
 
-fn with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
+fn alr_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
   match sha256_hex_digest(hex: "2222222222222222222222222222222222222222222222222222222222222222") {
     Absent => false
     Present { value: d } => scenario(Sha256Hash(d))
   }
 }
 
-fn w_pending(h: ContentHash) -> PairServingGroupAuthority {
+fn alr_w_pending(h: ContentHash) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
     group: FabricGroupA, transaction: "tx-real" as NonEmptyStr,
     lease: held_lease(epoch: LeaseEpoch { lease_key: "witness-lease" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
   }
 }
 
-fn current_is(c: CurrentAuthority, expected: PairServingGroupAuthority, generation: Int) -> Bool {
+fn alr_current_is(c: CurrentAuthority, expected: PairServingGroupAuthority, generation: Int) -> Bool {
   match c {
     CurrentAuthorityRead { authority: a, head: _, generation: g } => authority_eq(a: a, b: expected) && g == generation
     CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
@@ -67,26 +67,26 @@ fn current_is(c: CurrentAuthority, expected: PairServingGroupAuthority, generati
 // The whole route: empty log reads the resting row at 0; a transition from it appends and reads
 // back at 1; a second transition still expecting the resting row is stale and names the current.
 test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_execution() -> Bool {
-  with_hash(scenario: fn(h) {
-    with_temp_dir(scenario: fn(dir) {
-      let layout = witness_layout(dir: dir)
+  alr_with_hash(scenario: fn(h) {
+    alr_with_temp_dir(scenario: fn(dir) {
+      let layout = alr_witness_layout(dir: dir)
       match pair_serving_authority_for(group: FabricGroupA) {
         Absent => false
         Present { value: resting } =>
-          witness_remote_ready(dir: dir)
-            && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA), expected: resting, generation: 0)
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: w_pending(h: h), transaction: "tx-real" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1000) {
-                  AuthorityTransitionAppended { id: _, generation: g, next: n } => g == 1 && authority_eq(a: n, b: w_pending(h: h))
+          alr_witness_remote_ready(dir: dir)
+            && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA), expected: resting, generation: 0)
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: alr_w_pending(h: h), transaction: "tx-real" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1000) {
+                  AuthorityTransitionAppended { id: _, generation: g, next: n } => g == 1 && authority_eq(a: n, b: alr_w_pending(h: h))
                   AuthorityTransitionStale { expected: _, current: _ } => false
                   AuthorityTransitionRefused { group: _, step: _, reason: _ } => false
                 })
-            && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA), expected: w_pending(h: h), generation: 1)
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: w_pending(h: h), transaction: "tx-late" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1001) {
-                  AuthorityTransitionStale { expected: _, current: c } => authority_eq(a: c, b: w_pending(h: h))
+            && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA), expected: alr_w_pending(h: h), generation: 1)
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: alr_w_pending(h: h), transaction: "tx-late" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1001) {
+                  AuthorityTransitionStale { expected: _, current: c } => authority_eq(a: c, b: alr_w_pending(h: h))
                   AuthorityTransitionAppended { id: _, generation: _, next: _ } => false
                   AuthorityTransitionRefused { group: _, step: _, reason: _ } => false
                 })
-            && current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA), expected: w_pending(h: h), generation: 1)
+            && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA), expected: alr_w_pending(h: h), generation: 1)
       }
     })
   })
@@ -95,10 +95,10 @@ test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_exec
 // RED -- an unclaimed group has no authority to read or move: both refuse at the claim, and the
 // log is never touched.
 test fn an_unclaimed_group_is_refused_at_the_claim_by_real_execution() -> Bool {
-  with_hash(scenario: fn(h) {
-    with_temp_dir(scenario: fn(dir) {
-      let layout = witness_layout(dir: dir)
-      witness_remote_ready(dir: dir)
+  alr_with_hash(scenario: fn(h) {
+    alr_with_temp_dir(scenario: fn(dir) {
+      let layout = alr_witness_layout(dir: dir)
+      alr_witness_remote_ready(dir: dir)
         && (match current_pair_serving_authority(layout: layout, group: FabricGroupB) {
               CurrentAuthorityUnread { group: _, step: s, reason: _ } => s == "claim"
               CurrentAuthorityRead { authority: _, head: _, generation: _ } => false

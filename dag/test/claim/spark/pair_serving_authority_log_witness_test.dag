@@ -22,39 +22,39 @@ import gunbc.spark.pair_serving_authority_log {
 // state that was not current. The linearization itself -- append under a leased head, read back --
 // executes for real in test.claim.spark.pair_serving_authority_log_real_execution on the wet lane.
 
-fn with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
+fn alw_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
   match sha256_hex_digest(hex: "1111111111111111111111111111111111111111111111111111111111111111") {
     Absent => false
     Present { value: d } => scenario(Sha256Hash(d))
   }
 }
 
-fn w_lease(h: ContentHash, inaccessible: Bool) -> HeldLease {
+fn alw_w_lease(h: ContentHash, inaccessible: Bool) -> HeldLease {
   held_lease(
     epoch: LeaseEpoch { lease_key: "witness-lease" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 3 },
     observed: if inaccessible { LeaseInaccessible } else { LeaseRunningExpected },
   )
 }
 
-fn w_active_unestablished() -> PairServingGroupAuthority {
+fn alw_w_active_unestablished() -> PairServingGroupAuthority {
   PairServingActive { group: FabricGroupA, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } }
 }
 
-fn w_all_arms(h: ContentHash) -> List<PairServingGroupAuthority> {
+fn alw_w_all_arms(h: ContentHash) -> List<PairServingGroupAuthority> {
   [
-    w_active_unestablished(),
+    alw_w_active_unestablished(),
     PairServingActive { group: FabricGroupA, exact_realization: PairRealizationKeyed { key: h } },
-    SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: w_lease(h: h, inaccessible: false) },
+    SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: alw_w_lease(h: h, inaccessible: false) },
     SuspendedForAuthorizedSuccessor {
       group: FabricGroupA, authorization: "auth-1" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h },
-      lease: w_lease(h: h, inaccessible: true), cleanup: "baseline" as NonEmptyStr,
+      lease: alw_w_lease(h: h, inaccessible: true), cleanup: "baseline" as NonEmptyStr,
     },
     FencedRefusal { group: FabricGroupA, cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr },
     ReleasedToFleet { group: FabricGroupA, release_receipt: h },
   ]
 }
 
-fn w_event(previous: PairServingGroupAuthority, next: PairServingGroupAuthority, parent: EventId?) -> ChainEvent<PairAuthorityEvent> {
+fn alw_w_event(previous: PairServingGroupAuthority, next: PairServingGroupAuthority, parent: EventId?) -> ChainEvent<PairAuthorityEvent> {
   ChainEvent {
     partition: pair_authority_partition(group: FabricGroupA),
     parent: parent,
@@ -64,8 +64,8 @@ fn w_event(previous: PairServingGroupAuthority, next: PairServingGroupAuthority,
   }
 }
 
-fn round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAuthority) -> Bool {
-  let e = w_event(previous: previous, next: next, parent: none)
+fn alw_round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAuthority) -> Bool {
+  let e = alw_w_event(previous: previous, next: next, parent: none)
   match pair_authority_event_decode(text: pair_authority_event_wire_text(event: e)) {
     EventUndecodable { reason: _ } => false
     EventDecoded { event: back } =>
@@ -83,61 +83,61 @@ fn round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAuthor
 // fold that renders and parses an authority is the whole cost of each and a conjunction over six
 // arms pays it six times under one budget (DESIGN §3: split independent cases when splitting
 // loses no coverage). The `previous` position runs the same members fold, so it is covered once.
-fn arm_round_trips(index: Int) -> Bool {
-  with_hash(scenario: fn(h) {
-    match get(xs: w_all_arms(h: h), index: index) {
+fn alw_arm_round_trips(index: Int) -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    match get(xs: alw_w_all_arms(h: h), index: index) {
       Absent => false
-      Present { value: a } => round_trips(previous: w_active_unestablished(), next: a)
+      Present { value: a } => alw_round_trips(previous: alw_w_active_unestablished(), next: a)
     }
   })
 }
 
 test fn an_unestablished_active_arm_round_trips_through_the_wire() -> Bool {
-  arm_round_trips(index: 0)
+  alw_arm_round_trips(index: 0)
 }
 
 test fn a_keyed_active_arm_round_trips_through_the_wire() -> Bool {
-  arm_round_trips(index: 1)
+  alw_arm_round_trips(index: 1)
 }
 
 test fn a_pending_arm_round_trips_through_the_wire() -> Bool {
-  arm_round_trips(index: 2)
+  alw_arm_round_trips(index: 2)
 }
 
 test fn a_suspended_for_successor_arm_round_trips_through_the_wire() -> Bool {
-  arm_round_trips(index: 3)
+  alw_arm_round_trips(index: 3)
 }
 
 test fn a_fenced_arm_round_trips_through_the_wire() -> Bool {
-  arm_round_trips(index: 4)
+  alw_arm_round_trips(index: 4)
 }
 
 test fn a_released_arm_round_trips_through_the_wire() -> Bool {
-  arm_round_trips(index: 5)
+  alw_arm_round_trips(index: 5)
 }
 
 // The `previous` position, with a leased arm, so both sides of one event are read back.
 test fn a_leased_previous_arm_round_trips_through_the_wire() -> Bool {
-  with_hash(scenario: fn(h) {
-    match get(xs: w_all_arms(h: h), index: 3) {
+  alw_with_hash(scenario: fn(h) {
+    match get(xs: alw_w_all_arms(h: h), index: 3) {
       Absent => false
-      Present { value: a } => round_trips(previous: a, next: w_active_unestablished())
+      Present { value: a } => alw_round_trips(previous: a, next: alw_w_active_unestablished())
     }
   })
 }
 
 // RED -- two arms that differ only in a field the wire must carry are not equal on the wire.
 test fn the_wire_distinguishes_arms_and_fields() -> Bool {
-  with_hash(scenario: fn(h) {
-    let arms = w_all_arms(h: h)
-    let live = w_lease(h: h, inaccessible: false)
-    let dead = w_lease(h: h, inaccessible: true)
+  alw_with_hash(scenario: fn(h) {
+    let arms = alw_w_all_arms(h: h)
+    let live = alw_w_lease(h: h, inaccessible: false)
+    let dead = alw_w_lease(h: h, inaccessible: true)
     length(arms) == 6
       && !any(arms, a => any(arms, b => (authority_wire(a: a) != authority_wire(a: b)) && authority_eq(a: a, b: b)))
       && !authority_eq(
            a: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: live },
            b: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: dead })
-      && !authority_eq(a: w_active_unestablished(), b: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } })
+      && !authority_eq(a: alw_w_active_unestablished(), b: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr } })
   })
 }
 
@@ -156,17 +156,17 @@ test fn a_foreign_or_incoherent_document_does_not_decode() -> Bool {
 
 // ── THE FOLD ───────────────────────────────────────────────────────────────────────────────────
 
-fn env(id: String, e: ChainEvent<PairAuthorityEvent>) -> ChainEnvelope<PairAuthorityEvent> {
+fn alw_env(id: String, e: ChainEvent<PairAuthorityEvent>) -> ChainEnvelope<PairAuthorityEvent> {
   ChainEnvelope { id: id as EventId, event: e }
 }
 
 // No transitions: the resting row at generation 0. Two chained transitions: the last next, at 2.
 test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
-  with_hash(scenario: fn(h) {
-    let resting = w_active_unestablished()
-    let pending = SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: w_lease(h: h, inaccessible: false) }
+  alw_with_hash(scenario: fn(h) {
+    let resting = alw_w_active_unestablished()
+    let pending = SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: alw_w_lease(h: h, inaccessible: false) }
     let fenced = FencedRefusal { group: FabricGroupA, cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr }
-    let chain = [env(id: "e1", e: w_event(previous: resting, next: pending, parent: none)), env(id: "e2", e: w_event(previous: pending, next: fenced, parent: Present { value: "e1" as EventId }))]
+    let chain = [alw_env(id: "e1", e: alw_w_event(previous: resting, next: pending, parent: none)), alw_env(id: "e2", e: alw_w_event(previous: pending, next: fenced, parent: Present { value: "e1" as EventId }))]
     (match authority_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) {
        AuthorityFolded { current: c, generation: g } => g == 0 && authority_eq(a: c, b: resting)
        AuthorityFoldRefused { at_event: _, reason: _ } => false
@@ -181,11 +181,11 @@ test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
 // RED -- an event that claims to leave a state that was not current is refused AT THAT EVENT, and
 // the fold does not continue past it.
 test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -> Bool {
-  with_hash(scenario: fn(h) {
-    let resting = w_active_unestablished()
-    let pending = SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: w_lease(h: h, inaccessible: false) }
+  alw_with_hash(scenario: fn(h) {
+    let resting = alw_w_active_unestablished()
+    let pending = SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: alw_w_lease(h: h, inaccessible: false) }
     let fenced = FencedRefusal { group: FabricGroupA, cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr }
-    let chain = [env(id: "e1", e: w_event(previous: pending, next: fenced, parent: none))]
+    let chain = [alw_env(id: "e1", e: alw_w_event(previous: pending, next: fenced, parent: none))]
     match authority_fold(resting: resting, oldest_first: chain) {
       AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"
       AuthorityFolded { current: _, generation: _ } => false
@@ -195,10 +195,10 @@ test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -
 
 // RED -- a transition whose next state names another group than the partition's is refused.
 test fn a_transition_to_another_groups_authority_refuses() -> Bool {
-  with_hash(scenario: fn(h) {
-    let resting = w_active_unestablished()
+  alw_with_hash(scenario: fn(h) {
+    let resting = alw_w_active_unestablished()
     let elsewhere = ReleasedToFleet { group: FabricGroupB, release_receipt: h }
-    match authority_fold(resting: resting, oldest_first: [env(id: "e1", e: w_event(previous: resting, next: elsewhere, parent: none))]) {
+    match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: alw_w_event(previous: resting, next: elsewhere, parent: none))]) {
       AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"
       AuthorityFolded { current: _, generation: _ } => false
     }
