@@ -4,7 +4,6 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list, fold_list_right, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
-import v2.std.compilers.sugar { sugar_sequence_pair_optional, sugar_unwrap_production_shell }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -41,7 +40,6 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.extdeps.languages.dag {
-  dag_binding_branded_atom_identity,
   dag_lex_token_symbol,
   dag_named_edge,
   dag_surface_module_header_metadata_edge,
@@ -54,6 +52,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional,
   parse_subtree_has_production,
   dag_resolve_preserve_module_metadata_subtree,
+  dag_surface_kw_then_ident_from_captured,
   qualified_name_from_module_node
 }
 
@@ -271,46 +270,10 @@ fn namespace_graft_reconstruct_declaration_forest(units: List<Node>) -> List<Edg
   ]
 }
 
-fn namespace_graft_ident_from_node(node: Node) -> Symbol? {
-  let stripped = sugar_unwrap_production_shell(node: node)
-  match dag_binding_branded_atom_identity(node: stripped) {
-    Present { value: binding } => optional_present(value: binding)
-    Absent =>
-      match node_atom_identity_optional(node: stripped) {
-        Present { value: sym } =>
-          if dag_lex_token_symbol(sym: sym) {
-            fold(stripped.children, init: optional_absent(), f: fn(acc, e) {
-              match acc {
-                Present { value: _ } => acc
-                Absent => namespace_graft_ident_from_node(node: e.target)
-              }
-            })
-          } else {
-            optional_present(value: sym)
-          }
-        Absent =>
-          fold(stripped.children, init: optional_absent(), f: fn(acc, e) {
-            match acc {
-              Present { value: _ } => acc
-              Absent => namespace_graft_ident_from_node(node: e.target)
-            }
-          })
-      }
-  }
-}
-
-fn namespace_graft_kw_then_ident(captured: Node) -> Symbol? {
-  match sugar_sequence_pair_optional(node: captured) {
-    Absent => namespace_graft_ident_from_node(node: captured)
-    Present { value: pair } =>
-      match namespace_graft_ident_from_node(node: pair.left) {
-        Present { value: _ } => namespace_graft_ident_from_node(node: pair.right)
-        Absent =>
-          match sugar_sequence_pair_optional(node: pair.right) {
-            Present { value: rest } => namespace_graft_ident_from_node(node: rest.left)
-            Absent => namespace_graft_ident_from_node(node: pair.right)
-          }
-      }
+fn namespace_graft_type_decl_name(unit: Node) -> Symbol? {
+  match namespace_graft_unit_captured(unit: unit) {
+    Present { value: captured } => dag_surface_kw_then_ident_from_captured(captured: captured)
+    Absent => optional_absent()
   }
 }
 
@@ -360,17 +323,6 @@ fn namespace_graft_unit_captured(unit: Node) -> Node? {
   parse_production_captured_child_optional(node: unit)
 }
 
-fn namespace_graft_type_decl_name(unit: Node) -> Symbol? {
-  match namespace_graft_unit_captured(unit: unit) {
-    Present { value: captured } =>
-      match namespace_graft_kw_then_ident(captured: captured) {
-        Present { value: name } => optional_present(value: name)
-        Absent => namespace_graft_ident_from_node(node: unit)
-      }
-    Absent => namespace_graft_ident_from_node(node: unit)
-  }
-}
-
 // Record field_decl_block is not Named-rehomed here (body_lower_type_decl / #11582).
 // The unit is a residual: body_edges_for_graft reconstructs it beside any sibling
 // Named edge so a nonempty combined cannot delete it.
@@ -395,7 +347,7 @@ fn namespace_graft_data_decl_named_edge(unit: Node) -> Edge? {
   match namespace_graft_unit_captured(unit: unit) {
     Absent => optional_absent()
     Present { value: captured } =>
-      match namespace_graft_kw_then_ident(captured: captured) {
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => optional_absent()
         Present { value: data_name } =>
           optional_present(
@@ -432,17 +384,18 @@ fn namespace_graft_named_edges_from_units(units: List<Node>) -> List<Edge> {
   })
 }
 
-fn namespace_graft_is_type_decl_unit(unit: Node) -> Bool {
+fn namespace_graft_is_type_or_data_decl_unit(unit: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: unit) {
-    Present { value: id } => id == ^dag_surface_type_decl
+    Present { value: id } =>
+      (id == ^dag_surface_type_decl) || (id == ^dag_surface_data_decl)
     Absent => false
   }
 }
 
-fn namespace_graft_residual_type_decl_units(units: List<Node>) -> List<Node> {
+fn namespace_graft_residual_decl_units(units: List<Node>) -> List<Node> {
   fold(units, init: [], f: fn(acc, unit) {
-    if namespace_graft_is_type_decl_unit(unit: unit) {
-      match namespace_graft_type_decl_named_edge(unit: unit) {
+    if namespace_graft_is_type_or_data_decl_unit(unit: unit) {
+      match namespace_graft_named_edge_from_unit(unit: unit) {
         Present { value: _ } => acc
         Absent => list_snoc_item(xs: acc, item: unit)
       }
@@ -513,7 +466,7 @@ fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
     edges: namespace_graft_collect_body_edges_from_node(node: working)
   )
   let combined = concat(from_decls, flattened)
-  let residuals = namespace_graft_residual_type_decl_units(units: units)
+  let residuals = namespace_graft_residual_decl_units(units: units)
   if count(combined) == 0 {
     if count(units) == 0 {
       []

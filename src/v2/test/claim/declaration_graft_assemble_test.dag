@@ -183,22 +183,13 @@ test fn declaration_graft_coproduct_beside_record_does_not_erase_rec() -> Bool {
 }
 
 // Record Named-rehome is body_lower_type_decl / gunbc#11582, not flatten-drop.
-// These assert the measured defect so they execute on per-PR discovery (LCR polarity).
-// They go red when record assemble accepts / Rec is Named; then they flip to
-// regression controls and any ExpectAssertionFalse row would delete (§4b(4)).
+// Per-PR measurements of the defect (assemble does not accept). Naming is not
+// asserted via !named_reachable: that is true on every Rejected and does not
+// inspect labels. They go red when record assemble accepts.
 test fn declaration_graft_record_type_only_does_not_accept_today() -> Bool {
   !declaration_graft_assemble_accepts(src: src_g_type_only)
 }
 
-test fn declaration_graft_record_type_only_rec_is_not_named_today() -> Bool {
-  !declaration_graft_named_reachable(src: src_g_type_only, lexeme: "Rec")
-}
-
 test fn declaration_graft_record_construct_does_not_accept_today() -> Bool {
   !declaration_graft_assemble_accepts(src: src_g)
-}
-
-test fn declaration_graft_record_fields_are_not_named_today() -> Bool {
-  !(declaration_graft_named_reachable(src: src_g, lexeme: "Rec")
-    && declaration_graft_named_reachable(src: src_g, lexeme: "n"))
 }

@@ -4629,6 +4629,30 @@ fn parse_subtree_has_production(root: Node, emitted: Symbol) -> Bool {
   }
 }
 
+fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
+  match find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: after_kw, diagnostics: _ } =>
+      match find_named_child(root: after_kw, name: ^grammar_sequence_left_node_projection) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: ident_node, diagnostics: _ } =>
+          match dag_binding_branded_atom_identity(node: ident_node) {
+            Present { value: binding } => Present { value: binding }
+            Absent =>
+              match node_atom_identity_optional(node: ident_node) {
+                Present { value: sym } =>
+                  if dag_lex_token_symbol(sym: sym) {
+                    optional_absent()
+                  } else {
+                    optional_present(value: sym)
+                  }
+                Absent => optional_absent()
+              }
+          }
+      }
+  }
+}
+
 // THE NAMED-ARGUMENT SPINE, AND IT LIVES HERE BECAUSE THIS MODULE OWNS THE PRODUCTION IT
 // DECODES. dag_grammar_arg_expr is Choice(Seq(binding_name, Seq(colon, expr)), expr): a named
 // argument carries its NAME in the sequence left and its VALUE two rights in, past the colon; a
