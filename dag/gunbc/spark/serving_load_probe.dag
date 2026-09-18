@@ -771,9 +771,9 @@ fn rate_text(r: DerivedRate) -> String {
     RateUnreadable { because: c } => join(["unreadable ", c as String], "")
     RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
       join([
-        "generation_tokens=", to_string(t),
+        "completed_output_tokens=", to_string(t),
         " scrape_millis=", to_string(ms),
-        " tokens_per_s=",
+        " output_tokens_per_s=",
         match tokens_per_observation_second(r: r) {
           Absent => "none"
           Present { value: v } => to_string(v)
@@ -883,6 +883,98 @@ data glm_native_smoke_client_latency: ClientBenchLatency = ClientBenchLatencyRep
   standing: TranscribedUncited {
     read_obligation: "re-read vllm bench serve stdout for the 256-in/64-out wiring argv; the 17.39 tok/s / 82.1 ms TPOT / 81.8 ms ITL / 2185 ms TTFT figures were transcribed from calm-bat-65's docker-exec receipt" as NonEmptyStr
   }
+}
+
+data glm_native_wet_smoke_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "re-read calm-bat-65 docker-exec stdout for glm_native_smoke_protocol (256-in/128-out/prefix 0/4 prompts/inf/c=2/ignore-eos) on 192.168.1.236 under WindowSharedWithDeclaredTraffic" as NonEmptyStr
+}
+
+data glm_native_wet_smoke_client_latency: ClientBenchLatency = ClientBenchLatencyReported {
+  output_throughput_milli_tok_per_s: 22510
+  tpot_milli: 82
+  itl_milli: Present { value: 83 }
+  ttft_milli: 996
+  contended: true
+  standing: glm_native_wet_smoke_standing
+}
+
+type ClientItlTail
+  = ItlTailUnread { cause: NonEmptyStr }
+  | ItlMeanMedianP99 { mean_milli: Nat, median_milli: Nat, p99_milli: Nat }
+
+data glm_native_wet_smoke_itl: ClientItlTail = ItlMeanMedianP99 {
+  mean_milli: 83
+  median_milli: 82
+  p99_milli: 165
+}
+
+fn itl_p99_is_contention_tail(t: ClientItlTail) -> Bool {
+  match t {
+    ItlTailUnread { cause: _ } => false
+    ItlMeanMedianP99 { mean_milli: _, median_milli: med, p99_milli: p99 } =>
+      p99 >= (med * 2)
+  }
+}
+
+type PeakConcurrencyReceipt
+  = PeakConcurrencyUnread { cause: NonEmptyStr }
+  | PeakConcurrencyObserved { client_max_concurrency: Nat, engine_peak_concurrent_requests: Nat }
+
+data glm_native_wet_smoke_peak_concurrency: PeakConcurrencyReceipt = PeakConcurrencyObserved {
+  client_max_concurrency: 2
+  engine_peak_concurrent_requests: 4
+}
+
+fn foreign_in_flight_at_peak(p: PeakConcurrencyReceipt) -> Nat? {
+  match p {
+    PeakConcurrencyUnread { cause: _ } => none
+    PeakConcurrencyObserved { client_max_concurrency: c, engine_peak_concurrent_requests: e } =>
+      if e > c { Present { value: e - c } } else { Present { value: 0 } }
+  }
+}
+
+fn peak_concurrency_proves_shared_window(p: PeakConcurrencyReceipt) -> Bool {
+  match foreign_in_flight_at_peak(p: p) {
+    Absent => false
+    Present { value: n } => n > 0
+  }
+}
+
+type RateTokenDenomination
+  = RateDenominatedInCompletedOutputTokens { because: NonEmptyStr }
+  | RateDenominatedInTotalTokensIncludingPrefill { because: NonEmptyStr }
+
+data glm_native_client_rate_denomination: RateTokenDenomination = RateDenominatedInCompletedOutputTokens {
+  because: "vllm bench serve output token throughput and the probe rate both count completed decode tokens; total token throughput also counts prefill of the same requests and is a different question" as NonEmptyStr
+}
+
+type PrefillVersusDecodeThroughput {
+  output_milli_tok_per_s: Nat
+  total_milli_tok_per_s: Nat
+  input_tokens: Nat
+  output_tokens: Nat
+}
+
+data glm_native_wet_smoke_prefill_versus_decode: PrefillVersusDecodeThroughput = PrefillVersusDecodeThroughput {
+  output_milli_tok_per_s: 22510
+  total_milli_tok_per_s: 69640
+  input_tokens: 1072
+  output_tokens: 512
+}
+
+fn total_token_throughput_is_not_the_probe_rate(r: PrefillVersusDecodeThroughput) -> Bool {
+  r.total_milli_tok_per_s != r.output_milli_tok_per_s
+}
+
+data glm_native_wet_smoke_client_output: ClientOutputTokens = ClientOutputTokensObserved { tokens: 512 }
+data glm_native_wet_smoke_duration_millis: Nat = 22750
+
+fn glm_native_wet_smoke_rate() -> DerivedRate {
+  derive_rate_honest(
+    ledger: LedgerClosed { offered: 4, completed: 4, failed: 0, failed_after_tokens: 0 },
+    scrape_millis: Present { value: glm_native_wet_smoke_duration_millis },
+    client_output: glm_native_wet_smoke_client_output,
+  )
 }
 
 data glm_native_contended_sweep_standing: CitedFigureStanding = TranscribedUncited {
