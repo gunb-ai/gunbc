@@ -392,9 +392,9 @@ fn namespace_graft_type_decl_name(unit: Node) -> Symbol? {
   }
 }
 
-// Record field_decl_block is not rehomed here. body_lower_type_decl (v2.compiler.body_lowering_fold)
-// rehomes a type_decl only when a where-clause is present; a record is the standing RED
-// (declaration_graft_record_type_only_accepts) and the follow-up after gunbc#11582.
+// Record field_decl_block is not Named-rehomed here (body_lower_type_decl / #11582).
+// The unit is a residual: body_edges_for_graft reconstructs it beside any sibling
+// Named edge so a nonempty combined cannot delete it.
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
   match namespace_graft_find_emitted(node: unit, emitted: ^dag_surface_field_decl_block) {
     Present { value: _ } => optional_absent()
