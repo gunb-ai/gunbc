@@ -2550,7 +2550,20 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
 // module path are one relation, syntactic containment (docs/plans/namespace-resolution-design.md
 // section 3), and the resolver's unique-on-chain rule (section 13) resolves the FIRST segment on
 // the ancestor chain and projects the rest. Deciding here would be a second resolver with no scope
-// to consult. So every chain of bare segments lowers to the one spine and the resolver answers.
+// to consult. So every chain of bare segments lowers to the one spine, and the resolver is where
+// the answer lives.
+//
+// WHAT THE RESOLVER ANSWERS TODAY, STATED AT ITS ACTUAL RUNG (review 67513 on gunbc#11582): the
+// module-path class resolves; the LOCAL-RECEIVER class does not yet, because
+// try_resolve_qualified_name_node's unique-on-chain projection is UNFIRED and it reads every spine
+// as corpus-root absolute. A local field access therefore refuses as an absolute-path miss, and a
+// binder that shadows a root segment is not yet refused. Neither is a regression of this arm: on
+// the production route `r.v` never reached the projection refusal below -- the infix arm
+// preempted it, lowered it to Transform(dot, r, v), and resolve refused the bare `v` -- so the
+// verdict before and after is refuse-for-the-wrong-reason. Both standings are enrolled as
+// today-rows in v2.test.claim.namespace_xl0.cross_module_reference_resolution, which red the day
+// the projection arm lands. The lowering does not compensate by keeping a local-receiver chain out
+// of the spine: that would be the second resolver this header refuses to be.
 //
 // THE SHAPE IS BUILT BY fold_list_node AND NOWHERE ELSE, so a spine label rename cannot fork the
 // producer from the fold that reads it. The spine root carries the source occurrence, because the

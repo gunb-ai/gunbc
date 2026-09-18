@@ -1,12 +1,24 @@
 module v2.test.claim.namespace_xl0.cross_module_reference_resolution
 
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
 import v2.compiler.program_assembly {
   assemble_program_from_module_roots,
   module_roots_from_source_root_ingest
 }
+import v2.compiler.repair_input_origin_roster {
+  RepairInputOriginRoster,
+  repair_input_origin_roster_is_total,
+  repair_input_origin_roster_over_roots
+}
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import std.repair_input_origin {
+  RenderedTargetVocabularyCarrier,
+  RepairInputDeclared,
+  SourceCarrierCandidate,
+  SourceDeclarationCarrier
+}
+import v2.std.algebra { fold_list, length }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
@@ -15,13 +27,21 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.std.text { String }
+import v2.std.text { String, string_eq }
 import std.algebra { Cons, Empty, FreeMonoid }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE RESOLVER'S SIDE OF THE CROSS-MODULE REFERENCE CLASS, ON THE PRODUCTION ROUTE.
+//
+// WHAT THIS FILE PROVES, AND NO MORE: that a source-produced, root-qualified spine reaches the
+// resolver's qualified arm and is accepted by its CURRENT lookup, which is corpus-root ABSOLUTE
+// (v2.compiler.resolve try_resolve_qualified_name_node, whose own header marks unique-on-chain
+// UNFIRED). It does NOT establish docs/plans/namespace-resolution-design.md section 13 -- first
+// segment resolved on the ancestor chain, shadowing refused, remainder projected -- nor
+// local-receiver projection. Those two standings are measured by today-rows at the end of this
+// file, which are their triggers (review 67513 on gunbc#11582).
 //
 // v2.test.claim.namespace_xl0.call_argument_mention_survival measures what the COLLECTOR sees. This
 // file measures what RESOLUTION does with the same lowered shape, because the two consume one
@@ -36,7 +56,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission
 // resolves the module the Admission names and consults the other ingested roots only through the
 // symbol index, so three consumer modules can share ONE ingest and each claim selects its subject.
-// That is what lets one warm producer serve every row: the parse-and-normalize of five inline
+// That is what lets one warm producer serve every row: the parse-and-normalize of seven inline
 // modules is the stage no row is about, and it is shared exactly as the sibling file shares its
 // ingest (v2.workflow.floor_pure_producer_share); the resolve is executed per claim.
 //
@@ -56,6 +76,10 @@ data xl0r_declared_consumer_source: String = "module v2.test.xl0r_declared_consu
 data xl0r_undeclared_consumer_source: String = "module v2.test.xl0r_undeclared_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_nothing_declared() -> Bool { v2.test.xl0r_provider.xl0r_no_such_declaration }\n"
 
 data xl0r_data_target_consumer_source: String = "module v2.test.xl0r_data_target_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_provided_value() -> Bool { v2.test.xl0r_provider.xl0r_provided_value }\n"
+
+data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
+
+data xl0r_shadowing_consumer_source: String = "module v2.test.xl0r_shadowing_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_shadows(v2: Bool) -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
 
 fn xl0r_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -101,7 +125,23 @@ data xl0r_ingest: SourceRootIngest = Cons {
           unit: ^xl0r_data_target_consumer_cu,
           path: "src/v2/test/fixture/namespace_xl0/resolution_data_target_consumer.dag"
         ),
-        tail: Empty
+        tail: Cons {
+          head: xl0r_read(
+            source: xl0r_field_access_consumer_source,
+            id: ^xl0r_field_access_consumer_read,
+            unit: ^xl0r_field_access_consumer_cu,
+            path: "src/v2/test/fixture/namespace_xl0/resolution_field_access_consumer.dag"
+          ),
+          tail: Cons {
+            head: xl0r_read(
+              source: xl0r_shadowing_consumer_source,
+              id: ^xl0r_shadowing_consumer_read,
+              unit: ^xl0r_shadowing_consumer_cu,
+              path: "src/v2/test/fixture/namespace_xl0/resolution_shadowing_consumer.dag"
+            ),
+            tail: Empty
+          }
+        }
       }
     }
   }
@@ -196,4 +236,86 @@ test fn a_cross_module_reference_to_a_data_declaration_refuses_today() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
   }
+}
+
+// THE LOCAL-RECEIVER CLASS, MEASURED AND NOT CLAIMED (review 67513 on gunbc#11582).
+//
+// `r.v` over a parameter lowers to the same spine as a module path -- that is deliberate, and the
+// lowering's header says why. What the RESOLVER does with it today is a separate fact, and it is
+// not the unique-on-chain projection docs/plans/namespace-resolution-design.md section 13 rules:
+// try_resolve_qualified_name_node still sends the path to symbol_index_lookup as corpus-root
+// absolute (its own header calls that arm UNFIRED), so a local field access refuses as an
+// absolute-path miss. It refused BEFORE this lowering too, for a different wrong reason: the
+// infix arm lowered `r.v` to Transform(dot, r, v) and the bare `v` was unbound at resolve. Same
+// verdict, same reason symbol, neither the honest "field projection unresolved". So this is not a
+// rung drop -- refuse-for-the-wrong-reason before, refuse-for-the-wrong-reason after -- and it is
+// enrolled as a today-row so the day the projection arm lands, this reds and gets re-stated as
+// resolving. What this row rules out is the silent arm: a local field access must not be Accepted.
+test fn a_local_field_access_refuses_unbound_today() -> Bool {
+  match xl0r_resolve_subject(subject: "v2.test.xl0r_field_access_consumer") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+// THE COLLISION THE ABSOLUTE-PATH ARM ADMITS, MEASURED SO IT IS COUNTED RATHER THAN DISCOVERED.
+// A parameter named like a root segment (`v2`) and a body chain starting with it: section 13 says
+// shadowing REFUSES at the reference site; the unfired arm instead resolves the whole chain as an
+// absolute path and Accepts, ignoring the binder on the chain. Before this lowering the same body
+// lowered to Transform(dot, v2, test) and refused (`test` unbound) -- a refusal for the wrong
+// reason that happened to be the safe verdict. This row states the standing the arm actually has
+// today, and reds when unique-on-chain lands, which is the trigger it names.
+test fn a_binder_shadowing_a_root_segment_is_not_yet_refused_today() -> Bool {
+  match xl0r_resolve_subject(subject: "v2.test.xl0r_shadowing_consumer") {
+    Accepted { value: resolved, diagnostics: _ } =>
+      xl0r_resolved_atom_present(root: resolved, identity: ^xl0r_provided_fn)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// XL-0'S OWN PRODUCER, EXECUTED ON THE PRODUCTION ROUTE. The rows above exercise the collector
+// and the resolver beside v2.compiler.repair_input_origin_roster; these execute
+// repair_input_origin_roster_over_roots itself over the same normalized roots and ask what a
+// denominator owes: is it TOTAL (no unreadable root), and does it carry the cross-module mention
+// as a SourceDeclarationCarrier whose provenance is RepairInputDeclared -- answered by the
+// resolver, not merely mentioned. Pinning a base is ACT-0's act and is not claimed here; this is
+// the delivery half, over a fixture.
+fn xl0r_roster() -> RepairInputOriginRoster {
+  match xl0r_fixture_normalized() {
+    Accepted { value: roots, diagnostics: _ } =>
+      repair_input_origin_roster_over_roots(roots: normalized_tree_roots_to_nodes(roots: roots))
+    Rejected { diagnostics: _ } =>
+      RepairInputOriginRoster { carriers: Empty, unreadable_roots: Empty }
+  }
+}
+
+fn xl0r_roster_has_declared_carrier(roster: RepairInputOriginRoster, spelling: String) -> Bool {
+  fold_list(
+    xs: roster.carriers,
+    empty: false,
+    cons: fn(acc, c) {
+      acc || (match c {
+        SourceDeclarationCarrier { identity: id } =>
+          string_eq(a: id.authored_spelling, b: spelling)
+            && (match id.provenance {
+              RepairInputDeclared { declaring: _ } => true
+              _ => false
+            })
+        SourceCarrierCandidate { identity: _ } => false
+        RenderedTargetVocabularyCarrier { identity: _ } => false
+      })
+    }
+  )
+}
+
+test fn the_repair_input_origin_roster_is_total_and_non_empty_on_the_production_route_holds() -> Bool {
+  let roster = xl0r_roster()
+  repair_input_origin_roster_is_total(roster: roster) && length(xs: roster.carriers) > 0
+}
+
+test fn the_repair_input_origin_roster_carries_the_declared_cross_module_mention_holds() -> Bool {
+  xl0r_roster_has_declared_carrier(
+    roster: xl0r_roster(),
+    spelling: "v2.test.xl0r_provider.xl0r_provided_fn"
+  )
 }
