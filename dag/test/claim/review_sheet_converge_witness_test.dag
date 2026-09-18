@@ -68,6 +68,7 @@ import gunbc.review_sheet_projection {
   A1Column,
   A1Cell,
 }
+import std.materialization_provider { length_prefixed_encode }
 import gunbc.review_sheet_sheets {
   observed_sheet_from_value_range,
   review_sheet_ensure,
@@ -306,7 +307,7 @@ fn assess_2b(requested: SheetA1Range, range: ValueRange) -> ReviewSheetEnsureAss
   )
 }
 
-test fn assess_refuses_each_request_shape_under_its_own_cause_before_reading() -> Bool {
+test fn assess_refuses_each_request_shape_under_its_own_cause() -> Bool {
   let good = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "", ""]])
   assessment_tag(a: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: good)) == "request:bounded"
     && assessment_tag(a: assess_2b(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr), range: good)) == "request:column-bounded"
@@ -332,18 +333,40 @@ test fn assess_carries_the_whole_refused_range_not_only_its_tab() -> Bool {
       == "column:Review!A1:E"
 }
 
-test fn the_request_refusal_reason_renders_the_range_it_refused() -> Bool {
-  let empty = w_value_range(rows: [])
+fn rendered_request_refusal(requested: SheetA1Range) -> String {
   match review_sheet_ensure_decide(
     policy: EnsureMayApply,
-    assessment: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: empty),
+    assessment: assess_2b(requested: requested, range: w_value_range(rows: [])),
   ) {
-    Refuse { reason: r } =>
-      string_contains(s: r as String, pattern: "Review!A1:E9")
-        && string_contains(s: r as String, pattern: "unobserved rows")
-    Apply { plan: _ } => false
-    Noop => false
+    Refuse { reason: r } => r as String
+    Apply { plan: _ } => "APPLY"
+    Noop => "NOOP"
   }
+}
+
+test fn the_request_refusal_reason_renders_the_range_it_refused_for_both_walls() -> Bool {
+  let bounded = rendered_request_refusal(requested: w_bounded_request(tab: "Review" as NonEmptyStr))
+  let column = rendered_request_refusal(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr))
+  string_contains(s: bounded, pattern: "Review!A1:E9")
+    && string_contains(s: bounded, pattern: "unobserved rows")
+    && string_contains(s: column, pattern: "Review!A1:E")
+    && string_contains(s: column, pattern: "unobserved columns")
+    && !string_contains(s: column, pattern: "unobserved rows")
+}
+
+fn w_malformed_readback() -> ValueRange {
+  ValueRange {
+    range: "Review",
+    majorDimension: Present { value: "ROWS" },
+    values: Present { value: [w_headers()] },
+  }
+}
+
+test fn the_request_wall_preempts_a_readback_that_cannot_parse() -> Bool {
+  let bad = w_malformed_readback()
+  assessment_tag(a: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: bad)) == "request:bounded"
+    && assessment_tag(a: assess_2b(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr), range: bad)) == "request:column-bounded"
+    && assessment_tag(a: assess_2b(requested: w_open_request(tab: "Review" as NonEmptyStr), range: bad)) == "readback"
 }
 
 test fn assess_refuses_a_foreign_readback_tab() -> Bool {
@@ -370,35 +393,51 @@ test fn decide_applies_policy_and_assess_never_does() -> Bool {
   }
 }
 
+fn lp(s: String) -> String {
+  length_prefixed_encode(s: s)
+}
+
+// Each field is length-prefixed, so it is self-delimiting; a list is the concatenation of its
+// length-prefixed elements, length-prefixed again so the list is one field. Nesting stays injective.
+fn lp_list(xs: List<String>) -> String {
+  lp(s: join(map(xs, x => lp(s: x)), ""))
+}
+
 fn patch_wire(w: DerivedCellWrite) -> String {
-  join([w.listing_id as String, w.column as String, a1_cell_wire(cell: w.a1), w.value], "~")
+  lp_list(xs: [w.listing_id as String, w.column as String, a1_cell_wire(cell: w.a1), w.value])
 }
 
 fn run_wire(r: AppendCellRun) -> String {
-  join([a1_row_span_wire(span: r.a1), join(r.cells, ","), join(map(r.columns, c => c as String), ",")], "~")
+  lp_list(xs: [a1_row_span_wire(span: r.a1), lp_list(xs: r.cells), lp_list(xs: map(r.columns, c => c as String))])
 }
 
 fn append_wire(a: AppendListingRow) -> String {
-  join([a.listing_id as String, to_string(a.sheet_row), join(map(a.runs, r => run_wire(r: r)), ";")], "~")
+  lp_list(xs: [a.listing_id as String, to_string(a.sheet_row), lp_list(xs: map(a.runs, r => run_wire(r: r)))])
 }
 
-// AN INJECTIVE FINGERPRINT, NOT A TAG. An earlier form of this kept only the tab and the append
-// COUNT for an Apply, which made the equivalence claim blind to exactly the wrappers it exists to
-// catch: one that alters an append's listing identity, its sheet row, its run locations, its
-// columns or its cell values, or that drops a patch, preserves both of those two fields and passed.
-// The refusal side already compared the whole reason; the Apply side now meets the same standard.
+// A CANONICAL ENCODING, NOT A DELIMITER JOIN. An earlier form of this was described as injective
+// and was not: it joined arbitrary cell strings with "," "~" ";" "|" unescaped, so ["a,b","c"] and
+// ["a","b,c"] serialized identically and a wrapper could alter a plan while preserving this value.
+// It now uses std.materialization_provider length_prefixed_encode -- the keying home's canonical
+// field encoding -- with the variant tag first so Noop, Apply and Refuse cannot collide.
 fn decision_wire_2b(d: UpsertDecision<TabBoundWritePlan>) -> String {
   match d {
-    Noop => "noop"
+    Noop => lp_list(xs: ["noop"])
     Apply { plan: p } =>
-      join([
+      lp_list(xs: [
         "apply",
         p.tab as String,
-        join(map(p.plan.patches, w => patch_wire(w: w)), ";"),
-        join(map(p.plan.appends, a => append_wire(a: a)), ";"),
-      ], "|")
-    Refuse { reason: r } => concat("refuse:", r as String)
+        lp_list(xs: map(p.plan.patches, w => patch_wire(w: w))),
+        lp_list(xs: map(p.plan.appends, a => append_wire(a: a))),
+      ])
+    Refuse { reason: r } => lp_list(xs: ["refuse", r as String])
   }
+}
+
+test fn the_decision_encoding_separates_values_a_delimiter_join_would_merge() -> Bool {
+  lp_list(xs: ["a,b", "c"]) != lp_list(xs: ["a", "b,c"])
+    && lp_list(xs: ["a", "b"]) != lp_list(xs: ["ab"])
+    && lp_list(xs: [lp_list(xs: ["a"]), "b"]) != lp_list(xs: ["a", lp_list(xs: ["b"])])
 }
 
 fn ensure_equals_composition(policy: EnsurePolicy, requested: SheetA1Range, range: ValueRange) -> Bool {
@@ -432,6 +471,22 @@ test fn ensure_is_exactly_decide_of_assess_on_every_arm() -> Bool {
     && ensure_equals_composition(policy: EnsureMayApply, requested: w_open_request(tab: review), range: conflicted)
     && ensure_equals_composition(policy: EnsureMayApply, requested: w_open_request(tab: review), range: unreadable)
     && ensure_equals_composition(policy: EnsureObserveOnly, requested: w_open_request(tab: review), range: conflicted)
+    && ensure_equals_composition(policy: EnsureMayApply, requested: w_open_request(tab: review), range: w_patch_readback())
+}
+
+fn w_patch_readback() -> ValueRange {
+  w_value_range(rows: [["L1", "", w_standing_observed(), "", ""]])
+}
+
+test fn the_equivalence_matrix_reaches_a_patch_producing_plan() -> Bool {
+  match review_sheet_ensure_decide(
+    policy: EnsureMayApply,
+    assessment: assess_2b(requested: w_open_request(tab: "Review" as NonEmptyStr), range: w_patch_readback()),
+  ) {
+    Apply { plan: p } => (p.plan.patches |> count) >= 1 && (p.plan.appends |> count) == 0
+    Noop => false
+    Refuse { reason: _ } => false
+  }
 }
 
 test fn the_equivalence_comparator_actually_reaches_conflict_and_unreadable() -> Bool {
