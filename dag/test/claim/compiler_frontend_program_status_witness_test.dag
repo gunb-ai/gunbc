@@ -43,6 +43,7 @@ import gunbc.namespace_cut_stage {
   required_activation_receipt_kinds,
   StageDeliveryReceipt,
   StageDeliveryEvidenceKind,
+  DenominatorRosterInstrumentDelivered,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
   stage_delivery_evidence_label,
@@ -88,11 +89,11 @@ import gunbc.compiler_frontend_program_status {
   MissingInstrument,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
-  RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
   all_missing_instruments,
   conditionally_awaited_instruments,
   stages_awaiting,
+  stage_missing_instruments,
   stage_status,
   stage_startability,
   stage_prerequisite_names_by_class,
@@ -572,24 +573,27 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL5Waves))
 }
 
-// F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR, AND IT MAY NOT READ CLEAR OFF AN INSTRUMENT
-// THAT IS EMPTY ON THE CORPUS.
+// F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR PRODUCER, AND IT MAY READ CLEAR ONLY OFF A
+// DELIVERY RECEIPT WHOSE DISCRIMINATOR EXECUTES ON THE PRODUCTION ROUTE.
 //
-// THIS PROBE HAS NOW BEEN FALSIFIED TWICE AND BOTH FALSIFICATIONS ARE THE SAME RULE. The original
-// arm read gunbc.namespace_cut_subject_roster's unobservable host probes, so repairing probe
-// observability would have flipped XL-0 while no denominator existed. A later arm -- landed on this
-// branch and withdrawn on it -- read a STAGE DELIVERY RECEIPT, which was earned against hand-built
-// Node trees while the producer returned NO sites over the tree production actually yields. Both
-// made XL-0's standing a function of something that is not the denominator.
+// THIS PROBE WAS FALSIFIED TWICE AND BOTH FALSIFICATIONS WERE THE SAME RULE. The original arm read
+// gunbc.namespace_cut_subject_roster's unobservable host probes; a later arm read a STAGE DELIVERY
+// RECEIPT earned against hand-built Node trees while the producer returned NO sites over the tree
+// production actually yields. Both made XL-0's standing a function of something that is not the
+// denominator, and the stage sat NOT-DERIVABLE citing a "missing producer" that existed.
 //
-// So the assertion is NOT-DERIVABLE with this exact cause, which is the one statement that survives
-// both: a rewiring onto any other observable population has to abandon the cause to move the
-// standing, and a receipt re-landed before the producer answers non-empty reds this witness.
-test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bool {
-  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
-    && any(stages_awaiting(i: RepairInputOriginRosterProducer),
-         l => l == namespace_cut_stage_label(s: StageXL0Denominator))
-    && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
+// gunbc#11582 landed the capability the producer waited on (the dotted-reference lowering) and
+// EXECUTED THE PRODUCER ITSELF on the production route -- total, non-empty, carrying the
+// cross-module mention as a RepairInputDeclared carrier -- so the delivery kind and the standing
+// that reads it came back together. This row asserts the standing AGREES WITH the delivery
+// population it reads (DESIGN 4b(1): the reported rung equals the executed evidence), and that no
+// missing instrument is cited for it: withdrawing the receipt reds it as OUTSTANDING with the kind
+// named, and a standing that stopped reading the receipt reds it too.
+test fn xl0_standing_follows_the_denominator_delivery_receipt() -> Bool {
+  standing_agrees_with_population(
+    s: stage_status(s: StageXL0Denominator),
+    expected: stage_delivery_kind_outstanding(kind: DenominatorRosterInstrumentDelivered, held: held_stage_delivery_receipts))
+    && count(stage_missing_instruments(s: StageXL0Denominator)) == 0
 }
 
 // XL-3 stays NotDerivable while the usable class -- qualified cross-module

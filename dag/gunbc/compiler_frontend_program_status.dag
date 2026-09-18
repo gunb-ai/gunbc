@@ -71,6 +71,7 @@ import gunbc.namespace_cut_stage {
   stage_prerequisites,
   act0_release_milestones,
   StageDeliveryEvidenceKind,
+  DenominatorRosterInstrumentDelivered,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
   stage_delivery_kind_outstanding,
@@ -170,7 +171,6 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
 type MissingInstrument
   = PhaseCargoExecutionFact
   | DeclaringIdentitySpellingCensus
-  | RepairInputOriginRosterProducer
   | ExactOccurrenceResidualCensus
   | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
@@ -181,7 +181,6 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
     DeclaringIdentitySpellingCensus => "a declaring-identity spelling census that answers over XL-3's usable population on the production ingest route: QUALIFIED cross-module mentions (every position) and bare type names in FIELD position, joined to their declaring identity - the producer v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest exists and answers over the bare same-module classes only, which is not that population (XL-3's population)"
-    RepairInputOriginRosterProducer => "a repair-input origin roster producer that yields a NON-EMPTY denominator over the tree the production ingest actually yields: source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition (XL-0's population)"
     ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
@@ -256,7 +255,6 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
   match i {
     PhaseCargoExecutionFact => NotBuilt
     DeclaringIdentitySpellingCensus => NotBuilt
-    RepairInputOriginRosterProducer => NotBuilt
     ExactOccurrenceResidualCensus => NotBuilt
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
@@ -722,7 +720,6 @@ fn join_names(names: List<String>) -> String {
 data all_missing_instruments: List<MissingInstrument> = [
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
-  RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
   PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
@@ -902,10 +899,12 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
         )
       )
     StageXL0Denominator =>
-      NotDerivable {
-        why: "XL-0 is the REPAIR-INPUT ORIGIN DENOMINATOR, and it is NOT DERIVABLE until the roster producer has answered NON-EMPTY over the tree the production ingest yields, on the pinned base. THIS ARM ONCE READ CLEAR OFF A DELIVERY RECEIPT AND THAT WAS WRONG: the receipt was earned against HAND-BUILT Node trees, while a substrate-only fixture driving the real ingest -- v2.compiler.program_assembly module_roots_from_source_root_ingest, projected through v2.compiler.normalized_tree normalized_tree_roots_to_nodes -- showed the collector returning NO sites at all for a module that plainly contains them. A stage that reads CLEAR off a green-on-fixtures, empty-on-corpus instrument is reporting a denominator that does not exist, which is DESIGN section 5 silent wrongness rather than an incomplete measurement. THE CROSS-MODULE CLASS -- the one an import-to-containment denominator is made of -- NOW REACHES THE PRODUCER ON THE PRODUCTION ROUTE (smart-lynx-554, 2026-09-18). Re-run rather than trust: v2.test.claim.namespace_xl0.call_argument_mention_survival asserts a qualified cross-module reference in a body and a qualified cross-module type in parameter position each reach the collector as ONE site spelling the whole chain, and v2.test.claim.namespace_xl0.cross_module_reference_resolution asserts the resolver ACCEPTS a cross-module reference to a declared fn, REFUSES an undeclared one as unbound, and keeps a same-module control Accepted. What restored it was not a collector edit: the earliest unjustified boundary (DESIGN section 6b) was v2 body lowering, which read the first dot of a chain as a binary operator and dropped every later segment, and lowered a qualified type to its first atom -- gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering. Nothing in the v2 front end had ever built the qualified-name spine the collector and the resolver both consume. WHAT STILL DOES NOT REACH, EACH WITH ITS OWN TRIGGER AND NONE OF THEM THIS STAGE'S: a call argument and a callee name, including a dotted callee whose last segment carries a call or brace suffix (XL-2, gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering); a bare type name in FIELD position, which is a TREE LOSS rather than a collector miss -- v2.compiler.namespace_graft rehomes a fn_decl under a Named containment edge and nothing rehomes a type_decl or data_decl, so a module whose flattening finds any fn drops its type declarations silently and a module with none keeps raw parse shells (producer: v2.test.claim.namespace_xl0.field_type_tree_presence; the same loss is why a cross-module reference to a DATA target still refuses, measured as a today-row in cross_module_reference_resolution). WHY THIS ARM STAYS NOT-DERIVABLE WITH THE SAME CAUSE: the population this stage is defined by is the roster over the PINNED BASE, and no run of v2.compiler.repair_input_origin_roster over that base has been executed -- a corpus-loading run cannot execute on a BuildBuddy runner (host budget unreadable) and none has been taken on a host with a real cgroup. The fixture receipts above establish that the producer CAN answer non-empty over the cross-module class; they are not the denominator. The arm derives when that run exists and its non-empty roster is the population read here, and a receipt landed before then reds the witness beside this arm." as NonEmptyStr,
-        cause: needs(i: RepairInputOriginRosterProducer)
-      }
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "XL-0: the repair-input origin roster producer delivered and discriminated once on the production route" as NonEmptyStr,
+          outstanding: stage_delivery_kind_outstanding(kind: DenominatorRosterInstrumentDelivered, held: held_stage_delivery_receipts)
+        )
+      )
     StageXL1BaselineCapture =>
       standing_from_evidence(
         e: observe_outstanding(
@@ -922,7 +921,7 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
       )
     StageXL3DeclaringIdentitySpelling =>
       NotDerivable {
-        why: "the spelling census producer exists (v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest) over the production ingest route. Frontiers are separate capabilities: BARE value outside a call, parameter reference, and BARE type name in PARAMETER position reach; BARE type name in FIELD position does not (not a qualification fact -- measured by v2.test.claim.declaring_identity_spelling.production_ingest field_vs_parameter); names inside calls are missing (body-lowering, eager-raven / #11207); QUALIFIED/dotted references WITHOUT a call or brace suffix now reach the production-route tree as one qualified-name spine (the gap was body lowering, not qualification -- gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering, smart-lynx-554 2026-09-18); whether this census joins them to a declaring identity is to be re-measured by its own producer, and a dotted CALLEE stays with the call class. A qualified field type is absent for both independent reasons and cannot discriminate. kernel Int has no corpus declaration. IdentityUnbound on a same-module ingest census row is an index-path probe, not a compiler fact -- enrolled control v2.test.claim.provenance.cross_file_provenance cfp_own_module_site binds on resolve_reference_provenance. Derivable once the producer answers over qualified mentions; restoring dotted will not restore bare field types. The producer landed with #11201 in gunbc#11461; what remains UNBUILT is the capability the instrument label names, not the producer file." as NonEmptyStr,
+        why: "the spelling census producer exists (v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest) over the production ingest route. Frontiers are separate capabilities: BARE value outside a call, parameter reference, and BARE type name in PARAMETER position reach; BARE type name in FIELD position does not (not a qualification fact -- measured by v2.test.claim.declaring_identity_spelling.production_ingest field_vs_parameter); names inside calls are missing (body-lowering, eager-raven / #11207); QUALIFIED/dotted references WITHOUT a call or brace suffix now reach the production-route tree as one qualified-name spine (the gap was body lowering, not qualification -- gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering, smart-lynx-554 2026-09-18); whether this census joins them to a declaring identity is to be re-measured by its own producer, and a dotted CALLEE stays with the call class. A qualified field type is absent for ONE remaining reason -- the declaration never reaches the containment tree (grafting) -- now that qualification no longer hides a mention (v2.test.claim.namespace_xl0.qualified_site_enumerator_differential). kernel Int has no corpus declaration. IdentityUnbound on a same-module ingest census row is an index-path probe, not a compiler fact -- enrolled control v2.test.claim.provenance.cross_file_provenance cfp_own_module_site binds on resolve_reference_provenance. Derivable once the producer answers over qualified mentions; restoring dotted will not restore bare field types. The producer landed with #11201 in gunbc#11461; what remains UNBUILT is the capability the instrument label names, not the producer file." as NonEmptyStr,
         cause: needs(i: DeclaringIdentitySpellingCensus)
       }
     StageXL4ReferenceDerivedGraph =>

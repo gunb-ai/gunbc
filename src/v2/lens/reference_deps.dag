@@ -959,15 +959,25 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // This lens keys on ^dag_surface_qualified_name and the import productions and carries NO dot or
 // field-access handling, so it sees a qualified name in TYPE position and misses one in a BODY,
 // which parses as a postfix chain. The collector reads the normalized tree; until 2026-09-18 that
-// tree carried a qualified spelling as a truncated infix or a first atom, so it missed both. THE
-// CAPABILITY THE CONDITION BELOW NAMES HAS NOW LANDED (smart-lynx-554): v2 body lowering builds the
-// qualified-name spine for every dotted chain without a call or brace suffix, in body and type
-// position, and the collector answers the qualified class over the production route
-// (v2.test.claim.namespace_xl0.call_argument_mention_survival). The dissolution is therefore OWED
-// and not yet executed: this lens's parse-tree site enumeration is now the second enumerator of a
-// class the collector covers. What ends this module is the consolidation itself -- the closure and
-// census consumers above rebased on the collector's sites -- which is a later change, not this one.
-// The one class the collector does not yet cover is the dotted CALLEE, which is the call class.
+// tree carried a qualified spelling as a truncated infix or a first atom, so it missed both.
+// SINCE THEN (smart-lynx-554, gunbc#11582) v2 body lowering builds the qualified-name spine for
+// every dotted chain without a call or brace suffix, and the collector answers the qualified class
+// in BODY position and in PARAMETER-TYPE position over the production route
+// (v2.test.claim.namespace_xl0.call_argument_mention_survival). The population is stated at class
+// grain because the dissolution below is decided at class grain:
+//
+//   qualified body reference, no call suffix   delivered to the collector
+//   qualified parameter type                   delivered to the collector
+//   qualified FIELD type                        NOT delivered: the graft never rehomes a type
+//                                              declaration (declaration-grafting frontier) -- this
+//                                              lens still sees it, the collector does not, measured
+//                                              by v2.test.claim.namespace_xl0.qualified_site_enumerator_differential
+//   dotted callee, call arguments              NOT delivered: the call-lowering frontier
+//
+// So this lens is NOT yet redundant at class grain, and its dissolution stays PENDING: the parse
+// walker is deleted only when an identity-grain site-set comparison against the collector is EMPTY
+// across every reference position. The differential witness above is the first cell of that
+// comparison, and the field-type row there is the one that keeps this walker alive.
 //
 // STATED HERE AND NOT IN THE NARRATIVE ROW BESIDE IT. An earlier revision of this change appended
 // the repoint to reference_deps_dissolution_note, a String whose lifecycle content was already
@@ -975,7 +985,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // for exactly that reason. The result was one lifecycle condition in two places with two different
 // contents, and the one a consumer reads was the stale one. DESIGN section 4c: a dissolution
 // condition belongs in a typed carrier, and `//` is where the rationale goes.
-data reference_deps_dissolve_on: DissolutionCondition = unbound_dissolution(description: "v2.compiler.reference_site_collector collect_reference_sites covers QUALIFIED reference sites on the production route -- SATISFIED 2026-09-18 by the dotted-reference lowering (v2.compiler.body_lowering_fold body_lower_dotted_reference_optional; witness v2.test.claim.namespace_xl0.call_argument_mention_survival) for every chain without a call or brace suffix. The dissolution is now OWED: the closure and census consumers of this lens rebase onto the collector's sites and this parse-tree enumerator is deleted. Landing the namespace terminal step does NOT satisfy this on its own, and neither does the lowering alone -- the consolidation is the act.")
+data reference_deps_dissolve_on: DissolutionCondition = unbound_dissolution(description: "v2.compiler.reference_site_collector collect_reference_sites covers every qualified reference site this lens covers, established by an identity-grain site-set comparison that is EMPTY across every reference position (v2.test.claim.namespace_xl0.qualified_site_enumerator_differential is its first cell). Delivered so far by the dotted-reference lowering (gunbc#11582): qualified body references without a call suffix and qualified parameter types. Still outstanding: qualified FIELD types (declaration grafting -- the collector cannot see a declaration the graft drops) and dotted callees / call arguments (call lowering). PENDING, not owed: the lowering alone does not satisfy this, landing the namespace terminal step does not, and only the empty comparison followed by the consolidation itself does.")
 
 fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
   let here = match parse_production_emitted_identity_optional(node: n) {

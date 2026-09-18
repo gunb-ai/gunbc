@@ -40,12 +40,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE RESOLVER'S SIDE OF THE CROSS-MODULE REFERENCE CLASS, ON THE PRODUCTION ROUTE.
 //
 // WHAT THIS FILE PROVES, AND NO MORE: that a source-produced, root-qualified spine reaches the
-// resolver's qualified arm and is accepted by its CURRENT lookup, which is corpus-root ABSOLUTE
+// resolver's qualified arm and is FOUND by its CURRENT lookup, which is corpus-root ABSOLUTE
 // (v2.compiler.resolve try_resolve_qualified_name_node, whose own header marks unique-on-chain
-// UNFIRED). It does NOT establish docs/plans/namespace-resolution-design.md section 13 -- first
-// segment resolved on the ancestor chain, shadowing refused, remainder projected -- nor
-// local-receiver projection. Those two standings are measured by today-rows at the end of this
-// file, which are their triggers (review 67513 on gunbc#11582).
+// UNFIRED), with every refusal it raises typed and located: unbound for a miss, ambiguous for a
+// head also bound on the chain, identity-unrepresentable for a hit on a non-atom declaration. It
+// does NOT establish docs/plans/namespace-resolution-design.md section 13 projection, nor
+// exact declaring identity -- those are measured by today-rows below, which are their triggers.
 //
 // v2.test.claim.namespace_xl0.call_argument_mention_survival measures what the COLLECTOR sees. This
 // file measures what RESOLUTION does with the same lowered shape, because the two consume one
@@ -57,10 +57,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // DECLARED cross-module target resolve and must leave an UNDECLARED one refusing for its own
 // reason.
 //
-// WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission
+// WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission_context_policy
 // resolves the module the Admission names and consults the other ingested roots only through the
 // symbol index, so three consumer modules can share ONE ingest and each claim selects its subject.
-// That is what lets one warm producer serve every row: the parse-and-normalize of seven inline
+// That is what lets one warm producer serve every row: the parse-and-normalize of eleven inline
 // modules is the stage no row is about, and it is shared exactly as the sibling file shares its
 // ingest (v2.workflow.floor_pure_producer_share); the resolve is executed per claim.
 //
@@ -80,6 +80,14 @@ data xl0r_declared_consumer_source: String = "module v2.test.xl0r_declared_consu
 data xl0r_undeclared_consumer_source: String = "module v2.test.xl0r_undeclared_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_nothing_declared() -> Bool { v2.test.xl0r_provider.xl0r_no_such_declaration }\n"
 
 data xl0r_data_target_consumer_source: String = "module v2.test.xl0r_data_target_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_provided_value() -> Bool { v2.test.xl0r_provider.xl0r_provided_value }\n"
+
+data xl0r_provider_a_source: String = "module v2.test.xl0r_provider_a\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
+
+data xl0r_provider_b_source: String = "module v2.test.xl0r_provider_b\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_leaf(p: Bool) -> Bool { p }\n"
+
+data xl0r_consumer_a_source: String = "module v2.test.xl0r_consumer_a\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_a() -> Bool { v2.test.xl0r_provider_a.xl0r_same_leaf }\n"
+
+data xl0r_consumer_b_source: String = "module v2.test.xl0r_consumer_b\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_b() -> Bool { v2.test.xl0r_provider_b.xl0r_same_leaf }\n"
 
 data xl0r_field_access_consumer_source: String = "module v2.test.xl0r_field_access_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_projects(r: Bool) -> Bool { r.v }\n"
 
@@ -143,7 +151,19 @@ data xl0r_ingest: SourceRootIngest = Cons {
               unit: ^xl0r_shadowing_consumer_cu,
               path: "src/v2/test/fixture/namespace_xl0/resolution_shadowing_consumer.dag"
             ),
-            tail: Empty
+            tail: Cons {
+              head: xl0r_read(source: xl0r_provider_a_source, id: ^xl0r_provider_a_read, unit: ^xl0r_provider_a_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_provider_a.dag"),
+              tail: Cons {
+                head: xl0r_read(source: xl0r_provider_b_source, id: ^xl0r_provider_b_read, unit: ^xl0r_provider_b_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_provider_b.dag"),
+                tail: Cons {
+                  head: xl0r_read(source: xl0r_consumer_a_source, id: ^xl0r_consumer_a_read, unit: ^xl0r_consumer_a_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_consumer_a.dag"),
+                  tail: Cons {
+                    head: xl0r_read(source: xl0r_consumer_b_source, id: ^xl0r_consumer_b_read, unit: ^xl0r_consumer_b_cu, path: "src/v2/test/fixture/namespace_xl0/resolution_consumer_b.dag"),
+                    tail: Empty
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -222,6 +242,14 @@ fn xl0r_resolved_shadowing_consumer() -> Outcome<Node> {
   xl0r_resolve_subject(subject: "v2.test.xl0r_shadowing_consumer")
 }
 
+fn xl0r_resolved_consumer_a() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_consumer_a")
+}
+
+fn xl0r_resolved_consumer_b() -> Outcome<Node> {
+  xl0r_resolve_subject(subject: "v2.test.xl0r_consumer_b")
+}
+
 fn xl0r_resolved_atom_present(root: Node, identity: Symbol) -> Bool {
   fold(node_subtree_nodes(root: root), init: false, f: fn(acc, n) {
     acc || (match n.kind {
@@ -254,17 +282,45 @@ test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool
   }
 }
 
-// THE PRIMARY: a cross-module dotted reference to a DECLARED function resolves, and the resolved
-// body carries the declaration's own name as its canonical identity. Before the lowering repair
-// this module refused with resolve_reason_unbound_symbol on the bare `v2` the infix arm left behind;
-// before the resolver's fallback repair it was Accepted carrying `resolve_reason_unbound_symbol` AS
-// THE IDENTITY, which the second conjunct is here to keep unwritable.
-test fn a_cross_module_reference_to_a_declared_fn_resolves_holds() -> Bool {
+// THE PRIMARY, AT THE RUNG IT ACTUALLY HAS: a cross-module dotted reference to a DECLARED function
+// REACHES the resolver's qualified arm and is FOUND -- and is then refused
+// resolve_reason_qualified_target_identity_unrepresentable, because the resolved value is one
+// canonical Atom and a fn found by its path is a declaration, not a symbol. The road here: before
+// the lowering repair this module refused resolve_reason_unbound_symbol on the bare `v2` the infix
+// arm left behind; one revision Accepted it carrying `resolve_reason_unbound_symbol` AS THE
+// IDENTITY; the next carried the leaf name, which the side-chat ruling on gunbc#11582 found equally
+// fabricated (two `run`s in two modules collapse to one Atom -- the pair of rows after this one is
+// that discriminator). So the honest verdict today is a located refusal that says WHY, and the
+// difference from the undeclared row beside it is the reason: found-but-unrepresentable versus
+// unbound. This row reds when resolution carries exact declaring identity, and is then re-stated
+// as resolving to that identity.
+test fn a_cross_module_reference_to_a_declared_fn_is_found_and_refuses_identity_unrepresentable_today() -> Bool {
   match xl0r_resolved_declared_consumer() {
-    Accepted { value: resolved, diagnostics: _ } =>
-      xl0r_resolved_atom_present(root: resolved, identity: ^xl0r_provided_fn)
-        && !xl0r_resolved_atom_present(root: resolved, identity: ^resolve_reason_unbound_symbol)
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      xl0r_last_reason(d: d) == ^resolve_reason_qualified_target_identity_unrepresentable
+  }
+}
+
+// THE DECLARATION-IDENTITY DISCRIMINATOR (side-chat ruling on gunbc#11582, finding 1). Two
+// providers declare the same leaf `xl0r_same_leaf`; two consumers each name one by its full path.
+// A resolver that answered with the LEAF would make the two references indistinguishable, and the
+// import cut's replacement graph cannot be built on leaf names. Today both refuse
+// identity-unrepresentable -- found, distinct paths, no carrier for the distinction -- and when
+// the exact-identity carrier lands these rows must be re-stated to assert the two resolved
+// identities DIFFER, never that both resolve.
+test fn two_same_leaf_targets_in_different_modules_are_not_collapsed_to_one_identity_holds() -> Bool {
+  let a = xl0r_resolved_consumer_a()
+  let b = xl0r_resolved_consumer_b()
+  match a {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: da } =>
+      match b {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: db } =>
+          xl0r_last_reason(d: da) == ^resolve_reason_qualified_target_identity_unrepresentable
+            && xl0r_last_reason(d: db) == ^resolve_reason_qualified_target_identity_unrepresentable
+      }
   }
 }
 
@@ -287,20 +343,21 @@ test fn a_cross_module_reference_to_a_data_declaration_refuses_today() -> Bool {
   }
 }
 
-// THE LOCAL-RECEIVER CLASS, MEASURED AND NOT CLAIMED (review 67513 on gunbc#11582).
+// THE LOCAL-RECEIVER CLASS: A NEGATIVE CONTROL, NOT A TRIGGER (side-chat ruling on gunbc#11582,
+// finding 2, correcting an earlier revision of this comment).
 //
-// `r.v` over a parameter lowers to the same spine as a module path -- that is deliberate, and the
-// lowering's header says why. What the RESOLVER does with it today is a separate fact, and it is
-// not the unique-on-chain projection docs/plans/namespace-resolution-design.md section 13 rules:
-// try_resolve_qualified_name_node finds the head `r` bound on the chain, cannot yet project
-// through it (its own header calls that arm UNFIRED), and refuses Unbound rather than reading the
-// path absolutely (qualified_head_bound_on_chain). It refused BEFORE this lowering too, for a different wrong reason: the
-// infix arm lowered `r.v` to Transform(dot, r, v) and the bare `v` was unbound at resolve. Same
-// verdict, same reason symbol, neither the honest "field projection unresolved". So this is not a
-// rung drop -- refuse-for-the-wrong-reason before, refuse-for-the-wrong-reason after -- and it is
-// enrolled as a today-row so the day the projection arm lands, this reds and gets re-stated as
-// resolving. What this row rules out is the silent arm: a local field access must not be Accepted.
-test fn a_local_field_access_refuses_unbound_today() -> Bool {
+// `r.v` over a parameter lowers to the same spine as a module path -- deliberately; the lowering's
+// header says why. The resolver finds the head `r` bound on the chain, cannot yet project through
+// it (its own header calls that arm UNFIRED), and refuses Unbound rather than reading the path
+// absolutely (v2.compiler.resolve qualified_head_bound_on_chain). It refused BEFORE this lowering
+// too, for a different wrong reason (the infix arm lowered it to Transform(dot, r, v) and the bare
+// `v` was unbound). What this row establishes is only that a receiver with NO SUCH CHILD never
+// Accepts. It does NOT flip when projection lands: `Bool` has no child `v`, so a correct projection
+// refuses this specimen too. The positive projection control is `type Rec { v: Bool }` +
+// `fn get(r: Rec) -> Bool { r.v }`, which needs BOTH the declaration graft (so Rec.v is in the
+// containment tree) AND the unique-on-chain projection, and is owned by those lanes, not enrolled
+// here as a today-row that could be retired by half of its trigger (DESIGN section 4b(3)).
+test fn a_receiver_with_no_such_child_never_accepts_holds() -> Bool {
   match xl0r_resolved_field_access_consumer() {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol

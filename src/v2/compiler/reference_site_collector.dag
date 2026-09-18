@@ -66,16 +66,17 @@ import v2.extdeps.languages.dag {
 // dissolution names a symbol_index_fill-derived projection, so consuming its recogniser would be
 // building on a scaffold. Its disposition is repointed at this module instead.
 //
-// THE QUALIFIED CLASS NOW REACHES THIS COLLECTOR ON THE PRODUCTION ROUTE (smart-lynx-554,
-// 2026-09-18), AND NOT BY AN EDIT HERE. The tree was the defect: v2 body lowering truncated every
-// dotted chain to an infix over its first dot, or a qualified type to its first atom, so the spine
-// this walk already folds (qualified_name_from_node) was never constructed from source. Now that
-// body_lower_dotted_reference_optional constructs it, this walk emits one site per chain with the
-// full spelling -- v2.test.claim.namespace_xl0.call_argument_mention_survival is the enrolled
-// receipt. This module is therefore the single authority for the qualified class, and the lens's
-// dissolution is owed rather than pending. Still outside this walk's reach, each with its own row:
-// a dotted CALLEE (the call class) and a declaration the graft never rehomes (the field-position
-// tree loss).
+// THE QUALIFIED CLASS NOW REACHES THIS COLLECTOR ON THE PRODUCTION ROUTE IN BODY AND PARAMETER-TYPE
+// POSITION (smart-lynx-554, gunbc#11582), AND NOT BY AN EDIT HERE. The tree was the defect: v2
+// body lowering truncated every dotted chain to an infix over its first dot, or a qualified type
+// to its first atom, so the spine this walk already folds (qualified_name_from_node) was never
+// constructed from source. Now that body_lower_dotted_reference_optional constructs it, this walk
+// emits one site per chain with the full spelling -- v2.test.claim.namespace_xl0
+// call_argument_mention_survival is the enrolled receipt. It is NOT yet the single authority at
+// class grain: a qualified FIELD type never reaches this tree because the graft drops the
+// declaration (the parse-tree lens still sees it -- v2.test.claim.namespace_xl0
+// qualified_site_enumerator_differential measures the disagreement), and a dotted CALLEE is the
+// call class. The lens's dissolution stays pending on those two frontiers.
 // WHAT COUNTS AS A MENTION, AND WHY A DECLARATION IS NOT ONE. In the v2 containment tree a
 // declaration's NAME is an EDGE LABEL (v2.compiler.symbol_index_fill binds at
 // Named { name } edges and indexes edge.target as the declaration), so a declared name never

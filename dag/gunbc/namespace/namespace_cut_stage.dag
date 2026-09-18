@@ -40,7 +40,7 @@ type NamespaceCutStage
 fn namespace_cut_stage_label(s: NamespaceCutStage) -> NonEmptyStr {
   match s {
     StageF0 => "F-0: truthful namespace control plane -- stage chain, subject roster, derived wave-wall enrolment" as NonEmptyStr
-    StageXL0Denominator => "XL-0: repair-input origin denominator -- source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition" as NonEmptyStr
+    StageXL0Denominator => "XL-0: repair-input origin denominator producer delivered -- source-declaration carriers plus rendered target-vocabulary carriers, separately typed, before eligibility or repair disposition, answering over the tree the production ingest yields; its execution over one pinned base is ACT-0's DenominatorRosterDigest" as NonEmptyStr
     StageXL1BaselineCapture => "XL-1: capture capability -- the capture transaction can mint a joint binding+repair observation over one exact base; persistence against a named base is the baseline milestone, not this stage" as NonEmptyStr
     StageXL2RootDeletionRehearsal => "XL-2: root-deletion rehearsal -- the cut executed in a throwaway tree, its failure roster captured as the census" as NonEmptyStr
     StageXL3DeclaringIdentitySpelling => "XL-3: declaring-identity spelling -- every reference spelled as the fully qualified declaring identity" as NonEmptyStr
@@ -139,11 +139,13 @@ fn namespace_cut_stage_is(a: NamespaceCutStage, b: NamespaceCutStage) -> Bool {
 // distinction, expressed as a missing field rather than as a rule about when to trust a field.
 // ---------------------------------------------------------------------------------------------
 type StageDeliveryEvidenceKind
-  = RehearsalInstrumentDelivered
+  = DenominatorRosterInstrumentDelivered
+  | RehearsalInstrumentDelivered
   | ReferenceGraphInstrumentDelivered
 
 fn stage_delivery_evidence_label(k: StageDeliveryEvidenceKind) -> String {
   match k {
+    DenominatorRosterInstrumentDelivered => "XL-0 repair-input origin roster producer delivered and discriminated once on the production route"
     RehearsalInstrumentDelivered => "XL-2 rehearsal instrument delivered and discriminated once"
     ReferenceGraphInstrumentDelivered => "XL-4 reference-graph instrument delivered and discriminated once"
   }
@@ -159,6 +161,7 @@ type StageDeliveryReceipt {
 }
 
 data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
+  DenominatorRosterInstrumentDelivered,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
 ]
@@ -168,14 +171,16 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // positive control there (review 64925 on gunbc#11202). A receipt discriminated only over hand-built
 // roots would inflate the rung (DESIGN 4b(1)). The row lands when tools.reference_derived_graph main
 // exits success on the production route, which requires its positive control.
-// XL-0 OWES NO DELIVERY RECEIPT AND HAS NO DELIVERY KIND ON THIS CHANNEL. Both the receipt and the
-// KIND were withdrawn; an earlier revision of this change removed the receipt and left
-// DenominatorRosterInstrumentDelivered standing in the type and in the required roster with NOTHING
-// READING IT. That is the attractor the withdrawal existed to kill: two answers to "is XL-0's
-// instrument ready?" -- a required delivery kind no standing consults, beside the MissingInstrument
-// cause StageXL0Denominator actually cites. DESIGN section 3, one fact one place. XL-0's readiness
-// is the instrument question and nothing else; if it ever owes this channel, the kind comes back
-// WITH the standing that reads it, in the same change.
+// XL-0'S DELIVERY KIND IS BACK, AND IT CAME BACK WITH THE STANDING THAT READS IT, IN ONE CHANGE
+// (gunbc#11582), exactly as the withdrawal below said it must. The kind and its receipt had been
+// withdrawn because the receipt was earned against hand-built trees while the producer returned
+// nothing over the production route, and an earlier revision had left the kind standing with
+// nothing reading it -- two answers to "is XL-0's instrument ready?". Now
+// DenominatorRosterInstrumentDelivered is required here, held below with the producer and the
+// discriminating production-route witnesses named, and gunbc.compiler_frontend_program_status
+// StageXL0Denominator derives its standing from THIS population and cites no missing instrument.
+// The delivery receipt carries no base: the base-pinned execution is ACT-0's
+// DenominatorRosterDigest, a later and separate fact.
 //
 // THE RECEIPT THAT STOOD HERE WAS WITHDRAWN, BY EXECUTION, BEFORE IT EVER LANDED ON MAIN.
 //
@@ -213,8 +218,8 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // THE CROSS-MODULE ROW WAS WHY XL-0 HAD NO DENOMINATOR, and it is not the same fact as the call
 // erasure. An import-to-containment denominator is made of references that CROSS a module
 // boundary; a bare same-module name resolves inside its own module and contributes nothing. That
-// row now reaches; what XL-0 still lacks is the roster RUN over the pinned base, not the
-// capability.
+// row now reaches, and the roster producer answers over it (delivery receipt below); the roster
+// RUN over the pinned base is ACT-0's.
 //
 // THREE CAUSES HAVE BEEN SEPARATED SO FAR, AND THE TRIGGERS ARE NOT ONE TRIGGER:
 //   1. MINE, FIXED: the collector's parse-projection exclusion skipped the subtree carrying a real
@@ -255,12 +260,25 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // of this note said it was. Body lowering (XL-2, gunbc#11207) restores the call classes and NOTHING
 // ELSE; the qualified cross-module class was independent of calls and has now landed on its own.
 // A trigger naming less than the capability it restores gets retired while the capability stays
-// dead, which DESIGN section 4b(3) names exactly. XL-0 derives when the roster producer answers
-// NON-EMPTY over the PINNED BASE -- the fixture receipts above show it CAN answer over the
-// cross-module class; the base-pinned run is the population, and it has not been taken.
+// dead, which DESIGN section 4b(3) names exactly. XL-0 CLEARS on DELIVERY -- the producer executed
+// and discriminated on the production route, the receipt held below -- and the base-pinned run of
+// the same producer is ACT-0's DenominatorRosterDigest, a separate later fact that has not been
+// taken.
 //
-// Empty by construction again, and honestly so: no stage delivery instrument exists yet.
-data held_stage_delivery_receipts: List<StageDeliveryReceipt> = []
+// ONE DELIVERY HELD: XL-0's producer, executed on the production route (gunbc#11582). The
+// discriminator is executed, enrolled and named rather than transcribed: the roster over a
+// production-ingested fixture is TOTAL and NON-EMPTY and carries the cross-module mention as a
+// SourceDeclarationCarrier whose provenance is RepairInputDeclared -- answered by the resolver, not
+// merely mentioned -- beside the collector-side rows in call_argument_mention_survival that flip
+// the same population. What this receipt does NOT claim: a base. XL-2's and XL-4's rows are still
+// outstanding for the reasons in the roster note above.
+data held_stage_delivery_receipts: List<StageDeliveryReceipt> = [
+  StageDeliveryReceipt {
+    kind: DenominatorRosterInstrumentDelivered,
+    producer: "v2.compiler.repair_input_origin_roster repair_input_origin_roster_over_roots" as NonEmptyStr,
+    discriminated_by: "v2.test.claim.namespace_xl0.cross_module_reference_resolution the_repair_input_origin_roster_is_total_and_non_empty_on_the_production_route_holds, the_repair_input_origin_roster_carries_the_declared_cross_module_mention_holds; v2.test.claim.namespace_xl0.call_argument_mention_survival a_qualified_cross_module_reference_reaches_the_collector_holds" as NonEmptyStr
+  }
+]
 
 fn stage_delivery_outstanding(held: List<StageDeliveryReceipt>) -> List<String> {
   required_stage_delivery_evidence_kinds
