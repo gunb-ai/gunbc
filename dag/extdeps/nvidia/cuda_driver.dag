@@ -97,6 +97,15 @@ fn cuda_device_attribute_argv(a: CudaDeviceAttribute) -> List<String> {
   python_run_program_argv(program: cuda_device_attribute_program(a: a))
 }
 
+// LIVE EXECUTION OF THIS ARGV is a declared DESIGN §3c frontier, not Group B's captured line.
+// Named later consumer: gunbc.spark.managed_access_bootstrap spark_managed_grant_argv, a
+// SparkManagedGrant arm that authorizes this argv the same way ReadFabricModuleEeprom authorizes
+// ethtool_module_info_raw_argv. TRIGGER: that grant arm plus a host-effect whose stdout replaces
+// gunbc.spark.group_b_node_qualification group_b_gdr_cu_device_get_attribute_stdout (and the DMA-BUF
+// sibling). SUFFICIENT FOR: a platform change that alters the five-field reply goes red without a
+// pasted literal. Until then Group B cites this argv as the producer identity of the captured line
+// (DESIGN section 6: name the instrument).
+
 // ── READING THE ANSWER BACK ───────────────────────────────────────────────────────────────────
 //
 // FIVE FIELDS OR NOTHING. A line that does not carry the ordinal, all three results and the value is unparsed --

@@ -12,12 +12,12 @@ import extdeps.storage.types { PcieLink, Gen5 }
 import extdeps.nvidia.cuda_driver {
   CudaQuerySucceeded, CudaQueryFailed, CudaQueryUnparsed,
   GpuDirectRdmaSupportedAttribute,
-  cuda_attribute_outcome, cuda_device_attribute_argv, cuda_device_attribute_ordinal,
+  cuda_attribute_outcome, cuda_device_attribute_ordinal,
   cuda_device_attribute_program,
 }
 import extdeps.nvidia.gpu_direct_rdma {
   GpuDirectRdmaCapability, GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet,
-  GpuDirectRdmaCapabilityUnread, gpu_direct_rdma_capability, gpu_direct_rdma_capability_wire,
+  GpuDirectRdmaCapabilityUnread, gpu_direct_rdma_capability,
 }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
@@ -50,12 +50,15 @@ import product.fabric.node_qualification {
   qualify_rank_symmetry, qualify_nic_pcie, qualify_collective_latency,
   WindowStandingUnread, WindowSharedWithDeclaredTraffic, WindowIsolated,
   CollectivePrimitiveSameRuntime,
-  claimed_delivery_refusals, OfferClaimsNodeDelivery,
+  claimed_delivery_refusals,
 }
 import gunbc.spark.group_b_node_qualification {
   group_b_qualification_admission, group_b_measured,
   group_b_gdr_cu_device_get_attribute_stdout,
+  group_b_gdr_query_argv, group_b_gdr_capability_wire,
+  group_b_delivery_claim, group_b_delivery_field_exclusion,
 }
+import product.fabric.candidate_field { FieldNodeNotQualified }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -619,9 +622,7 @@ test fn a_discrete_adapter_x16_brief_is_ungrounded_not_a_node_shortfall() -> Boo
 }
 
 test fn claiming_group_b_delivery_on_an_offer_is_refused() -> Bool {
-  match claimed_delivery_refusals(
-    claim: OfferClaimsNodeDelivery { admission: group_b_qualification_admission() },
-  ) {
+  match claimed_delivery_refusals(claim: group_b_delivery_claim) {
     Present { value: r } => r.length() > 0
     Absent => false
   }
@@ -755,7 +756,7 @@ test fn group_b_gdr_stdout_parses_as_succeeding_zero() -> Bool {
 
 test fn cuda_gdr_argv_is_python_dash_c_with_ordinal_116() -> Bool {
   cuda_device_attribute_ordinal(a: GpuDirectRdmaSupportedAttribute) == 116
-    && match cuda_device_attribute_argv(a: GpuDirectRdmaSupportedAttribute) {
+    && match group_b_gdr_query_argv {
       Cons {
         head: interpreter,
         tail: Cons {
@@ -771,5 +772,15 @@ test fn cuda_gdr_argv_is_python_dash_c_with_ordinal_116() -> Bool {
 }
 
 test fn group_b_gdr_wire_is_device_unsupported() -> Bool {
-  (gpu_direct_rdma_capability_wire(c: group_b_measured.host.gpu_direct_rdma) as String) == "device-unsupported"
+  (group_b_gdr_capability_wire as String) == "device-unsupported"
+}
+
+test fn claiming_group_b_delivery_mints_field_node_not_qualified() -> Bool {
+  match group_b_delivery_field_exclusion() {
+    Absent => false
+    Present { value: x } => match x.cause {
+      FieldNodeNotQualified { refusals: r } => r.length() > 0
+      _ => false
+    }
+  }
 }

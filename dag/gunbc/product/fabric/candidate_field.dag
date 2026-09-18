@@ -118,6 +118,14 @@ type FieldExclusionCause<P>
     }
   | FieldNodeNotQualified { refusals: List<QualificationRefusal> }
 
+// FieldNodeNotQualified is minted in this change by gunbc.spark.group_b_node_qualification
+// group_b_delivery_field_exclusion, from OfferClaimsNodeDelivery of Group B's NodeNotQualified
+// admission. assemble_candidate_field reaches the same constructor when a FieldRequest.delivery is
+// that claim. TRIGGER for the selection path: a Spark rail SupplierOffer (gunbc.spark.serving_offer /
+// harness_bind_seat) carries group_b_delivery_claim instead of OfferDoesNotClaimNodeDelivery.
+// SUFFICIENT FOR: an unqualified Group B offer is excluded from the priced field by name, not only
+// from a demonstration exclusion row.
+
 type FieldExclusion<P> {
   offer: FabricIdentity<P, OfferKey>
   cause: FieldExclusionCause<P>

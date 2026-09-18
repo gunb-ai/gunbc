@@ -9,11 +9,14 @@ import gunbc.fleet_intent_network {
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_50gbase_cr2 }
 import extdeps.storage.types { PcieLink, Gen5 }
 import extdeps.nvidia.cuda_driver {
-  GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute, cuda_attribute_outcome,
+  GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute,
+  cuda_attribute_outcome, cuda_device_attribute_argv,
 }
 import extdeps.nvidia.gpu_direct_rdma {
-  gpu_direct_rdma_capability,
+  gpu_direct_rdma_capability, gpu_direct_rdma_capability_wire,
 }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.candidate_field { FieldExclusion, FieldNodeNotQualified }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery,
   HostAdvertisedDelivery, HostMeasuredDelivery,
@@ -29,6 +32,7 @@ import product.fabric.node_qualification {
   HostRegisteredIbFallbackStanding, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
   EthtoolLinkModes, LspciLnkSta, WindowSharedWithDeclaredTraffic,
   NodeQualificationAdmission, qualify_node, admit_qualified_node,
+  OfferDeliveryClaim, OfferClaimsNodeDelivery, claimed_delivery_refusals,
 }
 
 // GROUP B AS TWO SUBJECTS, READ 2026-09-18.
@@ -148,6 +152,8 @@ data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
 
 data group_b_gdr_cu_device_get_attribute_stdout: String = "116 0 0 0 0"
 data group_b_dmabuf_cu_device_get_attribute_stdout: String = "124 0 0 0 0"
+data group_b_gdr_query_argv: List<String> = cuda_device_attribute_argv(a: GpuDirectRdmaSupportedAttribute)
+data group_b_dmabuf_query_argv: List<String> = cuda_device_attribute_argv(a: DmaBufSupportedAttribute)
 
 data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
   host: HostMeasuredDelivery {
@@ -211,4 +217,27 @@ fn group_b_qualification_admission() -> NodeQualificationAdmission {
       measured: group_b_measured,
     ),
   )
+}
+
+data group_b_gdr_capability_wire: NonEmptyStr = gpu_direct_rdma_capability_wire(c: group_b_measured.host.gpu_direct_rdma)
+
+data group_b_delivery_claim: OfferDeliveryClaim = OfferClaimsNodeDelivery {
+  admission: group_b_qualification_admission(),
+}
+
+data group_b_claimed_offer: FabricIdentity<NonEmptyStr, OfferKey> = FabricIdentity {
+  principal: "gunbc.spark.group_b_node_qualification" as NonEmptyStr,
+  key: "group-b-delivery-claim" as OfferKey,
+}
+
+fn group_b_delivery_field_exclusion() -> FieldExclusion<NonEmptyStr>? {
+  match claimed_delivery_refusals(claim: group_b_delivery_claim) {
+    Absent => none
+    Present { value: r } => Present {
+      value: FieldExclusion {
+        offer: group_b_claimed_offer,
+        cause: FieldNodeNotQualified { refusals: r },
+      }
+    }
+  }
 }

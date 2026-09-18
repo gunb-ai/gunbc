@@ -109,6 +109,9 @@ fn gpu_direct_rdma_capability(
   }
 }
 
+// Group B consumes this as group_b_gdr_capability_wire. A process-observation renderer that
+// emits the same tag on a CI event line is a declared DESIGN §3c frontier; trigger is
+// gunbc.observation_ci_render taking this NonEmptyStr rather than a second spelling of the standing.
 fn gpu_direct_rdma_capability_wire(c: GpuDirectRdmaCapability) -> NonEmptyStr {
   match c {
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: d, capability_receipt: _ } =>
