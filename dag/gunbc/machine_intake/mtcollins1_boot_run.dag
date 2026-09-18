@@ -1,6 +1,15 @@
 module gunbc.machine_intake_mtcollins1_boot_run
 
 import std.types { Bool, Int, NonEmptyStr, String, Timestamp, Duration }
+import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
+import std.temporal_effect {
+  HeldLeaseObservedState,
+  LeaseAbsent,
+  LeaseRunningExpected,
+  LeaseRunningStale,
+  LeaseInaccessible,
+  held_lease_observed_verdict,
+}
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
@@ -198,25 +207,20 @@ fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
   }
 }
 
-type SolLeaseObserve
-  = SolLeaseIdle
-  | SolLeaseOursStale
-  | SolLeaseForeignLive { detail: NonEmptyStr }
-  | SolLeaseUnreadable { detail: NonEmptyStr }
-
-data mtcollins1_sol_foreign_live_marker: NonEmptyStr = "already active"
-
-fn mtcollins1_sol_lease_from_info(info_ok: Bool, info: String, collector_held: Bool) -> SolLeaseObserve {
-  if !info_ok {
-    SolLeaseUnreadable { detail: "sol info did not succeed" as NonEmptyStr }
-  } else if string_contains(s: info, pattern: mtcollins1_sol_foreign_live_marker as String) && !collector_held {
-    SolLeaseForeignLive { detail: "another SOL session is live on the controller" as NonEmptyStr }
+fn mtcollins1_sol_observed_from_collector(
+  pid_path_set: Bool,
+  pid_file_ok: Bool,
+  pid_file_content: String,
+  collector_held: Bool,
+) -> HeldLeaseObservedState {
+  if !pid_path_set {
+    LeaseInaccessible
   } else if collector_held {
-    SolLeaseIdle
-  } else if string_contains(s: info, pattern: "SOL") {
-    SolLeaseOursStale
+    LeaseRunningExpected
+  } else if pid_file_ok && trim(s: pid_file_content) != "" {
+    LeaseRunningStale
   } else {
-    SolLeaseIdle
+    LeaseAbsent
   }
 }
 
@@ -244,30 +248,35 @@ fn mtcollins1_sol_acquire_after_grant(
   match mtcollins1_bmc_username {
     Absent =>
       exit_failure(reason: "mtcollins1 boot: BMC is not BmcSecured; refusing SOL acquire")
-    Present { value: username } => {
-      info = diagnostic.ipmi.Tool.SolInfo(
-        bmc_host: mtcollins1_endpoint.host,
-        username: username,
-        password_file: password_file,
-      )
-      let held = mtcollins1_boot_sol_is_held(pid_path: pid_path)
-      match mtcollins1_sol_lease_from_info(info_ok: info.success, info: info.stdout, collector_held: held) {
-        SolLeaseForeignLive { detail: d } =>
-          exit_failure(reason: concat("mtcollins1 boot: refusing live foreign SOL: ", d as String))
-        SolLeaseUnreadable { detail: d } =>
-          exit_failure(reason: concat("mtcollins1 boot: SOL lease unreadable: ", d as String))
-        SolLeaseOursStale => {
-          let _cleared = mtcollins1_sol_release(username: username, password_file: password_file)
-          mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
-        }
-        SolLeaseIdle =>
-          if held {
-            ExitSuccess
-          } else {
+    Present { value: username } =>
+      if pid_path == "" {
+        exit_failure(reason: "mtcollins1 boot: SOL pid path unset; cannot observe a collector we hold")
+      } else {
+        let held = mtcollins1_boot_sol_is_held(pid_path: pid_path)
+        let pid_read = Filesystem.Read(path: pid_path)
+        match held_lease_observed_verdict(
+          observed: mtcollins1_sol_observed_from_collector(
+            pid_path_set: true,
+            pid_file_ok: pid_read.success,
+            pid_file_content: pid_read.content,
+            collector_held: held,
+          ),
+        ) {
+          Conflict =>
+            exit_failure(reason: "mtcollins1 boot: refusing live foreign SOL; not deactivating a session we do not hold")
+          Inaccessible =>
+            exit_failure(reason: "mtcollins1 boot: SOL collector observation is inaccessible")
+          Converged => ExitSuccess
+          Drifted => {
+            let _cleared = mtcollins1_sol_release(username: username, password_file: password_file)
             mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
           }
+          Absent =>
+            mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+          UnknownRefused =>
+            exit_failure(reason: "mtcollins1 boot: SOL lease observation classification unknown")
+        }
       }
-    }
   }
 }
 
@@ -299,7 +308,7 @@ fn mtcollins1_sol_activate_held(
   if mtcollins1_boot_sol_is_held(pid_path: pid_path) {
     ExitSuccess
   } else {
-    exit_failure(reason: "mtcollins1 boot: SOL collector process is not held after acquire")
+    exit_failure(reason: concat("mtcollins1 boot: SOL collector is not held after acquire; treating the session as foreign and not deactivating: ", capture_path))
   }
 }
 
