@@ -41,7 +41,7 @@ import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
-import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc, mtcollins1_edac_topology }
+import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
@@ -83,7 +83,11 @@ data mtcollins1_boot_sol_settle: Second = second(count: 2)
 
 data mtcollins1_boot_prelude_allowance: Second = second(count: 120)
 
+data mtcollins1_boot_issue_allowance: Second = second(count: 120)
+
 data mtcollins1_boot_actuation_allowance: Second = second(count: 480)
+
+data mtcollins1_boot_cleanup_allowance: Second = second(count: 180)
 
 data mtcollins1_boot_submit_timeout: Second = second(count: 30)
 
@@ -94,7 +98,9 @@ fn mtcollins1_boot_approval_window() -> Second {
 fn mtcollins1_boot_step_timeout_minutes() -> Minute {
   let secs = second_count(s: mtcollins1_boot_prelude_allowance)
     + second_count(s: mtcollins1_boot_approval_window())
+    + second_count(s: mtcollins1_boot_issue_allowance)
     + second_count(s: mtcollins1_boot_actuation_allowance)
+    + second_count(s: mtcollins1_boot_cleanup_allowance)
   minute(count: (secs + 59) / 60)
 }
 
@@ -335,16 +341,86 @@ fn mtcollins1_boot_terminal_tick_budget() -> Int {
     / (second_count(s: mtcollins1_boot_poll_cadence) as Int)
 }
 
-fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject) -> Bool {
-  string_contains(s: capture, pattern: concat("GUNBC-HOST-CAPTURE ", subject.machine as String))
+fn mtcollins1_host_capture_section(capture: String, name: String) -> String? {
+  fold(
+    split(s: capture, delimiter: "----SECTION "),
+    init: none,
+    f: (acc, part) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if starts_with(s: part, prefix: concat(name, "----")) {
+          Present { value: part }
+        } else {
+          none
+        }
+    },
+  )
+}
+
+fn mtcollins1_host_capture_section_exit_zero(capture: String, name: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: name) {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: concat("----EXIT ", concat(name, ": 0")))
+  }
+}
+
+fn mtcollins1_host_capture_envelope_complete(capture: String, machine: NonEmptyStr) -> Bool {
+  string_contains(s: capture, pattern: concat("GUNBC-HOST-CAPTURE ", concat(machine as String, " ")))
+    && string_contains(s: capture, pattern: " begin ")
+    && string_contains(s: capture, pattern: concat("GUNBC-HOST-CAPTURE ", concat(machine as String, " ")))
     && string_contains(s: capture, pattern: " end ")
-    && string_contains(s: capture, pattern: "----SECTION nproc----")
-    && string_contains(
-      s: capture,
-      pattern: concat("\n", concat(hardware_thread_count_value(t: mtcollins1_nproc) as String, "\n")),
-    )
-    && string_contains(s: capture, pattern: mtcollins1_edac_topology.driver_name as String)
-    && string_contains(s: capture, pattern: noble_numbat_2404_3_live_server_arm64.point_release as String)
+}
+
+fn mtcollins1_host_capture_nproc_exact(capture: String, threads: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: "nproc") {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: "----EXIT nproc: 0")
+        && string_contains(s: section, pattern: concat("\n", concat(threads, "\n----EXIT nproc: 0")))
+  }
+}
+
+fn mtcollins1_host_capture_mc0_counter(section: String, counter: String, value: String) -> Bool {
+  string_contains(
+    s: section,
+    pattern: concat("/sys/devices/system/edac/mc/mc0/", concat(counter, concat(" == ", value))),
+  )
+}
+
+fn mtcollins1_host_capture_edac_clean_section(capture: String, name: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: name) {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: concat("----EXIT ", concat(name, ": 0")))
+        && mtcollins1_host_capture_mc0_counter(section: section, counter: "ce_count", value: "0")
+        && mtcollins1_host_capture_mc0_counter(section: section, counter: "ue_count", value: "0")
+  }
+}
+
+fn mtcollins1_host_capture_workload_stable(capture: String) -> Bool {
+  match mtcollins1_host_capture_section(capture: capture, name: "workload") {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: "----EXIT workload: 0")
+        && string_contains(s: section, pattern: "workload-write-rc=0")
+        && string_contains(s: section, pattern: "workload-digest-stable=yes")
+  }
+}
+
+fn mtcollins1_boot_terminal_observed(capture: String, subject: MtCollins1BootSubject) -> Bool {
+  let threads = hardware_thread_count_value(t: mtcollins1_nproc) as String
+  mtcollins1_host_capture_envelope_complete(capture: capture, machine: subject.machine)
+    && mtcollins1_host_capture_nproc_exact(capture: capture, threads: threads)
+    && mtcollins1_host_capture_section_exit_zero(capture: capture, name: "boot-media")
+    && match mtcollins1_host_capture_section(capture: capture, name: "boot-media") {
+      Absent => false
+      Present { value: media } =>
+        string_contains(s: media, pattern: noble_numbat_2404_3_live_server_arm64.point_release as String)
+    }
+    && mtcollins1_host_capture_edac_clean_section(capture: capture, name: "edac-before")
+    && mtcollins1_host_capture_workload_stable(capture: capture)
+    && mtcollins1_host_capture_edac_clean_section(capture: capture, name: "edac-after")
 }
 
 fn mtcollins1_boot_await_capture_terminal(
@@ -369,13 +445,15 @@ fn mtcollins1_boot_await_capture_terminal(
   }
 }
 
-fn mtcollins1_boot_release_sol(password_file: String) -> Bool
+fn mtcollins1_boot_release_sol(password_file: String, pid_path: String) -> HeldLeaseObservedState
   uses net: std.resources.Network
 {
   match mtcollins1_bmc_username {
-    Absent => false
-    Present { value: user } =>
-      mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+    Absent => LeaseInaccessible
+    Present { value: user } => {
+      let _attempted = mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+      mtcollins1_sol_observed_from_pid_path(pid_path: pid_path)
+    }
   }
 }
 
@@ -458,9 +536,20 @@ fn mtcollins1_boot_after_gate(
                           )
                         other => other
                       }
-                      let _released = mtcollins1_boot_release_sol(password_file: password_file)
+                      let teardown = mtcollins1_boot_release_sol(password_file: password_file, pid_path: sol_pid_path)
+                      let terminal = match observed {
+                        ExitSuccess =>
+                          match teardown {
+                            LeaseRunningExpected =>
+                              exit_failure(reason: "mtcollins1 boot: SOL collector still held after deactivate")
+                            LeaseRunningStale =>
+                              exit_failure(reason: "mtcollins1 boot: SOL pid file stale after deactivate")
+                            _ => ExitSuccess
+                          }
+                        other => other
+                      }
                       mtcollins1_boot_settle_from_fresh_clock(
-                        outcome: observed,
+                        outcome: terminal,
                         escalation_id: g.escalation_id,
                         attempt: g.attempt,
                         held_at: held_at,
