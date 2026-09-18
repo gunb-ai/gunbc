@@ -1,0 +1,174 @@
+module test.claim.app_attest_witness_test
+
+import std.logic { Bool }
+import std.types { NonEmptyStr }
+import extdeps.apple.app_attest {
+  AttestKeyId, AppAttestDevelopment, AppAttestProduction, AppAttestTrustAnchor,
+  AttestationVerification, AttestationVerified, AttestationRefused,
+  AttestationChainUntrusted, AttestationNonceMismatch, AttestationKeyIdMismatch,
+  AttestationAppIdMismatch, AttestationEnvironmentUnexpected, AttestationUndecodable,
+  AssertionVerification, AssertionVerified, AssertionRefused,
+  AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionCounterNotIncreasing,
+  app_attest_verify, app_attest_verify_under, app_attest_verify_assertion_of,
+}
+import extdeps.crypto.signature { VerifyingKey }
+
+// ── A GENUINE DEVICE ATTESTATION ─────────────────────────────────────────────────────────────
+// Apple publishes no fixture. These are real objects produced by DCAppAttestService on an iPhone
+// running iOS 14.4 on 2021-01-23 (development environment), published under Apache-2.0 by
+// github.com/veehaitch/devicecheck-appattest, src/test/resources/ios-14.4.yaml. Its chain verifies to
+// the pinned Apple root (independently: `openssl verify -attime 1611404013` -> OK). The credential
+// certificate lived three days, so every witness judges validity at the capture time, 1611404013
+// (2021-01-23T12:13:33Z); the same object at today's clock is refused as expired, which is witnessed
+// too.
+data genuine_attestation: NonEmptyStr = "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"
+data genuine_assertion: NonEmptyStr = "omlzaWduYXR1cmVYRjBEAiBJ6BT/QR689UKy84YyN3RDydYD9KVQ2BTRK+x1i8ezqAIgGM7BsZbSuF6TjmK6xtOFekyVyjf8akGvp5qFRGm9LTxxYXV0aGVudGljYXRvckRhdGFYJUVlEup+JpR2q5Pht5cWhVkv9z+JSsDsL9VICKCL+2yPQAAAAAE="
+data genuine_key_id: AttestKeyId = "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3M=" as AttestKeyId
+data genuine_client_data: NonEmptyStr = "wurzelpfropf"
+data genuine_team_id: NonEmptyStr = "6MURL8TA57"
+data genuine_bundle_id: NonEmptyStr = "de.vincent-haupert.apple-appattest-poc"
+data captured_at: Int = 1611404013
+
+fn genuine(client_data: NonEmptyStr, key_id: AttestKeyId, bundle_id: NonEmptyStr, production: Bool, now: Int) -> AttestationVerification {
+  app_attest_verify(
+    attestation_b64: genuine_attestation,
+    client_data: client_data,
+    key_id: key_id,
+    team_id: genuine_team_id,
+    bundle_id: bundle_id,
+    environment: if production { AppAttestProduction } else { AppAttestDevelopment },
+    now_epoch: now,
+  )
+}
+
+test fn the_genuine_attestation_verifies_to_the_pinned_apple_root() -> Bool {
+  match genuine(client_data: genuine_client_data, key_id: genuine_key_id, bundle_id: genuine_bundle_id, production: false, now: captured_at) {
+    AttestationVerified { key_id, public_key, client_data_hash_hex, environment: _ } =>
+      key_id == genuine_key_id
+        && client_data_hash_hex as String == "8be65cca515ad097c953967d18d635d86dd78a142ed3d077526bed11c6bec67b"
+        && public_key.point_b64url as String == "BIjANKGQqn28WgYVAcZUKAOUJYIZiz8cxUZzyjua0gtBUoJnpU9f26BGn6-0a7aZCjlr8E-UpJ1DIMgcerJAo5g"
+    AttestationRefused { cause: _ } => false
+  }
+}
+
+test fn the_wrong_app_id_is_refused_at_the_rp_id_hash() -> Bool {
+  match genuine(client_data: genuine_client_data, key_id: genuine_key_id, bundle_id: "de.vincent-haupert.other", production: false, now: captured_at) {
+    AttestationRefused { cause: AttestationAppIdMismatch { expected_app_id } } => expected_app_id as String == "6MURL8TA57.de.vincent-haupert.other"
+    _ => false
+  }
+}
+
+// One character of the client data changed: the nonce the certificate carries no longer matches.
+test fn different_client_data_is_a_nonce_mismatch() -> Bool {
+  match genuine(client_data: "wurzelpfropg", key_id: genuine_key_id, bundle_id: genuine_bundle_id, production: false, now: captured_at) {
+    AttestationRefused { cause: AttestationNonceMismatch } => true
+    _ => false
+  }
+}
+
+test fn the_wrong_key_id_is_refused() -> Bool {
+  match genuine(client_data: genuine_client_data, key_id: "AAAAO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3M=" as AttestKeyId, bundle_id: genuine_bundle_id, production: false, now: captured_at) {
+    AttestationRefused { cause: AttestationKeyIdMismatch { declared: _ } } => true
+    _ => false
+  }
+}
+
+// A development attestation presented where production is required.
+test fn the_wrong_environment_is_refused() -> Bool {
+  match genuine(client_data: genuine_client_data, key_id: genuine_key_id, bundle_id: genuine_bundle_id, production: true, now: captured_at) {
+    AttestationRefused { cause: AttestationEnvironmentUnexpected { expected: _ } } => true
+    _ => false
+  }
+}
+
+// The same genuine object judged at 2026-09-18: the three-day credential certificate has expired.
+test fn the_genuine_attestation_is_refused_after_its_certificate_expires() -> Bool {
+  match genuine(client_data: genuine_client_data, key_id: genuine_key_id, bundle_id: genuine_bundle_id, production: false, now: 1789714800) {
+    AttestationRefused { cause: AttestationChainUntrusted { detail: _ } } => true
+    _ => false
+  }
+}
+
+test fn an_attestation_that_is_not_base64_is_undecodable() -> Bool {
+  match app_attest_verify(attestation_b64: "not base64!", client_data: genuine_client_data, key_id: genuine_key_id, team_id: genuine_team_id, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, now_epoch: captured_at) {
+    AttestationRefused { cause: AttestationUndecodable { cause: _ } } => true
+    _ => false
+  }
+}
+
+// ── The genuine assertion, and counter monotonicity ──────────────────────────────────────────
+// Captured three seconds after the attestation, from the same key, over the same client data;
+// its authenticator counter is 1.
+fn genuine_key() -> VerifyingKey? {
+  match genuine(client_data: genuine_client_data, key_id: genuine_key_id, bundle_id: genuine_bundle_id, production: false, now: captured_at) {
+    AttestationVerified { key_id: _, public_key, client_data_hash_hex: _, environment: _ } => Present { value: public_key }
+    AttestationRefused { cause: _ } => none
+  }
+}
+
+fn assert_genuine(previous: Int, client_data: NonEmptyStr, bundle_id: NonEmptyStr) -> AssertionVerification? {
+  match genuine_key() {
+    Absent => none
+    Present { value: k } => Present { value: app_attest_verify_assertion_of(
+      key_id: genuine_key_id, public_key: k, previous_counter: previous,
+      assertion_b64: genuine_assertion, client_data: client_data,
+      team_id: genuine_team_id, bundle_id: bundle_id,
+    ) }
+  }
+}
+
+test fn the_genuine_assertion_verifies_under_the_attested_key_and_advances_the_counter() -> Bool {
+  match assert_genuine(previous: 0, client_data: genuine_client_data, bundle_id: genuine_bundle_id) {
+    Present { value: AssertionVerified { key_id, counter } } => key_id == genuine_key_id && counter == 1
+    _ => false
+  }
+}
+
+// The same assertion presented again after the server stored counter 1: a replay.
+test fn a_replayed_assertion_is_refused_by_the_counter() -> Bool {
+  match assert_genuine(previous: 1, client_data: genuine_client_data, bundle_id: genuine_bundle_id) {
+    Present { value: AssertionRefused { cause: AssertionCounterNotIncreasing { counter, previous_counter } } } => counter == 1 && previous_counter == 1
+    _ => false
+  }
+}
+
+// The signature covers the client data: a different request body does not verify.
+test fn an_assertion_over_different_client_data_is_invalid() -> Bool {
+  match assert_genuine(previous: 0, client_data: "wurzelpfropg", bundle_id: genuine_bundle_id) {
+    Present { value: AssertionRefused { cause: AssertionSignatureInvalid } } => true
+    _ => false
+  }
+}
+
+test fn an_assertion_for_the_wrong_app_id_is_refused() -> Bool {
+  match assert_genuine(previous: 0, client_data: genuine_client_data, bundle_id: "de.vincent-haupert.other") {
+    Present { value: AssertionRefused { cause: AssertionAppIdMismatch { expected_app_id: _ } } } => true
+    _ => false
+  }
+}
+
+// ── ROOT PINNING ─────────────────────────────────────────────────────────────────────────────
+// A forged attestation built in this repository from a TEST root (P-384 root -> P-384 intermediate
+// -> P-256 credential, openssl + a hand-encoded CBOR map, for the genuine fixture's app id and client
+// data "forged"). Every step other than the anchor is correct, and x5c carries the test root itself
+// as its third element. Under its own anchor it verifies -- so the refusal below is the pin, not some
+// other step -- and under the pinned Apple root it is refused, the x5c root notwithstanding.
+data forged_attestation: NonEmptyStr = "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"
+data forged_key_id: AttestKeyId = "AxWx3+EEZnYK4GXgWH2SusvPdnnXn3jn3oolnVpbd+0=" as AttestKeyId
+data test_root: AppAttestTrustAnchor = AppAttestTrustAnchor {
+  root_pem: "-----BEGIN CERTIFICATE-----\nMIICHTCCAaKgAwIBAgIUXywxeFKcvzUHUeEZ8SPpDw2UeIMwCgYIKoZIzj0EAwMw\nPDElMCMGA1UEAwwcVGVzdCBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UE\nCgwKZ3VuYmMgdGVzdDAgFw0yNjA5MTgwNjU4MDBaGA8yMTI2MDgyNTA2NTgwMFow\nPDElMCMGA1UEAwwcVGVzdCBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UE\nCgwKZ3VuYmMgdGVzdDB2MBAGByqGSM49AgEGBSuBBAAiA2IABDozjM/UMa4nLWc+\n0H+GPsJbWH9D395PCEW3ghK99L1zcUDBwiD/7BeJUkRHf59mtZ9nSI8KrFfEsQlc\nW6S+0eqKJreCJrRCc+pI8NseKJCiEr/UJHGe2ZGUIl5bkbradqNjMGEwHQYDVR0O\nBBYEFBji7l7Z2FYJinAIYCMIu/EAAPDYMB8GA1UdIwQYMBaAFBji7l7Z2FYJinAI\nYCMIu/EAAPDYMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgIEMAoGCCqG\nSM49BAMDA2kAMGYCMQDBk1aptnKz0ZxMQaXMEyL7dvT3aUV0hmxVo/UrcFy8afJ2\nMlCGIRa39790MbEIcckCMQCtYHlG8LdR2byQVklL/YQvVNaqu8ko7gZGZAe9JSis\nphtXsgtFOWBbzM8iTHmRjuM=\n-----END CERTIFICATE-----\n",
+}
+
+test fn the_forged_chain_verifies_under_its_own_test_root() -> Bool {
+  match app_attest_verify_under(anchor: test_root, attestation_b64: forged_attestation, client_data: "forged", key_id: forged_key_id, team_id: genuine_team_id, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, now_epoch: 1789714800) {
+    AttestationVerified { key_id, public_key: _, client_data_hash_hex: _, environment: _ } => key_id == forged_key_id
+    AttestationRefused { cause: _ } => false
+  }
+}
+
+test fn the_forged_chain_is_refused_under_the_pinned_apple_root() -> Bool {
+  match app_attest_verify(attestation_b64: forged_attestation, client_data: "forged", key_id: forged_key_id, team_id: genuine_team_id, bundle_id: genuine_bundle_id, environment: AppAttestDevelopment, now_epoch: 1789714800) {
+    AttestationRefused { cause: AttestationChainUntrusted { detail } } => detail.contains("Apple App Attestation Root CA")
+    _ => false
+  }
+}

@@ -1,8 +1,10 @@
 module extdeps.apple.app_attest
 
 import std.types { NonEmptyStr, String, Int }
+import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 
 // DeviceCheck DCAppAttestService, and Apple's server-side validation procedure for its attestation
 // objects. Cited pages: "Establishing your app's integrity", "Validating apps that connect to your
@@ -70,8 +72,207 @@ fn app_attest_app_id(team_id: NonEmptyStr, bundle_id: NonEmptyStr) -> NonEmptySt
 
 // Success names the attested key and the clientDataHash it was attested over, so a verified
 // attestation cannot be paired afterwards with a different enrolment's client data.
+//
+// It also carries the ATTESTED PUBLIC KEY, because every later assertion verifies under that key and
+// nothing else: the server stores it at enrolment and never takes a key from an assertion.
 type AttestationVerification
-  = AttestationVerified { key_id: AttestKeyId, client_data_hash_hex: NonEmptyStr, environment: AppAttestEnvironment }
+  = AttestationVerified { key_id: AttestKeyId, public_key: VerifyingKey, client_data_hash_hex: NonEmptyStr, environment: AppAttestEnvironment }
   | AttestationRefused { cause: AttestationRefusal }
 
 data app_attest_unavailable_in_simulator_note: NonEmptyStr = "DCAppAttestService.isSupported is false in the Simulator and on devices without a Secure Enclave; the app must refuse enrolment there rather than enrolling without an attestation."
+
+// ── The pinned trust anchor ──────────────────────────────────────────────────────────────────
+// Apple App Attestation Root CA, as published at the URL in apple_app_attest_root_ca_note (P-384,
+// valid 2020-03-18 to 2045-03-15, SHA-256 fingerprint 1C:B9:82:3B:A2:8B:A6:AD:2D:33:A0:06:94:1D:E2:AE:
+// 4F:51:3E:F1:D4:E8:31:B9:F7:E0:FA:7B:62:42:C9:32). This row IS the pin: the verifier is handed this
+// PEM and nothing from the attestation can replace it.
+type AppAttestTrustAnchor {
+  root_pem: NonEmptyStr
+}
+
+data apple_app_attestation_root_ca: AppAttestTrustAnchor = AppAttestTrustAnchor {
+  root_pem: "-----BEGIN CERTIFICATE-----\nMIICITCCAaegAwIBAgIQC/O+DvHN0uD7jG5yH2IXmDAKBggqhkjOPQQDAzBSMSYw\nJAYDVQQDDB1BcHBsZSBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UECgwK\nQXBwbGUgSW5jLjETMBEGA1UECAwKQ2FsaWZvcm5pYTAeFw0yMDAzMTgxODMyNTNa\nFw00NTAzMTUwMDAwMDBaMFIxJjAkBgNVBAMMHUFwcGxlIEFwcCBBdHRlc3RhdGlv\nbiBSb290IENBMRMwEQYDVQQKDApBcHBsZSBJbmMuMRMwEQYDVQQIDApDYWxpZm9y\nbmlhMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAERTHhmLW07ATaFQIEVwTtT4dyctdh\nNbJhFs/Ii2FdCgAHGbpphY3+d8qjuDngIN3WVhQUBHAoMeQ/cLiP1sOUtgjqK9au\nYen1mMEvRq9Sk3Jm5X8U62H+xTD3FE9TgS41o0IwQDAPBgNVHRMBAf8EBTADAQH/\nMB0GA1UdDgQWBBSskRBTM72+aEH/pwyp5frq5eWKoTAOBgNVHQ8BAf8EBAMCAQYw\nCgYIKoZIzj0EAwMDaAAwZQIwQgFGnByvsiVbpTKwSga0kP0e8EeDS4+sQmTvb7vn\n53O5+FRXgeLhpJ06ysC5PrOyAjEAp5U4xDgEgllF7En3VcE3iexZZtKeYnpqtijV\noyFraWVIyd/dganmrduC1bmTBGwD\n-----END CERTIFICATE-----\n",
+}
+
+// ── The bound implementation ─────────────────────────────────────────────────────────────────
+// `app_attest_verify_attestation` is a host primitive running Apple's eight steps above, in order,
+// over RustCrypto p256/p384 + sha2, ciborium and x509-parser. It answers one line whose first word is
+// a closed code; app_attest_attestation_of maps every code onto this module's carriers, and a line
+// it does not recognise refuses as undecodable rather than being read as success.
+//
+// The client data is passed, not its hash: the verifier computes SHA-256(client data) itself, so a
+// caller cannot hand in a hash the device never committed to. `now_epoch` is the caller's clock
+// reading -- certificate validity is judged at it, and a supplied clock is what makes one attestation
+// have one answer.
+fn app_attest_verify(
+  attestation_b64: NonEmptyStr,
+  client_data: NonEmptyStr,
+  key_id: AttestKeyId,
+  team_id: NonEmptyStr,
+  bundle_id: NonEmptyStr,
+  environment: AppAttestEnvironment,
+  now_epoch: Int,
+) -> AttestationVerification {
+  app_attest_verify_under(
+    anchor: apple_app_attestation_root_ca,
+    attestation_b64: attestation_b64,
+    client_data: client_data,
+    key_id: key_id,
+    team_id: team_id,
+    bundle_id: bundle_id,
+    environment: environment,
+    now_epoch: now_epoch,
+  )
+}
+
+// The anchor as a parameter exists for ONE reason: a witness must be able to show that a chain which
+// verifies under its own root is refused under the pinned one. Every production caller goes through
+// app_attest_verify.
+fn app_attest_verify_under(
+  anchor: AppAttestTrustAnchor,
+  attestation_b64: NonEmptyStr,
+  client_data: NonEmptyStr,
+  key_id: AttestKeyId,
+  team_id: NonEmptyStr,
+  bundle_id: NonEmptyStr,
+  environment: AppAttestEnvironment,
+  now_epoch: Int,
+) -> AttestationVerification {
+  let app_id = app_attest_app_id(team_id: team_id, bundle_id: bundle_id)
+  app_attest_attestation_of(
+    line: app_attest_verify_attestation(
+      attestation_b64 as String,
+      client_data as String,
+      key_id as String,
+      app_id as String,
+      app_attest_is_production(e: environment),
+      anchor.root_pem as String,
+      now_epoch,
+    ),
+    key_id: key_id,
+    app_id: app_id,
+    environment: environment,
+  )
+}
+
+fn app_attest_is_production(e: AppAttestEnvironment) -> Bool {
+  match e {
+    AppAttestDevelopment => false
+    AppAttestProduction => true
+  }
+}
+
+fn app_attest_rest(line: String, prefix: String) -> String {
+  line.substring(start: string_length(prefix), end: string_length(line))
+}
+
+// A verified line is "verified " + the 87-character base64url of the 65-octet point + " " + the 64
+// hex digits of SHA-256(client data): exactly 161 characters.
+fn app_attest_attestation_of(line: String, key_id: AttestKeyId, app_id: NonEmptyStr, environment: AppAttestEnvironment) -> AttestationVerification {
+  if line.starts_with("verified ") {
+    if string_length(line) == 161 {
+      AttestationVerified {
+        key_id: key_id,
+        public_key: VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: line.substring(start: 9, end: 96) as NonEmptyStr },
+        client_data_hash_hex: line.substring(start: 97, end: 161) as NonEmptyStr,
+        environment: environment,
+      }
+    } else {
+      AttestationRefused { cause: AttestationUndecodable { cause: concat("verifier answered a malformed verified line: ", line) } }
+    }
+  } else {
+    AttestationRefused { cause: app_attest_attestation_refusal_of(line: line, key_id: key_id, app_id: app_id, environment: environment) }
+  }
+}
+
+fn app_attest_attestation_refusal_of(line: String, key_id: AttestKeyId, app_id: NonEmptyStr, environment: AppAttestEnvironment) -> AttestationRefusal {
+  if line.starts_with("format ") {
+    AttestationFormatUnexpected { declared: app_attest_rest(line: line, prefix: "format ") }
+  } else if line.starts_with("chain ") {
+    AttestationChainUntrusted { detail: app_attest_rest(line: line, prefix: "chain ") }
+  } else if line == "nonce" {
+    AttestationNonceMismatch
+  } else if line == "key_id" {
+    AttestationKeyIdMismatch { declared: key_id }
+  } else if line == "app_id" {
+    AttestationAppIdMismatch { expected_app_id: app_id }
+  } else if line.starts_with("counter ") {
+    match parse_int(app_attest_rest(line: line, prefix: "counter ")) {
+      Present { value: n } => AttestationCounterNonZero { counter: n }
+      Absent => AttestationUndecodable { cause: concat("verifier answered an unreadable counter: ", line) }
+    }
+  } else if line == "environment" {
+    AttestationEnvironmentUnexpected { expected: environment }
+  } else if line == "credential_id" {
+    AttestationCredentialIdMismatch { declared: key_id }
+  } else if line.starts_with("undecodable ") {
+    AttestationUndecodable { cause: app_attest_rest(line: line, prefix: "undecodable ") }
+  } else {
+    AttestationUndecodable { cause: concat("verifier answered an unlisted code: ", line) }
+  }
+}
+
+// ── Assertions ───────────────────────────────────────────────────────────────────────────────
+// After attestation, each request the app makes carries an ASSERTION: CBOR { signature,
+// authenticatorData }, the signature over SHA256(authenticatorData || SHA256(client data)) by the
+// attested key. Apple's checks: the signature verifies under the STORED key, the RP ID hash is the
+// app id's, and the counter strictly exceeds the one stored from the previous assertion (0 after
+// attestation). The last is what makes a captured assertion single-use: replaying it presents the
+// same counter, which is no longer greater.
+type AssertionRefusal
+  = AssertionUndecodable { cause: String }
+  | AssertionSignatureInvalid
+  | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
+  | AssertionCounterNotIncreasing { counter: Int, previous_counter: Int }
+
+// Success carries the NEW counter, which the caller must store before accepting the next assertion,
+// and the key it verified under.
+type AssertionVerification
+  = AssertionVerified { key_id: AttestKeyId, counter: Int }
+  | AssertionRefused { cause: AssertionRefusal }
+
+// `app_attest_verify_assertion` is the host primitive for the procedure above; its line is
+// "verified <counter>" or one closed refusal code.
+fn app_attest_verify_assertion_of(
+  key_id: AttestKeyId,
+  public_key: VerifyingKey,
+  previous_counter: Int,
+  assertion_b64: NonEmptyStr,
+  client_data: NonEmptyStr,
+  team_id: NonEmptyStr,
+  bundle_id: NonEmptyStr,
+) -> AssertionVerification {
+  let app_id = app_attest_app_id(team_id: team_id, bundle_id: bundle_id)
+  let line = app_attest_verify_assertion(
+    assertion_b64 as String,
+    client_data as String,
+    public_key.point_b64url as String,
+    app_id as String,
+    previous_counter,
+  )
+  if line.starts_with("verified ") {
+    match parse_int(app_attest_rest(line: line, prefix: "verified ")) {
+      Present { value: n } => AssertionVerified { key_id: key_id, counter: n }
+      Absent => AssertionRefused { cause: AssertionUndecodable { cause: concat("verifier answered an unreadable counter: ", line) } }
+    }
+  } else {
+    AssertionRefused { cause: app_attest_assertion_refusal_of(line: line, app_id: app_id, previous_counter: previous_counter) }
+  }
+}
+
+fn app_attest_assertion_refusal_of(line: String, app_id: NonEmptyStr, previous_counter: Int) -> AssertionRefusal {
+  if line == "signature" {
+    AssertionSignatureInvalid
+  } else if line == "app_id" {
+    AssertionAppIdMismatch { expected_app_id: app_id }
+  } else if line.starts_with("counter ") {
+    match parse_int(app_attest_rest(line: line, prefix: "counter ")) {
+      Present { value: n } => AssertionCounterNotIncreasing { counter: n, previous_counter: previous_counter }
+      Absent => AssertionUndecodable { cause: concat("verifier answered an unreadable counter: ", line) }
+    }
+  } else if line.starts_with("undecodable ") {
+    AssertionUndecodable { cause: app_attest_rest(line: line, prefix: "undecodable ") }
+  } else {
+    AssertionUndecodable { cause: concat("verifier answered an unlisted code: ", line) }
+  }
+}

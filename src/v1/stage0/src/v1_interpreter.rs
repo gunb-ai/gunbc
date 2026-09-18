@@ -19725,6 +19725,38 @@ macro_rules! v1_builtin_arms {
                 }))
             },
 
+            // APPLE APP ATTEST, ATTESTATION (extdeps.apple.app_attest app_attest_verify): Apple's
+            // eight validation steps in Apple's order, over RustCrypto p256/p384 + sha2, ciborium
+            // and x509-parser. The trust anchor is the ROOT_PEM ARGUMENT alone -- the .dag passes
+            // the pinned apple_app_attestation_root_ca_pem -- and x5c past the intermediate is
+            // never read. `now_epoch` is supplied, never read from a clock, so one input has one
+            // answer. The answer is a one-line code the .dag maps totally onto
+            // AttestationRefusal / AttestationVerified.
+            arm "free_call.app_attest_verify_attestation" { "app_attest_verify_attestation" } => {
+                Ok(Some(str_value(app_attest_attestation_line(
+                    expect_value_str($positional.first().copied(), "app_attest_verify_attestation attestation")?.as_str(),
+                    expect_value_str($positional.get(1).copied(), "app_attest_verify_attestation client_data")?.as_str(),
+                    expect_value_str($positional.get(2).copied(), "app_attest_verify_attestation key_id")?.as_str(),
+                    expect_value_str($positional.get(3).copied(), "app_attest_verify_attestation app_id")?.as_str(),
+                    expect_bool($positional.get(4).copied(), "app_attest_verify_attestation production")?,
+                    expect_value_str($positional.get(5).copied(), "app_attest_verify_attestation root_pem")?.as_str(),
+                    expect_int($positional.get(6).copied(), "app_attest_verify_attestation now")?,
+                ))))
+            },
+
+            // APPLE APP ATTEST, ASSERTION: the signature over SHA256(authenticatorData ||
+            // SHA256(clientData)) under the ATTESTED key, the app's RP ID hash, and a counter
+            // strictly above the stored one -- a replayed assertion refuses.
+            arm "free_call.app_attest_verify_assertion" { "app_attest_verify_assertion" } => {
+                Ok(Some(str_value(app_attest_assertion_line(
+                    expect_value_str($positional.first().copied(), "app_attest_verify_assertion assertion")?.as_str(),
+                    expect_value_str($positional.get(1).copied(), "app_attest_verify_assertion client_data")?.as_str(),
+                    expect_value_str($positional.get(2).copied(), "app_attest_verify_assertion key")?.as_str(),
+                    expect_value_str($positional.get(3).copied(), "app_attest_verify_assertion app_id")?.as_str(),
+                    expect_int($positional.get(4).copied(), "app_attest_verify_assertion previous_counter")?,
+                ))))
+            },
+
             arm "free_call.string_length" { "string_length" } => {
                 let s = expect_value_str($positional.first().copied(), "string_length")?;
                 Ok(Some(Value::Int(s.string_length())))
@@ -22478,6 +22510,379 @@ fn es256_jwt_sign(p8_pem: &str, key_id: &str, team_id: &str, issued_at: i64) -> 
     ))
 }
 
+/// A refusal of Apple's attestation procedure, one arm per step (extdeps.apple.app_attest
+/// AttestationRefusal), in Apple's order.
+#[derive(Debug, PartialEq, Eq)]
+enum AppAttestAttestationRefusal {
+    Undecodable(String),
+    FormatUnexpected(String),
+    ChainUntrusted(String),
+    NonceMismatch,
+    KeyIdMismatch,
+    AppIdMismatch,
+    CounterNonZero(u32),
+    EnvironmentUnexpected,
+    CredentialIdMismatch,
+}
+
+/// A refusal of Apple's assertion procedure (extdeps.apple.app_attest AssertionRefusal).
+#[derive(Debug, PartialEq, Eq)]
+enum AppAttestAssertionRefusal {
+    Undecodable(String),
+    SignatureInvalid,
+    AppIdMismatch,
+    CounterNotIncreasing(u32),
+}
+
+fn app_attest_cbor_map(bytes: &[u8]) -> Result<Vec<(ciborium::Value, ciborium::Value)>, String> {
+    match ciborium::de::from_reader::<ciborium::Value, _>(bytes) {
+        Ok(ciborium::Value::Map(entries)) => Ok(entries),
+        Ok(_) => Err("top level is not a CBOR map".to_string()),
+        Err(e) => Err(format!("CBOR: {e}")),
+    }
+}
+
+fn app_attest_cbor_field<'a>(
+    map: &'a [(ciborium::Value, ciborium::Value)],
+    key: &str,
+) -> Result<&'a ciborium::Value, String> {
+    map.iter()
+        .find(|(k, _)| k.as_text() == Some(key))
+        .map(|(_, v)| v)
+        .ok_or_else(|| format!("missing {key}"))
+}
+
+fn app_attest_cbor_bytes<'a>(
+    map: &'a [(ciborium::Value, ciborium::Value)],
+    key: &str,
+) -> Result<&'a [u8], String> {
+    app_attest_cbor_field(map, key)?
+        .as_bytes()
+        .map(|b| b.as_slice())
+        .ok_or_else(|| format!("{key} is not a byte string"))
+}
+
+/// The authenticator data fields both procedures read (WebAuthn §6.1 layout).
+struct AppAttestAuthData<'a> {
+    rp_id_hash: &'a [u8],
+    counter: u32,
+    aaguid: &'a [u8],
+    credential_id: &'a [u8],
+}
+
+fn app_attest_auth_data(auth_data: &[u8], attested: bool) -> Result<AppAttestAuthData<'_>, String> {
+    if auth_data.len() < 37 {
+        return Err("authenticator data shorter than 37 octets".to_string());
+    }
+    let counter = u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
+    let (aaguid, credential_id): (&[u8], &[u8]) = if attested {
+        if auth_data.len() < 55 {
+            return Err("attested credential data shorter than 18 octets".to_string());
+        }
+        let len = u16::from_be_bytes([auth_data[53], auth_data[54]]) as usize;
+        let id = auth_data
+            .get(55..55 + len)
+            .ok_or_else(|| "credential id overruns the authenticator data".to_string())?;
+        (&auth_data[37..53], id)
+    } else {
+        (&[], &[])
+    };
+    Ok(AppAttestAuthData {
+        rp_id_hash: &auth_data[..32],
+        counter,
+        aaguid,
+        credential_id,
+    })
+}
+
+/// `child` is signed by `issuer`'s key, names `issuer` as its issuer, and is valid at `now`.
+/// ECDSA over P-256 or P-384 with SHA-256 or SHA-384 -- the only suites Apple's chain uses; any
+/// other algorithm refuses.
+fn app_attest_signed_by(
+    child: &x509_parser::certificate::X509Certificate<'_>,
+    issuer: &x509_parser::certificate::X509Certificate<'_>,
+    now: i64,
+) -> Result<(), String> {
+    use p256::ecdsa::signature::hazmat::PrehashVerifier;
+    use sha2::Digest;
+    if child.issuer().as_raw() != issuer.subject().as_raw() {
+        return Err(format!(
+            "{} is not issued by {}",
+            child.subject(),
+            issuer.subject()
+        ));
+    }
+    match issuer.basic_constraints() {
+        Ok(Some(bc)) if bc.value.ca => {}
+        _ => return Err(format!("{} is not a CA", issuer.subject())),
+    }
+    for cert in [child, issuer] {
+        let v = cert.validity();
+        if now < v.not_before.timestamp() || now > v.not_after.timestamp() {
+            return Err(format!("{} is not valid at {now}", cert.subject()));
+        }
+    }
+    let tbs = child.tbs_certificate.as_ref();
+    let digest: Vec<u8> = match child.signature_algorithm.algorithm.to_id_string().as_str() {
+        "1.2.840.10045.4.3.2" => sha2::Sha256::digest(tbs).to_vec(),
+        "1.2.840.10045.4.3.3" => sha2::Sha384::digest(tbs).to_vec(),
+        other => return Err(format!("signature algorithm {other} is not admitted")),
+    };
+    let key = issuer.public_key().subject_public_key.data.as_ref();
+    let signature = child.signature_value.data.as_ref();
+    let verified = match key.len() {
+        65 => p256::ecdsa::VerifyingKey::from_sec1_bytes(key)
+            .ok()
+            .zip(p256::ecdsa::Signature::from_der(signature).ok())
+            .map(|(k, s)| k.verify_prehash(&digest, &s).is_ok()),
+        97 => p384::ecdsa::VerifyingKey::from_sec1_bytes(key)
+            .ok()
+            .zip(p384::ecdsa::Signature::from_der(signature).ok())
+            .map(|(k, s)| k.verify_prehash(&digest, &s).is_ok()),
+        _ => None,
+    };
+    match verified {
+        Some(true) => Ok(()),
+        Some(false) => Err(format!("signature on {} does not verify", child.subject())),
+        None => Err(format!(
+            "key or signature for {} is not admitted",
+            child.subject()
+        )),
+    }
+}
+
+fn app_attest_parse_certificate(
+    der: &[u8],
+) -> Result<x509_parser::certificate::X509Certificate<'_>, AppAttestAttestationRefusal> {
+    x509_parser::parse_x509_certificate(der)
+        .map(|(_, c)| c)
+        .map_err(|e| AppAttestAttestationRefusal::Undecodable(format!("X.509: {e}")))
+}
+
+/// Apple's attestation procedure ("Validating apps that connect to your server"), steps 1-8.
+/// The trust anchor is `root_pem` alone: x5c supplies the credential certificate and its
+/// intermediate, and anything x5c says about a root is never read. Success is the attested
+/// credential's SEC 1 uncompressed point and SHA-256(client data).
+fn app_attest_verify_attestation(
+    attestation: &[u8],
+    client_data: &[u8],
+    key_id: &[u8],
+    app_id: &str,
+    production: bool,
+    root_pem: &str,
+    now: i64,
+) -> Result<(Vec<u8>, [u8; 32]), AppAttestAttestationRefusal> {
+    use sha2::{Digest, Sha256};
+    use AppAttestAttestationRefusal as R;
+    let map = app_attest_cbor_map(attestation).map_err(R::Undecodable)?;
+    let fmt = app_attest_cbor_field(&map, "fmt")
+        .map_err(R::Undecodable)?
+        .as_text()
+        .ok_or_else(|| R::Undecodable("fmt is not text".to_string()))?;
+    if fmt != "apple-appattest" {
+        return Err(R::FormatUnexpected(fmt.to_string()));
+    }
+    let att_stmt = app_attest_cbor_field(&map, "attStmt")
+        .map_err(R::Undecodable)?
+        .as_map()
+        .ok_or_else(|| R::Undecodable("attStmt is not a map".to_string()))?;
+    let x5c = app_attest_cbor_field(att_stmt, "x5c")
+        .map_err(R::Undecodable)?
+        .as_array()
+        .ok_or_else(|| R::Undecodable("x5c is not an array".to_string()))?;
+    let auth_data = app_attest_cbor_bytes(&map, "authData").map_err(R::Undecodable)?;
+    let der = |i: usize| -> Result<&[u8], R> {
+        x5c.get(i)
+            .and_then(|v| v.as_bytes())
+            .map(|b| b.as_slice())
+            .ok_or_else(|| R::Undecodable(format!("x5c[{i}] is missing or not a byte string")))
+    };
+    let (credential_der, intermediate_der) = (der(0)?, der(1)?);
+    let credential = app_attest_parse_certificate(credential_der)?;
+    let intermediate = app_attest_parse_certificate(intermediate_der)?;
+    let (_, root_pem) = x509_parser::pem::parse_x509_pem(root_pem.as_bytes())
+        .map_err(|e| R::ChainUntrusted(format!("pinned root is not PEM: {e}")))?;
+    let root = root_pem
+        .parse_x509()
+        .map_err(|e| R::ChainUntrusted(format!("pinned root is not X.509: {e}")))?;
+    // 1. credential <- intermediate <- the PINNED root.
+    app_attest_signed_by(&credential, &intermediate, now).map_err(R::ChainUntrusted)?;
+    app_attest_signed_by(&intermediate, &root, now).map_err(R::ChainUntrusted)?;
+    // 2-3. nonce = SHA256(authData || SHA256(clientData)), carried in the credential certificate's
+    // 1.2.840.113635.100.8.2 extension as SEQUENCE { [1] { OCTET STRING nonce } }. DER has one
+    // encoding per value, so byte equality with that encoding is the whole comparison.
+    let client_data_hash: [u8; 32] = Sha256::digest(client_data).into();
+    let nonce = Sha256::new()
+        .chain_update(auth_data)
+        .chain_update(client_data_hash)
+        .finalize();
+    let mut expected = vec![0x30, 0x24, 0xa1, 0x22, 0x04, 0x20];
+    expected.extend_from_slice(&nonce);
+    let carried = credential
+        .extensions()
+        .iter()
+        .find(|e| e.oid.to_id_string() == "1.2.840.113635.100.8.2")
+        .map(|e| e.value);
+    if carried != Some(expected.as_slice()) {
+        return Err(R::NonceMismatch);
+    }
+    // 4. SHA256(credential public key) is the key id.
+    let point = credential.public_key().subject_public_key.data.to_vec();
+    if p256::ecdsa::VerifyingKey::from_sec1_bytes(&point).is_err() || point.len() != 65 {
+        return Err(R::Undecodable(
+            "credential key is not a P-256 uncompressed point".to_string(),
+        ));
+    }
+    if Sha256::digest(&point).as_slice() != key_id {
+        return Err(R::KeyIdMismatch);
+    }
+    let parsed = app_attest_auth_data(auth_data, true).map_err(R::Undecodable)?;
+    // 5. RP ID hash is SHA256("<team id>.<bundle id>").
+    if parsed.rp_id_hash != Sha256::digest(app_id.as_bytes()).as_slice() {
+        return Err(R::AppIdMismatch);
+    }
+    // 6. A fresh key has signed nothing.
+    if parsed.counter != 0 {
+        return Err(R::CounterNonZero(parsed.counter));
+    }
+    // 7. The AAGUID names the environment the entitlement selected.
+    let aaguid: &[u8] = if production {
+        b"appattest\0\0\0\0\0\0\0"
+    } else {
+        b"appattestdevelop"
+    };
+    if parsed.aaguid != aaguid {
+        return Err(R::EnvironmentUnexpected);
+    }
+    // 8. The credential id is the key id.
+    if parsed.credential_id != key_id {
+        return Err(R::CredentialIdMismatch);
+    }
+    Ok((point, client_data_hash))
+}
+
+/// Apple's assertion procedure: the signature over nonce = SHA256(authenticatorData ||
+/// SHA256(clientData)) verifies under the ATTESTED key, the RP ID hash is the app's, and the
+/// counter strictly exceeds the last one stored -- a replayed or reordered assertion refuses.
+/// Success is the new counter, which the caller must store.
+fn app_attest_verify_assertion(
+    assertion: &[u8],
+    client_data: &[u8],
+    point: &[u8],
+    app_id: &str,
+    previous_counter: u32,
+) -> Result<u32, AppAttestAssertionRefusal> {
+    use p256::ecdsa::signature::Verifier;
+    use sha2::{Digest, Sha256};
+    use AppAttestAssertionRefusal as R;
+    let map = app_attest_cbor_map(assertion).map_err(R::Undecodable)?;
+    let signature = app_attest_cbor_bytes(&map, "signature").map_err(R::Undecodable)?;
+    let auth_data = app_attest_cbor_bytes(&map, "authenticatorData").map_err(R::Undecodable)?;
+    if point.len() != 65 {
+        return Err(R::Undecodable(
+            "attested key is not a 65-octet point".to_string(),
+        ));
+    }
+    let key = p256::ecdsa::VerifyingKey::from_sec1_bytes(point)
+        .map_err(|_| R::Undecodable("attested key is not a P-256 point".to_string()))?;
+    let signature = p256::ecdsa::Signature::from_der(signature)
+        .map_err(|_| R::Undecodable("signature is not DER ECDSA".to_string()))?;
+    let client_data_hash = Sha256::digest(client_data);
+    let nonce = Sha256::new()
+        .chain_update(auth_data)
+        .chain_update(client_data_hash)
+        .finalize();
+    if key.verify(&nonce, &signature).is_err() {
+        return Err(R::SignatureInvalid);
+    }
+    let parsed = app_attest_auth_data(auth_data, false).map_err(R::Undecodable)?;
+    if parsed.rp_id_hash != Sha256::digest(app_id.as_bytes()).as_slice() {
+        return Err(R::AppIdMismatch);
+    }
+    if parsed.counter <= previous_counter {
+        return Err(R::CounterNotIncreasing(parsed.counter));
+    }
+    Ok(parsed.counter)
+}
+
+/// The `app_attest_verify_attestation` builtin's answer as the one-line code
+/// extdeps.apple.app_attest app_attest_attestation_of reads: `verified <point b64url> <client
+/// data hash hex>`, or one refusal code per step. Malformed input is `undecodable <cause>`,
+/// never a verified line.
+fn app_attest_attestation_line(
+    attestation_b64: &str,
+    client_data: &str,
+    key_id_b64: &str,
+    app_id: &str,
+    production: bool,
+    root_pem: &str,
+    now: i64,
+) -> String {
+    use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+    use base64::Engine;
+    use AppAttestAttestationRefusal as R;
+    let (Ok(attestation), Ok(key_id)) = (
+        STANDARD.decode(attestation_b64),
+        STANDARD.decode(key_id_b64),
+    ) else {
+        return "undecodable attestation or key id is not base64".to_string();
+    };
+    match app_attest_verify_attestation(
+        &attestation,
+        client_data.as_bytes(),
+        &key_id,
+        app_id,
+        production,
+        root_pem,
+        now,
+    ) {
+        Ok((point, client_data_hash)) => format!(
+            "verified {} {}",
+            URL_SAFE_NO_PAD.encode(point),
+            hex::encode(client_data_hash)
+        ),
+        Err(R::Undecodable(cause)) => format!("undecodable {cause}"),
+        Err(R::FormatUnexpected(declared)) => format!("format {declared}"),
+        Err(R::ChainUntrusted(detail)) => format!("chain {detail}"),
+        Err(R::NonceMismatch) => "nonce".to_string(),
+        Err(R::KeyIdMismatch) => "key_id".to_string(),
+        Err(R::AppIdMismatch) => "app_id".to_string(),
+        Err(R::CounterNonZero(counter)) => format!("counter {counter}"),
+        Err(R::EnvironmentUnexpected) => "environment".to_string(),
+        Err(R::CredentialIdMismatch) => "credential_id".to_string(),
+    }
+}
+
+/// The `app_attest_verify_assertion` builtin's answer: `verified <counter>` or one refusal code.
+fn app_attest_assertion_line(
+    assertion_b64: &str,
+    client_data: &str,
+    point_b64url: &str,
+    app_id: &str,
+    previous_counter: i64,
+) -> String {
+    use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+    use base64::Engine;
+    use AppAttestAssertionRefusal as R;
+    let (Ok(assertion), Ok(point)) = (
+        STANDARD.decode(assertion_b64),
+        URL_SAFE_NO_PAD.decode(point_b64url),
+    ) else {
+        return "undecodable assertion is not base64 or key is not base64url".to_string();
+    };
+    let Ok(previous) = u32::try_from(previous_counter) else {
+        return format!("undecodable previous counter {previous_counter} is not a 32-bit counter");
+    };
+    match app_attest_verify_assertion(&assertion, client_data.as_bytes(), &point, app_id, previous)
+    {
+        Ok(counter) => format!("verified {counter}"),
+        Err(R::Undecodable(cause)) => format!("undecodable {cause}"),
+        Err(R::SignatureInvalid) => "signature".to_string(),
+        Err(R::AppIdMismatch) => "app_id".to_string(),
+        Err(R::CounterNotIncreasing(counter)) => format!("counter {counter}"),
+    }
+}
+
 #[cfg(test)]
 mod p256_ecdsa_tests {
     use super::{es256_jwt_sign, p256_ecdsa_verify_b64url};
@@ -22788,6 +23193,22 @@ fn expect_fma_contraction_policy_wire(val: Option<&Value>, context: &str) -> Int
                 "{context} requires FmaContractionRefused | FmaContractionPermitted, got {}",
                 other.type_label()
             ),
+        }),
+    }
+}
+
+fn expect_bool(val: Option<&Value>, context: &str) -> InterpResult<bool> {
+    match val {
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(v) => Err(InterpError::TypeError {
+            msg: format!(
+                "{} expects a bool argument, got {}",
+                context,
+                v.type_label()
+            ),
+        }),
+        None => Err(InterpError::TypeError {
+            msg: format!("{} requires a bool argument", context),
         }),
     }
 }

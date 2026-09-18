@@ -56,6 +56,13 @@ hex = { workspace = true }
 # apns_provider_token. base64 is the URL-safe unpadded codec both wire formats use.
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "pem", "std"] }
 base64 = "0.22"
+# Apple App Attest (extdeps.apple.app_attest): the attestation object and assertion are CBOR
+# (ciborium), the credential chain is X.509 (x509-parser, parsing only -- its ring-backed "verify"
+# feature is not enabled; every chain signature is checked by the RustCrypto p256 / p384 verifiers,
+# P-384 because Apple's root and intermediate keys are P-384).
+p384 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+ciborium = "0.2"
+x509-parser = { version = "0.16", default-features = false }
 sha2 = "0.10"
 toml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
