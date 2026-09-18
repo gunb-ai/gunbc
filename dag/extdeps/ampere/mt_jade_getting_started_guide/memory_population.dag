@@ -1,6 +1,6 @@
 module extdeps.ampere.mt_jade_getting_started_guide.memory_population
 
-import std.types { List, NonEmptyStr, concat, list_length }
+import std.types { List, NonEmptyStr, list_length }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, FactCitation }

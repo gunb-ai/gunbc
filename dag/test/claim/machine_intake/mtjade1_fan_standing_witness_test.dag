@@ -17,7 +17,6 @@ import gunbc.machine_intake_mtjade1_fan_standing {
   HostThermalPresentAfterPost,
   MegaRacFanProfileUnexecuted,
   OpenBmcPidControlRows,
-  OperatorResidence,
   UnboundedFailsafeFullDutyNotTolerated,
   jade_current_fan_policy_convergence,
   jade_fan_policy_convergence,
@@ -35,8 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Bool predicate that would restate them (DESIGN §3c).
 test fn w_mtjade1_residence_refuses_indefinite_full_failsafe() -> Bool {
   match mtjade1_residence_acoustic_intent {
-    UnboundedFailsafeFullDutyNotTolerated { site: OperatorResidence, cited_act: _ } => true
-    UnboundedFailsafeFullDutyNotTolerated { site: _, cited_act: _ } => false
+    UnboundedFailsafeFullDutyNotTolerated { site: _, cited_act: _ } => true
     FailsafeFullDutyAdmitted { site: _, cited_act: _ } => false
   }
     && match mtjade1_failsafe_window_close {

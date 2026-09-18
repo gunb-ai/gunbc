@@ -1,6 +1,6 @@
 module test.claim.mt_jade_getting_started_guide_witness
 
-import std.types { Bool, String, concat, list_length }
+import std.types { Bool, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.ampere.mt_jade_getting_started_guide.subject {
   mt_jade_gsg_authority,
