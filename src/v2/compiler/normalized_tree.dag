@@ -23,9 +23,10 @@ import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty 
 // behind. It was an alias for Node until BL-1, which is why retention evidence reached resolve as a
 // bare Node and was dropped there. Sealing the carrier makes the drop unwritable.
 //
-// `test_markers` is the DESIGN section 4c channel for the authored `test` marker, sealed beside the
-// root rather than inside it: `root` is byte-identical for a `test fn` and a plain `fn`, and every
-// consumer about Node structure reads `root` alone. Name resolution is the channel's consumer.
+// `test_markers` is the authored `test` marker's channel (v2.std.declaration_marker), sealed
+// beside the root rather than inside it: `root` is byte-identical for a `test fn` and a plain `fn`,
+// and every consumer about Node structure reads `root` alone. Name resolution is the channel's
+// consumer, and refuses references to what it marks.
 type NormalizedTree sole_constructor {
   root: Node,
   test_markers: TestMarkerChannel,
