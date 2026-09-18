@@ -42,11 +42,9 @@ import v2.std.node {
   Edge,
   Named,
   Node,
-  NodeFold,
   Positional,
   Symbol,
   TypeNode,
-  fold_node,
 }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
 import v2.std.compilers.target_model {
@@ -348,10 +346,6 @@ type GrammarRelationRow {
 }
 
 type ParseTree = Node
-
-type GrammarSymbolFoldState {
-  found: Bool
-}
 
 fn grammar_atom(identity: Symbol) -> Node {
   Node {
@@ -1703,38 +1697,48 @@ fn grammar_to_node(grammar: ParseGrammar) -> Node {
   }
 }
 
-fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
-  NodeFold {
-    init: fn(n0) {
-      grammar_symbol_fold_init(n: n0, sym: sym)
+fn grammar_symbol_map_put(m: Map<Symbol, Bool>, sym: Symbol) -> Map<Symbol, Bool> {
+  map_insert(m: m, key: sym, value: true)
+}
+
+fn grammar_symbol_list_put(m: Map<Symbol, Bool>, xs: List<Symbol>) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: xs,
+    empty: m,
+    cons: fn(acc, sym) { grammar_symbol_map_put(m: acc, sym: sym) }
+  )
+}
+
+fn grammar_node_insert_atom_identities_child(
+  m: Map<Symbol, Bool>,
+  e: Edge
+) -> Map<Symbol, Bool> {
+  grammar_node_insert_atom_identities(m: m, n: e.target)
+}
+
+fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: n.children,
+    empty: match n.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        grammar_symbol_map_put(m: m, sym: id)
+      _ => m
     },
-    step: grammar_symbol_fold_step
-  }
+    cons: fn(acc, e) {
+      grammar_node_insert_atom_identities_child(m: acc, e: e)
+    }
+  )
 }
 
-fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      GrammarSymbolFoldState { found: id == sym }
-    _ =>
-      GrammarSymbolFoldState { found: false }
-  }
-}
-
-fn grammar_symbol_fold_step(
-  acc: GrammarSymbolFoldState,
-  edge: Edge,
-  child_has_symbol: GrammarSymbolFoldState
-) -> GrammarSymbolFoldState {
-  GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
-}
-
-fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
-  fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
+fn grammar_carried_symbol_map(grammar: ParseGrammar) -> Map<Symbol, Bool> {
+  grammar_node_insert_atom_identities(m: empty_map(), n: grammar_to_node(grammar: grammar))
 }
 
 fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
-  grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
+  match map_lookup(m: grammar_carried_symbol_map(grammar: grammar), key: sym) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn grammar_symbol_map_put(m: Map<Symbol, Bool>, sym: Symbol) -> Map<Symbol, Bool> {

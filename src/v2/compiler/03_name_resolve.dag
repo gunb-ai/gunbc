@@ -680,10 +680,10 @@ fn namespace_for_subject_root(
 ) -> Outcome<AdmittedSubject> {
   let validated_roots = shared.roots
   if well_formed(n: subject_module_root.root) {
-    let base = admission_namespace_base(canonical_symbols: shared.canonical_symbols)
+    let base = admission_namespace_base(canonical_symbols: shared.lm.canonical_symbols)
     let initial = namespace_admission_initial_state(
       policy: policy,
-      canonical_symbols: shared.canonical_symbols,
+      canonical_symbols: shared.lm.canonical_symbols,
       subject_module_root: subject_module_root,
       subject_qn: admission.subject.name
     )
