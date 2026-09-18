@@ -1,0 +1,32 @@
+module extdeps.google.fcm
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// Firebase Cloud Messaging HTTP v1 API: POST
+// https://fcm.googleapis.com/v1/projects/<project id>/messages:send, OAuth 2.0 bearer from a service
+// account, body { message: { token, data, notification, android } }.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "firebase.google.com/docs/reference/fcm/rest/v1/projects.messages/send"
+  }
+}
+
+type FcmProjectId = NonEmptyStr where brand("FcmProjectId")
+
+// Issued to one app install by the FCM SDK; opaque to the sender, and replaced by the SDK on
+// reinstall or data clear (onNewToken).
+type FcmRegistrationToken = NonEmptyStr where brand("FcmRegistrationToken")
+
+// FCM names its refusals in the response body's ErrorCode. UNREGISTERED is the registration-is-dead
+// arm, the counterpart of APNs 410.
+type FcmErrorCode
+  = FcmInvalidArgument
+  | FcmUnregistered
+  | FcmSenderIdMismatch
+  | FcmQuotaExceeded
+  | FcmUnavailable
+  | FcmInternal
+  | FcmThirdPartyAuthError

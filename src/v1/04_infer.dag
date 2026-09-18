@@ -851,16 +851,36 @@ fn variant_value_reference_diagnostics(scope: InferScope, name: String, span: So
   )
 }
 
+// A BARE NAME THAT RESOLVES TO A SERVICE IS A SERVICE, decided from the registry exactly as
+// service_spine_projection decides it for a qualified receiver. A service imported by name --
+// `import extdeps.filesystem.filesystem_io { Filesystem }`, then `Filesystem.Read(...)` -- never
+// takes the field-access path, and it does not arrive as an unbound global either: the scope fold in
+// merge_scope_from_imports registers every service's namespace ROOT as a local binding, and for a
+// service declared with a bare name the root IS the service's own name. So the name reaches the
+// locals arm, and classifying every local as LocalValueBinding hid every call through it from
+// derived service demand. The root binding is recognized by what it structurally is -- a local whose
+// resolved type is exactly the nominal reference the fold inserted for a registered service of that
+// name -- so a parameter or `let` that happens to share the spelling carries its own declared type
+// and stays a local. No spelling shape is read: the refusal the ServiceValueBinding note records came
+// from deciding by case and dots.
 fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   match lookup_variant_parent_enum(scope: scope, name: name) {
     Present { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum }
     Absent =>
       match map_get(scope.locals, name) {
-        Present { value: _ } =>
+        Present { value: binding } =>
           if map_has(scope.match_bound_names, name) { MatchBoundBinding }
+          else if local_is_service_root_binding(scope: scope, name: name, binding: binding) { ServiceValueBinding }
           else { LocalValueBinding }
         Absent => FunctionValueBinding
       }
+  }
+}
+
+fn local_is_service_root_binding(scope: InferScope, name: String, binding: TypeBinding) -> Bool {
+  match map_get(scope.service_registry, name) {
+    Present { value: _ } => binding.resolved == nominal_type_ref(name: name)
+    Absent => false
   }
 }
 

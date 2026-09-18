@@ -7,18 +7,15 @@ import v2.std.algebra { Empty, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic {
-  ByteRange,
   Diagnostic,
   Diagnostics,
-  Extent,
   NodeLocus,
   NonEmptyDiagnostics,
   InvariantPortLocus,
   SourcePortLocus,
-  Textual,
-  WholeFile
+  Textual
 }
-import v2.std.logic { Bool }
+import v2.std.lens_verdict { lens_verdict_extent_text }
 import v2.std.node {
   Arrow,
   Atom,
@@ -412,14 +409,6 @@ fn diagnostic_subtree_atoms(node: Node) -> String {
   }
 }
 
-fn diagnostic_extent_label(extent: Extent) -> String {
-  match extent {
-    WholeFile => "whole-file"
-    ByteRange { start: start, end: end } =>
-      concat("bytes ", concat(to_string(start), concat("..", to_string(end))))
-  }
-}
-
 fn diagnostic_attribution(d: Diagnostic) -> String {
   match d.at {
     NodeLocus { anchor: anchor } =>
@@ -445,14 +434,14 @@ fn diagnostic_attribution(d: Diagnostic) -> String {
     Textual { file: file, extent: extent } =>
       concat(
         "textual ",
-        concat(symbol_lexeme(sym: file), concat("  ", diagnostic_extent_label(extent: extent)))
+        concat(symbol_lexeme(sym: file), concat("  ", lens_verdict_extent_text(e: extent)))
       )
     SourcePortLocus { anchor: anchor, file: file, extent: extent } =>
       concat(
         "port ",
         concat(
           symbol_lexeme(sym: anchor.at),
-          concat(" at ", concat(symbol_lexeme(sym: file), concat("  ", diagnostic_extent_label(extent: extent))))
+          concat(" at ", concat(symbol_lexeme(sym: file), concat("  ", lens_verdict_extent_text(e: extent))))
         )
       )
     InvariantPortLocus { anchor: anchor, invariant: invariant } =>
