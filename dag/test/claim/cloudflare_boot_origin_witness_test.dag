@@ -13,6 +13,7 @@ import gunbc.cloudflare.r2_origin {
   R2OriginUnallocated,
   OriginCredentialPinned,
   OriginCredentialUnminted,
+  OriginCredentialStanding,
   DigestKeyedBootArtifacts,
   bucket_purpose_admission,
   FabricCommitManifestsAndContentAddressedOutputs,
@@ -195,12 +196,22 @@ test fn boot_origin_credentials_are_disjoint_and_unminted() -> Bool {
              FabricCommitManifestsAndContentAddressedOutputs {} => false
              DigestKeyedBootArtifacts {} => true
            }
-        && match b.write_credential {
-             OriginCredentialPinned { access_key_id: _, token_value: _ } => false
-             OriginCredentialUnminted { mint_entry: _ } => true
-           }
+        && unminted_at_boot_mint_entry(credential: b.read_credential, entry_name: "run_boot_object_read")
+        && unminted_at_boot_mint_entry(credential: b.write_credential, entry_name: "run_boot_object_write")
   }
   disjoint && standing
+}
+
+// THE MINT ENTRY IS PINNED BY NAME, NOT DISCARDED: the arm AND the declaration it names, because
+// the object executor tells the operator to RUN whatever this cites (review 67861). An entry that
+// is a secret-id row rather than a mint fold reads as true under a wildcard and as false here.
+fn unminted_at_boot_mint_entry(credential: OriginCredentialStanding, entry_name: String) -> Bool {
+  match credential {
+    OriginCredentialPinned { access_key_id: _, token_value: _ } => false
+    OriginCredentialUnminted { mint_entry: entry } =>
+      (entry.module_path as String) == "gunbc.cloudflare.r2_token_mint_run"
+        && (entry.decl_name as String) == entry_name
+  }
 }
 
 test fn readback_refuses_plain_http() -> Bool {

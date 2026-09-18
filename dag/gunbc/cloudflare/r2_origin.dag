@@ -344,11 +344,14 @@ fn fleet_cloudflare_bootstrap_custody() -> BootstrapCustodyStanding {
 
 // THE BOOT ORIGIN'S TWO CUSTODY LOCI, disjoint from the durable origin's and from each other. The
 // read token is held by whatever verifies publication; the write token only by the publisher. Neither
-// is minted yet: gunbc.cloudflare.r2_token_mint_run mints per R2OriginTokenProfile against the durable
-// bucket only, so until it is parameterized by BucketPurpose both arms are Unminted and every boot
-// PUT refuses at the standing, before any network call. Accessor rows in
-// gunbc.auth.fleet_secret_accessor_roster land with the minted versions, never before: a row whose
-// secret does not exist would stop that roster's fold for every other lane.
+// is minted yet, and each Unminted arm names the ENTRY that mints it -- gunbc.cloudflare.r2_token_mint_run
+// run_boot_object_read / run_boot_object_write, the durable mint fold over the boot purpose -- so
+// mint_entry means one thing on both origins: the declaration an operator runs to discharge the
+// refusal (review 67861 caught the earlier revision citing the secret-id rows here instead). Until
+// those entries have executed and their stored versions are pinned, every boot PUT refuses at the
+// standing, before any network call. Accessor rows in gunbc.auth.fleet_secret_accessor_roster land
+// with the minted versions, never before: a row whose secret does not exist would stop that roster's
+// fold for every other lane.
 data fabric_boot_origin_read_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin-read-token"
 
 data fabric_boot_origin_write_secret_id: NonEmptyStr = "cloudflare-r2-boot-origin-write-token"
@@ -363,12 +366,22 @@ fn fabric_boot_origin_standing() -> R2OriginStanding {
           jurisdiction: R2JurisdictionDefault,
           purpose: FabricBootOrigin {},
           read_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_read_secret_id"),
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_boot_object_read"),
           },
           write_credential: OriginCredentialUnminted {
-            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_boot_origin_write_secret_id"),
+            mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_boot_object_write"),
           },
         }
       }
+  }
+}
+
+// ONE STANDING PER PURPOSE, SELECTED BY THE PURPOSE. The mint run and the object executor take the
+// purpose as a parameter; this is the single dispatch from purpose to the standing that carries it,
+// so no consumer re-spells which fold answers for which bucket.
+fn fabric_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
+  match purpose {
+    FabricDurableOrigin {} => fabric_durable_origin_standing()
+    FabricBootOrigin {} => fabric_boot_origin_standing()
   }
 }

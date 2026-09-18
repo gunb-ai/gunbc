@@ -40,6 +40,10 @@ import gunbc.cloudflare.r2_origin {
   R2OriginStanding,
   R2OriginBucket,
   FabricDurableOrigin,
+  FabricBootOrigin,
+  fabric_origin_standing,
+  fabric_boot_origin_read_secret_id,
+  fabric_boot_origin_write_secret_id,
   BucketPurpose,
   R2BucketAllocation,
   bucket_purpose_key,
@@ -68,6 +72,7 @@ import gunbc.cloudflare.r2_permission_group_observe {
 import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 import gunbc.cloudflare.r2_token_mint_run {
   classify_r2_mint,
+  r2_origin_token_secret_id,
   R2OriginObjectRead,
   R2OriginObjectWrite,
   origin_credential_pin_is_exact,
@@ -406,6 +411,64 @@ test fn r2_origin_write_mint_is_ready_and_carries_the_observed_write_group() -> 
     R2MintAdmissionRefused { standing: _ } => false
     R2MintCustodyContainerAbsent { intervention: _ } => false
   }
+}
+
+// THE BOOT MINT IS THE SAME FOLD OVER THE OTHER PURPOSE, AND THE JOIN PROVES IT REACHED THE OTHER
+// BUCKET. fabric_origin_standing(FabricBootOrigin) feeds classify_r2_mint; Ready must scope the
+// policy to the BOOT bucket's resource name and must NOT carry the durable bucket's -- a dispatch
+// that ignored the purpose would still say Ready and fail here. The custody dispatch is pinned the
+// same way: the boot (purpose, profile) pairs land in the boot loci and never in the durable ones,
+// which is what makes run_boot_object_write unable to overwrite the durable write credential.
+test fn r2_boot_origin_write_mint_is_ready_against_the_boot_bucket_only() -> Bool {
+  let boot_bucket = match allocated_bucket_name(purpose: FabricBootOrigin {}) {
+    Present { value: name } => name as String
+    Absent => "<unallocated>"
+  }
+  match classify_r2_mint(
+    profile: R2OriginObjectWrite,
+    account: fleet_cloudflare_account_standing(),
+    custody: fleet_cloudflare_bootstrap_custody(),
+    origin: fabric_origin_standing(purpose: FabricBootOrigin {}),
+    container: ContainerAdmitted,
+  ) {
+    R2MintReady { account_id: _, bootstrap_locus: _, request: request } =>
+      string_contains(s: request.name, pattern: boot_bucket)
+        && !string_contains(s: request.name, pattern: declared_bucket_name())
+        && all(request.policies, p =>
+             match map_get(p.resources, r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: boot_bucket)) {
+                  Present { value: scope } => scope == "*"
+                  none => false
+                }
+             && match map_get(p.resources, r2_bucket_resource_name(
+                  account_id: fleet_cloudflare_account_id as String,
+                  jurisdiction: R2JurisdictionDefault,
+                  bucket_name: declared_bucket_name())) {
+                  Present { value: _ } => false
+                  none => true
+                })
+    R2MintBootstrapCustodyUnrecorded { intervention: _ } => false
+    R2MintAccountUnallocated { intervention: _ } => false
+    R2MintOriginUnallocated { purpose: _ } => false
+    R2MintAdmissionRefused { standing: _ } => false
+    R2MintCustodyContainerAbsent { intervention: _ } => false
+  }
+}
+
+test fn r2_boot_origin_custody_loci_are_the_boot_rows_and_not_the_durable_ones() -> Bool {
+  let boot_read = r2_origin_token_secret_id(purpose: FabricBootOrigin {}, profile: R2OriginObjectRead) as String
+  let boot_write = r2_origin_token_secret_id(purpose: FabricBootOrigin {}, profile: R2OriginObjectWrite) as String
+  let durable_read = r2_origin_token_secret_id(purpose: FabricDurableOrigin {}, profile: R2OriginObjectRead) as String
+  let durable_write = r2_origin_token_secret_id(purpose: FabricDurableOrigin {}, profile: R2OriginObjectWrite) as String
+  boot_read == (fabric_boot_origin_read_secret_id as String)
+    && boot_write == (fabric_boot_origin_write_secret_id as String)
+    && durable_read == (fabric_durable_origin_read_secret_id as String)
+    && durable_write == (fabric_durable_origin_write_secret_id as String)
+    && boot_read != durable_read
+    && boot_write != durable_write
+    && boot_read != boot_write
 }
 
 // THE PIN'S RESOURCE NAME JOINS THIS FLEET'S PROJECT NUMBER, not a transcribed AccessVersion string.

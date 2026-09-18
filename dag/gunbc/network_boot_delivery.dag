@@ -1,7 +1,9 @@
 module gunbc.network_boot_delivery
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -335,13 +337,9 @@ fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRe
 
 // 0WET stays unbound this slice: operator 2026-09-18 named Mt. Jade (arriving,
 // barebones) as first candidate and Mt. Collins after CD as fallback. No UnitKey
-// is minted here.
-// Production consumer of this join: BoundBootDeliveryEvidence.network_boot, read
-// by gunbc.boot_artifact_delivery pxe_chain_candidate. 0C does not call this
-// function: it owns only the site edge and binds NetworkBootJoinInputs.site
-// when the first boot offer is observed from the srv4 edge. 0B/0D likewise own
-// one receipt family. The mint is the intake assembler that holds fleet + site
-// + client + control + SignedBootManifestVerified together.
+// is minted here. Why the join has no production caller yet is not prose: it is
+// network_boot_delivery_frontier_rows below, the typed carrier the census roster
+// folds (DESIGN section 3c), which names the consumer and the trigger.
 fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliveryStanding {
   match inputs.fleet {
     FleetBootServiceUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
@@ -513,3 +511,20 @@ fn join_verified_ticket_after_trust(
       }
   }
 }
+
+// NO PRODUCTION ROUTE REACHES THE JOIN YET, and that is a declared frontier rather than a comment
+// (DESIGN section 3c; review 67884). The production consumer is BoundBootDeliveryEvidence.network_boot,
+// read by gunbc.boot_artifact_delivery pxe_chain_candidate; today only the join witness constructs
+// it. 0C does not call this function: it owns the site edge and binds NetworkBootJoinInputs.site when
+// the first boot offer is observed from the srv4 edge; 0B/0D likewise own one receipt family each.
+// The caller that dissolves this is the intake assembler that holds fleet + site + client + control
+// + SignedBootManifestVerified together and hands the standing to the solver.
+data network_boot_delivery_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery"),
+    reason: "the join and the receipt standings it composes (FleetBootServiceReceipt, SitePxeEdgeStanding, SignedBootManifestStanding, bootstrap_trust_standing) have no production caller; BoundBootDeliveryEvidence.network_boot is constructed only by the join witness",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a machine-intake assembler builds NetworkBootJoinInputs from the four receipt producers (fleet, site, client, control) plus SignedBootManifestVerified and passes join_network_boot_delivery's standing into BoundBootDeliveryEvidence.network_boot on the route gunbc.boot_artifact_delivery pxe_chain_candidate reads; a witness over supplied inputs does not fire this"
+    )
+  ),
+]
