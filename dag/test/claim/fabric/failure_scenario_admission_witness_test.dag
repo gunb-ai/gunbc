@@ -24,18 +24,19 @@ import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, DispositionStanding, DispositionCleared,
 }
 import product.fabric.offer_route { OfferRouteRow }
-import product.fabric.route_readiness { RequireExercisedRoute }
+import product.fabric.route_readiness { RequireExercisedRoute, ExerciseOfRoute }
 import product.fabric.capacity_admission {
-  AdmittedCapacity, CapacityAdmission, CapacityAdmitted, CapacityRefused, admit_capacity,
+  AdmittedCapacity, CapacityAdmission, CapacityAdmittedForOrdinaryWork,
+  RouteExercisePlacementAdmitted, CapacityRefused, admit_capacity,
 }
 import product.fabric.supply { SupplierOffer, QuotedPerHour, ObservedSupply, UnobservedSupply }
 import product.fabric.route_readiness { RouteExercise }
 import product.fabric.failure_scenario_admission {
   OfferFailureDomains, FailureScenario, CommittedDemand,
-  FailureScenarioAdmission, FailureScenariosSurvived, FailureScenariosRefused,
+  FailureScenarioAdmission, FailureScenariosSurvived, FailureScenariosRefused, CoveredSubject,
   FailureScenarioRefusal, NoFailureScenariosDeclared, OfferFailureDomainsUndeclared,
   OfferFailureDomainsAmbiguous, OfferSharedAcrossDemands, ScenarioNotSurvived,
-  ScenarioNamesUnknownOffer,
+  ScenarioNamesUnknownOffer, CapacityListedTwiceForOneSubject,
   admit_failure_scenarios,
 }
 
@@ -142,7 +143,7 @@ fn exercise(route: ProviderRoute) -> RouteExercise {
 // Cloud Y is deliberately absent: it is listed and has the largest quota, and it is not capacity.
 fn exercises() -> List<RouteExercise> { [exercise(route: owned_route()), exercise(route: cloud_x_route())] }
 
-fn demand(caps: CapabilityManifestRef, key: WorkKey) -> CommittedDemand<NonEmptyStr> {
+fn demand(key: WorkKey) -> CommittedDemand<NonEmptyStr> {
   CommittedDemand {
     demand: FabricIdentity { principal: "gunbc", key: "fsa-demand" },
     work: FabricIdentity { principal: "gunbc", key: key },
@@ -304,7 +305,8 @@ fn capacity_for(
       requirements: requirements(caps: caps),
       offer: o,
     ) {
-      CapacityAdmitted { capacity: c } => [c]
+      CapacityAdmittedForOrdinaryWork { capacity: c } => [c]
+      RouteExercisePlacementAdmitted { placement: _ } => []
       CapacityRefused { refusal: _ } => []
     })
 }
@@ -335,7 +337,7 @@ fn admit_with_capacity(
 
 fn survived(a: FailureScenarioAdmission<NonEmptyStr>) -> Bool {
   match a {
-    FailureScenariosSurvived { scenarios: _, demands: _ } => true
+    FailureScenariosSurvived { scenarios: _, demands: _, covered: _ } => true
     FailureScenariosRefused { refusals: _ } => false
   }
 }
@@ -347,20 +349,21 @@ fn tag(x: FailureScenarioRefusal<NonEmptyStr>) -> String {
     OfferFailureDomainsAmbiguous { offer: o } => join(["ambiguous:", (o.key as NonEmptyStr)], "")
     OfferSharedAcrossDemands { offer: o } => join(["shared:", (o.key as NonEmptyStr)], "")
     ScenarioNamesUnknownOffer { scenario: _, offer: o } => join(["unknown-offer:", (o.key as NonEmptyStr)], "")
+    CapacityListedTwiceForOneSubject { offer: o, demand: _, work: _ } => join(["duplicate:", (o.key as NonEmptyStr)], "")
     ScenarioNotSurvived { shortfall: s } => join(["short:", s.scenario.decl_name], "")
   }
 }
 
 fn tags(a: FailureScenarioAdmission<NonEmptyStr>) -> List<String> {
   match a {
-    FailureScenariosSurvived { scenarios: _, demands: _ } => []
+    FailureScenariosSurvived { scenarios: _, demands: _, covered: _ } => []
     FailureScenariosRefused { refusals: xs } => map(xs, x => tag(x: x))
   }
 }
 
 fn shortfall_numbers(a: FailureScenarioAdmission<NonEmptyStr>) -> List<Int> {
   match a {
-    FailureScenariosSurvived { scenarios: _, demands: _ } => []
+    FailureScenariosSurvived { scenarios: _, demands: _, covered: _ } => []
     FailureScenariosRefused { refusals: xs } => flat_map(xs, x =>
       match x {
         ScenarioNotSurvived { shortfall: s } => [s.surviving, s.required]
@@ -369,11 +372,12 @@ fn shortfall_numbers(a: FailureScenarioAdmission<NonEmptyStr>) -> List<Int> {
         OfferFailureDomainsAmbiguous { offer: _ } => []
         OfferSharedAcrossDemands { offer: _ } => []
         ScenarioNamesUnknownOffer { scenario: _, offer: _ } => []
+        CapacityListedTwiceForOneSubject { offer: _, demand: _, work: _ } => []
       })
   }
 }
 
-fn one_demand() -> List<CommittedDemand<NonEmptyStr>> { [demand(caps: caps(), key: "committed-ci")] }
+fn one_demand() -> List<CommittedDemand<NonEmptyStr>> { [demand(key: "committed-ci")] }
 
 // Capacity admitted for THIS witness's demand identity ("fsa-demand", the one scope() names).
 fn capacity_admitted_for_the_witness_demand() -> List<AdmittedCapacity<NonEmptyStr>> {
@@ -419,7 +423,7 @@ test fn w_two_domain_rows_for_one_offer_refuse() -> Bool {
 // Two demands that can both use the same offers would each count them in full; that is selling the
 // same capacity twice, so it refuses. Demands with disjoint eligibility do not.
 test fn w_supply_counted_for_two_demands_refuses() -> Bool {
-  let two = [demand(caps: caps(), key: "committed-ci"), demand(caps: caps(), key: "committed-batch")]
+  let two = [demand(key: "committed-ci"), demand(key: "committed-batch")]
   let a = admit(offers: offers(), domains: domains(), exercises: exercises(), demands: two, scenarios: absorbed_scenarios())
   tags(a: a) == ["shared:owned-node-1", "shared:owned-node-2", "shared:cloud-x"]
 }
@@ -431,7 +435,7 @@ test fn w_a_demand_no_offer_can_run_admits_no_capacity() -> Bool {
   count(capacity_for(offers: offers(), exercises: exercises(), work: "committed-gpu", caps: "gunbc.capabilities.gpu-runtime")) == 0
     && shortfall_numbers(a: admit_with_capacity(
       capacities: [],
-      demands: [demand(caps: caps(), key: "committed-gpu")],
+      demands: [demand(key: "committed-gpu")],
       scenarios: [site_and_cloud_x()])) == [0, 20]
 }
 
@@ -509,4 +513,66 @@ test fn w_a_scenario_naming_an_offer_nobody_holds_refuses() -> Bool {
     offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(),
     scenarios: [losing_offers(name: "w_a_scenario_naming_an_offer_nobody_holds_refuses", keys: ["owned-node-1", "owned-node-3"])]))
     == ["unknown-offer:owned-node-3"]
+}
+
+// DUPLICATE CAPACITY CANNOT MANUFACTURE QUANTITY. The same admitted capacity listed twice would make
+// a 20-slot cloud read as 40 and survive a scenario it cannot; it refuses on arity before anything is
+// summed, and the surviving-grants number never gets computed.
+test fn w_the_same_capacity_listed_twice_refuses_before_it_is_summed() -> Bool {
+  let once = capacity_admitted_for_the_witness_demand()
+  tags(a: admit_with_capacity(capacities: concat(once, once), demands: one_demand(), scenarios: absorbed_scenarios()))
+    == ["duplicate:owned-node-1", "duplicate:owned-node-2", "duplicate:cloud-x"]
+}
+
+// A ROUTE ADMITTED ONLY TO RUN ITS OWN FIRST EXERCISE IS NOT RESERVE. Cloud Y has no exercise, so
+// asking for it under the exercise requirement admits a PLACEMENT - dispatchable, and not capacity -
+// so the reserve is unchanged and the scenario that needed it is still short.
+fn cloud_y_exercise_admission() -> CapacityAdmission<NonEmptyStr> {
+  admit_capacity(
+    routes: route_rows(offers: offers()),
+    sanctions: sanctions(),
+    active: posture(),
+    scope: scope(work: "committed-ci"),
+    decision_receipt: r(name: "fsa_decision_receipt"),
+    exercises: exercises(),
+    readiness_requirement: ExerciseOfRoute {
+      route: cloud_y_route(),
+      work: FabricIdentity { principal: "gunbc", key: "committed-ci" },
+    },
+    at: now,
+    requirements: requirements(caps: caps()),
+    offer: offer(key: "cloud-y", route: cloud_y_route(), grants: 50),
+  )
+}
+
+test fn w_a_bootstrap_exercise_placement_is_not_reserve_capacity() -> Bool {
+  match cloud_y_exercise_admission() {
+    RouteExercisePlacementAdmitted { placement: p } => (p.offer.id.key as NonEmptyStr) == "cloud-y"
+    CapacityAdmittedForOrdinaryWork { capacity: _ } => false
+    CapacityRefused { refusal: _ } => false
+  }
+}
+
+// THE SURVIVAL SAYS WHAT IT COVERED, and the subject it reports is the one the screens proved: the
+// capability manifest fungibility was established against, and the exercise that made the route
+// ready. A survival that could not name those would leave a reader to reconstruct them.
+fn covered_capabilities(a: FailureScenarioAdmission<NonEmptyStr>) -> List<String> {
+  match a {
+    FailureScenariosSurvived { scenarios: _, demands: _, covered: cs } =>
+      map(cs, c => (c.requirements.capabilities as String))
+    FailureScenariosRefused { refusals: _ } => []
+  }
+}
+
+fn covered_grants(a: FailureScenarioAdmission<NonEmptyStr>) -> List<Int> {
+  match a {
+    FailureScenariosSurvived { scenarios: _, demands: _, covered: cs } => map(cs, c => c.grants)
+    FailureScenariosRefused { refusals: _ } => []
+  }
+}
+
+test fn w_a_survival_reports_the_subject_its_capacity_was_proved_for() -> Bool {
+  let a = admit(offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(), scenarios: absorbed_scenarios())
+  covered_capabilities(a: a) == ["gunbc.capabilities.linux-rust-toolchain", "gunbc.capabilities.linux-rust-toolchain", "gunbc.capabilities.linux-rust-toolchain"]
+    && covered_grants(a: a) == [10, 10, 20]
 }

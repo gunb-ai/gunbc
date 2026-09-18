@@ -10,7 +10,8 @@ import product.fabric.supply { SupplierOffer, OfferFungibility }
 import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.capacity_admission {
-  AdmittedCapacity, CapacityAdmission, CapacityAdmitted, CapacityRefused, CapacityRefusal,
+  AdmittedCapacity, RouteExercisePlacement, CapacityAdmission,
+  CapacityAdmittedForOrdinaryWork, RouteExercisePlacementAdmitted, CapacityRefused, CapacityRefusal,
   CapacityRouteNotModeled, CapacityRouteAmbiguous, CapacityRouteFactsNameAnotherRoute,
   CapacitySupplyUnobserved, CapacityRouteNeverExercised, CapacityRouteExerciseExpired,
   CapacityNotFungibleForWork, CapacityUseRefused, CapacityPermitNamesAnotherOffer,
@@ -18,7 +19,7 @@ import product.fabric.capacity_admission {
   admit_capacity,
 }
 import product.fabric.selection {
-  CandidateOffer, DispatchInputs, bind_admitted_capacity,
+  CandidateOffer, DispatchInputs, bind_admitted_capacity, bind_exercise_placement,
   AdmittedCapacityBinding, CapacityCandidateBound, CapacityDispatchInputsNameAnotherOffer,
 }
 
@@ -164,7 +165,13 @@ fn field_entry<P>(
   ) {
     CapacityRefused { refusal: r } =>
       excluded_entry(offer: request.offer.id, cause: FieldCapacityRefused { refusal: r })
-    CapacityAdmitted { capacity: capacity } =>
+    RouteExercisePlacementAdmitted { placement: placement } =>
+      match bind_exercise_placement(placement: placement, dispatch: request.dispatch) {
+        CapacityDispatchInputsNameAnotherOffer { offer: o, inputs_name: n } =>
+          excluded_entry(offer: o, cause: FieldDispatchInputsNameAnotherOffer { inputs_name: n })
+        CapacityCandidateBound { candidate: c } => FieldAdmitted { candidate: c }
+      }
+    CapacityAdmittedForOrdinaryWork { capacity: capacity } =>
       match bind_admitted_capacity(capacity: capacity, dispatch: request.dispatch) {
         CapacityDispatchInputsNameAnotherOffer { offer: o, inputs_name: n } =>
           excluded_entry(offer: o, cause: FieldDispatchInputsNameAnotherOffer { inputs_name: n })

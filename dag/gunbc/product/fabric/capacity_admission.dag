@@ -2,6 +2,7 @@ module product.fabric.capacity_admission
 
 import std.types { Bool, List, EpochSecs }
 import std.decl_ref { DeclarationRef }
+import v2.std.optional { Present, Absent }
 import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
@@ -21,7 +22,7 @@ import product.fabric.supply {
   Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
 }
 import product.fabric.route_readiness {
-  RouteExercise, RouteReadinessRequirement, RouteReadiness, route_readiness,
+  RouteExercise, RouteReadinessRequirement, route_readiness,
   RouteReady, RouteAdmittedForItsOwnExercise, RouteNeverExercised, RouteExerciseExpired,
 }
 
@@ -46,6 +47,17 @@ import product.fabric.route_readiness {
 // The ceiling is unchanged and stated: this establishes that the screens RAN and agreed, never that
 // the observations handed to them were honestly taken - that stays a boundary obligation on whoever
 // produced them.
+//
+// AND ONE THING IT DELIBERATELY DOES NOT ESTABLISH, named because the sealed value is counted as
+// failover reserve downstream: the evidence screen proves the supply is OBSERVED OR QUOTED, not that
+// it is available AT THE DECISION INSTANT. ObservedSupply.observed_at may be arbitrarily stale and
+// QuotedSupply.valid_until may have passed, and neither is compared here - Timestamp is a string and
+// the decision instant is EpochSecs, so the comparison is not expressible until they share a time
+// representation. route_readiness says the same thing from its side: an exercise proves the path, not
+// capacity now. So a reserve computed from these values is a reserve of supply someone once saw.
+// TRIGGER: a comparable time representation on OfferEvidence, at which point this screen refuses a
+// stale observation and an expired quote by name, and a quote, an observed quota and committed
+// capacity become three states rather than one.
 // THE CARRIER KEEPS THE SUBJECT IT PROVED AGAINST, not only the answer. Fungibility is established
 // against a particular ExecutionRequirements and the permit is minted for a particular demand and
 // work; a carrier that dropped the requirements would let a consumer join it to a demand whose shape
@@ -58,7 +70,7 @@ type AdmittedCapacity<P> sole_constructor {
   work: FabricIdentity<P, WorkKey>
   requirements: ExecutionRequirements
   permit: ProviderUsePermit<P>
-  readiness: RouteReadiness
+  exercise: RouteExercise
   evidence: OfferEvidence
 }
 
@@ -79,8 +91,29 @@ type CapacityRefusal<P>
   | CapacityPermitNamesAnotherWork { permit_work: FabricIdentity<P, WorkKey>, subject_work: FabricIdentity<P, WorkKey> }
   | CapacityPermitNamesAnotherDemand { permit_demand: FabricIdentity<P, DemandKey>, subject_demand: FabricIdentity<P, DemandKey> }
 
+// A PLACEMENT ADMITTED ONLY TO PERFORM A ROUTE'S FIRST EXERCISE IS NOT RESERVE CAPACITY.
+//
+// route_readiness admits an unexercised route for exactly one thing: the work that IS its exercise.
+// An earlier revision sealed that arm into the same AdmittedCapacity as ordinary work, and since the
+// scenario fold deliberately screens nothing and sums every capacity it is handed, capacity that
+// exists only to bootstrap a route could be counted as surviving reserve (side review of this
+// chain). The repair is NOT a readiness check inside the scenario fold - that would rebuild the fork
+// this module removed - but a different carrier out of the same authority: the exercise placement can
+// be dispatched (the candidate field takes either) and can never be summed as a reserve, because the
+// fold's parameter type does not admit it.
+type RouteExercisePlacement<P> sole_constructor {
+  offer: SupplierOffer<P>
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  requirements: ExecutionRequirements
+  permit: ProviderUsePermit<P>
+  route: ProviderRoute
+  evidence: OfferEvidence
+}
+
 type CapacityAdmission<P>
-  = CapacityAdmitted { capacity: AdmittedCapacity<P> }
+  = CapacityAdmittedForOrdinaryWork { capacity: AdmittedCapacity<P> }
+  | RouteExercisePlacementAdmitted { placement: RouteExercisePlacement<P> }
   | CapacityRefused { refusal: CapacityRefusal<P> }
 
 // THE ORDER IS THE ONE THE INPUTS FORCE, and the cheapest refusals sit earliest so an operator is
@@ -151,13 +184,11 @@ fn admit_ready_offer<P>(
     RouteReady { exercise: e } =>
       admit_use_for(
         sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
-        facts: facts, requirements: requirements, offer: offer,
-        readiness: RouteReady { exercise: e })
+        facts: facts, requirements: requirements, offer: offer, exercise: Present { value: e })
     RouteAdmittedForItsOwnExercise { route: r } =>
       admit_use_for(
         sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
-        facts: facts, requirements: requirements, offer: offer,
-        readiness: RouteAdmittedForItsOwnExercise { route: r })
+        facts: facts, requirements: requirements, offer: offer, exercise: Absent)
   }
 }
 
@@ -169,7 +200,7 @@ fn admit_use_for<P>(
   facts: ProviderRouteFacts,
   requirements: ExecutionRequirements,
   offer: SupplierOffer<P>,
-  readiness: RouteReadiness,
+  exercise: RouteExercise?,
 ) -> CapacityAdmission<P> {
   match offer_fungibility_for(requirements: requirements, offer: offer) {
     TrustDomainMismatch { required: rq, offered: of } =>
@@ -203,16 +234,31 @@ fn admit_use_for<P>(
           PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
             CapacityRefused { refusal: CapacityPermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } }
           PermitAuthorizesUse =>
-            CapacityAdmitted {
-              capacity: AdmittedCapacity {
-                offer: offer,
-                demand: scope.demand,
-                work: scope.work,
-                requirements: requirements,
-                permit: permit,
-                readiness: readiness,
-                evidence: offer.evidence,
-              },
+            match exercise {
+              Present { value: e } =>
+                CapacityAdmittedForOrdinaryWork {
+                  capacity: AdmittedCapacity {
+                    offer: offer,
+                    demand: scope.demand,
+                    work: scope.work,
+                    requirements: requirements,
+                    permit: permit,
+                    exercise: e,
+                    evidence: offer.evidence,
+                  },
+                }
+              Absent =>
+                RouteExercisePlacementAdmitted {
+                  placement: RouteExercisePlacement {
+                    offer: offer,
+                    demand: scope.demand,
+                    work: scope.work,
+                    requirements: requirements,
+                    permit: permit,
+                    route: facts.route,
+                    evidence: offer.evidence,
+                  },
+                }
             }
         }
     }

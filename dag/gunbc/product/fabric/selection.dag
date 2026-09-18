@@ -19,7 +19,7 @@ import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, f
 import product.fabric.demand { ObservationReceiptRef }
 import product.fabric.work { ExecutionRequirements }
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex, content_hash_atom, content_hash_combine_structural }
-import product.fabric.capacity_admission { AdmittedCapacity }
+import product.fabric.capacity_admission { AdmittedCapacity, RouteExercisePlacement }
 import product.fabric.supply {
   SupplierOffer, OfferQuote, QuotedFlatPerGrant, QuotedPerSecond, QuotedPerMinute, QuotedPerHour,
   OfferFungibility, Fungible, TrustDomainMismatch, CapabilitiesNotOffered,
@@ -313,6 +313,22 @@ fn bind_admitted_capacity<P>(
   } else {
     CapacityCandidateBound {
       candidate: CandidateOffer { offer: capacity.offer, dispatch: dispatch, permit: capacity.permit },
+    }
+  }
+}
+
+// THE EXERCISE PLACEMENT BINDS THE SAME WAY, because dispatching one is ordinary: someone has to run
+// the first exercise on a route. What it may not do is be summed as reserve, which is decided by the
+// scenario fold's parameter type rather than here.
+fn bind_exercise_placement<P>(
+  placement: RouteExercisePlacement<P>,
+  dispatch: DispatchInputs<P>,
+) -> AdmittedCapacityBinding<P> {
+  if !fabric_identity_eq(left: placement.offer.id, right: dispatch.offer) {
+    CapacityDispatchInputsNameAnotherOffer { offer: placement.offer.id, inputs_name: dispatch.offer }
+  } else {
+    CapacityCandidateBound {
+      candidate: CandidateOffer { offer: placement.offer, dispatch: dispatch, permit: placement.permit },
     }
   }
 }

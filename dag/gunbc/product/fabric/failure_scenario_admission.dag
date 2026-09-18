@@ -5,6 +5,8 @@ import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.capacity_admission { AdmittedCapacity }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.route_readiness { RouteExercise }
 
 // COMMITTED DEMAND IS ADMITTED ONLY IF IT SURVIVES THE FAILURES WE DECLARE WE WILL ABSORB.
 //
@@ -96,10 +98,30 @@ type FailureScenarioRefusal<P>
   | OfferFailureDomainsAmbiguous { offer: FabricIdentity<P, OfferKey> }
   | OfferSharedAcrossDemands { offer: FabricIdentity<P, OfferKey> }
   | ScenarioNamesUnknownOffer { scenario: DeclarationRef, offer: FabricIdentity<P, OfferKey> }
+  | CapacityListedTwiceForOneSubject { offer: FabricIdentity<P, OfferKey>, demand: FabricIdentity<P, DemandKey>, work: FabricIdentity<P, WorkKey> }
   | ScenarioNotSurvived { shortfall: ScenarioShortfall<P> }
 
+// WHAT A SURVIVAL COVERED, CARRIED RATHER THAN LEFT TO BE RECONSTRUCTED. "The reserve holds" is not
+// a useful answer on its own: the next question is always which capacity held it and what that
+// capacity was proved for, and the carrier already knows - it kept the requirements fungibility was
+// established against and the exercise that made its route ready. Reporting the subjects is what
+// makes those fields consumed rather than decorative (review 67499 was right that nothing read them),
+// and it is what a receipt for this decision needs.
+type CoveredSubject<P> {
+  offer: FabricIdentity<P, OfferKey>
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  requirements: ExecutionRequirements
+  exercise: RouteExercise
+  grants: Int
+}
+
 type FailureScenarioAdmission<P>
-  = FailureScenariosSurvived { scenarios: List<FailureScenario<P>>, demands: List<CommittedDemand<P>> }
+  = FailureScenariosSurvived {
+      scenarios: List<FailureScenario<P>>,
+      demands: List<CommittedDemand<P>>,
+      covered: List<CoveredSubject<P>>,
+    }
   | FailureScenariosRefused { refusals: List<FailureScenarioRefusal<P>> }
 
 fn domain_rows_for<P>(roster: List<OfferFailureDomains<P>>, offer: FabricIdentity<P, OfferKey>) -> List<OfferFailureDomains<P>> {
@@ -162,6 +184,26 @@ fn surviving_grants<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureSc
 type DemandSupply<P> {
   demand: CommittedDemand<P>
   eligible: List<AdmittedCapacity<P>>
+}
+
+// TWO ROWS FOR ONE OFFER-DEMAND-WORK SUBJECT ARE REFUSED BEFORE ANYTHING IS SUMMED, because
+// surviving_grants adds every row it is handed: one 10-slot offer admitted twice would read as 20
+// surviving slots, which is quantity manufactured by a caller calling admit_capacity twice (side
+// review of this chain). Arity is the whole question - whether the two rows happen to agree is not
+// the point, since the sum double-counts either way - so this refuses on a second row rather than
+// comparing them, exactly as offer_route refuses a roster that answers twice.
+fn duplicate_capacity_refusals<P>(
+  capacities: List<AdmittedCapacity<P>>,
+  capacity: AdmittedCapacity<P>,
+) -> List<FailureScenarioRefusal<P>> {
+  if count(filter(capacities, c =>
+      fabric_identity_eq(left: c.offer.id, right: capacity.offer.id)
+        && fabric_identity_eq(left: c.demand, right: capacity.demand)
+        && fabric_identity_eq(left: c.work, right: capacity.work))) > 1 {
+    [CapacityListedTwiceForOneSubject { offer: capacity.offer.id, demand: capacity.demand, work: capacity.work }]
+  } else {
+    []
+  }
 }
 
 // EVERY NAMED CAPACITY MUST BE IN THE ROSTER, checked before any scenario is evaluated. This is the
@@ -234,6 +276,48 @@ fn sharing_refusals<P>(capacities: List<AdmittedCapacity<P>>, supplies: List<Dem
   shared_offer_scan(remaining: capacities, reported: [], supplies: supplies)
 }
 
+// One refusal per duplicated subject rather than one per duplicate row, for the same reason the
+// sharing scan reports each shared offer once.
+fn dedupe_scan<P>(
+  remaining: List<AdmittedCapacity<P>>,
+  reported: List<FabricIdentity<P, OfferKey>>,
+  capacities: List<AdmittedCapacity<P>>,
+) -> List<FailureScenarioRefusal<P>> {
+  match remaining.first() {
+    Absent => []
+    Present { value: c } => {
+      let rest = remaining.skip(n: 1)
+      if count(filter(reported, o => fabric_identity_eq(left: o, right: c.offer.id))) > 0 {
+        dedupe_scan(remaining: rest, reported: reported, capacities: capacities)
+      } else {
+        concat(
+          duplicate_capacity_refusals(capacities: capacities, capacity: c),
+          dedupe_scan(remaining: rest, reported: concat(reported, [c.offer.id]), capacities: capacities),
+        )
+      }
+    }
+  }
+}
+
+fn dedupe_refusals<P>(capacities: List<AdmittedCapacity<P>>) -> List<FailureScenarioRefusal<P>> {
+  dedupe_scan(remaining: capacities, reported: [], capacities: capacities)
+}
+
+fn covered_by<P>(supply: DemandSupply<P>) -> List<CoveredSubject<P>> {
+  map(supply.eligible, c => covered_subject(capacity: c))
+}
+
+fn covered_subject<P>(capacity: AdmittedCapacity<P>) -> CoveredSubject<P> {
+  CoveredSubject {
+    offer: capacity.offer.id,
+    demand: capacity.demand,
+    work: capacity.work,
+    requirements: capacity.requirements,
+    exercise: capacity.exercise,
+    grants: capacity.offer.quantity_bound,
+  }
+}
+
 // STRUCTURAL REFUSALS ARE DECIDED BEFORE ANY SCENARIO IS EVALUATED, because a shortfall computed over
 // an undeclared domain, a planned demand or a double-counted capacity is a number that looks like an
 // answer and is not.
@@ -247,7 +331,10 @@ fn admit_failure_scenarios<P>(
   let structural = concat(
     if count(scenarios) == 0 { [NoFailureScenariosDeclared] } else { [] },
     concat(
-      flat_map(capacities, c => domain_refusals(roster: domains, capacity: c)),
+      concat(
+        flat_map(capacities, c => domain_refusals(roster: domains, capacity: c)),
+        dedupe_refusals(capacities: capacities),
+      ),
       concat(
         flat_map(scenarios, sc => unknown_offer_refusals(capacities: capacities, scenario: sc)),
         sharing_refusals(capacities: capacities, supplies: supplies),
@@ -262,7 +349,11 @@ fn admit_failure_scenarios<P>(
     if count(shortfalls) > 0 {
       FailureScenariosRefused { refusals: shortfalls }
     } else {
-      FailureScenariosSurvived { scenarios: scenarios, demands: demands }
+      FailureScenariosSurvived {
+        scenarios: scenarios,
+        demands: demands,
+        covered: flat_map(supplies, sup => covered_by(supply: sup)),
+      }
     }
   }
 }
