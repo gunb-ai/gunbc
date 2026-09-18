@@ -14,7 +14,6 @@ import v2.std.declaration_marker {
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.extdeps.languages.dag {
-  dag_canonical_symbols,
   dag_node_is_int_literal_atom,
   dag_node_is_module_root_conj,
   dag_resolve_preserve_module_metadata_subtree,
@@ -259,7 +258,7 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   let declared_in = namespace_tree_module_qn(tree: tree)
   Namespace {
     bindings: bindings,
-    canonical_symbols: dag_canonical_symbols(),
+    canonical_symbols: lm.canonical_symbols,
     symbol_index: empty_symbol_index(),
     module_qn: Empty,
     test_code: test_code_index_add_module(

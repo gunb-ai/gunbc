@@ -1769,59 +1769,8 @@ fn grammar_node_insert_atom_identities(m: Map<Symbol, Bool>, n: Node) -> Map<Sym
   grammar_symbol_list_put(m: m, xs: grammar_node_atom_identities(n: n))
 }
 
-fn grammar_expr_carried_symbols(expr: GrammarExpr) -> List<Symbol> {
-  fold_grammar_expr(
-    expr: expr,
-    algebra: GrammarExprFold {
-      terminal: fn(token_class, stamp) {
-        match stamp {
-          StampClass => Cons { head: token_class, tail: Empty }
-          StampBinding { binding: b } =>
-            Cons { head: token_class, tail: Cons { head: b, tail: Empty } }
-          StampLexeme =>
-            Cons {
-              head: token_class,
-              tail: Cons { head: ^grammar_terminal_stamp_lexeme, tail: Empty }
-            }
-        }
-      },
-      nonterminal: fn(production) { Cons { head: production, tail: Empty } },
-      sequence: fn(left, right) { list_append(left: left, right: right) },
-      choice: fn(left, right) { list_append(left: left, right: right) },
-      optional: fn(element) { element },
-      repeat: fn(element) { element }
-    }
-  )
-}
-
-fn grammar_production_insert_carried_symbols(
-  m: Map<Symbol, Bool>,
-  production: GrammarProduction
-) -> Map<Symbol, Bool> {
-  grammar_node_insert_atom_identities(
-    m: grammar_symbol_list_put(
-      m: grammar_symbol_map_put(m: m, sym: production.name),
-      xs: grammar_expr_carried_symbols(expr: production.expression)
-    ),
-    n: production.emitted
-  )
-}
-
-fn grammar_root_carried_symbol_map(root: GrammarRoot) -> Map<Symbol, Bool> {
-  fold_list(
-    xs: root.productions,
-    empty: grammar_symbol_map_put(m: empty_map(), sym: root.start),
-    cons: fn(acc, production) {
-      grammar_production_insert_carried_symbols(m: acc, production: production)
-    }
-  )
-}
-
 fn grammar_carried_symbol_map(grammar: ParseGrammar) -> Map<Symbol, Bool> {
-  match grammar {
-    VoidGrammar => empty_map()
-    ModeledGrammar { root: root } => grammar_root_carried_symbol_map(root: root)
-  }
+  grammar_node_insert_atom_identities(m: empty_map(), n: grammar_to_node(grammar: grammar))
 }
 
 type GrammarInterpretationDirection
