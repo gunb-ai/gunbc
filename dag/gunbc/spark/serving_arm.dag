@@ -25,7 +25,7 @@ import extdeps.docker.images.gitcommit90_glm_53_one_spark {
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
-  glm53_nope_derived_registry_reading, glm53_derived_observed_config_id,
+  glm53_nope_derived_registry_reading, glm53_derived_registry_reading,
 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
@@ -899,23 +899,23 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
 // glm53_derived_tag folds from the wheel set, and that fold is the right authority for the TAG; the
 // content id is what a launch and a reading are keyed by, and it is read from the daemon.
 //
-// WHAT THIS ROW DOES NOT KNOW, STATED RATHER THAN FILLED. (1) registry_reading is Absent: the probe
-// asked two names and reported a count of 378, it did not print the roster, so the two answers live
-// as ArchitectureAsked rows in gunbc.spark.runtime_architecture_registry_reading and a consumer asks
-// architecture_asked_answer; serving_arm_admits will refuse this row until a dump is taken inside
-// the digest. The roster WAS read on 2026-09-18 -- 378 names, sha256 of the sorted names joined by
-// newline 2e43451e12bd3e096af99b5c4658c428c5eadf857c644cfa67fdadb7b67802e1 -- but only its digest
-// travelled, and registry_reading_contains needs names; the dump is the remaining read. (2)
-// hub_cli_path was READ inside this image on 2026-09-18: /usr/local/bin/hf (huggingface-cli beside it
-// at /usr/local/bin/huggingface-cli), the same path the NoPE row carries, now measured rather than
-// inherited. (3) reasoning_projection is Absent: nothing here has read a completion from this
-// image, although the harness lanes serving through it have. (4) The base image's own build commit
-// is self-declared unknown (VLLM_BUILD_COMMIT=unknown, VLLM_BUILD_PIPELINE=local in its labels), so
-// source_revision below is the version string's commit and not a label the base carries.
+// WHAT THIS ROW DOES NOT KNOW, STATED RATHER THAN FILLED. (1) reasoning_projection is Absent:
+// nothing here has read a completion from this image, although the harness lanes serving through it
+// have. (2) The base image's own build commit is self-declared unknown (VLLM_BUILD_COMMIT=unknown,
+// VLLM_BUILD_PIPELINE=local in its labels), so source_revision below is the version string's commit
+// and not a label the base carries. (3) The FP4 W4A4 path on SM 121 is UNREAD -- the probe's own
+// discriminator is absent from this build (gunbc.spark.serving_runtime_capability_probe
+// glm53_derived_probe_rows) -- and registration of GlmMoeDsaForCausalLM says nothing about it.
+//
+// WHAT IT DOES KNOW WAS READ, NOT INHERITED: the registry dump (378 names, inside this config id),
+// hf at /usr/local/bin/hf (huggingface-cli beside it), and the wheel set from docker history. The
+// pin reads the reading's own image_reference, so the currency check runtime_reading_is_current
+// is a tautology for this row exactly as it is for the NoPE row and for the same reason -- a
+// never-pushed image has one identity and one home for it.
 data glm53_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: GunbcGlm53DerivedGb10,
   artifact: runtime_artifact_identity(
-    pin: PinnedByDigest { reference: glm53_derived_observed_config_id },
+    pin: PinnedByDigest { reference: glm53_derived_registry_reading.image_reference },
     source_revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
     patch_set: [
       "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
@@ -926,7 +926,7 @@ data glm53_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   ),
   hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: glm53_nope_derived_vllm_version,
-  registry_reading: none,
+  registry_reading: Present { value: glm53_derived_registry_reading },
   reasoning_projection: none,
   provenance: "read inside this exact image on the Group B head 2026-09-18 by the GLM performance lane: vllm 0.1.dev1+g8d09804c8; flashinfer-python, flashinfer-cubin 0.7.0.dev20260910 and flashinfer-jit-cache 0.7.0.dev20260910+cu130; torch 2.13.0+cu130; Glm5NextForConditionalGeneration registered True (what Group B serves) and GlmMoeDsaForCausalLM registered True, 378 architectures in total (sorted-roster sha256 2e43451e...); a modelopt.py quantization module present in the package; hf at /usr/local/bin/hf. NOT established: any kernel execution, any checkpoint load, the reasoning projection, or the FP4 W4A4 path on SM121 -- the FP4 probe's own discriminator is absent from this build's op namespace, recorded as KernelProbeSymbolUngrounded in gunbc.spark.serving_runtime_capability_probe glm53_derived_probe_rows" as NonEmptyStr,
   claimed_defaults_revision: Present { value: Vllm8d09804 },

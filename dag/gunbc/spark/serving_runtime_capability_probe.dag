@@ -12,7 +12,7 @@ import gunbc.spark.v41_published_image_observation {
 }
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, ArchitectureObservation, ArchitectureAsked, RegistryDump,
-  glm53_derived_observed_config_id,
+  glm53_derived_registry_reading,
   registry_reading_contains, architecture_observation_image_reference,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
   timothystewart6_vllm_gb10_registry_reading, xomoxcc_dgx_spark_sglang_registry_reading,
@@ -415,7 +415,7 @@ data v41_sm121_runtime_candidates: List<RuntimeCandidateRow> = [
   RuntimeCandidateRow {
     candidate: "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr,
     discovered_via: "the lane-built derived image the Group B GLM arm serves from since 2026-09-17, keyed by its config id because it was never pushed; entered the sweep when the GLM-5.3-NVFP4 projection asked it for FP4 support (gunbc.spark.serving_fit_projection)" as NonEmptyStr,
-    disposition: CandidateProbed { image_reference: glm53_derived_observed_config_id },
+    disposition: CandidateProbed { image_reference: glm53_derived_registry_reading.image_reference },
   },
   RuntimeCandidateRow {
     candidate: join([sparkrun_vllm_ds4_gb10_repository as String, ":", sparkrun_vllm_ds4_gb10_tag as String], "") as NonEmptyStr,
@@ -890,7 +890,7 @@ fn v41_sm121_capability_probe_rows() -> List<RuntimeCapabilityProbeRow> {
 // discriminator, and re-ground v41_py_fp4_support_block on it. Until then every consumer that asks
 // this image for Fp4WeightSupportedHere gets an unprobed answer with this defect named.
 data glm53_derived_probe: ProbedRuntimeImage = ProbedRuntimeImage {
-  image_reference: glm53_derived_observed_config_id,
+  image_reference: glm53_derived_registry_reading.image_reference,
   framework: "vllm" as NonEmptyStr,
   framework_version: "0.1.dev1+g8d09804c8" as NonEmptyStr,
 }

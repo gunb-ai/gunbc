@@ -183,8 +183,7 @@ fn answer_text(a: StaticCompatibilityAnswer) -> String {
 // a dump taken inside that digest answers through registry_reading_contains, an asked row answers
 // for its one name, and an image nobody has asked is NotEstablished with the instrument named. This
 // is the same roster serving_arm_admits reads through the row's registry_reading; the difference is
-// that an asked row -- the strength at which the Group B image was actually probed -- can answer
-// here, while the admission fold still waits for a dump.
+// that an asked row -- an image probed for one name only -- can answer here as well as a dump.
 fn architecture_answer(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> StaticCompatibilityAnswer {
   let pin = runtime_artifact_wire(a: rrow.artifact)
   match architecture_asked_answer(observations: spark_architecture_observations, image_reference: pin, architecture: architecture) {
