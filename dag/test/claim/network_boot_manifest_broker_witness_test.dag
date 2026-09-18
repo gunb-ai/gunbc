@@ -4,8 +4,9 @@ import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Architecture, Aarch64, Wasm32 }
-import extdeps.provisioning.network_boot { UefiHttpBoot }
+import extdeps.toolchain.types { Architecture, Aarch64, Wasm32, X86 }
+import extdeps.provisioning.network_boot { UefiHttpBoot, LegacyBiosPxe }
+import extdeps.uri { uri_https }
 import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_implementation }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 import gunbc.network_boot_delivery {
@@ -334,5 +335,36 @@ test fn controlled_network_bootstrap_is_not_production_trust() -> Bool {
       }
     ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => false
     BootstrapTrustUnestablished => false
+  }
+}
+
+// The signed preimage projects the DHCP class from architecture AND boot mode, the same projection
+// gunbc.network_boot_delivery adjudicates the ticket against. A legacy-BIOS x86 ticket names a
+// published class (RFC 4578 code 0), so it issues and redeems; projecting through the UEFI-only
+// branch refused it as ManifestIssuanceDhcpArchUnpublished (review 67932).
+test fn legacy_bios_x86_ticket_projects_its_published_dhcp_class() -> Bool {
+  let id = SignedBootManifestIdentity {
+    target_unit: unit,
+    attempt_id: attempt,
+    nonce: "nonce-0d-bios",
+    architecture: X86,
+    boot_mode: LegacyBiosPxe { tftp_root: uri_https(locator: "boot.example/tftp") },
+    chainloader_digest: chainloader(),
+    kernel_digest: kernel(),
+    initrd_digest: initrd(),
+    root_digest: root(),
+    kernel_cmdline: "console=ttyS0",
+    not_before: 1788000000000,
+    expiry: 1788003600000,
+    signing_key_identity: broker_key_id as NonEmptyStr,
+    callback_identity: "intake-callback-0d",
+  }
+  match issue_signed_boot_manifest(claims: claims_for(id: id), key: broker_key, trust: production_trust()) {
+    BootManifestIssued { ticket: t } =>
+      match redeem_signed_boot_manifest(ticket: t, key: broker_key, expectation: expectation_at(spent: [])) {
+        BootManifestAuthentic { claims: c } => c.identity.target_unit == unit
+        BootManifestRefused { class: _ } => false
+      }
+    BootManifestIssuanceRefused { cause: _ } => false
   }
 }

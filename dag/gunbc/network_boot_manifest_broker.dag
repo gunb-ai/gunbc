@@ -8,7 +8,7 @@ import extdeps.uri { uri_wire }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import extdeps.provisioning.dhcp_client_arch {
   dhcp_processor_architecture_code,
-  uefi_processor_architecture,
+  dhcp_client_processor_architecture,
 }
 import extdeps.crypto.mac {
   MacKey,
@@ -120,7 +120,7 @@ fn boot_mode_preimage(mode: ClientNetworkBootMode) -> String {
 // two distinct claim records cannot share one preimage.
 fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr? {
   let id = c.identity
-  match uefi_processor_architecture(arch: id.architecture) {
+  match dhcp_client_processor_architecture(arch: id.architecture, mode: id.boot_mode) {
     Absent => none
     Present { value: dhcp_arch } =>
       Present {
