@@ -1,6 +1,5 @@
 module v2.test.long.pick_ingested_probe
 
-
 fn pick_probe_find_arrow(root: Node) -> Node {
   match root.kind {
     TypeNode { connective: Arrow } => root
@@ -178,25 +177,12 @@ fn pick_probe_normalized_has_branch_holds() -> Bool {
   }
 }
 
-test fn pick_probe_pipeline_resolves_holds() -> Bool {
-  pick_ingested_pipeline_resolves_holds()
-}
-
 test fn pick_probe_normalized_branch_holds() -> Bool {
   pick_probe_normalized_has_branch_holds()
 }
 
 test fn pick_probe_normalized_arrow_branch_holds() -> Bool {
   pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
-}
-
-test fn pick_probe_swapped_arms_structural_red_holds() -> Bool {
-  pick_ingested_normalized_swapped_arms_structural_red_holds()
-}
-
-test fn pick_probe_eval_equals_holds() -> Bool {
-  pick_ingested_pick_true_executes_holds()
-    && pick_ingested_pick_false_executes_holds()
 }
 
 // ONE RESOLVE, TWO ARMS (witness-cost consolidation, 2026-08-19). The then-arm and

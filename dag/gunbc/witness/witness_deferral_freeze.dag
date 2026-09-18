@@ -70,7 +70,20 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // Re-adding any one falsifier cadence would restore one door; it would not restore
 // the refusal, which needs a required run to enter the discovery path. Both halves
 // are in the restoration trigger for that reason.
-// SHRINK LOG. 2026-08-26 — 3 entries
+// SHRINK LOG. 2026-09-18 — 4 entries
+// (src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag [whole],
+// src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag [partial],
+// src/v2/test/claim/long/door_real_module_probe_test.dag [partial],
+// src/v2/test/claim/execution/long/pick_ingested_probe_test.dag [partial]), 10 identities,
+// DELETED as duplicate coverage, not migrated and not exempted: each body was only a call to
+// another test fn (owner ruling 2026-09-16/17: no code may reference a test fn), so it asserted
+// nothing its target did not already assert. The targets keep the facts:
+// v2.test.manual.body_lowering_projection_call (3), v2.test.long.emit_host_classical_not_ingested_equals_eval
+// ingested_classical_not_arrow_has_match_holds / ingested_classical_not_resolves_holds,
+// door_real_module_probe quad_namespace_only_resolve_accepts_holds /
+// quad_import_scoped_admission_reds_ambiguous_export_holds, and
+// v2.test.long.pick_ingested_structural_lowering (4). The file whose every row was a wrapper
+// deletes whole. 2026-08-26 — 3 entries
 // (src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag [partial],
 // src/v2/test/claim/execution/emit_ingest_grammar_relation_round_trip_test.dag [partial],
 // src/v2/test/claim/execution/self_host_candidate_generation_test.dag [partial]), 5 identities,
@@ -719,9 +732,8 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/long/pick_ingested_probe_test.dag",
     functions: [
-      "pick_probe_pipeline_resolves_holds", "pick_probe_normalized_branch_holds",
-      "pick_probe_normalized_arrow_branch_holds", "pick_probe_swapped_arms_structural_red_holds",
-      "pick_probe_eval_equals_holds", "pick_probe_resolved_then_arm_has_magnitude_child_holds",
+      "pick_probe_normalized_branch_holds", "pick_probe_normalized_arrow_branch_holds",
+      "pick_probe_resolved_then_arm_has_magnitude_child_holds",
       "pick_probe_normalized_then_arm_has_magnitude_child_holds",
       "pick_probe_parsed_then_arm_has_magnitude_child_holds"
     ]
@@ -938,9 +950,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/door_real_module_probe_test.dag",
     functions: [
       "quad_namespace_only_resolve_accepts_holds",
-      "quad_import_scoped_admission_reds_ambiguous_export_holds",
-      "quad_with_peer_import_scoped_reds_ambiguous_export_holds",
-      "quad_with_peer_greens_under_namespace_only_projection"
+      "quad_import_scoped_admission_reds_ambiguous_export_holds"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/free_monoid_not_diverged_green_test.dag", functions: ["corpus_free_monoid_not_diverged_green_holds"] },
@@ -1154,14 +1164,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag",
-    functions: [
-      "wave1_gate1_a1_projection_call_lowers_witness_holds",
-      "wave1_gate1_a1_projection_call_normalize_accepts_witness_holds",
-      "wave1_gate1_a1_projection_field_access_refuses_witness_holds"
-    ]
-  },
-  FrozenPathDeferral {
     entry: "src/v2/test/claim/long/wave1_gate1_a1_symbol_index_body_producer_witness_test.dag",
     functions: [
       "wave1_gate1_a1_ingest_param_domain_parity_witness_holds",
@@ -1186,9 +1188,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     functions: [
       "wave1_gate1_ingested_add_normalize_yields_arrow_transform_holds",
       "wave1_gate1_ingested_add_normalize_resolves_holds",
-      "wave1_gate1_ingested_add_resolved_arrow_transform_holds",
-      "wave1_gate1_ingested_match_normalize_yields_match_holds",
-      "wave1_gate1_ingested_match_resolves_holds"
+      "wave1_gate1_ingested_add_resolved_arrow_transform_holds"
     ]
   },
   FrozenPathDeferral {
