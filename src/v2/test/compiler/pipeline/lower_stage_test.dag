@@ -1,7 +1,7 @@
 module v2.test.compiler.pipeline.lower_stage
 
 import v2.compiler.translate { translate }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust_emit_small_test { rust_emit_small_add_translate_target }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -10,11 +10,19 @@ import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Relationship witness: InferredTree -> emitted Node on rust_target_model via translate. Fast-lane:
-// canonical rust_add_inferred_tree fixture. Match corpus lower lives in long lane.
+// Relationship witness: InferredTree -> emitted Node via translate, on the canonical
+// rust_add_inferred_tree fixture. The TARGET IS A SUPPLIED VALUE (DESIGN section 3, a witness
+// discriminates at one interface): rust_emit_small_add_translate_target carries exactly the two
+// bundle edges translate_node reaches for this tree (type-expression projection, translation
+// rules). The production rust_target_model() was measured at 67,629 eval steps of construction
+// -- 45,668 of them the nineteen-inhabitant declared-inhabitants root, which translate reads only
+// for coercion candidates this tree never needs -- against a witness budget of 72,300; this claim
+// asserts nothing about that construction. THE INHABITANCE CLAIM FOR THE REAL PATH is
+// v2.test.claim.translate_underived_refusal translate_accepts_derived_corpus_module_holds, which
+// runs translate on this same tree against rust_target_model() and stays enrolled.
 
 test fn pipeline_lower_add_fixture_relationship_green() -> Bool {
-  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
+  match translate(tree: rust_add_inferred_tree, target: rust_emit_small_add_translate_target()) {
     Accepted { value: emitted, diagnostics: _ } => well_formed(n: emitted)
     Rejected { diagnostics: _ } => false
   }
