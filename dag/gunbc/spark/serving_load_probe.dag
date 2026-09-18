@@ -170,12 +170,12 @@ type CounterContinuity
 
 fn counter_continuity(before: VllmEndpointProcessLaunchObservation, after: VllmEndpointProcessLaunchObservation) -> CounterContinuity {
   match before {
-    LaunchUnobserved { endpoint: e } =>
-      ContinuityUnread { cause: join(["the exporter start field was unobserved before the window: ", e as String], "") as NonEmptyStr }
+    LaunchUnobserved { group: _, obligation: o } =>
+      ContinuityUnread { cause: join(["the exporter start field was unobserved before the window: ", o as String], "") as NonEmptyStr }
     LaunchObserved { launch: b, receipt: _ } =>
       match after {
-        LaunchUnobserved { endpoint: e } =>
-          ContinuityUnread { cause: join(["the exporter start field was unobserved after the window: ", e as String], "") as NonEmptyStr }
+        LaunchUnobserved { group: _, obligation: o } =>
+          ContinuityUnread { cause: join(["the exporter start field was unobserved after the window: ", o as String], "") as NonEmptyStr }
         LaunchObserved { launch: a, receipt: _ } =>
           if (b.process_start_field as String) == (a.process_start_field as String) {
             SameExporter { start_field: b.process_start_field }
@@ -438,7 +438,7 @@ fn foreign_work_bound(generation: TokenDelta, client_output: ClientOutputTokens)
       match client_output {
         ClientOutputTokensUnread { cause: c } => ForeignWorkUnread { because: c }
         ClientOutputTokensObserved { tokens: c } =>
-          ForeignWorkBounded { engine_generation: g, client_output: c, surplus: if g >= c { g - c } else { 0 } }
+          ForeignWorkBounded { engine_generation: g, client_output: c, surplus: if g >= c { g - c } else { c - c } }
       }
   }
 }
@@ -931,7 +931,7 @@ fn foreign_in_flight_at_peak(p: PeakConcurrencyReceipt) -> Nat? {
   match p {
     PeakConcurrencyUnread { cause: _ } => none
     PeakConcurrencyObserved { client_max_concurrency: c, engine_peak_concurrent_requests: e } =>
-      if e > c { Present { value: e - c } } else { Present { value: 0 } }
+      if e > c { Present { value: e - c } } else { Present { value: c - c } }
   }
 }
 
@@ -1021,7 +1021,8 @@ data glm_native_contended_sweep_standing: CitedFigureStanding = TranscribedUncit
 
 fn glm_native_sweep_num_prompts(concurrency: Nat) -> Nat {
   let fourfold = concurrency * 4
-  if fourfold < 8 { 8 } else { fourfold }
+  let eight = token_count_value(t: token_count(count: 8))
+  if fourfold < eight { eight } else { fourfold }
 }
 
 fn glm_native_contended_sweep_protocol(concurrency: Nat) -> VllmBenchServeRequest {

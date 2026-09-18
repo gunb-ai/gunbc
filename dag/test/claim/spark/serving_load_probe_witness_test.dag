@@ -395,7 +395,7 @@ test fn the_holistic_protocol_is_poisson_with_session_context_and_prefix() -> Bo
       dataset: RandomDatasetSpec { input_len: token_count(count: 128), output_len: token_count(count: 128), prefix_len: token_count(count: 0) },
       num_prompts: 4,
       arrival: SendAllImmediately,
-      max_concurrency: none,
+      max_concurrency: Absent,
       ignore_eos: true,
     ))
 }
