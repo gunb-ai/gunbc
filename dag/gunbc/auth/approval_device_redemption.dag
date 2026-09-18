@@ -30,7 +30,7 @@ import gunbc.auth.approval_decision_store {
   approval_capability_expectation, approval_operator_login, json_field_string,
 }
 import gunbc.auth.approval_device_wire {
-  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, DeviceRedemptionSigningInput,
+  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, enrollment_id_for_code, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
 import gunbc.durable_cas_file_store {
@@ -89,10 +89,6 @@ type EnrolmentChallenge {
   issued_to_login: NonEmptyStr
   issued_at: Timestamp
   expires_at: Timestamp
-}
-
-fn enrollment_id_for_code(code: NonEmptyStr) -> NonEmptyStr {
-  join(["enr-", code as String], "") as NonEmptyStr
 }
 
 // The standing of one code's slot: issued and waiting, consumed into an enrolment, or that

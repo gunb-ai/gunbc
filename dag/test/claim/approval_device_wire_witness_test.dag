@@ -206,3 +206,19 @@ test fn witness_push_update_client_data_binds_the_token() -> Bool {
   device_push_update_client_data(enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z", push: fx_push)
     != device_push_update_client_data(enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z", push: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "zzz" })
 }
+
+// PER-ARM STRICTNESS: a member that belongs to ANOTHER arm of the same sum is refused, not dropped.
+test fn witness_decoder_refuses_another_arms_member() -> Bool {
+  match decode_push_update(text: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\",\"project\":\"p\"}") {
+    WireRefused { at: a, cause: _ } => a as String == "push"
+    WireDecoded { value: _ } => false
+  }
+}
+
+test fn witness_evidence_decoder_refuses_another_arms_member() -> Bool {
+  let body = "{\"code\":\"1\",\"platform\":\"ios\",\"decision_key\":{\"suite\":\"ECDSA-P256-SHA256\",\"encoding\":\"SEC1-uncompressed\",\"point_b64url\":\"B\"},\"evidence\":{\"kind\":\"ios_app_attest\",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\",\"certificates_der_b64\":[]},\"push\":{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}}"
+  match decode_enrolment_request(text: body) {
+    WireRefused { at: a, cause: _ } => a as String == "evidence"
+    WireDecoded { value: _ } => false
+  }
+}

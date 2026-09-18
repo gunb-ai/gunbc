@@ -12,7 +12,7 @@ import gunbc.auth.approval_device_wire {
   EnrolmentGrant, PendingApproval, VerbCapability, FetchedRequest, EnrolmentReadback, EnrolmentStandingActive, RedemptionResponse,
   enrolment_request_json, signed_redemption_json, push_update_json, enrolment_grant_json, pending_list_json,
   fetched_request_json, enrolment_readback_json, redemption_response_json, device_push_update_client_data,
-  device_request_path, device_enrollment_path,
+  device_request_path, device_enrollment_path, enrollment_id_for_code,
 }
 import extdeps.crypto.signature { SignatureBytes, P1363FixedWidth }
 import extdeps.apple.apns { ApnsProduction }
@@ -176,7 +176,8 @@ data envelope_vectors: List<EnvelopeVector> = [
   EnvelopeVector { name: "redemption_response", body: redemption_response_json(r: RedemptionResponse { outcome: "DeviceRedeemed", message: "approved and recorded" }) },
   EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String },
   EnvelopeVector { name: "request_path", body: match device_request_path(escalation_id: "esc-mtc1-boot-1") { Present { value: p } => p as String  Absent => "refused" } },
-  EnvelopeVector { name: "enrollment_path", body: match device_enrollment_path(enrollment_id: "enr-482913") { Present { value: p } => p as String  Absent => "refused" } },
+  EnvelopeVector { name: "enrollment_id_for_code_482913", body: enrollment_id_for_code(code: "482913") as String },
+  EnvelopeVector { name: "enrollment_path", body: match device_enrollment_path(enrollment_id: enrollment_id_for_code(code: "482913")) { Present { value: p } => p as String  Absent => "refused" } },
 ]
 
 fn envelope_vector_json(v: EnvelopeVector) -> JsonValue {

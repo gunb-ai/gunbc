@@ -266,6 +266,20 @@ fn wire_string(obj: JsonValue, key: String) -> WireDecode<NonEmptyStr> {
   }
 }
 
+// A SUM'S MEMBER SET IS ITS ARM'S, NOT THE UNION OF ALL ARMS: the decoder reads "kind" first and
+// then admits exactly that arm's members, so a member belonging to a different arm is refused rather
+// than silently dropped.
+fn wire_kind(v: JsonValue, at: NonEmptyStr) -> WireDecode<NonEmptyStr> {
+  match v {
+    JsonObject { members: _ } =>
+      match wire_string(obj: v, key: "kind") {
+        WireRefused { at: a, cause: c } => wire_refused_at(prefix: join([at as String, "."], ""), at: a, cause: c)
+        WireDecoded { value: k } => WireDecoded { value: k }
+      }
+    _ => WireRefused { at: at, cause: "not an object" }
+  }
+}
+
 // ── Crypto carriers ──────────────────────────────────────────────────────────────────────────
 // THE SUITE AND ENCODINGS TRAVEL EXPLICITLY and the decoder refuses any value but the one this
 // protocol admits, so a key or signature cannot be read under an encoding the sender did not use.
@@ -381,14 +395,14 @@ fn push_registration_json(p: PushRegistration) -> JsonValue {
 // Android is unrealized: its push arm is modeled and encodable, and its decoder refuses rather
 // than admitting an arm no server route can act on.
 fn decode_push_registration(v: JsonValue) -> WireDecode<PushRegistration> {
-  match wire_object(v: v, at: "push", allowed: ["kind", "environment", "topic", "token", "project"]) {
+  match wire_kind(v: v, at: "push") {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-    WireDecoded { value: o } =>
-      match wire_string(obj: o, key: "kind") {
-        WireRefused { at: a, cause: c } => wire_refused_at(prefix: "push.", at: a, cause: c)
-        WireDecoded { value: kind } =>
-          if (kind as String) != "apns" { WireRefused { at: "push.kind", cause: "not an admitted push provider" } }
-          else {
+    WireDecoded { value: kind } =>
+      if (kind as String) != "apns" { WireRefused { at: "push.kind", cause: "not an admitted push provider" } }
+      else {
+        match wire_object(v: v, at: "push", allowed: ["kind", "environment", "topic", "token"]) {
+          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+          WireDecoded { value: o } =>
             match wire_string(obj: o, key: "environment") {
               WireRefused { at: a, cause: c } => wire_refused_at(prefix: "push.", at: a, cause: c)
               WireDecoded { value: env } =>
@@ -404,7 +418,7 @@ fn decode_push_registration(v: JsonValue) -> WireDecode<PushRegistration> {
                     }
                 }
             }
-          }
+        }
       }
   }
 }
@@ -424,14 +438,14 @@ fn presented_evidence_json(e: PresentedEnrollmentEvidence) -> JsonValue {
 }
 
 fn decode_presented_evidence(v: JsonValue) -> WireDecode<PresentedEnrollmentEvidence> {
-  match wire_object(v: v, at: "evidence", allowed: ["kind", "attest_key_id", "attestation_b64", "certificates_der_b64"]) {
+  match wire_kind(v: v, at: "evidence") {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-    WireDecoded { value: o } =>
-      match wire_string(obj: o, key: "kind") {
-        WireRefused { at: a, cause: c } => wire_refused_at(prefix: "evidence.", at: a, cause: c)
-        WireDecoded { value: kind } =>
-          if (kind as String) != "ios_app_attest" { WireRefused { at: "evidence.kind", cause: "not an admitted evidence kind" } }
-          else {
+    WireDecoded { value: kind } =>
+      if (kind as String) != "ios_app_attest" { WireRefused { at: "evidence.kind", cause: "not an admitted evidence kind" } }
+      else {
+        match wire_object(v: v, at: "evidence", allowed: ["kind", "attest_key_id", "attestation_b64"]) {
+          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+          WireDecoded { value: o } =>
             match wire_string(obj: o, key: "attest_key_id") {
               WireRefused { at: a, cause: c } => wire_refused_at(prefix: "evidence.", at: a, cause: c)
               WireDecoded { value: k } =>
@@ -440,7 +454,7 @@ fn decode_presented_evidence(v: JsonValue) -> WireDecode<PresentedEnrollmentEvid
                   WireDecoded { value: att } => WireDecoded { value: IosAppAttestAttestation { attest_key_id: k as AttestKeyId, attestation_b64: att } }
                 }
             }
-          }
+        }
       }
   }
 }
@@ -456,19 +470,19 @@ fn platform_proof_json(p: PlatformRedemptionProof) -> JsonValue {
 }
 
 fn decode_platform_proof(v: JsonValue) -> WireDecode<PlatformRedemptionProof> {
-  match wire_object(v: v, at: "platform_proof", allowed: ["kind", "assertion_b64"]) {
+  match wire_kind(v: v, at: "platform_proof") {
     WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
-    WireDecoded { value: o } =>
-      match wire_string(obj: o, key: "kind") {
-        WireRefused { at: a, cause: c } => wire_refused_at(prefix: "platform_proof.", at: a, cause: c)
-        WireDecoded { value: kind } =>
-          if (kind as String) != "ios_app_attest_assertion" { WireRefused { at: "platform_proof.kind", cause: "not an admitted proof kind" } }
-          else {
+    WireDecoded { value: kind } =>
+      if (kind as String) != "ios_app_attest_assertion" { WireRefused { at: "platform_proof.kind", cause: "not an admitted proof kind" } }
+      else {
+        match wire_object(v: v, at: "platform_proof", allowed: ["kind", "assertion_b64"]) {
+          WireRefused { at: a, cause: c } => WireRefused { at: a, cause: c }
+          WireDecoded { value: o } =>
             match wire_string(obj: o, key: "assertion_b64") {
               WireRefused { at: a, cause: c } => wire_refused_at(prefix: "platform_proof.", at: a, cause: c)
               WireDecoded { value: a } => WireDecoded { value: IosAppAttestAssertion { assertion_b64: a } }
             }
-          }
+        }
       }
   }
 }
@@ -777,6 +791,12 @@ fn redemption_response_json(r: RedemptionResponse) -> String {
 data approval_device_enrollment_header: NonEmptyStr = "X-Approval-Enrollment" as NonEmptyStr
 data approval_device_requested_at_header: NonEmptyStr = "X-Approval-Requested-At" as NonEmptyStr
 data approval_device_assertion_header: NonEmptyStr = "X-Approval-Assertion" as NonEmptyStr
+
+// THE ENROLMENT ID IS DERIVED FROM THE CODE, so the app knows the id of the enrolment its code
+// produced even when the POST's answer was lost -- the readback needs nothing the operator must type.
+fn enrollment_id_for_code(code: NonEmptyStr) -> NonEmptyStr {
+  join(["enr-", code as String], "") as NonEmptyStr
+}
 
 // READBACK: after an enrolment POST whose answer was lost, the app asks whether its enrolment
 // exists before generating anything new. It authenticates with an assertion under the App Attest
