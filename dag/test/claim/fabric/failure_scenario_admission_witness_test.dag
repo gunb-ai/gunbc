@@ -21,6 +21,7 @@ import product.fabric.failure_scenario_admission {
   FailureScenarioAdmission, FailureScenariosSurvived, FailureScenariosRefused,
   FailureScenarioRefusal, NoFailureScenariosDeclared, OfferFailureDomainsUndeclared,
   OfferFailureDomainsAmbiguous, OfferSharedAcrossDemands, ScenarioNotSurvived, OfferSupplyUnobserved,
+  ScenarioNamesUnknownOffer,
   admit_failure_scenarios,
 }
 
@@ -131,11 +132,19 @@ fn demand(caps: CapabilityManifestRef, key: WorkKey) -> CommittedDemand<NonEmpty
   CommittedDemand { work: FabricIdentity { principal: "gunbc", key: key }, requirements: requirements(caps: caps), grants: 15, margin: 5 }
 }
 
-fn scenario(name: String, lost: List<DeclarationRef>) -> FailureScenario {
-  FailureScenario { scenario: r(name: name), lost: lost }
+fn scenario(name: String, lost: List<DeclarationRef>) -> FailureScenario<NonEmptyStr> {
+  FailureScenario { scenario: r(name: name), lost: lost, lost_offers: [] }
 }
 
-fn absorbed_scenarios() -> List<FailureScenario> {
+fn losing_offers(name: String, keys: List<OfferKey>) -> FailureScenario<NonEmptyStr> {
+  FailureScenario {
+    scenario: r(name: name),
+    lost: [],
+    lost_offers: map(keys, k => FabricIdentity { principal: "gunbc", key: k }),
+  }
+}
+
+fn absorbed_scenarios() -> List<FailureScenario<NonEmptyStr>> {
   [
     scenario(name: "fsa_scenario_node", lost: [r(name: "fsa_node_1")]),
     scenario(name: "fsa_scenario_circuit", lost: [r(name: "fsa_circuit_b")]),
@@ -143,7 +152,7 @@ fn absorbed_scenarios() -> List<FailureScenario> {
   ]
 }
 
-fn site_and_cloud_x() -> FailureScenario {
+fn site_and_cloud_x() -> FailureScenario<NonEmptyStr> {
   scenario(name: "fsa_scenario_site_and_cloud_x", lost: [r(name: "fsa_owned_site"), r(name: "fsa_cloud_x_provider")])
 }
 
@@ -152,7 +161,7 @@ fn admit(
   domains: List<OfferFailureDomains<NonEmptyStr>>,
   exercises: List<RouteExercise>,
   demands: List<CommittedDemand<NonEmptyStr>>,
-  scenarios: List<FailureScenario>,
+  scenarios: List<FailureScenario<NonEmptyStr>>,
 ) -> FailureScenarioAdmission<NonEmptyStr> {
   admit_failure_scenarios(offers: offers, domains: domains, exercises: exercises, at: now, demands: demands, scenarios: scenarios)
 }
@@ -171,6 +180,7 @@ fn tag(x: FailureScenarioRefusal<NonEmptyStr>) -> String {
     OfferFailureDomainsAmbiguous { offer: o } => join(["ambiguous:", (o.key as NonEmptyStr)], "")
     OfferSharedAcrossDemands { offer: o } => join(["shared:", (o.key as NonEmptyStr)], "")
     OfferSupplyUnobserved { offer: o, obligation: _ } => join(["unobserved:", (o.key as NonEmptyStr)], "")
+    ScenarioNamesUnknownOffer { scenario: _, offer: o } => join(["unknown-offer:", (o.key as NonEmptyStr)], "")
     ScenarioNotSurvived { shortfall: s } => join(["short:", s.scenario.decl_name], "")
   }
 }
@@ -193,6 +203,7 @@ fn shortfall_numbers(a: FailureScenarioAdmission<NonEmptyStr>) -> List<Int> {
         OfferFailureDomainsAmbiguous { offer: _ } => []
         OfferSharedAcrossDemands { offer: _ } => []
         OfferSupplyUnobserved { offer: _, obligation: _ } => []
+        ScenarioNamesUnknownOffer { scenario: _, offer: _ } => []
       })
   }
 }
@@ -268,4 +279,41 @@ fn planned_owned_offers() -> List<SupplierOffer<NonEmptyStr>> {
 test fn w_unobserved_supply_refuses_by_its_own_arm() -> Bool {
   tags(a: admit(offers: planned_owned_offers(), domains: domains(), exercises: exercises(), demands: one_demand(), scenarios: absorbed_scenarios()))
     == ["unobserved:owned-node-1", "unobserved:owned-node-2"]
+}
+
+// A SCENARIO CITES THE CLAIM THAT OWNS IT, which is a declaration this module really carries, so the
+// citation resolves without minting an anchor row for it. review 67458 is right that the two anchor
+// rows an earlier revision added were read by nothing - but consuming their VALUES in r(...) would
+// have cited "fsa-scenario-two-nodes", a declaration that does not exist, which is the dangling
+// citation this PR exists to remove. Naming the claim is the third option: no unread row, no minted
+// name.
+//
+// A HOST HAS NO DECLARATION, SO LOSING ONE IS AN IDENTITY, NOT A MINTED CITATION. Losing both owned
+// nodes by name leaves the exercised cloud's 20, which is exactly the required 15 + 5; losing one of
+// them and the exercised cloud's whole provider does not.
+
+test fn w_named_offers_are_lost_without_minting_a_citation_for_them() -> Bool {
+  survived(a: admit(
+    offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(),
+    scenarios: [losing_offers(name: "w_named_offers_are_lost_without_minting_a_citation_for_them", keys: ["owned-node-1", "owned-node-2"])]))
+}
+
+test fn w_a_named_offer_and_a_lost_domain_compose() -> Bool {
+  let mixed = FailureScenario {
+    scenario: r(name: "w_a_named_offer_and_a_lost_domain_compose"),
+    lost: [r(name: "fsa_cloud_x_provider")],
+    lost_offers: [FabricIdentity { principal: "gunbc", key: "owned-node-1" }],
+  }
+  let a = admit(offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(), scenarios: [mixed])
+  tags(a: a) == ["short:w_a_named_offer_and_a_lost_domain_compose"] && shortfall_numbers(a: a) == [10, 20]
+}
+
+// A SCENARIO THAT NAMES AN OFFER NOBODY HOLDS APPLIES NO LOSS, so the survival it would report is
+// vacuous: a misspelled host reads as "this failure is absorbed" while the failure never happened.
+// It refuses instead, and the red is the spelling: "owned-node-3" does not exist.
+test fn w_a_scenario_naming_an_offer_nobody_holds_refuses() -> Bool {
+  tags(a: admit(
+    offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(),
+    scenarios: [losing_offers(name: "w_a_scenario_naming_an_offer_nobody_holds_refuses", keys: ["owned-node-1", "owned-node-3"])]))
+    == ["unknown-offer:owned-node-3"]
 }

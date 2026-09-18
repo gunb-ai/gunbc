@@ -77,7 +77,7 @@ jobs:
         with:
           components: rustfmt
           cache: false
-          rustflags: ''
+          rustflags: -D warnings
         env:
           HOME: ${{ runner.temp }}
       - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
