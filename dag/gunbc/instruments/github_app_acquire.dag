@@ -450,13 +450,19 @@ fn persist_issued_credentials(
 // mode at creation is meaningless on an existing path, so the operation refuses rather than
 // clobbering - which is right, because the alternative is overwriting a private key that may be the
 // only copy of a DIFFERENT App's. But discovering that AFTER the exchange would spend a one-shot code
-// and then fail the write, producing the unrecoverable outcome below for a cause that was visible
-// beforehand. So the preflight runs first: a stale handoff file is an ordinary refusal with the code
-// still live and the remedy obvious, instead of a lost App.
+// and then fail the write, producing an unrecoverable loss for a cause that was visible beforehand.
+// So this runs in census_app_acquire_with_code BEFORE exchange_census_app_code: a stale handoff file
+// is an ordinary refusal with the code still live and the remedy obvious, instead of a lost App.
+//
+// IT CAN RUN THAT EARLY BECAUSE THE HANDOFF IS ADDRESSED BY THE DECLARED NAME, which is known before
+// the POST, rather than by the slug the exchange returns. That is the same fact
+// gunbc.github_app_acquisition custody_handoff_addressing is built on, and it is restated here
+// because the ordering DEPENDS on it: if the addressing ever moves back to the returned slug, this
+// check cannot precede the exchange and the loss arm comes back.
 type CustodyPreflight
   = CustodyPathsClear { paths: CustodyHandoffPaths }
   | CustodyPathOccupied { path: String }
-  | CustodyPreflightSlugUnsafe { slug: NonEmptyStr }
+  | CustodyPreflightNameUnsafe { name: NonEmptyStr }
 
 fn custody_path_occupied(path: String) -> Bool {
   Filesystem.Read(path: path).success
@@ -464,7 +470,7 @@ fn custody_path_occupied(path: String) -> Bool {
 
 fn custody_preflight(name: NonEmptyStr) -> CustodyPreflight uses fs: std.resources.Filesystem {
   match custody_handoff_addressing(name: name) {
-    CustodyNameNotPathSafe { name: s } => CustodyPreflightSlugUnsafe { slug: s }
+    CustodyNameNotPathSafe { name: s } => CustodyPreflightNameUnsafe { name: s }
     CustodyAddressed { paths: paths } =>
       if custody_path_occupied(path: paths.pem) {
         CustodyPathOccupied { path: paths.pem }
@@ -610,17 +616,30 @@ fn census_app_acquire_with_code(
     Refuse { reason: r } =>
       exit_failure(reason: join([verdict_text(verdict: classified.verdict), ": ", r as String], ""))
     Apply { plan: plan } =>
-      match exchange_census_app_code(code: plan.code) {
-        ExchangeCodeNotLive { body: b } =>
+      match custody_preflight(name: census_app_identity.name) {
+        CustodyPreflightNameUnsafe { name: n } =>
           exit_failure(reason: join([
-            "the manifest code is not live: GitHub answered 404 for it. A code is spendable once and expires one hour after the click, so re-run census_app_registration_instruction_receipt and submit the form again. Body: ", b,
+            "the custody name ", n as String,
+            " is not safe to interpolate into a handoff path, so the credentials could not be stored. NOTHING WAS EXCHANGED and the code is still live: fix the name and re-run.",
           ], ""))
-        ExchangeRefused { reason: r } => exit_failure(reason: r as String)
-        ExchangeOutcomeUnknown { detail: d } => exit_failure(reason: d as String)
-        ExchangeReplyIncomplete { issuance: _ } =>
-          exit_failure(reason: "the conversion answered 201 with a reply missing the slug or client id, so the App it created cannot be addressed")
-        ExchangeIssued { issuance: issuance } =>
-          persist_then_read_back(issuance: issuance)
+        CustodyPathOccupied { path: p } =>
+          exit_failure(reason: join([
+            "a file already exists at ", p,
+            " and WriteOwnerOnly is create-only, so an exchange now would create the App and then fail to store its private key. NOTHING WAS EXCHANGED and the code is still live: move the existing handoff files aside and re-run within the code's hour.",
+          ], ""))
+        CustodyPathsClear { paths: _ } =>
+          match exchange_census_app_code(code: plan.code) {
+            ExchangeCodeNotLive { body: b } =>
+              exit_failure(reason: join([
+                "the manifest code is not live: GitHub answered 404 for it. A code is spendable once and expires one hour after the click, so re-run census_app_registration_instruction_receipt and submit the form again. Body: ", b,
+              ], ""))
+            ExchangeRefused { reason: r } => exit_failure(reason: r as String)
+            ExchangeOutcomeUnknown { detail: d } => exit_failure(reason: d as String)
+            ExchangeReplyIncomplete { issuance: _ } =>
+              exit_failure(reason: "the conversion answered 201 with a reply missing the slug or client id, so the App it created cannot be addressed")
+            ExchangeIssued { issuance: issuance } =>
+              persist_then_read_back(issuance: issuance)
+          }
       }
   }
 }
@@ -880,34 +899,78 @@ fn custody_write_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
   }
 }
 
-// THE ISSUED SLUG IS ONLY KNOWN AFTER THE EXCHANGE, so its preflight runs here rather than before the
-// POST - but it still runs BEFORE any byte is written, so an occupied path is reported as an occupied
-// path with the credentials still in hand rather than as a half-finished write. The instruction it
-// carries is the recoverable one: move the existing files aside and re-run is impossible (the code is
-// spent), so it says to copy the credentials out of the REPLY, which the operator cannot do -- and
-// that is precisely why the check exists and why it is loud.
+// EVERYTHING REACHING HERE HAS A CREATED APP AND ITS ONLY COPY OF A PRIVATE KEY IN MEMORY, so every
+// arm below is an unrecoverable-loss arm and says so. The preflight that could have PREVENTED the
+// loss does not live here: it runs before the exchange, where the code is still live and a refusal
+// costs nothing. This function still handles a failed write, because a path clear a moment ago can
+// fail for reasons a preflight cannot see -- a full disk, a permission change, a racing process --
+// and those are genuinely only discoverable at the write.
+//
+// AN EARLIER CUT PUT THE PREFLIGHT HERE AND JUSTIFIED IT WITH A COMMENT SAYING THE ISSUED SLUG IS
+// ONLY KNOWN AFTER THE EXCHANGE. That was true when the handoff was addressed by the returned slug
+// and stopped being true when this PR moved the addressing to the declared NAME -- which is known
+// before the POST -- and the comment was not moved with it. So a stale annotation stood as a second,
+// false authority for the sequencing, and it justified exactly the loss the preflight exists to
+// prevent: a stale handoff file meant creating the App and then refusing its key (review 67573,
+// DESIGN 4c -- an annotation may not assert what the construction does not do).
 fn persist_then_read_back(issuance: GitHubAppCredentialIssuance) -> ProcessExit
   uses net: Network, fs: std.resources.Filesystem
 {
-  match custody_preflight(name: census_app_identity.name) {
-    CustodyPreflightSlugUnsafe { slug: s } =>
+  match persist_issued_credentials(custody_name: census_app_identity.name, issuance: issuance) {
+    CredentialNameUnsafe { name: s } =>
       custody_failure_exit(custody: CredentialNameUnsafe { name: s })
-    CustodyPathOccupied { path: p } =>
-      custody_failure_exit(custody: CredentialPersistRefused {
-        path: p,
-        cause: "a file already exists there and WriteOwnerOnly is create-only, so nothing was overwritten",
-      })
-    CustodyPathsClear { paths: _ } =>
-      match persist_issued_credentials(custody_name: census_app_identity.name, issuance: issuance) {
-        CredentialNameUnsafe { name: s } =>
-          custody_failure_exit(custody: CredentialNameUnsafe { name: s })
-        CredentialPersistRefused { path: p, cause: c } =>
-          custody_failure_exit(custody: CredentialPersistRefused { path: p, cause: c })
-        CredentialsHandedOff { paths: paths } =>
-          readback_exit(
-            readback: acquisition_readback_live(issuance: issuance),
-            paths: paths,
-          )
+    CredentialPersistRefused { path: p, cause: c } =>
+      custody_failure_exit(custody: CredentialPersistRefused { path: p, cause: c })
+    CredentialsHandedOff { paths: paths } =>
+      readback_exit(
+        readback: acquisition_readback_live(issuance: issuance),
+        paths: paths,
+      )
+  }
+}
+
+// THE PREFLIGHT'S DISCRIMINATION, EXECUTED. The property that matters -- an occupied handoff refuses
+// BEFORE exchange_census_app_code is reached -- is a control-flow fact visible in
+// census_app_acquire_with_code, and it was wrong once with a stale comment justifying it (review
+// 67573). What is checkable here without spending a real code is that the preflight actually
+// DISCRIMINATES: occupied reads occupied, clear reads clear, against real files on real disk. A
+// preflight that answered CustodyPathsClear unconditionally would sit in the right place and prevent
+// nothing, which is the failure a correctly-ordered call cannot rule out on its own.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/github_app_acquire.dag \
+//     --function custody_preflight_receipt
+fn custody_preflight_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+  match custody_handoff_addressing(name: custody_probe_slug) {
+    CustodyNameNotPathSafe { name: n } =>
+      exit_failure(reason: join(["the probe name was refused as unsafe: ", n as String], ""))
+    CustodyAddressed { paths: paths } => {
+      let clear_before = match custody_preflight(name: custody_probe_slug) {
+        CustodyPathsClear { paths: _ } => true
+        CustodyPathOccupied { path: _ } => false
+        CustodyPreflightNameUnsafe { name: _ } => false
       }
+      let planted = Filesystem.Write(path: paths.pem, content: "stale probe pem")
+      let occupied_after = match custody_preflight(name: custody_probe_slug) {
+        CustodyPathOccupied { path: p } => p == paths.pem
+        CustodyPathsClear { paths: _ } => false
+        CustodyPreflightNameUnsafe { name: _ } => false
+      }
+      let removed = shell.Remove.RecursiveForce(path: paths.pem).success
+      if !clear_before {
+        exit_failure(reason: join(["the probe handoff was not clear before planting; stale residue at ", paths.pem], ""))
+      } else if !planted.success {
+        exit_failure(reason: join(["could not plant the probe file at ", paths.pem, ": ", planted.error], ""))
+      } else if !occupied_after {
+        exit_failure(reason: join([
+          "the preflight reported a CLEAR path while a file existed at ", paths.pem,
+          " -- it would sit before the exchange and prevent nothing",
+        ], ""))
+      } else if !removed {
+        exit_failure(reason: join(["the probe file could not be removed from ", paths.pem], ""))
+      } else {
+        ExitSuccess
+      }
+    }
   }
 }
