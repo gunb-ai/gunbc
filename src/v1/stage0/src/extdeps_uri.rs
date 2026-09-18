@@ -113,22 +113,25 @@ pub fn uri_from_wire(url: String) -> Option<Rc<Uri>> {
             ParsedHrefScheme::UnknownHref => std::option::Option::None,
             ParsedHrefScheme::HrefScheme { scheme: scheme, .. } => {
                 let prefix = uri_scheme_wire(scheme.clone());
-                if v1_rt::starts_with(s.clone(), prefix.clone()) {
+                let locator = Rc::new(
+                    Rc::new(
+                        s.clone()
+                            .split(&prefix.clone())
+                            .map(|s| s.to_string())
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+                )
+                .join(&prefix.clone());
+                if (v1_rt::starts_with(s.clone(), prefix.clone())
+                    && !(locator.clone() == "".to_string()))
+                {
                     Some(Rc::new(Uri {
                         scheme: scheme.clone(),
-                        locator: Rc::new(
-                            Rc::new(
-                                s.clone()
-                                    .split(&prefix.clone())
-                                    .map(|s| s.to_string())
-                                    .collect::<Vec<_>>(),
-                            )
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                        )
-                        .join(&prefix.clone()),
+                        locator: locator.clone(),
                     }))
                 } else {
                     std::option::Option::None

@@ -12,7 +12,7 @@ import std.upsert_decision {
   Refuse,
 }
 import gunbc.ensure { EnsureObserveOnly, EnsureMayApply }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, Https, uri_wire, uri_from_wire }
 
 import extdeps.github.github { GitHubUser, Organization }
 import extdeps.transports.rest {
@@ -1127,4 +1127,26 @@ test fn w_the_installations_report_carries_the_count_and_a_token_request_per_ins
     && string_contains(s: report, pattern: "selection all")
     && string_contains(s: report, pattern: "account gunb-ai")
     && (installations_report(installations: []) == "installations=0\n\n")
+}
+
+// ----- the URI decode refuses rather than minting an empty NonEmptyStr -----
+
+// A BARE SCHEME HAS NO LOCATOR, and casting its empty remainder would produce a Uri carrying a
+// NonEmptyStr whose content is "" -- an inhabitant of a type whose whole meaning is non-emptiness.
+// uri_from_wire is the general decode side of the URI authority, so every consumer downstream
+// inherits whatever it mints; the check belongs at the one constructor (review 67524).
+test fn w_uri_from_wire_refuses_a_bare_scheme_and_round_trips_a_real_url() -> Bool {
+  let bare = match uri_from_wire(url: "https://") { Absent => true  Present { value: _ } => false }
+  let relative = match uri_from_wire(url: "/apps/x") { Absent => true  Present { value: _ } => false }
+  let round_trip = match uri_from_wire(url: "https://github.com/gunb-ai/gunbc") {
+    Absent => false
+    Present { value: u } =>
+      ((u.locator as String) == "github.com/gunb-ai/gunbc")
+        && ((uri_wire(uri: u) as String) == "https://github.com/gunb-ai/gunbc")
+  }
+  let scheme_text_inside_locator = match uri_from_wire(url: "https://x.example/redirect?to=https://y") {
+    Absent => false
+    Present { value: u } => (uri_wire(uri: u) as String) == "https://x.example/redirect?to=https://y"
+  }
+  bare && relative && round_trip && scheme_text_inside_locator
 }

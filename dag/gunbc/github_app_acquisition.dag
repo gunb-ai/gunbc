@@ -27,7 +27,7 @@ import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import extdeps.uri { Uri, uri_https }
+import extdeps.uri { Uri, uri_https, uri_wire }
 import extdeps.github.app {
   GitHubAppId,
   GitHubAppPermission,
