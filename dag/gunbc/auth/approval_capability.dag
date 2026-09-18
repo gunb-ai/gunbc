@@ -7,7 +7,7 @@ import std.encoding { base64_encode, base64_decode, UrlSafe }
 import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
 import extdeps.crypto.mac {
   MacSuite, MacKeyId, MacKey, MacVerification, MacVerified, VerifiedMessage,
-  MacSigning, MacSigned, MacKeyMaterialNotHex,
+  MacSigning, MacSigned, MacKeyMaterialNotHex, MacComputationRefused, HmacRefusal,
   mac_verification_reason, mac_suite_name, mac_sign,
 }
 
@@ -172,6 +172,8 @@ fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr
 //                          would refuse as CapabilityKeyIdDisagrees; minting it is an issuer bug,
 //                          and the place to report it is here, before it reaches an operator.
 //   non-hex key material -- no key, no tag (extdeps.crypto.mac MacKeyMaterialNotHex).
+//   the HMAC computation refused -- carried with its located cause (extdeps.crypto.mac
+//                          MacComputationRefused); unreachable for a well-formed key and message.
 //   a tag that is not lowercase hex -- the bound implementation broke its own contract; named as
 //                          such rather than folded into a cause that did not happen.
 type CapabilityIssuanceRefusal
@@ -179,6 +181,7 @@ type CapabilityIssuanceRefusal
   | IssuanceKeyMaterialNotHex { key_id: MacKeyId }
   | IssuanceImplementationTagNotHex { key_id: MacKeyId }
   | IssuanceImplementationTagNotOctets { key_id: MacKeyId }
+  | IssuanceComputationRefused { key_id: MacKeyId, cause: HmacRefusal }
 
 type CapabilityIssuance
   = CapabilityIssued { capability: ApprovalCapability }
@@ -193,6 +196,8 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
     match mac_sign(key: key, message: approval_capability_signing_input(c: claims)) {
       MacKeyMaterialNotHex { key_id: k } =>
         CapabilityIssuanceRefused { cause: IssuanceKeyMaterialNotHex { key_id: k } }
+      MacComputationRefused { key_id: k, cause: c } =>
+        CapabilityIssuanceRefused { cause: IssuanceComputationRefused { key_id: k, cause: c } }
       MacSigned { tag: t } =>
         match base16_decode_lower(hex: t.hex as String) {
           Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotHex { key_id: t.key_id } }

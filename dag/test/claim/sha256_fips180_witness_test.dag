@@ -1,0 +1,92 @@
+module test.claim.sha256_fips180_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.error_primitives { Result, Ok, Err }
+import std.integer { UInt8 }
+import std.machine_word { Word, Width32, WordReady, WordRefused, word_of_int }
+import extdeps.numeric.base16 { base16_encode_lower }
+import extdeps.crypto.sha2 {
+  Sha256Refusal, Sha256OctetOutOfRange,
+  sha256_octets, sha256_pad, sha256_small_sigma_0,
+}
+import std.logic { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// PUBLISHED VECTORS, NOT MEASUREMENTS. The three digests are the examples NIST publishes for
+// FIPS 180-4 SHA-256 (csrc.nist.gov Cryptographic Standards and Guidelines, "Examples with
+// Intermediate Values": SHA256.pdf) and the empty-input digest every implementation prints for
+// zero octets. None was read back out of extdeps.crypto.sha2. Together they cover: zero octets
+// (padding alone fills the block), a short one-block message, and a 56-octet message whose padding
+// cannot fit in the first block, so a SECOND block is compressed with the chained hash value.
+fn digest_hex(message: List<UInt8>) -> String {
+  match sha256_octets(message: message) {
+    Ok { value: d } => base16_encode_lower(octets: d)
+    Err { value: _ } => "refused"
+  }
+}
+
+// "abc" as octets: 0x61 0x62 0x63.
+test fn the_published_abc_digest_holds() -> Bool {
+  digest_hex(message: [97, 98, 99]) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+}
+
+test fn the_empty_message_digest_holds() -> Bool {
+  digest_hex(message: []) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
+
+// "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq": fourteen overlapping four-letter
+// windows starting at a, b, c, ... n. Spelled as its octets so no String encoding is under test here.
+fn two_block_message() -> List<UInt8> {
+  [
+    97, 98, 99, 100, 98, 99, 100, 101, 99, 100, 101, 102, 100, 101, 102, 103,
+    101, 102, 103, 104, 102, 103, 104, 105, 103, 104, 105, 106, 104, 105, 106, 107,
+    105, 106, 107, 108, 106, 107, 108, 109, 107, 108, 109, 110, 108, 109, 110, 111,
+    109, 110, 111, 112, 110, 111, 112, 113,
+  ]
+}
+
+test fn the_published_two_block_digest_holds() -> Bool {
+  digest_hex(message: two_block_message()) == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+}
+
+// PADDING SHAPE (§5.1.1), pinned separately from the digest so a padding defect is located here
+// rather than only as a wrong digest. 3 octets pad to one 64-octet block; 56 octets pad to two,
+// because 56 + 1 + 8 exceeds 64. The last octet of "abc"'s padding is the bit length, 24.
+test fn padding_block_counts_hold() -> Bool {
+  match sha256_pad(message: [97, 98, 99]) {
+    Err { value: _ } => false
+    Ok { value: one } =>
+      list_length(items: one) == 64
+        && get(xs: one, index: 3) == Present { value: 128 }
+        && get(xs: one, index: 63) == Present { value: 24 }
+        && match sha256_pad(message: two_block_message()) {
+          Err { value: _ } => false
+          Ok { value: two } => list_length(items: two) == 128 && get(xs: two, index: 127) == Present { value: 192 }
+        }
+  }
+}
+
+// σ0 ON THE FIRST INITIAL-HASH WORD, the value NUMERIC-BIT-0's witness pins for the same shape
+// (std.machine_word sha2_small_sigma_zero_shape_holds: rotr7 ⊕ rotr18 ⊕ shr3 of 0x6a09e667 =
+// 3121411458). Pinned here against THIS module's sigma so swapping a rotate for a shift, or the
+// amounts between the lower- and upper-case functions, is red at the function rather than only in
+// a digest.
+test fn small_sigma_zero_matches_the_substrate_pin() -> Bool {
+  match word_of_int(width: Width32, value: 1779033703) {
+    WordRefused { cause: _ } => false
+    WordReady { word: x } =>
+      match sha256_small_sigma_0(x: x) {
+        WordRefused { cause: _ } => false
+        WordReady { word: y } => y.value == 3121411458
+      }
+  }
+}
+
+// AN OCTET OUT OF RANGE REFUSES, it is not reduced modulo 256: 256 is not an octet.
+test fn an_out_of_range_octet_refuses() -> Bool {
+  match sha256_octets(message: [97, 256]) {
+    Err { value: Sha256OctetOutOfRange { value: v } } => v == 256
+    _ => false
+  }
+}

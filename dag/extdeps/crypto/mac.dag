@@ -4,11 +4,20 @@ import std.types { NonEmptyStr, String, Secret, Int }
 import std.logic { Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
 
+import std.error_primitives { Result, Ok, Err }
+import std.integer { UInt8 }
+import std.machine_word {
+  Word, Width8, WordResult, WordReady, WordRefused, WordRefusal,
+  word_of_int, word_xor, word_or,
+}
+import std.encoding { Utf8EncodeRefusal, utf8_encode_octets }
+import extdeps.numeric.base16 { base16_decode_lower, base16_encode_lower }
+import extdeps.crypto.sha2 { Sha256Refusal, sha256_octets, sha256_block_octets, sha256_digest_octets }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// HMAC per RFC 2104, keyed-hashing for message authentication. The anchor is the specification and
-// not the crate, because the crate is one realization of it and this module owns the SHAPE.
+// HMAC per RFC 2104, keyed-hashing for message authentication. The anchor is the specification:
+// this module owns the SHAPE and, since CRYPTO-0 (gunbc#11628), the computation as well.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -16,18 +25,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THIS MODULE DOES NOT COMPUTE ANYTHING, AND THAT IS THE POINT.
+// THIS MODULE COMPUTES HMAC IN .dag, AND WHAT IT STILL REFUSES TO HAND OUT.
 //
-// A MAC is the one primitive where authoring the algorithm is the failure. DESIGN §5 already says
-// the substrate should carry structure rather than re-coin it, and the standing instruction on this
-// work was explicit: bind an ESTABLISHED implementation, never invent a construction. So what lives
-// here is the interface, the algorithm identity, the key identity, and the refusal vocabulary --
-// the facts a caller must state. The bytes are produced by extdeps.rust.crate_hmac's realization.
+// An earlier revision computed nothing here and bound RustCrypto's Hmac<Sha256> through two v1
+// interpreter primitives, on the reasoning that authoring a MAC is the failure. The operator ruling
+// behind PRIMITIVE-EGRESS-0 (gunbc#11626) reverses that for pure computation: an algorithm the
+// substrate can express is MODELED, and a host library is at most an independent test oracle.
+// Authoring is not inventing -- this is RFC 2104 §2 transcribed over the FIPS 180-4 SHA-256 in
+// extdeps.crypto.sha2, and it is held to the RFC 4231 vectors, not to the crate it replaced.
 //
-// The neighbouring module extdeps.crypto.hash models SHA-256 as a DIGEST VALUE and verifies through
-// a shelled sha256sum; it deliberately does not produce one either. This is the same boundary drawn
-// one step further out: a Digest is a fact you can carry, a MAC is a fact you can only check.
-data mac_is_interface_only_note: NonEmptyStr = "extdeps.crypto.mac declares the MAC contract and never implements it. Verification is performed by the bound realization's constant-time comparison, which is the operation RFC 2104 §6 and every established implementation expose for this purpose; a caller that extracts tag bytes and compares them with ordinary equality has reintroduced the timing oracle the library exists to close, so no accessor here yields the computed tag."
+// What survives from the old boundary is the part that was never about who computes: no function
+// here returns the tag computed during VERIFICATION, so no caller can compare one with an ordinary
+// early-exit equality. mac_verify compares inside this module, over every octet, with no early exit.
+data mac_is_interface_only_note: NonEmptyStr = "extdeps.crypto.mac computes HMAC-SHA-256 in .dag and still yields no verification-side tag: mac_verify compares the computed and presented tags itself, accumulating the XOR of every octet pair before deciding, so the work does not depend on where the first difference is. That full-scan shape is the modeled half of constant-time comparison; a realization must preserve it (no short-circuit), which is a realization obligation this module cannot observe."
 
 // ONE FIXED SUITE, NAMED. An algorithm field that a message can choose is the algorithm-confusion
 // hole: the verifier must decide the suite from its own configuration, never from the input it is
@@ -36,7 +46,7 @@ data mac_is_interface_only_note: NonEmptyStr = "extdeps.crypto.mac declares the 
 type MacSuite =
   | HmacSha256
 
-data hmac_sha256_authority_note: NonEmptyStr = "HMAC-SHA-256: HMAC (RFC 2104) instantiated with SHA-256 (FIPS 180-4, cited by extdeps.crypto.hash). The tag is 32 octets. RustCrypto's `hmac` crate provides this as Hmac<Sha256> together with verify_slice, which performs the comparison in constant time."
+data hmac_sha256_authority_note: NonEmptyStr = "HMAC-SHA-256: HMAC (RFC 2104) instantiated with SHA-256 (FIPS 180-4, cited by extdeps.crypto.hash). The tag is 32 octets. Computed by hmac_sha256_octets below over extdeps.crypto.sha2; no host library is on this route."
 
 fn mac_suite_name(s: MacSuite) -> NonEmptyStr {
   match s {
@@ -93,8 +103,8 @@ data symmetric_verification_is_issuance_note: NonEmptyStr = "With HMAC the verif
 // MacKeys lives inside the broker.
 //
 // This does NOT reopen the timing oracle mac_is_interface_only_note closes. That note is about a
-// VERIFIER comparing a computed tag itself; mac_verify still hands its comparison to the bound
-// implementation and still yields no tag. A MacTag is what an issuer transmits, and nothing in this
+// VERIFIER comparing a computed tag itself; mac_verify still performs its comparison internally
+// and still yields no tag. A MacTag is what an issuer transmits, and nothing in this
 // module compares one.
 //
 // The tag names the key and suite it was produced under so an issuer cannot place it in an envelope
@@ -106,22 +116,153 @@ type MacTag {
   hex: NonEmptyStr
 }
 
-// Issuance refuses rather than fabricating. The only malformed input the bound implementation can
-// see is key material that is not hex -- there is then no key, so there is no tag to report.
+// Issuance refuses rather than fabricating. Key material that is not hex means there is no key, so
+// there is no tag to report. MacComputationRefused carries the located cause of any other refusal
+// of the computation -- a message with no UTF-8 encoding, or a substrate refusal inside SHA-256 --
+// none of which a well-formed call reaches, and each of which is a defect worth naming.
 type MacSigning
   = MacSigned { tag: MacTag }
   | MacKeyMaterialNotHex { key_id: MacKeyId }
+  | MacComputationRefused { key_id: MacKeyId, cause: HmacRefusal }
 
-// `hmac_sha256_hex` is the issuing twin of hmac_sha256_verify_hex: the same RustCrypto Hmac<Sha256>,
-// the same hex key spelling, absent (never a tag) on a non-hex key. The suite match is total so a
-// second MacSuite arm cannot be signed by the HMAC-SHA-256 implementation without an authored arm.
+// ── HMAC-SHA-256, RFC 2104 §2 ────────────────────────────────────────────────────────────────
+// HMAC(K, m) = H((K0 ⊕ opad) ‖ H((K0 ⊕ ipad) ‖ m)), with B and L read from extdeps.crypto.sha2.
+// K0 is K zero-padded to B octets, or H(K) zero-padded when K is longer than B (§2 step 1; the
+// RFC 4231 §4.7 vector exercises that arm). ipad is 0x36 (54) and opad 0x5c (92) repeated B times;
+// each octet XOR is a std.machine_word operation at Width8.
+type HmacRefusal
+  = HmacKeyNotHex
+  | HmacMessageNotEncodable { cause: Utf8EncodeRefusal }
+  | HmacDigestRefused { cause: Sha256Refusal }
+  | HmacOctetRefused { cause: WordRefusal }
+
+data hmac_inner_pad_octet: Int = 54
+data hmac_outer_pad_octet: Int = 92
+
+fn hmac_zero_extend(octets: List<UInt8>, count: Int) -> List<UInt8> {
+  if list_length(items: octets) >= count { octets } else { hmac_zero_extend(octets: octets |> list_push(0), count: count) }
+}
+
+fn hmac_block_key(key: List<UInt8>) -> Result<List<UInt8>, HmacRefusal> {
+  if list_length(items: key) > sha256_block_octets() {
+    match sha256_octets(message: key) {
+      Err { value: e } => Err { value: HmacDigestRefused { cause: e } }
+      Ok { value: hk } => Ok { value: hmac_zero_extend(octets: hk, count: sha256_block_octets()) }
+    }
+  } else {
+    Ok { value: hmac_zero_extend(octets: key, count: sha256_block_octets()) }
+  }
+}
+
+fn hmac_octet_word(o: Int) -> Result<Word, HmacRefusal> {
+  match word_of_int(width: Width8, value: o) {
+    WordReady { word: w } => Ok { value: w }
+    WordRefused { cause: c } => Err { value: HmacOctetRefused { cause: c } }
+  }
+}
+
+fn hmac_xor_pad(key: List<UInt8>, pad: Word, acc: List<UInt8>) -> Result<List<UInt8>, HmacRefusal> {
+  match key.first() {
+    Absent => Ok { value: acc }
+    Present { value: k } =>
+      match hmac_octet_word(o: k) {
+        Err { value: e } => Err { value: e }
+        Ok { value: kw } =>
+          match word_xor(a: kw, b: pad) {
+            WordRefused { cause: c } => Err { value: HmacOctetRefused { cause: c } }
+            WordReady { word: x } => hmac_xor_pad(key: key.skip(n: 1), pad: pad, acc: acc |> list_push(x.value))
+          }
+      }
+  }
+}
+
+fn hmac_sha256_octets(key: List<UInt8>, message: List<UInt8>) -> Result<List<UInt8>, HmacRefusal> {
+  match hmac_block_key(key: key) {
+    Err { value: e } => Err { value: e }
+    Ok { value: k0 } =>
+      match hmac_octet_word(o: hmac_inner_pad_octet) {
+        Err { value: e } => Err { value: e }
+        Ok { value: ipad } =>
+          match hmac_octet_word(o: hmac_outer_pad_octet) {
+            Err { value: e } => Err { value: e }
+            Ok { value: opad } =>
+              match hmac_xor_pad(key: k0, pad: ipad, acc: []) {
+                Err { value: e } => Err { value: e }
+                Ok { value: inner_key } =>
+                  match hmac_xor_pad(key: k0, pad: opad, acc: []) {
+                    Err { value: e } => Err { value: e }
+                    Ok { value: outer_key } =>
+                      match sha256_octets(message: concat(inner_key, message)) {
+                        Err { value: e } => Err { value: HmacDigestRefused { cause: e } }
+                        Ok { value: inner } =>
+                          match sha256_octets(message: concat(outer_key, inner)) {
+                            Err { value: e } => Err { value: HmacDigestRefused { cause: e } }
+                            Ok { value: tag } => Ok { value: tag }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The corpus's spelling of a MAC call: key material as lowercase hex (the keyring's form), the
+// message as a String taken as its UTF-8 octets. A key that is not lowercase hex refuses; it is
+// never reinterpreted as text. Issuance and verification both go through here, so the two cannot
+// disagree about the key spelling or the message octets.
+fn hmac_sha256_of_hex_key(key_hex: String, message: String) -> Result<List<UInt8>, HmacRefusal> {
+  match base16_decode_lower(hex: key_hex) {
+    Absent => Err { value: HmacKeyNotHex }
+    Present { value: key } =>
+      match utf8_encode_octets(s: message) {
+        Err { value: e } => Err { value: HmacMessageNotEncodable { cause: e } }
+        Ok { value: m } => hmac_sha256_octets(key: key, message: m)
+      }
+  }
+}
+
+// FULL-SCAN TAG COMPARISON. The OR of the XOR of every octet pair is accumulated before anything is
+// decided, so the work is the same whether the tags differ in the first octet or the last -- the
+// modeled half of constant-time comparison. Lengths are checked before this, in the open: a tag's
+// length is the suite's public L.
+fn hmac_tag_difference(a: List<UInt8>, b: List<UInt8>, acc: Word) -> Result<Word, HmacRefusal> {
+  match a.first() {
+    Absent => Ok { value: acc }
+    Present { value: x } =>
+      match b.first() {
+        Absent => Ok { value: acc }
+        Present { value: y } =>
+          match hmac_octet_word(o: x) {
+            Err { value: e } => Err { value: e }
+            Ok { value: xw } =>
+              match hmac_octet_word(o: y) {
+                Err { value: e } => Err { value: e }
+                Ok { value: yw } =>
+                  match word_xor(a: xw, b: yw) {
+                    WordRefused { cause: c } => Err { value: HmacOctetRefused { cause: c } }
+                    WordReady { word: d } =>
+                      match word_or(a: acc, b: d) {
+                        WordRefused { cause: c } => Err { value: HmacOctetRefused { cause: c } }
+                        WordReady { word: next } => hmac_tag_difference(a: a.skip(n: 1), b: b.skip(n: 1), acc: next)
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The suite match is total so a second MacSuite arm cannot be signed by the HMAC-SHA-256
+// computation without an authored arm.
 fn mac_sign(key: MacKey, message: NonEmptyStr) -> MacSigning {
   match key.suite {
     HmacSha256 =>
-      match hmac_sha256_hex(key.material as String, message as String) {
-        Absent => MacKeyMaterialNotHex { key_id: key.id }
-        Present { value: hex } =>
-          MacSigned { tag: MacTag { key_id: key.id, suite: key.suite, hex: hex as NonEmptyStr } }
+      match hmac_sha256_of_hex_key(key_hex: key.material as String, message: message as String) {
+        Err { value: HmacKeyNotHex } => MacKeyMaterialNotHex { key_id: key.id }
+        Err { value: e } => MacComputationRefused { key_id: key.id, cause: e }
+        Ok { value: tag } =>
+          MacSigned { tag: MacTag { key_id: key.id, suite: key.suite, hex: base16_encode_lower(octets: tag) as NonEmptyStr } }
       }
   }
 }
@@ -159,12 +300,15 @@ type MacVerification
   | MacKeyRetired { key_id: MacKeyId, retired_at: NonEmptyStr }
   | MacSuiteMismatch { expected: MacSuite, key_suite: MacSuite }
   | MacTagMalformed { octets_declared: Int, octets_expected: Int }
+  | MacTagNotHex { key_id: MacKeyId }
+  | MacKeyMaterialMalformed { key_id: MacKeyId }
+  | MacVerificationRefused { key_id: MacKeyId, cause: HmacRefusal }
 
 // ── The realization seam ─────────────────────────────────────────────────────────────────────
 // VerifiedMessage is sole_constructor, so nothing outside this module can mint one -- which is the
 // point, and which also means this module must expose the ONE way evidence comes into existence.
-// This is it: the bound implementation performs the constant-time comparison over (key, message,
-// tag) and reports its verdict here, and the evidence is assembled around THE MESSAGE IT WAS GIVEN.
+// This is it: mac_verify performs the full-scan comparison over (key, message, tag) and reports its
+// verdict here, and the evidence is assembled around THE MESSAGE IT WAS GIVEN.
 //
 // What that makes structural, and what it does not:
 //
@@ -172,11 +316,11 @@ type MacVerification
 //     MacVerified and then decide what it authenticated, because the message is a parameter of the
 //     only constructor. That is the substitution this seam closes.
 //
-//   NOT structural -- that the implementation actually ran HMAC over those bytes. A caller passing
-//     `true` here is asserting the comparison succeeded, and this module cannot check that. The
-//     realization is the trusted party for that half, exactly as it is for any host effect, and it
-//     is why this function is named for the boundary it sits on rather than being spelled as an
-//     ordinary constructor a caller might reach for casually.
+//   NOT structural -- that HMAC actually ran over those bytes. A caller passing `true` here is
+//     asserting the comparison succeeded, and this function cannot check that. mac_verify is the
+//     production caller; the others are witnesses supplying a verdict at this boundary (DESIGN §3,
+//     a witness discriminates at one interface), paired with the round-trip witness that runs
+//     mac_verify for real.
 //
 // A verdict of false becomes MacTagMismatch rather than a bare absence, because "the tag did not
 // verify" is the incident worth naming.
@@ -195,44 +339,53 @@ fn mac_verification_from_implementation(
   }
 }
 
-// ── The bound implementation ─────────────────────────────────────────────────────────────────
-// THE ONE FUNCTION THAT ACTUALLY VERIFIES, and it is where this module stops being an interface.
-// `hmac_sha256_verify_hex` is a host primitive backed by RustCrypto's Hmac<Sha256> and its
-// `verify_slice`, which compares in CONSTANT TIME. That is not an optimization detail: an ordinary
-// equality over MAC bytes leaks, through timing, how many leading bytes of a forged tag were
-// correct, which reduces forging a 32-byte tag from infeasible to a few thousand requests. It is
-// the reason nothing in this module hands a caller a computed tag to compare for itself.
+// ── Verification ─────────────────────────────────────────────────────────────────────────────
+// THE ONE FUNCTION THAT ACTUALLY VERIFIES: it recomputes the tag over the key and the exact message
+// it was given, and compares full-scan (hmac_tag_difference) -- an early-exit equality over MAC
+// octets leaks through timing how many leading octets of a forged tag were right, which is why no
+// function here hands a caller the computed tag to compare for itself.
 //
-// It is a host primitive rather than a shell transport because every shell spelling of HMAC puts
-// the KEY IN THE ARGV, which gunbc.credential_argv_exposure forbids -- and with a symmetric MAC
-// the verification key is the signing key, so a leaked key forges approvals rather than merely
-// reading them.
+// Hex rather than base64 for key and tag: the corpus models digests as lowercase hex
+// (extdeps.crypto.hash Digest.hex), and hex has exactly one spelling per value.
 //
-// Hex rather than base64 for key and tag: the corpus already models digests as lowercase hex
-// (extdeps.crypto.hash Digest.hex), and hex has exactly one spelling per value where base64 has
-// several -- a decoder accepting more spellings than it should is how one envelope acquires two
-// representations, which is the ambiguity the signing input was shaped to avoid.
-//
-// Every malformed input answers false rather than raising, and the refusal a caller sees is
-// MacTagMismatch in all of those cases. A caller cannot distinguish a bad key encoding from a
-// wrong tag, which is correct: both mean the same thing to the only consumer -- this message is
-// not authenticated -- and reporting which would tell a prober whether their key guess was
-// well-formed.
+// Every refusal is TYPED rather than collapsed into a mismatch (gunbc#11628: malformed input is
+// never `false` when it is undecodable). A presented tag that is not lowercase hex is MacTagNotHex;
+// one of the wrong length is MacTagMalformed; key material that is not hex is
+// MacKeyMaterialMalformed. The key is the verifier's own configuration, never attacker input, so
+// naming its malformation tells a prober nothing; the two tag refusals describe only what the
+// prober sent. Only a well-formed tag that differs is MacTagMismatch.
 fn mac_verify(
   key: MacKey,
   message: NonEmptyStr,
   tag_hex: NonEmptyStr,
 ) -> MacVerification {
-  mac_verification_from_implementation(
-    key_id: key.id,
-    suite: key.suite,
-    message: message,
-    implementation_verified: hmac_sha256_verify_hex(
-      key.material as String,
-      message as String,
-      tag_hex as String,
-    ),
-  )
+  match base16_decode_lower(hex: tag_hex as String) {
+    Absent => MacTagNotHex { key_id: key.id }
+    Present { value: presented } =>
+      if list_length(items: presented) != sha256_digest_octets() {
+        MacTagMalformed { octets_declared: list_length(items: presented), octets_expected: sha256_digest_octets() }
+      } else {
+        match hmac_sha256_of_hex_key(key_hex: key.material as String, message: message as String) {
+          Err { value: HmacKeyNotHex } => MacKeyMaterialMalformed { key_id: key.id }
+          Err { value: e } => MacVerificationRefused { key_id: key.id, cause: e }
+          Ok { value: computed } =>
+            match hmac_octet_word(o: 0) {
+              Err { value: e } => MacVerificationRefused { key_id: key.id, cause: e }
+              Ok { value: zero } =>
+                match hmac_tag_difference(a: computed, b: presented, acc: zero) {
+                  Err { value: e } => MacVerificationRefused { key_id: key.id, cause: e }
+                  Ok { value: difference } =>
+                    mac_verification_from_implementation(
+                      key_id: key.id,
+                      suite: key.suite,
+                      message: message,
+                      implementation_verified: difference.value == 0,
+                    )
+                }
+            }
+        }
+      }
+  }
 }
 
 fn mac_verification_ok(v: MacVerification) -> Bool {
@@ -243,6 +396,9 @@ fn mac_verification_ok(v: MacVerification) -> Bool {
     MacKeyRetired { key_id: _, retired_at: _ } => false
     MacSuiteMismatch { expected: _, key_suite: _ } => false
     MacTagMalformed { octets_declared: _, octets_expected: _ } => false
+    MacTagNotHex { key_id: _ } => false
+    MacKeyMaterialMalformed { key_id: _ } => false
+    MacVerificationRefused { key_id: _, cause: _ } => false
   }
 }
 
@@ -264,5 +420,8 @@ fn mac_verification_reason(v: MacVerification) -> String {
       concat("mac suite mismatch: verifier expects ", concat(mac_suite_name(s: e) as String, concat(", key declares ", mac_suite_name(s: g) as String)))
     MacTagMalformed { octets_declared: d, octets_expected: x } =>
       concat("mac tag length is wrong: declared ", concat(to_string(n: d), concat(" octets, expected ", to_string(n: x))))
+    MacTagNotHex { key_id: k } => concat("mac tag is not lowercase hex, presented against key ", k as String)
+    MacKeyMaterialMalformed { key_id: k } => concat("mac key material is not lowercase hex for key ", k as String)
+    MacVerificationRefused { key_id: k, cause: _ } => concat("mac computation refused under key ", k as String)
   }
 }
