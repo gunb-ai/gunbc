@@ -42,7 +42,7 @@ enum ProposedDecision: String {
 /// extdeps.crypto.signature VerifyingKey. The suite and encoding travel explicitly
 /// (signature_suite_wire, public_key_encoding_wire) and are the enclave's only values
 /// (extdeps.apple.secure_enclave secure_enclave_signing_suite / secure_enclave_public_key_encoding).
-struct VerifyingKey: Equatable {
+struct VerifyingKey: Equatable, Codable {  // Codable only for the local keychain record; the wire spelling is WireEncode.verifyingKey
     static let suite = "ECDSA-P256-SHA256"
     static let encoding = "SEC1-uncompressed"
     var point_b64url: String
