@@ -1,7 +1,7 @@
 module gunbc.cloudflare.boot_origin
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.content_hash { ContentHash, Sha256Hash, Fnv1a64, Sha1Hash, Sha512Hash, Sha256Digest }
+import std.content_hash { ContentHash, Sha256Hash, Fnv1a64, Sha1Hash, Sha512Hash, Sha256Digest, content_hash_eq_cryptographic }
 import std.human_intervention {
   HumanIntervention,
   HumanInterventionIdentity,
@@ -107,7 +107,7 @@ fn classify_boot_publish(object: BootBundleObject, answer: BootPutAnswer) -> Boo
   match answer {
     BootPutCreated {} => BootObjectPublished { key: key }
     BootPutKeyOccupied { occupant_digest: o } =>
-      if (o.hex as String) == (object.digest.hex as String) {
+      if content_hash_eq_cryptographic(left: o, right: object.digest) {
         BootObjectAlreadyIdentical { key: key }
       } else {
         BootObjectOccupiedByDifferentBytes { key: key, occupant: o }
@@ -196,7 +196,7 @@ fn classify_boot_readback(object: BootBundleObject, observation: BootReadbackObs
   let key = boot_object_key(digest: object.digest)
   match observation {
     BootReadbackServed { served_digest: s } =>
-      if (s.hex as String) == (object.digest.hex as String) {
+      if content_hash_eq_cryptographic(left: s, right: object.digest) {
         BootObjectReadBackConfirmed { key: key }
       } else {
         BootObjectReadBackMismatch { key: key, served: s }
