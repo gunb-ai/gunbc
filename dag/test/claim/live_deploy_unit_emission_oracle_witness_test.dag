@@ -561,13 +561,6 @@ test fn slice_description_names_the_unit() -> Bool {
   }
 }
 
-// DECISION REVERSED 2026-09-12: the slice's bounds are the DEPLOYMENT'S OWN rows, not the runner
-// slot's. The old row asserted derivation from `gunbc_runner_slot_desired()` on the grounds that
-// both name one workload; the floor-demand ruling sized the runner row from whole-corpus
-// resolution the deployment never performs, which falsified that identity while leaving the
-// assertion green. This witness now pins the decoupling: the deployment's bytes must match its own
-// authority AND must be independent of the runner row, so a future edit that re-points either one
-// at the other reds here.
 // DECISION: the slice forbids swap outright. The RED is the 2026-09-18 state -- MemorySwapMax
 // unlimited, the serve heap 9.7 GB on disk, requests stalling on swap-in -- which this witness
 // distinguishes from any nonzero allowance, not only from absence.
@@ -585,6 +578,13 @@ test fn slice_forbids_swap() -> Bool {
   }
 }
 
+// DECISION REVERSED 2026-09-12: the slice's bounds are the DEPLOYMENT'S OWN rows, not the runner
+// slot's. The old row asserted derivation from `gunbc_runner_slot_desired()` on the grounds that
+// both name one workload; the floor-demand ruling sized the runner row from whole-corpus
+// resolution the deployment never performs, which falsified that identity while leaving the
+// assertion green. This witness now pins the decoupling: the deployment's bytes must match its own
+// authority AND must be independent of the runner row, so a future edit that re-points either one
+// at the other reds here.
 test fn slice_memory_bounds_are_the_deployments_own() -> Bool {
   slice_has_bytes(file: slice_file(), target: live_deploy_slice_memory_max, as_max: true)
     && slice_has_bytes(file: slice_file(), target: live_deploy_slice_memory_high, as_max: false)
