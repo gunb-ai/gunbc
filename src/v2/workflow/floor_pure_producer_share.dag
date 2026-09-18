@@ -467,6 +467,18 @@ import v2.std.collection { List }
 // reason the parse rows above keep normalize out: the claims in that file are ABOUT the collector,
 // so sharing the collection would hand each one a precomputed answer to the question it asks. The
 // walk stays per claim; only the stage no claim names is shared.
+// v2.test.name_resolve.test_code_reference_wall inhabitance_normalized EARNS ITS ROW ON THE
+// NEW-WITNESS STEP BUDGET, NOT THE CPU LINE. Recompute: each of its two consumers
+// (supplied_root_is_what_normalize_emits_holds, supplied_channel_is_what_normalize_emits_holds) spends
+// almost all of its eval steps on this one tokenize, parse and normalize of a one-member module,
+// which by itself is over the floor's 72,300-step new-witness budget. Re-derive with claim_batch
+// --entry on that file ([witness] eval_steps for either claim, against a claim reading only the
+// supplied fixture). Sharing: two claims, one value. Serve below recompute: the value is
+// Outcome<NormalizedTree> -- Nodes, symbols and the TestMarkerChannel's symbol rows, portable to the
+// bottom -- so a serve is an Rc hand-over. It is WARM: nullary, sources inline in the witness. The
+// claims are about what normalize EMITS, and sharing does not hand them their answer: the shared
+// value is the real producer's output, and each claim still computes its own verdict from it (a
+// content-hash comparison against the supplied fixture, and a channel read).
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -495,7 +507,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
-  "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized"
+  "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
+  "v2.test.name_resolve.test_code_reference_wall.inhabitance_normalized"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

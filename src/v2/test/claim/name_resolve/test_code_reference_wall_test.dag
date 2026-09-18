@@ -180,27 +180,43 @@ fn serving_module_with_body(body: Node) -> Outcome<NormalizedTree> {
 // INHABITANCE, THE ROUTE THE SUPPLIED ROOTS STAND ON: the real front end, on the source text the
 // inhabitance fixture encodes (built with the same wall_member and wall_module_root every claim below
 // uses), emits the same root (by content hash, which does not read occurrence ids) and a
-// channel marking exactly `peer_leaf`. The two halves are the two things every claim below reads.
-test fn supplied_root_is_what_normalize_emits_holds() -> Bool {
+// channel marking exactly `peer_leaf` -- one claim per half, both reading the one shared front-end
+// value below. They are the two things every claim below reads.
+// THE SHARE POINT: the real front end's output for `inhabitance_module_source`, enrolled WARM in
+// v2.workflow.floor_pure_producer_share. The floor forces it once, during strict preparation and
+// outside every per-claim budget, and both inhabitance claims read the same value. A real
+// tokenize, parse and normalize of even a one-member module costs about 75k eval steps, over the
+// 72,300 new-witness budget by itself, so paying it once and sharing it is the only way the real
+// path gets onto the floor at all.
+fn inhabitance_normalized() -> Outcome<NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: inhabitance_module_source, file: ^wall_peer_file, rules: lm.lex) {
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Rejected { diagnostics: _ } => false
-            Accepted { value: emitted, diagnostics: _ } =>
-              match inhabitance_module() {
-                Rejected { diagnostics: _ } => false
-                Accepted { value: supplied, diagnostics: _ } =>
-                  (content_hash(n: emitted.root) == content_hash(n: supplied.root))
-                    && (test_marker_channel_count(channel: emitted.test_markers) == 1)
-                    && test_marker_channel_marks(channel: emitted.test_markers, name: ^peer_leaf)
-              }
-          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: artifact, diagnostics: _ } => normalize(parse_tree: artifact.tree)
       }
+  }
+}
+
+test fn supplied_root_is_what_normalize_emits_holds() -> Bool {
+  match inhabitance_normalized() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: emitted, diagnostics: _ } =>
+      match inhabitance_module() {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: supplied, diagnostics: _ } => content_hash(n: emitted.root) == content_hash(n: supplied.root)
+      }
+  }
+}
+
+test fn supplied_channel_is_what_normalize_emits_holds() -> Bool {
+  match inhabitance_normalized() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: emitted, diagnostics: _ } =>
+      (test_marker_channel_count(channel: emitted.test_markers) == 1)
+        && test_marker_channel_marks(channel: emitted.test_markers, name: ^peer_leaf)
   }
 }
 
