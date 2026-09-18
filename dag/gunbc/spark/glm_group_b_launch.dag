@@ -8,7 +8,7 @@ import extdeps.vllm.environment {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
 import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4,
   glm_native_concurrent_profile, ArmIntent,
 }
 import gunbc.spark.serving_arm_launch { ArmLaunchPlan, plan_arm_launch_for }
@@ -28,6 +28,34 @@ import gunbc.spark.serving_arm_launch { ArmLaunchPlan, plan_arm_launch_for }
 // and every Group-B consumer now takes them from this module rather than spelling its own. What each
 // consumer still chooses is its REALIZATION -- create-and-start under a transaction, or a systemd unit's
 // Exec line -- which is the handler axis DESIGN section 3 puts in the realization layer.
+//
+// ── THE RUNTIME IS THE IMAGE GROUP B IS ACTUALLY RUNNING, AND THAT TOOK A MEASUREMENT ─────────
+//
+// THE CONSOLIDATION IS WHAT MADE THIS VISIBLE, AND IT WAS A LIVE REGRESSION WAITING TO HAPPEN. While
+// Group B had two launch authorities they named two different images and nothing could report it: the
+// systemd units carried gunbc.spark.serving_arm glm_native_engine_build_image -- the content-hashed TAG
+// -- while gunbc.spark.serving_arm_launch planned GunbcGlm53NopeDerivedGb10's DIGEST pin, which is
+// sha256:41366caf... Read on srv9 on 2026-09-18, that id resolves to
+// gunbc-vllm-glm53-nope-gb10:derived-63d1a4759d0075b4, created 2026-09-12: the OLDER hand-built NoPE
+// image. The four running Group B containers report .Image = sha256:c7d63d15..., a different build.
+// So relaunching through the NoPE row would have moved the arm BACKWARDS onto an image it stopped
+// serving, and the direct-docker relaunch route has been planning exactly that for days.
+//
+// THE RUNTIME IS THEREFORE GunbcGlm53DerivedGb10, whose row #11570 landed on main pinned to the
+// content id the live containers report (gunbc.spark.runtime_architecture_registry_reading
+// glm53_derived_observed_config_id). #11570 left this cutover to this change deliberately; taking it
+// here is what makes the plan's image the image, rather than a second candidate for it.
+//
+// THE NoPE ROW STAYS, AS HISTORY RATHER THAN AS AN ALTERNATIVE. It records a real image that really
+// served, and deleting it would erase the evidence that this arm ran on two builds -- which is the
+// same deletion this change refused on the switch-history rows one file over. What it is no longer is
+// the runtime any Group-B launch selects.
+//
+// THE PIN IS A BARE CONTENT ID AND THAT IS LOAD-BEARING, NOT INCIDENTAL. Neither image was ever
+// pushed, so `docker image inspect` reports RepoDigests empty on both and a `repo@sha256:` reference
+// resolves to nothing on these hosts. The bare id does resolve, for inspect and for create; it does
+// NOT resolve as a Dockerfile FROM, which is a different resolver in the same daemon. A launch that
+// rendered the registry form would fail every rank at pull.
 //
 // THE INTENT IS THE CALLER'S AND STAYS A PARAMETER, because it is not a property of the launch: it is
 // the caller's declaration of whether it is asking for normal serving or for the bounded experiment that
@@ -84,7 +112,7 @@ fn glm_group_b_deployment_env() -> List<DockerEnvAssignment> {
 fn glm_group_b_launch_plan(intent: ArmIntent) -> ArmLaunchPlan {
   plan_arm_launch_for(
     checkpoint: Glm53NativeFp8,
-    runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53DerivedGb10,
     topology: FourSparkTp4,
     group: glm_group_b_group,
     intent: intent,

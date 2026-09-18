@@ -12,7 +12,8 @@ import extdeps.vllm.environment {
   VllmEngineReadyTimeoutSeconds, VllmSparseIndexerMaxLogitsMb, vllm_environment_assignment_wire,
 }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
-import gunbc.spark.serving_arm { glm_native_engine_build, glm_native_engine_build_image }
+import gunbc.spark.serving_arm { glm53_derived_row, runtime_artifact_wire }
+import gunbc.spark.runtime_architecture_registry_reading { glm53_derived_observed_config_id }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
 import gunbc.spark.glm_group_b_launch {
   glm_group_b_engine_ready_timeout_seconds, glm_group_b_sparse_indexer_max_logits_mb,
@@ -144,15 +145,29 @@ test fn w_the_drifted_fields_reach_the_rendered_unit() -> Bool {
 // pins rather than a second spelling of the same build: the renderer used to carry the build's
 // content-hashed TAG while the plan carried the registry reading's DIGEST, which is one image under
 // two names and therefore two answers to "what is running".
+// ── (4) ONE IMAGE, AND IT IS THE ONE THE ARM IS RUNNING ───────────────────────────────────────
+//
+// THE RED THIS ROW EXISTS FOR IS A MEASURED NEAR-MISS, NOT A HYPOTHETICAL. Before the consolidation the
+// units named gunbc.spark.serving_arm glm_native_engine_build_image (a content-hashed TAG) while the
+// launch plan named GunbcGlm53NopeDerivedGb10's digest pin, sha256:41366caf... Read on srv9 on
+// 2026-09-18, that id is the OLDER hand-built NoPE image (created 2026-09-12); the four running Group B
+// containers report .Image = sha256:c7d63d15..., which is what glm53_derived_row pins. A relaunch
+// through the old row would have moved the live arm backwards onto an image it had stopped serving,
+// and nothing in the corpus could have said so.
+//
+// SO THE CLAIM IS AGAINST THE ROW, NOT AGAINST "SOME DIGEST". Re-pointing the plan's runtime at any
+// other row turns this red, as does a pin that stops matching the config id the registry reading took
+// off the answering incarnation. It also pins the FORM: neither image was ever pushed, RepoDigests is
+// empty on both, and only a bare content id resolves on these hosts -- a `repo@sha256:` reference
+// would fail every rank at pull, so the absence of an `@` is asserted rather than assumed.
 test fn w_every_rank_launches_one_image() -> Bool {
   let lines = glm_native_launch_lines()
   count(lines) == 4
     && all(lines, l => (l.image_reference as String) == (l.container.image as String))
-    && all(lines, l => match lines.first() {
-         Absent => false
-         Present { value: h } => (l.image_reference as String) == (h.image_reference as String)
-       })
-    && !((glm_native_engine_build_image(build: glm_native_engine_build) as String) == "")
+    && all(lines, l => (l.image_reference as String) == (runtime_artifact_wire(a: glm53_derived_row.artifact) as String))
+    && all(lines, l => (l.image_reference as String) == (glm53_derived_observed_config_id as String))
+    && all(lines, l => !string_contains(s: l.image_reference as String, pattern: "@"))
+    && all(lines, l => string_contains(s: l.image_reference as String, pattern: "sha256:"))
 }
 
 test fn w_all_glm_group_b_launch_authority_claims_hold() -> Bool {
