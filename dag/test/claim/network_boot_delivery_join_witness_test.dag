@@ -51,6 +51,7 @@ import gunbc.network_boot_delivery {
   ProductionTrustedBootstrap,
   SignedBootManifestAbsent,
   SignedBootManifestIdentified,
+  SignedBootManifestVerified,
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
   SiteBootstrapDiscovery,
@@ -169,7 +170,7 @@ fn control_ok() -> BootControlObserved {
 }
 
 fn manifest_ok() -> SignedBootManifestStanding {
-  SignedBootManifestIdentified {
+  SignedBootManifestVerified {
     identity: SignedBootManifestIdentity {
       target_unit: unit,
       attempt_id: attempt,
@@ -332,7 +333,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     site: site_ok(),
     client: client_ok(),
     boot_control: control_ok(),
-    manifest: SignedBootManifestIdentified {
+    manifest: SignedBootManifestVerified {
       identity: SignedBootManifestIdentity {
         target_unit: "BRD-OTHER-UNIT" as UnitKey,
         attempt_id: attempt,
@@ -369,6 +370,78 @@ test fn absent_manifest_unestablishes_artifacts() -> Bool {
     client: client_ok(),
     boot_control: control_ok(),
     manifest: SignedBootManifestAbsent,
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+  }
+}
+
+test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestIdentified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      evidence_class: MeasuredNetworkBootFact,
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+  }
+}
+
+test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      evidence_class: MeasuredNetworkBootFact,
+      observation: obs,
+      observed_at: 1788003600000,
+    },
   }
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
