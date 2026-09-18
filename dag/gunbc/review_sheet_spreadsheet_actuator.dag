@@ -3,7 +3,16 @@ module gunbc.review_sheet_spreadsheet_actuator
 import std.types { NonEmptyStr, String, Bool }
 import std.resources { Network }
 import std.algebra { trim }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactRead,
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read,
+  filesystem_failure_kind_name,
+}
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.transports.rest {
@@ -40,6 +49,7 @@ import gunbc.review_sheet_drive_converge {
   NoDeclaration,
   DeclaredNoLegacySheet,
   DeclaredLegacySheetId,
+  DeclarationUnreadable,
   visibility_from_declaration,
   ensure_review_spreadsheet_with_declaration,
   review_sheet_no_legacy_sheet_declaration_path,
@@ -294,22 +304,73 @@ fn perform_marker_migration(
 // id file wins over the absence file: supplying an id is the more specific statement, and an
 // operator who wrote both has told us a sheet exists, so honouring the weaker one would create
 // beside it.
+fn read_declaration_file(path: String) -> FilesystemExactRead uses fs: std.resources.Filesystem {
+  let r = Filesystem.Read(path: path)
+  filesystem_exact_read(
+    path: path,
+    content: r.content,
+    success: r.success,
+    error: r.error,
+    error_kind: r.error_kind,
+  )
+}
+
+// THE ID FILE WINS WHEN IT IS READABLE AND REFUSES WHEN IT IS NOT. It never falls through to the
+// weaker declaration: an operator who wrote an id has told us a sheet exists, and degrading to the
+// absence file on a read failure would create beside it. Only a host-typed ABSENT advances to the
+// second file, which is the one arm that genuinely means "this was not declared".
 fn read_superseded_declaration() -> SupersededMarkerDeclaration uses fs: std.resources.Filesystem {
-  let id_read = Filesystem.Read(path: review_sheet_legacy_sheet_id_declaration_path)
-  if id_read.success && trim(id_read.content) != "" {
-    DeclaredLegacySheetId {
-      file_id: trim(id_read.content) as NonEmptyStr,
-      basis: join(["an operator supplied this file id at ", review_sheet_legacy_sheet_id_declaration_path], "") as NonEmptyStr,
-    }
-  } else {
-    let absent_read = Filesystem.Read(path: review_sheet_no_legacy_sheet_declaration_path)
-    if absent_read.success && trim(absent_read.content) != "" {
-      DeclaredNoLegacySheet {
-        basis: join(["an operator declared this drive holds no superseded-marked review sheet at ", review_sheet_no_legacy_sheet_declaration_path], "") as NonEmptyStr,
+  match read_declaration_file(path: review_sheet_legacy_sheet_id_declaration_path) {
+    FilesystemExactPathRead { path: p, content: c } =>
+      if trim(c) == "" {
+        DeclarationUnreadable {
+          path: p,
+          cause: "the file exists and is empty, which declares nothing; an operator who meant to declare no legacy sheet writes the other file" as NonEmptyStr,
+        }
+      } else {
+        DeclaredLegacySheetId {
+          file_id: trim(c) as NonEmptyStr,
+          basis: join(["an operator supplied this file id at ", p], "") as NonEmptyStr,
+        }
       }
-    } else {
-      NoDeclaration
-    }
+    FilesystemExactPathUnreadable { path: p, kind: k, error: e } =>
+      DeclarationUnreadable {
+        path: p,
+        cause: join(["the host refused this read as ", filesystem_failure_kind_name(kind: k), ": ", e], "") as NonEmptyStr,
+      }
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      DeclarationUnreadable {
+        path: p,
+        cause: join(["the host answered an unrecognized failure kind ", o, ": ", e], "") as NonEmptyStr,
+      }
+    FilesystemExactPathAbsent { path: _ } => read_no_legacy_sheet_declaration()
+  }
+}
+
+fn read_no_legacy_sheet_declaration() -> SupersededMarkerDeclaration uses fs: std.resources.Filesystem {
+  match read_declaration_file(path: review_sheet_no_legacy_sheet_declaration_path) {
+    FilesystemExactPathRead { path: p, content: c } =>
+      if trim(c) == "" {
+        DeclarationUnreadable {
+          path: p,
+          cause: "the file exists and is empty, so it declares nothing; an empty file is not an assertion that the drive is empty" as NonEmptyStr,
+        }
+      } else {
+        DeclaredNoLegacySheet {
+          basis: join(["an operator declared this drive holds no superseded-marked review sheet at ", p], "") as NonEmptyStr,
+        }
+      }
+    FilesystemExactPathUnreadable { path: p, kind: k, error: e } =>
+      DeclarationUnreadable {
+        path: p,
+        cause: join(["the host refused this read as ", filesystem_failure_kind_name(kind: k), ": ", e], "") as NonEmptyStr,
+      }
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      DeclarationUnreadable {
+        path: p,
+        cause: join(["the host answered an unrecognized failure kind ", o, ": ", e], "") as NonEmptyStr,
+      }
+    FilesystemExactPathAbsent { path: _ } => NoDeclaration
   }
 }
 

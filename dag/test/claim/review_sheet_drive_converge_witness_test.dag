@@ -47,6 +47,7 @@ import gunbc.review_sheet_drive_converge {
   NoDeclaration,
   DeclaredNoLegacySheet,
   DeclaredLegacySheetId,
+  DeclarationUnreadable,
   visibility_from_declaration,
   ensure_review_spreadsheet_with_declaration,
   spreadsheet_from_file_list,
@@ -430,6 +431,31 @@ test fn absence_under_both_markers_still_creates() -> Bool {
       }
     Noop => false
     Refuse { reason: _ } => false
+  }
+}
+
+// AN UNREADABLE DECLARATION REFUSES AND NEVER DEGRADES TO THE WEAKER ONE. A file that exists and
+// cannot be read says something unknown, not nothing; the first cut of this reader fell through to
+// the absence file and would have created beside the very sheet the operator declared by id.
+test fn an_unreadable_declaration_refuses_the_whole_decision() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclarationUnreadable {
+      path: ".gunbc/review-sheet-legacy-file-id",
+      cause: "fixture: the host refused this read as permission_denied" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "not an absent one")
+    Noop => false
+    Apply { plan: _ } => false
   }
 }
 

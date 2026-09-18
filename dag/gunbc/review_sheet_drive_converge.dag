@@ -421,15 +421,29 @@ data review_sheet_no_legacy_sheet_declaration_path: String = ".gunbc/review-shee
 
 data review_sheet_legacy_sheet_id_declaration_path: String = ".gunbc/review-sheet-legacy-file-id"
 
+// A DECLARATION THAT CANNOT BE READ IS ITS OWN ARM, because "not declared" and "declared but
+// unreadable" have opposite correct actions and only one of them may reach a create.
+// extdeps.filesystem.filesystem_io states the rule the first cut of this reader broke: absence is
+// established by a successful listing, never by a failed read, and a consumer that concludes "not
+// there" from a read failure has conflated them and FAILS TOWARD GOOD NEWS.
+//
+// THE CONCRETE PATH THAT MADE THIS A DEFECT RATHER THAN A TIDINESS POINT (review 67754): an operator
+// writes BOTH files -- the id, which is the specific statement and must win, and the absence -- and
+// the id file is unreadable through mode bits, a bad mount, or a symlink the runner cannot open. The
+// first cut fell through to the absence file, which reads fine, and minted a second spreadsheet
+// beside the very legacy sheet the operator had declared by id. The defect this change exists to
+// close, reached through the one arm the change added to close it.
 type SupersededMarkerDeclaration
   = NoDeclaration
   | DeclaredNoLegacySheet { basis: NonEmptyStr }
   | DeclaredLegacySheetId { file_id: NonEmptyStr, basis: NonEmptyStr }
+  | DeclarationUnreadable { path: String, cause: NonEmptyStr }
 
 fn visibility_from_declaration(declaration: SupersededMarkerDeclaration) -> SupersededMarkerVisibility {
   match declaration {
     DeclaredNoLegacySheet { basis: b } => SupersededFieldVisibleToThisClient { basis: b }
     DeclaredLegacySheetId { file_id: _, basis: _ } => superseded_visibility_unobservable()
+    DeclarationUnreadable { path: _, cause: _ } => superseded_visibility_unobservable()
     NoDeclaration => superseded_visibility_unobservable()
   }
 }
@@ -532,6 +546,19 @@ fn ensure_review_spreadsheet_with_declaration(
               }
             }
           }
+      }
+    DeclarationUnreadable { path: p, cause: c } =>
+      Refuse {
+        reason: join(
+          [
+            "an operator declaration at ",
+            p,
+            " exists and could not be read, so what it says is unknown: ",
+            c as String,
+            ". A declaration that cannot be read is not an absent one, and treating it as absent is how a create runs beside a sheet the operator had already named",
+          ],
+          "",
+        ) as NonEmptyStr,
       }
     DeclaredNoLegacySheet { basis: _ } =>
       ensure_review_spreadsheet(
