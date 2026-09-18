@@ -201,17 +201,6 @@ test fn scm_rl_a_v4_document_declaring_a_stage_refuses() -> Bool {
   }
 }
 
-test fn scm_repository_load_keystone_holds() -> Bool {
-  scm_rl_a_valid_v4_document_reads_with_no_explicit_stage() &&
-    scm_rl_a_v4_document_declaring_a_stage_refuses() &&
-  scm_rl_a_well_formed_document_loads() &&
-    scm_rl_an_absent_file_is_unreadable_not_empty() &&
-    scm_rl_a_truncated_document_is_unparseable() &&
-    scm_rl_a_parseable_non_repository_is_refused_by_schema() &&
-    scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage() &&
-    scm_rl_a_damaged_document_is_not_a_protocol_gap()
-}
-
 // THE REFUSAL MUST REACH THE OPERATOR AS A RETIREMENT, NOT AS "NOT A REPOSITORY".
 //
 // The load witness above asserts the decoder's cause and standing, and stops there. Review of gunbc#10560

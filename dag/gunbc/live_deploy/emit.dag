@@ -81,7 +81,6 @@ import gunbc.live_deploy.spec {
   deployment_fleet_converge_service_unit_name,
   deployment_fleet_converge_timer_unit_name,
   deployment_fleet_converge_service_unit_path,
-  deployment_spec_srv1,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
   deployment_step_ownership,
@@ -98,7 +97,7 @@ import gunbc.host_layout {
   publication_refused_dir,
 }
 import gunbc.host_axis_caps {
-  CapAuthorizationRefused,
+  CapAuthorizationRefused, CapAuthorizationWithheld,
   CapAuthorizedForThisHost,
   CapConvergeDecision,
   CapConvergeWithheld,
@@ -1274,12 +1273,29 @@ fn deploy_apply_preamble_steps(access: DeployAccess, spec: DeploymentSpec) -> Li
 // IT REFUSES BOTH HALVES. The withheld arm emits neither the authoring script NOR the per-unit
 // shadow reverts that follow it, because a revert is a change to the same subject and authorising
 // half a transaction is how the ordering hazard returns under a different name.
+// THE WITHHELD LINE IS A REPORT, NOT A FAILURE: the same __GUNBC_CONVERGE_WITHHELD__ spelling the
+// fleet plan's slot teardown uses (gunbc.runner_slot_provision slot_removal_withheld_line), so a
+// reader of the apply transcript sees one vocabulary for "this member was not performed and why".
+// Single quotes in the cause are dropped rather than escaped: the cause is prose for the operator,
+// and a quote inside a single-quoted echo would end the word and run the rest.
+fn memory_cap_withheld_line(host: HostIdentity, cause: String) -> String {
+  join([
+    "echo '__GUNBC_CONVERGE_WITHHELD__ memory-cap apply: ",
+    cause.replace(from: "'", to: ""),
+    "; existing caps left exactly as observed host=",
+    host as String,
+    "' >&2",
+  ], "")
+}
+
 fn deploy_memory_cap_apply_steps(
   spec: DeploymentSpec,
   authorization: CapConvergeDecision,
 ) -> List<PipelineStep> {
   let host = spec.target.host.identity
   match cap_authorization_for_host(d: authorization, host: host) {
+    CapAuthorizationWithheld { cause: why } =>
+      [deploy_raw(command: memory_cap_withheld_line(host: host, cause: why))]
     CapAuthorizationRefused { cause: why } =>
       [
         deploy_raw(

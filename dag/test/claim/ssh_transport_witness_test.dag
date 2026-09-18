@@ -1,6 +1,7 @@
 module test.claim.ssh_transport_witness
 
 import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr }
 import extdeps.ssh.mock_corpus { ssh_session_mock_case_exec_script }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

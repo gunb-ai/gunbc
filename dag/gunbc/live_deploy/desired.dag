@@ -1,0 +1,299 @@
+module gunbc.live_deploy.desired
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_path }
+import std.keyed_row { KeyedRow, keyed_row_find }
+import std.keyed_roster {
+  keyed_roster_build,
+  KeyedRosterBuilt,
+  KeyedRosterBuildDuplicateKey,
+}
+import extdeps.tailscale.serve { ScopedRemovalUnobserved }
+import gunbc.fleet_intent { srv2_host }
+import gunbc.fleet_intent_network {
+  srv2_tailscale_endpoint,
+  fleet_intent_network,
+  operator_host_srv2,
+}
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  srv1_live_dashboard_instance,
+  srv1_lab_dashboard_instance,
+  srv2_deploy_dashboard_instance,
+}
+import v2.std.collection { Present, Absent }
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  DeploymentHostTarget,
+  DeploymentNames,
+  DeploymentArtifactStep,
+  deployment_spec_for,
+  deployment_srv1_target,
+  srv1_live_deployment_names,
+  derived_deployment_names,
+  ubuntu_noble_os_package_manager,
+  deployment_plan_host_identity,
+  deployment_plan_listen_port,
+  deployment_owned_steps_retract_order,
+}
+
+// SELECTION, NOT CONVERGENCE. This roster names the desired realizations a live_deploy
+// operation may be pointed at. Convergence folds consume a caller-supplied DeploymentSpec;
+// they do not enumerate this list or choose a row. A fold that picked which deployment it was
+// acting on would rebuild the conflation DESIGN §3d forbids.
+type DesiredDeployment {
+  instance: HostDashboardInstance
+  target: DeploymentHostTarget
+  names: DeploymentNames
+}
+
+fn selected_deployment_spec(row: DesiredDeployment) -> DeploymentSpec {
+  deployment_spec_for(
+    instance: row.instance,
+    target: row.target,
+    names: row.names,
+  )
+}
+
+fn srv1_production_desired_deployment() -> DesiredDeployment {
+  let instance = srv1_live_dashboard_instance()
+  DesiredDeployment {
+    instance: instance,
+    target: deployment_srv1_target(),
+    names: srv1_live_deployment_names(instance: instance),
+  }
+}
+
+fn srv1_lab_desired_deployment() -> DesiredDeployment {
+  let instance = srv1_lab_dashboard_instance()
+  DesiredDeployment {
+    instance: instance,
+    target: deployment_srv1_target(),
+    names: derived_deployment_names(instance: instance),
+  }
+}
+
+fn deployment_srv2_target() -> DeploymentHostTarget {
+  DeploymentHostTarget {
+    host: srv2_host,
+    ssh_host: operator_host_srv2 as NonEmptyStr,
+    tailscale_endpoint: srv2_tailscale_endpoint,
+    tailnet_domain: fleet_intent_network.tailnet_domain,
+    os_package_manager: ubuntu_noble_os_package_manager(),
+    tailscale_client: ScopedRemovalUnobserved {
+      reason: "srv2 tailscale Serve scoped-removal capability has not been observed",
+    },
+    ensured_directories: [],
+  }
+}
+
+fn deployment_spec_srv1() -> DeploymentSpec {
+  selected_deployment_spec(row: srv1_production_desired_deployment())
+}
+
+fn srv2_deploy_desired_deployment() -> DesiredDeployment {
+  let instance = srv2_deploy_dashboard_instance()
+  DesiredDeployment {
+    instance: instance,
+    target: deployment_srv2_target(),
+    names: derived_deployment_names(instance: instance),
+  }
+}
+
+fn desired_deployment_roster() -> List<DesiredDeployment> {
+  [
+    srv1_production_desired_deployment(),
+    srv1_lab_desired_deployment(),
+    srv2_deploy_desired_deployment(),
+  ]
+}
+
+fn instance_id_text(id: NonEmptyStr) -> String {
+  join([id as String], "")
+}
+
+fn deployment_owned_identity(spec: DeploymentSpec, step: DeploymentArtifactStep) -> String {
+  join([deployment_plan_host_identity(spec: spec), ":", step.path as String], "")
+}
+
+// HOST-QUALIFIED PATHS OF OWNED ARTIFACT STEPS ONLY — the retract-order membership
+// gunbc.live_deploy.spec deployment_owned_steps actually installs: serve binary, source tree,
+// tree-remote unit, dispatch worktree root, attempt-state root, compute root, fabric event-log
+// root, systemd unit, publication-helper timer, belt timer, tailscale route member path.
+// Dispatch/attempt/compute/event-log roots are already in that list (C6 moving them into the
+// member roster does not extend this fold). It does NOT enumerate listen port, serve_function,
+// tree-sync unit/env filenames, slice unit, belt/publication service units, or the credential
+// env file. Those are either names-surface fields (checked by spec_same_host_surface_collision)
+// or files torn down as a side effect of another member. A law over this list is not a law over
+// every file the emit script touches.
+fn spec_owned_identities(spec: DeploymentSpec) -> List<String> {
+  map(
+    deployment_owned_steps_retract_order(spec: spec),
+    s => deployment_owned_identity(spec: spec, step: s),
+  )
+}
+
+fn spec_same_host_surface_collision(
+  a: DeploymentSpec,
+  b: DeploymentSpec,
+  a_owned: List<String>,
+  b_owned: List<String>,
+) -> Bool {
+  if !(deployment_plan_host_identity(spec: a) == deployment_plan_host_identity(spec: b)) {
+    false
+  } else {
+    deployment_plan_listen_port(spec: a) == deployment_plan_listen_port(spec: b)
+      || a.service.unit_name == b.service.unit_name
+      || a.service.repo_root == b.service.repo_root
+      || a.service.serve_binary == b.service.serve_binary
+      || a.service.serve_function == b.service.serve_function
+      || a.names.tree_sync_unit_name == b.names.tree_sync_unit_name
+      || a.names.tree_sync_env_path == b.names.tree_sync_env_path
+      || a.names.tailscale_serve_endpoint == b.names.tailscale_serve_endpoint
+      || any(a_owned, ia => any(b_owned, ib => ia == ib))
+  }
+}
+
+type DesiredDeploymentSurface {
+  row: DesiredDeployment
+  spec: DeploymentSpec
+  owned_identities: List<String>
+}
+
+fn desired_deployment_surface(row: DesiredDeployment) -> DesiredDeploymentSurface {
+  let spec = selected_deployment_spec(row: row)
+  DesiredDeploymentSurface {
+    row: row,
+    spec: spec,
+    owned_identities: spec_owned_identities(spec: spec),
+  }
+}
+
+type DesiredRosterRefusal
+  = DesiredRosterSameHostCollision { host: String }
+  | DesiredRosterDuplicateInstanceId { instance_id: String }
+
+type DesiredRosterStanding
+  = DesiredRosterAdmitted { keyed: List<KeyedRow<String, DesiredDeployment>> }
+  | DesiredRosterRefused { refusal: DesiredRosterRefusal }
+
+type DesiredDeploymentLookup
+  = DesiredDeploymentFound { row: DesiredDeployment }
+  | DesiredDeploymentUnknownInstanceId { instance_id: String }
+  | DesiredDeploymentRosterRefused { refusal: DesiredRosterRefusal }
+
+fn string_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn desired_row_keyed(row: DesiredDeployment) -> KeyedRow<String, DesiredDeployment> {
+  KeyedRow { row_key: instance_id_text(id: row.instance.instance_id), value: row }
+}
+
+fn desired_roster_surface_standing(
+  rows: List<DesiredDeployment>,
+  keyed: List<KeyedRow<String, DesiredDeployment>>,
+) -> DesiredRosterStanding {
+  let surfaces = map(rows, r => desired_deployment_surface(row: r))
+  let admitted = DesiredRosterAdmitted { keyed: keyed }
+  fold(
+    surfaces,
+    init: admitted,
+    f: (acc, a) =>
+      match acc {
+        DesiredRosterRefused { refusal } => DesiredRosterRefused { refusal: refusal }
+        DesiredRosterAdmitted { keyed: k } =>
+          fold(
+            surfaces,
+            init: DesiredRosterAdmitted { keyed: k },
+            f: (inner, b) =>
+              match inner {
+                DesiredRosterRefused { refusal } => DesiredRosterRefused { refusal: refusal }
+                DesiredRosterAdmitted { keyed: k2 } =>
+                  if a.row.instance.instance_id == b.row.instance.instance_id {
+                    DesiredRosterAdmitted { keyed: k2 }
+                  } else {
+                    if spec_same_host_surface_collision(
+                      a: a.spec,
+                      b: b.spec,
+                      a_owned: a.owned_identities,
+                      b_owned: b.owned_identities,
+                    ) {
+                      DesiredRosterRefused {
+                        refusal: DesiredRosterSameHostCollision {
+                          host: deployment_plan_host_identity(spec: a.spec),
+                        },
+                      }
+                    } else {
+                      DesiredRosterAdmitted { keyed: k2 }
+                    }
+                  }
+              },
+          )
+      },
+  )
+}
+
+fn desired_roster_standing(rows: List<DesiredDeployment>) -> DesiredRosterStanding {
+  match keyed_roster_build(incomings: map(rows, r => desired_row_keyed(row: r)), key_eq: string_key_eq) {
+    KeyedRosterBuildDuplicateKey { key, first: _, duplicate: _ } =>
+      DesiredRosterRefused {
+        refusal: DesiredRosterDuplicateInstanceId { instance_id: key },
+      }
+    KeyedRosterBuilt { rows: keyed } => desired_roster_surface_standing(rows: rows, keyed: keyed)
+  }
+}
+
+fn desired_deployment_for_instance_id(instance_id: String) -> DesiredDeploymentLookup {
+  let rows = desired_deployment_roster()
+  match desired_roster_standing(rows: rows) {
+    DesiredRosterRefused { refusal } => DesiredDeploymentRosterRefused { refusal: refusal }
+    DesiredRosterAdmitted { keyed } =>
+      match keyed_row_find(
+        rows: keyed,
+        wanted_key: instance_id,
+        key_eq: string_key_eq,
+      ) {
+        Present { value: found } => DesiredDeploymentFound { row: found.value }
+        Absent => DesiredDeploymentUnknownInstanceId { instance_id: instance_id }
+      }
+  }
+}
+
+// PRODUCTION WRAPPERS in apply/readiness/CLI survive one migration PR as typed scaffolds.
+// Their deletion consumer is CONVERGENCE-ONE C8: the first wet action, which must select a
+// DesiredDeployment from this roster and therefore cannot keep a production-only entry as
+// the executing route. The wrappers retire by deletion; that absence is the discharge.
+// ONE ROW OVER THE POPULATION, not one DeclarationRetires on live_deploy_apply_srv1_wet:
+// apply.dag still defines ten live_deploy_{apply,retract}_srv1* wrappers. A singular
+// retirement trigger would fire (or look discharged) while nine production callers remained.
+data srv1_production_wrapper_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the production wrappers retire when gunbc.live_deploy.desired deployment_spec_srv1 has no remaining production caller. The capability is that absence across the wrapper population (apply, retract, with-access, wet, operator, operator-local, transaction), not the deletion of any one wrapper name. A DeclarationRetires on live_deploy_apply_srv1_wet alone is not this trigger. SUFFICIENT FOR: every live_deploy_\{apply,retract\}_srv1* production wrapper gone, and no remaining production caller of deployment_spec_srv1." as NonEmptyStr
+)
+
+data srv1_production_wrapper_frontier: FrontierRow = frontier_row_path(
+  path: "gunbc.live_deploy.apply srv1 production wrappers",
+  reason: "production live_deploy_\{apply,retract\}_srv1* wrappers are typed scaffolds until C8 selects a DesiredDeployment; they retire together when deployment_spec_srv1 has no remaining production caller",
+  dissolution: srv1_production_wrapper_dissolution,
+)
+
+// RESIDUAL, NOT THE WHOLE PATH CLAIM. selecting_lab_changes_emitted_unit_bytes
+// discriminates every path the serve unit names (WorkingDirectory repo_root, slice,
+// systemd unit path, and the negative that the lab unit does not name production's
+// dispatch-worktree root). What the floor cannot emit is the apply script, so the
+// unproven class is only paths that appear in that script and never in the unit:
+// CreateRoot owned directory roots (dispatch worktree, attempt-state, compute,
+// fabric event-log) and the other install paths the script writes (source tree,
+// tree-remote unit, publication spool, tailscale route member, credential env,
+// belt/publication timers). Apply-script emission exceeds the new-witness eval
+// budget (run 34941358064); widening that budget is not this cut.
+data apply_script_only_path_discrimination_unproven_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a CONVERGENCE-ONE C8 wet receipt that exhibits lab and production apply-script paths as disjoint on the residual class — the CreateRoot owned directory roots and other install paths the serve unit never names. The capability is that receipt, not a wet entry point. A declaration named live_deploy_apply_lab_wet, a dispatch of a lab apply, or any apply that does not compare those script paths against production's, is not this trigger and does not retire this row. SUFFICIENT FOR: an executed C8 receipt whose evidence is the two apply scripts, or the host paths they created, showing those residual path classes pairwise disjoint. Nothing less is sufficient." as NonEmptyStr
+)
+
+data apply_script_only_path_discrimination_unproven: FrontierRow = frontier_row_path(
+  path: "gunbc.live_deploy.emit.live_deploy_apply_script_for",
+  reason: "paths that appear in the apply script but not in the serve unit are unproven at the floor; every path the unit names is already discriminated there",
+  dissolution: apply_script_only_path_discrimination_unproven_dissolution,
+)

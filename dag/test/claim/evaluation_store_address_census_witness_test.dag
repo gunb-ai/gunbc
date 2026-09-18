@@ -1,0 +1,148 @@
+module test.claim.evaluation_store_address_census_witness
+
+import std.types { Bool, List }
+import std.decl_ref { DeclarationRef }
+import std.dissolution { dissolution_description }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.materialization_provider_targets {
+  evaluation_store_address_producer,
+  evaluation_store_address_production_consumers,
+  evaluation_store_address_persist_callers_expected,
+  evaluation_store_address_admitted_consumers_expected,
+  evaluation_store_address_duplicate_consumers
+}
+import gunbc.evaluation_store_address_census {
+  ResolvedCallEdge,
+  ResolvedCallEdgeCensusRefused,
+  ResolvedCallEdgeCensusObserved,
+  ProductionCoverageQualified,
+  ProductionCoverageRefused,
+  CandidateOutsideExactResolution,
+  evaluation_store_address_zero_candidate_plant_coverage,
+  evaluation_store_address_zero_candidate_plant_absent_coverage,
+  evaluation_store_address_mutation_census,
+  evaluation_store_address_fixture_import_only_census,
+  evaluation_store_address_fixture_callsite_census,
+  bound_callers_of_edges,
+  evaluation_store_address_ref_in_module,
+  evaluation_store_address_alias_discovery_dissolve_on,
+  evaluation_store_address_production_partition_dissolve_on
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+test fn evaluation_store_address_expected_rosters_are_well_formed() -> Bool {
+  let direct = evaluation_store_address_production_consumers
+  let persist = evaluation_store_address_persist_callers_expected
+  let admitted = evaluation_store_address_admitted_consumers_expected
+  ((evaluation_store_address_duplicate_consumers(xs: direct) |> count()) == 0)
+    && ((evaluation_store_address_duplicate_consumers(xs: persist) |> count()) == 0)
+    && ((evaluation_store_address_duplicate_consumers(xs: admitted) |> count()) == 0)
+    && ((evaluation_store_address_producer.decl_name as String) == "evaluation_store_address")
+    && (dissolution_description(condition: evaluation_store_address_alias_discovery_dissolve_on) != "")
+    && (dissolution_description(condition: evaluation_store_address_production_partition_dissolve_on) != "")
+}
+
+test fn evaluation_store_address_zero_candidate_guard_reports_planted_call() -> Bool {
+  match evaluation_store_address_zero_candidate_plant_coverage() {
+    CandidateOutsideExactResolution { root, path, target_leaf } =>
+      (root == "dag/test/fixture/evaluation_store_address_zero_candidate_plant")
+        && (target_leaf == "evaluation_store_address_digest")
+        && (path == "dag/test/fixture/evaluation_store_address_zero_candidate_plant/digest_call.dag")
+    ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots: _ } => false
+    ProductionCoverageRefused { root: _, path: _, cause: _ } => false
+  }
+}
+
+test fn evaluation_store_address_zero_candidate_guard_qualifies_without_planted_invocation() -> Bool {
+  match evaluation_store_address_zero_candidate_plant_absent_coverage() {
+    ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots } =>
+      (zero_candidate_roots |> count()) == 1
+        && (zero_candidate_roots |> fold(
+          init: false,
+          f: (acc, r) => acc || r == "dag/test/fixture/evaluation_store_address_zero_candidate_plant_absent"
+        ))
+    ProductionCoverageRefused { root: _, path: _, cause: _ } => false
+    CandidateOutsideExactResolution { root: _, path: _, target_leaf: _ } => false
+  }
+}
+
+fn evaluation_store_address_imported_same_leaf_and_qualified_observed(edges: List<ResolvedCallEdge>) -> Bool {
+  let home_callers = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "test.fixture.evaluation_store_address_alias.home",
+    callee_decl: "evaluation_store_address"
+  )
+  let decoy_callers = bound_callers_of_edges(
+    edges: edges,
+    callee_module: "test.fixture.evaluation_store_address_alias.decoy",
+    callee_decl: "evaluation_store_address"
+  )
+  evaluation_store_address_ref_in_module(
+    module_path: "test.fixture.evaluation_store_address_alias.aliased",
+    name: "aliased_call",
+    xs: home_callers
+  )
+    && evaluation_store_address_ref_in_module(
+      module_path: "test.fixture.evaluation_store_address_alias.qualified",
+      name: "qualified_call",
+      xs: home_callers
+    )
+    && evaluation_store_address_ref_in_module(
+      module_path: "test.fixture.evaluation_store_address_alias.same_leaf",
+      name: "same_leaf_imported_call",
+      xs: decoy_callers
+    )
+    && (evaluation_store_address_ref_in_module(
+      module_path: "test.fixture.evaluation_store_address_alias.same_leaf",
+      name: "same_leaf_imported_call",
+      xs: home_callers
+    ) == false)
+}
+
+test fn evaluation_store_address_resolver_distinguishes_imported_same_leaf_and_qualified() -> Bool {
+  match evaluation_store_address_mutation_census() {
+    ResolvedCallEdgeCensusRefused { cause: _ } => false
+    ResolvedCallEdgeCensusObserved { edges } =>
+      evaluation_store_address_imported_same_leaf_and_qualified_observed(edges: edges)
+  }
+}
+
+fn evaluation_store_address_fixture_home_callers(edges: List<ResolvedCallEdge>) -> List<DeclarationRef> {
+  bound_callers_of_edges(
+    edges: edges,
+    callee_module: "test.fixture.evaluation_store_address_alias.home",
+    callee_decl: "evaluation_store_address"
+  )
+}
+
+fn evaluation_store_address_fixture_reference_forms_missed_by_import(edges: List<ResolvedCallEdge>) -> Bool {
+  let callers = evaluation_store_address_fixture_home_callers(edges: edges)
+  evaluation_store_address_ref_in_module(
+    module_path: "test.fixture.evaluation_store_address_alias.qualified",
+    name: "qualified_call",
+    xs: callers
+  ) == false
+}
+
+fn evaluation_store_address_fixture_reference_forms_observed(edges: List<ResolvedCallEdge>) -> Bool {
+  let callers = evaluation_store_address_fixture_home_callers(edges: edges)
+  evaluation_store_address_ref_in_module(
+    module_path: "test.fixture.evaluation_store_address_alias.qualified",
+    name: "qualified_call",
+    xs: callers
+  )
+}
+
+test fn evaluation_store_address_import_graph_misses_fixture_reference_forms() -> Bool {
+  match evaluation_store_address_fixture_import_only_census() {
+    ResolvedCallEdgeCensusRefused { cause: _ } => false
+    ResolvedCallEdgeCensusObserved { edges } =>
+      evaluation_store_address_fixture_reference_forms_missed_by_import(edges: edges)
+  }
+    && match evaluation_store_address_fixture_callsite_census() {
+      ResolvedCallEdgeCensusRefused { cause: _ } => false
+      ResolvedCallEdgeCensusObserved { edges } =>
+        evaluation_store_address_fixture_reference_forms_observed(edges: edges)
+    }
+}

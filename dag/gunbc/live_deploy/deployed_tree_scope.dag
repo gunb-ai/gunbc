@@ -1,6 +1,7 @@
 module gunbc.live_deploy.deployed_tree_scope
 
 import std.types { Bool, String, List }
+import v2.std.algebra { list_append }
 
 // WHAT THE DEPLOY ACTUALLY INSTALLS, DECLARED ONCE BECAUSE TWO THINGS NEED IT AND MUST NOT DISAGREE.
 // The working-tree leg of the source sync rsyncs the runner checkout wholesale except these
@@ -51,14 +52,33 @@ data deployed_tree_excluded_prefixes: List<String> = [
   ".gunbc-build-receipts", ".gunbc-converge-receipts",
 ]
 
+// A COMPILER-DERIVED FILE INSIDE A SOURCE ROOT IS EXCLUDED AS A FILE, NOT A PREFIX. The
+// recurring-failure-mode roster is gitignored and written by every gunbc invocation as a read-path
+// side effect of listing .dag files (src/v1 cli_run derived_row_roster), so the deploying process
+// itself creates it before candidate admission scans the checkout, and the first RLM-2
+// dashboard_deploy refused itself on it (run 35189302828: ignored-deployed=dag/gunbc/
+// recurring_failure_mode/roster.dag). Unlike sg2_scratch_probe, excluding it changes nothing the
+// host compiles: the host's own first invocation derives the identical file from the sibling rows
+// the revision DOES name. Exact path, segment-exact, so a sibling row file is never excluded.
+data deployed_tree_excluded_derived_files: List<String> = [
+  "dag/gunbc/recurring_failure_mode/roster.dag",
+]
+
 fn deployed_tree_rsync_exclude_flags() -> String {
-  join(map(deployed_tree_excluded_prefixes, p => concat("--exclude /", p)), " ")
+  join(
+    list_append(
+      left: map(deployed_tree_excluded_prefixes, p => concat("--exclude /", p)),
+      right: map(deployed_tree_excluded_derived_files, f => concat("--exclude /", f)),
+    ),
+    " ",
+  )
 }
 
 // Segment-wise, never a character run: `targetish/x` starts with `target` but is not under it, and treating
 // it as excluded would hide from admission a path rsync goes on to ship.
 fn path_is_deployed(path: String) -> Bool {
   !any(deployed_tree_excluded_prefixes, p => path == p || starts_with(s: path, prefix: concat(p, "/")))
+    && !any(deployed_tree_excluded_derived_files, f => path == f)
 }
 
 // WHICH REPOSITORY TRANSITION THIS DEPLOYMENT IS BOUND TO, AND WHY IT IS A WALL RATHER THAN A NOTE.

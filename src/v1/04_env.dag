@@ -2,7 +2,7 @@ module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
 
-import v1.std.core { Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
+import v1.std.core { Unmarked, Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, declaration_provenance_of, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type }
@@ -917,7 +917,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
           body: n.body, transport: n.transport, properties: n.properties,
           type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
           has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-          module_item_kind: n.module_item_kind, expr_data: n.expr_data
+          module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, expr_data: n.expr_data
         }
       }
     Absent => node_with_children(n: n, children: qualified_children)
@@ -932,7 +932,7 @@ fn node_with_children(n: Node, children: List<Node>) -> Node {
     body: n.body, transport: n.transport, properties: n.properties,
     type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
     has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-    module_item_kind: n.module_item_kind, expr_data: n.expr_data
+    module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, expr_data: n.expr_data
   }
 }
 
@@ -944,7 +944,7 @@ fn node_with_inferred(n: Node, inferred: InferredNode?) -> Node {
     body: n.body, transport: n.transport, properties: n.properties,
     type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
     has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
-    module_item_kind: n.module_item_kind, expr_data: n.expr_data
+    module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, expr_data: n.expr_data
   }
 }
 
@@ -1312,7 +1312,7 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
   fold(tp_names, init: env, f: (e, tp_name) =>
     let tp_binding = TypeBinding {
       name: tp_name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, expr_data: NoExprData },
+      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, expr_data: NoExprData },
       provenance: SubValueUnknown
     }
     let shadowed = effective_visible_binding(str_bindings: e.str_bindings, parents: e.parents, name: tp_name)

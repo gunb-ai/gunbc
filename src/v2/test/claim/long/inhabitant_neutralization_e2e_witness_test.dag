@@ -82,11 +82,6 @@ test fn inhabitant_neutralization_python_to_go_discriminates_on_real_tree() -> B
   }
 }
 
-test fn inhabitant_neutralization_python_to_go_holds() -> Bool {
-  inhabitant_neutralization_python_to_go_cross_language_compile_refuses_underived_holds()
-    && inhabitant_neutralization_python_to_go_discriminates_on_real_tree()
-}
-
 test fn inhabitant_neutralization_python_to_go_translate_rejects() -> Bool {
   match neutralize_core_for_target(
     core: python_emitted_add_fn_node(),
