@@ -1,0 +1,147 @@
+module v2.test.claim.body_lowering_block_body_call
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Node, TypeNode }
+import v2.std.node_query {
+  call_callee_target,
+  find_arrow_body_child,
+  find_named_child,
+  node_is_call
+}
+import v2.std.optional { Absent, Optional, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data body_lowering_block_call_source: String = "module wall.same\n\nfn leaf() -> Bool = true\n\nfn rollup() -> Bool {\n  leaf()\n}\n"
+
+fn body_lowering_block_call_parsed() -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(
+          text: body_lowering_block_call_source,
+          file: ^body_lowering_block_call_file,
+          rules: dag_lex()
+        ),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn body_lowering_child(root: Node, name: Symbol) -> Optional<Node> {
+  match find_named_child(root: root, name: name) {
+    Accepted { value: child, diagnostics: _ } => Present { value: child }
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn body_lowering_module_members(root: Node) -> Optional<Node> {
+  match body_lowering_child(root: root, name: ^grammar_production_captured_node_projection) {
+    Present { value: captured } =>
+      match body_lowering_child(root: captured, name: ^wall) {
+        Present { value: wall_n } => body_lowering_child(root: wall_n, name: ^same)
+        Absent =>
+          match body_lowering_child(root: root, name: ^wall) {
+            Present { value: wall_n } => body_lowering_child(root: wall_n, name: ^same)
+            Absent => Absent
+          }
+      }
+    Absent =>
+      match body_lowering_child(root: root, name: ^wall) {
+        Present { value: wall_n } => body_lowering_child(root: wall_n, name: ^same)
+        Absent => Absent
+      }
+  }
+}
+
+fn body_lowering_named_arrow_body(members: Node, name: Symbol) -> Optional<Node> {
+  match body_lowering_child(root: members, name: name) {
+    Absent => Absent
+    Present { value: member } =>
+      match member.kind {
+        TypeNode { connective: Arrow } =>
+          match find_arrow_body_child(root: member) {
+            Accepted { value: body, diagnostics: _ } => Present { value: body }
+            Rejected { diagnostics: _ } => Absent
+          }
+        _ =>
+          match find_arrow_body_child(root: member) {
+            Accepted { value: body, diagnostics: _ } => Present { value: body }
+            Rejected { diagnostics: _ } => Absent
+          }
+      }
+  }
+}
+
+fn body_lowering_body_callee_is(body: Node, expected: Symbol) -> Bool {
+  if node_is_call(node: body) {
+    match call_callee_target(node: body) {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: callee, diagnostics: _ } =>
+        match node_atom_identity_optional(node: callee) {
+          Present { value: id } => id == expected
+          Absent => false
+        }
+    }
+  } else {
+    match node_atom_identity_optional(node: body) {
+      Present { value: id } => id == expected
+      Absent => false
+    }
+  }
+}
+
+test fn body_lowering_block_call_parses_holds() -> Bool {
+  match body_lowering_block_call_parsed() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn body_lowering_block_body_call_reaches_arrow_body() -> Bool {
+  match body_lowering_block_call_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: parsed, diagnostics: _ } =>
+      match normalize(parse_tree: parsed) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: tree, diagnostics: _ } =>
+          match body_lowering_module_members(root: tree.root) {
+            Absent => false
+            Present { value: members } =>
+              match body_lowering_named_arrow_body(members: members, name: ^rollup) {
+                Absent => false
+                Present { value: block_body } =>
+                  match body_lowering_named_arrow_body(members: members, name: ^leaf) {
+                    Absent => false
+                    Present { value: eq_body } =>
+                      body_lowering_body_callee_is(body: block_body, expected: ^leaf)
+                        && (match node_atom_identity_optional(node: block_body) {
+                          Present { value: id } => id != ^dag_token_lbrace
+                          Absent => true
+                        })
+                        && body_lowering_body_callee_is(body: eq_body, expected: ^dag_token_kw_true)
+                  }
+              }
+          }
+      }
+  }
+}
