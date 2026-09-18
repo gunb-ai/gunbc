@@ -152,7 +152,17 @@ fn peer_test_module() -> Outcome<NormalizedTree> {
   )
 }
 
-data peer_test_module_source: String = "module wall.peer\n\nfn shared_fixture() -> Bool = true\n\ntest fn peer_leaf() -> Bool = shared_fixture()\n"
+// The smallest module that carries both facts the supplied roots rely on: a member of the
+// expression-bodied shape, and a test marker on it. One member, because the front end's cost
+// grows with the source and this claim pays for a real tokenize, parse and normalize.
+fn inhabitance_module() -> Outcome<NormalizedTree> {
+  wall_tree(
+    root: wall_module_root(leaf_segment: ^peer, members: [wall_member(name: ^peer_leaf, body: wall_atom(identity: ^shared_fixture))]),
+    marked: [^peer_leaf]
+  )
+}
+
+data inhabitance_module_source: String = "module wall.peer\ntest fn peer_leaf() -> Bool = shared_fixture()\n"
 
 // module wall.peer -- `fn shared_fixture() -> Bool = true`, no test code.
 fn peer_serving_module() -> Outcome<NormalizedTree> {
@@ -167,12 +177,13 @@ fn serving_module_with_body(body: Node) -> Outcome<NormalizedTree> {
   wall_tree(root: wall_module_root(leaf_segment: ^serving, members: [wall_member(name: ^uses_peer, body: body)]), marked: [])
 }
 
-// INHABITANCE, THE ROUTE THE SUPPLIED ROOTS STAND ON: the real front end, on the source text the peer
-// fixture encodes, emits the same root (by content hash, which does not read occurrence ids) and a
+// INHABITANCE, THE ROUTE THE SUPPLIED ROOTS STAND ON: the real front end, on the source text the
+// inhabitance fixture encodes (built with the same wall_member and wall_module_root every claim below
+// uses), emits the same root (by content hash, which does not read occurrence ids) and a
 // channel marking exactly `peer_leaf`. The two halves are the two things every claim below reads.
 test fn supplied_root_is_what_normalize_emits_holds() -> Bool {
   let lm = dag_language_model()
-  match tokenize(text: peer_test_module_source, file: ^wall_peer_file, rules: lm.lex) {
+  match tokenize(text: inhabitance_module_source, file: ^wall_peer_file, rules: lm.lex) {
     Rejected { diagnostics: _ } => false
     Accepted { value: ts, diagnostics: _ } =>
       match parse_module(tokens: ts, grammar: lm.grammar) {
@@ -181,7 +192,7 @@ test fn supplied_root_is_what_normalize_emits_holds() -> Bool {
           match normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: _ } => false
             Accepted { value: emitted, diagnostics: _ } =>
-              match peer_test_module() {
+              match inhabitance_module() {
                 Rejected { diagnostics: _ } => false
                 Accepted { value: supplied, diagnostics: _ } =>
                   (content_hash(n: emitted.root) == content_hash(n: supplied.root))
@@ -290,4 +301,5 @@ test fn test_module_depending_on_a_test_module_resolves_holds() -> Bool {
     peer: peer_test_module()
   ) == "ACCEPTED"
 }
+
 
