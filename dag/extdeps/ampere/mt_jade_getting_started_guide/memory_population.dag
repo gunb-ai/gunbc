@@ -82,6 +82,7 @@ data mt_jade_gsg_population_2s2p_16_dimms: MtJadeGsgDimmPopulationRow = MtJadeGs
 
 type MtJadeGsgSlotLabelKind
   = HashNumberPrefix
+  | SlotLabelKindNotEstablished { basis: NonEmptyStr }
 
 data mt_jade_gsg_slot_label_kind: MtJadeGsgSlotLabelKind = HashNumberPrefix
 

@@ -14,8 +14,13 @@ import gunbc.machine_intake_mtjade1_access_observation { mtjade1_firmware_family
 // Acoustic inaudibility is not a PWM number: cooling_qualification already keeps room acoustics
 // as a live observation. The cited tolerance here is the act of cutting host power.
 
+// TWO ARMS BECAUSE A ONE-VALUE SITE CANNOT CARRY THE DISTINCTION ResidenceAcousticIntent DRAWS:
+// FailsafeFullDutyAdmitted exists for a site where unbounded full duty is fine, and it could not
+// name one. A single nullary arm also declares no constructor at all -- `= Name` reads as an alias
+// to a type that does not exist, which is the resolver error that blocked this branch.
 type JadeSite
   = OperatorResidence
+  | ColocationFacility
 
 type ResidenceAcousticIntent
   = UnboundedFailsafeFullDutyNotTolerated {
