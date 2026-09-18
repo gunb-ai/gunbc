@@ -1,0 +1,199 @@
+module v2.test.claim.namespace_xl0.cross_module_reference_resolution
+
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.program_assembly {
+  assemble_program_from_module_roots,
+  module_roots_from_source_root_ingest
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.communication.medium { Lossless, Medium }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RESOLVER'S SIDE OF THE CROSS-MODULE REFERENCE CLASS, ON THE PRODUCTION ROUTE.
+//
+// v2.test.claim.namespace_xl0.call_argument_mention_survival measures what the COLLECTOR sees. This
+// file measures what RESOLUTION does with the same lowered shape, because the two consume one
+// producer: the fold_list qualified-name spine that body lowering now constructs for a dotted chain
+// (v2.compiler.body_lowering_fold body_lower_dotted_reference_optional). A spine the collector can
+// read but the resolver refuses would be a denominator with no numerator, and a spine the resolver
+// ACCEPTS by widening what resolves would be the fail-open arm DESIGN section 5 forbids. So the
+// rows are a matched set, and the middle one is the boundary: reassembling the chain must make a
+// DECLARED cross-module target resolve and must leave an UNDECLARED one refusing for its own
+// reason.
+//
+// WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission
+// resolves the module the Admission names and consults the other ingested roots only through the
+// symbol index, so three consumer modules can share ONE ingest and each claim selects its subject.
+// That is what lets one warm producer serve every row: the parse-and-normalize of five inline
+// modules is the stage no row is about, and it is shared exactly as the sibling file shares its
+// ingest (v2.workflow.floor_pure_producer_share); the resolve is executed per claim.
+//
+// THE TARGET IS A FUNCTION, DELIBERATELY. A cross-module reference to a `data` or `type`
+// declaration still refuses on this route, and not because of anything in the reference: the
+// declaration itself never reaches the containment tree (v2.compiler.namespace_graft rehomes a
+// fn_decl under a Named edge and nothing rehomes a type_decl or data_decl -- see
+// v2.test.claim.namespace_xl0.field_type_tree_presence). That is a declaration-grafting loss with
+// its own trigger and is measured, not repaired, here: the row at the end of this file asserts the
+// refusal so it reds -- and gets re-stated -- when grafting lands.
+data xl0r_provider_source: String = "module v2.test.xl0r_provider\n\nimport v2.std.logic { Bool }\n\nfn xl0r_provided_fn(p: Bool) -> Bool { p }\n\ndata xl0r_provided_value: Bool = true\n"
+
+data xl0r_local_consumer_source: String = "module v2.test.xl0r_local_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_same_module(x: Bool) -> Bool { x }\n"
+
+data xl0r_declared_consumer_source: String = "module v2.test.xl0r_declared_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_provided_fn() -> Bool { v2.test.xl0r_provider.xl0r_provided_fn }\n"
+
+data xl0r_undeclared_consumer_source: String = "module v2.test.xl0r_undeclared_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_nothing_declared() -> Bool { v2.test.xl0r_provider.xl0r_no_such_declaration }\n"
+
+data xl0r_data_target_consumer_source: String = "module v2.test.xl0r_data_target_consumer\n\nimport v2.std.logic { Bool }\n\nfn xl0r_uses_provided_value() -> Bool { v2.test.xl0r_provider.xl0r_provided_value }\n"
+
+fn xl0r_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+data xl0r_ingest: SourceRootIngest = Cons {
+  head: xl0r_read(
+    source: xl0r_provider_source,
+    id: ^xl0r_provider_read,
+    unit: ^xl0r_provider_cu,
+    path: "src/v2/test/fixture/namespace_xl0/resolution_provider.dag"
+  ),
+  tail: Cons {
+    head: xl0r_read(
+      source: xl0r_local_consumer_source,
+      id: ^xl0r_local_consumer_read,
+      unit: ^xl0r_local_consumer_cu,
+      path: "src/v2/test/fixture/namespace_xl0/resolution_local_consumer.dag"
+    ),
+    tail: Cons {
+    head: xl0r_read(
+      source: xl0r_declared_consumer_source,
+      id: ^xl0r_declared_consumer_read,
+      unit: ^xl0r_declared_consumer_cu,
+      path: "src/v2/test/fixture/namespace_xl0/resolution_declared_consumer.dag"
+    ),
+    tail: Cons {
+      head: xl0r_read(
+        source: xl0r_undeclared_consumer_source,
+        id: ^xl0r_undeclared_consumer_read,
+        unit: ^xl0r_undeclared_consumer_cu,
+        path: "src/v2/test/fixture/namespace_xl0/resolution_undeclared_consumer.dag"
+      ),
+      tail: Cons {
+        head: xl0r_read(
+          source: xl0r_data_target_consumer_source,
+          id: ^xl0r_data_target_consumer_read,
+          unit: ^xl0r_data_target_consumer_cu,
+          path: "src/v2/test/fixture/namespace_xl0/resolution_data_target_consumer.dag"
+        ),
+        tail: Empty
+      }
+    }
+  }
+  }
+}
+
+// Nullary, pure, inline sources, and a value that reifies to the bottom -- the same shape the
+// sibling file's producer has. Enrolled WARM in v2.workflow.floor_pure_producer_share.
+fn xl0r_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
+  module_roots_from_source_root_ingest(ingest: xl0r_ingest, lm: dag_language_model())
+}
+
+fn xl0r_admission(subject: String) -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: subject) },
+    imports: Empty
+  }
+}
+
+fn xl0r_resolve_subject(subject: String) -> Outcome<Node> {
+  match xl0r_fixture_normalized() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: roots, diagnostics: _ } =>
+      assemble_program_from_module_roots(
+        roots: roots,
+        admission: xl0r_admission(subject: subject),
+        lm: dag_language_model()
+      )
+  }
+}
+
+fn xl0r_resolved_atom_present(root: Node, identity: Symbol) -> Bool {
+  fold(node_subtree_nodes(root: root), init: false, f: fn(acc, n) {
+    acc || (match n.kind {
+      TypeNode { connective: Atom { identity: sym } } => sym == identity
+      _ => false
+    })
+  })
+}
+
+// The FINAL refusal is the one the resolver raised, behind whatever pending parse-stage residue the
+// pipeline carries forward (rejected_with_pending prepends the pending rows, so `head` is not it).
+fn xl0r_last_reason(d: NonEmptyDiagnostics) -> Symbol {
+  fold(d.tail, init: d.head.reason, f: fn(acc, x) { x.reason })
+}
+
+test fn the_resolution_fixture_ingests_holds() -> Bool {
+  match xl0r_fixture_normalized() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE CONTROL: a module whose only reference is same-module resolves, so a red on the row after it
+// is about the cross-module chain and not about this route being dead. It is its own module so
+// that the primary's verdict cannot leak into it.
+test fn a_same_module_reference_resolves_on_the_production_route_holds() -> Bool {
+  match xl0r_resolve_subject(subject: "v2.test.xl0r_local_consumer") {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE PRIMARY: a cross-module dotted reference to a DECLARED function resolves, and the resolved
+// body carries the declaration's own name as its canonical identity. Before the lowering repair
+// this module refused with resolve_reason_unbound_symbol on the bare `v2` the infix arm left behind;
+// before the resolver's fallback repair it was Accepted carrying `resolve_reason_unbound_symbol` AS
+// THE IDENTITY, which the second conjunct is here to keep unwritable.
+test fn a_cross_module_reference_to_a_declared_fn_resolves_holds() -> Bool {
+  match xl0r_resolve_subject(subject: "v2.test.xl0r_declared_consumer") {
+    Accepted { value: resolved, diagnostics: _ } =>
+      xl0r_resolved_atom_present(root: resolved, identity: ^xl0r_provided_fn)
+        && !xl0r_resolved_atom_present(root: resolved, identity: ^resolve_reason_unbound_symbol)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// THE BOUNDARY: the same chain shape naming a declaration that does not exist refuses, at resolve,
+// with the unbound-symbol reason -- reassembling the chain widened nothing.
+test fn a_cross_module_reference_to_an_undeclared_name_refuses_unbound() -> Bool {
+  match xl0r_resolve_subject(subject: "v2.test.xl0r_undeclared_consumer") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}
+
+// MEASURED, NOT REPAIRED: a cross-module reference to a DATA declaration refuses today, because the
+// data declaration is not grafted into the containment tree. This reds when declaration grafting
+// lands, and must then be re-stated as resolving.
+test fn a_cross_module_reference_to_a_data_declaration_refuses_today() -> Bool {
+  match xl0r_resolve_subject(subject: "v2.test.xl0r_data_target_consumer") {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => xl0r_last_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
+}

@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.refusal_reason_minted_as_canonical_identity
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data refusal_reason_minted_as_canonical_identity: RecurringFailureMode = RecurringFailureMode {
+  identity: "refusal_reason_minted_as_canonical_identity" as NonEmptyStr,
+  receipts: [
+    "**a diagnostic reason symbol is written into a resolved value as its identity** (INVALID STATE: v2.compiler.resolve try_resolve_qualified_name_node, on a symbol-index HIT whose declaration node is not an Atom -- every fn, since a fn is an Arrow -- passed `^resolve_reason_unbound_symbol` as the fallback identity to symbol_index_node_identity, so the resolved reference was Accepted as an Atom whose identity is a refusal reason. The bare arm beside it passes the referenced NAME as its fallback.)",
+    "HARM. The program is Accepted, downstream stages receive an atom named after a diagnostic, and every consumer that keys on the identity -- infer, emit, the repair-input origin roster -- sees a symbol that names nothing declared. A reader who greps for the reason symbol finds refusals and never this value. It is the fabricated-plausible-output failure of DESIGN section 5 in its smallest form: one field, wrong vocabulary, no signal.",
+    "DISTINGUISHING FACTS. diagnostic_name_mechanism_silent is about a diagnostic whose NAME misdescribes its mechanism; this row is about a diagnostic symbol used as a VALUE where a name was owed. absorbing_fallback is about widening on failure; this row widens on SUCCESS -- the hit is real, only its identity is minted from the wrong vocabulary. The recognition rule: a `fallback:` argument, a default arm or a sentinel whose spelling is a `*_reason_*` symbol reaching a value position.",
+    "RECEIPT (2026-09-18, smart-lynx-554). Uninhabited until the dotted-reference lowering landed (dotted_reference_truncated_at_v2_body_lowering), because no v2 route had produced the qualified spine this arm consumes. First production-route run of a cross-module reference to a declared fn came back Accepted with the fn body resolved to Atom resolve_reason_unbound_symbol. Repaired in the same change: the path's last segment is taken BEFORE the lookup and is the fallback, and a path with no last segment answers Absent, so no arm of the function can reach a reason symbol in value position. Enrolled: v2.test.claim.namespace_xl0.cross_module_reference_resolution asserts the resolved body carries the declaration's name and does NOT carry the reason symbol.",
+    "RUNG FOUND AT: outside the ladder -- silent wrongness.",
+    "CEILING: structurally impossible. A reason symbol and a canonical identity are different concepts and should not share a carrier; a resolver that returns Symbol for both can write one where the other is owed. The wall is the type: resolution answering with a declaration identity carrier that a Diagnostic.reason cannot inhabit.",
+    "NEXT-RUNG TRIGGER: v2.compiler.resolve canonical identities carried as a declaration-identity type distinct from Symbol, so that the fallback argument cannot be spelled with a reason symbol; until then the enrolled row above is the wall.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.resolve", decl_name: "try_resolve_qualified_name_node", field: WholeDeclaration },
+  ],
+}

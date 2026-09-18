@@ -467,6 +467,17 @@ import v2.std.collection { List }
 // reason the parse rows above keep normalize out: the claims in that file are ABOUT the collector,
 // so sharing the collection would hand each one a precomputed answer to the question it asks. The
 // walk stays per claim; only the stage no claim names is shared.
+// THE LAST ROW IS THE NAMESPACE-XL-0 RESOLUTION-SIDE FIXTURE, THE SAME SHAPE AS THE ROW BEFORE IT
+// AND ENROLLED FOR THE SAME REASON. v2.test.claim.namespace_xl0.cross_module_reference_resolution
+// drives the real parse-and-normalize of five inline modules and then resolves ONE subject per
+// claim (v2.compiler.name_resolve resolve_with_admission resolves the admitted root alone; the
+// other roots feed the symbol index), so the ingest is the stage no claim names and the resolve is
+// the stage every claim names. Re-derived with `claim_batch --entry` on that file before enrolment:
+// every row measured above the 500ms per-claim ceiling with the fill inside its own budget, and its
+// fill (`[floor-shared-fill] ... fill_cpu_ms`) is the same order as the sibling row's. Re-derive
+// rather than trust: the run's [floor-shared-fill] ledger must show this fill landing at
+// preparation with disposition=Stored and the claims serving hits. Nullary, pure, inline sources,
+// and the value is the same Outcome<FreeMonoid<NormalizedTree>> carrier the row before it stores.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -495,7 +506,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
-  "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized"
+  "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.
