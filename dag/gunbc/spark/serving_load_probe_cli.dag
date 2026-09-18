@@ -1,0 +1,153 @@
+module gunbc.spark.serving_load_probe_cli
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.docker.cli { docker_exec_command }
+import extdeps.exec.command { argv_words }
+import extdeps.vllm.bench_serve { vllm_bench_serve_arguments }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable,
+}
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
+import gunbc.spark.glm_group_b_relaunch_cli { with_group_b_access, rank_context }
+import gunbc.spark.serving_arm { glm_native_concurrent_profile }
+import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_from_body }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.serving_load_probe {
+  glm_native_holistic_protocol, glm_native_live_subject_standing,
+  serving_load_observation, serving_load_observation_text,
+  drain_from_queue, window_from_drain, counter_continuity,
+  DrainObservedIdle, DrainNotIdle, DrainUnread, ArrivalSkewUnread,
+  OperationLedger, LedgerClosed, LedgerIncomplete,
+  OccupancyUnsampled,
+  ClientOutputTokensUnread,
+}
+
+// ── THE INHABITANCE ROUTE ─────────────────────────────────────────────────────────────────────
+//
+// Witnesses supply metric bodies. This function is the one that drives `vllm bench serve` against
+// the live native GLM head and folds engine-counter receipts. It is operator-invoked, not a CI
+// job: the arm is shared, and colliding with another experiment is the isolation failure the
+// design names.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/spark/serving_load_probe_cli.dag --function glm_native_serving_load_wet
+
+data glm_native_serving_load_receipt_path: String = "target/glm-native-serving-load-observation.txt"
+data glm_native_serving_load_attempt_raw: String = "glm-native-serving-load"
+
+fn metrics_url() -> String {
+  join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port), "/metrics"], "")
+}
+
+fn curl_metrics_argv() -> List<String> {
+  ["curl", "-fsS", "--max-time", "15", metrics_url()]
+}
+
+fn bench_exec_argv() -> List<String> {
+  argv_words(command: docker_exec_command(
+    name: glm_native_container_name,
+    env: [],
+    argv: concat(["vllm"], vllm_bench_serve_arguments(req: glm_native_holistic_protocol)),
+  ))
+}
+
+fn remote_or_fail(ctx: SparkMaterializeContext, argv: List<String>, step: String) -> String {
+  match spark_remote_run(ctx: ctx, argv: argv) {
+    RemoteUnreachable { cause: c } => join(["UNREACHABLE ", step, " ", c], "")
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        join(["FAILED ", step, " exit=", to_string(code), " stderr=", err], "")
+      } else {
+        out
+      }
+  }
+}
+
+fn body_is_failure(body: String) -> Bool {
+  starts_with(s: body, prefix: "UNREACHABLE ") || starts_with(s: body, prefix: "FAILED ")
+}
+
+fn ledger_from_bench(exit_ok: Bool, offered: Nat) -> OperationLedger {
+  if exit_ok {
+    LedgerClosed { offered: offered, completed: offered, failed: 0, failed_after_tokens: 0 }
+  } else {
+    LedgerIncomplete { because: "vllm bench serve did not exit 0, so whether any request emitted tokens and then failed is unknown; the rate is not denominated in tokens" as NonEmptyStr }
+  }
+}
+
+fn glm_native_serving_load_wet() -> ProcessExit
+  uses net: Network
+{
+  with_group_b_access(use: fn(trust, path, administrator, file) {
+    let ctx = rank_context(host: operator_host_srv9, trust: trust, path: path, administrator: administrator, credential_file: file)
+    let before = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-before")
+    if body_is_failure(body: before) {
+      exit_failure(reason: before)
+    } else {
+      let drain = drain_from_queue(q: harness_queue_from_body(body: before))
+      let window = window_from_drain(
+        drain: drain,
+        traffic_receipt: "operator-coordinated window; drain snapshot only; no route withdrawal exclusion receipt" as NonEmptyStr,
+      )
+      match drain {
+        DrainNotIdle { running: n } =>
+          exit_failure(reason: join(["refusing to drive load: num_requests_running=", to_string(n), " so this window is not drained"], ""))
+        DrainUnread { cause: c } =>
+          exit_failure(reason: join(["refusing to drive load: drain unread: ", c as String], ""))
+        DrainObservedIdle => {
+          let bench = spark_remote_run(ctx: ctx, argv: bench_exec_argv())
+          let after = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-after")
+          if body_is_failure(body: after) {
+            exit_failure(reason: after)
+          } else {
+            let bench_ok = match bench {
+              RemoteUnreachable { cause: _ } => false
+              RemoteRan { exit_code: code, stdout: _, stderr: _ } => code == 0
+            }
+            let bench_text = match bench {
+              RemoteUnreachable { cause: c } => join(["bench unreachable: ", c], "")
+              RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+                join(["bench exit=", to_string(code), "\n", out, "\n", err], "")
+            }
+            let before_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: before)
+            let after_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: after)
+            let occ = OccupancyUnsampled { cause: "the wet fold scrapes metrics only before and after the blocking bench process; mid-run occupancy is not sampled" as NonEmptyStr }
+            let obs = serving_load_observation(
+              subject: glm_native_live_subject_standing(),
+              protocol: glm_native_holistic_protocol,
+              window: window,
+              continuity: counter_continuity(before: before_launch, after: after_launch),
+              arrival: ArrivalSkewUnread { cause: "vllm bench serve stdout is not yet parsed for per-request start skew" as NonEmptyStr },
+              occupancy: occ,
+              client_output: ClientOutputTokensUnread { cause: "vllm bench serve stdout is not yet parsed for completed output tokens" as NonEmptyStr },
+              before_at: 0,
+              after_at: 1,
+              before_body: before,
+              after_body: after,
+              ledger: ledger_from_bench(exit_ok: bench_ok, offered: 4),
+            )
+            let body = join([
+              "glm native serving-load wet at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+              serving_load_observation_text(o: obs),
+              "\n--- bench ---\n", bench_text, "\n",
+            ], "")
+            let w = Filesystem.Write(path: glm_native_serving_load_receipt_path, content: body)
+            if !w.success {
+              exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+            } else if !bench_ok {
+              exit_failure(reason: body)
+            } else {
+              ExitSuccess
+            }
+          }
+        }
+      }
+    }
+  }, attempt_raw: glm_native_serving_load_attempt_raw, credential_file_name: "gunbc-glm-native-serving-load-admin-password" as NonEmptyStr)
+}

@@ -1,0 +1,691 @@
+module gunbc.spark.serving_load_probe
+
+import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat }
+import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
+import v2.std.algebra { length, filter }
+import v2.std.optional { Present, Absent }
+import std.measure { TokenCount, token_count, token_count_value }
+import product.capacity.lease { LeaseGrant }
+import product.fabric.demand { ObservationReceiptRef }
+import extdeps.prometheus.client {
+  SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
+}
+import extdeps.vllm.metrics {
+  VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal,
+  HistogramStatistic, HistogramSum, HistogramCount,
+  vllm_metric_exports_histogram_statistics,
+}
+import extdeps.vllm.bench_serve {
+  VllmBenchServeRequest, PoissonProcess,
+  RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_uses_poisson_idle_gaps,
+}
+import gunbc.harness.harness_backend {
+  harness_gauge_value, harness_labelled_gauge_value, harness_gauge_count,
+  harness_histogram_statistic_value, harness_launch_from_body, harness_queue_from_body,
+}
+import gunbc.serving.turn_admission {
+  ServingQueueReading, QueueDepthRead, QueueDepthUnread,
+  ServingCapacityPressure, RouteAdmittingMore, RouteHoldingForCapacity, CapacityPressureUnread,
+}
+import gunbc.spark.vllm_endpoint_process_launch {
+  VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+}
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4, glm_native_concurrent_profile,
+}
+import gunbc.spark.serving_performance_subject {
+  ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
+  ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
+}
+import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff }
+
+// ── THROUGHPUT QUALIFICATION FOR THE SERVING SUBJECT (design #11540, serving side) ────────────
+//
+// A RATE WITHOUT ITS SUBJECT, PROTOCOL, REALIZATION AND WINDOW STANDING is uncomparable.
+// Saturation is not decidable from one run. Completion accounting is fail-closed: a request that
+// emits tokens and then fails cannot be denominated in tokens. A quiet endpoint read is not an
+// isolation receipt.
+//
+// THE RATE IS DERIVED AND NEVER STORED, the same law gunbc.harness.harness_throughput states for
+// its own stream: counts and an engine interval are carried; tokens-per-second is a function of
+// them.
+
+type DrainReceipt
+  = DrainObservedIdle
+  | DrainNotIdle { running: Nat }
+  | DrainUnread { cause: NonEmptyStr }
+
+type ExclusionReceipt
+  = ExclusionEstablished { how: NonEmptyStr }
+  | ExclusionNotEstablished { cause: NonEmptyStr }
+
+type ProbeWindowStanding
+  = WindowIsolated { grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt }
+  | WindowSharedWithDeclaredTraffic { traffic_receipt: NonEmptyStr, drain: DrainReceipt }
+  | WindowIsolationUnread { cause: NonEmptyStr, drain: DrainReceipt }
+
+fn window_isolated_requires_exclusion(s: ProbeWindowStanding) -> Bool {
+  match s {
+    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: e } =>
+      match e {
+        ExclusionEstablished { how: _ } => true
+        ExclusionNotEstablished { cause: _ } => false
+      }
+    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
+    WindowIsolationUnread { cause: _, drain: _ } => false
+  }
+}
+
+fn drain_from_queue(q: ServingQueueReading) -> DrainReceipt {
+  match q {
+    QueueDepthUnread { obligation: o } => DrainUnread { cause: o }
+    QueueDepthRead { waiting: _, running: r, pressure: _ } =>
+      if r == 0 { DrainObservedIdle } else { DrainNotIdle { running: r } }
+  }
+}
+
+// A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT. It is not exclusion: production work can arrive after
+// the read. Without an exclusion receipt the standing cannot be WindowIsolated.
+fn window_from_drain(drain: DrainReceipt, traffic_receipt: NonEmptyStr) -> ProbeWindowStanding {
+  match drain {
+    DrainUnread { cause: c } => WindowIsolationUnread { cause: c, drain: drain }
+    DrainNotIdle { running: _ } =>
+      WindowSharedWithDeclaredTraffic { traffic_receipt: traffic_receipt, drain: drain }
+    DrainObservedIdle =>
+      WindowSharedWithDeclaredTraffic { traffic_receipt: traffic_receipt, drain: drain }
+  }
+}
+
+fn isolated_window(grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt) -> ProbeWindowStanding {
+  match exclusion {
+    ExclusionNotEstablished { cause: c } =>
+      WindowIsolationUnread { cause: c, drain: drain }
+    ExclusionEstablished { how: _ } =>
+      match drain {
+        DrainObservedIdle =>
+          WindowIsolated { grant: grant, deadline: deadline, drain: drain, exclusion: exclusion }
+        DrainNotIdle { running: _ } =>
+          WindowIsolationUnread { cause: "exclusion was named but the drain snapshot was not idle" as NonEmptyStr, drain: drain }
+        DrainUnread { cause: c } =>
+          WindowIsolationUnread { cause: c, drain: drain }
+      }
+  }
+}
+
+type BacklogStanding
+  = BacklogObserved { running: Nat, waiting: Nat, capacity_waiting: Nat, preemptions: Nat }
+  | NoBacklogObserved { running: Nat, preemptions: Nat }
+  | BacklogUnread { cause: NonEmptyStr }
+
+fn capacity_waiting_count(p: ServingCapacityPressure) -> Nat? {
+  match p {
+    CapacityPressureUnread { obligation: _ } => none
+    RouteAdmittingMore => Present { value: 0 }
+    RouteHoldingForCapacity { held: n } => Present { value: n }
+  }
+}
+
+fn backlog_from_body(body: String, preemptions: Nat?) -> BacklogStanding {
+  match preemptions {
+    Absent => BacklogUnread { cause: "vllm:num_preemptions_total could not be read as a count" as NonEmptyStr }
+    Present { value: p } =>
+      match harness_queue_from_body(body: body) {
+        QueueDepthUnread { obligation: o } => BacklogUnread { cause: o }
+        QueueDepthRead { waiting: w, running: r, pressure: pr } =>
+          match capacity_waiting_count(p: pr) {
+            Absent => BacklogUnread { cause: "capacity-reason waiting could not be read" as NonEmptyStr }
+            Present { value: c } =>
+              if w == 0 && c == 0 {
+                NoBacklogObserved { running: r, preemptions: p }
+              } else {
+                BacklogObserved { running: r, waiting: w, capacity_waiting: c, preemptions: p }
+              }
+          }
+      }
+  }
+}
+
+type CounterContinuity
+  = SameExporter { start_field: NonEmptyStr }
+  | ExporterChanged { before: NonEmptyStr, after: NonEmptyStr }
+  | ContinuityUnread { cause: NonEmptyStr }
+
+fn counter_continuity(before: VllmEndpointProcessLaunchObservation, after: VllmEndpointProcessLaunchObservation) -> CounterContinuity {
+  match before {
+    LaunchUnobserved { endpoint: e } =>
+      ContinuityUnread { cause: join(["the exporter start field was unobserved before the window: ", e as String], "") as NonEmptyStr }
+    LaunchObserved { launch: b, receipt: _ } =>
+      match after {
+        LaunchUnobserved { endpoint: e } =>
+          ContinuityUnread { cause: join(["the exporter start field was unobserved after the window: ", e as String], "") as NonEmptyStr }
+        LaunchObserved { launch: a, receipt: _ } =>
+          if (b.process_start_field as String) == (a.process_start_field as String) {
+            SameExporter { start_field: b.process_start_field }
+          } else {
+            ExporterChanged { before: b.process_start_field, after: a.process_start_field }
+          }
+      }
+  }
+}
+
+type HistogramDelta
+  = HistogramDeltaRead { sum_milli: Nat, count: Nat }
+  | HistogramDeltaUnread { cause: NonEmptyStr }
+  | HistogramCounterReset { cause: NonEmptyStr }
+
+fn milli_from_exact(d: ExactDecimal) -> Nat? {
+  let c = canonical_exact_decimal(d: d)
+  if c.units < 0 {
+    none
+  } else if c.fraction_digits > 3 {
+    none
+  } else {
+    let scaled = c.units * decimal_pow10(exponent: 3 - c.fraction_digits)
+    if scaled < 0 { none } else { Present { value: scaled as Nat } }
+  }
+}
+
+fn field_to_milli(field: String) -> Nat? {
+  match prometheus_sample_value_reading(field: field) {
+    SampleValueNotFinite { lexeme: _ } => none
+    SampleValueUnreadable { lexeme: _ } => none
+    SampleValueExact { value: d } => milli_from_exact(d: d)
+  }
+}
+
+fn nat_delta(after: Nat, before: Nat) -> Nat? {
+  if after < before { none } else { Present { value: after - before } }
+}
+
+fn histogram_delta(before_body: String, after_body: String, metric: VllmServingMetric) -> HistogramDelta {
+  if !vllm_metric_exports_histogram_statistics(m: metric) {
+    HistogramDeltaUnread { cause: "this metric does not export histogram sum/count" as NonEmptyStr }
+  } else {
+    match harness_histogram_statistic_value(body: before_body, metric: metric, statistic: HistogramSum) {
+      Absent => HistogramDeltaUnread { cause: "histogram sum missing on the first body" as NonEmptyStr }
+      Present { value: bs } =>
+        match harness_histogram_statistic_value(body: after_body, metric: metric, statistic: HistogramSum) {
+          Absent => HistogramDeltaUnread { cause: "histogram sum missing on the second body" as NonEmptyStr }
+          Present { value: asv } =>
+            match harness_histogram_statistic_value(body: before_body, metric: metric, statistic: HistogramCount) {
+              Absent => HistogramDeltaUnread { cause: "histogram count missing on the first body" as NonEmptyStr }
+              Present { value: bc } =>
+                match harness_histogram_statistic_value(body: after_body, metric: metric, statistic: HistogramCount) {
+                  Absent => HistogramDeltaUnread { cause: "histogram count missing on the second body" as NonEmptyStr }
+                  Present { value: ac } =>
+                    match field_to_milli(field: bs) {
+                      Absent => HistogramDeltaUnread { cause: "histogram sum before was not an exact milli-second" as NonEmptyStr }
+                      Present { value: bsm } =>
+                        match field_to_milli(field: asv) {
+                          Absent => HistogramDeltaUnread { cause: "histogram sum after was not an exact milli-second" as NonEmptyStr }
+                          Present { value: asm } =>
+                            match harness_gauge_count(text: bc) {
+                              Absent => HistogramDeltaUnread { cause: "histogram count before was not an exact count" as NonEmptyStr }
+                              Present { value: bcn } =>
+                                match harness_gauge_count(text: ac) {
+                                  Absent => HistogramDeltaUnread { cause: "histogram count after was not an exact count" as NonEmptyStr }
+                                  Present { value: acn } =>
+                                    match nat_delta(after: asm, before: bsm) {
+                                      Absent => HistogramCounterReset { cause: "histogram sum decreased across the window" as NonEmptyStr }
+                                      Present { value: ds } =>
+                                        match nat_delta(after: acn, before: bcn) {
+                                          Absent => HistogramCounterReset { cause: "histogram count decreased across the window" as NonEmptyStr }
+                                          Present { value: dc } => HistogramDeltaRead { sum_milli: ds, count: dc }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn preemption_count(body: String) -> Nat? {
+  match harness_gauge_value(body: body, metric: NumPreemptionsTotal) {
+    Absent => none
+    Present { value: t } => harness_gauge_count(text: t)
+  }
+}
+
+type OperationLedger
+  = LedgerClosed { offered: Nat, completed: Nat, failed: Nat, failed_after_tokens: Nat }
+  | LedgerIncomplete { because: NonEmptyStr }
+
+fn ledger_admits_token_denomination(l: OperationLedger) -> Bool {
+  match l {
+    LedgerIncomplete { because: _ } => false
+    LedgerClosed { offered: o, completed: c, failed: f, failed_after_tokens: t } =>
+      t == 0 && (c + f) == o
+  }
+}
+
+type TokenDelta
+  = TokenDeltaRead { tokens: Nat }
+  | TokenDeltaUnread { cause: NonEmptyStr }
+  | TokenDeltaReset { cause: NonEmptyStr }
+
+fn generation_token_delta(before_body: String, after_body: String) -> TokenDelta {
+  match harness_gauge_value(body: before_body, metric: GenerationTokensTotal) {
+    Absent => TokenDeltaUnread { cause: "vllm:generation_tokens_total missing on the first body" as NonEmptyStr }
+    Present { value: b } =>
+      match harness_gauge_value(body: after_body, metric: GenerationTokensTotal) {
+        Absent => TokenDeltaUnread { cause: "vllm:generation_tokens_total missing on the second body" as NonEmptyStr }
+        Present { value: a } =>
+          match field_to_milli(field: b) {
+            Absent => TokenDeltaUnread { cause: "generation_tokens_total before was not an exact decimal" as NonEmptyStr }
+            Present { value: bm } =>
+              match field_to_milli(field: a) {
+                Absent => TokenDeltaUnread { cause: "generation_tokens_total after was not an exact decimal" as NonEmptyStr }
+                Present { value: am } =>
+                  match nat_delta(after: am, before: bm) {
+                    Absent => TokenDeltaReset { cause: "generation_tokens_total decreased; the exporter likely restarted" as NonEmptyStr }
+                    Present { value: d } =>
+                      if d % 1000 == 0 {
+                        TokenDeltaRead { tokens: d / 1000 }
+                      } else {
+                        TokenDeltaUnread { cause: "generation_tokens_total delta was not a whole token count" as NonEmptyStr }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn scrape_interval_millis(before_at: EpochSecs, after_at: EpochSecs) -> Nat? {
+  if after_at <= before_at {
+    none
+  } else {
+    Present { value: ((after_at - before_at) * 1000) as Nat }
+  }
+}
+
+type ArrivalSkew
+  = ArrivalSkewObserved { max_stagger_millis: Nat }
+  | ArrivalSkewUnread { cause: NonEmptyStr }
+
+data arrival_skew_comparison_bound_millis: Nat = 250
+
+fn arrival_admits_rate_comparison(s: ArrivalSkew) -> Bool {
+  match s {
+    ArrivalSkewUnread { cause: _ } => false
+    ArrivalSkewObserved { max_stagger_millis: n } => n <= arrival_skew_comparison_bound_millis
+  }
+}
+
+type OccupancySample {
+  running: Nat
+  waiting: Nat
+  capacity_waiting: Nat
+  preemptions: Nat
+}
+
+type OccupancyTrace
+  = OccupancySampled { samples: List<OccupancySample> }
+  | OccupancyUnsampled { cause: NonEmptyStr }
+
+fn occupancy_from_body(body: String) -> OccupancySample? {
+  match harness_queue_from_body(body: body) {
+    QueueDepthUnread { obligation: _ } => none
+    QueueDepthRead { waiting: w, running: r, pressure: p } =>
+      match preemption_count(body: body) {
+        Absent => none
+        Present { value: pr } =>
+          match capacity_waiting_count(p: p) {
+            Absent => none
+            Present { value: c } => Present { value: OccupancySample { running: r, waiting: w, capacity_waiting: c, preemptions: pr } }
+          }
+      }
+  }
+}
+
+fn occupancy_admits_declared_load(trace: OccupancyTrace, max_concurrency: Nat?) -> Bool {
+  match trace {
+    OccupancyUnsampled { cause: _ } => true
+    OccupancySampled { samples: ss } =>
+      match max_concurrency {
+        Absent => true
+        Present { value: cap } =>
+          length(filter(ss, s => s.running > cap)) == 0
+      }
+  }
+}
+
+type ClientOutputTokens
+  = ClientOutputTokensObserved { tokens: Nat }
+  | ClientOutputTokensUnread { cause: NonEmptyStr }
+
+type LedgerCounterAgreement
+  = LedgerAndCounterAgree { generation_tokens: Nat, completed_requests: Nat }
+  | LedgerCounterDisagree { because: NonEmptyStr }
+  | AgreementUnread { because: NonEmptyStr }
+
+fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, client_output: ClientOutputTokens) -> LedgerCounterAgreement {
+  match generation {
+    TokenDeltaUnread { cause: c } => AgreementUnread { because: c }
+    TokenDeltaReset { cause: c } => AgreementUnread { because: c }
+    TokenDeltaRead { tokens: g } =>
+      match ledger {
+        LedgerIncomplete { because: c } => AgreementUnread { because: c }
+        LedgerClosed { offered: _, completed: n, failed: _, failed_after_tokens: _ } =>
+          if g > 0 && n == 0 {
+            LedgerCounterDisagree { because: "generation_tokens_total advanced while the client ledger completed zero requests; foreign load is the remaining explanation" as NonEmptyStr }
+          } else {
+            match client_output {
+              ClientOutputTokensUnread { cause: _ } =>
+                LedgerAndCounterAgree { generation_tokens: g, completed_requests: n }
+              ClientOutputTokensObserved { tokens: c } =>
+                if c == g {
+                  LedgerAndCounterAgree { generation_tokens: g, completed_requests: n }
+                } else {
+                  LedgerCounterDisagree { because: "client completed-token count and generation_tokens_total delta disagree; the rate is not reported" as NonEmptyStr }
+                }
+            }
+          }
+      }
+  }
+}
+
+type DerivedRate
+  = RateFromGenerationTokens { tokens: Nat, scrape_millis: Nat }
+  | RateUndenominable { because: NonEmptyStr }
+  | RateUnreadable { because: NonEmptyStr }
+
+fn tokens_per_observation_second(r: DerivedRate) -> Nat? {
+  match r {
+    RateUndenominable { because: _ } => none
+    RateUnreadable { because: _ } => none
+    RateFromGenerationTokens { tokens: t, scrape_millis: ms } =>
+      if ms == 0 { none } else { Present { value: (t * 1000) / ms } }
+  }
+}
+
+fn derive_rate_honest(
+  ledger: OperationLedger,
+  continuity: CounterContinuity,
+  generation: TokenDelta,
+  scrape_millis: Nat?,
+  arrival: ArrivalSkew,
+  occupancy: OccupancyTrace,
+  max_concurrency: Nat?,
+  client_output: ClientOutputTokens,
+) -> DerivedRate {
+  if !ledger_admits_token_denomination(l: ledger) {
+    RateUndenominable { because: "the operation ledger does not admit token denomination" as NonEmptyStr }
+  } else {
+    match ledger_counter_agreement(ledger: ledger, generation: generation, client_output: client_output) {
+      LedgerCounterDisagree { because: c } => RateUnreadable { because: c }
+      AgreementUnread { because: c } => RateUnreadable { because: c }
+      LedgerAndCounterAgree { generation_tokens: _, completed_requests: _ } =>
+        if !occupancy_admits_declared_load(trace: occupancy, max_concurrency: max_concurrency) {
+          RateUnreadable { because: "a mid-run occupancy sample exceeded declared max-concurrency, so foreign load or oversubscription is visible and the rate is not reported" as NonEmptyStr }
+        } else {
+          match continuity {
+            ContinuityUnread { cause: c } => RateUnreadable { because: c }
+            ExporterChanged { before: _, after: _ } =>
+              RateUnreadable { because: "generation_tokens_total resets on restart; the exporter changed across the window" as NonEmptyStr }
+            SameExporter { start_field: _ } =>
+              if !arrival_admits_rate_comparison(s: arrival) {
+                RateUnreadable { because: "arrival skew is unread or exceeds the comparison bound, so a rate comparison is refused" as NonEmptyStr }
+              } else {
+                match scrape_millis {
+                  Absent => RateUnreadable { because: "the metric-scrape interval is not a positive span" as NonEmptyStr }
+                  Present { value: ms } =>
+                    match generation {
+                      TokenDeltaUnread { cause: c } => RateUnreadable { because: c }
+                      TokenDeltaReset { cause: c } => RateUnreadable { because: c }
+                      TokenDeltaRead { tokens: t } => RateFromGenerationTokens { tokens: t, scrape_millis: ms }
+                    }
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+type ServingLoadObservation {
+  subject: ServingPerformanceSubjectStanding
+  protocol: VllmBenchServeRequest
+  window: ProbeWindowStanding
+  continuity: CounterContinuity
+  arrival: ArrivalSkew
+  occupancy: OccupancyTrace
+  agreement: LedgerCounterAgreement
+  before_backlog: BacklogStanding
+  after_backlog: BacklogStanding
+  generation: TokenDelta
+  itl_latency: HistogramDelta
+  iteration_tokens_booked: HistogramDelta
+  ledger: OperationLedger
+  rate: DerivedRate
+  raw_before: NonEmptyStr
+  raw_after: NonEmptyStr
+}
+
+fn serving_load_observation(
+  subject: ServingPerformanceSubjectStanding,
+  protocol: VllmBenchServeRequest,
+  window: ProbeWindowStanding,
+  continuity: CounterContinuity,
+  arrival: ArrivalSkew,
+  occupancy: OccupancyTrace,
+  client_output: ClientOutputTokens,
+  before_at: EpochSecs,
+  after_at: EpochSecs,
+  before_body: String,
+  after_body: String,
+  ledger: OperationLedger,
+) -> ServingLoadObservation {
+  let before_p = preemption_count(body: before_body)
+  let after_p = preemption_count(body: after_body)
+  let generation = generation_token_delta(before_body: before_body, after_body: after_body)
+  let agreement = ledger_counter_agreement(ledger: ledger, generation: generation, client_output: client_output)
+  ServingLoadObservation {
+    subject: subject,
+    protocol: protocol,
+    window: window,
+    continuity: continuity,
+    arrival: arrival,
+    occupancy: occupancy,
+    agreement: agreement,
+    before_backlog: backlog_from_body(body: before_body, preemptions: before_p),
+    after_backlog: backlog_from_body(body: after_body, preemptions: after_p),
+    generation: generation,
+    itl_latency: histogram_delta(before_body: before_body, after_body: after_body, metric: InterTokenLatencySeconds),
+    iteration_tokens_booked: histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal),
+    ledger: ledger,
+    rate: derive_rate_honest(
+      ledger: ledger,
+      continuity: continuity,
+      generation: generation,
+      scrape_millis: scrape_interval_millis(before_at: before_at, after_at: after_at),
+      arrival: arrival,
+      occupancy: occupancy,
+      max_concurrency: protocol.max_concurrency,
+      client_output: client_output,
+    ),
+    raw_before: before_body as NonEmptyStr,
+    raw_after: after_body as NonEmptyStr,
+  }
+}
+
+fn observation_rate_is_stored_separately(_: ServingLoadObservation) -> Bool {
+  false
+}
+
+fn serving_load_observation_text(o: ServingLoadObservation) -> String {
+  join([
+    "serving-load observation\n",
+    "window: ", window_text(s: o.window), "\n",
+    "continuity: ", continuity_text(c: o.continuity), "\n",
+    "before backlog: ", backlog_text(b: o.before_backlog), "\n",
+    "after backlog: ", backlog_text(b: o.after_backlog), "\n",
+    "occupancy: ", occupancy_text(t: o.occupancy), "\n",
+    "agreement: ", agreement_text(a: o.agreement), "\n",
+    "generation: ", token_delta_text(d: o.generation), "\n",
+    "itl latency (not a rate): ", histogram_text(d: o.itl_latency), "\n",
+    "iteration_tokens booked (not occupancy): ", histogram_text(d: o.iteration_tokens_booked), "\n",
+    "ledger: ", ledger_text(l: o.ledger), "\n",
+    "rate: ", rate_text(r: o.rate), "\n",
+    "saturation decided from this run: ", if saturation_from_one_run(obs: o) { "yes" } else { "no" }, "\n",
+  ], "")
+}
+
+fn occupancy_text(t: OccupancyTrace) -> String {
+  match t {
+    OccupancyUnsampled { cause: c } => join(["unsampled ", c as String], "")
+    OccupancySampled { samples: ss } => join(["samples=", to_string(length(ss))], "")
+  }
+}
+
+fn agreement_text(a: LedgerCounterAgreement) -> String {
+  match a {
+    LedgerAndCounterAgree { generation_tokens: g, completed_requests: n } =>
+      join(["agree generation=", to_string(g), " completed=", to_string(n)], "")
+    LedgerCounterDisagree { because: c } => join(["disagree ", c as String], "")
+    AgreementUnread { because: c } => join(["unread ", c as String], "")
+  }
+}
+
+fn window_text(s: ProbeWindowStanding) -> String {
+  match s {
+    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => "isolated"
+    WindowSharedWithDeclaredTraffic { traffic_receipt: t, drain: d } =>
+      join(["shared-with-declared-traffic drain=", drain_text(d: d), " traffic=", t as String], "")
+    WindowIsolationUnread { cause: c, drain: d } =>
+      join(["unread drain=", drain_text(d: d), " cause=", c as String], "")
+  }
+}
+
+fn drain_text(d: DrainReceipt) -> String {
+  match d {
+    DrainObservedIdle => "idle"
+    DrainNotIdle { running: n } => join(["not-idle running=", to_string(n)], "")
+    DrainUnread { cause: c } => join(["unread ", c as String], "")
+  }
+}
+
+fn continuity_text(c: CounterContinuity) -> String {
+  match c {
+    SameExporter { start_field: f } => join(["same-exporter ", f as String], "")
+    ExporterChanged { before: b, after: a } => join(["exporter-changed ", b as String, " -> ", a as String], "")
+    ContinuityUnread { cause: x } => join(["unread ", x as String], "")
+  }
+}
+
+fn backlog_text(b: BacklogStanding) -> String {
+  match b {
+    BacklogObserved { running: r, waiting: w, capacity_waiting: c, preemptions: p } =>
+      join(["observed running=", to_string(r), " waiting=", to_string(w), " capacity=", to_string(c), " preemptions=", to_string(p)], "")
+    NoBacklogObserved { running: r, preemptions: p } =>
+      join(["none running=", to_string(r), " preemptions=", to_string(p)], "")
+    BacklogUnread { cause: c } => join(["unread ", c as String], "")
+  }
+}
+
+fn histogram_text(d: HistogramDelta) -> String {
+  match d {
+    HistogramDeltaRead { sum_milli: s, count: n } =>
+      join(["delta sum_milli=", to_string(s), " count=", to_string(n)], "")
+    HistogramDeltaUnread { cause: c } => join(["unread ", c as String], "")
+    HistogramCounterReset { cause: c } => join(["reset ", c as String], "")
+  }
+}
+
+fn ledger_text(l: OperationLedger) -> String {
+  match l {
+    LedgerIncomplete { because: c } => join(["incomplete ", c as String], "")
+    LedgerClosed { offered: o, completed: c, failed: f, failed_after_tokens: t } =>
+      join(["closed offered=", to_string(o), " completed=", to_string(c), " failed=", to_string(f), " failed_after_tokens=", to_string(t)], "")
+  }
+}
+
+fn token_delta_text(d: TokenDelta) -> String {
+  match d {
+    TokenDeltaRead { tokens: n } => join(["delta tokens=", to_string(n)], "")
+    TokenDeltaUnread { cause: c } => join(["unread ", c as String], "")
+    TokenDeltaReset { cause: c } => join(["reset ", c as String], "")
+  }
+}
+
+fn rate_text(r: DerivedRate) -> String {
+  match r {
+    RateUndenominable { because: c } => join(["undenominable ", c as String], "")
+    RateUnreadable { because: c } => join(["unreadable ", c as String], "")
+    RateFromGenerationTokens { tokens: t, scrape_millis: ms } =>
+      join([
+        "generation_tokens=", to_string(t),
+        " scrape_millis=", to_string(ms),
+        " tokens_per_s=",
+        match tokens_per_observation_second(r: r) {
+          Absent => "none"
+          Present { value: v } => to_string(v)
+        },
+      ], "")
+  }
+}
+
+// ── THE HOLISTIC GLM PROTOCOL THIS FLEET'S SESSIONS ACTUALLY LOOK LIKE ────────────────────────
+//
+// Real sessions sit at ~100k-130k tokens of context after compacting a 262k window. They idle
+// between turns. Each turn is a separate request whose KV frees on completion while the prefix
+// stays in the prefix cache. Peak concurrent DECODING turns times average context is the KV
+// quantity, not total sessions.
+data glm_native_holistic_dataset: RandomDatasetSpec = RandomDatasetSpec {
+  input_len: token_count(count: 20000),
+  output_len: token_count(count: 128),
+  prefix_len: token_count(count: 100000),
+}
+
+data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
+  backend: OpenaiChat,
+  base_url: "http://127.0.0.1:30000" as NonEmptyStr,
+  model: glm_native_concurrent_profile.served_alias,
+  dataset: glm_native_holistic_dataset,
+  num_prompts: 4,
+  arrival: PoissonProcess { millirequests_per_second: 50, burstiness_milli: 1000 },
+  max_concurrency: Present { value: 2 },
+  ignore_eos: true,
+)
+
+data glm_native_live_image_reference: NonEmptyStr = "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr
+
+// max_num_seqs is 16 on the live units (parent reverted the out-of-band 64 edit).
+data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(
+  checkpoint: Glm53NativeFp8,
+  checkpoint_revision: none,
+  runtime: GunbcGlm53NopeDerivedGb10,
+  runtime_image_reference: glm_native_live_image_reference,
+  topology: Present { value: FourSparkTp4 },
+  rank_population: Present { value: 4 },
+  context_ceiling: Present { value: glm_native_concurrent_profile.max_model_len },
+  max_num_batched_tokens: glm_native_concurrent_profile.max_num_batched_tokens,
+  max_num_seqs: Present { value: 16 },
+  kv_cache_dtype: Present { value: KvFp8 },
+  speculative: Present { value: SpeculativeDecodingOff },
+  collective_transport: none,
+)
+
+fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding {
+  serving_subject_standing(
+    subject: glm_native_live_subject,
+    believed: "checkpoint revision and collective transport were unread; the live image digest is the one named on the arm" as NonEmptyStr,
+    would_settle: "read the running launch's checkpoint pin and NCCL transport announcement" as NonEmptyStr,
+  )
+}
+
+fn holistic_protocol_is_session_shaped(req: VllmBenchServeRequest) -> Bool {
+  vllm_bench_serve_uses_poisson_idle_gaps(req: req)
+    && token_count_at_least(t: req.dataset.prefix_len, n: 100000)
+    && token_count_at_least(t: req.dataset.input_len, n: 10000)
+}
+
+fn token_count_at_least(t: TokenCount, n: Nat) -> Bool {
+  token_count_value(t: t) >= n
+}

@@ -1,0 +1,246 @@
+module test.claim.spark.serving_load_probe_witness
+
+import std.types { Bool, String, NonEmptyStr, EpochSecs, List }
+import std.nat { Nat }
+import v2.std.algebra { length, filter }
+import v2.std.optional { Present, Absent }
+import std.measure { token_count }
+import product.capacity.lease { LeaseGrant, lease_fence_of, lease_grant, LeasePolicy, FencedResource }
+import product.capacity.event_chain { EventId }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.vllm_endpoint_process_launch {
+  vllm_endpoint_process_launch, VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
+}
+import gunbc.harness.harness_backend { harness_queue_from_body }
+import extdeps.vllm.bench_serve {
+  VllmBenchServeRequest, RandomDatasetSpec, OpenaiChat, SendAllImmediately, PoissonProcess,
+  vllm_bench_serve_request, vllm_bench_serve_arguments, vllm_bench_serve_uses_poisson_idle_gaps,
+}
+import gunbc.spark.serving_load_probe {
+  DrainObservedIdle,
+  ExclusionNotEstablished,
+  WindowIsolated, WindowSharedWithDeclaredTraffic, WindowIsolationUnread,
+  window_from_drain, isolated_window, drain_from_queue,
+  OperationLedger, LedgerClosed, ledger_admits_token_denomination,
+  RateFromGenerationTokens, RateUndenominable, RateUnreadable,
+  ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
+  TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, generation_token_delta,
+  derive_rate_honest, serving_load_observation, ServingLoadObservation, tokens_per_observation_second,
+  saturation_from_one_run, observation_rate_is_stored_separately,
+  glm_native_holistic_protocol, holistic_protocol_is_session_shaped,
+  glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
+  OccupancySampled, OccupancyUnsampled, OccupancySample,
+  ClientOutputTokensUnread, ClientOutputTokensObserved,
+}
+
+data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
+
+fn fx_launch() -> VllmEndpointProcessLaunchObservation {
+  LaunchObserved {
+    launch: vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000" as NonEmptyStr, process_start_field: start_field),
+    receipt: "fx" as ObservationReceiptRef,
+  }
+}
+
+fn metrics_body(running: String, waiting: String, capacity: String, preempt: String, itl_sum: String, itl_count: String, itok_sum: String, itok_count: String, gen: String, start: String) -> String {
+  join([
+    "vllm:num_requests_waiting{model_name=\"glm\"} ", waiting, "\n",
+    "vllm:num_requests_running{model_name=\"glm\"} ", running, "\n",
+    "vllm:num_requests_waiting_by_reason{model_name=\"glm\",reason=\"capacity\"} ", capacity, "\n",
+    "vllm:num_preemptions_total{model_name=\"glm\"} ", preempt, "\n",
+    "vllm:generation_tokens_total{model_name=\"glm\"} ", gen, "\n",
+    "vllm:inter_token_latency_seconds_sum{model_name=\"glm\"} ", itl_sum, "\n",
+    "vllm:inter_token_latency_seconds_count{model_name=\"glm\"} ", itl_count, "\n",
+    "vllm:iteration_tokens_total_sum{model_name=\"glm\"} ", itok_sum, "\n",
+    "vllm:iteration_tokens_total_count{model_name=\"glm\"} ", itok_count, "\n",
+    "process_start_time_seconds ", start, "\n",
+  ], "")
+}
+
+data fx_idle: String = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10.0", itl_count: "100.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+data fx_after: String = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "12.0", itl_count: "200.0", itok_sum: "99999.0", itok_count: "20.0", gen: "1128.0", start: "1789300000.12")
+data fx_reset: String = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "10.0", itok_count: "1.0", gen: "10.0", start: "1789300000.12")
+data fx_busy: String = metrics_body(running: "3.0", waiting: "2.0", capacity: "2.0", preempt: "1.0", itl_sum: "10.0", itl_count: "100.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+
+fn tight_arrival() -> ArrivalSkewObserved {
+  ArrivalSkewObserved { max_stagger_millis: 0 }
+}
+
+fn closed_ok() -> OperationLedger {
+  LedgerClosed { offered: 4, completed: 4, failed: 0, failed_after_tokens: 0 }
+}
+
+fn closed_failed_after_tokens() -> OperationLedger {
+  LedgerClosed { offered: 4, completed: 3, failed: 0, failed_after_tokens: 1 }
+}
+
+test fn a_quiet_drain_is_not_an_isolated_window() -> Bool {
+  let d = drain_from_queue(q: harness_queue_from_body(body: fx_idle))
+  let w = window_from_drain(drain: d, traffic_receipt: "coordinated with parent; no exclusion receipt" as NonEmptyStr)
+  match w {
+    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
+    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: DrainObservedIdle } => true
+    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
+    WindowIsolationUnread { cause: _, drain: _ } => false
+  }
+}
+
+test fn isolated_window_refuses_without_exclusion() -> Bool {
+  let grant = lease_grant(
+    reference: "probe" as NonEmptyStr,
+    fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
+    granted_at: 1,
+    policy: LeasePolicy { maximum_duration_seconds: 60, release_law: FencedResource },
+  )
+  match isolated_window(grant: grant, deadline: 61, drain: DrainObservedIdle, exclusion: ExclusionNotEstablished { cause: "route was not withdrawn" as NonEmptyStr }) {
+    WindowIsolationUnread { cause: _, drain: DrainObservedIdle } => true
+    WindowIsolationUnread { cause: _, drain: _ } => false
+    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
+    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
+  }
+}
+
+test fn a_request_that_emitted_then_failed_cannot_be_denominated_in_tokens() -> Bool {
+  !ledger_admits_token_denomination(l: closed_failed_after_tokens())
+    && ledger_admits_token_denomination(l: closed_ok())
+}
+
+test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool {
+  match generation_token_delta(before_body: fx_idle, after_body: fx_after) {
+    TokenDeltaRead { tokens: t } =>
+      t == 128 &&
+        match derive_rate_honest(
+          ledger: closed_ok(),
+          continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+          generation: TokenDeltaRead { tokens: t },
+          scrape_millis: Present { value: 2000 },
+          arrival: tight_arrival(),
+          occupancy: OccupancySampled { samples: [] },
+          max_concurrency: Present { value: 2 },
+          client_output: ClientOutputTokensUnread { cause: "fixture has no client token total" as NonEmptyStr },
+        ) {
+          RateFromGenerationTokens { tokens: tok, scrape_millis: ms } =>
+            tok == 128 && ms == 2000 &&
+              match tokens_per_observation_second(r: RateFromGenerationTokens { tokens: tok, scrape_millis: ms }) {
+                Absent => false
+                Present { value: rate } => rate == 64
+              }
+          RateUndenominable { because: _ } => false
+          RateUnreadable { because: _ } => false
+        }
+    TokenDeltaUnread { cause: _ } => false
+    TokenDeltaReset { cause: _ } => false
+  }
+}
+
+test fn unread_arrival_skew_refuses_a_rate_comparison() -> Bool {
+  !arrival_admits_rate_comparison(s: ArrivalSkewUnread { cause: "bench stdout not parsed" as NonEmptyStr })
+}
+
+test fn a_generation_counter_reset_is_not_a_rate() -> Bool {
+  match generation_token_delta(before_body: fx_idle, after_body: fx_reset) {
+    TokenDeltaReset { cause: _ } => true
+    TokenDeltaRead { tokens: _ } => false
+    TokenDeltaUnread { cause: _ } => false
+  }
+}
+
+fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
+  serving_load_observation(
+    subject: glm_native_live_subject_standing(),
+    protocol: glm_native_holistic_protocol,
+    window: window_from_drain(drain: DrainObservedIdle, traffic_receipt: "fx" as NonEmptyStr),
+    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+    arrival: tight_arrival(),
+    occupancy: OccupancySampled { samples: [] },
+    client_output: ClientOutputTokensUnread { cause: "fixture has no client token total" as NonEmptyStr },
+    before_at: 100,
+    after_at: 102,
+    before_body: fx_idle,
+    after_body: fx_after,
+    ledger: ledger,
+  )
+}
+
+test fn failed_after_tokens_makes_the_observation_rate_undenominable() -> Bool {
+  match fx_obs(ledger: closed_failed_after_tokens()).rate {
+    RateUndenominable { because: _ } => true
+    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateUnreadable { because: _ } => false
+  }
+}
+
+test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool {
+  match derive_rate_honest(
+    ledger: LedgerClosed { offered: 4, completed: 0, failed: 4, failed_after_tokens: 0 },
+    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+    generation: TokenDeltaRead { tokens: 128 },
+    scrape_millis: Present { value: 2000 },
+    arrival: tight_arrival(),
+    occupancy: OccupancySampled { samples: [] },
+    max_concurrency: Present { value: 2 },
+    client_output: ClientOutputTokensUnread { cause: "none" as NonEmptyStr },
+  ) {
+    RateUnreadable { because: _ } => true
+    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateUndenominable { because: _ } => false
+  }
+}
+
+test fn occupancy_above_declared_concurrency_refuses_the_rate() -> Bool {
+  match derive_rate_honest(
+    ledger: closed_ok(),
+    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+    generation: TokenDeltaRead { tokens: 128 },
+    scrape_millis: Present { value: 2000 },
+    arrival: tight_arrival(),
+    occupancy: OccupancySampled { samples: [OccupancySample { running: 5, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
+    max_concurrency: Present { value: 2 },
+    client_output: ClientOutputTokensUnread { cause: "none" as NonEmptyStr },
+  ) {
+    RateUnreadable { because: _ } => true
+    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateUndenominable { because: _ } => false
+  }
+}
+
+test fn the_holistic_protocol_is_poisson_with_session_context_and_prefix() -> Bool {
+  holistic_protocol_is_session_shaped(req: glm_native_holistic_protocol)
+    && vllm_bench_serve_uses_poisson_idle_gaps(req: glm_native_holistic_protocol)
+    && !vllm_bench_serve_uses_poisson_idle_gaps(req: vllm_bench_serve_request(
+      backend: OpenaiChat,
+      base_url: "http://127.0.0.1:30000" as NonEmptyStr,
+      model: "m" as NonEmptyStr,
+      dataset: RandomDatasetSpec { input_len: token_count(count: 128), output_len: token_count(count: 128), prefix_len: token_count(count: 0) },
+      num_prompts: 4,
+      arrival: SendAllImmediately,
+      max_concurrency: none,
+      ignore_eos: true,
+    ))
+}
+
+fn words_contain(words: List<String>, needle: String) -> Bool {
+  count(filter(words, w => w == needle)) > 0
+}
+
+test fn the_rendered_argv_carries_the_prefix_and_a_finite_rate() -> Bool {
+  let words = vllm_bench_serve_arguments(req: glm_native_holistic_protocol)
+  words_contain(words: words, needle: "--random-prefix-len")
+    && words_contain(words: words, needle: "100000")
+    && words_contain(words: words, needle: "--request-rate")
+    && words_contain(words: words, needle: "0.050")
+    && !words_contain(words: words, needle: "inf")
+}
+
+test fn exporter_restart_breaks_counter_continuity() -> Bool {
+  let after: VllmEndpointProcessLaunchObservation = LaunchObserved {
+    launch: vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000" as NonEmptyStr, process_start_field: "1789300999.00" as NonEmptyStr),
+    receipt: "fx2" as ObservationReceiptRef,
+  }
+  match counter_continuity(before: fx_launch(), after: after) {
+    ExporterChanged { before: _, after: _ } => true
+    SameExporter { start_field: _ } => false
+    ContinuityUnread { cause: _ } => false
+  }
+}

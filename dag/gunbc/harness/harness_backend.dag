@@ -14,7 +14,8 @@ import gunbc.serving.serving_availability {
 }
 import extdeps.vllm.metrics {
   VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason, GenerationTokensTotal,
-  vllm_metric_name, vllm_waiting_reason_label, vllm_waiting_reason_capacity,
+  HistogramStatistic, vllm_metric_name, vllm_histogram_series_name,
+  vllm_waiting_reason_label, vllm_waiting_reason_capacity,
 }
 import extdeps.prometheus.client { ProcessStartTimeSeconds, prometheus_process_series_name }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
@@ -359,6 +360,14 @@ fn harness_metric_line_value(body: String, prefix: String, selector: MetricLineS
 
 fn harness_gauge_value(body: String, metric: VllmServingMetric) -> String? {
   harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""), selector: SeriesByName)
+}
+
+fn harness_histogram_statistic_value(body: String, metric: VllmServingMetric, statistic: HistogramStatistic) -> String? {
+  harness_metric_line_value(
+    body: body,
+    prefix: join([vllm_histogram_series_name(m: metric, s: statistic) as String, "{"], ""),
+    selector: SeriesByName,
+  )
 }
 
 // THE LABEL PAIR IS BUILT ONCE, HERE, from the label key and value rows the upstream module carries,
