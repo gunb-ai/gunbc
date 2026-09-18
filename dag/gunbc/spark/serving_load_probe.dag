@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import v2.std.optional { Present, Absent }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.capacity.lease { LeaseGrant }
 import product.fabric.demand { ObservationReceiptRef }
 import extdeps.prometheus.client {
@@ -677,8 +677,21 @@ fn derive_rate_honest(
 }
 
 type QualifiedClientRate
-  = ClientRateQualified { tokens: Nat, scrape_millis: Nat }
-  | ClientRateUnqualified { because: NonEmptyStr }
+  = ClientRateUnqualified { because: NonEmptyStr }
+
+type ClientRateQualificationFrontier sole_constructor {
+  request_start_events: NonEmptyStr
+  reserved_window: NonEmptyStr
+  interval_occupancy: NonEmptyStr
+  serve_py_digest: NonEmptyStr
+}
+
+data glm_native_qualification_frontier: ClientRateQualificationFrontier = ClientRateQualificationFrontier {
+  request_start_events: "per-request start events so ArrivalSkewObserved can be minted; SendAllImmediately stays ArrivalSkewUnread until that producer exists" as NonEmptyStr,
+  reserved_window: "subject-bound LeaseGrant and ExclusionEstablished over ProtectedSubjectField; the follow-up PR needs the operator to grant an exclusive Group B window" as NonEmptyStr,
+  interval_occupancy: "occupancy as a time-series over the client interval; BoundaryOccupancyReceipt is two scrapes and cannot count positively" as NonEmptyStr,
+  serve_py_digest: "bind vllm_bench_serve_source_standing to the serve.py file or package digest inside the running image, or an explicit policy that admits TranscribedUncited" as NonEmptyStr,
+}
 
 fn occupancy_does_not_count_positively(occupancy: BoundaryOccupancyReceipt) -> QualifiedClientRate {
   match occupancy {
@@ -701,7 +714,7 @@ fn qualify_client_rate(
   match rate {
     RateUndenominable { because: b } => ClientRateUnqualified { because: b }
     RateUnreadable { because: b } => ClientRateUnqualified { because: b }
-    RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
+    RateFromClientOutputTokens { tokens: _, scrape_millis: _ } =>
       match subject {
         SubjectPartial { subject: _, unknown_axes: _, believed: _, would_settle: s } =>
           ClientRateUnqualified { because: s }
@@ -799,6 +812,13 @@ fn bench_execution_protocol(e: BenchServeExecution) -> VllmBenchServeRequest {
   match e {
     BenchServeRan { protocol: p, exit_code: _, stdout: _, stderr: _ } => p
     BenchServeUnreachable { protocol: p, cause: _ } => p
+  }
+}
+
+fn bench_execution_stdout(e: BenchServeExecution) -> String {
+  match e {
+    BenchServeUnreachable { protocol: _, cause: _ } => ""
+    BenchServeRan { protocol: _, exit_code: _, stdout: out, stderr: _ } => out
   }
 }
 
@@ -912,6 +932,66 @@ fn stderr_is_not_the_client_summary(e: BenchServeExecution) -> Bool {
   }
 }
 
+type CapturedText sole_constructor {
+  kind: NonEmptyStr
+  digest: ContentHash
+  body: String
+}
+
+fn captured_text(kind: NonEmptyStr, body: String) -> CapturedText {
+  CapturedText {
+    kind: kind,
+    digest: content_hash_of_value(value: join([kind as String, "\n", body], "") as NonEmptyStr),
+    body: body,
+  }
+}
+
+fn captured_text_digest_matches(c: CapturedText) -> Bool {
+  (serialize_content_hash(hash: c.digest) as String) == (serialize_content_hash(hash: captured_text(kind: c.kind, body: c.body).digest) as String)
+}
+
+type ServingLoadEvidence sole_constructor {
+  metrics_before: CapturedText
+  metrics_after: CapturedText
+  bench_stdout: CapturedText
+  bench_stderr: CapturedText
+}
+
+fn serving_load_evidence(before_body: String, after_body: String, bench: BenchServeExecution) -> ServingLoadEvidence {
+  ServingLoadEvidence {
+    metrics_before: captured_text(kind: "metrics-before" as NonEmptyStr, body: before_body),
+    metrics_after: captured_text(kind: "metrics-after" as NonEmptyStr, body: after_body),
+    bench_stdout: captured_text(kind: "bench-stdout" as NonEmptyStr, body: bench_execution_stdout(e: bench)),
+    bench_stderr: captured_text(kind: "bench-stderr" as NonEmptyStr, body: bench_execution_stderr(e: bench)),
+  }
+}
+
+fn captured_text_block(c: CapturedText) -> String {
+  join([
+    "--- ", c.kind as String, " digest=", serialize_content_hash(hash: c.digest) as String, " ---\n",
+    c.body,
+    "\n",
+  ], "")
+}
+
+fn serving_load_evidence_text(ev: ServingLoadEvidence) -> String {
+  join([
+    captured_text_block(c: ev.metrics_before),
+    captured_text_block(c: ev.metrics_after),
+    captured_text_block(c: ev.bench_stdout),
+    captured_text_block(c: ev.bench_stderr),
+  ], "")
+}
+
+fn qualification_frontier_text(f: ClientRateQualificationFrontier) -> String {
+  join([
+    "request-start-events: ", f.request_start_events as String,
+    " | reserved-window: ", f.reserved_window as String,
+    " | interval-occupancy: ", f.interval_occupancy as String,
+    " | serve-py-digest: ", f.serve_py_digest as String,
+  ], "")
+}
+
 type ServingLoadObservation sole_constructor {
   execution: BenchServeExecution
   bench_source_standing: CitedFigureStanding
@@ -936,8 +1016,8 @@ type ServingLoadObservation sole_constructor {
   capacity_claim: CapacityClaim
   rate: DerivedRate
   qualified_rate: QualifiedClientRate
-  raw_before: NonEmptyStr
-  raw_after: NonEmptyStr
+  qualification_frontier: ClientRateQualificationFrontier
+  evidence: ServingLoadEvidence
 }
 
 fn serving_load_observation(
@@ -1003,8 +1083,8 @@ fn serving_load_observation(
       foreign_work: foreign,
       rate: rate,
     ),
-    raw_before: before_body as NonEmptyStr,
-    raw_after: after_body as NonEmptyStr,
+    qualification_frontier: glm_native_qualification_frontier,
+    evidence: serving_load_evidence(before_body: before_body, after_body: after_body, bench: bench),
   }
 }
 
@@ -1014,6 +1094,32 @@ fn observation_rate_is_stored_separately(_: ServingLoadObservation) -> Bool {
 
 fn saturation_from_one_run(_: ServingLoadObservation) -> Bool {
   false
+}
+
+fn observation_evidence_replays_client_facts(o: ServingLoadObservation) -> Bool {
+  captured_text_digest_matches(c: o.evidence.metrics_before)
+    && captured_text_digest_matches(c: o.evidence.metrics_after)
+    && captured_text_digest_matches(c: o.evidence.bench_stdout)
+    && captured_text_digest_matches(c: o.evidence.bench_stderr)
+    && match bench_serve_interval(e: o.execution) {
+      Absent =>
+        match scrape_millis_from_bench_stdout(body: o.evidence.bench_stdout.body) {
+          Absent => true
+          Present { value: _ } => false
+        }
+      Present { value: ia } =>
+        match scrape_millis_from_bench_stdout(body: o.evidence.bench_stdout.body) {
+          Absent => false
+          Present { value: ib } => ia == ib
+        }
+    }
+}
+
+fn qualification_frontier_requires_serve_py_digest(f: ClientRateQualificationFrontier) -> Bool {
+  string_contains(s: f.serve_py_digest as String, pattern: "serve.py")
+    && string_contains(s: f.request_start_events as String, pattern: "start")
+    && string_contains(s: f.reserved_window as String, pattern: "exclusive")
+    && string_contains(s: f.interval_occupancy as String, pattern: "time-series")
 }
 
 fn serving_load_observation_text(o: ServingLoadObservation) -> String {
@@ -1039,7 +1145,9 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "capacity claim: ", capacity_claim_text(c: o.capacity_claim), "\n",
     "rate: ", rate_text(r: o.rate), "\n",
     "qualified rate: ", qualified_rate_text(q: o.qualified_rate), "\n",
+    "qualification frontier: ", qualification_frontier_text(f: o.qualification_frontier), "\n",
     "saturation decided from this run: ", if saturation_from_one_run(obs: o) { "yes" } else { "no" }, "\n",
+    serving_load_evidence_text(ev: o.evidence),
   ], "")
 }
 
@@ -1056,8 +1164,6 @@ fn foreign_work_text(f: ForeignWorkBound) -> String {
 fn qualified_rate_text(q: QualifiedClientRate) -> String {
   match q {
     ClientRateUnqualified { because: b } => join(["unqualified ", b as String], "")
-    ClientRateQualified { tokens: t, scrape_millis: ms } =>
-      join(["qualified tokens=", to_string(t), " scrape_millis=", to_string(ms)], "")
   }
 }
 

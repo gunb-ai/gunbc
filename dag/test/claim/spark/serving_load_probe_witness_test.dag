@@ -36,10 +36,10 @@ import gunbc.spark.serving_load_probe {
   RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
   ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
   TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, TokenDeltaScoped, generation_token_delta, generation_token_delta_scoped,
-  derive_rate_honest, serving_load_observation, ServingLoadObservation, tokens_per_observation_second,
+  derive_rate_honest, serving_load_observation, serving_load_observation_text, ServingLoadObservation, tokens_per_observation_second,
   saturation_from_one_run, observation_rate_is_stored_separately,
   foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread, ForeignWorkContradiction,
-  ClientRateUnqualified, ClientRateQualified,
+  ClientRateUnqualified,
   occupancy_from_body, occupancy_trace_from_endpoint_scrapes, histogram_delta, HistogramDeltaRead, HistogramDeltaUnread, HistogramCounterReset,
   CapacityClaimUnavailable,
   glm_native_holistic_protocol, holistic_protocol_is_session_shaped,
@@ -78,6 +78,8 @@ import gunbc.spark.serving_load_probe {
   mixed_run_client_facts_cannot_be_written, nonzero_exit_does_not_yield_client_facts,
   unreachable_does_not_yield_client_facts, stderr_is_not_the_client_summary,
   glm_native_observation_carries_bench_source_standing,
+  observation_evidence_replays_client_facts, glm_native_qualification_frontier,
+  qualification_frontier_requires_serve_py_digest,
 }
 
 data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
@@ -416,7 +418,6 @@ test fn one_run_does_not_decide_saturation() -> Bool {
     }
     && match obs.qualified_rate {
       ClientRateUnqualified { because: _ } => true
-      ClientRateQualified { tokens: _, scrape_millis: _ } => false
     }
 }
 
@@ -666,7 +667,6 @@ test fn qualify_client_rate_refuses_two_boundary_occupancy() -> Bool {
     after: OccupancySample { running: 0, waiting: 0, capacity_waiting: 0, preemptions: 0, prompt_tokens: 1 },
   }) {
     ClientRateUnqualified { because: _ } => true
-    ClientRateQualified { tokens: _, scrape_millis: _ } => false
   }
 }
 
@@ -697,4 +697,18 @@ test fn stderr_carrying_the_summary_is_not_parsed() -> Bool {
 
 test fn the_observation_carries_bench_source_standing() -> Bool {
   glm_native_observation_carries_bench_source_standing(o: fx_obs())
+}
+
+test fn the_receipt_persists_raw_evidence_for_replay() -> Bool {
+  let obs = fx_obs()
+  let text = serving_load_observation_text(o: obs)
+  observation_evidence_replays_client_facts(o: obs)
+    && string_contains(s: text, pattern: "--- metrics-before digest=")
+    && string_contains(s: text, pattern: "--- bench-stdout digest=")
+    && string_contains(s: text, pattern: "vllm:num_requests_running")
+    && string_contains(s: text, pattern: "Total generated tokens")
+}
+
+test fn qualification_frontier_names_the_producers() -> Bool {
+  qualification_frontier_requires_serve_py_digest(f: glm_native_qualification_frontier)
 }
