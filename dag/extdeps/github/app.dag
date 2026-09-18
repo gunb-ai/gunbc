@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Bool, Int, List, Map, Secret }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.credentials { EnvVar }
 import std.dissolution { unbound_dissolution }
+import std.list { first_duplicate_by_key }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri {
@@ -195,25 +196,12 @@ fn observed_access_for(
   })
 }
 
-fn observed_permission_occurrences(
-  perms: List<ObservedGitHubPermission>,
-  name: ObservedGitHubPermissionName
-) -> Int {
-  fold(perms, init: 0, f: fn(n, p) { if observed_permission_name_eq(a: p.name, b: name) { n + 1 } else { n } })
-}
-
 fn first_duplicated_observed_permission(perms: List<ObservedGitHubPermission>) -> ObservedGitHubPermissionName? {
-  fold(perms, init: none, f: fn(found, p) {
-    match found {
-      Present { value: v } => Present { value: v }
-      Absent =>
-        if observed_permission_occurrences(perms: perms, name: p.name) > 1 {
-          Present { value: p.name }
-        } else {
-          none
-        }
-    }
-  })
+  let dup: ObservedGitHubPermission? = first_duplicate_by_key(xs: perms, key: p => p.name.wire_name as String)
+  match dup {
+    Present { value: found } => Present { value: found.name }
+    Absent => none
+  }
 }
 
 fn permission_access_rank(access: GitHubAppPermissionAccess) -> Int {
@@ -240,33 +228,8 @@ type GitHubAppPermissionSetAdmission
 
 data no_admitted_permissions: List<GitHubAppPermission> = []
 
-fn permission_name_occurrences(
-  perms: List<GitHubAppPermission>,
-  name: GitHubPermissionAxis
-) -> Int {
-  fold_list(
-    xs: perms,
-    empty: 0,
-    cons: fn(n, p) { if permission_name_eq(a: p.name, b: name) { n + 1 } else { n } }
-  )
-}
-
 fn first_duplicated_permission(perms: List<GitHubAppPermission>) -> GitHubAppPermission? {
-  fold_list(
-    xs: perms,
-    empty: none,
-    cons: fn(found, p) {
-      match found {
-        Present { value: v } => Present { value: v }
-        Absent =>
-          if permission_name_occurrences(perms: perms, name: p.name) > 1 {
-            Present { value: p }
-          } else {
-            none
-          }
-      }
-    }
-  )
+  first_duplicate_by_key(xs: perms, key: p => permission_axis_wire_name(axis: p.name) as String)
 }
 
 fn admit_permission_set(perms: List<GitHubAppPermission>) -> GitHubAppPermissionSetAdmission {
@@ -766,29 +729,12 @@ fn webhook_event_from_wire(name: String) -> GitHubWebhookEvent? {
   )
 }
 
-fn webhook_event_eq(a: GitHubWebhookEvent, b: GitHubWebhookEvent) -> Bool {
-  a == b
-}
-
-fn webhook_event_occurrences(events: List<GitHubWebhookEvent>, event: GitHubWebhookEvent) -> Int {
-  fold_list(
-    xs: events,
-    empty: 0,
-    cons: fn(n, e) { if webhook_event_eq(a: e, b: event) { n + 1 } else { n } }
-  )
-}
-
+// THE THREE DUPLICATE SCANS IN THIS FILE CONSUME ONE KERNEL. They were three copies of a nested
+// fold, quadratic each, and webhook_event_eq was a bare alias of == beside them (review 67544).
+// std.list first_duplicate_by_key is the single authority and is linear; each site supplies the wire
+// name it was already comparing through, so the projection is not a new fact.
 fn first_duplicated_event(events: List<GitHubWebhookEvent>) -> GitHubWebhookEvent? {
-  fold_list(
-    xs: events,
-    empty: none,
-    cons: fn(found, e) {
-      match found {
-        Present { value: v } => Present { value: v }
-        Absent => if webhook_event_occurrences(events: events, event: e) > 1 { Present { value: e } } else { none }
-      }
-    }
-  )
+  first_duplicate_by_key(xs: events, key: e => webhook_event_wire_name(event: e) as String)
 }
 
 // `public` is a two-valued upstream field whose JSON spelling is a bool, and it is modeled as a
@@ -939,16 +885,31 @@ type GitHubAppRegistrationTarget
   = RegisterUnderAuthenticatedUser
   | RegisterUnderOrganization { organization: NonEmptyStr }
 
-data github_settings_apps_new_path: String = "https://github.com/settings/apps/new"
+// THE SETTINGS URLS ARE Uri VALUES, NOT TEXT THAT HAPPENS TO START WITH https. An earlier cut spelled
+// the scheme as characters inside a String and joined the rest, in a file whose every citation above
+// is Uri { scheme: Https, locator: ... } and which imports the URI authority (review 67544). Two
+// spellings of one scheme drift independently, and the text one loses the distinction
+// uri_scheme_is_http exists to make.
+data github_settings_apps_new_uri: Uri = Uri {
+  scheme: Https
+  locator: "github.com/settings/apps/new"
+}
 
-data github_organizations_settings_prefix: String = "https://github.com/organizations/"
+data github_organizations_settings_locator_prefix: String = "github.com/organizations/"
+
+fn app_manifest_registration_base_uri(target: GitHubAppRegistrationTarget) -> Uri {
+  match target {
+    RegisterUnderAuthenticatedUser => github_settings_apps_new_uri
+    RegisterUnderOrganization { organization: org } =>
+      Uri {
+        scheme: Https,
+        locator: join([github_organizations_settings_locator_prefix, org as String, "/settings/apps/new"], "") as NonEmptyStr,
+      }
+  }
+}
 
 fn app_manifest_registration_base_url(target: GitHubAppRegistrationTarget) -> String {
-  match target {
-    RegisterUnderAuthenticatedUser => github_settings_apps_new_path
-    RegisterUnderOrganization { organization: org } =>
-      join([github_organizations_settings_prefix, org as String, "/settings/apps/new"], "")
-  }
+  uri_wire(uri: app_manifest_registration_base_uri(target: target)) as String
 }
 
 // THE STATE PARAMETER IS THE BINDING BETWEEN THE FLOW WE STARTED AND THE CODE WE ARE HANDED, and

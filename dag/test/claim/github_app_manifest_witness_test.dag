@@ -13,6 +13,7 @@ import std.upsert_decision {
 }
 import gunbc.ensure { EnsureObserveOnly, EnsureMayApply }
 import extdeps.uri { Uri, Https, uri_wire, uri_from_wire }
+import std.list { first_duplicate_by_key }
 
 import extdeps.github.github { GitHubUser, Organization }
 import extdeps.transports.rest {
@@ -57,6 +58,7 @@ import extdeps.github.app {
   RegistrationUrlBuilt,
   RegistrationUrlStateUnencodable,
   app_manifest_registration_url,
+  app_manifest_registration_base_uri,
   RegisterUnderAuthenticatedUser,
   RegisterUnderOrganization,
   GitHubAppManifestCode,
@@ -1149,4 +1151,44 @@ test fn w_uri_from_wire_refuses_a_bare_scheme_and_round_trips_a_real_url() -> Bo
     Present { value: u } => (uri_wire(uri: u) as String) == "https://x.example/redirect?to=https://y"
   }
   bare && relative && round_trip && scheme_text_inside_locator
+}
+
+// ----- one duplicate-scan kernel, consumed by three sites -----
+
+// THE KERNEL ITSELF, INCLUDING THE CASE A NESTED FOLD AND A MAP SCAN COULD DISAGREE ON: which of the
+// repeated elements is returned. It is the SECOND occurrence, because that is the one at which the
+// repetition becomes observable in a single pass, and the callers only ever use its key.
+test fn w_first_duplicate_by_key_finds_the_second_occurrence_and_nothing_in_a_unique_list() -> Bool {
+  let found = match first_duplicate_by_key(xs: ["a", "b", "c", "b", "a"], key: x => x) {
+    Present { value: v } => v == "b"
+    Absent => false
+  }
+  let none_in_unique = match first_duplicate_by_key(xs: ["a", "b", "c"], key: x => x) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let none_in_empty = match first_duplicate_by_key(xs: [], key: x => x) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let distinct_keys_are_not_duplicates = match first_duplicate_by_key(
+    xs: [GitHubAppPermission { name: ContentsAxis, access: AppAccessRead },
+         GitHubAppPermission { name: ContentsAxis, access: AppAccessWrite }],
+    key: p => permission_access_wire_name(access: p.access) as String,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  found && none_in_unique && none_in_empty && distinct_keys_are_not_duplicates
+}
+
+// THE REGISTRATION URLS COME OUT OF THE URI AUTHORITY. Hand-spelling "https://" in a String beside a
+// file whose citations are Uri values is two spellings of one scheme (review 67544); this pins that
+// both targets round-trip through uri_wire unchanged.
+test fn w_registration_base_urls_are_built_from_uri_values() -> Bool {
+  ((uri_wire(uri: app_manifest_registration_base_uri(target: RegisterUnderAuthenticatedUser)) as String)
+     == "https://github.com/settings/apps/new")
+    && ((uri_wire(uri: app_manifest_registration_base_uri(
+          target: RegisterUnderOrganization { organization: "gunb-ai" as NonEmptyStr })) as String)
+     == "https://github.com/organizations/gunb-ai/settings/apps/new")
 }
