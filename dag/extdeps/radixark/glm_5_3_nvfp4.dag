@@ -263,12 +263,15 @@ data nvfp4_reported_partition: ReportedBytePartition = ReportedBytePartition {
 }
 
 // THE SHARE OF THE ARTIFACT THAT IS NVFP4, in basis points so a consumer can screen on it without a
-// float. Derived from the measured total over the manifest's safetensors bytes. An empty manifest
-// has no share -- "0 basis points" would read as "none of it is NVFP4", which is a claim -- so the
-// fold refuses rather than divides.
-fn nvfp4_routed_experts_share_basis_points(m: HubCheckpointManifest) -> Nat? {
+// float -- DERIVED from the modelled expert layout (one representative expert's header bytes, the
+// expert count and the MoE layer count) over the manifest's safetensors bytes, so it rests on
+// nothing transcribed. An empty manifest has no share and the fold refuses rather than divides.
+fn nvfp4_routed_experts_share_basis_points(s: GlmMoeDsaShape, m: HubCheckpointManifest) -> Nat? {
   let total = byte_size_count(b: m.safetensors_bytes)
-  if total == 0 { none } else { Present { value: (byte_size_count(b: nvfp4_reported_partition.routed_experts) * 10000) / total } }
+  match nvfp4_routed_experts_total_bytes(s: s) {
+    Absent => none
+    Present { value: routed } => if total == 0 { none } else { Present { value: (byte_size_count(b: routed) * 10000) / total } }
+  }
 }
 
 // WHAT THE REDISTRIBUTION COMPRESSED, in basis points of the base's native FP8 safetensors: the

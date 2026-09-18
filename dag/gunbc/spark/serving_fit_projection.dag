@@ -16,6 +16,7 @@ import extdeps.huggingface.hub { HubCheckpointManifest }
 import extdeps.zhipu.glm_5_3 { GlmMoeDsaShape, glm_5_3_shape, glm_5_3_routed_expert_visits_per_token }
 import extdeps.radixark.glm_5_3_nvfp4 {
   glm_5_3_nvfp4_manifest, glm_5_3_nvfp4_quantization, nvfp4_representative_expert_bytes,
+  nvfp4_routed_experts_total_bytes,
 }
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureAskedAnswer, ArchitectureAnswered, ArchitectureUnasked, ArchitectureConflicting,
@@ -42,14 +43,17 @@ import gunbc.spark.serving_runtime_capability_probe {
 // ── WHAT THIS MODULE IS FOR ──────────────────────────────────────────────────────────────────
 //
 // IT IS AN ARTIFACT SCREEN, NOT A FIT PROJECTION, AND THE NAME OF EVERY VALUE SAYS SO. Given a
-// checkpoint's manifest, a topology's rank count, one GB10's unified pool and a declared
-// gpu_memory_utilization, it derives an IDEAL EVEN SPLIT of the artifact's bytes per rank and asks
-// whether that split already exceeds the engine's budget. That question has two answers and only one
-// of them is a verdict: if the ideal split exceeds the budget, real placement can only add, so the
-// topology is REFUSED under this budget; if it does not, the screen PASSES WITH PLACEMENT UNREAD,
-// which is not a fit. Beside that it derives a static prerequisite receipt -- is the architecture
-// registered, is the quantization module file present, is an FP4 kernel path established on this
-// device -- from the readings the corpus already carries, and defers by name where none exists.
+// checkpoint's manifest, the bytes the loader must load under any mode, a topology's rank count, one
+// GB10's unified pool and a declared gpu_memory_utilization, it derives two ideal even splits per
+// rank and asks whether either exceeds the engine's budget. Only ONE of them can refuse: the
+// GUARANTEED-LOADED PAYLOAD -- the routed experts, derived from the modelled expert layout, which
+// every serving mode loads and no placement replicates -- is a lower bound on the largest rank under
+// any placement, so a split of it that exceeds the budget refuses the topology structurally. The
+// FULL-ARTIFACT split includes shard headers and the ~19.9 GB nextn/MTP population that loads only
+// under speculative decoding, so it is a screen figure and not a lower bound: exceeding the budget on
+// it is reported and leaves the standing at calibration required. Below both, the screen PASSES WITH
+// PLACEMENT UNREAD, which is not a fit. Beside that it derives a static prerequisite receipt from the
+// readings the corpus already carries, and defers by name where none exists.
 //
 // WHY THE IDEAL SPLIT CANNOT MINT A FIT. `safetensors_bytes / ranks` assumes every artifact byte is
 // loaded (the ~19.9 GB nextn/MTP layer is loaded only when speculative decoding uses it), sharded
@@ -86,13 +90,16 @@ import gunbc.spark.serving_runtime_capability_probe {
 // ── THE IDEAL EVEN-SPLIT ARTIFACT SCREEN ────────────────────────────────────────────────────
 
 type IdealEvenSplitVerdict
-  = IdealSplitExceedsUsable { shortfall_per_rank: ByteSize }
+  = GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: ByteSize }
+  | FullArtifactSplitExceedsUsable { shortfall_per_rank: ByteSize, guaranteed_payload_residual: ByteSize }
   | IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: ByteSize }
 
 type IdealEvenSplitArtifactScreen sole_constructor {
   weights: ByteSize
+  guaranteed_payload: ByteSize
   ranks: Nat
   ideal_weights_per_rank: ByteSize
+  ideal_guaranteed_payload_per_rank: ByteSize
   pool_per_rank: ByteSize
   utilization: BasisPoint
   usable_per_rank: ByteSize
@@ -117,27 +124,36 @@ fn usable_bytes(pool: ByteSize, utilization: BasisPoint) -> ByteSize {
   byte_size(count: (byte_size_count(b: pool) * basis_point_count(bp: utilization)) / basis_point_unity_count())
 }
 
-fn screen_ideal_even_split(weights: ByteSize, ranks: Nat, pool_per_rank: ByteSize, utilization: BasisPoint) -> IdealEvenSplitArtifactScreen? {
+fn screen_ideal_even_split(weights: ByteSize, guaranteed_payload: ByteSize, ranks: Nat, pool_per_rank: ByteSize, utilization: BasisPoint) -> IdealEvenSplitArtifactScreen? {
   match weights_per_rank_bytes(weights: weights, ranks: ranks) {
     Absent => none
-    Present { value: per_rank } => {
-      let usable = usable_bytes(pool: pool_per_rank, utilization: utilization)
-      let per_rank_count = byte_size_count(b: per_rank)
-      let usable_count = byte_size_count(b: usable)
-      Present { value: IdealEvenSplitArtifactScreen {
-        weights: weights,
-        ranks: ranks,
-        ideal_weights_per_rank: per_rank,
-        pool_per_rank: pool_per_rank,
-        utilization: utilization,
-        usable_per_rank: usable,
-        verdict: if usable_count >= per_rank_count {
-          IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: byte_size(count: usable_count - per_rank_count) }
-        } else {
-          IdealSplitExceedsUsable { shortfall_per_rank: byte_size(count: per_rank_count - usable_count) }
-        },
-      } }
-    }
+    Present { value: per_rank } =>
+      match weights_per_rank_bytes(weights: guaranteed_payload, ranks: ranks) {
+        Absent => none
+        Present { value: guaranteed_per_rank } => {
+          let usable = usable_bytes(pool: pool_per_rank, utilization: utilization)
+          let per_rank_count = byte_size_count(b: per_rank)
+          let guaranteed_count = byte_size_count(b: guaranteed_per_rank)
+          let usable_count = byte_size_count(b: usable)
+          Present { value: IdealEvenSplitArtifactScreen {
+            weights: weights,
+            guaranteed_payload: guaranteed_payload,
+            ranks: ranks,
+            ideal_weights_per_rank: per_rank,
+            ideal_guaranteed_payload_per_rank: guaranteed_per_rank,
+            pool_per_rank: pool_per_rank,
+            utilization: utilization,
+            usable_per_rank: usable,
+            verdict: if guaranteed_count > usable_count {
+              GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: byte_size(count: guaranteed_count - usable_count) }
+            } else if per_rank_count > usable_count {
+              FullArtifactSplitExceedsUsable { shortfall_per_rank: byte_size(count: per_rank_count - usable_count), guaranteed_payload_residual: byte_size(count: usable_count - guaranteed_count) }
+            } else {
+              IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: byte_size(count: usable_count - per_rank_count) }
+            },
+          } }
+        }
+      }
   }
 }
 
@@ -149,9 +165,10 @@ fn gb10_pool_bytes() -> ByteSize {
   gibibyte_to_byte_size(g: gibibyte(count: gb10_unified_pool_gib))
 }
 
-fn screen_on_gb10(manifest: HubCheckpointManifest, topology: ServingTopology, utilization: BasisPoint) -> IdealEvenSplitArtifactScreen? {
+fn screen_on_gb10(manifest: HubCheckpointManifest, guaranteed_payload: ByteSize, topology: ServingTopology, utilization: BasisPoint) -> IdealEvenSplitArtifactScreen? {
   screen_ideal_even_split(
     weights: manifest.safetensors_bytes,
+    guaranteed_payload: guaranteed_payload,
     ranks: serving_topology_rank_count(t: topology),
     pool_per_rank: gb10_pool_bytes(),
     utilization: utilization,
@@ -175,13 +192,28 @@ fn live_arm_utilization() -> BasisPoint {
 type StaticCompatibilityQuestion
   = ArchitectureRegisteredInRuntime
   | QuantizationModuleFilePresentInRuntime
-  | Fp4KernelPathEstablishedOnDevice
+  | DenseCutlassFp4HelperSupport
+  | Fp4MoeKernelPathEstablishedOnDevice
 
 fn static_question_label(q: StaticCompatibilityQuestion) -> String {
   match q {
     ArchitectureRegisteredInRuntime => "architecture registered in the runtime's model registry (a registration prerequisite, not load compatibility)"
     QuantizationModuleFilePresentInRuntime => "quantization module file present in the runtime's package (a prerequisite, not handler registration or a kernel path)"
-    Fp4KernelPathEstablishedOnDevice => "fp4 kernel path established on this device for this checkpoint's NVFP4 experts"
+    DenseCutlassFp4HelperSupport => "dense CUTLASS fp4 helper (cutlass_scaled_mm_supports_fp4) answers for this device -- informational: it neither establishes nor refutes the routed-expert path"
+    Fp4MoeKernelPathEstablishedOnDevice => "NVFP4 MoE kernel path established on this device for this checkpoint's routed experts"
+  }
+}
+
+// ONLY DISPOSITIVE QUESTIONS CAN MAKE A MEASURED NEGATIVE AN INCOMPATIBILITY. The dense CUTLASS
+// helper is one backend candidate among several for the linear path and is not on the MoE path at
+// all, so its absence is carried as a reading about itself and never turned into a verdict about
+// the tuple.
+fn question_is_dispositive(q: StaticCompatibilityQuestion) -> Bool {
+  match q {
+    ArchitectureRegisteredInRuntime => true
+    QuantizationModuleFilePresentInRuntime => true
+    DenseCutlassFp4HelperSupport => false
+    Fp4MoeKernelPathEstablishedOnDevice => true
   }
 }
 
@@ -309,22 +341,36 @@ fn fp4_device_answer(rrow: ServingRuntimeRow, device: GpuComputeCapability) -> S
   let pin = runtime_artifact_wire(a: rrow.artifact)
   match capability_outcome(rows: v41_sm121_capability_probe_rows(), image_reference: pin, capability: Fp4WeightSupportedHere, device: device) {
     OutcomeUnrecorded => NotEstablished {
-      question: Fp4KernelPathEstablishedOnDevice,
+      question: DenseCutlassFp4HelperSupport,
       missing: join([
         "no ", runtime_kernel_capability_label(c: Fp4WeightSupportedHere), " probe row exists for ", pin as String,
-        "; the smallest discriminator is the ModelOpt NVFP4 MoE backend selection for this shape inside that digest on a GB10, or a bounded load of one NVFP4 expert layer -- not the dense CUTLASS predicate alone",
       ], "") as NonEmptyStr,
     }
     OutcomeConflicted { distinct_answers: n } => NotEstablished {
-      question: Fp4KernelPathEstablishedOnDevice,
+      question: DenseCutlassFp4HelperSupport,
       missing: join(["the probe roster holds ", to_string(n), " distinct answers for ", pin as String, "; re-probe rather than choose"], "") as NonEmptyStr,
     }
     OutcomeFound { outcome: o } => match o {
-      KernelObservedPresent { symbol: s } => Established { question: Fp4KernelPathEstablishedOnDevice, evidence: s }
-      KernelObservedAbsent { symbol: s } => MeasuredNegative { question: Fp4KernelPathEstablishedOnDevice, evidence: s }
-      KernelProbeRefused { reason: r } => NotEstablished { question: Fp4KernelPathEstablishedOnDevice, missing: r }
-      KernelProbeSymbolUngrounded { roster: _, defect: d } => NotEstablished { question: Fp4KernelPathEstablishedOnDevice, missing: d }
+      KernelObservedPresent { symbol: s } => Established { question: DenseCutlassFp4HelperSupport, evidence: s }
+      KernelObservedAbsent { symbol: s } => MeasuredNegative { question: DenseCutlassFp4HelperSupport, evidence: s }
+      KernelProbeRefused { reason: r } => NotEstablished { question: DenseCutlassFp4HelperSupport, missing: r }
+      KernelProbeSymbolUngrounded { roster: _, defect: d } => NotEstablished { question: DenseCutlassFp4HelperSupport, missing: d }
     }
+  }
+}
+
+// THE MoE KERNEL PATH HAS NO PROBE IN THE ROSTER YET, so it is NotEstablished for every image by
+// construction, naming the discriminator that would establish it. This is the load-bearing question
+// for this checkpoint -- only the routed experts are NVFP4 -- and no reading about the dense helper
+// answers it in either direction.
+fn fp4_moe_path_answer(rrow: ServingRuntimeRow) -> StaticCompatibilityAnswer {
+  let pin = runtime_artifact_wire(a: rrow.artifact)
+  NotEstablished {
+    question: Fp4MoeKernelPathEstablishedOnDevice,
+    missing: join([
+      "no reading inside ", pin as String,
+      " has asked the ModelOpt NVFP4 MoE backend selector for this checkpoint's expert shape on a GB10, and no bounded load of one NVFP4 expert layer has run there; either is the discriminator, and the roster carries neither",
+    ], "") as NonEmptyStr,
   }
 }
 
@@ -333,13 +379,15 @@ fn static_compatibility_answers(crow: ServingCheckpointRow, rrow: ServingRuntime
     architecture_answer(rrow: rrow, architecture: crow.architecture),
     quantization_answer(rrow: rrow, device: gb10_observed_compute_capability, required_method: required_method),
     fp4_device_answer(rrow: rrow, device: gb10_observed_compute_capability),
+    fp4_moe_path_answer(rrow: rrow),
   ]
 }
 
 // ── THE STATIC FEASIBILITY STANDING, ONE VALUE PER (CHECKPOINT, RUNTIME, TOPOLOGY, UTILISATION) ─
 //
-// THREE STANDINGS AND NO ADMITTING ONE, BECAUSE MISSING EVIDENCE IS NOT IMPOSSIBILITY AND AN UNREAD
-// PLACEMENT IS NOT A FIT. The first revision folded every non-admission into one `ProjectionRefused`,
+// FOUR STANDINGS AND NO ADMITTING ONE, BECAUSE MISSING EVIDENCE IS NOT IMPOSSIBILITY AND AN UNREAD
+// PLACEMENT IS NOT A FIT. A missing checkpoint or runtime row is MODELING REQUIRED -- the corpus has
+// not described the subject -- which is different again from a refusal. The first revision folded every non-admission into one `ProjectionRefused`,
 // which made "the ideal split already exceeds the budget" and "the probe's discriminator is absent
 // from the build" the same answer; they are not. And it admitted a tuple whose placement nobody had
 // read. So: a structural refusal when the ideal split already exceeds the budget (real placement can
@@ -347,7 +395,8 @@ fn static_compatibility_answers(crow: ServingCheckpointRow, rrow: ServingRuntime
 // naming every unread fact -- placement and non-weight memory always among them -- so a reader sees
 // which act supplies which. Each arm carries every answer.
 type StaticFeasibilityStanding
-  = FeasibilityRefusedStructurally { cause: NonEmptyStr, screen: IdealEvenSplitArtifactScreen?, answers: List<StaticCompatibilityAnswer> }
+  = FeasibilityModelingRequired { missing: NonEmptyStr }
+  | FeasibilityRefusedStructurally { cause: NonEmptyStr, screen: IdealEvenSplitArtifactScreen?, answers: List<StaticCompatibilityAnswer> }
   | FeasibilityMeasuredIncompatible { cause: NonEmptyStr, screen: IdealEvenSplitArtifactScreen, answers: List<StaticCompatibilityAnswer> }
   | FeasibilityCalibrationRequired { missing: NonEmptyStr, screen: IdealEvenSplitArtifactScreen, answers: List<StaticCompatibilityAnswer> }
 
@@ -363,12 +412,28 @@ data placement_unread_obligation: NonEmptyStr = "runtime placement and non-weigh
 fn screen_refusal_text(p: IdealEvenSplitArtifactScreen) -> String? {
   match p.verdict {
     IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => none
-    IdealSplitExceedsUsable { shortfall_per_rank: s } => Present { value: join([
-      "the ideal even split already exceeds the budget: ", to_string(byte_size_count(b: p.ideal_weights_per_rank)), " bytes per rank across ",
+    FullArtifactSplitExceedsUsable { shortfall_per_rank: _, guaranteed_payload_residual: _ } => none
+    GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: s } => Present { value: join([
+      "the guaranteed-loaded payload's ideal even split already exceeds the budget: ", to_string(byte_size_count(b: p.ideal_guaranteed_payload_per_rank)), " routed-expert bytes per rank across ",
       to_string(p.ranks), " rank(s) against ", to_string(byte_size_count(b: p.usable_per_rank)),
       " usable bytes per rank (", to_string(byte_size_count(b: p.pool_per_rank)), " pool at ",
       to_string(basis_point_count(bp: p.utilization)), " basis points), short by ",
-      to_string(byte_size_count(b: s)), " bytes per rank before any non-weight allocation; real placement can only add",
+      to_string(byte_size_count(b: s)), " bytes per rank before any other population or non-weight allocation; real placement can only add",
+    ], "") }
+  }
+}
+
+// THE FULL-ARTIFACT SCREEN FIGURE, WHEN IT EXCEEDS THE BUDGET, IS REPORTED INTO THE CALIBRATION
+// TEXT rather than deciding anything: it includes shard headers and populations a serving mode may
+// not load, so it is a warning that placement must be read carefully, not a refusal.
+fn screen_advisory_text(p: IdealEvenSplitArtifactScreen) -> String? {
+  match p.verdict {
+    IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => none
+    GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => none
+    FullArtifactSplitExceedsUsable { shortfall_per_rank: s, guaranteed_payload_residual: g } => Present { value: join([
+      "the FULL-artifact even split (", to_string(byte_size_count(b: p.ideal_weights_per_rank)), " bytes per rank, headers and the optional nextn population included) exceeds the budget by ",
+      to_string(byte_size_count(b: s)), " bytes per rank while the guaranteed payload's split leaves ", to_string(byte_size_count(b: g)),
+      " bytes per rank -- non-dispositive: which optional populations this serving mode loads decides it",
     ], "") }
   }
 }
@@ -379,6 +444,10 @@ fn answer_is_measured_negative(a: StaticCompatibilityAnswer) -> Bool {
     MeasuredNegative { question: _, evidence: _ } => true
     NotEstablished { question: _, missing: _ } => false
   }
+}
+
+fn answer_is_dispositive_negative(a: StaticCompatibilityAnswer) -> Bool {
+  answer_is_measured_negative(a: a) && question_is_dispositive(q: answer_question(a: a))
 }
 
 fn answers_text_where(answers: List<StaticCompatibilityAnswer>, f: fn(StaticCompatibilityAnswer) -> Bool) -> String? {
@@ -392,10 +461,14 @@ fn answers_text_where(answers: List<StaticCompatibilityAnswer>, f: fn(StaticComp
 
 // EVERYTHING UNREAD, IN ONE SENTENCE: the unestablished answers, then the placement obligation that
 // is always outstanding while this module is a screen.
-fn calibration_text(answers: List<StaticCompatibilityAnswer>) -> NonEmptyStr {
+fn calibration_text(screen: IdealEvenSplitArtifactScreen, answers: List<StaticCompatibilityAnswer>) -> NonEmptyStr {
+  let advisory = match screen_advisory_text(p: screen) {
+    Absent => ""
+    Present { value: t } => join([t, "; "], "")
+  }
   match answers_text_where(answers: answers, f: a => !answer_is_established(a: a)) {
-    Absent => placement_unread_obligation
-    Present { value: t } => join([t, "; ", placement_unread_obligation as String], "") as NonEmptyStr
+    Absent => join([advisory, placement_unread_obligation as String], "") as NonEmptyStr
+    Present { value: t } => join([advisory, t, "; ", placement_unread_obligation as String], "") as NonEmptyStr
   }
 }
 
@@ -404,24 +477,25 @@ fn project_static_feasibility(
   runtime: ServingRuntime,
   topology: ServingTopology,
   manifest: HubCheckpointManifest,
+  guaranteed_payload: ByteSize,
   utilization: BasisPoint,
   required_method: NonEmptyStr,
 ) -> StaticFeasibilityProjection {
   let standing = match serving_checkpoint_row(c: checkpoint) {
-    Absent => FeasibilityRefusedStructurally { cause: "no checkpoint row: the checkpoint's architecture and footprint are unmodelled" as NonEmptyStr, screen: none, answers: [] }
+    Absent => FeasibilityModelingRequired { missing: "no checkpoint row: the checkpoint's architecture and footprint are unmodelled" as NonEmptyStr }
     Present { value: crow } =>
       match serving_runtime_row(r: runtime) {
-        Absent => FeasibilityRefusedStructurally { cause: "no runtime row: the image has no modelled identity to ask about" as NonEmptyStr, screen: none, answers: [] }
+        Absent => FeasibilityModelingRequired { missing: "no runtime row: the image has no modelled identity to ask about" as NonEmptyStr }
         Present { value: rrow } =>
-          match screen_on_gb10(manifest: manifest, topology: topology, utilization: utilization) {
+          match screen_on_gb10(manifest: manifest, guaranteed_payload: guaranteed_payload, topology: topology, utilization: utilization) {
             Absent => FeasibilityRefusedStructurally { cause: "the topology has no ranks, so there is no per-rank figure to screen" as NonEmptyStr, screen: none, answers: [] }
             Present { value: screen } => {
               let answers = static_compatibility_answers(crow: crow, rrow: rrow, required_method: required_method)
               match screen_refusal_text(p: screen) {
                 Present { value: t } => FeasibilityRefusedStructurally { cause: t as NonEmptyStr, screen: Present { value: screen }, answers: answers }
-                Absent => match answers_text_where(answers: answers, f: a => answer_is_measured_negative(a: a)) {
+                Absent => match answers_text_where(answers: answers, f: a => answer_is_dispositive_negative(a: a)) {
                   Present { value: t } => FeasibilityMeasuredIncompatible { cause: t as NonEmptyStr, screen: screen, answers: answers }
-                  Absent => FeasibilityCalibrationRequired { missing: calibration_text(answers: answers), screen: screen, answers: answers }
+                  Absent => FeasibilityCalibrationRequired { missing: calibration_text(screen: screen, answers: answers), screen: screen, answers: answers }
                 }
               }
             }
@@ -436,15 +510,26 @@ fn project_static_feasibility(
 // THE TWO ROWS THE OPERATOR ASKED FOR, and one more that is the comparison baseline. Both NVFP4 rows
 // use the runtime Group B serves on (the lane-built derived image, pinned by its config id), the
 // live arm's utilisation and the redistribution's manifest; only the rank count differs.
+// THE GUARANTEED-LOADED PAYLOAD FOR THIS CHECKPOINT IS ITS ROUTED EXPERTS, derived from the modelled
+// expert layout: every serving mode loads them and no placement replicates them, so their even split
+// is a lower bound on the largest rank. A shape whose MoE layer count cannot be derived has no such
+// bound, and the projection is modeling-required rather than screened on a fabricated zero.
 fn radixark_nvfp4_projection(topology: ServingTopology) -> StaticFeasibilityProjection {
-  project_static_feasibility(
-    checkpoint: Glm53RadixArkNvfp4Modelopt,
-    runtime: GunbcGlm53DerivedGb10,
-    topology: topology,
-    manifest: glm_5_3_nvfp4_manifest,
-    utilization: live_arm_utilization(),
-    required_method: glm_5_3_nvfp4_quantization.quant_method,
-  )
+  match nvfp4_routed_experts_total_bytes(s: glm_5_3_shape) {
+    Absent => StaticFeasibilityProjection {
+      checkpoint: Glm53RadixArkNvfp4Modelopt, runtime: GunbcGlm53DerivedGb10, topology: topology,
+      standing: FeasibilityModelingRequired { missing: "the base shape yields no MoE layer count, so the guaranteed-loaded payload cannot be derived" as NonEmptyStr },
+    }
+    Present { value: routed } => project_static_feasibility(
+      checkpoint: Glm53RadixArkNvfp4Modelopt,
+      runtime: GunbcGlm53DerivedGb10,
+      topology: topology,
+      manifest: glm_5_3_nvfp4_manifest,
+      guaranteed_payload: routed,
+      utilization: live_arm_utilization(),
+      required_method: glm_5_3_nvfp4_quantization.quant_method,
+    )
+  }
 }
 
 fn radixark_nvfp4_tp4() -> StaticFeasibilityProjection {
@@ -460,11 +545,17 @@ fn radixark_nvfp4_tp8() -> StaticFeasibilityProjection {
 // see the same screen applied to a tuple that is known to serve -- as a sanity check on the
 // screen's inputs, NOT as a comparison of headroom: the screen says nothing about KV on either side.
 fn radixark_nvfp4_screen(topology: ServingTopology) -> IdealEvenSplitArtifactScreen? {
-  screen_on_gb10(manifest: glm_5_3_nvfp4_manifest, topology: topology, utilization: live_arm_utilization())
+  match nvfp4_routed_experts_total_bytes(s: glm_5_3_shape) {
+    Absent => none
+    Present { value: routed } => screen_on_gb10(manifest: glm_5_3_nvfp4_manifest, guaranteed_payload: routed, topology: topology, utilization: live_arm_utilization())
+  }
 }
 
+// THE FLASH ARM HAS NO MODELLED EXPERT LAYOUT HERE, so its guaranteed payload is not derived; the
+// screen takes the whole artifact for both figures, which for a sanity check on the pool and
+// utilisation inputs is the conservative choice and is stated as such in the readout.
 fn glm53_flash_native_live_arm_screen() -> IdealEvenSplitArtifactScreen? {
-  screen_on_gb10(manifest: glm_5_3_flash_native_manifest, topology: FourSparkTp4, utilization: live_arm_utilization())
+  screen_on_gb10(manifest: glm_5_3_flash_native_manifest, guaranteed_payload: glm_5_3_flash_native_manifest.safetensors_bytes, topology: FourSparkTp4, utilization: live_arm_utilization())
 }
 
 fn pre_runtime_artifact_residual(p: IdealEvenSplitArtifactScreen?) -> ByteSize? {
@@ -472,7 +563,8 @@ fn pre_runtime_artifact_residual(p: IdealEvenSplitArtifactScreen?) -> ByteSize? 
     Absent => none
     Present { value: screen } => match screen.verdict {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: r } => Present { value: r }
-      IdealSplitExceedsUsable { shortfall_per_rank: _ } => none
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, guaranteed_payload_residual: _ } => none
+      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => none
     }
   }
 }
@@ -533,13 +625,15 @@ fn radixark_nvfp4_expert_offload() -> ExpertOffloadProjection {
 // ── THE READOUT, ONE TEXT PER STANDING FOR A PERSON ──────────────────────────────────────────
 fn screen_text(p: IdealEvenSplitArtifactScreen) -> String {
   join([
-    to_string(p.ranks), " rank(s): ideal even split ", to_string(byte_size_count(b: p.ideal_weights_per_rank)), " artifact bytes per rank against ",
+    to_string(p.ranks), " rank(s): ideal even split ", to_string(byte_size_count(b: p.ideal_weights_per_rank)), " full-artifact bytes per rank (guaranteed payload ",
+    to_string(byte_size_count(b: p.ideal_guaranteed_payload_per_rank)), ") against ",
     to_string(byte_size_count(b: p.usable_per_rank)), " usable bytes per rank at ",
     to_string(basis_point_count(bp: p.utilization)), " basis points of a ",
     to_string(byte_size_count(b: p.pool_per_rank)), "-byte pool (rounded reading) -- ",
     match p.verdict {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: r } => join(["within budget with a pre-runtime artifact residual of ", to_string(byte_size_count(b: r)), " bytes per rank; PLACEMENT UNREAD, not a fit, not KV"], "")
-      IdealSplitExceedsUsable { shortfall_per_rank: s } => join(["EXCEEDS the budget by ", to_string(byte_size_count(b: s)), " bytes per rank before any non-weight allocation"], "")
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: s, guaranteed_payload_residual: g } => join(["the full-artifact split exceeds the budget by ", to_string(byte_size_count(b: s)), " bytes per rank while the guaranteed payload leaves ", to_string(byte_size_count(b: g)), "; NON-DISPOSITIVE, placement unread"], "")
+      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: s } => join(["the guaranteed payload EXCEEDS the budget by ", to_string(byte_size_count(b: s)), " bytes per rank before any other population"], "")
     },
   ], "")
 }
@@ -557,6 +651,7 @@ fn projection_text(p: StaticFeasibilityProjection) -> String {
     " at ", serving_topology_wire(t: p.topology) as String, ": ",
   ], "")
   match p.standing {
+    FeasibilityModelingRequired { missing: m } => join([head, "MODELING REQUIRED: ", m as String], "")
     FeasibilityRefusedStructurally { cause: c, screen: sc, answers: _ } => join([head, "REFUSED STRUCTURALLY: ", c as String, ". ", optional_screen_text(p: sc)], "")
     FeasibilityMeasuredIncompatible { cause: c, screen: sc, answers: _ } => join([head, "MEASURED INCOMPATIBLE: ", c as String, ". ", screen_text(p: sc)], "")
     FeasibilityCalibrationRequired { missing: m, screen: sc, answers: a } => join([
@@ -583,17 +678,19 @@ fn radixark_nvfp4_gb10_readout() -> String {
   join([
     projection_text(p: radixark_nvfp4_tp4()),
     projection_text(p: radixark_nvfp4_tp8()),
-    join(["the same screen on the serving GLM-5.3-Flash arm, as an input sanity check only: ", optional_screen_text(p: glm53_flash_native_live_arm_screen())], ""),
+    join(["the same screen on the serving GLM-5.3-Flash arm, as an input sanity check only (guaranteed payload taken as the whole artifact): ", optional_screen_text(p: glm53_flash_native_live_arm_screen())], ""),
     offload_text(o: radixark_nvfp4_expert_offload()),
   ], "\n")
 }
 
 // THE RUN ENTRY. `gunbc run --entry dag/gunbc/spark/serving_fit_projection.dag --function
-// radixark_nvfp4_gb10_exit` re-derives every figure above. The exit is success only when neither
-// row is refused structurally or measured incompatible -- calibration required is the honest
-// standing of a screen and is not a failure -- and the readout travels in the reason on refusal.
+// radixark_nvfp4_gb10_exit` re-derives every figure above for BOTH rows. The exit is success only
+// when neither row is refused structurally, measured incompatible or modeling-required --
+// calibration required is the honest standing of a screen and is not a failure -- and the readout
+// travels in the reason on failure.
 fn standing_is_refusal(p: StaticFeasibilityProjection) -> Bool {
   match p.standing {
+    FeasibilityModelingRequired { missing: _ } => true
     FeasibilityRefusedStructurally { cause: _, screen: _, answers: _ } => true
     FeasibilityMeasuredIncompatible { cause: _, screen: _, answers: _ } => true
     FeasibilityCalibrationRequired { missing: _, screen: _, answers: _ } => false
@@ -602,7 +699,7 @@ fn standing_is_refusal(p: StaticFeasibilityProjection) -> Bool {
 
 fn radixark_nvfp4_gb10_exit() -> ProcessExit {
   let readout = radixark_nvfp4_gb10_readout()
-  if standing_is_refusal(p: radixark_nvfp4_tp8()) {
+  if standing_is_refusal(p: radixark_nvfp4_tp4()) || standing_is_refusal(p: radixark_nvfp4_tp8()) {
     exit_failure(reason: readout)
   } else {
     ExitSuccess

@@ -12,16 +12,18 @@ import extdeps.radixark.glm_5_3_nvfp4 {
   nvfp4_routed_experts_share_basis_points, nvfp4_share_of_native_basis_points, nvfp4_quantized_classes,
 }
 import gunbc.spark.serving_arm {
-  ServingCheckpoint, Glm53RadixArkNvfp4Modelopt, ServingRuntime, GunbcGlm53DerivedGb10, GunbcGlm53NopeDerivedGb10,
+  ServingCheckpoint, Glm53RadixArkNvfp4Modelopt, Glm53Nvfp4CompressedTensors, ServingRuntime, GunbcGlm53DerivedGb10, GunbcGlm53NopeDerivedGb10,
   ServingTopology, FourSparkTp4, EightSparkTp8,
 }
 import gunbc.spark.serving_fit_projection {
-  IdealEvenSplitArtifactScreen, IdealEvenSplitVerdict, IdealSplitWithinBudgetPlacementUnread, IdealSplitExceedsUsable,
+  IdealEvenSplitArtifactScreen, IdealEvenSplitVerdict, IdealSplitWithinBudgetPlacementUnread,
+  FullArtifactSplitExceedsUsable, GuaranteedPayloadSplitExceedsUsable,
   screen_ideal_even_split, radixark_nvfp4_screen, glm53_flash_native_live_arm_screen, pre_runtime_artifact_residual,
   StaticFeasibilityProjection, StaticFeasibilityStanding,
-  FeasibilityRefusedStructurally, FeasibilityMeasuredIncompatible, FeasibilityCalibrationRequired,
+  FeasibilityModelingRequired, FeasibilityRefusedStructurally, FeasibilityMeasuredIncompatible, FeasibilityCalibrationRequired,
   radixark_nvfp4_tp4, radixark_nvfp4_tp8, project_static_feasibility, live_arm_utilization,
-  StaticCompatibilityQuestion, ArchitectureRegisteredInRuntime, QuantizationModuleFilePresentInRuntime, Fp4KernelPathEstablishedOnDevice,
+  StaticCompatibilityQuestion, ArchitectureRegisteredInRuntime, QuantizationModuleFilePresentInRuntime,
+  DenseCutlassFp4HelperSupport, Fp4MoeKernelPathEstablishedOnDevice,
   StaticCompatibilityAnswer, Established, MeasuredNegative, NotEstablished,
   answer_question, answer_is_established, static_question_label,
   ExpertOffloadProjection, NoDistinctHostDramTier, OffloadNotProjected, OffloadShapeUnprojectable, radixark_nvfp4_expert_offload,
@@ -46,19 +48,20 @@ test fn w_group_size_read_off_the_scale_tensor_equals_the_declared_one() -> Bool
   }
 }
 
-// THE ROUTED-EXPERT TOTAL, DERIVED FROM ONE EXPERT AND THE SHAPE, EQUALS THE TOTAL MEASURED OVER ALL
-// 47 HEADERS. This is the independent verification the brief asked for: 725B parameters at
-// 4.5 bits each is a derivation, and the measured 407,686,809,600 is the instrument's answer.
-test fn w_routed_expert_total_derived_equals_measured() -> Bool {
+// THE ROUTED-EXPERT TOTAL, DERIVED FROM ONE EXPERT AND THE SHAPE, EQUALS THE TOTAL REPORTED BY THE
+// ALL-47-HEADER CENSUS -- a transcribed figure at TranscribedUncited standing, so this is a
+// derivation agreeing with a report, not with an executing producer; the producer is the row's read
+// obligation.
+test fn w_routed_expert_total_derived_equals_reported() -> Bool {
   match nvfp4_routed_experts_total_bytes(s: glm_5_3_shape) {
     Absent => false
     Present { value: derived } => byte_size_count(b: derived) == byte_size_count(b: nvfp4_reported_partition.routed_experts)
   }
 }
 
-// THE TWO MEASURED CLASSES SIT INSIDE THE MANIFEST, and the artifact is a compression of the base:
+// THE TWO REPORTED CLASSES SIT INSIDE THE MANIFEST, and the artifact is a compression of the base:
 // between 60 and 65 percent of Z.ai's native FP8 bytes.
-test fn w_measured_partition_sits_inside_the_manifest_and_compresses_the_base() -> Bool {
+test fn w_reported_partition_sits_inside_the_manifest_and_compresses_the_base() -> Bool {
   let routed = byte_size_count(b: nvfp4_reported_partition.routed_experts)
   let nextn = byte_size_count(b: nvfp4_reported_partition.nextn_layer)
   routed + nextn < byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes)
@@ -68,10 +71,11 @@ test fn w_measured_partition_sits_inside_the_manifest_and_compresses_the_base() 
     }
 }
 
-// AND IT IS 87.7 PERCENT OF THE ARTIFACT, not 88 and not 92: the nextn layer's 256 bf16 experts are
-// the difference between "every expert tensor" and "every NVFP4 expert tensor".
+// AND IT IS 87.7 PERCENT OF THE ARTIFACT, derived from the modelled expert layout over the manifest:
+// not 88 and not 92, the nextn layer's 256 bf16 experts being the difference between "every expert
+// tensor" and "every NVFP4 expert tensor".
 test fn w_routed_experts_are_between_8700_and_8800_basis_points_of_the_safetensors() -> Bool {
-  match nvfp4_routed_experts_share_basis_points(m: glm_5_3_nvfp4_manifest) {
+  match nvfp4_routed_experts_share_basis_points(s: glm_5_3_shape, m: glm_5_3_nvfp4_manifest) {
     Absent => false
     Present { value: bp } => bp >= 8700 && bp < 8800
   }
@@ -100,7 +104,7 @@ test fn w_the_moe_layer_count_is_derived_from_layers_and_dense_prefix() -> Bool 
 // ten at 8400 basis points is eight usable, not nine. Supplied values, because the claim is about
 // the fold's arithmetic and not about any manifest.
 test fn w_ideal_split_rounds_up_and_usable_rounds_down() -> Bool {
-  match screen_ideal_even_split(weights: byte_size(count: 10), ranks: 3, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
+  match screen_ideal_even_split(weights: byte_size(count: 10), guaranteed_payload: byte_size(count: 10), ranks: 3, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
     Absent => false
     Present { value: p } => byte_size_count(b: p.ideal_weights_per_rank) == 4 && byte_size_count(b: p.usable_per_rank) == 8
   }
@@ -108,14 +112,14 @@ test fn w_ideal_split_rounds_up_and_usable_rounds_down() -> Bool {
 
 // ZERO RANKS REFUSES RATHER THAN SCREENING ON A SHARE OF ZERO: the RED for a fabricated-zero arm.
 test fn w_zero_ranks_has_no_screen() -> Bool {
-  match screen_ideal_even_split(weights: byte_size(count: 10), ranks: 0, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
+  match screen_ideal_even_split(weights: byte_size(count: 10), guaranteed_payload: byte_size(count: 10), ranks: 0, pool_per_rank: byte_size(count: 10), utilization: basis_point(count: 8400)) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-fn verdict_of(weights: Nat) -> IdealEvenSplitVerdict? {
-  match screen_ideal_even_split(weights: byte_size(count: weights), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000)) {
+fn verdict_of(weights: Nat, guaranteed: Nat) -> IdealEvenSplitVerdict? {
+  match screen_ideal_even_split(weights: byte_size(count: weights), guaranteed_payload: byte_size(count: guaranteed), ranks: 1, pool_per_rank: byte_size(count: 1000), utilization: basis_point(count: 8000)) {
     Absent => none
     Present { value: p } => Present { value: p.verdict }
   }
@@ -123,37 +127,53 @@ fn verdict_of(weights: Nat) -> IdealEvenSplitVerdict? {
 
 // A SPLIT EXACTLY AT THE BUDGET IS WITHIN IT WITH A ZERO RESIDUAL -- AND STILL NOT A FIT.
 test fn w_split_equal_to_usable_is_within_budget_with_zero_residual() -> Bool {
-  match verdict_of(weights: 800) {
+  match verdict_of(weights: 800, guaranteed: 800) {
     Absent => false
     Present { value: v } => match v {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: r } => byte_size_count(b: r) == 0
-      IdealSplitExceedsUsable { shortfall_per_rank: _ } => false
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, guaranteed_payload_residual: _ } => false
+      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
     }
   }
 }
 
-test fn w_one_byte_over_usable_exceeds_by_one_byte() -> Bool {
-  match verdict_of(weights: 801) {
+// ONE BYTE OVER ON THE FULL ARTIFACT WITH THE GUARANTEED PAYLOAD INSIDE IS NON-DISPOSITIVE; ONE BYTE
+// OVER ON THE GUARANTEED PAYLOAD IS STRUCTURAL. The two arms are the RED for promoting the
+// full-artifact figure into a refusal.
+test fn w_full_artifact_over_by_one_is_advisory_and_guaranteed_over_by_one_is_structural() -> Bool {
+  let advisory = match verdict_of(weights: 801, guaranteed: 700) {
     Absent => false
     Present { value: v } => match v {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => false
-      IdealSplitExceedsUsable { shortfall_per_rank: s } => byte_size_count(b: s) == 1
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: s, guaranteed_payload_residual: g } => byte_size_count(b: s) == 1 && byte_size_count(b: g) == 100
+      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
     }
   }
+  let structural = match verdict_of(weights: 900, guaranteed: 801) {
+    Absent => false
+    Present { value: v } => match v {
+      IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => false
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, guaranteed_payload_residual: _ } => false
+      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: s } => byte_size_count(b: s) == 1
+    }
+  }
+  advisory && structural
 }
 
 // ── THE SCREEN THROUGH THE REAL MANIFEST AND THE LIVE ARM'S UTILISATION ───────────────────────
 //
-// WHAT THESE ESTABLISH AND WHAT THEY DO NOT. tp4 is refused because even the ideal split exceeds the
-// budget -- a lower bound that real placement can only worsen. tp8 is WITHIN the budget under the
-// ideal split with placement unread, which is not a fit claim: no witness here asserts residency, a
-// KV figure, or a comparison with the serving arm's headroom.
-test fn w_tp4_ideal_split_exceeds_the_live_budget() -> Bool {
+// WHAT THESE ESTABLISH AND WHAT THEY DO NOT. At tp4 the FULL-artifact split exceeds the budget while
+// the guaranteed payload (the derived routed experts, ~101.9 GB per rank) is inside it, so tp4 is NOT
+// structurally refused: the figure that exceeds includes headers and the optional nextn population.
+// tp8 is within the budget on both figures with placement unread, which is not a fit claim: no
+// witness here asserts residency, a KV figure, or a comparison with the serving arm's headroom.
+test fn w_tp4_full_artifact_exceeds_but_guaranteed_payload_is_within() -> Bool {
   match radixark_nvfp4_screen(topology: FourSparkTp4) {
     Absent => false
     Present { value: p } => match p.verdict {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: _ } => false
-      IdealSplitExceedsUsable { shortfall_per_rank: s } => byte_size_count(b: s) > 0
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: s, guaranteed_payload_residual: g } => byte_size_count(b: s) > 0 && byte_size_count(b: g) > 0
+      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
     }
   }
 }
@@ -163,7 +183,8 @@ test fn w_tp8_ideal_split_is_within_budget_with_placement_unread() -> Bool {
     Absent => false
     Present { value: p } => match p.verdict {
       IdealSplitWithinBudgetPlacementUnread { pre_runtime_artifact_residual: r } => byte_size_count(b: r) > 0
-      IdealSplitExceedsUsable { shortfall_per_rank: _ } => false
+      FullArtifactSplitExceedsUsable { shortfall_per_rank: _, guaranteed_payload_residual: _ } => false
+      GuaranteedPayloadSplitExceedsUsable { shortfall_per_rank: _ } => false
     }
   }
 }
@@ -181,6 +202,7 @@ test fn w_the_serving_flash_arm_passes_the_same_screen() -> Bool {
 
 fn answers_of(p: StaticFeasibilityProjection) -> List<StaticCompatibilityAnswer> {
   match p.standing {
+    FeasibilityModelingRequired { missing: _ } => []
     FeasibilityRefusedStructurally { cause: _, screen: _, answers: a } => a
     FeasibilityMeasuredIncompatible { cause: _, screen: _, answers: a } => a
     FeasibilityCalibrationRequired { missing: _, screen: _, answers: a } => a
@@ -204,29 +226,57 @@ test fn w_the_serving_runtime_registers_the_architecture() -> Bool {
   established(p: radixark_nvfp4_tp8(), q: ArchitectureRegisteredInRuntime)
 }
 
-test fn w_tp4_is_refused_structurally_on_the_screen() -> Bool {
+// TP4 IS CALIBRATION REQUIRED, NOT REFUSED: the full-artifact overrun is reported as non-dispositive
+// in the standing, because the guaranteed payload is inside the budget.
+test fn w_tp4_is_calibration_required_with_the_full_artifact_overrun_reported() -> Bool {
   match radixark_nvfp4_tp4().standing {
-    FeasibilityRefusedStructurally { cause: c, screen: _, answers: _ } => string_contains(s: c as String, pattern: "ideal even split already exceeds")
+    FeasibilityModelingRequired { missing: _ } => false
+    FeasibilityRefusedStructurally { cause: _, screen: _, answers: _ } => false
     FeasibilityMeasuredIncompatible { cause: _, screen: _, answers: _ } => false
-    FeasibilityCalibrationRequired { missing: _, screen: _, answers: _ } => false
+    FeasibilityCalibrationRequired { missing: m, screen: _, answers: _ } =>
+      string_contains(s: m as String, pattern: "FULL-artifact even split")
+        && string_contains(s: m as String, pattern: "non-dispositive")
   }
 }
 
 // TP8 IS CALIBRATION REQUIRED, NOT REFUSED AND NOT ADMITTED: the architecture and the module file are
-// Established, the FP4 kernel path is NotEstablished because the probe's discriminator is absent from
-// the build (never a negative), and placement is unread -- both are named in the standing.
-test fn w_tp8_is_calibration_required_naming_the_kernel_path_and_placement() -> Bool {
+// Established, the dense CUTLASS helper is NotEstablished (its discriminator is absent from the
+// build, never a negative), the MoE kernel path is NotEstablished by construction, and placement is
+// unread -- all named in the standing.
+test fn w_tp8_is_calibration_required_naming_the_moe_path_and_placement() -> Bool {
   let p = radixark_nvfp4_tp8()
   match p.standing {
+    FeasibilityModelingRequired { missing: _ } => false
     FeasibilityRefusedStructurally { cause: _, screen: _, answers: _ } => false
     FeasibilityMeasuredIncompatible { cause: _, screen: _, answers: _ } => false
     FeasibilityCalibrationRequired { missing: m, screen: _, answers: _ } =>
       established(p: p, q: ArchitectureRegisteredInRuntime)
         && established(p: p, q: QuantizationModuleFilePresentInRuntime)
-        && !established(p: p, q: Fp4KernelPathEstablishedOnDevice)
+        && !established(p: p, q: DenseCutlassFp4HelperSupport)
+        && !established(p: p, q: Fp4MoeKernelPathEstablishedOnDevice)
         && string_contains(s: m as String, pattern: "cutlass_scaled_mm_supports_fp4")
+        && string_contains(s: m as String, pattern: "NVFP4 MoE backend selector")
         && string_contains(s: m as String, pattern: "runtime placement and non-weight memory are unread")
         && !string_contains(s: m as String, pattern: "MEASURED NEGATIVE")
+  }
+}
+
+// A MISSING ROW IS MODELING REQUIRED, NOT A REFUSAL: the checkpoint the corpus carries no row for.
+test fn w_a_checkpoint_without_a_row_is_modeling_required() -> Bool {
+  let p = project_static_feasibility(
+    checkpoint: Glm53Nvfp4CompressedTensors,
+    runtime: GunbcGlm53DerivedGb10,
+    topology: EightSparkTp8,
+    manifest: glm_5_3_nvfp4_manifest,
+    guaranteed_payload: glm_5_3_nvfp4_manifest.safetensors_bytes,
+    utilization: live_arm_utilization(),
+    required_method: glm_5_3_nvfp4_quantization.quant_method,
+  )
+  match p.standing {
+    FeasibilityModelingRequired { missing: m } => string_contains(s: m as String, pattern: "no checkpoint row")
+    FeasibilityRefusedStructurally { cause: _, screen: _, answers: _ } => false
+    FeasibilityMeasuredIncompatible { cause: _, screen: _, answers: _ } => false
+    FeasibilityCalibrationRequired { missing: _, screen: _, answers: _ } => false
   }
 }
 
@@ -239,6 +289,7 @@ test fn w_the_nope_runtime_has_no_modelopt_reading_and_defers_by_name() -> Bool 
     runtime: GunbcGlm53NopeDerivedGb10,
     topology: EightSparkTp8,
     manifest: glm_5_3_nvfp4_manifest,
+    guaranteed_payload: glm_5_3_nvfp4_manifest.safetensors_bytes,
     utilization: live_arm_utilization(),
     required_method: glm_5_3_nvfp4_quantization.quant_method,
   )
@@ -253,11 +304,13 @@ test fn w_the_nope_runtime_has_no_modelopt_reading_and_defers_by_name() -> Bool 
     }
 }
 
-// MODULE-FILE PRESENCE NEVER STANDS IN FOR THE KERNEL PATH: both answers in one projection.
-test fn w_module_file_presence_does_not_answer_the_kernel_question() -> Bool {
+// MODULE-FILE PRESENCE NEVER STANDS IN FOR THE KERNEL PATH, AND THE DENSE HELPER NEVER ANSWERS THE
+// MoE QUESTION: all three answers in one projection.
+test fn w_weaker_answers_do_not_answer_the_moe_kernel_question() -> Bool {
   let p = radixark_nvfp4_tp8()
   established(p: p, q: QuantizationModuleFilePresentInRuntime)
-    && !established(p: p, q: Fp4KernelPathEstablishedOnDevice)
+    && !established(p: p, q: DenseCutlassFp4HelperSupport)
+    && !established(p: p, q: Fp4MoeKernelPathEstablishedOnDevice)
 }
 
 // ── HOST-MEMORY OFFLOAD HAS NO DISTINCT TIER ON GB10, WITH THE BOUND DERIVED ──────────────────

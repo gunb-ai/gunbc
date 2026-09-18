@@ -511,7 +511,11 @@ data gitcommit90_sm121_exl3_row: ServingRuntimeRow = ServingRuntimeRow {
   runtime: Gitcommit90Sm121Exl3,
   artifact: runtime_artifact_identity(
     pin: PinnedByDigest { reference: gitcommit90_glm_53_one_spark_pinned_reference() },
-    source: SourceRevisionEstablished { revision: (defaults_source_revision(r: Vllm487ecf187)).full_revision },
+    source: PackageVersionClaimsRevision {
+      revision: (defaults_source_revision(r: Vllm487ecf187)).full_revision,
+      package_version: gitcommit90_glm_53_one_spark_vllm_version,
+      build_provenance: "a community image taken as published; nothing here has compared its bytes against that tree, so the revision is what the installed package reports and not an established lineage" as NonEmptyStr,
+    },
     patch_set: [],
     provenance: "a community image taken as published; the revision is what it self-reports as its vLLM build, not a comparison of its bytes against that tree" as NonEmptyStr,
   ),
