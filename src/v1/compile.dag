@@ -354,13 +354,10 @@ fn test_reference_debt() -> List<TestReferenceDebtRow> {
     test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "<import>", target: "v2.test.generated.language_behavior_equivalence.witness_testgen_schedules_three_lbe_generators", occurrences: 1),
     test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "generated_wishlist_dispatched_count_holds", target: "v2.test.generated.testgen_category_wishlist.dispatched_non_tautological_generator_count_is_four", occurrences: 1),
     test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "generated_wishlist_pending_count_holds", target: "v2.test.generated.testgen_category_wishlist.pending_non_tautological_generator_count_is_three", occurrences: 1),
-    test_reference_row(module_name: "v2.test.compiler.pipeline.stage_bridge", referrer: "<import>", target: "v2.test.manual.rust_add_emit_translate", occurrences: 1),
     test_reference_row(module_name: "v2.test.complexity_gate.budget_roster_completeness", referrer: "complexity_budget_roster_family_gate_holds", target: "v2.test.complexity_gate.budget_roster_completeness.complexity_budget_roster_unrated_declared_budget_semantic_red_holds", occurrences: 1),
     test_reference_row(module_name: "v2.test.discrimination_gate.discrimination_roster", referrer: "discrimination_family_gate", target: "v2.test.discrimination_gate.discrimination_roster.mixed_input_non_perturbed_control_correctly_rejected", occurrences: 1),
     test_reference_row(module_name: "v2.test.discrimination_gate.discrimination_roster", referrer: "discrimination_family_gate", target: "v2.test.discrimination_gate.discrimination_roster.negative_control_correctly_rejected", occurrences: 1),
     test_reference_row(module_name: "v2.test.discrimination_gate.discrimination_roster", referrer: "discrimination_family_gate", target: "v2.test.discrimination_gate.discrimination_roster.non_perturbed_control_correctly_rejected", occurrences: 1),
-    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.emit_on_demand_family_crate_witness", occurrences: 1),
-    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle", occurrences: 1),
     test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_green_holds", occurrences: 1),
     test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds", occurrences: 1),
     test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_green_holds", occurrences: 1),
@@ -421,9 +418,7 @@ fn test_reference_debt() -> List<TestReferenceDebtRow> {
     test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_naming_discriminates", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_naming_discriminates", occurrences: 1),
     test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_screaming_snake", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_screaming_snake_holds", occurrences: 1),
     test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_snake_case", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_snake_case_holds", occurrences: 1),
-    test_reference_row(module_name: "v2.test.manual.sg_rc_layering", referrer: "sg_rc_f1_dual_boundary_holds", target: "v2.test.manual.sg_rc_layering.sg_rc_f1_value_dual_boundary_holds", occurrences: 1),
-    test_reference_row(module_name: "v2.test.manual.typescript_descriptor_node_run_support", referrer: "<import>", target: "v2.test.manual.add_body_emit_typescript", occurrences: 1),
-    test_reference_row(module_name: "v2.test.synthesis_gate.optimality_gap_completeness", referrer: "<import>", target: "v2.test.lens_synthesis.synthesis_gap_polynomial", occurrences: 1)
+    test_reference_row(module_name: "v2.test.manual.sg_rc_layering", referrer: "sg_rc_f1_dual_boundary_holds", target: "v2.test.manual.sg_rc_layering.sg_rc_f1_value_dual_boundary_holds", occurrences: 1)
   ]
 }
 
