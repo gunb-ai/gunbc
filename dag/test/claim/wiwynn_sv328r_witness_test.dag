@@ -3,7 +3,7 @@ module test.claim.wiwynn_sv328r_witness
 import std.types { Bool, String }
 import std.measure {
   bandwidth_count, gram_count, hertz_count, megatransfers_per_second_count,
-  micrometer_count, millimeter_count, rack_unit_count,
+  micrometer_count, millimeter_count, physical_core_count_value, rack_unit_count,
 }
 import extdeps.wiwynn.sv328r.subject { wiwynn_sv328r_product }
 import extdeps.wiwynn.sv328r.specifications {
@@ -79,7 +79,7 @@ test fn w_memory_is_32_rdimm_slots_ddr4_3200() -> Bool {
 
 test fn w_processors_are_dual_altra_80_core_class() -> Bool {
   sv328r_processors.socket_count == 2
-    && sv328r_processors.cores_per_socket_stated_max == 80
+    && physical_core_count_value(c: sv328r_processors.cores_per_socket_stated_max) == 80
     && hertz_count(h: sv328r_processors.max_core_clock) == 3000000000
 }
 

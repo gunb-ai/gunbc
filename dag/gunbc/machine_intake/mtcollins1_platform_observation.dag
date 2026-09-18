@@ -9,17 +9,18 @@ import gunbc.machine_intake_ethernet {
   BaseboardOnboard,
   BmcDedicated,
   ConfiguredLink,
-  ConnectorIdentityUnobserved,
-  DistinctConnectors,
+  EthernetPortUnit,
   FunctionUnobserved,
   ObservedEthernetLan,
   EthernetFunctionBinding,
   PhysicalEthernetPort,
+  PortOnUnit,
   PortUnitUnobserved,
-  SameConnector,
-  ethernet_connector_identity,
+  ethernet_ports_are_distinct,
   observed_lans_have_distinct_addresses,
 }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_unit_key_standing }
+import gunbc.machine_intake_subject { UnitKeyBound, UnitKeyRefused }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.network.mac { mac_address }
 
@@ -111,19 +112,25 @@ data mtcollins1_power_redundancy_observed_at: NonEmptyStr = "2026-09-06T02:30Z"
 // Redundancy is a property of independent power paths, not of this fold. This fold
 // only answers whether two distinct sensor rows both report AC.
 
+fn mtcollins1_observed_port_unit() -> EthernetPortUnit {
+  match mtcollins1_unit_key_standing {
+    UnitKeyBound { key: k } => PortOnUnit { key: k }
+    UnitKeyRefused { cause: _ } =>
+      PortUnitUnobserved {
+        discriminator: "mtcollins1 unit key refused; BMC ports cannot share a fabricated unit",
+      }
+  }
+}
+
 data mtcollins1_dedicated_mgmt_port: PhysicalEthernetPort = PhysicalEthernetPort {
-  unit: PortUnitUnobserved {
-    discriminator: "mtcollins1 BMC ports: board serial is not bound on this observation row",
-  },
+  unit: mtcollins1_observed_port_unit(),
   panel_label: "dedicated BMC management RJ45",
   connector_label: "RJ45",
   attachment: BaseboardOnboard,
 }
 
 data mtcollins1_second_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
-  unit: PortUnitUnobserved {
-    discriminator: "mtcollins1 BMC ports: board serial is not bound on this observation row",
-  },
+  unit: mtcollins1_observed_port_unit(),
   panel_label: "second BMC controller interface",
   connector_label: "RJ45",
   attachment: AttachmentUnobserved {
@@ -156,14 +163,10 @@ data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
 }
 
 fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
-  match ethernet_connector_identity(
+  ethernet_ports_are_distinct(
     a: mtcollins1_dedicated_bmc_lan.binding.port,
     b: mtcollins1_second_bmc_lan.binding.port,
-  ) {
-    ConnectorIdentityUnobserved { discriminator: _ } => true
-    SameConnector => false
-    DistinctConnectors => false
-  }
+  )
     && observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan)
     && mtcollins1_dedicated_bmc_lan.binding.function == BmcDedicated
     && match mtcollins1_second_bmc_lan.binding.function {

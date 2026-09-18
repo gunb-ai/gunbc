@@ -4,9 +4,9 @@ import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure {
-  Bandwidth, Gram, Hertz, MegatransfersPerSecond, Micrometer, Millimeter, RackUnit,
+  Bandwidth, Gram, Hertz, MegatransfersPerSecond, Micrometer, Millimeter, PhysicalCoreCount, RackUnit,
   bandwidth, gram, gram_count, hertz, megatransfers_per_second, micrometer, micrometer_count,
-  millimeter, rack_unit,
+  millimeter, physical_core_count, rack_unit,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.memory.types { DimmBuffering, Registered }
@@ -81,14 +81,14 @@ data sv328r_bmc_manageability_network: OnboardNetworkController = OnboardNetwork
 
 type Sv328rProcessorConfiguration {
   socket_count: Nat
-  cores_per_socket_stated_max: Nat
+  cores_per_socket_stated_max: PhysicalCoreCount
   architecture_label: NonEmptyStr
   max_core_clock: Hertz
 }
 
 data sv328r_processors: Sv328rProcessorConfiguration = Sv328rProcessorConfiguration {
   socket_count: 2,
-  cores_per_socket_stated_max: 80,
+  cores_per_socket_stated_max: physical_core_count(count: 80),
   architecture_label: "Ampere Altra, 64-bit Arm",
   max_core_clock: hertz(count: 3000000000),
 }
