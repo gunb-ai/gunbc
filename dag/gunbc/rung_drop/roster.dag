@@ -80,6 +80,7 @@ import gunbc.rung_drop.seam_monolith_control_unmeasured_derived_root { seam_mono
 import gunbc.rung_drop.typescript_same_language_round_trip_leaves_off_required_floor { typescript_same_language_round_trip_leaves_off_required_floor }
 import gunbc.rung_drop.type_reference_location_fallback_keys_production_realization { type_reference_location_fallback_keys_production_realization }
 import gunbc.rung_drop.persisted_resolved_graph_disk_probe_unqualified_format { persisted_resolved_graph_disk_probe_unqualified_format }
+import gunbc.rung_drop.self_host_emit_derisk_claim_unobserved { self_host_emit_derisk_claim_unobserved }
 
 data rung_drop_roster: List<RungDrop> = [
   floor_cut_heal,
@@ -143,6 +144,7 @@ data rung_drop_roster: List<RungDrop> = [
   typescript_same_language_round_trip_leaves_off_required_floor,
   type_reference_location_fallback_keys_production_realization,
   persisted_resolved_graph_disk_probe_unqualified_format,
+  self_host_emit_derisk_claim_unobserved,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

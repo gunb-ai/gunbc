@@ -38,7 +38,9 @@ import gunbc.runner_slot_retirement {
   SlotRetirementEvidencePresent,
   transition_retirement_admission,
   observe_transition_retirement_evidence,
-  srv4_transition_interruption_authorization,
+  interruption_authorization_for_host,
+  HostInterruptionAuthorizationPresent,
+  HostInterruptionAuthorizationAbsent,
 }
 import gunbc.runner_slot_provision {
   runner_slot_member_observed,
@@ -456,17 +458,22 @@ fn observe_slot_retirement_evidence_wet(host: NonEmptyStr) -> SlotRetirementEvid
         cause: join([h as String, " is refused as a runner host (", c, "), so no retirement was observed and none may be assumed"], ""),
       }
     RunnerHostDeployFound { deploy: _ } =>
-      match transition_retirement_admission(
-        host: host as HostIdentity,
-        auth: srv4_transition_interruption_authorization,
-      ) {
-        SlotRetirementEvidenceAbsent { cause: c } => SlotRetirementEvidenceAbsent { cause: c }
-        SlotRetirementEvidencePresent { authorization: auth, standings: _ } =>
-          observe_transition_retirement_evidence(
-            transport: LocalShell,
+      match interruption_authorization_for_host(host: host as HostIdentity) {
+        HostInterruptionAuthorizationAbsent { host: _, cause: c } =>
+          SlotRetirementEvidenceAbsent { cause: c }
+        HostInterruptionAuthorizationPresent { authorization: host_auth } =>
+          match transition_retirement_admission(
             host: host as HostIdentity,
-            auth: auth,
-          )
+            auth: host_auth,
+          ) {
+            SlotRetirementEvidenceAbsent { cause: c } => SlotRetirementEvidenceAbsent { cause: c }
+            SlotRetirementEvidencePresent { authorization: auth, standings: _ } =>
+              observe_transition_retirement_evidence(
+                transport: LocalShell,
+                host: host as HostIdentity,
+                auth: auth,
+              )
+          }
       }
   }
 }

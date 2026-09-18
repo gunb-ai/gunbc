@@ -50,9 +50,15 @@ import v2.std.text { String }
 // WHICH IS CORRECTED HERE RATHER THAN SOFTENED. It read "a `.dag` fold cannot read a file", and
 // gunbc#11526 retracts that from the design document's Two CLIs rule. What is measured stays: a
 // resource METHOD on an ordinary `fn` is a located compiler refusal -- `Filesystem.Read` off a plain
-// function answers "receiver type 'Primitive(Filesystem)' establishes no method surface", because
-// resource operations resolve only inside a workflow function and are realized by the seed
-// INTERPRETER. What was false is the conclusion drawn from it. The FREE primitive `filesystem_read`
+// function answers "receiver type 'Primitive(Filesystem)' establishes no method surface". What was
+// false is the conclusion drawn from it -- and the MECHANISM this paragraph offered for it was
+// false too, which gunbc#11528 settled hours after the paragraph landed. It read "resource
+// operations resolve only inside a workflow function". There is no workflow function: `workflow`
+// was never a semantic kind, only the emitter predicate `v1.compiler.emit_rust` `is_workflow_item`,
+// and that predicate is DELETED. Admissibility is the `uses` clause binding the resource into body
+// scope -- a fact about a function's declared effect requirement, not about any function kind. The
+// census is #11528's and the ruling is D12 in `gunbc.plans.demand_engine_program`, which also keeps
+// `uses` at its one meaning as an effect requirement. The FREE primitive `filesystem_read`
 // is a different route with no interpreter in it: typed by `v1.compiler.infer_method`
 // `builtin_function_registry`, bridged by `extdeps.languages.rust.emit` `rt_function_registry`, and
 // realized by `v1.compiler.runtime_rust` `rt_filesystem` as `std::fs::read_to_string`. An emitted
