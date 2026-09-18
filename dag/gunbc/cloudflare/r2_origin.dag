@@ -138,8 +138,7 @@ type DurableOriginBucket {
 // constructor that admits a repeated key on either axis. The authored list below remains a fallible
 // ingress that refuses loudly; that residual, and its own next-rung trigger, are stated once in
 // std.allocation_roster rather than restated here.
-// THE BOOT ORIGIN IS A SECOND PURPOSE, NOT A WIDENING OF THE FIRST (gunbc.network_boot_predecessor_census
-// DurableOriginNotBootOrigin). The durable origin is private and byte-owning for commit readback; the
+// THE BOOT ORIGIN IS A SECOND PURPOSE, NOT A WIDENING OF THE FIRST. The durable origin is private and byte-owning for commit readback; the
 // boot origin is read by machines over a public custom domain. Admitting boot bytes into the durable
 // bucket would make it public, and the durable origin's read token would become a boot reader's.
 type BucketPurpose

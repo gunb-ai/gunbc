@@ -8,9 +8,10 @@ import std.human_intervention {
   FleetOnce,
   NoDischargeSiteModeled,
 }
+import extdeps.external_authority { FactCitation }
+import extdeps.cloudflare.r2 { r2_custom_domain_citation }
 import extdeps.uri { Uri, uri_https, uri_scheme_is_https }
 import gunbc.network_boot_delivery { FleetBootServiceReceipt }
-import gunbc.network_boot_predecessor_census { predecessor_disposition_of, DurableOriginNotBootOrigin }
 import gunbc.cloudflare.r2_origin {
   FabricDurableOrigin,
   FabricBootOrigin,
@@ -20,9 +21,8 @@ import gunbc.cloudflare.r2_origin {
 
 // THE BOOT ORIGIN: one R2 bucket, public only through a custom domain, holding immutable
 // digest-keyed boot artifacts. Its separation from the durable origin is consumed, not restated:
-// gunbc.network_boot_predecessor_census disposes gunbc.cloudflare.r2_origin
-// fabric_durable_origin_standing as DurableOriginNotBootOrigin, and gunbc.cloudflare.r2_origin
-// allocates the two purposes two buckets and admits public read to exactly one.
+// gunbc.cloudflare.r2_origin allocates the two purposes two buckets and admits public read to
+// exactly one.
 
 // THE ARM64 BUNDLE IS KERNEL + INITRD + ROOTFS IMAGE (parent lane ruling). The chainloader is not a
 // member: it lives at the site edge and only its digest is on the signed manifest.
@@ -148,7 +148,7 @@ fn host_is_r2_dev(locator: String) -> Bool {
 
 type BootReadbackLocator
   = BootReadbackAt { url: Uri }
-  | BootReadbackRefusedR2Dev { locator: NonEmptyStr }
+  | BootReadbackRefusedR2Dev { locator: NonEmptyStr, ground: FactCitation }
   | BootReadbackRefusedNotHttps {}
 
 fn boot_readback_locator(receipt: FleetBootServiceReceipt, key: NonEmptyStr) -> BootReadbackLocator {
@@ -156,7 +156,7 @@ fn boot_readback_locator(receipt: FleetBootServiceReceipt, key: NonEmptyStr) -> 
   if !uri_scheme_is_https(s: domain.scheme) {
     BootReadbackRefusedNotHttps {}
   } else if host_is_r2_dev(locator: domain.locator as String) {
-    BootReadbackRefusedR2Dev { locator: domain.locator }
+    BootReadbackRefusedR2Dev { locator: domain.locator, ground: r2_custom_domain_citation }
   } else {
     BootReadbackAt {
       url: uri_https(locator: join([domain.locator as String, "/", key as String], "") as NonEmptyStr)
@@ -192,8 +192,7 @@ fn classify_boot_readback(object: BootBundleObject, observation: BootReadbackObs
 // hold it indefinitely (RFC 8246 immutable); there is nothing to purge because no key is re-pointed.
 data boot_origin_cache_control: NonEmptyStr = "public, max-age=31536000, immutable"
 
-// THE SEPARATION, AS ONE FOLD OVER ITS THREE AUTHORITIES. Distinct buckets, public read admitted to
-// the boot purpose only, and the census still disposing the durable origin as not-the-boot-origin.
+// THE SEPARATION, AS ONE FOLD. Distinct buckets, and public read admitted to the boot purpose only.
 fn boot_origin_is_separate_from_durable_origin() -> Bool {
   let names_distinct = match allocated_bucket_name(purpose: FabricBootOrigin {}) {
     Absent => false
@@ -203,12 +202,7 @@ fn boot_origin_is_separate_from_durable_origin() -> Bool {
         Present { value: durable } => (boot as String) != (durable as String)
       }
   }
-  let census = match predecessor_disposition_of(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_durable_origin_standing") {
-    Absent => false
-    Present { value: d } => d == DurableOriginNotBootOrigin
-  }
   names_distinct
-    && census
     && bucket_purpose_admits_public_read(purpose: FabricBootOrigin {})
     && !bucket_purpose_admits_public_read(purpose: FabricDurableOrigin {})
 }

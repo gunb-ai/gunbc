@@ -5,7 +5,7 @@ import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.uri { Uri, uri_https, uri_scheme_is_https, uri_scheme_inhabitants }
-import gunbc.network_boot_delivery { FleetBootServiceReceipt }
+import gunbc.network_boot_delivery { FleetBootServiceReceipt, NonEstablishingNetworkBootPredecessor }
 import gunbc.cloudflare.r2_origin {
   fabric_boot_origin_standing,
   fabric_durable_origin_standing,
@@ -77,6 +77,7 @@ fn receipt_at(domain: Uri) -> FleetBootServiceReceipt {
     https_boot_endpoint: uri_https(locator: "boot.example.test"),
     origin_custom_domain: domain,
     signing_key_identity: "fixture-key",
+    evidence_class: NonEstablishingNetworkBootPredecessor,
     observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "receipt_at"),
     observed_at: 0,
   }
@@ -136,7 +137,7 @@ test fn failed_put_is_not_success() -> Bool {
 test fn readback_addresses_the_receipt_custom_domain() -> Bool {
   match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: "boot-origin.example.test")), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
     BootReadbackAt { url: u } => (u.locator as String) == join(["boot-origin.example.test/sha256/", digest_a_hex], "")
-    BootReadbackRefusedR2Dev { locator: _ } => false
+    BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
     BootReadbackRefusedNotHttps {} => false
   }
 }
@@ -144,7 +145,7 @@ test fn readback_addresses_the_receipt_custom_domain() -> Bool {
 test fn readback_refuses_r2_dev() -> Bool {
   match boot_readback_locator(receipt: receipt_at(domain: uri_https(locator: "pub-0123.r2.dev")), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
     BootReadbackAt { url: _ } => false
-    BootReadbackRefusedR2Dev { locator: _ } => true
+    BootReadbackRefusedR2Dev { locator: _, ground: g } => (g.fact.decl_name as String) == "r2_custom_domain_reading"
     BootReadbackRefusedNotHttps {} => false
   }
 }
