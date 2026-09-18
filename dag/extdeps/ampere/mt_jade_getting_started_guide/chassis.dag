@@ -16,6 +16,30 @@ data mt_jade_gsg_chassis_model_scope: ExternalModelScope = mt_jade_gsg_model_sco
 
 // WHAT TABLE 5 AND FIGURE 10 / TABLE 6 STATE. What they do not state is recorded as
 // UnstatedByThisDocument rather than inferred from Collins, Wiwynn SV328R, or IEC catalogues.
+//
+// EVERY ROW IN THIS MODULE IS A DECLARED COVERAGE FRONTIER, STATED AND UNSTATED ALIKE (review
+// 67954). A transcribed figure has no fold today, and a claim that reads the row and compares it
+// to the same literal is a change detector, not a reading: both sides come from this tree, so
+// automating the update collapses it to measure() == measure() (DESIGN §5). The figures ARE
+// grounded — the GSG, Issue 1.00, digest f6528f70 — but the ground is the document, which no
+// claim here executes; provenance is claimed once, by the citation-read receipt, not once per row.
+// So each row names its consumer and its retiring trigger instead of carrying a literal-copy
+// witness (DESIGN §3c):
+//
+//   carton_power_cable_count, carton_rail_kit_count -> the Mt. Jade / SV328R physical class-facts
+//     lane (#11529). Retired when that lane binds carton and accessory inventory from the cited
+//     packing list, at which point the count is joined to an observation rather than standing alone.
+//   rear_psu_count -> PowerSupplyStanding in the same lane. Retired when a PSU observation for this
+//     unit binds Watt and RevolutionsPerMinute, making the count a cardinality check on real rows.
+//   chassis_fan_count -> FirstPostFanCapture in gunbc.machine_intake_mtjade1_fan_standing. Retired
+//     when AwaitingFirstPostWithDimms becomes FirstPostFanCaptured and per-fan readings exist to
+//     count.
+//   minimum_bmc_firmware_family, without_1p_bmc_image_fan_duty -> the fan realizer selected by
+//     jade_fan_policy_convergence. BOTH ARE BLOCKED ON THE SAME TRIGGER and neither may be consumed
+//     before it: a wet probe binding FamilyObserved. Until then there is no function from a
+//     document to an installed family, which is exactly what bmc_first_contact_standing refuses
+//     (review 67792), so consuming the GSG minimum to stand in for an observed family would be the
+//     fork that module exists to prevent.
 
 type GsgUnstated {
   topic: NonEmptyStr
@@ -31,10 +55,9 @@ data mt_jade_gsg_chassis_fan_count: Nat = 6
 
 data mt_jade_gsg_minimum_bmc_firmware_family: BmcFirmwareFamily = AmiMegaRac
 
-// EVERY GsgUnstated ROW BELOW IS A DECLARED COVERAGE FRONTIER, NOT A FACT WITH A FOLD.
-// The row records that THIS document does not state the topic, so the only thing a claim could
-// assert about it is its own prose — a change detector, not a reading (DESIGN §3c). The named
-// later consumer is the Mt. Jade / SV328R physical class-facts lane (#11529), which binds inlet
+// THE UNSTATED ROWS, under the same frontier rule as the stated ones above. The row records that
+// THIS document does not state the topic, so the only thing a claim could assert about it is its
+// own prose. The named later consumer is the Mt. Jade / SV328R physical class-facts lane (#11529), which binds inlet
 // face, cord and chassis mass from a cited datasheet; the trigger that retires each row is that
 // cited read landing, at which point the topic becomes a stated measure and the row is replaced
 // rather than asserted. mt_jade_gsg_rail_kit_part_number is the exception: the observation module

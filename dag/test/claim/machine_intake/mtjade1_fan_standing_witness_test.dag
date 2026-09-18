@@ -1,12 +1,8 @@
 module test.claim.mtjade1_fan_standing_witness
 
 import std.types { Bool }
-import std.measure { percent_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
-import extdeps.ampere.mt_jade_getting_started_guide.chassis {
-  mt_jade_gsg_without_1p_bmc_image_fan_duty,
-}
 import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved }
 import gunbc.machine_intake_mtjade1_fan_standing {
   AwaitingFirstPostWithDimms,
@@ -80,5 +76,4 @@ test fn w_mtjade1_fan_convergence_awaits_family_then_openbmc_pid_or_megarac_unex
       OpenBmcPidControlRows => false
       FamilyUnobservedNoFanRealizer => false
     }
-    && percent_count(mt_jade_gsg_without_1p_bmc_image_fan_duty) == 100
 }

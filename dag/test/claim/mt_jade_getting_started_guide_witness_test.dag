@@ -2,7 +2,6 @@ module test.claim.mt_jade_getting_started_guide_witness
 
 import std.types { Bool, String, concat, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.ampere.mt_jade_getting_started_guide.subject {
   mt_jade_gsg_authority,
   mt_jade_gsg_content_digest,
@@ -11,12 +10,7 @@ import extdeps.ampere.mt_jade_getting_started_guide.subject {
   mt_jade_gsg_publication_status,
 }
 import extdeps.ampere.mt_jade_getting_started_guide.chassis {
-  mt_jade_gsg_carton_power_cable_count,
-  mt_jade_gsg_carton_rail_kit_count,
-  mt_jade_gsg_chassis_fan_count,
   mt_jade_gsg_chassis_model_scope,
-  mt_jade_gsg_minimum_bmc_firmware_family,
-  mt_jade_gsg_rear_psu_count,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, external_model_scope_citations }
 import extdeps.publication { publication_status_is_publicly_published }
@@ -68,17 +62,6 @@ test fn w_jade_gsg_table11_16_dimm_row_is_the_odd_hash_slots() -> Bool {
       Present { value: p } => p.one_dpc_slot_label == 17 && p.two_dpc_additional_slot_label == 18
       Absent => false
     }
-}
-
-// THE UNSTATED ROWS ARE NOT CLAIMED HERE. mt_jade_gsg_inlet_connector_face and
-// mt_jade_gsg_chassis_weight are GsgUnstated, whose topic is NonEmptyStr, so a `!= ""` conjunct
-// over them has no authorable RED (DESIGN section 4b); the type is the whole assertion.
-test fn w_jade_gsg_states_cables_rails_fans_and_minimum_bmc_family() -> Bool {
-  mt_jade_gsg_carton_power_cable_count == 2
-    && mt_jade_gsg_carton_rail_kit_count == 1
-    && mt_jade_gsg_rear_psu_count == 2
-    && mt_jade_gsg_chassis_fan_count == 6
-    && mt_jade_gsg_minimum_bmc_firmware_family == AmiMegaRac
 }
 
 fn jade_gsg_scope_cites(scope: ExternalModelScope, authority: ExternalAuthority) -> Bool {
