@@ -24,7 +24,6 @@ struct Vectors: Decodable {
     }
     struct Enrolment: Decodable {
         struct Input: Decodable {
-            var challenge_id: String
             var code: String
             var platform: String
             var point_b64url: String
@@ -75,12 +74,25 @@ final class ProtocolVectorTests: XCTestCase {
         for v in try load().enrolment {
             let platform = try XCTUnwrap(MobilePlatform(rawValue: v.input.platform), v.name)
             let got = enrolmentTranscript(
-                challenge: EnrolmentChallenge(challenge_id: v.input.challenge_id, code: v.input.code),
+                code: v.input.code,
                 decisionKey: VerifyingKey(point_b64url: v.input.point_b64url),
                 platform: platform
             )
             XCTAssertEqual(got, Data(v.expected.utf8), v.name)
         }
+    }
+
+    /// The wire spelling of the signing input is the fixture's flat key set: a round trip must
+    /// preserve every field, and the challenge must flatten to challenge_expires_at + nonce_hex.
+    func testSigningInputWireKeysAreTheFixtureKeys() throws {
+        let input = DeviceRedemptionSigningInput(
+            audience: "a", enrollment_id: "e", challenge: RedemptionChallenge(expires_at: "x", nonce_hex: "n"),
+            escalation_id: "s", request_revision: "r", stored_request_text: "t", decision: .deny,
+            capability_text: "c", capability_tag: "g")
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(input)) as? [String: Any]
+        XCTAssertEqual(Set(json?.keys ?? []), ["audience", "enrollment_id", "challenge_expires_at", "nonce_hex",
+            "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag"])
+        XCTAssertEqual(try JSONDecoder().decode(DeviceRedemptionSigningInput.self, from: JSONEncoder().encode(input)), input)
     }
 
     /// Discriminating control on the builder itself: swapping the verb must move the bytes, and the

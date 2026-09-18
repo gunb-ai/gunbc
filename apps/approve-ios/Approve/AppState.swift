@@ -45,7 +45,7 @@ final class AppState: ObservableObject {
     // ── Enrolment ────────────────────────────────────────────────────────────────────────────
     /// The order is the protocol's: refuse without App Attest; enclave key; App Attest key; attest
     /// over SHA256(enrolment_transcript); APNs registration; POST.
-    func enrol(challengeId: String, code: String) async {
+    func enrol(code: String) async {
         lastError = nil
         do {
             let client = try requireClient()
@@ -53,8 +53,7 @@ final class AppState: ObservableObject {
             let key = try DecisionKey.create()
             let decisionKey = DecisionKey.verifyingKey(key)
             let attestKeyId = try await AppAttest.generateKey()
-            let challenge = EnrolmentChallenge(challenge_id: challengeId, code: code)
-            let transcript = enrolmentTranscript(challenge: challenge, decisionKey: decisionKey, platform: .ios)
+            let transcript = enrolmentTranscript(code: code, decisionKey: decisionKey, platform: .ios)
             let evidence = try await AppAttest.attest(keyId: attestKeyId, transcript: transcript)
             let token = try await registerForPush()
             let push = ApnsRegistration(
@@ -63,7 +62,7 @@ final class AppState: ObservableObject {
                 token: token
             )
             let grant = try await client.enrol(EnrolmentSubmission(
-                challenge: challenge, platform: .ios, decision_key: decisionKey, evidence: evidence, push: push
+                code: code, platform: .ios, decision_key: decisionKey, evidence: evidence, push: push
             ))
             let e = Enrolment(enrollment_id: grant.enrollment_id, attest_key_id: attestKeyId)
             UserDefaults.standard.set(try JSONEncoder().encode(e), forKey: Self.enrolmentDefault)
@@ -97,6 +96,7 @@ final class AppState: ObservableObject {
         let client = try requireClient()
         guard let enrolment else { throw WireError.configMissing("this phone is not enrolled") }
         guard let key = try DecisionKey.load() else { throw WireError.configMissing("decision key missing; re-enrol") }
+        let cap = r.capability(for: decision)
         let input = DeviceRedemptionSigningInput(
             audience: Protocol.audience,
             enrollment_id: enrolment.enrollment_id,
@@ -105,13 +105,13 @@ final class AppState: ObservableObject {
             request_revision: r.request_revision,
             stored_request_text: r.stored_request_text,
             decision: decision,
-            capability_text: r.capability_text,
-            capability_tag: r.capability_tag
+            capability_text: cap.capability_text,
+            capability_tag: cap.capability_tag
         )
         let bytes = deviceRedemptionSigningInput(input)
         let signature = try DecisionKey.sign(key, bytes)
         let proof = try await AppAttest.assert(keyId: enrolment.attest_key_id, signingInput: bytes)
-        let outcome = try await client.redeem(SignedRedemption(signing_input: input, signature: signature, platform_proof: proof))
+        let outcome = try await client.redeem(SignedRedemption(signing_input: input, signature_b64url: signature.b64url, platform_proof: proof))
         await refresh()
         return outcome
     }

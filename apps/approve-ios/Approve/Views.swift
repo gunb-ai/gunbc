@@ -11,22 +11,20 @@ struct RootView: View {
 
 struct EnrolView: View {
     @EnvironmentObject var state: AppState
-    @State private var challengeId = ""
     @State private var code = ""
     @State private var busy = false
 
     var body: some View {
         Form {
             Section("One-time code from the dashboard") {
-                TextField("challenge id", text: $challengeId).textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("code", text: $code).keyboardType(.numberPad)
             }
             Section {
                 Button(busy ? "Enrolling…" : "Enrol this phone") {
                     busy = true
-                    Task { await state.enrol(challengeId: challengeId, code: code); busy = false }
+                    Task { await state.enrol(code: code); busy = false }
                 }
-                .disabled(busy || challengeId.isEmpty || code.isEmpty)
+                .disabled(busy || code.isEmpty)
             } footer: {
                 Text("Creates a Secure Enclave key that only unlocks with Face ID, attests this app instance, and registers for push.")
             }

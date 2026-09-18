@@ -31,9 +31,9 @@ enum Route {
     static let redeem = "/approve/device/redeem"
 }
 
-/// POST /approve/device/enrol body. The login is not sent: the server derives it from the challenge.
+/// POST /approve/device/enrol body. The login is not sent: the server derives it from the code.
 struct EnrolmentSubmission: Codable {
-    var challenge: EnrolmentChallenge
+    var code: String
     var platform: MobilePlatform
     var decision_key: VerifyingKey
     var evidence: IosAppAttestBoundDecisionKey
@@ -52,15 +52,29 @@ struct PendingApproval: Codable, Identifiable, Hashable {
     var id: String { escalation_id }
 }
 
+/// The capability one verb redeems: approval_capability_signing_input text and its tag.
+struct VerbCapability: Codable, Equatable {
+    var capability_text: String
+    var capability_tag: String
+}
+
 /// GET /approve/device/requests/<escalation_id>: the stored request as the server returns it, byte
-/// for byte, with a fresh stateless challenge and the capability the redemption names.
+/// for byte, a fresh stateless challenge, and BOTH verbs' capabilities — the operator chooses after
+/// reading, and the app signs with the chosen verb's pair.
 struct FetchedRequest: Codable, Equatable {
     var escalation_id: String
     var request_revision: String
     var stored_request_text: String
     var challenge: RedemptionChallenge
-    var capability_text: String
-    var capability_tag: String
+    var approve: VerbCapability
+    var deny: VerbCapability
+
+    func capability(for d: ProposedDecision) -> VerbCapability {
+        switch d {
+        case .approve: return approve
+        case .deny: return deny
+        }
+    }
 }
 
 /// The server's typed outcome (DeviceRedemptionOutcome): the arm name travels as "outcome", the

@@ -42,13 +42,13 @@ fixes on first build.
 
 ## Flow
 
-- **Enrol**: type the dashboard's challenge id and one-time code → refuse unless App Attest is
+- **Enrol**: type the dashboard's one-time code (it is the challenge identifier) → refuse unless App Attest is
   supported → create the enclave key → generate the App Attest key → attest with
   `clientDataHash = SHA256(enrolment_transcript)` → register for APNs → `POST /approve/device/enrol`.
 - **Inbox**: `GET /approve/device/pending` on open, pull-to-refresh, and on push. The push carries only
   `notification_id`; nothing from it is displayed as the request.
 - **Detail**: `GET /approve/device/requests/<escalation_id>` returns the stored request byte for byte
-  plus a stateless `RedemptionChallenge`; the app shows that text, then Approve/Deny signs
+  plus a stateless `RedemptionChallenge` and both verbs' capabilities; the app shows that text, then Approve/Deny signs with the chosen verb's capability:
   `device_redemption_signing_input` with the enclave key (Face ID is the enclave's own prompt — there
   is no `LAContext` pre-check), generates an App Attest assertion over the same bytes, and
   `POST /approve/device/redeem`s the `SignedRedemption`. The server's `{outcome, message}` is rendered as is.
