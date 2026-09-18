@@ -1,30 +1,18 @@
 module test.claim.fabric.node_qualification_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import std.algebra { Cons, Empty }
-import extdeps.python { python_interpreter_command, python_program_flag }
 import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count, nanosecond_count, byte_size_count }
 import product.placement_supply { HostIdentity }
 import extdeps.ethernet.link_mode {
   ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_50gbase_cr2, link_mode_eq, link_mode_aggregate,
 }
 import extdeps.storage.types { PcieLink, Gen5 }
-import extdeps.nvidia.cuda_driver {
-  CudaQuerySucceeded, CudaQueryFailed, CudaQueryUnparsed,
-  GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute,
-  cuda_attribute_outcome, cuda_device_attribute_ordinal,
-  cuda_device_attribute_program,
-}
-import extdeps.nvidia.gpu_direct_rdma {
-  GpuDirectRdmaCapability, GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet,
-  GpuDirectRdmaCapabilityUnread, gpu_direct_rdma_capability,
-}
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
-  CollectiveCurveReading,
-  HostAdvertisedDelivery, HostMeasuredDelivery,
+  CollectiveCurveReading, CollectiveProtocolKey,
+  HostAdvertisedDelivery, HostMeasuredDelivery, HostQualificationReceipt,
   CollectiveGroupAdvertised, CollectiveGroupMeasured,
-  AdvertisedPcie, DgxSparkConnectX7PerPortAttachment, DiscreteAdapterSkuBrief,
+  AdvertisedSparkConnectX7PerPort, AdvertisedDiscreteAdapterSku,
   CountRead, CountUnread, ByteSizeRead, ByteSizeUnread,
   LinkModeRead, LinkModeUnread, PcieLinkRead, PcieLinkUnread,
   CollectiveCurveRead, CollectiveCurveUnread,
@@ -32,7 +20,8 @@ import product.fabric.node_qualification {
   SmallMessageShapeUncharacterized, SmallMessageStepThenPlateau,
   EngineBufferModeUnestablished, EngineBufferModeInPlace, EngineBufferModeOutOfPlace,
   PerLayerAllReduceCountUnestablished, PerLayerAllReduceCount,
-  EachRankContributesTheSizeColumn, TotalBufferSplitPerPeer,
+  EachRankContributesTheSizeColumn, TotalBufferSplitPerPeer, NcclTestsHalf,
+  GroupHostRosterUnread, GroupHostRosterComplete,
   CollectivePrimitiveAttributionUnestablished, CollectivePrimitiveMeasuredOnDifferentRuntime,
   CollectivePrimitiveSameRuntime,
   HostRegisteredIbFallbackUnread, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
@@ -45,20 +34,21 @@ import product.fabric.node_qualification {
   CollectiveLatencyUnread, CollectiveLatencyAgrees, CollectiveBandwidthUnread,
   RankSymmetryUnread, RankSymmetryFallsShort, RankSymmetryAgrees,
   GpuDirectRdmaEvidenceMissing, GpuDirectRdmaRecorded,
-  NodeQualified, NodeNotQualified,
-  qualify_node, admit_qualified_node, qualify_rail_link_mode, qualify_accelerator_count,
+  GpuDirectRdmaCapability, GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet,
+  GpuDirectRdmaCapabilityUnread,
+  RankLocalCollectiveCurve, GroupWideCurveCopiedOntoRank,
+  HostQualified, HostNotQualified, GroupQualified, GroupNotQualified,
+  HostQualificationAdmission, GroupQualificationAdmission,
+  qualify_host, qualify_collective_group, admit_qualified_host, admit_qualified_group,
+  qualify_rail_link_mode, qualify_accelerator_count,
   qualify_rank_symmetry, qualify_nic_pcie, qualify_collective_latency,
   WindowStandingUnread, WindowSharedWithDeclaredTraffic, WindowIsolated,
-  CollectivePrimitiveSameRuntime,
   claimed_delivery_refusals,
 }
 import gunbc.spark.group_b_node_qualification {
-  group_b_qualification_admission, group_b_measured,
-  group_b_gdr_cu_device_get_attribute_stdout,
-  group_b_gdr_query_argv, group_b_dmabuf_query_argv, group_b_gdr_capability_wire,
-  group_b_delivery_claim, group_b_delivery_field_exclusion,
+  group_b_group_admission, group_b_host_admission, group_b_measured,
+  group_b_delivery_claim,
 }
-import product.fabric.candidate_field { FieldNodeNotQualified }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -68,28 +58,36 @@ data fx_node: HostIdentity = "fixture-node" as HostIdentity
 fn fx_pcie16() -> PcieLink { PcieLink { generation: Gen5, lane_count: 16 } }
 fn fx_pcie4() -> PcieLink { PcieLink { generation: Gen5, lane_count: 4 } }
 
-fn fx_pcie_adv(link: PcieLink) -> AdvertisedPcie {
-  AdvertisedPcie { link: link, provenance: DgxSparkConnectX7PerPortAttachment }
-}
-
 fn fx_gdr_supported() -> GpuDirectRdmaCapability {
-  gpu_direct_rdma_capability(
-    platform: "fixture" as NonEmptyStr,
-    device_api: CudaQuerySucceeded { value: 1 },
-    dma_buf: CudaQuerySucceeded { value: 0 },
-  )
+  GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: false }
 }
 
 fn fx_gdr_unsupported() -> GpuDirectRdmaCapability {
-  gpu_direct_rdma_capability(
-    platform: "GB10" as NonEmptyStr,
-    device_api: CudaQuerySucceeded { value: 0 },
-    dma_buf: CudaQuerySucceeded { value: 0 },
-  )
+  GpuDirectRdmaDeviceUnsupported { platform: "GB10" as NonEmptyStr }
 }
 
 fn fx_gdr_unread() -> GpuDirectRdmaCapability {
   GpuDirectRdmaCapabilityUnread { cause: "cuda query not run" as NonEmptyStr }
+}
+
+fn fx_all_reduce_protocol() -> CollectiveProtocolKey {
+  CollectiveProtocolKey {
+    instrument: NcclTestsAllReducePerf,
+    size_semantics: EachRankContributesTheSizeColumn,
+    dtype: NcclTestsHalf,
+    rank_count: 2,
+    run_identity: "fixture-all-reduce" as NonEmptyStr,
+  }
+}
+
+fn fx_all_to_all_protocol() -> CollectiveProtocolKey {
+  CollectiveProtocolKey {
+    instrument: NcclTestsAllToAllPerf,
+    size_semantics: TotalBufferSplitPerPeer { rank_count: 2 },
+    dtype: NcclTestsHalf,
+    rank_count: 2,
+    run_identity: "fixture-all-to-all" as NonEmptyStr,
+  }
 }
 
 fn fx_advertised() -> AdvertisedNodeOffer {
@@ -98,18 +96,18 @@ fn fx_advertised() -> AdvertisedNodeOffer {
       accelerator_count: 4,
       usable_memory: byte_size(count: 1000),
       rail_link_mode: ieee_100gbase_cr2,
-      nic_pcie: fx_pcie_adv(link: fx_pcie16()),
+      nic_pcie: AdvertisedSparkConnectX7PerPort,
     },
     group: CollectiveGroupAdvertised {
       expected_ranks: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
       latency_ceiling: nanosecond(count: 1000),
       latency_message_bytes: byte_size(count: 8),
-      all_reduce_size_semantics: EachRankContributesTheSizeColumn,
+      all_reduce_protocol: fx_all_reduce_protocol(),
       bandwidth_floor: bandwidth(count: 100),
       bandwidth_message_bytes: byte_size(count: 8),
       all_to_all_latency_ceiling: nanosecond(count: 1000),
       all_to_all_message_bytes: byte_size(count: 8),
-      all_to_all_size_semantics: TotalBufferSplitPerPeer { rank_count: 2 },
+      all_to_all_protocol: fx_all_to_all_protocol(),
       rank_symmetry_max_latency_multiple: 2,
     },
   }
@@ -127,8 +125,7 @@ fn fx_sample() -> CollectiveSample {
 fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
   CollectiveCurveRead {
     samples: samples,
-    instrument: NcclTestsAllReducePerf,
-    size_semantics: EachRankContributesTheSizeColumn,
+    protocol: fx_all_reduce_protocol(),
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
@@ -142,8 +139,7 @@ fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
 fn fx_all_to_all_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
   CollectiveCurveRead {
     samples: samples,
-    instrument: NcclTestsAllToAllPerf,
-    size_semantics: TotalBufferSplitPerPeer { rank_count: 2 },
+    protocol: fx_all_to_all_protocol(),
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
@@ -152,10 +148,6 @@ fn fx_all_to_all_curve(samples: List<CollectiveSample>) -> CollectiveCurveReadin
     },
     window: WindowIsolated,
   }
-}
-
-fn fx_all_to_all_unread() -> CollectiveCurveReading {
-  CollectiveCurveUnread { because: "fixture has no all-to-all curve" as NonEmptyStr }
 }
 
 fn fx_ib_ok() -> HostRegisteredIbFallbackStanding {
@@ -184,7 +176,7 @@ fn fx_measured_all_agree() -> MeasuredNodeDelivery {
       accelerator_count: CountRead { count: 4 },
       usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
       rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
-      nic_pcie: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
+      nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
       gpu_direct_rdma: fx_gdr_supported(),
     },
     group: CollectiveGroupMeasured {
@@ -195,10 +187,12 @@ fn fx_measured_all_agree() -> MeasuredNodeDelivery {
         RankCollectiveReading {
           rank: "rank-0" as HostIdentity,
           curve: fx_curve(samples: [fx_sample()]),
+          producer: RankLocalCollectiveCurve,
         },
         RankCollectiveReading {
           rank: "rank-1" as HostIdentity,
           curve: fx_curve(samples: [fx_sample()]),
+          producer: RankLocalCollectiveCurve,
         },
       ],
     },
@@ -206,11 +200,127 @@ fn fx_measured_all_agree() -> MeasuredNodeDelivery {
 }
 
 test fn a_fully_read_agreeing_node_is_qualified() -> Bool {
-  match admit_qualified_node(
-    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: fx_measured_all_agree()),
-  ) {
-    NodeQualified { receipt: _ } => true
-    NodeNotQualified { receipt: _, refusals: _ } => false
+  match fx_admit_host(m: fx_measured_all_agree()) {
+    HostQualified { receipt: _ } => true
+    HostNotQualified { receipt: _, refusals: _ } => false
+  } && match fx_admit_group(m: fx_measured_all_agree()) {
+    GroupQualified { receipt: _ } => true
+    GroupNotQualified { receipt: _, refusals: _ } => false
+  }
+}
+
+
+fn fx_rank_pair_advertised() -> AdvertisedNodeOffer {
+  let a = fx_advertised()
+  AdvertisedNodeOffer {
+    host: a.host,
+    group: CollectiveGroupAdvertised {
+      expected_ranks: ["rank-fast" as HostIdentity, "rank-slow" as HostIdentity],
+      latency_ceiling: a.group.latency_ceiling,
+      latency_message_bytes: a.group.latency_message_bytes,
+      all_reduce_protocol: a.group.all_reduce_protocol,
+      bandwidth_floor: a.group.bandwidth_floor,
+      bandwidth_message_bytes: a.group.bandwidth_message_bytes,
+      all_to_all_latency_ceiling: a.group.all_to_all_latency_ceiling,
+      all_to_all_message_bytes: a.group.all_to_all_message_bytes,
+      all_to_all_protocol: a.group.all_to_all_protocol,
+      rank_symmetry_max_latency_multiple: a.group.rank_symmetry_max_latency_multiple,
+    },
+  }
+}
+
+fn fx_rank(id: String, sample: CollectiveSample) -> RankCollectiveReading {
+  RankCollectiveReading {
+    rank: id as HostIdentity,
+    curve: fx_curve(samples: [sample]),
+    producer: RankLocalCollectiveCurve,
+  }
+}
+
+fn fx_pair_hosts() -> List<HostQualificationReceipt> {
+  [
+    qualify_host(
+      node: "rank-0" as HostIdentity,
+      advertised: fx_advertised().host,
+      measured: fx_measured_all_agree().host,
+    ),
+    qualify_host(
+      node: "rank-1" as HostIdentity,
+      advertised: fx_advertised().host,
+      measured: fx_measured_all_agree().host,
+    ),
+  ]
+}
+
+fn fx_rank_pair_hosts() -> List<HostQualificationReceipt> {
+  [
+    qualify_host(
+      node: "rank-fast" as HostIdentity,
+      advertised: fx_rank_pair_advertised().host,
+      measured: fx_measured_all_agree().host,
+    ),
+    qualify_host(
+      node: "rank-slow" as HostIdentity,
+      advertised: fx_rank_pair_advertised().host,
+      measured: fx_measured_all_agree().host,
+    ),
+  ]
+}
+
+fn fx_admit_host(m: MeasuredNodeDelivery) -> HostQualificationAdmission {
+  admit_qualified_host(
+    receipt: qualify_host(node: fx_node, advertised: fx_advertised().host, measured: m.host),
+  )
+}
+
+fn fx_admit_group(m: MeasuredNodeDelivery) -> GroupQualificationAdmission {
+  admit_qualified_group(
+    receipt: qualify_collective_group(
+      advertised: fx_advertised().group,
+      measured: m.group,
+      host_receipts: fx_pair_hosts(),
+    ),
+  )
+}
+
+fn fx_admit_group_for(
+  advertised: AdvertisedNodeOffer,
+  m: MeasuredNodeDelivery,
+  hosts: List<HostQualificationReceipt>,
+) -> GroupQualificationAdmission {
+  admit_qualified_group(
+    receipt: qualify_collective_group(
+      advertised: advertised.group,
+      measured: m.group,
+      host_receipts: hosts,
+    ),
+  )
+}
+
+fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDelivery {
+  MeasuredNodeDelivery {
+    host: HostMeasuredDelivery {
+      accelerator_count: CountRead { count: 4 },
+      usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
+      rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
+      nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
+      gpu_direct_rdma: fx_gdr_supported(),
+    },
+    group: CollectiveGroupMeasured {
+      collective: fx_curve(samples: [fx_sample()]),
+      all_to_all: fx_all_to_all_curve(samples: [fx_sample()]),
+      host_registered_ib_fallback: fx_ib_ok(),
+      ranks: ranks,
+    },
+  }
+}
+
+fn fx_slow_sample() -> CollectiveSample {
+  CollectiveSample {
+    message_bytes: byte_size(count: 8),
+    bus_bandwidth: bandwidth(count: 200),
+    in_place_latency: nanosecond(count: 5000),
+    out_of_place_latency: nanosecond(count: 5000),
   }
 }
 
@@ -230,36 +340,33 @@ test fn unread_evidence_is_not_qualification() -> Bool {
       ranks: [],
     },
   }
-  match admit_qualified_node(
-    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: unread),
-  ) {
-    NodeQualified { receipt: _ } => false
-    NodeNotQualified { receipt: r, refusals: refusals } =>
+  match fx_admit_host(m: unread) {
+    HostNotQualified { receipt: r, refusals: refusals } =>
       refusals.length() > 0
-        && match r.host.accelerators {
+        && match r.accelerators {
           AcceleratorCountUnread { advertised: n, because: _ } => n == 4
           AcceleratorCountAgrees { count: _ } => false
           AcceleratorCountFallsShort { advertised: _, measured: _ } => false
         }
-        && match r.host.rail_link_mode {
-          RailLinkModeUnread { advertised: _, because: _ } => true
-          RailLinkModeAgrees { mode: _, instrument: _ } => false
-          RailLinkModeDiffers { advertised: _, measured: _, instrument: _ } => false
+        && match r.gpu_direct_rdma {
+          GpuDirectRdmaEvidenceMissing { capability: _ } => true
+          GpuDirectRdmaRecorded { capability: _ } => false
         }
-        && match r.group.collective_latency {
+    HostQualified { receipt: _ } => false
+  } && match fx_admit_group(m: unread) {
+    GroupNotQualified { receipt: r, refusals: refusals } =>
+      refusals.length() > 0
+        && match r.collective_latency {
           CollectiveLatencyUnread { ceiling: _, because: _ } => true
           CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
           CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
         }
-        && match r.group.rank_symmetry {
+        && match r.rank_symmetry {
           RankSymmetryUnread { because: _ } => true
           RankSymmetryAgrees { rank_count: _ } => false
           RankSymmetryFallsShort { degraded: _ } => false
         }
-        && match r.host.gpu_direct_rdma {
-          GpuDirectRdmaEvidenceMissing { capability: _ } => true
-          GpuDirectRdmaRecorded { capability: _ } => false
-        }
+    GroupQualified { receipt: _ } => false
   }
 }
 
@@ -290,31 +397,7 @@ test fn realized_50g_against_advertised_100g_cr2_falls_short() -> Bool {
   }
 }
 
-test fn a_zero_from_a_succeeding_cuda_query_is_unsupported_not_unread() -> Bool {
-  match gpu_direct_rdma_capability(
-    platform: "GB10" as NonEmptyStr,
-    device_api: CudaQuerySucceeded { value: 0 },
-    dma_buf: CudaQuerySucceeded { value: 0 },
-  ) {
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
-    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
-    GpuDirectRdmaCapabilityUnread { cause: _ } => false
-  }
-}
-
-test fn a_failed_cuda_query_is_not_a_zero() -> Bool {
-  match gpu_direct_rdma_capability(
-    platform: "GB10" as NonEmptyStr,
-    device_api: CudaQueryFailed { result_code: 3 },
-    dma_buf: CudaQuerySucceeded { value: 0 },
-  ) {
-    GpuDirectRdmaCapabilityUnread { cause: _ } => true
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => false
-    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
-  }
-}
-
-test fn gb10_unsupported_gdr_does_not_refuse_a_node_that_otherwise_agrees() -> Bool {
+test fn gb10_unsupported_gdr_does_not_refuse_a_host_that_otherwise_agrees() -> Bool {
   let measured = fx_measured_all_agree()
   let gdr_zero = MeasuredNodeDelivery {
     host: HostMeasuredDelivery {
@@ -326,18 +409,16 @@ test fn gb10_unsupported_gdr_does_not_refuse_a_node_that_otherwise_agrees() -> B
     },
     group: measured.group,
   }
-  match admit_qualified_node(
-    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: gdr_zero),
-  ) {
-    NodeQualified { receipt: r } => match r.host.gpu_direct_rdma {
+  match fx_admit_host(m: gdr_zero) {
+    HostQualified { receipt: r } => match r.gpu_direct_rdma {
       GpuDirectRdmaRecorded { capability: c } => match c {
-        GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
-        GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
+        GpuDirectRdmaDeviceUnsupported { platform: _ } => true
+        GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _ } => false
         GpuDirectRdmaCapabilityUnread { cause: _ } => false
       }
       GpuDirectRdmaEvidenceMissing { capability: _ } => false
     }
-    NodeNotQualified { receipt: _, refusals: _ } => false
+    HostNotQualified { receipt: _, refusals: _ } => false
   }
 }
 
@@ -349,72 +430,17 @@ test fn fewer_accelerators_than_advertised_falls_short() -> Bool {
   }
 }
 
-fn fx_slow_sample() -> CollectiveSample {
-  CollectiveSample {
-    message_bytes: byte_size(count: 8),
-    bus_bandwidth: bandwidth(count: 200),
-    in_place_latency: nanosecond(count: 5000),
-    out_of_place_latency: nanosecond(count: 5000),
-  }
-}
-
-fn fx_rank_pair_advertised() -> AdvertisedNodeOffer {
-  let a = fx_advertised()
-  AdvertisedNodeOffer {
-    host: a.host,
-    group: CollectiveGroupAdvertised {
-      expected_ranks: ["rank-fast" as HostIdentity, "rank-slow" as HostIdentity],
-      latency_ceiling: a.group.latency_ceiling,
-      latency_message_bytes: a.group.latency_message_bytes,
-      all_reduce_size_semantics: a.group.all_reduce_size_semantics,
-      bandwidth_floor: a.group.bandwidth_floor,
-      bandwidth_message_bytes: a.group.bandwidth_message_bytes,
-      all_to_all_latency_ceiling: a.group.all_to_all_latency_ceiling,
-      all_to_all_message_bytes: a.group.all_to_all_message_bytes,
-      all_to_all_size_semantics: a.group.all_to_all_size_semantics,
-      rank_symmetry_max_latency_multiple: a.group.rank_symmetry_max_latency_multiple,
-    },
-  }
-}
-
-fn fx_rank(id: String, sample: CollectiveSample) -> RankCollectiveReading {
-  RankCollectiveReading {
-    rank: id as HostIdentity,
-    curve: fx_curve(samples: [sample]),
-  }
-}
-
-fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDelivery {
-  MeasuredNodeDelivery {
-    host: HostMeasuredDelivery {
-      accelerator_count: CountRead { count: 4 },
-      usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
-      rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
-      nic_pcie: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
-      gpu_direct_rdma: fx_gdr_supported(),
-    },
-    group: CollectiveGroupMeasured {
-      collective: fx_curve(samples: [fx_sample()]),
-      all_to_all: fx_all_to_all_curve(samples: [fx_sample()]),
-      host_registered_ib_fallback: fx_ib_ok(),
-      ranks: ranks,
-    },
-  }
-}
-
 test fn a_degraded_rank_is_named_not_averaged() -> Bool {
-  match admit_qualified_node(
-    receipt: qualify_node(
-      node: fx_node,
-      advertised: fx_rank_pair_advertised(),
-      measured: fx_measured_with_ranks(ranks: [
-        fx_rank(id: "rank-fast", sample: fx_sample()),
-        fx_rank(id: "rank-slow", sample: fx_slow_sample()),
-      ]),
-    ),
+  match fx_admit_group_for(
+    advertised: fx_rank_pair_advertised(),
+    m: fx_measured_with_ranks(ranks: [
+      fx_rank(id: "rank-fast", sample: fx_sample()),
+      fx_rank(id: "rank-slow", sample: fx_slow_sample()),
+    ]),
+    hosts: fx_rank_pair_hosts(),
   ) {
-    NodeQualified { receipt: _ } => false
-    NodeNotQualified { receipt: r, refusals: _ } => match r.group.rank_symmetry {
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: _ } => match r.rank_symmetry {
       RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
       RankSymmetryAgrees { rank_count: _ } => false
       RankSymmetryUnread { because: _ } => false
@@ -426,44 +452,31 @@ test fn a_slow_rank_listed_first_is_still_degraded() -> Bool {
   match qualify_rank_symmetry(
     expected: ["rank-fast" as HostIdentity, "rank-slow" as HostIdentity],
     ranks: [
-    fx_rank(id: "rank-slow", sample: fx_slow_sample()),
-    fx_rank(id: "rank-fast", sample: fx_sample()),
-  ], max_latency_multiple: 2, at: byte_size(count: 8)) {
+      fx_rank(id: "rank-slow", sample: fx_slow_sample()),
+      fx_rank(id: "rank-fast", sample: fx_sample()),
+    ],
+    required: fx_all_reduce_protocol(),
+    max_latency_multiple: 2,
+    at: byte_size(count: 8),
+  ) {
     RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
     RankSymmetryAgrees { rank_count: _ } => false
     RankSymmetryUnread { because: _ } => false
   }
-    && match admit_qualified_node(
-      receipt: qualify_node(
-        node: fx_node,
-        advertised: fx_rank_pair_advertised(),
-        measured: fx_measured_with_ranks(ranks: [
-          fx_rank(id: "rank-slow", sample: fx_slow_sample()),
-          fx_rank(id: "rank-fast", sample: fx_sample()),
-        ]),
-      ),
-    ) {
-      NodeQualified { receipt: _ } => false
-      NodeNotQualified { receipt: r, refusals: _ } => match r.group.rank_symmetry {
-        RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
-        RankSymmetryAgrees { rank_count: _ } => false
-        RankSymmetryUnread { because: _ } => false
-      }
-    }
 }
 
 test fn group_b_live_receipt_is_not_qualified() -> Bool {
-  match group_b_qualification_admission() {
-    NodeQualified { receipt: _ } => false
-    NodeNotQualified { receipt: r, refusals: refusals } =>
+  match group_b_host_admission() {
+    HostQualified { receipt: _ } => false
+    HostNotQualified { receipt: r, refusals: refusals } =>
       refusals.length() > 0
-        && match r.host.rail_link_mode {
+        && match r.rail_link_mode {
           RailLinkModeDiffers { advertised: a, measured: m, instrument: _ } =>
             link_mode_eq(a: a, b: ieee_100gbase_cr2) && link_mode_eq(a: m, b: ieee_50gbase_cr2)
           RailLinkModeAgrees { mode: _, instrument: _ } => false
           RailLinkModeUnread { advertised: _, because: _ } => false
         }
-        && match r.host.nic_pcie {
+        && match r.nic_pcie {
           NicPcieAgrees { link: m, instrument: _ } => m.lane_count == 4
           NicPcieFallsShort { advertised: _, measured: _, instrument: _ } => false
           NicPcieUnread { advertised: _, because: _ } => false
@@ -471,13 +484,21 @@ test fn group_b_live_receipt_is_not_qualified() -> Bool {
           NicPcieDiffers { advertised: _, measured: _, instrument: _ } => false
           NicPcieOfferUngrounded { advertised: _, because: _ } => false
         }
-        && match r.host.gpu_direct_rdma {
+        && match r.gpu_direct_rdma {
           GpuDirectRdmaRecorded { capability: c } => match c {
-            GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => true
-            GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
+            GpuDirectRdmaDeviceUnsupported { platform: _ } => true
+            GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _ } => false
             GpuDirectRdmaCapabilityUnread { cause: _ } => false
           }
           GpuDirectRdmaEvidenceMissing { capability: _ } => false
+        }
+  } && match group_b_group_admission() {
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: refusals } =>
+      refusals.length() > 0
+        && match r.host_roster {
+          GroupHostRosterUnread { because: _ } => true
+          GroupHostRosterComplete { rank_count: _ } => false
         }
   }
 }
@@ -487,8 +508,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
       samples: samples,
-      instrument: _,
-      size_semantics: sem,
+      protocol: proto,
       small_message_shape: shape,
       engine_buffer_mode: buf,
       per_layer_all_reduce_count: layers,
@@ -502,7 +522,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
             && nanosecond_count(n: s.in_place_latency) == 108420
             && nanosecond_count(n: s.out_of_place_latency) == 179540
             && nanosecond_count(n: s.in_place_latency) != nanosecond_count(n: s.out_of_place_latency)
-            && match sem {
+            && match proto.size_semantics {
               EachRankContributesTheSizeColumn => true
               TotalBufferSplitPerPeer { rank_count: _ } => false
             }
@@ -550,8 +570,7 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
       samples: ar,
-      instrument: _,
-      size_semantics: ar_sem,
+      protocol: ar_proto,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -561,8 +580,7 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
       CollectiveCurveUnread { because: _ } => false
       CollectiveCurveRead {
         samples: a2a,
-        instrument: _,
-        size_semantics: a2a_sem,
+        protocol: a2a_proto,
         small_message_shape: _,
         engine_buffer_mode: _,
         per_layer_all_reduce_count: _,
@@ -578,37 +596,26 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
                 && byte_size_count(b: ar0.message_bytes) == 8192
                 && nanosecond_count(n: ar0.in_place_latency) == 108420
                 && nanosecond_count(n: a2a0.in_place_latency) == 20150
-                && match ar_sem {
+                && match ar_proto.size_semantics {
                   EachRankContributesTheSizeColumn => true
                   TotalBufferSplitPerPeer { rank_count: _ } => false
                 }
-                && match a2a_sem {
+                && match a2a_proto.size_semantics {
                   TotalBufferSplitPerPeer { rank_count: n } => n == 4
                   EachRankContributesTheSizeColumn => false
                 }
+                && (ar_proto.run_identity as String) != (a2a_proto.run_identity as String)
           }
         }
     }
   }
 }
 
-test fn a_cuda_value_other_than_0_or_1_is_unread_not_supported() -> Bool {
-  match gpu_direct_rdma_capability(
-    platform: "GB10" as NonEmptyStr,
-    device_api: CudaQuerySucceeded { value: 2 },
-    dma_buf: CudaQuerySucceeded { value: 0 },
-  ) {
-    GpuDirectRdmaCapabilityUnread { cause: _ } => true
-    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => false
-    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
-  }
-}
-
 test fn a_discrete_adapter_x16_brief_is_ungrounded_not_a_node_shortfall() -> Bool {
   match qualify_nic_pcie(
-    advertised: AdvertisedPcie {
+    advertised: AdvertisedDiscreteAdapterSku {
+      sku: "ConnectX-7 x16 adapter brief" as NonEmptyStr,
       link: fx_pcie16(),
-      provenance: DiscreteAdapterSkuBrief { sku: "ConnectX-7 x16 adapter brief" as NonEmptyStr },
     },
     reading: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
   ) {
@@ -617,6 +624,21 @@ test fn a_discrete_adapter_x16_brief_is_ungrounded_not_a_node_shortfall() -> Boo
     NicPcieFallsShort { advertised: _, measured: _, instrument: _ } => false
     NicPcieExceeds { advertised: _, measured: _, instrument: _ } => false
     NicPcieDiffers { advertised: _, measured: _, instrument: _ } => false
+    NicPcieUnread { advertised: _, because: _ } => false
+  }
+}
+
+test fn spark_per_port_attachment_does_not_admit_a_caller_x16() -> Bool {
+  match qualify_nic_pcie(
+    advertised: AdvertisedSparkConnectX7PerPort,
+    reading: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
+  ) {
+    NicPcieExceeds { advertised: a, measured: m, instrument: _ } =>
+      a.lane_count == 4 && m.lane_count == 16
+    NicPcieAgrees { link: _, instrument: _ } => false
+    NicPcieFallsShort { advertised: _, measured: _, instrument: _ } => false
+    NicPcieDiffers { advertised: _, measured: _, instrument: _ } => false
+    NicPcieOfferUngrounded { advertised: _, because: _ } => false
     NicPcieUnread { advertised: _, because: _ } => false
   }
 }
@@ -635,6 +657,85 @@ test fn a_partly_missing_expected_rank_is_unread_not_agrees() -> Bool {
       fx_rank(id: "rank-0", sample: fx_sample()),
       fx_rank(id: "rank-1", sample: fx_sample()),
     ],
+    required: fx_all_reduce_protocol(),
+    max_latency_multiple: 2,
+    at: byte_size(count: 8),
+  ) {
+    RankSymmetryUnread { because: _ } => true
+    RankSymmetryAgrees { rank_count: _ } => false
+    RankSymmetryFallsShort { degraded: _ } => false
+  }
+}
+
+test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
+  match fx_admit_group_for(
+    advertised: fx_advertised(),
+    m: fx_measured_all_agree(),
+    hosts: [
+      qualify_host(
+        node: "rank-0" as HostIdentity,
+        advertised: fx_advertised().host,
+        measured: fx_measured_all_agree().host,
+      ),
+    ],
+  ) {
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: _ } => match r.host_roster {
+      GroupHostRosterUnread { because: _ } => true
+      GroupHostRosterComplete { rank_count: _ } => false
+    }
+  }
+}
+
+test fn a_copied_group_curve_is_not_rank_local() -> Bool {
+  match qualify_rank_symmetry(
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+    ranks: [
+      fx_rank(id: "rank-0", sample: fx_sample()),
+      RankCollectiveReading {
+        rank: "rank-1" as HostIdentity,
+        curve: fx_curve(samples: [fx_sample()]),
+        producer: GroupWideCurveCopiedOntoRank,
+      },
+    ],
+    required: fx_all_reduce_protocol(),
+    max_latency_multiple: 2,
+    at: byte_size(count: 8),
+  ) {
+    RankSymmetryUnread { because: _ } => true
+    RankSymmetryAgrees { rank_count: _ } => false
+    RankSymmetryFallsShort { degraded: _ } => false
+  }
+}
+
+test fn duplicate_expected_ranks_are_unread_not_symmetric() -> Bool {
+  match qualify_rank_symmetry(
+    expected: ["rank-0" as HostIdentity, "rank-0" as HostIdentity],
+    ranks: [
+      fx_rank(id: "rank-0", sample: fx_sample()),
+    ],
+    required: fx_all_reduce_protocol(),
+    max_latency_multiple: 2,
+    at: byte_size(count: 8),
+  ) {
+    RankSymmetryUnread { because: _ } => true
+    RankSymmetryAgrees { rank_count: _ } => false
+    RankSymmetryFallsShort { degraded: _ } => false
+  }
+}
+
+test fn rank_curves_with_a_different_protocol_are_unread() -> Bool {
+  match qualify_rank_symmetry(
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+    ranks: [
+      fx_rank(id: "rank-0", sample: fx_sample()),
+      RankCollectiveReading {
+        rank: "rank-1" as HostIdentity,
+        curve: fx_all_to_all_curve(samples: [fx_sample()]),
+        producer: RankLocalCollectiveCurve,
+      },
+    ],
+    required: fx_all_reduce_protocol(),
     max_latency_multiple: 2,
     at: byte_size(count: 8),
   ) {
@@ -659,8 +760,10 @@ test fn rank_symmetry_compares_the_advertised_size_not_each_curve_head() -> Bool
             out_of_place_latency: nanosecond(count: 4494060),
           },
         ]),
+        producer: RankLocalCollectiveCurve,
       },
     ],
+    required: fx_all_reduce_protocol(),
     max_latency_multiple: 2,
     at: byte_size(count: 8),
   ) {
@@ -670,11 +773,11 @@ test fn rank_symmetry_compares_the_advertised_size_not_each_curve_head() -> Bool
   }
 }
 
-test fn all_to_all_is_not_scored_on_all_reduce_size_semantics() -> Bool {
+test fn all_to_all_is_not_scored_on_all_reduce_protocol() -> Bool {
   match qualify_collective_latency(
     ceiling: nanosecond(count: 100000),
     at: byte_size(count: 8192),
-    required_semantics: EachRankContributesTheSizeColumn,
+    required: fx_all_reduce_protocol(),
     reading: fx_all_to_all_curve(samples: [fx_sample()]),
   ) {
     CollectiveLatencyUnread { ceiling: _, because: _ } => true
@@ -694,12 +797,10 @@ test fn ib_cited_only_on_nccl_tests_does_not_qualify() -> Bool {
       ranks: measured.group.ranks,
     },
   }
-  match admit_qualified_node(
-    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: ib_gap),
-  ) {
-    NodeQualified { receipt: _ } => false
-    NodeNotQualified { receipt: r, refusals: refusals } =>
-      match r.group.host_registered_ib_fallback {
+  match fx_admit_group(m: ib_gap) {
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: refusals } =>
+      match r.host_registered_ib_fallback {
         HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
           measured_with: _,
           serving_revisions_not_censused: _,
@@ -711,93 +812,18 @@ test fn ib_cited_only_on_nccl_tests_does_not_qualify() -> Bool {
 }
 
 test fn group_b_shared_window_and_different_nccl_do_not_hold() -> Bool {
-  match group_b_qualification_admission() {
-    NodeQualified { receipt: _ } => false
-    NodeNotQualified { receipt: r, refusals: _ } =>
-      match r.group.window {
+  match group_b_group_admission() {
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: _ } =>
+      match r.window {
         WindowSharedWithDeclaredTraffic => true
         WindowIsolated => false
         WindowStandingUnread { because: _ } => false
       }
-        && match r.group.primitive_attribution {
+        && match r.primitive_attribution {
           CollectivePrimitiveMeasuredOnDifferentRuntime { measured_with: _, serving: _ } => true
           CollectivePrimitiveAttributionUnestablished => false
           CollectivePrimitiveSameRuntime { nccl: _ } => false
         }
-  }
-}
-
-test fn a_truncated_cuda_reply_is_unparsed_not_unsupported() -> Bool {
-  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 0 0") {
-    CudaQueryUnparsed { cause: _ } => true
-    CudaQuerySucceeded { value: _ } => false
-    CudaQueryFailed { result_code: _ } => false
-  }
-}
-
-test fn a_wrong_ordinal_cuda_reply_is_unparsed_not_this_attribute() -> Bool {
-  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "124 0 0 0 0") {
-    CudaQueryUnparsed { cause: _ } => true
-    CudaQuerySucceeded { value: _ } => false
-    CudaQueryFailed { result_code: _ } => false
-  }
-}
-
-test fn group_b_gdr_stdout_parses_as_succeeding_zero() -> Bool {
-  match cuda_attribute_outcome(
-    a: GpuDirectRdmaSupportedAttribute,
-    stdout: group_b_gdr_cu_device_get_attribute_stdout,
-  ) {
-    CudaQuerySucceeded { value: v } => v == 0
-    CudaQueryFailed { result_code: _ } => false
-    CudaQueryUnparsed { cause: _ } => false
-  }
-}
-
-test fn cuda_gdr_argv_is_python_dash_c_with_ordinal_116() -> Bool {
-  cuda_device_attribute_ordinal(a: GpuDirectRdmaSupportedAttribute) == 116
-    && match group_b_gdr_query_argv {
-      Cons {
-        head: interpreter,
-        tail: Cons {
-          head: flag,
-          tail: Cons { head: program, tail: Empty },
-        },
-      } =>
-        interpreter == python_interpreter_command
-          && flag == python_program_flag
-          && program == (cuda_device_attribute_program(a: GpuDirectRdmaSupportedAttribute) as String)
-      _ => false
-    }
-}
-
-test fn cuda_dmabuf_argv_is_python_dash_c_with_ordinal_124() -> Bool {
-  cuda_device_attribute_ordinal(a: DmaBufSupportedAttribute) == 124
-    && match group_b_dmabuf_query_argv {
-      Cons {
-        head: interpreter,
-        tail: Cons {
-          head: flag,
-          tail: Cons { head: program, tail: Empty },
-        },
-      } =>
-        interpreter == python_interpreter_command
-          && flag == python_program_flag
-          && program == (cuda_device_attribute_program(a: DmaBufSupportedAttribute) as String)
-      _ => false
-    }
-}
-
-test fn group_b_gdr_wire_is_device_unsupported() -> Bool {
-  (group_b_gdr_capability_wire as String) == "device-unsupported"
-}
-
-test fn claiming_group_b_delivery_mints_field_node_not_qualified() -> Bool {
-  match group_b_delivery_field_exclusion() {
-    Absent => false
-    Present { value: x } => match x.cause {
-      FieldNodeNotQualified { refusals: r } => r.length() > 0
-      _ => false
-    }
   }
 }
