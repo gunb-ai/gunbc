@@ -13,6 +13,7 @@ import gunbc.network_boot_delivery {
   SignedBootManifestIdentified,
   SignedBootManifestVerificationRefused,
   SignedBootManifestAbsent,
+  ManifestVerificationExpired,
   MeasuredNetworkBootFact,
   NonEstablishingNetworkBootPredecessor,
   ProductionTrustedBootstrap,
@@ -307,7 +308,7 @@ test fn issued_ticket_standing_is_a_measured_network_boot_fact() -> Bool {
         NonEstablishingNetworkBootPredecessor => false
       }
     SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
-    SignedBootManifestVerificationRefused { observation: _, observed_at: _ } => false
+    SignedBootManifestVerificationRefused { observation: _, observed_at: _, class: _ } => false
     SignedBootManifestAbsent => false
   }
 }
@@ -322,8 +323,8 @@ test fn an_expired_ticket_is_verification_refused_not_absent() -> Bool {
     observation: standing_obs,
     observed_at: 1788003600000,
   ) {
-    SignedBootManifestVerificationRefused { observation: o, observed_at: _ } =>
-      (o.decl_name as String) == "standing_obs"
+    SignedBootManifestVerificationRefused { observation: o, observed_at: _, class: c } =>
+      (o.decl_name as String) == "standing_obs" && c == ManifestVerificationExpired
     SignedBootManifestAbsent => false
     SignedBootManifestVerified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
     SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false

@@ -43,6 +43,19 @@ import gunbc.network_boot_delivery {
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
   BootstrapTrustUnestablished,
+  NetworkBootManifestVerificationClass,
+  ManifestVerificationMac,
+  ManifestVerificationWrongMessage,
+  ManifestVerificationWrongTarget,
+  ManifestVerificationWrongArchitecture,
+  ManifestVerificationExpired,
+  ManifestVerificationNotYetValid,
+  ManifestVerificationReplay,
+  ManifestVerificationDigest,
+  ManifestVerificationSigningKey,
+  ManifestVerificationVerifiedKey,
+  ManifestVerificationSuite,
+  ManifestVerificationTrust,
 }
 
 // Protocol id bound into the HMAC preimage so a tag from another envelope cannot verify here.
@@ -342,6 +355,24 @@ fn redeem_signed_boot_manifest(ticket: SignedBootManifestTicket, key: MacKey, ex
   )
 }
 
+fn boot_manifest_refusal_class(cause: BootManifestRefusal) -> NetworkBootManifestVerificationClass {
+  match cause {
+    ManifestMacRefused { verification: _ } => ManifestVerificationMac
+    ManifestEvidenceForAnotherMessage { verified_message: _, presented_message: _ } => ManifestVerificationWrongMessage
+    ManifestWrongTarget { claimed: _, expected: _ } => ManifestVerificationWrongTarget
+    ManifestWrongArchitecture { claimed: _, expected: _ } => ManifestVerificationWrongArchitecture
+    ManifestWrongFirmwareClass { claimed: _, expected: _ } => ManifestVerificationWrongArchitecture
+    ManifestExpired { expiry: _, observed_at: _ } => ManifestVerificationExpired
+    ManifestNotYetValid { not_before: _, observed_at: _ } => ManifestVerificationNotYetValid
+    ManifestAttemptReplayed { attempt_id: _, nonce: _ } => ManifestVerificationReplay
+    ManifestDigestDisagrees { field: _ } => ManifestVerificationDigest
+    ManifestSigningKeyDisagrees { claimed: _, pinned: _ } => ManifestVerificationSigningKey
+    ManifestVerifiedKeyDisagrees { verified: _, pinned: _ } => ManifestVerificationVerifiedKey
+    ManifestSuiteUnexpected { expected: _, verified_under: _ } => ManifestVerificationSuite
+    ManifestTrustUnestablished => ManifestVerificationTrust
+  }
+}
+
 fn signed_boot_manifest_standing(
   verification: BootManifestVerification,
   observation: DeclarationRef,
@@ -355,10 +386,11 @@ fn signed_boot_manifest_standing(
         observation: observation,
         observed_at: observed_at,
       }
-    BootManifestRefused { cause: _ } =>
+    BootManifestRefused { cause: c } =>
       SignedBootManifestVerificationRefused {
         observation: observation,
         observed_at: observed_at,
+        class: boot_manifest_refusal_class(cause: c),
       }
   }
 }
