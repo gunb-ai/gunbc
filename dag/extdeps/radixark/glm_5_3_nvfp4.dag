@@ -4,13 +4,12 @@ import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size, byte_size_count, BitWidth, bit_width, bit_width_count, bits_per_byte }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest }
 import extdeps.safetensors.format {
   SafetensorsEntry, safetensors_entry, safetensors_entry_span, safetensors_dtype_byte_width,
   SafeU8, SafeF8E4M3, SafeF32,
 }
-import extdeps.zhipu.glm_5_3_flash { GlmCheckpointManifest, glm_checkpoint_manifest }
 import extdeps.zhipu.glm_5_3 {
   GlmMoeDsaShape, glm_5_3_hub_repo, glm_5_3_native_manifest,
   glm_5_3_moe_layer_count, glm_5_3_routed_expert_projection_count, glm_5_3_routed_expert_params,
@@ -67,7 +66,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // THE ARCHITECTURE CLASS AND THE SHAPE ARE NOT RESTATED HERE. A consumer that needs them imports
 // extdeps.zhipu.glm_5_3 directly: this artifact's config.json carries the same values, diffed on
 // the read date, and a second spelling would be one upstream fact with two homes.
-data glm_5_3_nvfp4_manifest: GlmCheckpointManifest = glm_checkpoint_manifest(
+data glm_5_3_nvfp4_manifest: HubCheckpointManifest = hub_checkpoint_manifest(
   revision: "6e389189d564d9d3e4ea7fa284fe91f136d8ae2a" as NonEmptyStr,
   safetensors_shard_count: 47,
   safetensors_bytes: byte_size(count: 464823042096),
@@ -241,15 +240,25 @@ fn nvfp4_routed_experts_total_bytes(s: GlmMoeDsaShape) -> ByteSize? {
   }
 }
 
-type MeasuredBytePartition sole_constructor {
+// THE ALL-SHARD PARTITION IS A REPORTED MEASUREMENT, AND ITS STANDING SAYS SO. The two totals below
+// were produced by a header census over all 47 shards that this repository does not execute: no
+// producer here fetches the headers, so a moved artifact would not redden them, and the witness that
+// checks the routed total against the shape-derived figure compares one authored number to one
+// derivation. That is the §4d transcribed standing, carried as such with the read obligation named --
+// an executing, content-addressed header-census producer over the pinned revision -- rather than a
+// `measured` label the corpus cannot back. The REPRESENTATIVE expert's twelve entries above are the
+// part that IS carried at the format's grain.
+type ReportedBytePartition sole_constructor {
   routed_experts: ByteSize
   nextn_layer: ByteSize
+  standing: CitedFigureStanding
   read_by: NonEmptyStr
 }
 
-data nvfp4_measured_partition: MeasuredBytePartition = MeasuredBytePartition {
+data nvfp4_reported_partition: ReportedBytePartition = ReportedBytePartition {
   routed_experts: byte_size(count: 407686809600),
   nextn_layer: byte_size(count: 19905841664),
+  standing: TranscribedUncited { read_obligation: "an executing header-census producer over the 47 safetensors shards at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a -- fetch each header by HTTP range, classify every entry by the quantization_config ignore classes, sum -- whose output is content-addressed and re-derived by the witness, so the artifact moving under the pin reddens rather than agreeing" as NonEmptyStr },
   read_by: "all 47 safetensors headers at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a, fetched by HTTP range on 2026-09-18; every entry named model.layers.\{3..77\}.mlp.experts.\{e\}.* summed for the routed-expert figure (232,385 entries total in the headers; 5,435,824,128 bytes in each of the 75 MoE layers), every entry named model.layers.78.* summed for the nextn figure (its 256 experts are bf16, 19,327,352,832 bytes of the 19,905,841,664). The remainder -- self_attn 26,137,084,416; shared_experts 5,662,310,400; embed_tokens plus lm_head 3,806,330,880; the three dense MLPs 1,358,954,496; router gates 236,006,400; norms 1,929,216 -- is bf16 or f32 and sums with these two to the headers' 464,795,267,072 payload bytes, which is the safetensors total of 464,823,042,096 less the 47 headers themselves" as NonEmptyStr,
 }
 
@@ -257,9 +266,9 @@ data nvfp4_measured_partition: MeasuredBytePartition = MeasuredBytePartition {
 // float. Derived from the measured total over the manifest's safetensors bytes. An empty manifest
 // has no share -- "0 basis points" would read as "none of it is NVFP4", which is a claim -- so the
 // fold refuses rather than divides.
-fn nvfp4_routed_experts_share_basis_points(m: GlmCheckpointManifest) -> Nat? {
+fn nvfp4_routed_experts_share_basis_points(m: HubCheckpointManifest) -> Nat? {
   let total = byte_size_count(b: m.safetensors_bytes)
-  if total == 0 { none } else { Present { value: (byte_size_count(b: nvfp4_measured_partition.routed_experts) * 10000) / total } }
+  if total == 0 { none } else { Present { value: (byte_size_count(b: nvfp4_reported_partition.routed_experts) * 10000) / total } }
 }
 
 // WHAT THE REDISTRIBUTION COMPRESSED, in basis points of the base's native FP8 safetensors: the

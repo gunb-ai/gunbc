@@ -2362,33 +2362,47 @@ data spark_architecture_observations: List<ArchitectureObservation> = [
   RegistryDump { reading: glm53_derived_registry_reading },
 ]
 
-// ONE IMAGE MAY HAVE SEVERAL ASKED ROWS, ONE PER NAME, so a lookup for a specific architecture keys
-// on both. `architecture_observation_for` keeps its one-per-image meaning for dump consumers; this
-// one answers "was THIS name asked inside THIS image, and what did it say". A dump for the image is
-// also an answer, folded through registry_reading_contains, so a consumer asks once.
+fn architecture_observation_exists(image_reference: NonEmptyStr) -> Bool {
+  match architecture_observation_for(observations: spark_architecture_observations, image_reference: image_reference) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// ONE IMAGE MAY HAVE SEVERAL APPLICABLE OBSERVATIONS, so a lookup for a specific architecture keys
+// on both the image and the name, and DISAGREEMENT IS ITS OWN ANSWER rather than whichever row comes
+// last: two applicable observations that answer differently for one name are a roster that has lost
+// its single-valuedness, and the remedy is to re-read, not to pick. `architecture_observation_for`
+// keeps its one-per-image meaning for dump consumers; this one answers "was THIS name asked inside
+// THIS image, and what did it say". A dump for the image is also an answer, folded through
+// registry_reading_contains, so a consumer asks once.
 type ArchitectureAskedAnswer
   = ArchitectureAnswered { present: Bool, observed_at: NonEmptyStr, host: NonEmptyStr }
   | ArchitectureUnasked
+  | ArchitectureConflicting { image_reference: NonEmptyStr, architecture: NonEmptyStr }
+
+fn merge_asked_answer(acc: ArchitectureAskedAnswer, present: Bool, observed_at: NonEmptyStr, host: NonEmptyStr, image_reference: NonEmptyStr, architecture: NonEmptyStr) -> ArchitectureAskedAnswer {
+  match acc {
+    ArchitectureUnasked => ArchitectureAnswered { present: present, observed_at: observed_at, host: host }
+    ArchitectureConflicting { image_reference: i, architecture: a } => ArchitectureConflicting { image_reference: i, architecture: a }
+    ArchitectureAnswered { present: p, observed_at: d, host: h } =>
+      if p == present { ArchitectureAnswered { present: p, observed_at: d, host: h } }
+      else { ArchitectureConflicting { image_reference: image_reference, architecture: architecture } }
+  }
+}
 
 fn architecture_asked_answer(observations: List<ArchitectureObservation>, image_reference: NonEmptyStr, architecture: NonEmptyStr) -> ArchitectureAskedAnswer {
   fold(observations, init: ArchitectureUnasked, f: (acc, o) =>
     match o {
       RegistryDump { reading: r } =>
         if reading_applies_to(r: r, desired_reference: image_reference) {
-          ArchitectureAnswered { present: registry_reading_contains(r: r, architecture: architecture), observed_at: r.observed_at, host: r.host }
+          merge_asked_answer(acc: acc, present: registry_reading_contains(r: r, architecture: architecture), observed_at: r.observed_at, host: r.host, image_reference: image_reference, architecture: architecture)
         } else { acc }
       ArchitectureAsked { image_reference: i, host: h, observed_at: d, instrument: _, architecture: a, present: p } =>
         if (i as String) == (image_reference as String) && (a as String) == (architecture as String) {
-          ArchitectureAnswered { present: p, observed_at: d, host: h }
+          merge_asked_answer(acc: acc, present: p, observed_at: d, host: h, image_reference: image_reference, architecture: architecture)
         } else { acc }
     })
-}
-
-fn architecture_observation_exists(image_reference: NonEmptyStr) -> Bool {
-  match architecture_observation_for(observations: spark_architecture_observations, image_reference: image_reference) {
-    Present { value: _ } => true
-    Absent => false
-  }
 }
 
 // ── THE DERIVED NoPE RUNTIME THIS FLEET BUILT ─────────────────────────────────────────────────

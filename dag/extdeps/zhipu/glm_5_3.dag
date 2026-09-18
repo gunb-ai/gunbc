@@ -5,8 +5,7 @@ import std.nat { Nat }
 import std.measure { TokenCount, token_count, byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
-import extdeps.zhipu.glm_5_3_flash { GlmCheckpointManifest, glm_checkpoint_manifest }
+import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest }
 
 // GLM-5.3 -- THE BASE MODEL, NOT GLM-5.3-FLASH. The two are independently published Z.ai
 // checkpoints with different architecture classes (this one declares GlmMoeDsaForCausalLM, Flash
@@ -130,7 +129,7 @@ fn glm_5_3_routed_expert_visits_per_token(s: GlmMoeDsaShape) -> Nat? {
 // Z.ai's own artifact is native FP8 (config.json: quant_method fp8, weight_block_size [128, 128]).
 // It is carried so a redistribution can state what it quantized FROM, and so a consumer can see
 // that the 465 GB NVFP4 artifact is a compression of a 756 GB one rather than a different model.
-data glm_5_3_native_manifest: GlmCheckpointManifest = glm_checkpoint_manifest(
+data glm_5_3_native_manifest: HubCheckpointManifest = hub_checkpoint_manifest(
   revision: "aca966e4e02791568aa6a4ced368624b3d897f42" as NonEmptyStr,
   safetensors_shard_count: 141,
   safetensors_bytes: byte_size(count: 755632050320),

@@ -1,6 +1,8 @@
 module extdeps.huggingface.hub
 
 import std.types { String, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count, Gibibyte, gibibyte, gibibyte_scale_factor_bytes }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https, uri_wire }
 
@@ -224,3 +226,54 @@ data hub_snapshot_download_refuses_incomplete_snapshots: Bool = true
 // sharing above does not happen. A consumer sizing disk against a shared-blob assumption is wrong by
 // a factor of the revision count when this is set.
 data hub_disable_symlinks_env_var: NonEmptyStr = "HF_HUB_DISABLE_SYMLINKS" as NonEmptyStr
+
+// ── A CHECKPOINT MANIFEST AT AN EXACT REVISION, WHICH IS THE HUB'S OWN STATEMENT ─────────────
+//
+// THE SHAPE IS THE HUB'S, NOT ANY MODEL'S. What the model API answers for a repo at a revision --
+// how many safetensors shards, how many bytes they sum to, how many bytes the whole snapshot is --
+// is the same five-field fact for every checkpoint on the Hub, and it lived for a while inside
+// extdeps.zhipu.glm_5_3_flash as `GlmCheckpointManifest`, which made the base GLM model and a
+// third party's redistribution import their ordinary Hub facts from a sibling Flash product. That
+// is a generic shape single-homed in a product module: one authority, wrong layer. It moved here,
+// and each product module owns only its concrete row.
+//
+// THE REVISION IS PART OF THE FACT, not a note beside it. A manifest without its revision is a
+// claim about a branch, and Hub repositories move under their readers. THE ACQUISITION FOOTPRINT
+// AND THE WEIGHT FOOTPRINT ARE DIFFERENT QUESTIONS ABOUT ONE MANIFEST: `safetensors_bytes` is what
+// tensor-parallel ranks divide among themselves; `repository_total_bytes` is what a snapshot
+// download must hold, config and tokenizer included. They are separated so a consumer says which
+// quantity it is asking for, even where the gap is a rounding error today.
+type HubCheckpointManifest sole_constructor {
+  revision: NonEmptyStr
+  safetensors_shard_count: Nat
+  safetensors_bytes: ByteSize
+  repository_total_bytes: ByteSize
+  read_by: NonEmptyStr
+}
+
+// THE MINT, because the seal is per module and the rows are not: sole_constructor refuses a partial
+// or reordered literal anywhere, and product modules author their rows through this.
+fn hub_checkpoint_manifest(
+  revision: NonEmptyStr,
+  safetensors_shard_count: Nat,
+  safetensors_bytes: ByteSize,
+  repository_total_bytes: ByteSize,
+  read_by: NonEmptyStr,
+) -> HubCheckpointManifest {
+  HubCheckpointManifest {
+    revision: revision,
+    safetensors_shard_count: safetensors_shard_count,
+    safetensors_bytes: safetensors_bytes,
+    repository_total_bytes: repository_total_bytes,
+    read_by: read_by,
+  }
+}
+
+// GiB IS DERIVED FOR PROSE AND SCREENING AND IS NOT A SECOND AUTHORITY, AND IT ROUNDS UP -- the only
+// safe direction for a consumer that screens on it: a ceiling can refuse a candidate a byte-exact
+// test would admit, never admit one it would refuse. Feasibility arithmetic that must be exact reads
+// `safetensors_bytes` and does not round at all.
+fn hub_checkpoint_manifest_gibibytes(m: HubCheckpointManifest) -> Gibibyte {
+  let scale = gibibyte_scale_factor_bytes()
+  gibibyte(count: (byte_size_count(b: m.safetensors_bytes) + (scale - 1)) / scale)
+}

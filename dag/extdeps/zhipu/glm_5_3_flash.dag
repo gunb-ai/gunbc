@@ -1,20 +1,11 @@
 module extdeps.zhipu.glm_5_3_flash
 
 import std.types { NonEmptyStr }
-import std.nat { Nat }
-import std.measure {
-  TokenCount,
-  token_count,
-  ByteSize,
-  byte_size,
-  byte_size_count,
-  Gibibyte,
-  gibibyte,
-  gibibyte_scale_factor_bytes,
-}
+import std.measure { TokenCount, token_count, byte_size }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.huggingface.hub { HubCheckpointManifest, hub_checkpoint_manifest }
 
 // THE GLM-5.3-FLASH FAMILY, as its own extdeps authority for the reason extdeps.deepseek.deepseek_v4
 // is one: an independently versioned upstream model, governed by Z.ai, is not a property of whatever
@@ -119,7 +110,9 @@ data glm_5_3_flash_vllm_integration_commit: NonEmptyStr = "385dce36bcee42309924a
 // caught the first divergence. That is the section 3 violation, and it is mine: I added the second
 // and third spellings while repairing other findings.
 //
-// THE MANIFEST BELONGS HERE RATHER THAN IN gunbc BECAUSE IT IS NOT AN OBSERVATION OF THIS FLEET. The
+// THE SHAPE IS extdeps.huggingface.hub HubCheckpointManifest -- a Hub fact, not a GLM one -- and
+// this module owns only the row. THE MANIFEST BELONGS IN extdeps RATHER THAN IN gunbc BECAUSE IT IS
+// NOT AN OBSERVATION OF THIS FLEET. The
 // byte sizes at a content-addressed revision are what the publishing Hub says about its own files,
 // re-readable by anyone from the cited authority. What a Spark's disk holds after a download IS a
 // fleet observation and stays in the gunbc layer, which is exactly the distinction the selector's
@@ -138,60 +131,11 @@ data glm_5_3_flash_vllm_integration_commit: NonEmptyStr = "385dce36bcee42309924a
 // multi-terabyte disk. It is separated anyway, because the carrier's job is to say which quantity a
 // consumer is asking for, and a 28 MB coincidence today is not a reason to conflate two questions
 // that will diverge on the next artifact.
-type GlmCheckpointManifest sole_constructor {
-  revision: NonEmptyStr
-  safetensors_shard_count: Nat
-  safetensors_bytes: ByteSize
-  repository_total_bytes: ByteSize
-  read_by: NonEmptyStr
-}
 
-// THE MINT, BECAUSE THE SEAL IS PER MODULE AND THE TYPE IS NOT. sole_constructor refuses a record
-// literal of this type outside this file, which is right for the seal's purpose -- a partial or
-// reordered manifest has no spelling -- and wrong as a boundary for who may HAVE a manifest: the base
-// GLM-5.3 and a third party's quantization of it are checkpoints with exactly these five facts each.
-// Minting a second manifest type in each of their modules is the concept re-invention DESIGN
-// section 2 measures a change by, so they come through this function. It adds no fact and checks
-// nothing the literal does not; it only lets the one type serve every checkpoint that inhabits it.
-fn glm_checkpoint_manifest(
-  revision: NonEmptyStr,
-  safetensors_shard_count: Nat,
-  safetensors_bytes: ByteSize,
-  repository_total_bytes: ByteSize,
-  read_by: NonEmptyStr,
-) -> GlmCheckpointManifest {
-  GlmCheckpointManifest {
-    revision: revision,
-    safetensors_shard_count: safetensors_shard_count,
-    safetensors_bytes: safetensors_bytes,
-    repository_total_bytes: repository_total_bytes,
-    read_by: read_by,
-  }
-}
-
-data glm_5_3_flash_native_manifest: GlmCheckpointManifest = GlmCheckpointManifest {
+data glm_5_3_flash_native_manifest: HubCheckpointManifest = hub_checkpoint_manifest(
   revision: "eb9eb208eb0d988989d07a6a12d0fdeb5f52574a" as NonEmptyStr,
   safetensors_shard_count: 62,
   safetensors_bytes: byte_size(count: 328337455672),
   repository_total_bytes: byte_size(count: 328366173469),
   read_by: "the Hub model API for zai-org/GLM-5.3-Flash at that exact revision with blobs enabled, summed over the safetensors siblings, read 2026-09-08. The response's own sha matched the revision and its lastModified was 2026-09-07T12:13:47Z" as NonEmptyStr,
-}
-
-// GiB IS DERIVED FOR PROSE AND IS NOT A SECOND AUTHORITY. The serving-arm row that carried 306 was a
-// rounded restatement of these bytes; a consumer wanting a human-sized number computes it here rather
-// than authoring one, so the rounding can never drift from the figure it rounds.
-//
-// AND IT ROUNDS UP, WHICH IS THE ONLY SAFE DIRECTION FOR A CONSUMER THAT SCREENS ON IT. The first
-// version of this helper used integer division, yielding 305 for a 305.79 GiB artifact -- and
-// gunbc.spark.serving_arm feeds exactly this value into a positive fit check. Rounding DOWN
-// understates the weights, which makes that check more permissive: it is the wrong direction for a
-// bound whose entire purpose is to refuse. A ceiling can only refuse a candidate that a byte-exact
-// test would have admitted, never admit one it would have refused.
-//
-// A CONSUMER THAT NEEDS EXACTNESS READS THE BYTES. This helper exists for screening and for prose,
-// and both are served by the conservative direction; feasibility arithmetic that must be exact takes
-// `safetensors_bytes` and does not round at all.
-fn glm_manifest_gibibytes(m: GlmCheckpointManifest) -> Gibibyte {
-  let scale = gibibyte_scale_factor_bytes()
-  gibibyte(count: (byte_size_count(b: m.safetensors_bytes) + (scale - 1)) / scale)
-}
+)
