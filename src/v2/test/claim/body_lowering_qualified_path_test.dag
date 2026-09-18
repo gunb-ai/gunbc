@@ -79,6 +79,13 @@ fn body_lowering_body_is_path(body: Node, dotted: String) -> Bool {
   }
 }
 
+test fn body_lowering_qualified_path_parses_holds() -> Bool {
+  match body_lowering_qualified_path_parsed() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn body_lowering_qualified_call_reaches_arrow_body() -> Bool {
   match body_lowering_qualified_path_parsed() {
     Rejected { diagnostics: _ } => false
