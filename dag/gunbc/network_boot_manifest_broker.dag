@@ -48,6 +48,7 @@ import gunbc.network_boot_delivery {
   ManifestVerificationWrongMessage,
   ManifestVerificationWrongTarget,
   ManifestVerificationWrongArchitecture,
+  ManifestVerificationWrongFirmwareClass,
   ManifestVerificationExpired,
   ManifestVerificationNotYetValid,
   ManifestVerificationReplay,
@@ -361,7 +362,7 @@ fn boot_manifest_refusal_class(cause: BootManifestRefusal) -> NetworkBootManifes
     ManifestEvidenceForAnotherMessage { verified_message: _, presented_message: _ } => ManifestVerificationWrongMessage
     ManifestWrongTarget { claimed: _, expected: _ } => ManifestVerificationWrongTarget
     ManifestWrongArchitecture { claimed: _, expected: _ } => ManifestVerificationWrongArchitecture
-    ManifestWrongFirmwareClass { claimed: _, expected: _ } => ManifestVerificationWrongArchitecture
+    ManifestWrongFirmwareClass { claimed: _, expected: _ } => ManifestVerificationWrongFirmwareClass
     ManifestExpired { expiry: _, observed_at: _ } => ManifestVerificationExpired
     ManifestNotYetValid { not_before: _, observed_at: _ } => ManifestVerificationNotYetValid
     ManifestAttemptReplayed { attempt_id: _, nonce: _ } => ManifestVerificationReplay
