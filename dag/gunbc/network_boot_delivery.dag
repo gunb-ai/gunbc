@@ -67,7 +67,7 @@ type NetworkBootDeliveryStanding
   = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
   | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
   | NetworkBootDeliveryEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
-  | NetworkBootDeliveryArchitectureRefused { architecture: Architecture }
+  | NetworkBootDeliveryArchitectureRefused { cause: NetworkBootArchitectureRefusal }
   | NetworkBootDeliveryClientModeRefused { arch: DhcpProcessorArchitecture }
   | NetworkBootDeliveryTargetMismatch { axis: NetworkBootRequirement }
   | NetworkBootDeliveryManifestRefused { cause: NetworkBootManifestRefusal }
@@ -103,6 +103,13 @@ type NetworkBootManifestRefusal
   | ManifestJoinWrongAttempt
   | ManifestJoinWrongSigningKey
   | ManifestJoinChainloaderDigestDisagrees
+
+type NetworkBootArchitectureRefusal
+  = ClientArchitectureNotAdmitted { architecture: Architecture }
+  | ChainloaderMismatch { client: Architecture, chainloader: Architecture }
+  | LoaderNotAdmittedOnSlice { architecture: Architecture }
+  | TicketNotAdmittedOnEdge { architecture: Architecture }
+  | TicketNotAdmittedOnSlice { architecture: Architecture }
 
 data network_boot_requirements_all: List<NetworkBootRequirement> = [
   NetworkBootBootSourceOverride,
@@ -165,7 +172,8 @@ type SitePxeEdgeReceipt {
 type SitePxeEdgeStanding
   = SitePxeEdgeEstablished { receipt: SitePxeEdgeReceipt }
   | SitePxeEdgeUnestablished
-  | SitePxeEdgeArchitectureRefused { architecture: Architecture }
+  | SitePxeEdgeClientArchitectureNotAdmitted { architecture: Architecture }
+  | SitePxeEdgeChainloaderMismatch { client: Architecture, chainloader: Architecture }
 
 data first_slice_admitted_architectures: List<Architecture> = [Aarch64]
 
@@ -189,14 +197,14 @@ fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Archite
       match edge.bootstrap_transport {
         ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: _ } =>
           if architecture_admitted_on_edge(arch: client_architecture, admitted: edge.admitted_architectures) == false {
-            SitePxeEdgeArchitectureRefused { architecture: client_architecture }
+            SitePxeEdgeClientArchitectureNotAdmitted { architecture: client_architecture }
           } else {
             if loader_arch == client_architecture {
               SitePxeEdgeEstablished {
                 receipt: SitePxeEdgeReceipt { edge: edge, observation: observation, observed_at: observed_at },
               }
             } else {
-              SitePxeEdgeArchitectureRefused { architecture: loader_arch }
+              SitePxeEdgeChainloaderMismatch { client: client_architecture, chainloader: loader_arch }
             }
           }
       }
@@ -330,7 +338,10 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
     FleetBootServiceEstablished { receipt: fleet } =>
       match inputs.site {
         SitePxeEdgeUnestablished => NetworkBootDeliverySiteUnestablished
-        SitePxeEdgeArchitectureRefused { architecture: a } => NetworkBootDeliveryArchitectureRefused { architecture: a }
+        SitePxeEdgeClientArchitectureNotAdmitted { architecture: a } =>
+          NetworkBootDeliveryArchitectureRefused { cause: ClientArchitectureNotAdmitted { architecture: a } }
+        SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } =>
+          NetworkBootDeliveryArchitectureRefused { cause: ChainloaderMismatch { client: c, chainloader: l } }
         SitePxeEdgeEstablished { receipt: site } =>
           match inputs.client {
             ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
@@ -421,13 +432,13 @@ fn join_verified_ticket_after_trust(
   match site.edge.bootstrap_transport {
     ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: loader_digest } =>
       if architecture_admitted_on_edge(arch: loader_arch, admitted: first_slice_admitted_architectures) == false {
-        NetworkBootDeliveryArchitectureRefused { architecture: loader_arch }
+        NetworkBootDeliveryArchitectureRefused { cause: LoaderNotAdmittedOnSlice { architecture: loader_arch } }
       } else {
         if architecture_admitted_on_edge(arch: id.architecture, admitted: site.edge.admitted_architectures) == false {
-          NetworkBootDeliveryArchitectureRefused { architecture: id.architecture }
+          NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnEdge { architecture: id.architecture } }
         } else {
           if architecture_admitted_on_edge(arch: id.architecture, admitted: first_slice_admitted_architectures) == false {
-            NetworkBootDeliveryArchitectureRefused { architecture: id.architecture }
+            NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnSlice { architecture: id.architecture } }
           } else {
             if content_hash_equal(left: loader_digest, right: id.chainloader_digest) == false {
               NetworkBootDeliveryManifestRefused { cause: ManifestJoinChainloaderDigestDisagrees }
