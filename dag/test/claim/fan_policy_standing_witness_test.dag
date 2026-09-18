@@ -2,7 +2,7 @@ module test.claim.fan_policy_standing_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { percent, percent_count, rpm, rpm_count, second, second_count }
-import extdeps.units.iec_61672 { tenths_dba }
+import extdeps.units.iec_61672 { dba_difference_tenths, tenths_dba }
 import extdeps.fans.dynatron { dynatron_df126025bu_pwmh_catalog }
 import extdeps.bmc.endpoint { Ipmi }
 import extdeps.bmc.phosphor_fan_control {
@@ -50,7 +50,6 @@ import product.acoustic_ceiling {
   MeasuredAtPosition,
   OperatorStatedTolerance,
   SiteListeningPosition,
-  acoustic_basis_is_operator_policy,
   acoustic_level_against_ceiling,
   duty_ceiling_for_fan,
 }
@@ -92,7 +91,7 @@ import gunbc.machine_intake_bmc_fan_observation {
   render_series,
 }
 import gunbc.fleet_acoustic_intent {
-  operator_residence_ceiling_is_policy_not_measurement,
+  operator_residence_duty_ceiling_basis,
   residence_duty_ceiling_from_datasheet,
   operator_residence_sustained_duty_ceiling,
   residence_duty_verdict,
@@ -247,8 +246,8 @@ fn witness_round(index: Int, power_on: Bool, thermal: Bool) -> FanObservationRou
     power_on: power_on,
     host_thermal_published: thermal,
     fan_lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
-    fan_unstructured: 0,
-    temperature_unstructured: 0,
+    fan_undecoded_line_count: 0,
+    temperature_undecoded_line_count: 0,
     chassis_readable: true,
   }
 }
@@ -325,6 +324,7 @@ fn witness_standing_label(sample: FanPolicySample, elapsed: Int) -> NonEmptyStr 
     sample: sample,
     failsafe_duty: percent(100),
     catalog_maximum: Absent,
+    at_maximum_tolerance: percent(95),
     elapsed_since_post: Present { value: second(count: elapsed) },
     transition_window: second(count: 60),
   ))
@@ -368,6 +368,7 @@ test fn witness_posted_without_an_observed_transition_refuses() -> Bool {
     sample: witness_sample(duty_count: 100, post: HostPosted),
     failsafe_duty: percent(100),
     catalog_maximum: Absent,
+    at_maximum_tolerance: percent(95),
     elapsed_since_post: Absent,
     transition_window: second(count: 60),
   ) {
@@ -382,12 +383,12 @@ test fn witness_posted_without_an_observed_transition_refuses() -> Bool {
 test fn witness_tach_with_a_maximum_discriminates() -> Bool {
   (fan_policy_standing_label(standing: fan_policy_standing_of_sample(
     host: witness_host, authority: witness_authority, sample: witness_tach_sample(post: HostPosted),
-    failsafe_duty: percent(100), catalog_maximum: Present { value: rpm(8800) },
+    failsafe_duty: percent(100), catalog_maximum: Present { value: rpm(8800) }, at_maximum_tolerance: percent(95),
     elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
   )) as String) == "FailsafeHeldAfterPost"
     && (fan_policy_standing_label(standing: fan_policy_standing_of_sample(
       host: witness_host, authority: witness_authority, sample: witness_tach_sample(post: HostPosted),
-      failsafe_duty: percent(100), catalog_maximum: Present { value: rpm(20000) },
+      failsafe_duty: percent(100), catalog_maximum: Present { value: rpm(20000) }, at_maximum_tolerance: percent(95),
       elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
     )) as String) == "SteadyCurve"
 }
@@ -419,7 +420,7 @@ test fn witness_cross_position_comparison_refuses() -> Bool {
     AcousticWithinCeiling => true
     _ => false
   } && match acoustic_level_against_ceiling(level: tenths_dba(598), at: FanDatasheetPosition, ceiling: witness_datasheet_ceiling) {
-    AcousticOverCeiling { over_by_tenths_dba: over } => over == 148
+    AcousticOverCeiling { over_by: over } => dba_difference_tenths(d: over) == 148
     _ => false
   }
 }
@@ -462,11 +463,16 @@ test fn witness_duty_ceiling_refusals_are_each_reachable() -> Bool {
 
 // ── the residence intent, which is the enforceable bound today ─────────────────────────────────
 
-// THE SITE'S CEILING IS OPERATOR POLICY AND THE MODEL SAYS SO. If this ever greens against a
-// measured basis, somebody has replaced a stated tolerance with a reading and not said so.
+// THE SITE'S CEILING IS OPERATOR POLICY AND THE MODEL SAYS SO. The claim reads the BASIS COPRODUCT
+// directly rather than a Bool predicate over it: an earlier revision flattened these two arms to
+// true/false in product.acoustic_ceiling, which is a predicate that exists only to be asserted about
+// and whose sole caller chain ended at this witness. If this ever greens against a measured basis,
+// somebody has replaced a stated tolerance with a reading and not said so.
 test fn witness_residence_ceiling_is_policy_not_measurement() -> Bool {
-  operator_residence_ceiling_is_policy_not_measurement()
-    && percent_count(p: operator_residence_sustained_duty_ceiling) == 60
+  match operator_residence_duty_ceiling_basis {
+    OperatorStatedTolerance { statement: st } => (st as String) != ""
+    MeasuredAtPosition { instrument: _ } => false
+  } && percent_count(p: operator_residence_sustained_duty_ceiling) == 60
 }
 
 // ALL THREE DUTY VERDICT ARMS ARE REACHABLE THROUGH THE SITE'S OWN CEILING, INCLUDING THE TACH
@@ -475,7 +481,7 @@ test fn witness_residence_duty_verdict_arms_are_reachable() -> Bool {
   match residence_duty_verdict(standing: fan_policy_standing_of_sample(
     host: witness_host, authority: witness_authority,
     sample: witness_sample(duty_count: 40, post: HostPosted),
-    failsafe_duty: percent(100), catalog_maximum: Absent,
+    failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
     elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
   )) {
     FanDutyWithinCeiling { duty: d, ceiling: c } => percent_count(p: d) == 40 && percent_count(p: c) == 60
@@ -483,7 +489,7 @@ test fn witness_residence_duty_verdict_arms_are_reachable() -> Bool {
   } && match residence_duty_verdict(standing: fan_policy_standing_of_sample(
     host: witness_host, authority: witness_authority,
     sample: witness_sample(duty_count: 100, post: HostPosted),
-    failsafe_duty: percent(100), catalog_maximum: Absent,
+    failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
     elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
   )) {
     FanDutyOverCeiling { duty: d, ceiling: _ } => percent_count(p: d) == 100
@@ -500,7 +506,7 @@ fn witness_standing(duty_count: Int, post: HostPostState, elapsed: Int) -> FanPo
   fan_policy_standing_of_sample(
     host: witness_host, authority: witness_authority,
     sample: witness_sample(duty_count: duty_count, post: post),
-    failsafe_duty: percent(100), catalog_maximum: Absent,
+    failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
     elapsed_since_post: Present { value: second(count: elapsed) },
     transition_window: second(count: 60),
   )

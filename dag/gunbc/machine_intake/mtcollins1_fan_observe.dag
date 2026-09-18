@@ -106,6 +106,14 @@ fn classify_fan_credential_path(raw: String) -> MtCollins1FanCredentialPath {
 // as a literal rather than a row because percent() admits a literal only (std.measure
 // percent_from_computed_int_frontier), so a row here would be a name that could not be passed.
 //
+// NINETY-FIVE PERCENT IS THIS LANE'S STATED TOLERANCE, NOT A FACT ABOUT ANY FAN. It is supplied here
+// rather than buried in the standing because it is a judgement about how close to a catalogued
+// maximum a tach reading has to sit before this run is willing to call it "at maximum". Nothing has
+// measured it for these fans, and it is inert on Mt. Collins today for a reason worth stating: with
+// no fan part modeled for this unit, catalog_maximum is Absent and the tach arm refuses before the
+// tolerance is ever consulted. It exists so that the day a fan part lands, the number it is compared
+// against is a value somebody chose and can revise, not a literal inside a shared fold.
+//
 // ONE STANDING PER SAMPLE, EACH WITH THE SITE DUTY VERDICT BESIDE IT. Both lines are rendered for
 // every sample rather than summarized, because a summary would be a second authority for the same
 // reading and the whole point of the artifact is that the verdict can be re-derived from it.
@@ -116,6 +124,7 @@ fn render_sample_standing(sample: FanPolicySample, elapsed: Second?) -> String {
     sample: sample,
     failsafe_duty: percent(100),
     catalog_maximum: Absent,
+    at_maximum_tolerance: percent(95),
     elapsed_since_post: elapsed,
     transition_window: second(count: mtcollins1_fan_transition_window_seconds),
   )

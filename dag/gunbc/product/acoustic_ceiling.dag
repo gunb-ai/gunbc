@@ -2,7 +2,7 @@ module product.acoustic_ceiling
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Percent, measure_le }
-import extdeps.units.iec_61672 { AWeightedSoundPressureLevel, dba_le, dba_tenths }
+import extdeps.units.iec_61672 { AWeightedLevelDifference, AWeightedSoundPressureLevel, dba_le, dba_level_minus }
 import extdeps.fans.types {
   FanCatalogRow,
   FanPublishedOperatingPoint,
@@ -53,20 +53,13 @@ type AcousticCeiling {
   basis: AcousticCeilingBasis
 }
 
-fn acoustic_basis_is_operator_policy(basis: AcousticCeilingBasis) -> Bool {
-  match basis {
-    OperatorStatedTolerance { statement: _ } => true
-    MeasuredAtPosition { instrument: _ } => false
-  }
-}
-
 // THE COMPARISON, AND ITS ONE REFUSAL. A level and a ceiling stated at different positions produce
 // AcousticPositionsIncomparable, never a verdict. An optional Bool would have collapsed that into
 // 'no answer', which reads to a caller as 'unknown' when the real content is 'you asked a question
 // that has no answer as posed'.
 type AcousticComparison
   = AcousticWithinCeiling
-  | AcousticOverCeiling { over_by_tenths_dba: Int }
+  | AcousticOverCeiling { over_by: AWeightedLevelDifference }
   | AcousticPositionsIncomparable
 
 fn acoustic_positions_match(a: AcousticReferencePosition, b: AcousticReferencePosition) -> Bool {
@@ -92,7 +85,7 @@ fn acoustic_level_against_ceiling(
   } else if dba_le(a: level, b: ceiling.level) {
     AcousticWithinCeiling
   } else {
-    AcousticOverCeiling { over_by_tenths_dba: dba_tenths(level: level) - dba_tenths(level: ceiling.level) }
+    AcousticOverCeiling { over_by: dba_level_minus(a: level, b: ceiling.level) }
   }
 }
 

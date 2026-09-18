@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef }
 import std.measure {
   Percent,
+  percent_count,
   RevolutionsPerMinute,
   Second,
   measure_le,
@@ -144,16 +145,25 @@ type FanPolicyStanding
 // OPTIONAL PARAMETER and its absence returns Absent rather than false. false would have said 'the
 // fan is not at failsafe', which is a claim; Absent says 'this reading cannot answer', which is what
 // is true.
+//
+// HOW CLOSE TO THE MAXIMUM COUNTS AS AT THE MAXIMUM IS ALSO SUPPLIED, and it is supplied for exactly
+// the reason the header above gives for failsafe_duty. An earlier revision of this function decided
+// that question with a bare `* 95` three lines under a comment promising this module carries no duty
+// literal - an unsourced confidence threshold selecting the at-fixed-output arm, which is the
+// smuggled heuristic DESIGN §5 names and the literal-where-a-modeled-value-belongs of §3. A fan does
+// not hold its commanded speed exactly and the tolerance that matters is a property of the FAN and
+// the controller, so it is the caller's to state and its provenance travels with it.
 fn drive_is_at_fixed_output(
   drive: FanDriveReading,
   failsafe_duty: Percent,
   catalog_maximum: RevolutionsPerMinute?,
+  at_maximum_tolerance: Percent,
 ) -> Bool? {
   match drive {
     FanDriveDuty { duty: d } => Present { value: measure_le(a: failsafe_duty, b: d) }
     FanDriveTachOnly { speed: s } => match catalog_maximum {
       Absent => Absent
-      Present { value: maximum } => Present { value: rpm_count(r: s) * 100 >= rpm_count(r: maximum) * 95 }
+      Present { value: maximum } => Present { value: rpm_count(r: s) * 100 >= rpm_count(r: maximum) * percent_count(p: at_maximum_tolerance) }
     }
   }
 }
@@ -171,10 +181,11 @@ fn fan_policy_standing_of_sample(
   sample: FanPolicySample,
   failsafe_duty: Percent,
   catalog_maximum: RevolutionsPerMinute?,
+  at_maximum_tolerance: Percent,
   elapsed_since_post: Second?,
   transition_window: Second,
 ) -> FanPolicyStanding {
-  match drive_is_at_fixed_output(drive: sample.drive, failsafe_duty: failsafe_duty, catalog_maximum: catalog_maximum) {
+  match drive_is_at_fixed_output(drive: sample.drive, failsafe_duty: failsafe_duty, catalog_maximum: catalog_maximum, at_maximum_tolerance: at_maximum_tolerance) {
     Absent => FanPolicyUnderdetermined {
       host: host,
       cause: "tach-only reading with no catalogued maximum speed: this observation cannot distinguish failsafe from a fast steady curve",
@@ -265,7 +276,7 @@ fn fan_policy_against_ceiling(
           AcousticPositionsIncomparable => FanPolicyCeilingUnderdetermined {
             cause: "the ceiling is stated at the site listening position and the fan level is a one-metre datasheet figure; those are different quantities sharing a unit and this model refuses to compare them",
           }
-          AcousticOverCeiling { over_by_tenths_dba: _ } => match standing {
+          AcousticOverCeiling { over_by: _ } => match standing {
             SteadyCurve { host: _, authority: _, drive: _ } =>
               FanPolicySteadyCurveOverCeiling { comparison: comparison }
             PostPostTransition { host: _, authority: _, elapsed_since_post: _, window: w, drive: _ } =>

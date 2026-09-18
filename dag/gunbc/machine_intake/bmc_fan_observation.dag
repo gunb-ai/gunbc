@@ -55,8 +55,8 @@ type FanObservationRound {
   power_on: Bool
   host_thermal_published: Bool
   fan_lines: List<SdrTypeLine>
-  fan_unstructured: Int
-  temperature_unstructured: Int
+  fan_undecoded_line_count: Int
+  temperature_undecoded_line_count: Int
   chassis_readable: Bool
 }
 
@@ -152,8 +152,8 @@ fn observe_fan_round(
     power_on: if status.success { chassis_power_on(stdout: status.stdout) } else { false },
     host_thermal_published: if temps.success { sdr_any_temperature_reading(lines: sdr_decoded_lines(results: temp_results)) } else { false },
     fan_lines: if fans.success { sdr_decoded_lines(results: fan_results) } else { [] },
-    fan_unstructured: sdr_unstructured_count(results: fan_results),
-    temperature_unstructured: sdr_unstructured_count(results: temp_results),
+    fan_undecoded_line_count: sdr_unstructured_count(results: fan_results),
+    temperature_undecoded_line_count: sdr_unstructured_count(results: temp_results),
     chassis_readable: status.success,
   }
 }
@@ -272,8 +272,8 @@ fn render_round(round: FanObservationRound) -> String {
     " power_on=", to_string(round.power_on),
     " host_thermal_published=", to_string(round.host_thermal_published),
     " fan_sensors=", to_string(round.fan_lines.length()),
-    " fan_unstructured=", to_string(round.fan_unstructured),
-    " temperature_unstructured=", to_string(round.temperature_unstructured),
+    " fan_undecoded_line_count=", to_string(round.fan_undecoded_line_count),
+    " temperature_undecoded_line_count=", to_string(round.temperature_undecoded_line_count),
   ], "")
 }
 

@@ -10,7 +10,6 @@ import product.acoustic_ceiling {
   AcousticCeilingBasis,
   DutyCeilingResult,
   OperatorStatedTolerance,
-  acoustic_basis_is_operator_policy,
   duty_ceiling_for_fan,
 }
 import product.fan_policy_standing {
@@ -59,15 +58,6 @@ data operator_residence_site: SiteIdentity = operator_site
 data operator_residence_sustained_duty_ceiling: Percent = percent(60)
 
 data operator_residence_duty_ceiling_basis: AcousticCeilingBasis = OperatorStatedTolerance { statement: "operator statement 2026-09-18: cannot tolerate sustained full-duty fans in the residence during testing; the percentage is this repository's conservative reading of that sentence and not a figure the operator gave" }
-
-// THE PREDICATE IS ASKED OF THE BASIS AND NOT OF A CEILING, BECAUSE THERE IS NO CEILING TO ASK IT
-// OF. An earlier draft constructed an AcousticCeiling here with a placeholder level so that the
-// ceiling-shaped predicate could be called - which is the fabricated value this module's own header
-// forbids, smuggled back in one layer down as scaffolding. The basis stands on its own: it says the
-// bound below came from an operator's sentence, and that is true whether or not a level exists.
-fn operator_residence_ceiling_is_policy_not_measurement() -> Bool {
-  acoustic_basis_is_operator_policy(basis: operator_residence_duty_ceiling_basis)
-}
 
 // THE ENFORCEABLE CONSUMER, TODAY. This is what the fan-policy lane actually calls: a standing
 // observed at a host in this residence, bounded by the duty the operator will tolerate. Every arm of

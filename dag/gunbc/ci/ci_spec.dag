@@ -32,7 +32,6 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_boot_sol_pid_path_env,
 }
 import gunbc.spark.bootstrap_provision { spark_bootstrap_cloud_principal_member }
-import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 import gunbc.machine_intake_mtcollins1_fan_observe { mtcollins1_fan_credential_path_env, mtcollins1_fan_observation_receipt_path }
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -1487,6 +1486,28 @@ fn gunbc_ci_mtcollins1_fan_observe_credential_prelude() -> List<PipelineStep> {
 fn concat_pipeline_steps(a: List<PipelineStep>, b: List<PipelineStep>) -> List<PipelineStep> {
   fold(b, init: a, f: (acc, step) => acc.append(step))
 }
+
+// THE FAN LANE'S RUNNER IS THE SAME HAND-SHELL CREDENTIAL TRANSPORT ITS TWO SIBLINGS ARE, AND IT
+// CARRIES THE SAME MARKER. It landed without one, which is the failure worth naming rather than
+// quietly fixing: this same change authored the marker twice, for the approval-keyring lane and the
+// boot lane, and dropped it on the third. A rule a diff observes twice and skips once is not a rule
+// anybody is enforcing, and the marker on the carrier IS the authority (DESIGN §5/§6) - so its
+// absence made this lane invisible to every reader counting what still has to dissolve.
+//
+// It shares the boot lane's dissolution trigger because it shares the boot lane's defect: the
+// credential fetch is modeled as PipelineSteps (gunbc_ci_mtcollins1_bmc_credential_fetch_steps) but
+// each step's body is a shell string built by concat, so the transport is hand-authored even though
+// the pipeline around it is not.
+data gunbc_ci_mtcollins1_fan_observe_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_mtcollins1_fan_observe_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold. The SHARED fetch means this row and gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger retire together for the fetch half; each keeps its own row because each lane's file names, trap and exports are still its own hand-shell.")
 
 fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
   gunbc_run_step_script_with_prelude(
