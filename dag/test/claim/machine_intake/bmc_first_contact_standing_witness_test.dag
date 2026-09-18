@@ -1,0 +1,37 @@
+module test.claim.bmc_first_contact_standing_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { OpenBmc, AmiMegaRac }
+import gunbc.machine_intake_bmc_first_contact_standing {
+  FamilyObserved,
+  FamilyUnobserved,
+  bmc_firmware_family_from_redfish_presence,
+  bmc_intake_may_use_megarac_media_attach,
+  bmc_intake_may_use_openbmc_factory_login,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_redfish_presence_does_not_mint_a_firmware_family() -> Bool {
+  match bmc_firmware_family_from_redfish_presence(redfish_service_root_admitted: true) {
+    FamilyUnobserved { discriminator: _ } => true
+    FamilyObserved { family: _ } => false
+  }
+    && match bmc_firmware_family_from_redfish_presence(redfish_service_root_admitted: false) {
+      FamilyUnobserved { discriminator: _ } => true
+      FamilyObserved { family: _ } => false
+    }
+}
+
+test fn w_unobserved_family_cannot_use_openbmc_factory_or_megarac_media() -> Bool {
+  let unknown = FamilyUnobserved {
+    discriminator: "fixture: family unobserved",
+  }
+  bmc_intake_may_use_openbmc_factory_login(family: unknown) == false
+    && bmc_intake_may_use_megarac_media_attach(family: unknown) == false
+    && bmc_intake_may_use_openbmc_factory_login(family: FamilyObserved { family: AmiMegaRac }) == false
+    && bmc_intake_may_use_megarac_media_attach(family: FamilyObserved { family: OpenBmc }) == false
+    && bmc_intake_may_use_openbmc_factory_login(family: FamilyObserved { family: OpenBmc })
+    && bmc_intake_may_use_megarac_media_attach(family: FamilyObserved { family: AmiMegaRac })
+}

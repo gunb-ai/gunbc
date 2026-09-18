@@ -75,6 +75,24 @@ service redfish.Http {
     }
   }
 
+  // UNAUTHENTICATED DISCOVERY, AND HTTP STATUS IS THE ANSWER. GetServiceRoot uses --fail-with-body,
+  // so a 404 (Collins: no Redfish) is a failed ProcessExit and cannot be stored as a first-contact
+  // observation. This probe keeps the TCP/TLS conversation's body and writes http_code on a new
+  // line; curl still fails closed on an unreachable host. It does not authenticate and does not
+  // identify MegaRAC versus OpenBMC — Redfish presence is a surface, not a family.
+  operation ProbeServiceRoot {
+    input { bmc_host: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "-w", "\nhttp_code=%{http_code}\n", "https://{bmc_host}/redfish/v1/"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish service root probe failed to reach the host"
+    }
+  }
+
   operation GetSystem {
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }

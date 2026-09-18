@@ -1,0 +1,27 @@
+module gunbc.tools.bmc_intake_first_contact
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.bmc.http
+import extdeps.shell
+import gunbc.tools.bmc_first_contact { bmc_first_contact_host }
+
+// THE INTAKE PROBE DOES NOT AUTHENTICATE. It reuses BMC_HOST and ProbeServiceRoot so a 404 is a
+// captured surface rather than a failed OpenBMC login. It does not write openbmc_factory_login.
+// Family classification is gunbc.machine_intake_bmc_first_contact_standing, and it refuses to
+// mint a family from this probe's HTTP code.
+//
+// Run: BMC_HOST=<addr> gunbc run --source-root dag --source-root src/v2 \
+//   --entry dag/gunbc/tools/bmc_intake_first_contact.dag --function bmc_intake_first_contact
+
+fn bmc_intake_first_contact() -> ProcessExit
+  uses net: std.resources.Network
+{
+  host = shell.Env.Get(name: "BMC_HOST")
+  let bmc = bmc_first_contact_host(value: host.value)
+  resp = redfish.Http.ProbeServiceRoot(bmc_host: bmc)
+  if resp.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: resp.body)
+  }
+}
