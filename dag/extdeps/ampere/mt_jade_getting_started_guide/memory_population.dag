@@ -1,6 +1,6 @@
 module extdeps.ampere.mt_jade_getting_started_guide.memory_population
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, concat, list_length }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, FactCitation }
@@ -13,57 +13,71 @@ data extdeps_external_authority_anchor: ExternalAuthority = mt_jade_gsg_authorit
 data extdeps_model_scope: ExternalModelScope = mt_jade_gsg_model_scope
 
 // Table 11, page 11, Document Issue 1.00. Printed slot labels are hash-numbers (#1..#32), not a
-// J-prefix. Each MCU has two columns. Socket 0 columns left-to-right: #1 #2 #3 #4 #5 #6 #7 #8
-// then #16 #15 #14 #13 #12 #11 #10 #9 under MCU0 MCU1 MCU2 MCU3 MCU7 MCU6 MCU5 MCU4.
-// Socket 1: #17..#24 then #32..#25 under the same MCU order.
+// J-prefix. Pairs are in MCU index order 0..7 (Altra channel ordinal), not the table's printed
+// MCU 0,1,2,3,7,6,5,4 walk. one_dpc_slot_label is the Table 11 Y cell; two_dpc_additional is empty at 1DPC.
 
 type MtJadeGsgChannelConnectorPair {
   processor_socket: Nat
   memory_controller: Nat
-  table_left_connector: Nat
-  table_right_connector: Nat
+  one_dpc_slot_label: Nat
+  two_dpc_additional_slot_label: Nat
 }
 
 data mt_jade_gsg_socket0_channel_pairs: List<MtJadeGsgChannelConnectorPair> = [
-  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 0, table_left_connector: 1, table_right_connector: 2 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 1, table_left_connector: 3, table_right_connector: 4 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 2, table_left_connector: 5, table_right_connector: 6 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 3, table_left_connector: 7, table_right_connector: 8 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 7, table_left_connector: 16, table_right_connector: 15 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 6, table_left_connector: 14, table_right_connector: 13 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 5, table_left_connector: 12, table_right_connector: 11 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 4, table_left_connector: 10, table_right_connector: 9 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 0, one_dpc_slot_label: 1, two_dpc_additional_slot_label: 2 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 1, one_dpc_slot_label: 3, two_dpc_additional_slot_label: 4 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 2, one_dpc_slot_label: 5, two_dpc_additional_slot_label: 6 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 3, one_dpc_slot_label: 7, two_dpc_additional_slot_label: 8 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 4, one_dpc_slot_label: 9, two_dpc_additional_slot_label: 10 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 5, one_dpc_slot_label: 11, two_dpc_additional_slot_label: 12 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 6, one_dpc_slot_label: 13, two_dpc_additional_slot_label: 14 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 0, memory_controller: 7, one_dpc_slot_label: 15, two_dpc_additional_slot_label: 16 },
 ]
 
 data mt_jade_gsg_socket1_channel_pairs: List<MtJadeGsgChannelConnectorPair> = [
-  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 0, table_left_connector: 17, table_right_connector: 18 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 1, table_left_connector: 19, table_right_connector: 20 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 2, table_left_connector: 21, table_right_connector: 22 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 3, table_left_connector: 23, table_right_connector: 24 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 7, table_left_connector: 32, table_right_connector: 31 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 6, table_left_connector: 30, table_right_connector: 29 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 5, table_left_connector: 28, table_right_connector: 27 },
-  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 4, table_left_connector: 26, table_right_connector: 25 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 0, one_dpc_slot_label: 17, two_dpc_additional_slot_label: 18 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 1, one_dpc_slot_label: 19, two_dpc_additional_slot_label: 20 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 2, one_dpc_slot_label: 21, two_dpc_additional_slot_label: 22 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 3, one_dpc_slot_label: 23, two_dpc_additional_slot_label: 24 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 4, one_dpc_slot_label: 25, two_dpc_additional_slot_label: 26 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 5, one_dpc_slot_label: 27, two_dpc_additional_slot_label: 28 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 6, one_dpc_slot_label: 29, two_dpc_additional_slot_label: 30 },
+  MtJadeGsgChannelConnectorPair { processor_socket: 1, memory_controller: 7, one_dpc_slot_label: 31, two_dpc_additional_slot_label: 32 },
 ]
+
+fn mt_jade_gsg_one_dpc_labels(pairs: List<MtJadeGsgChannelConnectorPair>) -> List<Nat> {
+  map(pairs, p => p.one_dpc_slot_label)
+}
+
+fn mt_jade_gsg_two_dpc_additional_labels(pairs: List<MtJadeGsgChannelConnectorPair>) -> List<Nat> {
+  map(pairs, p => p.two_dpc_additional_slot_label)
+}
+
+data mt_jade_gsg_socket0_one_dpc_slot_labels: List<Nat> = mt_jade_gsg_one_dpc_labels(pairs: mt_jade_gsg_socket0_channel_pairs)
+
+data mt_jade_gsg_socket1_one_dpc_slot_labels: List<Nat> = mt_jade_gsg_one_dpc_labels(pairs: mt_jade_gsg_socket1_channel_pairs)
+
+data mt_jade_gsg_one_dpc_empty_slot_labels: List<Nat> = concat(
+  mt_jade_gsg_two_dpc_additional_labels(pairs: mt_jade_gsg_socket0_channel_pairs),
+  mt_jade_gsg_two_dpc_additional_labels(pairs: mt_jade_gsg_socket1_channel_pairs),
+)
+
+data mt_jade_gsg_2s2p_16_populated_slot_labels: List<Nat> = concat(
+  mt_jade_gsg_socket0_one_dpc_slot_labels,
+  mt_jade_gsg_socket1_one_dpc_slot_labels,
+)
 
 type MtJadeGsgDimmPopulationRow {
   configuration: NonEmptyStr
-  dimm_count: Nat
+  dimm_count: Int
   populated_slot_labels: List<Nat>
 }
 
-// 2S2P sixteen-DIMM row of Table 11: the Y cells. That is one DIMM per MCU (1DPC) on both sockets.
 data mt_jade_gsg_population_2s2p_16_dimms: MtJadeGsgDimmPopulationRow = MtJadeGsgDimmPopulationRow {
   configuration: "2S2P",
-  dimm_count: 16,
-  populated_slot_labels: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31],
+  dimm_count: list_length(mt_jade_gsg_2s2p_16_populated_slot_labels),
+  populated_slot_labels: mt_jade_gsg_2s2p_16_populated_slot_labels,
 }
-
-data mt_jade_gsg_socket0_one_dpc_slot_labels: List<Nat> = [1, 3, 5, 7, 9, 11, 13, 15]
-
-data mt_jade_gsg_socket1_one_dpc_slot_labels: List<Nat> = [17, 19, 21, 23, 25, 27, 29, 31]
-
-data mt_jade_gsg_one_dpc_empty_slot_labels: List<Nat> = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32]
 
 type MtJadeGsgSlotLabelKind
   = HashNumberPrefix

@@ -91,10 +91,11 @@ test fn w_jade_first_dpc_modules_are_uniform_and_ddp_is_a_class_not_a_bogus_2rx4
 
 test fn w_jade_first_dpc_silk_is_gsg_table11_hash_numbers() -> Bool {
   match jade_first_dpc_silk_standing {
-    ConnectorSilkFromGsgTable11 { prefix: HashNumberPrefix, socket0: a, socket1: b } =>
+    ConnectorSilkFromGsgTable11 { prefix: HashNumberPrefix, socket0: a, socket1: b, citation: _ } =>
       list_length(a) == 8
         && list_length(b) == 8
-        && list_length(jade_first_dpc_printed_slot_labels) == 16
-        && list_length(jade_first_dpc_empty_slot_labels) == 16
+        && list_length(jade_first_dpc_printed_slot_labels) == jade_first_dpc_dimm_count()
+        && list_length(jade_first_dpc_empty_slot_labels) == jade_first_dpc_dimm_count()
+        && list_length(jade_first_dpc_slots) == jade_first_dpc_dimm_count()
   }
 }

@@ -6,6 +6,7 @@ import gunbc.machine_intake_mtjade1_access_observation {
   SecretLocusReservedNotOnAccessorRoster,
   mtjade1_bmc_ethernet,
   mtjade1_managed_bmc_secret_standing,
+  mtjade1_rail_kit_part_number,
   mtjade1_unit_key_standing,
 }
 import gunbc.machine_intake_subject {
@@ -30,6 +31,9 @@ test fn w_mtjade1_bmc_ethernet_is_rear_panel_and_phy_unstated() -> Bool {
     NamedOnRearPanel { figure_or_table: _ } => true
   }
     && match mt_jade_gsg_bmc_ethernet_phy {
+      GsgUnstated { topic: _ } => true
+    }
+    && match mtjade1_rail_kit_part_number {
       GsgUnstated { topic: _ } => true
     }
 }
