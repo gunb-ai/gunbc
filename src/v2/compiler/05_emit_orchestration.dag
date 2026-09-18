@@ -95,7 +95,8 @@ import v2.std.orchestration {
   Exit,
   EnvBinding
 }
-import std.algebra { FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid }
+import extdeps.posix.shell_command_language { posix_name_ok }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty, length }
 import v2.std.collection {
   List,
@@ -123,7 +124,7 @@ import v2.std.diagnostic {
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node, TypeNode, Conj, Atom, Symbol }
-import v2.std.text { String }
+import v2.std.text { String, string_all_chars_in, string_any_char_in }
 
 fn orch_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
   optional_absent()
@@ -184,29 +185,13 @@ fn orch_emit_node_spelling(emitted_root: Node, target: TargetModel) -> Outcome<S
 
 data orch_shell_unquoted_path_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
 
-fn orch_shell_unquoted_path_char_ok(ch: String) -> Bool {
-  string_length(s: ch) == 1 && string_contains(s: orch_shell_unquoted_path_alphabet, pattern: ch)
-}
-
-fn orch_shell_unquoted_path_ok_at(path: String, i: Int, n: Int) -> Bool {
-  if i >= n {
-    true
-  } else {
-    let ch = char_at(s: path, pos: i)
-    if !orch_shell_unquoted_path_char_ok(ch: ch) {
-      false
-    } else {
-      orch_shell_unquoted_path_ok_at(path: path, i: i + 1, n: n)
-    }
-  }
-}
-
+// The empty path is refused by the Cons arm rather than by a length test: emptiness is the shape
+// of the carrier here, not a number this function has to compute and compare.
 fn orch_shell_unquoted_path_ok(path: String) -> Bool {
-  let n = string_length(s: path)
-  if n == 0 {
-    false
-  } else {
-    orch_shell_unquoted_path_ok_at(path: path, i: 0, n: n)
+  match path {
+    Empty => false
+    Cons { head: _, tail: _ } =>
+      string_all_chars_in(s: path, alphabet: orch_shell_unquoted_path_alphabet)
   }
 }
 
@@ -256,47 +241,16 @@ fn orch_emit_run_with_redir(stmt: String, redir: RedirectSpec) -> Outcome<String
   )
 }
 
-data orch_shell_ident_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
-
-data orch_shell_ident_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789"
-
-fn orch_shell_ident_start_char_ok(ch: String) -> Bool {
-  string_length(s: ch) == 1 && string_contains(s: orch_shell_ident_start_alphabet, pattern: ch)
-}
-
-fn orch_shell_ident_continue_char_ok(ch: String) -> Bool {
-  string_length(s: ch) == 1 && string_contains(s: orch_shell_ident_continue_alphabet, pattern: ch)
-}
-
-fn orch_shell_ident_ok_at(binder: String, i: Int, n: Int) -> Bool {
-  if i >= n {
-    true
-  } else {
-    let ch = char_at(s: binder, pos: i)
-    let ok = if i == 0 {
-      orch_shell_ident_start_char_ok(ch: ch)
-    } else {
-      orch_shell_ident_continue_char_ok(ch: ch)
-    }
-    if !ok {
-      false
-    } else {
-      orch_shell_ident_ok_at(binder: binder, i: i + 1, n: n)
-    }
-  }
-}
-
-fn orch_shell_ident_ok(binder: String) -> Bool {
-  let n = string_length(s: binder)
-  if n == 0 {
-    false
-  } else {
-    orch_shell_ident_ok_at(binder: binder, i: 0, n: n)
-  }
-}
-
+// THE BINDER RULE WAS A BYTE-IDENTICAL FORK OF THE POSIX NAME RULE and is now read from its one
+// home. This module carried orch_shell_ident_ok with its own two alphabet rows spelling exactly
+// what extdeps.posix.shell_command_language posix_name_start_alphabet and
+// posix_name_continue_alphabet already spelled; that module's own annotation states the rule lives
+// there and is read at each site rather than respelled, and v2.extdeps.languages.bash_orch_if and
+// v2.workflow.effect_plan_bash_materialize already read it. `binder` renders bare in `name=$?`, so
+// it is a POSIX name in exactly the sense XBD 3.235 defines -- the fork was a second name for one
+// fact (DESIGN section 3), not a different rule.
 fn orch_emit_exit_status_bind(stmt: String, binder: String, medium: OrchestrationEmitMedium) -> Outcome<String> {
-  if !orch_shell_ident_ok(binder: binder) {
+  if !posix_name_ok(name: binder) {
     outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_exit_status_binder_invalid))
   } else {
     bind_outcome(
@@ -699,31 +653,19 @@ fn orch_emit_while_step(
   )
 }
 
+// A `#` comment ends at the first line break, so a comment carrying one would emit a second bash
+// line outside the construct. The question is whether ANY character of the text is a line break --
+// character membership in a two-character alphabet -- which the two substring searches this
+// replaced asked twice, once per needle, each walking the whole text.
+data orch_shell_line_break_alphabet: String = "\n\r"
+
 data orch_shell_test_operand_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@$\"{}"
 
-fn orch_shell_test_operand_char_ok(ch: String) -> Bool {
-  string_length(s: ch) == 1 && string_contains(s: orch_shell_test_operand_alphabet, pattern: ch)
-}
-
-fn orch_shell_test_operand_ok_at(operand: String, i: Int, n: Int) -> Bool {
-  if i >= n {
-    true
-  } else {
-    let ch = char_at(s: operand, pos: i)
-    if !orch_shell_test_operand_char_ok(ch: ch) {
-      false
-    } else {
-      orch_shell_test_operand_ok_at(operand: operand, i: i + 1, n: n)
-    }
-  }
-}
-
 fn orch_shell_test_operand_ok(operand: String) -> Bool {
-  let n = string_length(s: operand)
-  if n == 0 {
-    false
-  } else {
-    orch_shell_test_operand_ok_at(operand: operand, i: 0, n: n)
+  match operand {
+    Empty => false
+    Cons { head: _, tail: _ } =>
+      string_all_chars_in(s: operand, alphabet: orch_shell_test_operand_alphabet)
   }
 }
 
@@ -749,7 +691,7 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<e
   match s {
     Do { run: r } => orch_emit_run(r: r, medium: medium)
     Comment { text: t } =>
-      if string_contains(s: t, pattern: "\n") || string_contains(s: t, pattern: "\r") {
+      if string_any_char_in(s: t, alphabet: orch_shell_line_break_alphabet) {
         outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_comment_multiline_refused))
       } else {
         orch_emit_from_registry(
