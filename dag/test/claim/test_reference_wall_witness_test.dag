@@ -55,3 +55,12 @@ test fn a_test_calling_an_ordinary_fn_is_admitted() -> Bool {
 test fn a_paid_down_ledger_row_is_refused() -> Bool {
   any_class_count_for(source: paid_down_source, wanted_class: "TestCodeReferenceBudgetMismatch") == 1
 }
+
+// A test taken as a PARAMETER DEFAULT is a reference. The body walk alone never visits a default, so
+// this row is the red for the traversal that covers params and type children (review of #11505).
+data default_value_source: String = "module wall.fixture.default\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn helper(cb: fn() -> Bool = leaf) -> Bool { cb() }\n"
+
+// DISCRIMINATING RED: a parameter default that names a test refuses, at the declaration holding it.
+test fn a_test_as_a_parameter_default_is_refused() -> Bool {
+  blocking_subject_count_for(source: default_value_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.default.helper") == 1
+}

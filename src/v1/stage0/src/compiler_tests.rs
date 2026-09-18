@@ -609,6 +609,36 @@ mod compiler_tests {
         );
     }
 
+    // Two modules in one compile, which the floor's census probe cannot express: it types one fixture
+    // and loads the corpus for name lookup only.
+    fn import_all_tags() -> Vec<String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("test-reference-import-all".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                let target = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "wall_target.dag".to_string(), content: "module wall.fixture.target\n\ntest fn leaf() -> Bool {\n  true\n}\n".to_string() });
+                let caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: "wall_caller.dag".to_string(), content: "module wall.fixture.caller\n\nimport wall.fixture.target\n\nfn expose() -> Bool {\n  leaf()\n}\n".to_string() });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![target, caller]));
+                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| match e.diagnostic.as_ref() {
+                    crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { referrer, target, .. } => Some(format!("{} -> {}", referrer, target)),
+                    _ => None,
+                }).collect();
+                let _ = tx.send(tags);
+            })
+            .expect("spawn test-reference-import-all");
+        rx.recv_timeout(std::time::Duration::from_secs(120))
+            .expect("compile hung")
+    }
+
+    #[test]
+    fn a_test_reached_through_import_all_is_refused() {
+        assert_eq!(
+            import_all_tags(),
+            vec!["wall.fixture.caller.expose -> wall.fixture.target.leaf".to_string()]
+        );
+    }
+
     fn tco_slot(name: &str) -> String {
         {
             crate::v1_compiler_emit::tco_loop_slot_name(name.to_string())

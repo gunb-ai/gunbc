@@ -4970,6 +4970,49 @@ fn ct_test_reference_wall_test() -> String {
   )
 }
 
+// THE IMPORT-ALL ROUTE'S ONLY RED, AND WHY IT IS NOT ON THE FLOOR. The floor's census probe
+// (gunbc.compile_census_probe) compiles one fixture module against the corpus and loads the corpus
+// modules it imports for name lookup only, never typed, so no floor fixture can hold both a
+// test-bearing target and a module that imports it wholesale. This two-module compile is the red
+// for a CALL reached through a no-braces import, and like every compiler_tests row it runs in no CI
+// step. Next-rung trigger: a census probe that types more than one fixture source in one compile.
+//
+// A FUNCTION VALUE reached through a no-braces import is NOT decided, and that is an upstream
+// defect rather than a gap in the wall: v1 inference binds such a name as LocalValueBinding, as if it
+// were a local, so it is indistinguishable from a real local at this pass and the wall correctly
+// declines to treat locals as references. Trigger: inference binds a wildcard-imported declaration
+// as FunctionValueBinding, at which point the typed arm of function_value_target decides it.
+fn ct_test_reference_import_all_test() -> String {
+  concat(
+    "    // Two modules in one compile, which the floor's census probe cannot express: it types one fixture\n",
+    "    // and loads the corpus for name lookup only.\n",
+    "    fn import_all_tags() -> Vec<String> {\n",
+    "        let (tx, rx) = std::sync::mpsc::channel();\n",
+    "        std::thread::Builder::new()\n",
+    "            .name(\"test-reference-import-all\".to_string())\n",
+    "            .stack_size(64 * 1024 * 1024)\n",
+    "            .spawn(move || {\n",
+    "                let target = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"wall_target.dag\".to_string(), content: \"module wall.fixture.target\\n\\ntest fn leaf() -> Bool {\\n  true\\n}\\n\".to_string() });\n",
+    "                let caller = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"wall_caller.dag\".to_string(), content: \"module wall.fixture.caller\\n\\nimport wall.fixture.target\\n\\nfn expose() -> Bool {\\n  leaf()\\n}\\n\".to_string() });\n",
+    "                let resolved = crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![target, caller]));\n",
+    "                let tags: Vec<String> = resolved.diagnostics.iter().filter_map(|e| match e.diagnostic.as_ref() {\n",
+    "                    crate::v1_std_core::CompilerDiagnostic::TestCodeReferenced { referrer, target, .. } => Some(format!(\"{} -> {}\", referrer, target)),\n",
+    "                    _ => None,\n",
+    "                }).collect();\n",
+    "                let _ = tx.send(tags);\n",
+    "            })\n",
+    "            .expect(\"spawn test-reference-import-all\");\n",
+    "        rx.recv_timeout(std::time::Duration::from_secs(120)).expect(\"compile hung\")\n",
+    "    }\n",
+    "\n",
+    "    #[test]\n",
+    "    fn a_test_reached_through_import_all_is_refused() {\n",
+    "        assert_eq!(import_all_tags(), vec![\"wall.fixture.caller.expose -> wall.fixture.target.leaf\".to_string()]);\n",
+    "    }\n",
+    "\n"
+  )
+}
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -4980,6 +5023,7 @@ fn compiler_tests_source() -> String {
     ct_parse_tests(),
     ct_test_marker_item_kind_test(),
     ct_test_reference_wall_test(),
+    ct_test_reference_import_all_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),

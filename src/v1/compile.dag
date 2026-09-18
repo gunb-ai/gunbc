@@ -280,23 +280,18 @@ fn test_reference_row(module_name: String, referrer: String, target: String, occ
 // paid-down arm of the equality budget has an executing red that cannot be paid down out from
 // under it. It is inert against the corpus: a row whose module is not compiled is skipped.
 fn test_reference_debt() -> List<TestReferenceDebtRow> {
-  [    test_reference_row(module_name: "wall.fixture.paid_down", referrer: "reader", target: "wall.fixture.paid_down.leaf", occurrences: 1),
-
-    test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_admission_witness", occurrences: 1),
+  [
+    test_reference_row(module_name: "wall.fixture.paid_down", referrer: "reader", target: "wall.fixture.paid_down.leaf", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_admission_witness.w_a_coherent_fixture_is_admitted", occurrences: 1),
-    test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness.w_every_recorded_implementation_run_was_accepted", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness.w_every_recorded_run_was_accepted", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness.w_the_executed_deck_is_what_the_product_emits_today", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness.w_the_executed_verilog_is_what_the_product_emits_today", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness.w_the_placed_constraints_are_what_the_product_emits_today", occurrences: 1),
-    test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.claim.translate_underived_refusal", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.claim.translate_underived_refusal.cross_language_compile_python_to_typescript_round_trip_holds", occurrences: 1),
-    test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.claim.verilog_interlock_emission_test", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.claim.verilog_interlock_emission_test.w_expression_perturbation_changes_the_bytes", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.claim.verilog_interlock_emission_test.w_interlock_emits_expected_bytes_through_the_generic_fold", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.claim.verilog_interlock_emission_test.w_token_spine_reads_back_to_the_same_emitted_node", occurrences: 1),
-    test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.long.accumulator_copy_compile_gate", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.long.accumulator_copy_compile_gate.gate_green_identity_accepts_clean", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.long.accumulator_copy_compile_gate.gate_red_quadratic_rejects", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "v2.test.long.accumulator_copy_compile_gate.gate_refusal_ledger_counted_not_gating", occurrences: 1),
@@ -335,202 +330,12 @@ fn test_reference_debt() -> List<TestReferenceDebtRow> {
     test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_relayed_reading_makes_envelope_spendable", occurrences: 1),
     test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_search_summary_envelope_is_not_spendable", occurrences: 1),
     test_reference_row(module_name: "test.claim.climbing_hold_witness_roster", referrer: "climbing_hold_witness_outcomes", target: "test.claim.climbing_hold_catalog_witness.witness_source_reading_survives_conversion", occurrences: 1),
-    test_reference_row(module_name: "test.claim.gitattributes_emit_witness", referrer: "witness_holds", target: "test.claim.gitattributes_emit_witness.witness_all_committed_paths_have_merge_rows_holds", occurrences: 1),
-    test_reference_row(module_name: "test.claim.gitattributes_emit_witness", referrer: "witness_holds", target: "test.claim.gitattributes_emit_witness.witness_committed_matches_emit_holds", occurrences: 1),
-    test_reference_row(module_name: "test.claim.gitattributes_emit_witness", referrer: "witness_holds", target: "test.claim.gitattributes_emit_witness.witness_duplicate_projection_path_refuses_before_emission", occurrences: 1),
-    test_reference_row(module_name: "test.claim.gitattributes_emit_witness", referrer: "witness_holds", target: "test.claim.gitattributes_emit_witness.witness_presentation_policy_row_present_holds", occurrences: 1),
-    test_reference_row(module_name: "test.claim.gitattributes_emit_witness", referrer: "witness_holds", target: "test.claim.gitattributes_emit_witness.witness_projection_population_contains_dispatch_generated", occurrences: 1),
-    test_reference_row(module_name: "test.claim.gitattributes_emit_witness", referrer: "witness_holds", target: "test.claim.gitattributes_emit_witness.witness_red_missing_merge_row_fails", occurrences: 1),
-    test_reference_row(module_name: "test.claim.gitattributes_emit_witness", referrer: "witness_holds", target: "test.claim.gitattributes_emit_witness.witness_red_perturbed_emit_drifts", occurrences: 1),
     test_reference_row(module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "<import>", target: "test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union", occurrences: 1),
     test_reference_row(module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "<import>", target: "test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact", occurrences: 1),
     test_reference_row(module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "witness_model_refusal_controls_remain_distinct", target: "test.claim.materialization_provider_witness.incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union", occurrences: 1),
     test_reference_row(module_name: "test.claim.materialization_provider_consumer_hand_rust_witness", referrer: "witness_model_refusal_controls_remain_distinct", target: "test.claim.materialization_provider_witness.red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact", occurrences: 1),
     test_reference_row(module_name: "test.claim.native_witness_transition_receipt_witness", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds", occurrences: 1),
     test_reference_row(module_name: "test.claim.native_witness_transition_receipt_witness", referrer: "cited_evidence_declaration_is_an_executing_witness", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.binding_beyond_observed_ceiling_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.binding_within_observed_ceiling_is_admitted", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.every_instance_carries_an_admitted_binding", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.exclusive_credential_admits_one_and_refuses_two", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.fleet_evidence_row_matches_the_observation", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.many_decodes_and_keeps_its_total", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.observed_login_only_does_not_reach_the_unbounded_arm", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.one_decodes_to_the_single_session_constructor", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.single_session_path_is_total_over_evidenced_disciplines", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.unobserved_credential_admits_nothing_not_even_one", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_account_admission_witness_test", referrer: "provider_account_admission_keystone_holds", target: "test.claim.provider_account_admission_witness_test.zero_and_negative_session_counts_refuse", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_lifecycle_witness", referrer: "provider_lifecycle_keystone_holds", target: "test.claim.provider_lifecycle_witness.claude_lifecycle_consumes_cli_authority", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_lifecycle_witness", referrer: "provider_lifecycle_keystone_holds", target: "test.claim.provider_lifecycle_witness.model_access_and_sandbox_readiness_are_independent", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_lifecycle_witness", referrer: "provider_lifecycle_keystone_holds", target: "test.claim.provider_lifecycle_witness.recorded_credentials_do_not_imply_refreshable_authentication", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_lifecycle_witness", referrer: "provider_lifecycle_keystone_holds", target: "test.claim.provider_lifecycle_witness.session_presence_cannot_promote_setup_to_execution", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_lifecycle_witness", referrer: "provider_lifecycle_keystone_holds", target: "test.claim.provider_lifecycle_witness.terminal_evidence_accepts_only_terminal_outcomes", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_absent_and_malformed_accounts_never_entitle", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_bridge_claude_control_probe_honest_installation_and_tool_unobserved", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticated", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_bridge_codex_successful_probes_map_authenticated_not_entitled", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_bridge_profile_present_token_absent_not_authenticated_arm", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_bridge_profile_present_token_absent_refuses_through_mapper", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_bridge_standing_is_from_fact_not_inventory_unobserved", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_capacity_unknown_is_not_capacity", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_codex_bucket_projects_to_native_bucket_never_account_scope", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_credential_identity_tracks_the_observed_codex_home", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_credential_liveness_splits_from_realm", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_deployed_profile_admits_exactly_the_observed_plan", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_exhausted_codex_allows_a_sibling_bucket_draw", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_no_buckets_is_a_located_unobserved_not_an_empty_list", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_plans_added_after_the_pinned_runtime_read_as_stale_pin", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_pro_subscription_is_the_only_arm_that_entitles", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_realm_decodes_from_the_captured_account_read_shape", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_reported_cause_and_reset_survive_the_projection", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_undecoded_bucket_does_not_refuse_a_measured_sibling", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_unreported_cause_is_not_the_bucket_id", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_probe_bridge_witness", referrer: "provider_standing_probe_bridge_keystone_holds", target: "test.claim.provider_standing_probe_bridge_witness.witness_upstream_unknown_plan_is_not_a_yes", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_selection_witness_test", referrer: "provider_standing_selection_witness_keystone_holds", target: "test.claim.provider_standing_selection_witness_test.authenticated_available_bundle_is_selection_eligible", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_selection_witness_test", referrer: "provider_standing_selection_witness_keystone_holds", target: "test.claim.provider_standing_selection_witness_test.claude_profile_present_token_absent_is_ineligible", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_selection_witness_test", referrer: "provider_standing_selection_witness_keystone_holds", target: "test.claim.provider_standing_selection_witness_test.cursor_capability_gap_does_not_block_selection", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_selection_witness_test", referrer: "provider_standing_selection_witness_keystone_holds", target: "test.claim.provider_standing_selection_witness_test.model_rejection_blocks_dispatch_under_unspecified_draw", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_selection_witness_test", referrer: "provider_standing_selection_witness_keystone_holds", target: "test.claim.provider_standing_selection_witness_test.model_rejection_does_not_erase_account_eligibility", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_selection_witness_test", referrer: "provider_standing_selection_witness_keystone_holds", target: "test.claim.provider_standing_selection_witness_test.weekly_cap_blocks_automatic_draw", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_claude_native_bucket_exhaustion_blocks_model_draw", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_codex_unavailable_prefers_claude_over_codex", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_cursor_capability_gap_is_eligible", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_limit_warning_does_not_block_selection", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_model_limit_rejection_does_not_block_account_selection", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_model_limit_rejection_does_not_block_unspecified_draw", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_native_bucket_exhaustion_automatic_fail_closed_explicit_bengalfox_admitted", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_native_bucket_rejection_blocks_automatic_draw", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_offer_list_order_does_not_change_automatic_selection", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_profile_present_token_absent_claude_skipped_for_codex", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_profile_present_token_absent_not_authenticated_standing", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_profile_present_token_absent_not_selection_eligible", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_standing_ineligible_codex_selects_claude_before_resolve", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_turn_outcome_unobserved_is_ineligible", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_unobserved_standing_is_ineligible", occurrences: 1),
-    test_reference_row(module_name: "test.claim.provider_standing_witness", referrer: "provider_standing_keystone_holds", target: "test.claim.provider_standing_witness.witness_unspecified_draw_refuses_selection_eligibility", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_authority", referrer: "witness_revocation_frontier_disposition_discriminates", target: "test.claim.roadmap_authority.witness_reopen_revocation_returns_node_to_active_frontier", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_authority", referrer: "witness_revocation_frontier_disposition_discriminates", target: "test.claim.roadmap_authority.witness_superseded_revocation_does_not_reopen_active_frontier", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.a_contract_with_no_validation_refuses_separately", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.a_resolving_contract_closes_its_target", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.a_target_closed_by_another_closing_contract_task_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.a_validation_whose_oracle_is_ambiguous_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.a_validation_whose_oracle_is_missing_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.an_undeclared_target_refuses_against_the_live_authority", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.an_unspecified_contract_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.operator_exclusive_is_not_an_unspecified_closing_contract", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_closing_contract_authoring_witness_test", referrer: "roadmap_closing_contract_authoring_keystone_holds", target: "test.claim.roadmap_closing_contract_authoring_witness_test.the_validation_projects_the_target_into_its_argv", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_dispatch_environment_witness_test", referrer: "roadmap_dispatch_environment_keystone_holds", target: "test.claim.roadmap_dispatch_environment_witness_test.admission_receipt_is_structured_and_located", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_dispatch_environment_witness_test", referrer: "roadmap_dispatch_environment_keystone_holds", target: "test.claim.roadmap_dispatch_environment_witness_test.all_required_grounded_receipts_admit", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_dispatch_environment_witness_test", referrer: "roadmap_dispatch_environment_keystone_holds", target: "test.claim.roadmap_dispatch_environment_witness_test.empty_validation_contract_refuses_with_its_own_reason", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_dispatch_environment_witness_test", referrer: "roadmap_dispatch_environment_keystone_holds", target: "test.claim.roadmap_dispatch_environment_witness_test.may_apply_without_a_typed_plan_still_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_dispatch_environment_witness_test", referrer: "roadmap_dispatch_environment_keystone_holds", target: "test.claim.roadmap_dispatch_environment_witness_test.missing_capability_realization_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_dispatch_environment_witness_test", referrer: "roadmap_dispatch_environment_keystone_holds", target: "test.claim.roadmap_dispatch_environment_witness_test.observe_only_absence_never_fabricates_apply", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_dispatch_environment_witness_test", referrer: "roadmap_dispatch_environment_keystone_holds", target: "test.claim.roadmap_dispatch_environment_witness_test.unspecified_contract_refuses_before_capability_checks", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_execution_contract_witness_test", referrer: "roadmap_execution_contract_keystone_holds", target: "test.claim.roadmap_execution_contract_witness_test.cargo_fmt_derives_cargo_and_rustfmt_not_rustc", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_execution_contract_witness_test", referrer: "roadmap_execution_contract_keystone_holds", target: "test.claim.roadmap_execution_contract_witness_test.cargo_test_derives_cargo_and_rustc_once", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_execution_contract_witness_test", referrer: "roadmap_execution_contract_keystone_holds", target: "test.claim.roadmap_execution_contract_witness_test.claim_contract_declares_exactly_one_claim_validation", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_execution_contract_witness_test", referrer: "roadmap_execution_contract_keystone_holds", target: "test.claim.roadmap_execution_contract_witness_test.claim_validation_projects_exact_typed_argv", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_execution_contract_witness_test", referrer: "roadmap_execution_contract_keystone_holds", target: "test.claim.roadmap_execution_contract_witness_test.dag_claim_derives_only_the_claim_runner", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_execution_contract_witness_test", referrer: "roadmap_execution_contract_keystone_holds", target: "test.claim.roadmap_execution_contract_witness_test.dispatch_platform_capabilities_join_at_admission_only", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_execution_contract_witness_test", referrer: "roadmap_execution_contract_keystone_holds", target: "test.claim.roadmap_execution_contract_witness_test.non_agent_work_does_not_await_closing_validation_authoring", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.attempt_without_a_recorded_pin_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.cargo_test_validation_refuses_as_unpinnable", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.declaration_scan_ignores_the_name_inside_a_note", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.deleted_witness_answers_oracle_missing_not_red", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.diff_editing_its_own_witness_refuses_with_oracle_moved", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.diff_touching_only_the_subject_verifies_clean", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.duplicated_declaration_answers_oracle_ambiguous", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.empty_validation_contract_refuses_as_closes_nothing_not_admitted", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.foreign_receipt_document_is_undecodable", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.moved_oracle_detail_locates_both_identities", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.not_run_receipt_is_distinct_from_every_recorded_verdict", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.not_run_receipt_reads_as_pending_not_as_a_verdict", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.oracle_identity_separates_the_two_witness_sources", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.oracle_importing_only_subject_modules_still_verifies", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.oracle_importing_test_helpers_refuses_as_unpinned_dependency", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.readable_source_without_the_declaration_is_also_missing", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.refusal_quoting_passed_does_not_decode_as_passed", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.refused_and_failed_verdicts_are_distinct_on_the_wire", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.truncated_receipt_with_passed_prefix_is_not_passed", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.unpinned_dependency_detail_names_the_uncovered_modules", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.unspecified_contract_refuses_rather_than_verifying", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.verify_lamp_completes_only_on_a_passed_receipt", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.verify_lamp_refuses_a_foreign_receipt_document", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.verify_lamp_shows_a_refusal_as_refused_not_failed", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_validation_oracle_witness_test", referrer: "roadmap_validation_oracle_keystone_holds", target: "test.claim.roadmap_validation_oracle_witness_test.verify_lamp_stays_pending_without_a_receipt", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verification_receipt_witness_test", referrer: "roadmap_verification_receipt_keystone_holds", target: "test.claim.roadmap_verification_receipt_witness_test.attempt_level_pass_is_typed_legacy_and_never_evidence", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verification_receipt_witness_test", referrer: "roadmap_verification_receipt_keystone_holds", target: "test.claim.roadmap_verification_receipt_witness_test.change_window_refused_verdict_round_trips_through_json_codec", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verification_receipt_witness_test", referrer: "roadmap_verification_receipt_keystone_holds", target: "test.claim.roadmap_verification_receipt_witness_test.complete_exact_head_receipt_constructs_and_matches", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verification_receipt_witness_test", referrer: "roadmap_verification_receipt_keystone_holds", target: "test.claim.roadmap_verification_receipt_witness_test.exact_head_receipt_round_trips_through_json_codec", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verification_receipt_witness_test", referrer: "roadmap_verification_receipt_keystone_holds", target: "test.claim.roadmap_verification_receipt_witness_test.one_attempt_addresses_multiple_heads_without_overwrite", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verification_receipt_witness_test", referrer: "roadmap_verification_receipt_keystone_holds", target: "test.claim.roadmap_verification_receipt_witness_test.passed_receipt_for_old_head_refuses_to_move_new_head_lamp", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verification_receipt_witness_test", referrer: "roadmap_verification_receipt_keystone_holds", target: "test.claim.roadmap_verification_receipt_witness_test.verification_receipt_schema_is_v2", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.a_real_contract_is_bound_and_carries_its_validations", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.empty_contract_closes_nothing_and_is_not_bound", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.operator_exclusive_verify_is_not_contract_needed", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.passing_verification_exits_success", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.receipt_projection_carries_host_worktree_revision_and_command", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.refusal_and_failure_and_unbound_all_exit_failure", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.refusal_blocks_the_environment_and_does_not_warrant_dispatch", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.the_two_lab_instances_really_do_straddle_the_transport_split", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.unobserved_exit_never_serializes_as_zero", occurrences: 1),
-    test_reference_row(module_name: "test.claim.roadmap_verify_witness_test", referrer: "roadmap_verify_keystone_holds", target: "test.claim.roadmap_verify_witness_test.verification_host_follows_the_transport_not_the_controller", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_manifest_merge_witness", referrer: "scm_manifest_merge_witnesses_hold", target: "test.claim.scm_manifest_merge_witness.scm_mm_a_delete_against_a_modify_conflicts_and_says_which_side_was_absent", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_manifest_merge_witness", referrer: "scm_manifest_merge_witnesses_hold", target: "test.claim.scm_manifest_merge_witness.scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absent", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_manifest_merge_witness", referrer: "scm_manifest_merge_witnesses_hold", target: "test.claim.scm_manifest_merge_witness.scm_mm_a_path_only_one_side_has_is_still_decided", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_manifest_merge_witness", referrer: "scm_manifest_merge_witnesses_hold", target: "test.claim.scm_manifest_merge_witness.scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_manifest_merge_witness", referrer: "scm_manifest_merge_witnesses_hold", target: "test.claim.scm_manifest_merge_witness.scm_mm_every_conflicting_path_is_reported_not_the_first", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_manifest_merge_witness", referrer: "scm_manifest_merge_witnesses_hold", target: "test.claim.scm_manifest_merge_witness.scm_mm_the_law_does_not_depend_on_which_side_is_source", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_manifest_merge_witness", referrer: "scm_manifest_merge_witnesses_hold", target: "test.claim.scm_manifest_merge_witness.scm_mm_the_presence_cases_fall_out_of_the_one_law", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_a_document_whose_integration_anchor_comes_later_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_a_document_whose_integration_anchor_is_absent_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_a_source_descending_from_a_consumed_source_has_no_valid_base", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_a_well_ordered_subset_still_decodes", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_an_independent_lineage_sharing_content_still_derives_its_base", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_checked_encode_refuses_an_absent_integration_anchor", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_checked_encode_refuses_an_integration_anchor_that_comes_later", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_replaying_the_consumed_source_itself_has_no_valid_base", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_the_integration_record_survives_a_document_round_trip", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_merge_base_witness", referrer: "scm_merge_base_witnesses_hold", target: "test.claim.scm_merge_base_witness.scm_mb_the_scene_holds_the_root_relations_the_controls_depend_on", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_read_command_witness", referrer: "scm_read_command_keystone_holds", target: "test.claim.scm_read_command_witness.scm_rc_a_schema_refusal_survives_composition_with_its_cause", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_read_command_witness", referrer: "scm_read_command_keystone_holds", target: "test.claim.scm_read_command_witness.scm_rc_an_absent_repository_is_unavailable_not_an_empty_answer", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_read_command_witness", referrer: "scm_read_command_keystone_holds", target: "test.claim.scm_read_command_witness.scm_rc_an_empty_repository_is_an_answer_not_a_failure", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_read_command_witness", referrer: "scm_read_command_keystone_holds", target: "test.claim.scm_read_command_witness.scm_rc_status_answers_on_a_loadable_repository", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_read_command_witness", referrer: "scm_read_command_keystone_holds", target: "test.claim.scm_read_command_witness.scm_rc_status_refuses_in_the_same_arm_on_the_same_path_as_log", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", target: "test.claim.scm_repository_load_witness.scm_rl_a_damaged_document_is_not_a_protocol_gap", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", target: "test.claim.scm_repository_load_witness.scm_rl_a_frozen_v1_document_is_a_protocol_gap_not_damage", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", target: "test.claim.scm_repository_load_witness.scm_rl_a_parseable_non_repository_is_refused_by_schema", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", target: "test.claim.scm_repository_load_witness.scm_rl_a_truncated_document_is_unparseable", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", target: "test.claim.scm_repository_load_witness.scm_rl_a_v4_document_declaring_a_stage_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", target: "test.claim.scm_repository_load_witness.scm_rl_a_valid_v4_document_reads_with_no_explicit_stage", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", target: "test.claim.scm_repository_load_witness.scm_rl_a_well_formed_document_loads", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_load_witness", referrer: "scm_repository_load_keystone_holds", target: "test.claim.scm_repository_load_witness.scm_rl_an_absent_file_is_unreadable_not_empty", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_save_witness", referrer: "scm_repository_save_keystone_holds", target: "test.claim.scm_repository_save_witness.scm_sv_a_refused_save_leaves_no_file", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_repository_save_witness", referrer: "scm_repository_save_keystone_holds", target: "test.claim.scm_repository_save_witness.scm_sv_an_unrepresentable_repository_is_refused_by_the_codec", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_squash_merge_witness", referrer: "scm_squash_merge_witnesses_hold", target: "test.claim.scm_squash_merge_witness.scm_sm_a_conflict_free_merge_over_an_absent_source_refuses_naming_the_path", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_squash_merge_witness", referrer: "scm_squash_merge_witnesses_hold", target: "test.claim.scm_squash_merge_witness.scm_sm_a_conflicting_path_mints_no_commit", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_squash_merge_witness", referrer: "scm_squash_merge_witnesses_hold", target: "test.claim.scm_squash_merge_witness.scm_sm_a_merge_carries_both_sides_paths", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_squash_merge_witness", referrer: "scm_squash_merge_witnesses_hold", target: "test.claim.scm_squash_merge_witness.scm_sm_merging_the_same_source_twice_is_refused_by_the_first_merges_receipt", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_squash_merge_witness", referrer: "scm_squash_merge_witnesses_hold", target: "test.claim.scm_squash_merge_witness.scm_sm_the_result_parents_the_target_and_records_the_source_consumed", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_squash_merge_witness", referrer: "scm_squash_merge_witnesses_hold", target: "test.claim.scm_squash_merge_witness.scm_sm_the_same_merge_succeeds_once_the_source_is_present", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_a_candidate_over_no_history_stands_with_no_base", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_a_checkout_that_would_discard_staged_work_refuses", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_a_clean_checkout_re_derives_the_candidate_from_the_new_base", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_a_committed_repository_reads_back_clean", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_a_repository_standing_on_its_last_commit_reports_no_difference", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_a_staged_candidate_survives_a_document_round_trip", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_an_absent_candidate_survives_as_absent", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_an_edit_after_a_commit_differs_from_its_base", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_an_empty_file_stages_as_itself", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_an_empty_repository_has_neither_a_candidate_nor_a_base", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_an_unresolvable_base_refuses_rather_than_inheriting_nothing", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_no_override_over_a_commit_inherits_that_commits_corpus", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_no_override_over_a_commit_reads_as_clean_not_empty", occurrences: 1),
-    test_reference_row(module_name: "test.claim.scm_staging_witness", referrer: "scm_staging_witness_suite", target: "test.claim.scm_staging_witness.scm_stg_the_standing_after_moving_the_base_does_not_report_a_revert", occurrences: 1),
     test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_a_socket_planned_rank_maps_no_device_and_cannot_lock_memory", occurrences: 1),
     test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_an_unrun_subject_refuses_normal_serving_and_the_intent_changes_the_answer", occurrences: 1),
     test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_every_planned_rank_maps_the_verbs_device_and_can_lock_memory", occurrences: 1),
@@ -636,9 +441,6 @@ fn test_marked_declaration_keys(typed: ResolvedGraph, source_indices: Map<String
   )
 }
 
-fn module_declares_tests(m: TypedModule) -> Bool {
-  m.items |> any(item => item.declaration_marker == TestMarked)
-}
 
 fn call_semantics_source_target(semantics: CallSemantics?) -> String? {
   match semantics {
@@ -662,20 +464,38 @@ fn call_target_declaration_key(target: CallTargetIdentity) -> String? {
   }
 }
 
-// The declaration key a bare function-value name denotes in this module: its own declaration, or
-// the member of the module it was imported from. A local binding of the same spelling is not a
-// FunctionValueBinding, so it never reaches this lookup.
-fn visible_declaration_keys(m: TypedModule, module_name: String, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
-  let own = m.items |> fold(init: empty_map(), f: (acc, item) =>
+// The declaration key a bare function-value name denotes in this module: its own declaration, the
+// member of a module it was imported from BY NAME, or -- for a no-braces `import m` -- any
+// declaration of that module. A local binding of the same spelling is not a FunctionValueBinding,
+// so it never reaches this lookup. Import-all is expanded against the target module's own
+// declarations rather than from import syntax, because identity reconstructed from the import list
+// alone cannot see a wildcard (found in review of gunbc#11505).
+fn module_declaration_keys(m: TypedModule, module_name: String, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  m.items |> fold(init: empty_map(), f: (acc, item) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: item), concat(module_name, ".", authored_name_at(source_indices: source_indices, node: item)))
-  )
-  module_imports(n: m.module) |> fold(init: own, f: (acc, imp) =>
-    import_specific_names_at(n: imp, source_indices: source_indices) |> fold(init: acc, f: (inner, name) =>
-      map_insert(inner, name, concat(authored_name_at(source_indices: source_indices, node: imp), ".", name))
-    )
   )
 }
 
+fn visible_declaration_keys(m: TypedModule, module_name: String, modules_by_name: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  let own = module_declaration_keys(m: m, module_name: module_name, source_indices: source_indices)
+  module_imports(n: m.module) |> fold(init: own, f: (acc, imp) =>
+    if import_is_all(n: imp) {
+      match map_get(modules_by_name, authored_name_at(source_indices: source_indices, node: imp)) {
+        Present { value: tm } => map_merge(acc, module_declaration_keys(m: tm, module_name: authored_name_at(source_indices: source_indices, node: imp), source_indices: source_indices))
+        Absent => acc
+      }
+    } else {
+      import_specific_names_at(n: imp, source_indices: source_indices) |> fold(init: acc, f: (inner, name) =>
+        map_insert(inner, name, concat(authored_name_at(source_indices: source_indices, node: imp), ".", name))
+      )
+    }
+  )
+}
+
+// A NAME THAT INFERENCE NEVER TYPED is still a reference. v1 resolves and retains a parameter or
+// field default but does not infer it, so a default naming a test arrives as an ExprVar with no
+// binding kind at all. It is read against the same visible-declaration map a typed function value
+// uses; a local of the same spelling is typed LocalValueBinding and never reaches this arm.
 fn function_value_target(texpr: Node, visible: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> String? {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
@@ -688,7 +508,7 @@ fn function_value_target(texpr: Node, visible: Map<String, String>, source_indic
             MatchBoundBinding => none
             ServiceValueBinding => none
           }
-        Absent => none
+        Absent => map_get(visible, authored_name_at(source_indices: source_indices, node: texpr))
       }
     ExprCall { call_semantics: cs, descent_evidence: _ } => call_semantics_source_target(semantics: cs)
     _ => none
@@ -704,27 +524,39 @@ fn test_references_in_expr(module_name: String, referrer: String, texpr: Node, t
   concat(here, texpr.children |> flat_map(child => test_references_in_expr(module_name: module_name, referrer: referrer, texpr: child, test_keys: test_keys, visible: visible, source_indices: source_indices)))
 }
 
-fn module_test_references(m: TypedModule, test_modules: Map<String, Bool>, test_keys: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<TestReferenceOccurrence> {
+// EVERY EXPRESSION-BEARING POSITION OF A DECLARATION, not just its body. A parameter default and a
+// field default are resolved expressions retained on the typed node, so a test taken as a default
+// value is a reference the body walk alone never visits (found in review of gunbc#11505). Walking
+// the item's own params and children covers both, so the subject is the declaration rather than a
+// hand-picked list of the places a reference may hide.
+fn declaration_test_references(item: Node, module_name: String, test_keys: Map<String, Bool>, visible: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> List<TestReferenceOccurrence> {
+  let referrer = authored_name_at(source_indices: source_indices, node: item)
+  let in_body = match item.body {
+    Present { value: body } => test_references_in_expr(module_name: module_name, referrer: referrer, texpr: body, test_keys: test_keys, visible: visible, source_indices: source_indices)
+    Absent => []
+  }
+  let in_params = item.params |> flat_map(p => test_references_in_expr(module_name: module_name, referrer: referrer, texpr: p, test_keys: test_keys, visible: visible, source_indices: source_indices))
+  let in_children = item.children |> flat_map(c => test_references_in_expr(module_name: module_name, referrer: referrer, texpr: c, test_keys: test_keys, visible: visible, source_indices: source_indices))
+  concat(in_body, in_params, in_children)
+}
+
+// A REFERENCE IS TO A DECLARATION, NEVER TO A MODULE. An earlier arm refused any import of a module
+// that declares a test by a module that declares none. That classified a whole module by one member
+// and was wrong in both directions: a serving module importing an ordinary helper out of a mixed
+// module was refused, and an ordinary declaration sitting beside a test fn was exempted (found in
+// review of gunbc#11505). The marker is item-scoped, so the wall is too: what refuses is a
+// reference reaching a TestMarked declaration, including a named import of one.
+fn module_test_references(m: TypedModule, modules_by_name: Map<String, TypedModule>, test_keys: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<TestReferenceOccurrence> {
   let module_name = authored_name_at(source_indices: source_indices, node: m.module)
-  let visible = visible_declaration_keys(m: m, module_name: module_name, source_indices: source_indices)
-  let body_refs = m.items |> flat_map(item =>
-    match item.body {
-      Present { value: body } => test_references_in_expr(module_name: module_name, referrer: authored_name_at(source_indices: source_indices, node: item), texpr: body, test_keys: test_keys, visible: visible, source_indices: source_indices)
-      Absent => []
-    }
-  )
+  let visible = visible_declaration_keys(m: m, module_name: module_name, modules_by_name: modules_by_name, source_indices: source_indices)
+  let decl_refs = m.items |> flat_map(item => declaration_test_references(item: item, module_name: module_name, test_keys: test_keys, visible: visible, source_indices: source_indices))
   let member_refs = module_imports(n: m.module) |> flat_map(imp =>
     import_specific_names_at(n: imp, source_indices: source_indices)
       |> map(name => concat(authored_name_at(source_indices: source_indices, node: imp), ".", name))
       |> filter(key => map_contains_key(test_keys, key))
       |> map(key => TestReferenceOccurrence { module_name: module_name, referrer: test_reference_import_referrer(), target: key, span: imp.span })
   )
-  let module_refs = if map_contains_key(test_modules, module_name) { [] } else {
-    module_imports(n: m.module)
-      |> filter(imp => map_contains_key(test_modules, authored_name_at(source_indices: source_indices, node: imp)))
-      |> map(imp => TestReferenceOccurrence { module_name: module_name, referrer: test_reference_import_referrer(), target: authored_name_at(source_indices: source_indices, node: imp), span: imp.span })
-  }
-  concat(body_refs, member_refs, module_refs)
+  concat(decl_refs, member_refs)
 }
 
 // One key per (module, referrer, target) identity, so admission and the budget are map lookups built
@@ -773,11 +605,9 @@ fn test_reference_budget_diag(row: TestReferenceDebtRow, counts: Map<String, Int
 
 fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
   let test_keys = test_marked_declaration_keys(typed: typed, source_indices: source_indices)
-  let test_modules = typed.modules
-    |> filter(m => module_declares_tests(m: m))
-    |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), true))
+  let modules_by_name = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m))
   let compiled_modules = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m.module.span))
-  let occurrences = typed.modules |> flat_map(m => module_test_references(m: m, test_modules: test_modules, test_keys: test_keys, source_indices: source_indices))
+  let occurrences = typed.modules |> flat_map(m => module_test_references(m: m, modules_by_name: modules_by_name, test_keys: test_keys, source_indices: source_indices))
   let counts = occurrences |> fold(init: empty_map(), f: (acc, o) =>
     map_insert(acc, test_reference_occurrence_key(o: o), observed_test_reference_count(counts: acc, key: test_reference_occurrence_key(o: o)) + 1)
   )
