@@ -420,6 +420,10 @@ fn namespace_graft_residual_decl_units(units: List<Node>) -> List<Node> {
 // record field_decl_block (where-alias / lowered type body). Records stay off
 // this path via the type_decl Named skip plus this Conj carve-out — dropping
 // every Conj refused where-aliases and graft-shape (required-floor 6ec06e9).
+// Flatten keeps Named members that are not parse machinery. A Conj that still
+// carries field_decl_block is the record form (residual reconstruct), not a
+// flatten member. Atom targets must stay — the graft-shape fixture is two Named
+// atoms, and dropping them emptied the body (required-floor f6ea532).
 fn namespace_graft_keep_flattened_member_edge(
   productions: List<GrammarProduction>,
   edge: Edge
@@ -442,22 +446,7 @@ fn namespace_graft_keep_flattened_member_edge(
               Present { value: _ } => false
               Absent => true
             }
-          _ =>
-            fold(
-              node_subtree_nodes(root: edge.target),
-              init: false,
-              f: fn(found, n) {
-                if found {
-                  true
-                } else {
-                  match n.kind {
-                    TypeNode { connective: Arrow } => true
-                    TypeNode { connective: Disj } => true
-                    _ => false
-                  }
-                }
-              }
-            )
+          _ => true
         }
       }
     Positional => false
@@ -477,14 +466,44 @@ fn namespace_graft_flattened_member_edges(
   })
 }
 
+fn namespace_graft_named_list_has_name(edges: List<Edge>, name: Symbol) -> Bool {
+  fold(edges, init: false, f: fn(found, edge) {
+    if found {
+      true
+    } else {
+      match edge.label {
+        Named { name: n } => n == name
+        Positional => false
+      }
+    }
+  })
+}
+
+fn namespace_graft_flatten_minus_decl_names(from_decls: List<Edge>, flattened: List<Edge>) -> List<Edge> {
+  fold(flattened, init: [], f: fn(acc, edge) {
+    match edge.label {
+      Named { name: n } =>
+        if namespace_graft_named_list_has_name(edges: from_decls, name: n) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: edge)
+        }
+      Positional => acc
+    }
+  })
+}
+
 fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   let productions = dag_grammar_root().productions
   let units = namespace_graft_collect_unit_nodes(node: working, productions: productions)
   let from_decls = namespace_graft_named_edges_from_units(units: units)
-  let flattened = namespace_graft_flattened_member_edges(
-    productions: productions,
-    edges: namespace_graft_collect_body_edges_from_node(node: working)
+  let flattened = namespace_graft_flatten_minus_decl_names(
+    from_decls: from_decls,
+    flattened: namespace_graft_flattened_member_edges(
+      productions: productions,
+      edges: namespace_graft_collect_body_edges_from_node(node: working)
+    )
   )
   let combined = concat(from_decls, flattened)
   let residuals = namespace_graft_residual_decl_units(units: units)
