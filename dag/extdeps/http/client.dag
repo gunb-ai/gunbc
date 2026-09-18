@@ -58,15 +58,15 @@ fn http_client_get_argv(url: NonEmptyStr) -> List<String> {
 // caller asking whether anything is THERE: a front door returning 401 or 500 answered. That
 // operation asks only for the status line, within the caller's deadline, and fails only when no
 // HTTP response was received at all -- and WHY is carried as curl's exit code, because "no
-// response" is not one fact: a refused connection (nobody listens, curl 7) and a deadline on an
-// accepted connection (something listens and did not answer, curl 28) are opposite readings for a
-// caller asking whether anything is THERE. The consumer maps the code; the transport reports it.
-// curl_exit_connection_refused / curl_exit_deadline below are the cited codes.
+// response" is not one fact: a failed connect (curl 7) and a deadline (curl 28) are different
+// readings for a caller asking whether anything is THERE, and neither proves absence on its own.
+// The consumer maps the code; the transport reports it. curl_exit_connect_failed /
+// curl_exit_deadline below are the cited codes.
 // curl's exit codes for the two arms a presence reading must tell apart (curl(1) EXIT CODES):
-// 7 "Failed to connect to host" -- the connection was refused or could not be made; 28
-// "Operation timeout" -- the deadline passed. Every other nonzero code is a transport the caller
-// could not read.
-data curl_exit_connection_refused: Int = 7
+// 7 "Failed to connect to host or proxy" -- connect() did not complete, for ANY reason (refused,
+// unreachable, proxy), which is why the row is not named "refused"; 28 "Operation timeout" -- the
+// deadline passed. Every other nonzero code is a transport the caller could not read.
+data curl_exit_connect_failed: Int = 7
 data curl_exit_deadline: Int = 28
 
 service http.Client {

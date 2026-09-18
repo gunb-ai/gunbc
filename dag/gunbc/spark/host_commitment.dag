@@ -17,7 +17,7 @@ import gunbc.spark.cell_role {
   spark_cell_role_assignments,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, fabric_group_wire }
-import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group, pair_serving_committed_hosts }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
@@ -500,12 +500,15 @@ fn spark_admissible_hosts_to(standings: List<SparkHostStanding>, subject: Servin
 // still commits its four hosts, so nothing reads the pause as free capacity and lands a build or a
 // second lane on a host we are holding. gunbc.spark.pair_serving_authority pair_serving_commits_hosts
 // is where that answer lives, and ReleasedToFleet is the only arm that drops the commitment.
+// WHICH hosts is the authority's own answer (pair_serving_committed_hosts): a transaction's states
+// carry the exact population they were authorized over, so a roster that moves mid-transaction
+// changes nothing here until the transaction ends.
 fn spark_claimed_members_under(authorities: List<PairServingGroupAuthority>) -> List<ClaimedServingGroupMember> {
   flat_map(
     filter(authorities, a => pair_serving_commits_hosts(a: a)),
     a => {
       let g = pair_serving_authority_group(a: a)
-      map(fabric_group_hosts(g: g), h => ClaimedServingGroupMember { group: g, host: h })
+      map(pair_serving_committed_hosts(a: a), h => ClaimedServingGroupMember { group: g, host: h })
     })
 }
 

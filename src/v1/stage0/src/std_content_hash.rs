@@ -232,6 +232,14 @@ pub enum ContentHashComparison {
     ContentHashCrossFamilyIncomparable,
 }
 
+pub fn content_hash_equal(left: Rc<ContentHash>, right: Rc<ContentHash>) -> bool {
+    match compare_content_hash(left.clone(), right.clone()) {
+        ContentHashComparison::ContentHashEqual => true,
+        ContentHashComparison::ContentHashDifferent => false,
+        ContentHashComparison::ContentHashCrossFamilyIncomparable => false,
+    }
+}
+
 pub fn compare_content_hash(
     left: Rc<ContentHash>,
     right: Rc<ContentHash>,

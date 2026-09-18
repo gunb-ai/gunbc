@@ -191,6 +191,21 @@ type ContentHashComparison
 // (membership value_eq) match explicitly on the outcome; integrity admission maps
 // CrossFamilyIncomparable to typed refusal causes rather than encoding dispatch locally.
 
+// THE ONE BOOL OVER THE UNION, IN THE REFUSING DIRECTION. compare_content_hash keeps the
+// cross-family arm distinct because it is a decision; this is that decision made once, for the
+// consumers whose question is "may these be treated as the same digest" -- two digests from
+// different families are never the same, so incomparable answers false. A consumer that must
+// tell incomparable from different (an integrity admission that reports which) matches
+// compare_content_hash itself. It was authored in gunbc.machine_intake.subject and then re-minted
+// twice in gunbc.spark (review 67905); one home, here beside the comparison it folds.
+fn content_hash_equal(left: ContentHash, right: ContentHash) -> Bool {
+  match compare_content_hash(left: left, right: right) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
 fn compare_content_hash(left: ContentHash, right: ContentHash) -> ContentHashComparison {
   match left {
     Fnv1a64(left_structural) =>

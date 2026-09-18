@@ -2,7 +2,7 @@ module gunbc.boot_artifact_delivery
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_equal }
 import extdeps.uri { Uri }
 import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -89,7 +89,7 @@ import gunbc.boot_artifact {
   OperatingSystemInstaller,
   intake_artifact_for,
 }
-import gunbc.machine_intake_subject { MachineIntakeSubject, content_hash_equal }
+import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 import gunbc.install_transport_qualification {
   ConfigfsTransportRequirement,

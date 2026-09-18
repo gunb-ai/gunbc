@@ -8,7 +8,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitWorktreeAt }
-import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, serialize_content_hash }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, serialize_content_hash, content_hash_equal }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity }
 import std.effect_grant { Write, NamespacePosition, CodeNameTree }
 import gunbc.harness.harness_seat {
@@ -56,6 +56,8 @@ import std.scoped_authorization { ClaimedBy, CompletedBy, AbortedBy }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.host_commitment { spark_claimed_members_under }
+import product.placement_supply { host_identity_eq }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -198,13 +200,6 @@ fn d0r_w_observe(group: FabricGroup) -> D0Observation {
   D0Observation { group: group, incumbent: IncumbentDidNotAnswer { receipt: "witness: the route did not answer" as NonEmptyStr }, ranks: ranks }
 }
 
-fn d0r_hashes_equal(l: ContentHash, r: ContentHash) -> Bool {
-  match compare_content_hash(left: l, right: r) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
-  }
-}
 
 fn d0r_seat_gate_is(g: SeatAuthorityGate, admits: Bool) -> Bool {
   match g {
@@ -220,7 +215,7 @@ fn d0r_read_is_suspended_at(c: CurrentAuthority, generation: Int, entry_state: C
       g == generation
         && (match a { SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: _, lease: _, cleanup: QuiescentReservedBaseline } => (au as String) == "esc-d0-witness"  _ => false })
         && (match gr { Present { value: _ } => true  Absent => false })
-        && (match es { Present { value: h } => d0r_hashes_equal(l: h, r: entry_state)  Absent => false })
+        && (match es { Present { value: h } => content_hash_equal(left: h, right: entry_state)  Absent => false })
         && pair_serving_successor_may_launch(a: a) == launch
         && pair_serving_may_finish(a: a)
     CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
@@ -263,7 +258,7 @@ test fn the_production_route_settles_and_the_lease_governs_launch_by_real_execut
                   && d0r_read_is_suspended_at(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500), generation: 2, entry_state: es, launch: false)
                   && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500) {
                         CurrentAuthorityRead { authority: expired, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
-                          match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: expired, next: FencedRefusal { group: FabricGroupA, cause: "witness cleanup" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, transaction: "tx-d0" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 2500) {
+                          match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: expired, next: FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "witness cleanup" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, transaction: "tx-d0" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 2500) {
                             AuthorityTransitionAppended { id: _, generation: g3, next: _ } =>
                               g3 == 3 && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2600) {
                                 CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: _, disposition_authority: _ }, head: _, generation: g4, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => g4 == 3
@@ -305,7 +300,7 @@ test fn a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_r
             Absent => false
             Present { value: other_tx } => {
           let pending = SuspensionPendingReconciliation {
-            group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, authorization_binding: admitted.binding,
+            group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-d0" as NonEmptyStr, authorization_binding: admitted.binding,
             lease: d0_held_lease(group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 2),
           }
           (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: keyed, transaction: "tx-operator-keyed" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 999) {
@@ -368,7 +363,7 @@ test fn a_seat_granted_after_the_suspension_landed_is_released_by_real_execution
         Absent => false
         Present { value: admitted } =>
           d0r_seat_gate_is(g: harness_seat_authority_gate(layout: layout, group: FabricGroupA, now: 1000), admits: true)
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, authorization_binding: admitted.binding, lease: d0_held_lease(group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 1) }, transaction: "tx-d0" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-d0" as NonEmptyStr, authorization_binding: admitted.binding, lease: d0_held_lease(group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 1) }, transaction: "tx-d0" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
                   AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1
                   _ => false
                 })
@@ -592,7 +587,7 @@ test fn a_crash_after_the_settling_write_and_before_completion_completes_the_cla
                 })
             && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001) {
                   CurrentAuthorityRead { authority: suspended, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
-                    match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: suspended, next: FencedRefusal { group: FabricGroupA, cause: "witness operator" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, transaction: "tx-operator" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1002) {
+                    match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: suspended, next: FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "witness operator" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, transaction: "tx-operator" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1002) {
                       AuthorityTransitionAppended { id: _, generation: g3, next: _ } => g3 == 3
                       _ => false
                     }
@@ -717,7 +712,7 @@ test fn a_population_change_after_the_claim_aborts_before_a_write_and_fences_aft
                         match pair_serving_authority_for(group: FabricGroupA) {
                           Absent => false
                           Present { value: resting } =>
-                            (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-b" as NonEmptyStr, authorization_binding: b.binding, lease: d0_held_lease(group: FabricGroupA, transaction: "tx-b" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 1) }, transaction: "tx-b" as NonEmptyStr, lifecycle: Present { value: b.binding }, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1002) {
+                            (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-b" as NonEmptyStr, authorization_binding: b.binding, lease: d0_held_lease(group: FabricGroupA, transaction: "tx-b" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 1) }, transaction: "tx-b" as NonEmptyStr, lifecycle: Present { value: b.binding }, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1002) {
                                AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1
                                _ => false
                              })
@@ -727,9 +722,61 @@ test fn a_population_change_after_the_claim_aborts_before_a_write_and_fences_aft
                                     _ => false
                                   })
                               && d0r_claim_is(layout: layout, escalation: "esc-b" as NonEmptyStr, by: "tx-b", completed: true)
+                              && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1005) {
+                                    CurrentAuthorityRead { authority: fenced, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => {
+                                      let committed = map(spark_claimed_members_under(authorities: [fenced]), m => m.host)
+                                      length(committed) == 4
+                                        && all(fabric_group_hosts(g: FabricGroupA), h => any(committed, c => host_identity_eq(a: c, b: h)))
+                                        && !any(committed, c => host_identity_eq(a: c, b: operator_host_srv1))
+                                    }
+                                    _ => false
+                                  })
                         }
                     }
                 })
+      }
+      }
+    })
+  })
+}
+
+// TWO EXECUTORS, ONE PENDING LIFECYCLE. Executor 1 claims and writes the pending state under its
+// lifecycle (the binding names the executor) and dies. Executor 2, reading the same fleet-global
+// claim and the same transaction word, computes another lifecycle, finds no history for it and a
+// pending authority: it is REFUSED -- the claim stays ClaimedBy(tx), the authority stays pending at
+// generation 1 -- and executor 1's rerun still resumes and settles. A foreign executor never
+// terminalizes a claim it did not write under.
+test fn a_second_executor_cannot_abort_a_pending_lifecycle_it_did_not_write_by_real_execution() -> Bool {
+  d0r_with_hash(scenario: fn(h) {
+    d0r_with_remote(scenario: fn(dir, layout) {
+      let e2 = d0r_second_executor_layout(dir: dir)
+      let tx = "tx-d0" as NonEmptyStr
+      let esc = "esc-two-lifecycles" as NonEmptyStr
+      match d0r_w_scoped(successor: h, tx: tx, escalation: esc) {
+        Absent => false
+        Present { value: scoped } =>
+      match d0r_w_admitted(layout: layout, successor: h, tx: tx, escalation: esc, executor: "executor-1" as NonEmptyStr) {
+        Absent => false
+        Present { value: one } =>
+          match pair_serving_authority_for(group: FabricGroupA) {
+            Absent => false
+            Present { value: resting } =>
+              (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: tx, authorization_binding: one.binding, lease: d0_held_lease(group: FabricGroupA, transaction: tx, executor: "executor-1" as NonEmptyStr, generation: 1) }, transaction: tx, lifecycle: Present { value: one.binding }, grant: none, entry_state: none, actor: "executor-1" as NonEmptyStr, at: 1000) {
+                 AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1
+                 _ => false
+               })
+                && d0r_exit_failed(e: d0_dispatch(layout: e2, g: FabricGroupA, group: "group-a", current_hosts: fabric_group_hosts(g: FabricGroupA), scoped: scoped, tx: tx, esc: esc, executor: "executor-2" as NonEmptyStr, at: 1001, now: "2026-09-18T00:00:01Z", current: current_pair_serving_authority(layout: e2, group: FabricGroupA, at: 1001)))
+                && d0r_claim_is(layout: e2, escalation: esc, by: "tx-d0", completed: false)
+                && (match current_pair_serving_authority(layout: e2, group: FabricGroupA, at: 1001) {
+                      CurrentAuthorityRead { authority: SuspensionPendingReconciliation { group: _, transaction: t, authorization_binding: _, lease: _ }, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => g == 1 && (t as String) == "tx-d0"
+                      _ => false
+                    })
+                && (match d0r_w_resumed(layout: layout, successor: h, tx: tx, escalation: esc, executor: "executor-1" as NonEmptyStr) {
+                      Absent => false
+                      Present { value: resumed } =>
+                        (match d0r_settled_eligible(o: d0_transaction(layout: layout, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: resumed, transaction: tx, executor: "executor-1" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { d0r_w_observe(group: g) })) { Present { value: _ } => true  Absent => false })
+                    })
+          }
       }
       }
     })

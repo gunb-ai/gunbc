@@ -60,7 +60,7 @@ fn w_active() -> PairServingGroupAuthority {
 
 fn w_pending(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
-    group: FabricGroupA,
+    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
     transaction: "witness-transaction" as NonEmptyStr,
     authorization_binding: h,
     lease: w_lease(h: h, observed_stale: stale),
@@ -69,7 +69,7 @@ fn w_pending(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
 
 fn w_suspended(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
   SuspendedForAuthorizedSuccessor {
-    group: FabricGroupA,
+    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
     authorization: "witness-authorization" as NonEmptyStr,
     exact_candidate_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
     lease: w_lease(h: h, observed_stale: stale),
@@ -79,7 +79,7 @@ fn w_suspended(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
 
 fn w_fenced() -> PairServingGroupAuthority {
   FencedRefusal {
-    group: FabricGroupA,
+    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA),
     cause: "witness-foreign-occupant" as NonEmptyStr,
     disposition_authority: "witness-operator" as NonEmptyStr,
   }

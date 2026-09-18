@@ -5,7 +5,7 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { second }
-import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_equal }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
@@ -21,6 +21,7 @@ import gunbc.spark.pair_incumbent_identity {
 }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_authority {
+  pair_serving_committed_hosts,
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
   PairRealizationKeyed, PairRealizationUnestablished, pair_serving_apply_admits, pair_serving_successor_may_launch,
 }
@@ -34,6 +35,7 @@ import gunbc.spark.pair_serving_d0 {
   OccupancyReconciliation, DeclaredOccupantObserved, DeclaredOccupantDrifted, OccupancyUnread, reconcile_occupancy,
   D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, D0Cause, D0IncumbentLive, D0IncumbentUnidentified, D0OccupancyUnread, D0DeclarationUnavailable,
   d0_decide, d0_decision_is_eligible, d0_authorized_action, d0_intent_text,
+  HeadCorroboration, HeadUnitQuiet, HeadUnitActive, HeadUnitUnread, head_rank_corroborates_absence,
   D0Population, D0PopulationAgrees, D0PopulationDiffers, d0_population,
   D0AuthorizationStanding, D0AuthorizationResolved, D0AuthorizationUnestablished, resolve_d0_authorization,
   D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
@@ -146,7 +148,7 @@ fn d0w_t_active() -> PairServingGroupAuthority {
 
 fn d0w_t_decide(declared: DeclaredPairRealization, incumbent: IncumbentReading, ranks: List<RankOccupancyReading>, h: ContentHash) -> D0Decision {
   match d0w_t_grant(successor: h) {
-    Absent => D0DecidedFence { next: FencedRefusal { group: FabricGroupA, cause: "witness: the fixture authorization carries no grant" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, cause: D0DeclarationUnavailable { obligation: "witness fixture" as NonEmptyStr } }
+    Absent => D0DecidedFence { next: FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "witness: the fixture authorization carries no grant" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, cause: D0DeclarationUnavailable { obligation: "witness fixture" as NonEmptyStr } }
     Present { value: grant } =>
       d0_decide(
         declared: DeclaredPairRealizationKeyed { declared: declared },
@@ -162,13 +164,6 @@ fn d0w_silent() -> IncumbentReading {
   IncumbentDidNotAnswer { receipt: "the metrics endpoint did not answer within the front-door bound" as NonEmptyStr }
 }
 
-fn d0w_hashes_equal(l: ContentHash, r: ContentHash) -> Bool {
-  match compare_content_hash(left: l, right: r) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
-  }
-}
 
 // ── RECONCILIATION ─────────────────────────────────────────────────────────────────────────────
 
@@ -193,7 +188,7 @@ test fn installed_but_inactive_ranks_are_drifted_and_eligible() -> Bool {
      })
     && (match d0w_t_decide(declared: d0w_t_declared(head: a, worker: b), incumbent: d0w_silent(), ranks: ranks, h: c) {
           D0DecidedSuspend { next: SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: PairRealizationKeyed { key: k }, lease: _, cleanup: QuiescentReservedBaseline }, reconciliation: DeclaredOccupantDrifted { drifted: ds } } =>
-            (au as String) == "auth-w" && length(ds) == 4 && d0w_hashes_equal(l: k, r: c)
+            (au as String) == "auth-w" && length(ds) == 4 && content_hash_equal(left: k, right: c)
           _ => false
         })
   })
@@ -210,10 +205,11 @@ test fn one_rank_with_other_bytes_is_drifted_naming_it() -> Bool {
 }
 
 // RED -- a rank with no pair unit installed is UNREAD, not empty and not drifted: this
-// transaction cannot tell it from a foreign occupant, and says so. It fences.
+// transaction cannot tell it from a foreign occupant, and says so. It fences. (The head is quiet
+// here so absence is corroborated and the worker's unread reading is what governs.)
 test fn an_uninstalled_rank_is_unread_and_fences() -> Bool {
   d0w_with_digests(scenario: fn(a, b, c) {
-    let ranks = d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitNotInstalled, w8: UnitInstalled { active: true, unit_digest: b })
+    let ranks = d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitNotInstalled, w8: UnitInstalled { active: true, unit_digest: b })
     (match reconcile_occupancy(declared: d0w_t_declared(head: a, worker: b), ranks: ranks) {
        OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 1
        _ => false
@@ -277,7 +273,7 @@ test fn a_live_declared_incumbent_restores_the_active_state_unchanged_and_refuse
     let decision = d0w_t_decide(declared: d, incumbent: d0w_t_answered(a: a, b: b, declared_worker: b, img: c), ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c)
     match decision {
       D0DecidedRestore { next: PairServingActive { group: _, exact_realization: PairRealizationUnestablished { obligation: o } }, key: k2 } =>
-        (o as String) == "witness" && d0w_hashes_equal(l: k2, r: d.key) && !d0_decision_is_eligible(d: decision)
+        (o as String) == "witness" && content_hash_equal(left: k2, right: d.key) && !d0_decision_is_eligible(d: decision)
       _ => false
     }
   })
@@ -400,7 +396,7 @@ fn d0w_mine(id: String, h: ContentHash, next: PairServingGroupAuthority) -> Auth
 }
 
 fn d0w_pending(tx: String, h: ContentHash) -> PairServingGroupAuthority {
-  SuspensionPendingReconciliation { group: FabricGroupA, transaction: tx as NonEmptyStr, authorization_binding: h, lease: d0w_t_lease(h: h) }
+  SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: tx as NonEmptyStr, authorization_binding: h, lease: d0w_t_lease(h: h) }
 }
 
 fn d0w_claimed(by: String) -> D0ClaimReading {
@@ -408,7 +404,7 @@ fn d0w_claimed(by: String) -> D0ClaimReading {
 }
 
 fn d0w_suspended(h: ContentHash) -> PairServingGroupAuthority {
-  SuspendedForAuthorizedSuccessor { group: FabricGroupA, authorization: "auth-w" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h }, lease: d0w_t_lease(h: h), cleanup: QuiescentReservedBaseline }
+  SuspendedForAuthorizedSuccessor { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), authorization: "auth-w" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h }, lease: d0w_t_lease(h: h), cleanup: QuiescentReservedBaseline }
 }
 
 // EVERY CRASH POINT HAS ONE DISPOSITION. No claim starts. A claim held by this transaction with no
@@ -421,7 +417,7 @@ test fn the_recovery_join_dispatches_every_crash_point() -> Bool {
     let active = d0w_t_active()
     (match d0_recovery(claim: D0ClaimAbsent, transaction: d0w_t_tx, lifecycle: none, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverStart => true  _ => false })
       && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverFirstWrite { claim_generation: _ } => true  _ => false })
-      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: FencedRefusal { group: FabricGroupA, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }, transitions: [d0w_rec(id: "e1", tx: "tx-other", next: FencedRefusal { group: FabricGroupA, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr })]) { D0RecoverAbort { claim_generation: _, cause: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }, transitions: [d0w_rec(id: "e1", tx: "tx-other", next: FencedRefusal { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr })]) { D0RecoverAbort { claim_generation: _, cause: _ } => true  _ => false })
       && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: d0w_pending(tx: "tx-w", h: c), transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c))]) { D0RecoverResume { claim_generation: _ } => true  _ => false })
       && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: d0w_suspended(h: c), transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_mine(id: "e2", h: c, next: d0w_suspended(h: c))]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
       && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: active, transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_mine(id: "e2", h: c, next: active), d0w_rec(id: "e3", tx: "tx-later", next: d0w_pending(tx: "tx-later", h: c)), d0w_rec(id: "e4", tx: "tx-later", next: active)]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
@@ -488,5 +484,66 @@ test fn the_suspension_d0_writes_admits_launch_and_refuses_apply() -> Bool {
       D0DecidedSuspend { next: n, reconciliation: _ } => pair_serving_successor_may_launch(a: n) && !pair_serving_apply_admits(a: n)
       _ => false
     }
+  })
+}
+
+// ── ABSENCE IS CORROBORATED ON THE HEAD, AND THE FENCE KEEPS THE AUTHORIZED HOSTS ──────────────
+
+// The front door gave no status (a failed connect). With the head's declared unit ACTIVE the group
+// is fenced as an unidentified incumbent -- a listener the route did not reach; with the head
+// unread it is fenced as unread; only with the head's unit inactive (or not installed, which the
+// reconciliation then fences on its own frontier) does the reading proceed to reconciliation.
+test fn a_failed_connect_is_absence_only_when_the_head_unit_is_quiet() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let declared = d0w_t_declared(head: a, worker: b)
+    let no_status = IncumbentDidNotAnswer { receipt: "the front door could not be connected (curl exit 7)" as NonEmptyStr }
+    (match head_rank_corroborates_absence(declared: declared, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })) { HeadUnitActive { host: _ } => true  _ => false })
+      && (match head_rank_corroborates_absence(declared: declared, ranks: [] as List<RankOccupancyReading>) { HeadUnitUnread { cause: _ } => true  _ => false })
+      && (match head_rank_corroborates_absence(declared: declared, ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })) { HeadUnitQuiet => true  _ => false })
+      && (match d0w_t_decide(declared: declared, incumbent: no_status, ranks: d0w_t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c) {
+            D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentUnidentified { cause: _ } } => true
+            _ => false
+          })
+      && (match d0w_t_decide(declared: declared, incumbent: no_status, ranks: d0w_t_ranks(head: UnitOccupancyUnread { refusal: IncarnationUnitNotActive { unit: spark_pair_head_unit_name } }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
+            D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } } => true
+            _ => false
+          })
+      && (match d0w_t_decide(declared: declared, incumbent: no_status, ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
+            D0DecidedSuspend { next: _, reconciliation: DeclaredOccupantDrifted { drifted: ds } } => length(ds) == 4
+            _ => false
+          })
+  })
+}
+
+fn d0w_same_order(hs: List<HostIdentity>, first: HostIdentity, last: HostIdentity) -> Bool {
+  length(hs) == 4
+    && (match get(xs: hs, index: 0) { Present { value: x } => (x as String) == (first as String)  Absent => false })
+    && (match get(xs: hs, index: 3) { Present { value: x } => (x as String) == (last as String)  Absent => false })
+}
+
+// EVERY STATE D0 WRITES CARRIES THE AUTHORIZED HOSTS, AND THE COMMITMENT READS THEM. The subject
+// names [h4, h3, h2, h1] (the group's hosts, reordered); the suspension and the fence D0 decides
+// commit exactly those, in the subject's order, whatever the roster says now -- and a resting
+// Active commits the roster.
+test fn the_states_d0_writes_commit_the_authorized_hosts_not_the_roster() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
+      let subject = d0w_t_subject_over(hs: [h4, h3, h2, h1], successor: c, term: 1000)
+      match d0w_t_grant(successor: c) {
+        Absent => false
+        Present { value: g0 } => {
+          let grant = OperatorGrant { escalation_id: g0.escalation_id, subject: subject, scopes: g0.scopes, purpose: g0.purpose, attempt: g0.attempt, intent_hash: g0.intent_hash, granted_by: g0.granted_by, granted_at: g0.granted_at, expires_at: g0.expires_at }
+          (match d0_decide(declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: b) }, observation: D0Observation { group: FabricGroupA, incumbent: d0w_silent(), ranks: d0w_t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }) }, active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant) {
+             D0DecidedSuspend { next: n, reconciliation: _ } => d0w_same_order(hs: pair_serving_committed_hosts(a: n), first: h4, last: h1)
+             _ => false
+           })
+            && (match d0_decide(declared: DeclaredPairRealizationKeyed { declared: d0w_t_declared(head: a, worker: b) }, observation: D0Observation { group: FabricGroupA, incumbent: IncumbentRouteUnread { cause: "w" as NonEmptyStr }, ranks: [] as List<RankOccupancyReading> }, active: d0w_t_active(), lease: d0w_t_lease(h: c), grant: grant) {
+                  D0DecidedFence { next: n, cause: _ } => d0w_same_order(hs: pair_serving_committed_hosts(a: n), first: h4, last: h1)
+                  _ => false
+                })
+            && length(pair_serving_committed_hosts(a: d0w_t_active())) == 4
+        }
+      }
+    })
   })
 }

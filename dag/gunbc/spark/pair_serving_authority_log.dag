@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_authority_log
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, content_hash_equal }
 import std.temporal_effect {
   HeldLease, HeldLeaseObservedState, LeaseEpoch, held_lease, held_lease_with_observed,
   LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
@@ -21,6 +21,7 @@ import gunbc.fabric_event_log {
 }
 import gunbc.fabric_event_log_host { HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, parse_fabric_group }
+import product.placement_supply { HostIdentity }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, released_baseline_wire, parse_released_baseline }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
@@ -158,15 +159,15 @@ fn authority_members(prefix: String, a: PairServingGroupAuthority) -> List<JsonK
   match a {
     PairServingActive { group: _, exact_realization: r } =>
       concat(head, realization_members(prefix: join([prefix, "realization_"], ""), r: r))
-    SuspensionPendingReconciliation { group: _, transaction: t, authorization_binding: ab, lease: l } =>
-      concat(head, concat([kv(prefix: prefix, key: "transaction", value: t as String), kv(prefix: prefix, key: "authorization_binding", value: serialize_content_hash(hash: ab) as String)], lease_members(prefix: prefix, l: l)))
-    SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: r, lease: l, cleanup: c } =>
+    SuspensionPendingReconciliation { group: _, hosts: hs, transaction: t, authorization_binding: ab, lease: l } =>
+      concat(head, concat([hosts_member(prefix: prefix, hs: hs), kv(prefix: prefix, key: "transaction", value: t as String), kv(prefix: prefix, key: "authorization_binding", value: serialize_content_hash(hash: ab) as String)], lease_members(prefix: prefix, l: l)))
+    SuspendedForAuthorizedSuccessor { group: _, hosts: hs, authorization: au, exact_candidate_realization: r, lease: l, cleanup: c } =>
       concat(head, concat(
-        [kv(prefix: prefix, key: "authorization", value: au as String), kv(prefix: prefix, key: "cleanup", value: released_baseline_wire(s: c) as String)],
+        [hosts_member(prefix: prefix, hs: hs), kv(prefix: prefix, key: "authorization", value: au as String), kv(prefix: prefix, key: "cleanup", value: released_baseline_wire(s: c) as String)],
         concat(realization_members(prefix: join([prefix, "candidate_"], ""), r: r), lease_members(prefix: prefix, l: l)),
       ))
-    FencedRefusal { group: _, cause: c, disposition_authority: d } =>
-      concat(head, [kv(prefix: prefix, key: "cause", value: c as String), kv(prefix: prefix, key: "disposition_authority", value: d as String)])
+    FencedRefusal { group: _, hosts: hs, cause: c, disposition_authority: d } =>
+      concat(head, [hosts_member(prefix: prefix, hs: hs), kv(prefix: prefix, key: "cause", value: c as String), kv(prefix: prefix, key: "disposition_authority", value: d as String)])
     ReleasedToFleet { group: _, release_receipt: r } =>
       concat(head, [kv(prefix: prefix, key: "release_receipt", value: serialize_content_hash(hash: r) as String)])
   }
@@ -174,6 +175,21 @@ fn authority_members(prefix: String, a: PairServingGroupAuthority) -> List<JsonK
 
 // THE ONE EQUALITY. Two authorities are the same state exactly when their canonical members
 // serialize identically; there is no second, hand-written field-by-field comparison to drift.
+// THE FROZEN HOSTS ON THE WIRE: one member, the identities joined by ",", decoded by the same split.
+// An empty member is an empty population, which a transaction never writes; the decode admits it
+// rather than guessing, and the D0 admission refuses a subject with no hosts before anything is
+// written.
+fn hosts_member(prefix: String, hs: List<HostIdentity>) -> JsonKeyValue {
+  kv(prefix: prefix, key: "hosts", value: join(map(hs, h => h as String), ","))
+}
+
+fn hosts_decode(doc: JsonValue, prefix: String) -> List<HostIdentity>? {
+  match member_string(doc: doc, key: join([prefix, "hosts"], "")) {
+    Absent => none
+    Present { value: w } => Present { value: map(filter(split(s: w, delimiter: ","), h => h != ""), h => h as HostIdentity) }
+  }
+}
+
 fn authority_wire(a: PairServingGroupAuthority) -> String {
   serialize_json(v: json_object(members: authority_members(prefix: "", a: a)))
 }
@@ -291,6 +307,9 @@ fn authority_decode(doc: JsonValue, prefix: String) -> PairServingGroupAuthority
                   Present { value: r } => Present { value: PairServingActive { group: g, exact_realization: r } }
                 }
               } else if state == "suspension-pending-reconciliation" {
+                match hosts_decode(doc: doc, prefix: prefix) {
+                  Absent => none
+                  Present { value: hs } =>
                 match member_nonempty(doc: doc, key: join([prefix, "transaction"], "")) {
                   Absent => none
                   Present { value: t } =>
@@ -299,11 +318,15 @@ fn authority_decode(doc: JsonValue, prefix: String) -> PairServingGroupAuthority
                       Present { value: ab } =>
                         match lease_decode(doc: doc, prefix: prefix) {
                           Absent => none
-                          Present { value: l } => Present { value: SuspensionPendingReconciliation { group: g, transaction: t, authorization_binding: ab, lease: l } }
+                          Present { value: l } => Present { value: SuspensionPendingReconciliation { group: g, hosts: hs, transaction: t, authorization_binding: ab, lease: l } }
                         }
                     }
                 }
+                }
               } else if state == "suspended-for-authorized-successor" {
+                match hosts_decode(doc: doc, prefix: prefix) {
+                  Absent => none
+                  Present { value: hs } =>
                 match member_nonempty(doc: doc, key: join([prefix, "authorization"], "")) {
                   Absent => none
                   Present { value: au } =>
@@ -316,19 +339,24 @@ fn authority_decode(doc: JsonValue, prefix: String) -> PairServingGroupAuthority
                             match lease_decode(doc: doc, prefix: prefix) {
                               Absent => none
                               Present { value: l } =>
-                                Present { value: SuspendedForAuthorizedSuccessor { group: g, authorization: au, exact_candidate_realization: r, lease: l, cleanup: c } }
+                                Present { value: SuspendedForAuthorizedSuccessor { group: g, hosts: hs, authorization: au, exact_candidate_realization: r, lease: l, cleanup: c } }
                             }
                         }
                     }
                 }
+                }
               } else if state == "fenced-refusal" {
+                match hosts_decode(doc: doc, prefix: prefix) {
+                  Absent => none
+                  Present { value: hs } =>
                 match member_nonempty(doc: doc, key: join([prefix, "cause"], "")) {
                   Absent => none
                   Present { value: c } =>
                     match member_nonempty(doc: doc, key: join([prefix, "disposition_authority"], "")) {
                       Absent => none
-                      Present { value: d } => Present { value: FencedRefusal { group: g, cause: c, disposition_authority: d } }
+                      Present { value: d } => Present { value: FencedRefusal { group: g, hosts: hs, cause: c, disposition_authority: d } }
                     }
+                }
                 }
               } else if state == "released-to-fleet" {
                 match member_hash(doc: doc, key: join([prefix, "release_receipt"], "")) {
@@ -377,29 +405,20 @@ fn grant_decode(doc: JsonValue) -> GrantDecode {
   }
 }
 
-type EntryStateDecode
-  = EntryStateDecoded { digest: ContentHash? }
-  | EntryStateIncoherent
+// AN OPTIONAL CONTENT-HASH MEMBER, ONCE: absent is a value; present but not a content-hash wire
+// is incoherent. Both the entry-state digest and the lifecycle identity are this member under
+// different keys (review 67905 found them spelled twice).
+type OptionalHashMember
+  = HashMemberDecoded { digest: ContentHash? }
+  | HashMemberIncoherent
 
-fn lifecycle_decode(doc: JsonValue) -> EntryStateDecode {
-  match member_string(doc: doc, key: "lifecycle") {
-    Absent => EntryStateDecoded { digest: none }
+fn optional_hash_member(doc: JsonValue, key: String) -> OptionalHashMember {
+  match member_string(doc: doc, key: key) {
+    Absent => HashMemberDecoded { digest: none }
     Present { value: w } =>
       match parse_content_hash(wire: w) {
-        Absent => EntryStateIncoherent
-        Present { value: h } => EntryStateDecoded { digest: Present { value: h } }
-      }
-  }
-}
-
-// Absent is a value; a member that is present but is not a content-hash wire is incoherent.
-fn entry_state_decode(doc: JsonValue) -> EntryStateDecode {
-  match member_string(doc: doc, key: "entry_state_digest") {
-    Absent => EntryStateDecoded { digest: none }
-    Present { value: w } =>
-      match parse_content_hash(wire: w) {
-        Absent => EntryStateIncoherent
-        Present { value: h } => EntryStateDecoded { digest: Present { value: h } }
+        Absent => HashMemberIncoherent
+        Present { value: h } => HashMemberDecoded { digest: Present { value: h } }
       }
   }
 }
@@ -426,12 +445,12 @@ fn pair_authority_kind_decode(doc: JsonValue, word: String) -> PairAuthorityEven
             match authority_decode(doc: doc, prefix: "next_") {
               Absent => none
               Present { value: n } =>
-                match lifecycle_decode(doc: doc) {
-                  EntryStateIncoherent => none
-                  EntryStateDecoded { digest: lc } =>
-                match entry_state_decode(doc: doc) {
-                  EntryStateIncoherent => none
-                  EntryStateDecoded { digest: d } =>
+                match optional_hash_member(doc: doc, key: "lifecycle") {
+                  HashMemberIncoherent => none
+                  HashMemberDecoded { digest: lc } =>
+                match optional_hash_member(doc: doc, key: "entry_state_digest") {
+                  HashMemberIncoherent => none
+                  HashMemberDecoded { digest: d } =>
                     match grant_decode(doc: doc) {
                       GrantIncoherent => none
                       GrantAbsent => Present { value: AuthorityTransitioned { previous: p, next: n, transaction: t, lifecycle: lc, grant: none, entry_state: d } }
@@ -478,16 +497,9 @@ type AuthorityTransitionRecord {
 // when it carries that lifecycle's identity and the word agrees. A record with no lifecycle (an
 // operator's write) belongs to none.
 fn transitions_by(records: List<AuthorityTransitionRecord>, transaction: NonEmptyStr, lifecycle: ContentHash) -> List<AuthorityTransitionRecord> {
-  filter(records, r => (r.transaction as String) == (transaction as String) && (match r.lifecycle { Absent => false  Present { value: l } => content_hash_eq(a: l, b: lifecycle) }))
+  filter(records, r => (r.transaction as String) == (transaction as String) && (match r.lifecycle { Absent => false  Present { value: l } => content_hash_equal(left: l, right: lifecycle) }))
 }
 
-fn content_hash_eq(a: ContentHash, b: ContentHash) -> Bool {
-  match compare_content_hash(left: a, right: b) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
-  }
-}
 
 // THE GRANT MUST BE THE LEASE'S OWN, AND THE FOLD CHECKS THE GENEALOGY. Co-location in one event
 // is not provenance: a grant whose reference names another transaction, whose fence names
@@ -591,10 +603,10 @@ fn lease_observed_at(grant: LeaseGrant?, at: EpochSecs) -> HeldLeaseObservedStat
 fn authority_with_lease_observed(a: PairServingGroupAuthority, grant: LeaseGrant?, at: EpochSecs) -> PairServingGroupAuthority {
   match a {
     PairServingActive { group: _, exact_realization: _ } => a
-    SuspensionPendingReconciliation { group: g, transaction: t, authorization_binding: ab, lease: l } =>
-      SuspensionPendingReconciliation { group: g, transaction: t, authorization_binding: ab, lease: held_lease_with_observed(lease: l, observed: lease_observed_at(grant: grant, at: at)) }
-    SuspendedForAuthorizedSuccessor { group: g, authorization: au, exact_candidate_realization: r, lease: l, cleanup: c } =>
-      SuspendedForAuthorizedSuccessor { group: g, authorization: au, exact_candidate_realization: r, lease: held_lease_with_observed(lease: l, observed: lease_observed_at(grant: grant, at: at)), cleanup: c }
+    SuspensionPendingReconciliation { group: g, hosts: hs, transaction: t, authorization_binding: ab, lease: l } =>
+      SuspensionPendingReconciliation { group: g, hosts: hs, transaction: t, authorization_binding: ab, lease: held_lease_with_observed(lease: l, observed: lease_observed_at(grant: grant, at: at)) }
+    SuspendedForAuthorizedSuccessor { group: g, hosts: hs, authorization: au, exact_candidate_realization: r, lease: l, cleanup: c } =>
+      SuspendedForAuthorizedSuccessor { group: g, hosts: hs, authorization: au, exact_candidate_realization: r, lease: held_lease_with_observed(lease: l, observed: lease_observed_at(grant: grant, at: at)), cleanup: c }
     FencedRefusal { group: _, cause: _, disposition_authority: _ } => a
     ReleasedToFleet { group: _, release_receipt: _ } => a
   }

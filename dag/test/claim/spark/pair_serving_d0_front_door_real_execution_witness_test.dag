@@ -15,14 +15,16 @@ import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 
 import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
-import gunbc.harness.harness_backend { HarnessBoundedPresence, HarnessResponded, HarnessConnectionRefused, HarnessAcceptedNoAnswer, HarnessTransportUnread, harness_bounded_presence, harness_models_url }
+import gunbc.harness.harness_backend { HarnessBoundedPresence, HarnessResponded, HarnessConnectFailed, HarnessDeadline, HarnessTransportUnread, harness_bounded_presence, harness_models_url }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
-import gunbc.spark.pair_serving_authority { FencedRefusal }
-import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority }
+import gunbc.spark.pair_serving_authority { FencedRefusal, pair_serving_authority_for }
+import gunbc.spark.serving_incarnation_observe { UnitInstalled }
+import gunbc.spark.pair_incumbent_identity { DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, AuthorityTransitionAppended, pair_serving_authority_transition }
 import gunbc.spark.pair_serving_d0 {
-  FrontDoorReading, FrontDoorSilent, FrontDoorAnsweredUnread, FrontDoorUnread, FrontDoorAnswered, observe_front_door, front_door_as_incumbent,
+  FrontDoorReading, FrontDoorNoStatus, FrontDoorAnsweredUnread, FrontDoorUnread, FrontDoorAnswered, observe_front_door, front_door_as_incumbent,
   IncumbentReading, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation, RankOccupancyReading,
-  D0Outcome, D0Settled, D0Decision, D0DecidedFence, D0Cause, D0IncumbentUnidentified, D0OccupancyUnread, d0_transaction,
+  D0Outcome, D0Settled, D0Decision, D0DecidedFence, D0DecidedSuspend, D0Cause, D0IncumbentUnidentified, D0OccupancyUnread, DeclaredOccupantDrifted, d0_transaction,
   AdmittedD0Grant, D0GrantAdmitted, admit_d0_grant, D0Subject, d0_intent_hash, d0_authorized_action,
 }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity }
@@ -136,15 +138,15 @@ test fn an_error_status_is_an_answer_and_no_listener_is_silence_by_real_executio
   })
 }
 
-// The port a killed listener vacated REFUSES the connection: the same transport, the same bound,
-// and the one failure arm that establishes nobody listens.
+// The port a killed listener vacated fails to connect (curl 7): the same transport, the same bound,
+// and the one failure arm under which absence can still be established -- on the head, below.
 test fn a_vacated_port_reads_as_no_response_by_real_execution() -> Bool {
   d0fd_with_temp_dir(scenario: fn(dir) {
     match d0fd_vacated_port(dir: dir) {
       Absent => false
       Present { value: port } =>
-        (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: port))) { HarnessConnectionRefused { url: _ } => true  _ => false })
-          && (match observe_front_door(endpoint: d0fd_endpoint(port: port)) { FrontDoorSilent { receipt: _ } => true  _ => false })
+        (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: port))) { HarnessConnectFailed { url: _, curl_exit: code } => code == 7  _ => false })
+          && (match observe_front_door(endpoint: d0fd_endpoint(port: port)) { FrontDoorNoStatus { receipt: _ } => true  _ => false })
           && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: port))) { Present { value: IncumbentDidNotAnswer { receipt: _ } } => true  _ => false })
     }
   })
@@ -160,7 +162,7 @@ test fn a_listener_that_accepts_and_never_answers_fences_rather_than_reading_as_
       let layout = d0fd_witness_layout(dir: dir)
       d0fd_witness_remote_ready(dir: dir)
         && d0fd_with_listener(dir: dir, status: "hang", scenario: fn(l) {
-          (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))) { HarnessAcceptedNoAnswer { url: _ } => true  _ => false })
+          (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))) { HarnessDeadline { url: _ } => true  _ => false })
             && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port))) { Present { value: IncumbentRouteUnread { cause: _ } } => true  _ => false })
             && (match d0fd_w_admitted(layout: layout, successor: h) {
                   Absent => false
@@ -224,8 +226,10 @@ fn d0fd_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 }
 
 fn d0fd_w_admitted(layout: EventLogLayout, successor: ContentHash) -> AdmittedD0Grant? {
-  let tx = "tx-front-door" as NonEmptyStr
-  let esc = "esc-front-door" as NonEmptyStr
+  d0fd_w_admitted_as(layout: layout, successor: successor, tx: "tx-front-door" as NonEmptyStr, esc: "esc-front-door" as NonEmptyStr)
+}
+
+fn d0fd_w_admitted_as(layout: EventLogLayout, successor: ContentHash, tx: NonEmptyStr, esc: NonEmptyStr) -> AdmittedD0Grant? {
   let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
   match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: tx) {
     Absent => none
@@ -284,6 +288,73 @@ test fn a_front_door_answering_500_fences_the_group_through_the_transaction_by_r
                     })
           }
         })
+    })
+  })
+}
+
+// A FAILED CONNECT IS NOT ABSENCE BY ITSELF. The same vacated port, read inside the transaction:
+// with the head's declared unit ACTIVE the group is fenced (a listener the route did not reach);
+// with every declared unit installed and inactive, absence is corroborated on the head and the
+// group is suspended drifted-eligible.
+fn d0fd_ranks(head_active: Bool) -> List<RankOccupancyReading> {
+  match declared_pair_realization(group: FabricGroupA) {
+    DeclaredPairRealizationUnavailable { group: _, obligation: _ } => [] as List<RankOccupancyReading>
+    DeclaredPairRealizationKeyed { declared: d } =>
+      concat(
+        [RankOccupancyReading { host: d.head.host, unit_name: d.head.unit_name, occupancy: UnitInstalled { active: head_active, unit_digest: d.head.digest } }],
+        map(d.workers, w => RankOccupancyReading { host: w.host, unit_name: w.unit_name, occupancy: UnitInstalled { active: false, unit_digest: w.digest } }),
+      )
+  }
+}
+
+fn d0fd_observe_vacated(port: Int, head_active: Bool, g: FabricGroup) -> D0Observation {
+  D0Observation {
+    group: g,
+    incumbent: match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: port))) {
+      Present { value: r } => r
+      Absent => IncumbentAnsweredUnread { cause: "witness: a vacated port answered" as NonEmptyStr }
+    },
+    ranks: d0fd_ranks(head_active: head_active),
+  }
+}
+
+test fn a_failed_connect_fences_under_an_active_head_unit_and_suspends_only_under_a_quiet_one_by_real_execution() -> Bool {
+  d0fd_with_hash(scenario: fn(h) {
+    d0fd_with_temp_dir(scenario: fn(dir) {
+      let layout = d0fd_witness_layout(dir: dir)
+      d0fd_witness_remote_ready(dir: dir)
+        && (match d0fd_vacated_port(dir: dir) {
+              Absent => false
+              Present { value: port } =>
+                match d0fd_w_admitted(layout: layout, successor: h) {
+                  Absent => false
+                  Present { value: admitted } =>
+                    (match d0_transaction(layout: layout, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z", observe: fn(g) { d0fd_observe_vacated(port: port, head_active: true, g: g) }) {
+                       D0Settled { decision: D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
+                       _ => false
+                     })
+                      && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001) {
+                            CurrentAuthorityRead { authority: fenced, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+                              match pair_serving_authority_for(group: FabricGroupA) {
+                                Absent => false
+                                Present { value: resting } =>
+                                  match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: fenced, next: resting, transaction: "tx-operator-restore" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                                    AuthorityTransitionAppended { id: _, generation: g3, next: _ } => g3 == 3
+                                    _ => false
+                                  }
+                              }
+                            _ => false
+                          })
+                      && (match d0fd_w_admitted_as(layout: layout, successor: h, tx: "tx-front-door-2" as NonEmptyStr, esc: "esc-front-door-2" as NonEmptyStr) {
+                            Absent => false
+                            Present { value: second } =>
+                              match d0_transaction(layout: layout, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: second, transaction: "tx-front-door-2" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { d0fd_observe_vacated(port: port, head_active: false, g: g) }) {
+                                D0Settled { decision: D0DecidedSuspend { next: _, reconciliation: DeclaredOccupantDrifted { drifted: ds } }, generation: g5, receipt_path: _, entry_state: _ } => g5 == 5 && length(ds) == 4
+                                _ => false
+                              }
+                          })
+                }
+            })
     })
   })
 }

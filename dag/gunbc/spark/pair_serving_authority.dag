@@ -4,7 +4,8 @@ import std.types { Bool, NonEmptyStr, List }
 import std.content_hash { ContentHash }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, held_lease_observed_verdict }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire, fabric_group_hosts }
+import product.placement_supply { HostIdentity }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec }
 
 // WHOSE HOSTS WE CLAIM AND WHAT WE MAY DO WITH THEM ARE TWO QUESTIONS WITH ONE ANSWER, AND IT IS HERE.
@@ -47,12 +48,14 @@ type PairServingGroupAuthority
     }
   | SuspensionPendingReconciliation {
       group: FabricGroup
+      hosts: List<HostIdentity>
       transaction: NonEmptyStr
       authorization_binding: ContentHash
       lease: HeldLease
     }
   | SuspendedForAuthorizedSuccessor {
       group: FabricGroup
+      hosts: List<HostIdentity>
       authorization: NonEmptyStr
       exact_candidate_realization: PairRealizationIdentity
       lease: HeldLease
@@ -60,6 +63,7 @@ type PairServingGroupAuthority
     }
   | FencedRefusal {
       group: FabricGroup
+      hosts: List<HostIdentity>
       cause: NonEmptyStr
       disposition_authority: NonEmptyStr
     }
@@ -104,6 +108,24 @@ fn pair_serving_apply_admits(a: PairServingGroupAuthority) -> Bool {
 // because fencing is precisely the state in which we refuse to act while refusing to let go. Only an
 // explicit release to the fleet drops the commitment. Answering `false` under suspension would let
 // another lane take a host mid-transaction with no cleanup and no readback.
+// WHICH HOSTS ARE COMMITTED IS FROZEN WITH THE TRANSACTION. A group's membership is derived from
+// the current lane observations, and a source edit can move a host in or out while the wire still
+// says `group-a`. Active outside a transaction commits the resting population, because that is
+// what it serves; every other state carries the EXACT hosts the transaction was authorized over
+// (a fence keeps the population it fenced), so the commitment a suspended or fenced group holds is
+// the one the operator saw -- not one re-derived from a roster that moved under it, which would
+// release an authorized host and claim one nobody authorized while the fence says otherwise.
+// gunbc.spark.host_commitment consumes this; it is the reservation, not the group word.
+fn pair_serving_committed_hosts(a: PairServingGroupAuthority) -> List<HostIdentity> {
+  match a {
+    PairServingActive { group: g, exact_realization: _ } => fabric_group_hosts(g: g)
+    SuspensionPendingReconciliation { group: _, hosts: hs } => hs
+    SuspendedForAuthorizedSuccessor { group: _, hosts: hs } => hs
+    FencedRefusal { group: _, hosts: hs } => hs
+    ReleasedToFleet { group: _, release_receipt: _ } => [] as List<HostIdentity>
+  }
+}
+
 fn pair_serving_commits_hosts(a: PairServingGroupAuthority) -> Bool {
   match a {
     PairServingActive { group: _, exact_realization: _ } => true

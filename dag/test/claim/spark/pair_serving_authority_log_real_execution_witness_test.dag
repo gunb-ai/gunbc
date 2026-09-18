@@ -3,6 +3,7 @@ module test.claim.spark.pair_serving_authority_log_real_execution
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, FilePath, List }
 import v2.std.optional { Present, Absent }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.git.plumbing
@@ -54,7 +55,7 @@ fn alr_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
 
 fn alr_w_pending(h: ContentHash) -> PairServingGroupAuthority {
   SuspensionPendingReconciliation {
-    group: FabricGroupA, transaction: "tx-real" as NonEmptyStr, authorization_binding: h,
+    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-real" as NonEmptyStr, authorization_binding: h,
     lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
   }
 }
@@ -70,7 +71,7 @@ fn alr_w_grant(admitting: EventId, reference: NonEmptyStr, generation: Int) -> L
 
 fn alr_w_suspended(h: ContentHash) -> PairServingGroupAuthority {
   SuspendedForAuthorizedSuccessor {
-    group: FabricGroupA, authorization: "esc-real" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h },
+    group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), authorization: "esc-real" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h },
     lease: held_lease(epoch: LeaseEpoch { lease_key: "tx-real" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected),
     cleanup: QuiescentReservedBaseline,
   }
