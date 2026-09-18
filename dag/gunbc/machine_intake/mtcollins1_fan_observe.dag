@@ -51,7 +51,7 @@ data mtcollins1_fan_observation_receipt_path: String = "target/mtcollins1-fan-ob
 // all. It is deliberately short: this is a read against a machine in someone's home, and a longer
 // series buys resolution the first question does not need.
 data mtcollins1_fan_observation_rounds: Int = 6
-data mtcollins1_fan_observation_interval_seconds: Int = 10
+data mtcollins1_fan_observation_interval: Second = second(count: 10)
 
 // THIS UNIT'S CONTROLLER IS MEGARAC, SO ITS FAN POLICY AUTHORITY IS THE MEGARAC ONE - which is the
 // module that says, in its own type, that nothing has been read. Pointing at it is not a claim that
@@ -72,7 +72,7 @@ data mtcollins1_fan_policy_authority: FanPolicyAuthority = FanPolicyAuthority {
 // failsafe" - which makes FailsafeHeldAfterPost unreachable from a six-round run and is the honest
 // state. A run that wants that finding needs a longer series, and the window is a parameter so that
 // lengthening the series does not require editing the standing.
-data mtcollins1_fan_transition_window_seconds: Int = 60
+data mtcollins1_fan_transition_window: Second = second(count: 60)
 
 // A CREDENTIAL PATH IS A TYPED OUTCOME AND NOT AN OPTIONAL, the same shape
 // gunbc.fleet_bootstrap_principal_session uses for exactly this fact. Optional would carry two
@@ -129,7 +129,7 @@ fn render_sample_standing(sample: FanPolicySample, elapsed: Second?) -> String {
     catalog_maximum: Absent,
     at_maximum_tolerance: percent(95),
     elapsed_since_post: elapsed,
-    transition_window: second(count: mtcollins1_fan_transition_window_seconds),
+    transition_window: mtcollins1_fan_transition_window,
   )
   join([
     "  standing fan=", sample.endpoint.name as String,
@@ -195,7 +195,7 @@ fn mtcollins1_fan_observe_wet() -> ProcessExit
               username: username,
               password_file: password_file,
               rounds: mtcollins1_fan_observation_rounds,
-              interval_seconds: mtcollins1_fan_observation_interval_seconds,
+              interval: mtcollins1_fan_observation_interval,
             )
           )
       }

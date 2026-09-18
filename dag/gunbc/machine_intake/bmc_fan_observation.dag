@@ -189,6 +189,12 @@ fn observe_fan_round(
 //
 // THE INTERVAL IS A PARAMETER AND THE COUNT IS A PARAMETER, because how long a loop takes to close
 // is exactly what is being measured and a constant here would presuppose the answer.
+//
+// AND THE INTERVAL IS A Second, NOT AN Int NAMED "SECONDS". An earlier revision took
+// interval_seconds: Int and wrapped it into Second two lines later, which is the unit spelled into
+// a name beside a carrier that already exists and is already imported here - DESIGN §3's second
+// name for one concept. std.measure owns the quantity; second_count unwraps it at the one place a
+// transport needs a scalar.
 fn observe_fan_series(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
@@ -339,7 +345,7 @@ fn observe_fan_policy(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   rounds: Int,
-  interval_seconds: Int,
+  interval: Second,
 ) -> FanObservationSeries
   uses net: std.resources.Network, clock: std.resources.Clock
 {
@@ -352,7 +358,7 @@ fn observe_fan_policy(
   if rounds <= 0 {
     return FanObservationRefused { cause: "a series of zero rounds observes nothing and would report success for it" }
   }
-  if interval_seconds <= 0 {
+  if second_count(s: interval) <= 0 {
     return FanObservationRefused { cause: "a non-positive interval is not a time series; the modeled sleep refuses it and so does this entry" }
   }
   let series = observe_fan_series(
@@ -361,11 +367,11 @@ fn observe_fan_policy(
     password_file: password_file,
     rounds_remaining: rounds,
     round_index: 0,
-    interval: second(count: interval_seconds),
+    interval: interval,
     acc: [],
   )
   return if fold(series, init: false, f: (acc, r) => acc || r.chassis_readable) {
-    FanObservationTaken { rounds: series, interval: second(count: interval_seconds) }
+    FanObservationTaken { rounds: series, interval: interval }
   } else {
     FanObservationRefused { cause: "no round could read chassis status, so no sample has a power state beside it and the series establishes nothing" }
   }
