@@ -422,10 +422,14 @@ fn read_format_meta(spreadsheet_id: NonEmptyStr, grid: SpreadsheetRead) -> Forma
             cause: "spreadsheets.get answered with no sheets for the metadata read, so the frozen row count and the conditional rules could not be observed" as NonEmptyStr
           }
         Present { value: meta_sheet } =>
-          FormatObserved {
-            frozen_rows: observed_frozen_rows(sheet: meta_sheet),
-            header: header_format_of(read: grid),
-            rule_count: observed_rule_count(sheet: meta_sheet),
+          match header_format_of(read: grid) {
+            HeaderFormatUnreadable { cause: c } => FormatUnreadable { cause: c }
+            HeaderFormatRead { format: h } =>
+              FormatObserved {
+                frozen_rows: observed_frozen_rows(sheet: meta_sheet),
+                header: h,
+                rule_count: observed_rule_count(sheet: meta_sheet),
+              }
           }
       }
     RestExchangeStatusRefused { status, body } =>
@@ -447,10 +451,25 @@ fn read_format_meta(spreadsheet_id: NonEmptyStr, grid: SpreadsheetRead) -> Forma
   }
 }
 
-fn header_format_of(read: SpreadsheetRead) -> SheetsCellFormatRead? {
+// A GRID RESPONSE WITH NO SHEETS IS NOT A HEADER CARRYING NO FORMAT, and collapsing the two into
+// one `none` is what this type exists to prevent. `SheetsCellFormatRead?` can say "the header cell
+// has no userEnteredFormat" -- a fact about a sheet that was READ -- and it cannot say "the grid
+// response contained no sheet at all", which is the absence of a reading. Folded together, an
+// unreadable grid answers `header_matches` false, answers `format_is_converged` false, and the
+// converge proceeds to issue batchUpdates against a spreadsheet whose grid response it never read:
+// the rostered class absent_reads_identically_to_never_looked, and a widening failure arm where
+// DESIGN §5 requires a refusal.
+type HeaderFormatReading
+  = HeaderFormatRead { format: SheetsCellFormatRead? }
+  | HeaderFormatUnreadable { cause: NonEmptyStr }
+
+fn header_format_of(read: SpreadsheetRead) -> HeaderFormatReading {
   match first_sheet(read: read) {
-    Absent => none
-    Present { value: sheet } => observed_header_format(sheet: sheet)
+    Absent =>
+      HeaderFormatUnreadable {
+        cause: "the grid read answered with no sheets, so the first sheet's header format could not be read and nothing may be adopted from it" as NonEmptyStr
+      }
+    Present { value: sheet } => HeaderFormatRead { format: observed_header_format(sheet: sheet) }
   }
 }
 
