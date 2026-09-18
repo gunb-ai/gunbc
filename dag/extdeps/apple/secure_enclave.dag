@@ -25,26 +25,22 @@ data secure_enclave_signing_suite: SignatureSuite = EcdsaP256Sha256
 data secure_enclave_public_key_encoding: PublicKeyEncoding = Sec1Uncompressed
 data secure_enclave_signature_encoding: SignatureEncoding = P1363FixedWidth
 
-data private_key_never_leaves_note: NonEmptyStr = "A Secure Enclave private key is generated inside the enclave and cannot be exported; its dataRepresentation is a blob only that device's enclave can unwrap. Possession of a signature under the enrolled public key is therefore evidence of possession of that physical device -- not of the person holding it, which is what the access-control policy below adds."
-
+// THE SIGNED INPUT IS HASHED BY CRYPTOKIT, NOT BY THE CALLER. PrivateKey.signature(for: Data) hashes
+// the data with SHA-256 and signs the digest, which is the verify side's expectation under
+// EcdsaP256Sha256. Signing a pre-computed digest through signature(for: digest) and verifying the
+// raw message would double-hash; the model fixes the one spelling.
+//
 // ── Who may use the key ──────────────────────────────────────────────────────────────────────
 // The access-control flags bound to the key at CREATION, not checked by the app at sign time. That
 // is the difference between an enclave-enforced gate and an app-enforced one: with the policy on the
 // key, the enclave itself refuses to sign without a satisfied biometric, so a compromised app process
 // cannot sign silently. An LAContext prompt the app shows before calling an unguarded key is a UI,
 // not a gate.
+//
+// biometryCurrentSet invalidates the key when the enrolled fingers or face change. That is the
+// property wanted here: someone who adds their face to the operator's unlocked phone does not inherit
+// the ability to approve. The cost is that re-enrolling Face ID requires re-enrolling the device.
 type EnclaveKeyAccessPolicy
   = BiometryCurrentSet
   | BiometryAny
   | UserPresence
-
-// biometryCurrentSet invalidates the key when the enrolled fingers or face change. That is the
-// property wanted here: someone who adds their face to the operator's unlocked phone does not inherit
-// the ability to approve. The cost is that re-enrolling Face ID requires re-enrolling the device.
-data approval_key_access_policy_note: NonEmptyStr = "BiometryCurrentSet binds the key to the biometric set enrolled at key creation: adding or removing a face or finger invalidates it. BiometryAny survives such a change; UserPresence also admits the device passcode. For a key whose signature names the operator, BiometryCurrentSet is the only arm under which a changed biometric set cannot silently inherit the operator's authority."
-
-// THE SIGNED INPUT IS HASHED BY CRYPTOKIT, NOT BY THE CALLER. PrivateKey.signature(for: Data) hashes
-// the data with SHA-256 and signs the digest, which is the verify side's expectation under
-// EcdsaP256Sha256. Signing a pre-computed digest through signature(for: digest) and verifying the
-// raw message would double-hash; the model fixes the one spelling.
-data enclave_signs_message_not_digest_note: NonEmptyStr = "The app passes the exact signing-input bytes to signature(for:), which SHA-256-hashes them; the server verifies ECDSA-P256-SHA256 over the same bytes. Neither side pre-hashes."

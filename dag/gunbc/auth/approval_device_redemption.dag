@@ -30,7 +30,7 @@ import gunbc.auth.approval_decision_store {
   approval_capability_expectation, approval_operator_login, json_field_string,
 }
 import gunbc.auth.approval_device_wire {
-  MobilePlatform, MobileIos, MobileAndroid, enrolment_transcript, DeviceRedemptionSigningInput,
+  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
 import gunbc.durable_cas_file_store {
@@ -40,7 +40,7 @@ import gunbc.durable_cas_file_store {
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
-  ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_next, cas_generation_count,
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_next, cas_generation_count,
 }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
@@ -69,16 +69,17 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_vers
 // cannot reach the decision commit with raw claims and a login it chose.
 
 // ── Enrolment ────────────────────────────────────────────────────────────────────────────────
-// The operator's explicit act on one phone, admitted by a ONE-TIME CODE the dashboard issues. The
-// login is DERIVED BY THE SERVER from the code's issuance record, never supplied by the app.
+// The operator's explicit act on one phone, admitted by a ONE-TIME CODE. The login is DERIVED BY
+// THE SERVER, never supplied by the app: issue_enrolment_code writes approval_operator_login into the
+// code's record, and enrolment_admission reads it from there.
 //
-// THE CODE IS NOT OPERATOR-ONLY, AND THIS MODULE DOES NOT CLAIM IT IS. The dashboard binds loopback
-// behind tailscale serve: off-tailnet callers cannot reach the issuing route -- but an on-host
-// process under another POSIX user can reach loopback. So the code's authority is "whoever could
-// reach the dashboard on srv1 within the code's lifetime". Single use and a short lifetime bound it;
-// peer attribution at the serve boundary (approval_identity_attribution_frontier) is what would make
-// it operator-only.
-data enrolment_code_residual_note: NonEmptyStr = "The one-time enrolment code is issued on the dashboard, which binds loopback behind tailscale serve: off-tailnet callers are excluded, on-host POSIX users are not. It is single-use and short-lived; it is not operator-only until peer attribution at the serve boundary lands (approval_identity_attribution_frontier)."
+// ONLY THE OPERATOR CAN ISSUE A CODE (operator ruling: "as long as only I can access it"). Codes are
+// NOT issued over HTTP: the dashboard binds loopback, which every on-host POSIX user can reach, so an
+// HTTP issuer would let a runner or another session enrol its own key and be attributed to the
+// operator. Instead the operator runs the issuing verb over the fleet SSH administrator edge as the
+// owner of approval_device_store_root, whose owner-only records no other principal can write, and
+// the code is printed in the operator's terminal. The operator's SSH key is the attribution; the
+// enrolment POST only CONSUMES a code that already exists.
 
 // THE CODE IS THE IDENTIFIER: the operator types one thing, so a separate id would be a second key
 // for one fact. It also names the enrolment it produces (enrollment_id_for_code), so issuance,
@@ -471,10 +472,7 @@ type DeviceStoreWrite
   | DeviceStoreSlotOccupied
   | DeviceStoreRefused { detail: NonEmptyStr }
 
-fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected_generation: Int, payload: NonEmptyStr) -> DeviceStoreWrite {
-  let expected = if expected_generation == 0 { ExpectSlotAbsent }
-    else if expected_generation == 1 { ExpectSlotGeneration { generation: cas_generation_first() } }
-    else { ExpectSlotGeneration { generation: cas_generation_next(g: cas_generation_first()) } }
+fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> DeviceStoreWrite {
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DeviceStoreRefused { detail: "enrolment code is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
@@ -505,7 +503,7 @@ fn enrolment_members(kind: String, e: VerifiedDeviceEnrollment) -> List<JsonKeyV
     ]
     AndroidAttestedDecisionKey => []
   }
-  concat_lists([
+  concat([
     json_kv(key: "kind", value: json_string(s: kind)),
     json_kv(key: "enrollment_id", value: json_string(s: e.enrollment_id as String)),
     json_kv(key: "operator_login", value: json_string(s: e.operator_login as String)),
@@ -520,7 +518,7 @@ fn enrolment_json(e: VerifiedDeviceEnrollment) -> String {
 }
 
 fn revocation_json(e: VerifiedDeviceEnrollment, revoked_at: Timestamp, reason: NonEmptyStr) -> String {
-  serialize_json(v: json_object(members: concat_lists(enrolment_members(kind: "revoked", e: e), [
+  serialize_json(v: json_object(members: concat(enrolment_members(kind: "revoked", e: e), [
     json_kv(key: "revoked_at", value: json_string(s: revoked_at)),
     json_kv(key: "reason", value: json_string(s: reason as String)),
   ])))
@@ -614,8 +612,11 @@ fn observe_enrollment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> Enrolmen
   if code == "" { EnrolmentCodeUnknown } else { observe_enrolment_slot(root: root, code: code as NonEmptyStr) }
 }
 
-fn issue_enrolment_code(root: NonEmptyStr, challenge: EnrolmentChallenge) -> DeviceStoreWrite {
-  device_store_write(root: root, key: challenge.code, expected_generation: 0, payload: enrolment_code_json(c: challenge) as NonEmptyStr)
+// THE ISSUER TAKES NO LOGIN: the code is issued to approval_operator_login and to nobody a caller
+// could name, so the verb that runs this cannot enrol a device for anyone else.
+fn issue_enrolment_code(root: NonEmptyStr, code: NonEmptyStr, issued_at: Timestamp, expires_at: Timestamp) -> DeviceStoreWrite {
+  let challenge = EnrolmentChallenge { code: code, issued_to_login: approval_operator_login, issued_at: issued_at, expires_at: expires_at }
+  device_store_write(root: root, key: code, expected: ExpectSlotAbsent, payload: enrolment_code_json(c: challenge) as NonEmptyStr)
 }
 
 // THE ONLY ENROLMENT WRITE, and it takes the admitted value: consuming the code and creating the
@@ -624,14 +625,14 @@ fn commit_enrolment(root: NonEmptyStr, admitted: EnrolmentAdmission) -> DeviceSt
   match admitted {
     EnrolmentRefused { cause: _ } => DeviceStoreRefused { detail: "nothing admitted to commit" }
     EnrolmentAdmitted { enrollment: e } =>
-      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected_generation: 1, payload: enrolment_json(e: e) as NonEmptyStr)
+      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected: ExpectSlotGeneration { generation: cas_generation_first() }, payload: enrolment_json(e: e) as NonEmptyStr)
   }
 }
 
 fn revoke_enrolment(root: NonEmptyStr, standing: EnrolmentSlotStanding, revoked_at: Timestamp, reason: NonEmptyStr) -> DeviceStoreWrite {
   match standing {
     EnrolmentCodeConsumed { enrollment: e } =>
-      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected_generation: 2, payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
+      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected: ExpectSlotGeneration { generation: cas_generation_next(g: cas_generation_first()) }, payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
     _ => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
   }
 }
@@ -647,7 +648,7 @@ data approval_apns_auth_key_secret_ref: SecretRef = secret_ref_pin_version(
 
 // ── Frontiers ────────────────────────────────────────────────────────────────────────────────
 data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: a dashboard enrolment-code issuer (issue_enrolment_code); POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire EnrolmentRequest and storing its PushRegistration, consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); reads at approval_device_pending_path and approval_device_request_path_prefix authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; and file_and_notify's APNs publish, authenticated by a cached extdeps.apple.apns apns_provider_token minted from approval_apns_auth_key_secret_ref, rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login",
+  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: an operator verb run over the fleet SSH administrator edge as the owner of approval_device_store_root that calls issue_enrolment_code and prints the code (never an HTTP issuer); POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire EnrolmentRequest and storing its PushRegistration, consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); reads at approval_device_pending_path and approval_device_request_path_prefix authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; and file_and_notify's APNs publish, authenticated by a cached extdeps.apple.apns apns_provider_token minted from approval_apns_auth_key_secret_ref, rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login",
 )
 
 data ios_realization_frontier: DissolutionCondition = unbound_dissolution(

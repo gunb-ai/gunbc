@@ -20,7 +20,7 @@ import gunbc.auth.approval_device_redemption {
   EnrolmentChallenge,
   PushProviderAccepted, PushProviderRefused, PushRegistrationInvalid, PushProviderUnreached, PushProviderUndecodable,
   push_outcome_of_apns,
-  VerifiedDeviceEnrollment, EnrolmentSlotStanding, EnrolmentCodeUnspent, EnrolmentCodeConsumed, EnrolmentRevoked, EnrolmentCodeUnknown,
+  VerifiedDeviceEnrollment, EnrolmentSlotStanding, EnrolmentCodeUnspent, EnrolmentCodeConsumed, EnrolmentRevoked, EnrolmentCodeUnknown, EnrolmentSlotUnreadable,
   EnrolmentAdmitted, EnrolmentRefused, EnrolmentCodeAlreadyUsed, EnrolmentCodeExpired, EnrolmentAttestationForOtherBytes,
   EnrolmentAttestationRefused, EnrolmentAndroidUnrealized, enrolment_admission,
   DeviceAdmission, DeviceAdmitted, DeviceNotAdmitted,
