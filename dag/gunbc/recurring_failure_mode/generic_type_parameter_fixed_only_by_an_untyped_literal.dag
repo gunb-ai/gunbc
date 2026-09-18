@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.generic_type_parameter_fixed_only_by_an_untyped_literal
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data generic_type_parameter_fixed_only_by_an_untyped_literal: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_type_parameter_fixed_only_by_an_untyped_literal" as NonEmptyStr,
+
+  receipts: [
+    "**a generic's type parameter is constrained by nothing but an untyped literal, so the declaration typechecks and the evaluator cannot resolve what it must return** (INVALID STATE: a function declares `fn f<T>(items: List<T>) -> T?` and its body folds with `none` as the initial accumulator.",
+
+    "`none` carries no `T`, the fold's accumulator type is therefore an unfixed Optional, and no argument, annotation or return position at the CALL SITE closes it either -- the caller binds the result straight into a field whose own type is the thing being derived.",
+
+    "The declaration is well-formed read alone, and every occurrence of `T` is consistent with every other, which is precisely why acceptance succeeds: consistency is not determination.",
+
+    "HARM: the program is `Accepted` and dies at EVALUATION with an error type cascade, so the failure arrives at the point of USE rather than the point of authorship, and it arrives with a diagnostic naming a resolution the reader never wrote. It is loud, and what is silent is the class -- an author reading a green typecheck has been told the shape is settled when only its consistency was checked.",
+
+    "**DISTINCT FROM ITS NEIGHBOURS, and the boundary is determination versus agreement.** [[declared_return_disagrees_with_the_generic_it_returns]] is a declaration and a body that each name a DIFFERENT type; here they name the SAME type and nothing says which one it is. [[generic_alias_callable_not_instantiated]] is an alias reached without instantiation at all; here the instantiation is attempted and has no ground to stand on. [[direct_generic_application_admits_a_distinct_phantom_argument]] admits a WRONG argument; here no argument is admitted or rejected because none is supplied.",
+
+    "**SPECIMEN (zesty-crane-846, gunbc#11581, 2026-09-18).** `gunbc.review_sheet_format_actuator` carried one generic `first_of<T>(items: List<T>) -> T?` serving four element types on the Sheets readback path. It passed the required floor and every witness in gunbc#11485, and failed the FIRST execution against a live spreadsheet. THE REPAIR IS TO SAY THE TYPE: four monomorphic folds -- `first_grid`, `first_row`, `first_cell`, `first_sheet_of` -- each naming its own element and return type, which is what the evaluator needed and what the generic had no way to supply.",
+
+    "RUNG FOUND AT: 1, mitigatable -- the evaluator refuses loudly and the run stops. CEILING: 3, structurally guaranteed, and the reason it is not 4 is that the shape stays authorable: the invalid state is a well-formed generic declaration, so it cannot lose its constructor, but an undetermined type parameter is DECIDABLE from the same resolution the typechecker already performs. NEXT TRIGGER: a refusal at acceptance when a type parameter's only occurrence in a function body is an accumulator seeded by a literal that fixes no type, located at the declaration rather than at the use.",
+
+    "**THE DETECTOR GAP IS THE GENERAL FACT and it is why this row is filed rather than a one-line fix logged.** No witness could have caught it: a witness over this function supplies its own inputs at the boundary it discriminates, and a supplied `List<SheetsGridDataRead>` FIXES `T` at the call site, which is exactly the determination the production path lacks. So the witness exercises a resolvable instantiation of a function whose production instantiation is unresolvable, passes honestly, and establishes nothing about the route -- the pairing obligation of DESIGN's witness rule reaching for a boundary that acceptance never closed."
+  ],
+
+  evidence: [],
+}

@@ -603,13 +603,13 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
-    identity: cite(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge"),
+    identity: cite(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_ensure"),
     subject: SparkHostGrants,
     phases: protocol_phases(false, false, false, false, false, false, false),
-    current_authority: cite(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge"),
+    current_authority: cite(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_ensure"),
     persistent_host_effect: ReachesPersistentHostMutation,
     disposition: BindToAuthority { target: fleet_plan() },
-    first_consumer: cite(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge_with_supplied_token"),
+    first_consumer: cite(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
   ),
   census_row(
     identity: cite(module_path: "gunbc.spark.pair_serving_apply", decl_name: "spark_pair_serving_apply_wet"),

@@ -34,7 +34,6 @@ pub struct ResolvedFuncSig {
     pub params: Rc<Vec<Rc<Node>>>,
     pub resolved_formals: Rc<ResolvedFormals>,
     pub inferred: Rc<Node>,
-    pub is_async: bool,
     pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     pub variant_provenance:
         Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
@@ -644,7 +643,6 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
         params: dsig.params.clone(),
         resolved_formals: Rc::new(ResolvedFormals::LocalFormalsAwaitingModuleContext {}),
         inferred: dsig.inferred.clone().clone().unwrap(),
-        is_async: dsig.is_async.clone(),
         output_provenance: dsig.output_provenance.clone(),
         variant_provenance: dsig.variant_provenance.clone(),
     })
