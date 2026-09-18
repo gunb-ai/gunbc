@@ -63,6 +63,7 @@ type CollectivePrimitiveAttribution
 
 type HostRegisteredIbFallbackStanding
   = HostRegisteredIbFallbackUnread { because: NonEmptyStr }
+  | HostRegisteredIbFallbackCitedOnServingRuntime { nccl: NcclLibraryVersion }
   | HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
       measured_with: NcclLibraryVersion,
       serving_revisions_not_censused: ServingNcclIdentity,
@@ -368,19 +369,6 @@ fn sample_stricter_latency(s: CollectiveSample) -> Nanosecond {
   }
 }
 
-fn size_semantics_eq(a: NcclTestsSizeSemantics, b: NcclTestsSizeSemantics) -> Bool {
-  match a {
-    EachRankContributesTheSizeColumn => match b {
-      EachRankContributesTheSizeColumn => true
-      TotalBufferSplitPerPeer { rank_count: _ } => false
-    }
-    TotalBufferSplitPerPeer { rank_count: n } => match b {
-      EachRankContributesTheSizeColumn => false
-      TotalBufferSplitPerPeer { rank_count: m } => n == m
-    }
-  }
-}
-
 fn qualify_collective_latency(
   ceiling: Nanosecond,
   at: ByteSize,
@@ -400,7 +388,7 @@ fn qualify_collective_latency(
       primitive_attribution: _,
       window: _,
     } =>
-      if size_semantics_eq(a: required_semantics, b: sem) {
+      if required_semantics == sem {
         match sample_at_message_bytes(samples: samples, want: at) {
           Absent => CollectiveLatencyUnread {
             ceiling: ceiling,
@@ -443,7 +431,7 @@ fn qualify_collective_bandwidth(
       primitive_attribution: _,
       window: _,
     } =>
-      if size_semantics_eq(a: required_semantics, b: sem) {
+      if required_semantics == sem {
         match sample_at_message_bytes(samples: samples, want: at) {
           Absent => CollectiveBandwidthUnread {
             floor: floor,
@@ -621,14 +609,10 @@ fn first_degraded_rank(
   }
 }
 
-fn host_eq(a: HostIdentity, b: HostIdentity) -> Bool {
-  (a == b)
-}
-
 fn rank_named(ranks: List<RankCollectiveReading>, want: HostIdentity) -> RankCollectiveReading? {
   match ranks.first() {
     Absent => none
-    Present { value: r } => if host_eq(a: r.rank, b: want) {
+    Present { value: r } => if r.rank == want {
       Present { value: r }
     } else {
       rank_named(ranks: ranks.skip(n: 1), want: want)
@@ -895,10 +879,11 @@ fn primitive_refusal(a: CollectivePrimitiveAttribution) -> List<QualificationRef
 }
 fn ib_fallback_refusal(s: HostRegisteredIbFallbackStanding) -> List<QualificationRefusal> {
   match s {
+    HostRegisteredIbFallbackCitedOnServingRuntime { nccl: _ } => []
     HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
       measured_with: _,
       serving_revisions_not_censused: _,
-    } => []
+    } => [HostRegisteredIbFallbackDidNotHold { standing: s }]
     HostRegisteredIbFallbackUnread { because: _ } =>
       [HostRegisteredIbFallbackDidNotHold { standing: s }]
   }

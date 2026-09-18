@@ -36,7 +36,7 @@ import product.fabric.node_qualification {
   CollectivePrimitiveAttributionUnestablished, CollectivePrimitiveMeasuredOnDifferentRuntime,
   CollectivePrimitiveSameRuntime,
   HostRegisteredIbFallbackUnread, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
-  HostRegisteredIbFallbackStanding,
+  HostRegisteredIbFallbackCitedOnServingRuntime, HostRegisteredIbFallbackStanding,
   NcclLibraryVersion, ServingNcclIdentity,
   AcceleratorCountAgrees, AcceleratorCountFallsShort, AcceleratorCountUnread,
   RailLinkModeAgrees, RailLinkModeDiffers, RailLinkModeUnread,
@@ -156,6 +156,12 @@ fn fx_all_to_all_unread() -> CollectiveCurveReading {
 }
 
 fn fx_ib_ok() -> HostRegisteredIbFallbackStanding {
+  HostRegisteredIbFallbackCitedOnServingRuntime {
+    nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+  }
+}
+
+fn fx_ib_measured_only() -> HostRegisteredIbFallbackStanding {
   HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
     measured_with: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
     serving_revisions_not_censused: ServingNcclIdentity {
@@ -530,6 +536,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
                 serving_revisions_not_censused: _,
               } => fb.major == 2 && fb.minor == 31 && fb.patch == 2
               HostRegisteredIbFallbackUnread { because: _ } => false
+              HostRegisteredIbFallbackCitedOnServingRuntime { nccl: _ } => false
             }
       }
   }
@@ -672,6 +679,33 @@ test fn all_to_all_is_not_scored_on_all_reduce_size_semantics() -> Bool {
     CollectiveLatencyUnread { ceiling: _, because: _ } => true
     CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
     CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
+  }
+}
+
+test fn ib_cited_only_on_nccl_tests_does_not_qualify() -> Bool {
+  let measured = fx_measured_all_agree()
+  let ib_gap = MeasuredNodeDelivery {
+    host: measured.host,
+    group: CollectiveGroupMeasured {
+      collective: measured.group.collective,
+      all_to_all: measured.group.all_to_all,
+      host_registered_ib_fallback: fx_ib_measured_only(),
+      ranks: measured.group.ranks,
+    },
+  }
+  match admit_qualified_node(
+    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: ib_gap),
+  ) {
+    NodeQualified { receipt: _ } => false
+    NodeNotQualified { receipt: r, refusals: refusals } =>
+      match r.group.host_registered_ib_fallback {
+        HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
+          measured_with: _,
+          serving_revisions_not_censused: _,
+        } => refusals.length() > 0
+        HostRegisteredIbFallbackUnread { because: _ } => false
+        HostRegisteredIbFallbackCitedOnServingRuntime { nccl: _ } => false
+      }
   }
 }
 
