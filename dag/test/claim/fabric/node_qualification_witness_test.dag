@@ -72,6 +72,7 @@ fn fx_advertised() -> AdvertisedNodeOffer {
       latency_message_bytes: byte_size(count: 8),
       bandwidth_floor: bandwidth(count: 100),
       bandwidth_message_bytes: byte_size(count: 8),
+      rank_symmetry_max_latency_multiple: 2,
     },
   }
 }
@@ -353,7 +354,7 @@ test fn a_slow_rank_listed_first_is_still_degraded() -> Bool {
   match qualify_rank_symmetry(ranks: [
     fx_rank(id: "rank-slow", sample: fx_slow_sample()),
     fx_rank(id: "rank-fast", sample: fx_sample()),
-  ]) {
+  ], max_latency_multiple: 2) {
     RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
     RankSymmetryAgrees { rank_count: _ } => false
     RankSymmetryUnread { because: _ } => false

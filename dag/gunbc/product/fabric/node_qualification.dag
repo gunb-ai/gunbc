@@ -171,6 +171,7 @@ type CollectiveGroupAdvertised {
   latency_message_bytes: ByteSize
   bandwidth_floor: Bandwidth
   bandwidth_message_bytes: ByteSize
+  rank_symmetry_max_latency_multiple: Nat
 }
 
 type CollectiveGroupMeasured {
@@ -491,22 +492,34 @@ fn first_rank_without_latency(ranks: List<RankCollectiveReading>) -> HostIdentit
 
 fn first_degraded_rank(
   floor: Nat,
+  max_latency_multiple: Nat,
   ranks: List<RankCollectiveReading>,
 ) -> HostIdentity? {
   match ranks.first() {
     Absent => none
     Present { value: r } => match rank_first_latency(curve: r.curve) {
-      Absent => first_degraded_rank(floor: floor, ranks: ranks.skip(n: 1))
-      Present { value: lat } => if lat > (floor * 2) {
+      Absent => first_degraded_rank(
+        floor: floor,
+        max_latency_multiple: max_latency_multiple,
+        ranks: ranks.skip(n: 1),
+      )
+      Present { value: lat } => if lat > (floor * max_latency_multiple) {
         Present { value: r.rank }
       } else {
-        first_degraded_rank(floor: floor, ranks: ranks.skip(n: 1))
+        first_degraded_rank(
+          floor: floor,
+          max_latency_multiple: max_latency_multiple,
+          ranks: ranks.skip(n: 1),
+        )
       }
     }
   }
 }
 
-fn qualify_rank_symmetry(ranks: List<RankCollectiveReading>) -> RankSymmetryStanding {
+fn qualify_rank_symmetry(
+  ranks: List<RankCollectiveReading>,
+  max_latency_multiple: Nat,
+) -> RankSymmetryStanding {
   if ranks.length() == 0 {
     RankSymmetryUnread {
       because: "no per-rank collective curve was supplied; a missing rank is unread, not symmetric" as NonEmptyStr,
@@ -527,7 +540,11 @@ fn qualify_rank_symmetry(ranks: List<RankCollectiveReading>) -> RankSymmetryStan
           Absent => RankSymmetryUnread {
             because: "no rank produced a latency sample" as NonEmptyStr,
           }
-          Present { value: floor } => match first_degraded_rank(floor: floor, ranks: ranks) {
+          Present { value: floor } => match first_degraded_rank(
+            floor: floor,
+            max_latency_multiple: max_latency_multiple,
+            ranks: ranks,
+          ) {
             Present { value: degraded } => RankSymmetryFallsShort { degraded: degraded }
             Absent => RankSymmetryAgrees { rank_count: ranks.length() }
           }
@@ -603,7 +620,10 @@ fn qualify_collective_group(
       at: advertised.bandwidth_message_bytes,
       reading: measured.collective,
     ),
-    rank_symmetry: qualify_rank_symmetry(ranks: measured.ranks),
+    rank_symmetry: qualify_rank_symmetry(
+      ranks: measured.ranks,
+      max_latency_multiple: advertised.rank_symmetry_max_latency_multiple,
+    ),
   }
 }
 
