@@ -96,6 +96,8 @@ import gunbc.roadmap_model {
   acceptance_history_extends_prior,
   acceptance_history_chain_digest,
   project_live_acceptance_receipts,
+  LiveAcceptanceReceiptsReplayed,
+  LiveAcceptanceReceiptsReplayRefused,
   drop_first_acceptance_event,
   roadmap_parent_ids,
   is_top_level,
@@ -414,25 +416,34 @@ test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool 
 
 test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
   let prior = live_acceptance_event_history()
-  let receipt = first(
-    project_live_acceptance_receipts(history: prior)
-      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
-  )
-  let reopened = concat(prior, [
-    AcceptanceRevoked {
-      exact_prior_receipt: receipt,
-      disposition: AcceptanceNodeReopensActiveFrontier {},
-      reason: "fixture reopen revocation still returns the node to the active frontier" as NonEmptyStr,
-      revoked_by: "operator" as NonEmptyStr,
-      revoked_on: "2026-09-13" as NonEmptyStr,
-    },
-  ])
-  let accepted = declared_roadmap_nodes()
-    |> filter(n => node_accepted(receipts: project_live_acceptance_receipts(history: reopened), rn: n))
-    |> map(n => n.node)
-  let withheld = node_ids_held_off_active_frontier(history: reopened)
-  active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
-    |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
+  match project_live_acceptance_receipts(history: prior) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } => {
+      let receipt = first(
+        live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+      )
+      let reopened = concat(prior, [
+        AcceptanceRevoked {
+          exact_prior_receipt: receipt,
+          disposition: AcceptanceNodeReopensActiveFrontier {},
+          reason: "fixture reopen revocation still returns the node to the active frontier" as NonEmptyStr,
+          revoked_by: "operator" as NonEmptyStr,
+          revoked_on: "2026-09-13" as NonEmptyStr,
+        },
+      ])
+      match project_live_acceptance_receipts(history: reopened) {
+        LiveAcceptanceReceiptsReplayRefused => false
+        LiveAcceptanceReceiptsReplayed { live: reopened_live } => {
+          let accepted = declared_roadmap_nodes()
+            |> filter(n => node_accepted(receipts: reopened_live, rn: n))
+            |> map(n => n.node)
+          let withheld = node_ids_held_off_active_frontier(history: reopened)
+          active_roadmap_nodes_for_accepted(accepted: accepted, withheld: withheld)
+            |> any(n => n.node == tnid(s: "namespace-occurrence-transport"))
+        }
+      }
+    }
+  }
 }
 
 test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> Bool {
@@ -460,9 +471,11 @@ test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> B
 test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
   let victims = declared_node(id: "namespace-occurrence-transport")
   let prior = live_acceptance_event_history()
+  match project_live_acceptance_receipts(history: prior) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } => {
   let receipt = first(
-    project_live_acceptance_receipts(history: prior)
-      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+    live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
   )
   count(victims) == 1
     && all(victims, n =>
@@ -492,6 +505,8 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
       RemainsSupersededRevocationOnUndeclaredNode { node: _ } => false
       RemainsSupersededRevocationOnAmbiguousDeclaredNode { node: _ } => false
     }
+    }
+  }
 }
 
 test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bool {
@@ -648,9 +663,11 @@ test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
 
 test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
   let prior = live_acceptance_event_history()
+  match project_live_acceptance_receipts(history: prior) {
+    LiveAcceptanceReceiptsReplayRefused => false
+    LiveAcceptanceReceiptsReplayed { live: live } => {
   let receipt = first(
-    project_live_acceptance_receipts(history: prior)
-      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+    live |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
   )
   let current = concat(prior, [
     AcceptanceRevoked {
@@ -666,6 +683,8 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
       history: current,
       prior_history: prior,
     )
+    }
+  }
 }
 
 test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
