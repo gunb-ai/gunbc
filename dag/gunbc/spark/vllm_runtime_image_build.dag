@@ -297,6 +297,19 @@ fn glm53_derived_context_dir() -> NonEmptyStr {
   join([vllm_build_root() as String, "/glm53-derived"], "") as NonEmptyStr
 }
 
+// feature:container-recipe-emission — dissolve-on: when the substrate carries a modeled CONTAINER
+// IMAGE RECIPE -- an ordered list of typed build steps (base reference, staged inputs, an install
+// operation over declared artifacts) with a Dockerfile emitter bound to it as one realization the
+// way extdeps.docker.cli now binds two verbs to one DockerCreateSpec -- so this body becomes a
+// projection instead of `join` over "FROM ", "COPY " and "RUN ". extdeps.docker.cli DockerBuildSpec
+// already models the INVOCATION (tag, context, dockerfile path, target, platform, build args); what
+// has no carrier is the recipe's own CONTENT, which is why it is spelled here.
+//
+// THIS MARKER ADMITS NOTHING. DESIGN section 5: a dissolution condition says how admitted debt ends
+// and does not authorize creating it, and approval is external to the diff. No approval row is
+// claimed. The trigger names the CAPABILITY rather than an artifact, because rewriting this one
+// function would satisfy an artifact-shaped trigger while the class stayed alive.
+//
 // THE DERIVED DOCKERFILE, mirroring the observed hand build layer for layer: the wheels staged at
 // /tmp/gunbc-wheels, then one pip install --no-deps --force-reinstall over all three. The stage is
 // named so the generic DockerBuildSpec's --target has a stage to select.
@@ -310,6 +323,14 @@ fn glm53_derived_dockerfile(base_tag: NonEmptyStr) -> String {
   ], "")
 }
 
+// feature:remote-shell-body-emission — dissolve-on: the same bounded-remote-operation-sequence
+// capability named at gunbc.spark.native_serving_apply's stage scripts, which is also the capability
+// gunbc.spark.pair_serving_apply needs and does not yet declare. This body is the fetch-and-verify
+// half of it: a per-wheel loop, a pipe into `sha256sum -c -`, and `set -e` as the failure discipline,
+// none of which has a carrier to be projected from. It is ONE class across three modules under one
+// trigger, not three separate debts -- and modeling it in any one of them alone would fork the
+// others on how a remote step is expressed.
+//
 // THE PREPARE SCRIPT: fetch the three digest-pinned wheels from the nightly release and verify
 // each against its declared sha256 BEFORE anything builds from them. A digest mismatch stops the
 // leg with sha256sum's own failure line; nothing falls back to an unverified wheel.

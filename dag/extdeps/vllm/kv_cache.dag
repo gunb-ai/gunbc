@@ -172,28 +172,24 @@ fn vllm_resolved_kv_format_is_observed(f: VllmResolvedKvFormat) -> Bool {
 // is the requirement THIS kernel asserts on THIS build; which builds enforce it is a per-build
 // observation, and a build with no observation is unanswered, not admitted. The per-build join
 // for the GLM native arm lives at gunbc.spark.serving_arm glm_native_kv_cache_dtype_admission.
+// THE RESOLUTION THAT MAKES THIS LAW BIND: on an MLA checkpoint the fp8 spellings are not
+// alternatives to fp8_ds_mla, they are NAMES for it -- the engine derives the MLA storage format
+// from the architecture and the wire value never named it. So a pe_dim-incompatible model cannot
+// escape this law by spelling the request differently; the only admitted arms are a non-fp8 dtype
+// or a different (backend, build) whose kernel does not assert it.
+//
+// THAT WAS CARRIED AS A TYPE AND IS NOW CARRIED HERE, which is where it belonged. An earlier
+// revision declared VllmFp8MlaResolution with two arms and a function returning an English sentence
+// per arm. Nothing imported it, nothing called it, and no witness exercised it: a declaration with
+// no consumer is DESIGN section 3c's redundant work in its purest form, and a function whose body
+// is prose is section 4c's rule inverted -- commentary in a String, where a reader cannot tell
+// intent from program data. The reasoning is the whole value and the annotation channel is its
+// home; the law below is what actually binds, and it has a consumer
+// (test.claim.spark.serving_arm_kv_dtype_witness_test).
 data vllm_fp8_ds_mla_required_pe_dim: Nat = 64
 
 fn vllm_fp8_ds_mla_kernel_admits_pe_dim(pe_dim: Nat) -> Bool {
   pe_dim == vllm_fp8_ds_mla_required_pe_dim
-}
-
-// THE RESOLUTION THAT MAKES THE LAW BIND: on an MLA checkpoint the fp8 spellings are not
-// alternatives to fp8_ds_mla, they are NAMES for it -- the engine derives the MLA storage format
-// from the architecture and the wire value never named it. So a pe_dim-incompatible model cannot
-// escape the law by spelling the request differently; the only admitted arms are a non-fp8 dtype
-// or a different (backend, build) whose kernel does not assert it.
-type VllmFp8MlaResolution
-  = Fp8SpellingResolvesToFp8DsMla
-  | Fp8ResolutionUnobserved
-
-fn vllm_fp8_mla_resolution(r: VllmFp8MlaResolution) -> NonEmptyStr {
-  match r {
-    Fp8SpellingResolvesToFp8DsMla =>
-      "auto and fp8 both resolve to fp8_ds_mla on an MLA checkpoint; the pe_dim law binds every fp8 spelling" as NonEmptyStr
-    Fp8ResolutionUnobserved =>
-      "no resolution observed; do not assume a spelling escapes the fp8_ds_mla kernel" as NonEmptyStr
-  }
 }
 
 // ── CONTEXT CAP AND POOL ARE MEASURED PAIRS, NOT A CURVE ───────────────────────────────────────

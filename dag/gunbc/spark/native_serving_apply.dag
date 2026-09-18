@@ -112,6 +112,33 @@ data spark_native_apply_receipt_path: String = "target/spark-native-apply-receip
 
 data spark_native_apply_attempt_raw: String = "spark-native-apply"
 
+// feature:remote-shell-body-emission — dissolve-on: when the substrate can express a BOUNDED
+// REMOTE OPERATION SEQUENCE -- an ordered list of typed steps against one host, each a modeled
+// operation rather than a spelled word, with a poll-until-predicate step carrying its own budget
+// and a typed refusal per step -- so a script body becomes a PROJECTION of that sequence the way a
+// container line is now a projection of a DockerCreateSpec. gunbc.typed_argv_exec supplies the
+// one-shot half of that capability today and nothing supplies the sequencing or the bounded wait,
+// which is why these bodies are `join` over string literals: the retry loop, the inline `grep -q`
+// and the step ordering have no carrier to be projected from.
+//
+// WHAT THIS MARKER DOES NOT DO IS ADMIT THE DEBT. DESIGN section 5 is explicit that a dissolution
+// condition describes how admitted debt ends and does not authorize creating it, and that approval
+// is external to the diff precisely because an author who can write a scaffold can equally write a
+// row claiming it was approved. No such row is claimed here. What is claimed is the honest shape of
+// the gap and the capability that closes it, so the tell is countable rather than ambient.
+//
+// AND THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT (section 4b(3)): a single modeled step type,
+// or one of these scripts rewritten, would satisfy an artifact-shaped trigger while every other body
+// here stayed a string. The grain of the loss is the module's whole script surface, so the grain of
+// the trigger is the sequencing capability.
+//
+// THE POPULATION IS NOT THIS MODULE. gunbc.spark.pair_serving_apply on main has the same shape and
+// carries no marker, and its legs and this one's are the same class of thing done to the same fleet
+// through the same privileged-leg mechanism -- spark_pair_privileged_leg is literally shared. So the
+// capability that dissolves this dissolves both, and modeling it HERE ALONE would fork the two
+// routes on how a remote step is expressed, which is the DESIGN section 3 fork this PR spent its
+// length removing from the launch. That is the reason this change declares the marker rather than
+// rewriting the bodies: the rewrite belongs with the pair route, not beside it.
 fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr, unit_text: String) -> String {
   let ctr = glm_native_container_name as String
   join([
@@ -419,6 +446,11 @@ type SparkNativeArmTransaction
   | NativeArmDispositionUnestablished { stage: SparkNativeStage, dispositions: List<SparkNativeHostDisposition>, receipt: String }
 
 // ── THE STAGE SCRIPTS ─────────────────────────────────────────────────────────────────────────
+//
+// feature:remote-shell-body-emission — every script in this section is covered by the marker and
+// the dissolve-on trigger stated once above spark_native_host_apply_script. One class, one trigger:
+// repeating the condition per function would be the second authority for it.
+
 
 // ── THE FENCE IS A LOCK, AND A CHECK-THEN-WRITE IS NOT ONE ───────────────────────────────────
 //

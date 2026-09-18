@@ -16,8 +16,9 @@ import gunbc.spark.serving_arm { glm53_derived_row, runtime_artifact_wire }
 import gunbc.spark.runtime_architecture_registry_reading { glm53_derived_observed_config_id }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
 import gunbc.spark.glm_group_b_launch {
-  glm_group_b_engine_ready_timeout_seconds, glm_group_b_sparse_indexer_max_logits_mb,
+  glm_group_b_engine_ready_timeout, glm_group_b_sparse_indexer_max_logits,
 }
+import std.measure { second_count, mebibyte_count }
 import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
   glm_native_launch_lines, glm_native_unit_exec_words, glm_native_all_unit_renders,
@@ -133,18 +134,12 @@ test fn w_the_drifted_fields_reach_the_rendered_unit() -> Bool {
     && any(words, w => w == vllm_usage_stats_disable_assignment_wire())
     && any(words, w => w == vllm_environment_assignment_wire(
          variable: VllmEngineReadyTimeoutSeconds,
-         value: to_string(glm_group_b_engine_ready_timeout_seconds)))
+         value: to_string(second_count(s: glm_group_b_engine_ready_timeout))))
     && any(words, w => w == vllm_environment_assignment_wire(
          variable: VllmSparseIndexerMaxLogitsMb,
-         value: to_string(glm_group_b_sparse_indexer_max_logits_mb)))
+         value: to_string(mebibyte_count(m: glm_group_b_sparse_indexer_max_logits))))
 }
 
-// ── (4) ONE IMAGE, AND IT IS THE DERIVED BUILD ────────────────────────────────────────────────
-//
-// The plan's image_reference is what both handlers send. It must be the reference the runtime row
-// pins rather than a second spelling of the same build: the renderer used to carry the build's
-// content-hashed TAG while the plan carried the registry reading's DIGEST, which is one image under
-// two names and therefore two answers to "what is running".
 // ── (4) ONE IMAGE, AND IT IS THE ONE THE ARM IS RUNNING ───────────────────────────────────────
 //
 // THE RED THIS ROW EXISTS FOR IS A MEASURED NEAR-MISS, NOT A HYPOTHETICAL. Before the consolidation the

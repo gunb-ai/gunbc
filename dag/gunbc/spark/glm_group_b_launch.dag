@@ -2,6 +2,7 @@ module gunbc.spark.glm_group_b_launch
 
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
+import std.measure { Second, second, second_count, Mebibyte, mebibyte, mebibyte_count }
 import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.vllm.environment {
   VllmEngineReadyTimeoutSeconds, VllmSparseIndexerMaxLogitsMb, vllm_environment_variable_name,
@@ -75,12 +76,23 @@ data glm_group_b_group: FabricGroup = FabricGroupB
 // no upstream derives is not an upstream fact; it is this deployment's, and holding it in extdeps was
 // the layer inversion that let the systemd renderer read one home while the spec read the other.
 //
+// THE UNIT STAYS ON THE CARRIER AND NOT IN THE NAME. main declared these as std.measure Second and
+// Mebibyte, and an earlier revision of this move re-spelled them as bare Nat with the unit pushed
+// into the identifier -- glm_group_b_engine_ready_timeout_SECONDS, ..._max_logits_MB. That is a
+// second naming scheme for what std.measure already carries (DESIGN section 3), and it grows the
+// net concept count by re-invention rather than shrinking it (section 2's own test for whether a
+// move reduced redundancy). The RELOCATION was right and the demotion came along with it, which is
+// the shape worth noticing: a correct layer argument carried a regression on a different axis.
+// The measure is unwrapped at the WIRE SEAM below, where an environment assignment needs a string,
+// which is the same shape gunbc.spark.managed_grant_reconcile uses for the Second it hands
+// select_supply.
+//
 // THE ENGINE READY TIMEOUT IS THE RECIPE'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it is
 // carried because its absence is independently fatal on a cold multi-node start. torch's distributed
 // rendezvous defaults to 601 seconds; a four-rank group whose members are still materialising exceeds
 // that and dies with "Timed out waiting for clients", which is a different failure from anything about
 // the model and reports nothing about it.
-data glm_group_b_engine_ready_timeout_seconds: Nat = 3600
+data glm_group_b_engine_ready_timeout: Second = second(count: 3600)
 
 // A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
 // vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
@@ -88,18 +100,18 @@ data glm_group_b_engine_ready_timeout_seconds: Nat = 3600
 // different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
 // measurement of it -- which is why the decision to apply it is a deployment's own and sits here, while
 // the report it cites is named beside it rather than transcribed as a bare number.
-data glm_group_b_sparse_indexer_max_logits_mb: Nat = 64
+data glm_group_b_sparse_indexer_max_logits: Mebibyte = mebibyte(count: 64)
 data glm_group_b_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr
 
 fn glm_group_b_deployment_env() -> List<DockerEnvAssignment> {
   [
     DockerEnvAssignment {
       name: vllm_environment_variable_name(v: VllmEngineReadyTimeoutSeconds),
-      value: to_string(glm_group_b_engine_ready_timeout_seconds),
+      value: to_string(second_count(s: glm_group_b_engine_ready_timeout)),
     },
     DockerEnvAssignment {
       name: vllm_environment_variable_name(v: VllmSparseIndexerMaxLogitsMb),
-      value: to_string(glm_group_b_sparse_indexer_max_logits_mb),
+      value: to_string(mebibyte_count(m: glm_group_b_sparse_indexer_max_logits)),
     },
   ]
 }
