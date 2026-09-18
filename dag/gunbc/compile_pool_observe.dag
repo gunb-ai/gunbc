@@ -20,6 +20,7 @@ import gunbc.host_effect { HostEffectTransport }
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
   systemctl_show_property_read,
   systemctl_show_load_state_read,
@@ -112,6 +113,14 @@ fn compile_pool_limit_of_capture(
           why: why,
         ),
       }
+    SystemdPropertyBlank =>
+      CompilePoolLimitRefused {
+        observation: compile_pool_reach_refusal(
+          slice_unit: slice_unit,
+          what: join(["could not read ", property_name], ""),
+          why: "the property was blank",
+        ),
+      }
     SystemdPropertyCaptured { value: raw } => {
       let lim = parse_systemd_memory_limit_show(raw: trim(raw))
       match compile_pool_limit_bytes(lim: lim) {
@@ -164,6 +173,8 @@ fn observe_compile_pool_slice(
   match systemctl_show_load_state_read(transport: transport, unit: slice_unit) {
     SystemdPropertyCaptureRefused { reason: why } =>
       compile_pool_reach_refusal(slice_unit: slice_unit, what: "could not read LoadState", why: why)
+    SystemdPropertyBlank =>
+      compile_pool_reach_refusal(slice_unit: slice_unit, what: "could not read LoadState", why: "LoadState was blank")
     SystemdPropertyCaptured { value: raw } =>
       if trim(raw) == (systemd_unit_load_state_not_found_wire as String) {
         CompilePoolSliceAbsent { slice_unit: slice_unit }

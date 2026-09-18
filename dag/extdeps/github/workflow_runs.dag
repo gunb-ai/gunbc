@@ -129,11 +129,62 @@ type WorkflowRunList {
 // ids, so (run_id, job_id) alone cannot say which attempt an observation belonged to, and a
 // duration compared across attempts is comparing a cold run to a warm one.
 //
-// A THIRD FIELD WAS HERE AND IS NOT. runner_name was added in the same motion because the vendor's
-// machine name is corroborating - the Biome baseline job reports "depot-1mw2k81zm2" - and then
-// nothing read it, in this change or in the one that consumes the other two. Interesting is not a
-// consumer. It is deleted rather than parked behind a frontier, because a frontier admits a
-// declaration whose consumer LANDS IN A NAMED LATER CHANGE and there is no such change for it.
+// THE JOBS FILTER IS A CLOSED UPSTREAM VOCABULARY AND WAS MODELLED AS A FREE STRING. GitHub
+// documents `filter` for this endpoint as exactly latest | all, so a String input made "Latest",
+// "all " and "" all representable and sent every one of them to the wire, where a rejected or
+// silently ignored filter changes which attempts a capacity census counts -- the consumer this
+// operation's own annotation names. DESIGN section 4b rung 4 is the standard the neighbours in this
+// tree already meet: extdeps.google.drive models DrivePermissionRole as a coproduct with a wire fold
+// so "Content manager" cannot be written where the wire needs fileOrganizer, extdeps.google.sheets
+// carries SheetsValueRenderOption the same way, and extdeps.github.pulls already defaults a typed
+// input as `state: PullRequestState = Open`. Two variants and a fold make the bad spelling
+// unwritable rather than validated.
+//
+// THE FOLD BELOW IS REQUIRED AND AN EARLIER REVISION OF THIS ANNOTATION DENIED IT. That revision
+// said a CoproductWireContract carried the spelling so no hand-written fold had to exist. It does
+// not, and believing it REGRESSED this operation: the interpreter builds a REST query with
+// format!("{}", value) and consults no contract, and Display for a nullary variant writes the
+// AUTHORED name, so the request went out as filter=AttemptsLatest where the base had correctly sent
+// filter=latest. A contract is read on the response-decode path, and `filter` never appears in a
+// response. Every other coproduct-valued query in this tree folds explicitly -- drive.Permissions
+// passes drive_permission_role_wire, sheets.Spreadsheets passes sheets_value_render_option_wire --
+// and this one now does too.
+//
+// The variants carry an Attempts prefix because bare Latest and All are two of the most collidable
+// names in a tree that resolves bare references. `latest` stays the default because it is the
+// upstream's, and it is the right answer for a caller asking what the current state is; a census of
+// consumed capacity wants AttemptsAll, because a re-run mutates a job's record in place and the
+// attempts `latest` drops are execution that really happened and really occupied a runner.
+type WorkflowJobAttemptFilter
+  = AttemptsLatest
+  | AttemptsAll
+
+fn workflow_job_attempt_filter_wire(f: WorkflowJobAttemptFilter) -> String {
+  match f {
+    AttemptsLatest => "latest"
+    AttemptsAll => "all"
+  }
+}
+
+// A THIRD FIELD WAS DELETED HERE AND STAYS DELETED, and this annotation is the second attempt to
+// settle it. An earlier lane added runner_name because the vendor machine name is corroborating --
+// the Biome baseline job reports "depot-1mw2k81zm2" -- found nothing read it, and deleted it on the
+// ground that interesting is not a consumer. This change put it back claiming a consumer had
+// arrived, in prose, while the diff carried no import and no call site; it is deleted again on the
+// original ground, which was right both times. DESIGN section 4c is the rule: an annotation is
+// never evidence that a machine claim holds.
+//
+// The example survives the deletion because it is the part that was worth keeping.
+// "depot-1mw2k81zm2" is neither GitHub-hosted nor self-hosted but a third party's fleet, so any
+// provenance reading with two arms folds a paying provider customer in with a team running its own
+// hardware. The trigger that brings the field back is a fold that IMPORTS this module and reads
+// the field, landing in the same change as the field -- and that fold now has a further obligation
+// this lane learned the hard way: a runs-on LABEL already has an authority in
+// gunbc.runner.runner_label_resolution, backed by the per-provider catalogs
+// gunbc.runner.runner_provider_survey enrolls, so a consumer may not re-answer the label question
+// with a fresh prefix roster. A runner NAME is a different vocabulary with no such authority, which
+// is the one thing this field would genuinely add.
+//
 // `name` is the only matrix-leg identifier this resource carries. The Jobs REST job object
 // (docs.github.com/en/rest/actions/workflow-jobs, X-GitHub-Api-Version 2026-03-10) publishes
 // `name` as a required string and does not publish a workflow YAML job key or a matrix object.
@@ -233,6 +284,13 @@ data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
 // this declaration's body, and section 4c admits annotations only at module-item grain. An
 // operation is not a module item, so per-operation rationale is not expressible; it belongs here
 // or nowhere.
+//
+// THE FILTER IS A CALLER'S CHOICE AND WAS A LITERAL. "latest" returns only the most recent attempt
+// of each job, which is the right answer for "what is the current state" and the wrong one for any
+// census of consumed capacity: a re-run mutates a job's record in place, so the attempts "latest"
+// drops are execution that really happened and really occupied a runner. A caller measuring
+// occupancy needs "all"; a caller reading current state needs "latest"; neither is a property of
+// this operation, so the choice moves to the input with "latest" as the compatible default.
 service github.WorkflowRuns {
   config {
     endpoint: default_api_base
@@ -352,7 +410,6 @@ service github.WorkflowRuns {
       500 => GitHubErrorShape
     }
   }
-
   operation ListJobs {
     input {
       auth_token: Secret
@@ -360,15 +417,17 @@ service github.WorkflowRuns {
       repo: String
       run_id: String
       per_page: Int = max_per_page
+      attempt_filter: WorkflowJobAttemptFilter = AttemptsLatest
     }
     output {
       result: WorkflowJobRunList
+      outcome: RestOutcome
     }
     readonly
     transport rest {
       method: GET,
       path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}/jobs",
-      query: { per_page: per_page, filter: "latest" }
+      query: { per_page: per_page, filter: workflow_job_attempt_filter_wire(f: attempt_filter) }
     }
     response {
       200 => WorkflowJobRunList

@@ -10,6 +10,7 @@ import gunbc.host_converge { gunbc_runner_all_slots_unit_glob }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
 import gunbc.systemctl_list_units { systemctl_list_units_all_states }
@@ -36,6 +37,7 @@ data host_hygiene_build_cache_cmdline_marker: String = "sccache"
 fn host_hygiene_read_active_state(unit: NonEmptyStr) -> SystemdUnitActiveState? {
   match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ActiveState) {
     SystemdPropertyCaptured { value: raw } => parse_systemd_unit_active_state(raw: raw)
+    SystemdPropertyBlank => none
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
@@ -43,6 +45,7 @@ fn host_hygiene_read_active_state(unit: NonEmptyStr) -> SystemdUnitActiveState? 
 fn host_hygiene_read_control_group(unit: NonEmptyStr) -> String? {
   match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ControlGroup) {
     SystemdPropertyCaptured { value: cg } => if cg == "" { none } else { Present { value: cg } }
+    SystemdPropertyBlank => none
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
