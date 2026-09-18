@@ -12,7 +12,11 @@ import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
 import gunbc.auth.approval_device_wire {
   framed, device_redemption_signing_input, enrolment_transcript, DeviceRedemptionSigningInput, RedemptionChallenge,
   approval_device_audience, MobileIos, MobileAndroid, device_read_client_data,
+  EnrolmentRequest, IosAppAttestAttestation, ApnsRegistration, SignedRedemption, IosAppAttestAssertion, PushRegistration,
+  WireDecoded, WireRefused, enrolment_request_json, decode_enrolment_request, signed_redemption_json, decode_signed_redemption,
+  push_update_json, decode_push_update, path_segment, device_request_path, device_push_update_client_data,
 }
+import extdeps.apple.apns { ApnsProduction }
 
 data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
 data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
@@ -110,4 +114,95 @@ test fn witness_read_transcript_binds_path_enrollment_and_time() -> Bool {
   base != device_read_client_data(path: "/approve/device/requests/esc-1", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z")
     && base != device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-2", requested_at: "2026-09-18T12:00:30Z")
     && base != device_read_client_data(path: "/approve/device/pending", enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:31Z")
+}
+
+// ── The HTTP wire ────────────────────────────────────────────────────────────────────────────
+data fx_push: PushRegistration = ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "a1b2c3" }
+
+fn fx_enrolment() -> EnrolmentRequest {
+  EnrolmentRequest {
+    code: "482913", platform: MobileIos, decision_key: key_a,
+    evidence: IosAppAttestAttestation { attest_key_id: "k1", attestation_b64: "ATT" },
+    push: fx_push,
+  }
+}
+
+fn fx_redemption() -> SignedRedemption {
+  SignedRedemption {
+    signing_input: DeviceRedemptionSigningInput {
+      audience: approval_device_audience, enrollment_id: "enr-482913",
+      challenge: RedemptionChallenge { expires_at: "2026-09-18T12:05:00Z", nonce_hex: "9c1d" },
+      escalation_id: "esc-1", request_revision: "r1", stored_request_text: "{\"k\":\"a\\\\b\nc\"}",
+      decision: ProposeDeny, capability_text: "cap", capability_tag_b64url: "TAG",
+    },
+    signature: sig,
+    platform_proof: IosAppAttestAssertion { assertion_b64: "ASSERT" },
+  }
+}
+
+// ROUND TRIPS: decoding an encoded body and encoding it again yields the same bytes.
+test fn witness_enrolment_request_round_trips() -> Bool {
+  match decode_enrolment_request(text: enrolment_request_json(r: fx_enrolment())) {
+    WireDecoded { value: r } => enrolment_request_json(r: r) == enrolment_request_json(r: fx_enrolment())
+    WireRefused { at: _, cause: _ } => false
+  }
+}
+
+test fn witness_signed_redemption_round_trips() -> Bool {
+  match decode_signed_redemption(text: signed_redemption_json(r: fx_redemption())) {
+    WireDecoded { value: r } => signed_redemption_json(r: r) == signed_redemption_json(r: fx_redemption())
+    WireRefused { at: _, cause: _ } => false
+  }
+}
+
+test fn witness_push_update_round_trips() -> Bool {
+  match decode_push_update(text: push_update_json(p: fx_push)) {
+    WireDecoded { value: p } => push_update_json(p: p) == push_update_json(p: fx_push)
+    WireRefused { at: _, cause: _ } => false
+  }
+}
+
+// STRICTNESS: each refusal names where it failed.
+test fn witness_decoder_refuses_an_unknown_member() -> Bool {
+  match decode_push_update(text: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\",\"extra\":\"y\"}") {
+    WireRefused { at: a, cause: _ } => a as String == "push"
+    WireDecoded { value: _ } => false
+  }
+}
+
+test fn witness_decoder_refuses_a_duplicated_member() -> Bool {
+  match decode_push_update(text: "{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\",\"token\":\"y\"}") {
+    WireRefused { at: _, cause: _ } => true
+    WireDecoded { value: _ } => false
+  }
+}
+
+test fn witness_decoder_refuses_another_suite() -> Bool {
+  let body = "{\"code\":\"1\",\"platform\":\"ios\",\"decision_key\":{\"suite\":\"ECDSA-P384-SHA384\",\"encoding\":\"SEC1-uncompressed\",\"point_b64url\":\"B\"},\"evidence\":{\"kind\":\"ios_app_attest\",\"attest_key_id\":\"k\",\"attestation_b64\":\"a\"},\"push\":{\"kind\":\"apns\",\"environment\":\"production\",\"topic\":\"t\",\"token\":\"x\"}}"
+  match decode_enrolment_request(text: body) {
+    WireRefused { at: a, cause: _ } => a as String == "decision_key.suite"
+    WireDecoded { value: _ } => false
+  }
+}
+
+test fn witness_decoder_refuses_an_android_push_until_realized() -> Bool {
+  match decode_push_update(text: "{\"kind\":\"fcm\",\"project\":\"p\",\"token\":\"x\"}") {
+    WireRefused { at: a, cause: _ } => a as String == "push.kind"
+    WireDecoded { value: _ } => false
+  }
+}
+
+// PATHS: an id that would change the HTTP target is refused, never percent-encoded into a second
+// spelling of the signed path.
+test fn witness_path_segment_refuses_target_changing_ids() -> Bool {
+  path_segment(s: "esc-mtc1_boot.1~a") != none
+    && path_segment(s: "a/b") == none && path_segment(s: "a?b") == none && path_segment(s: "a#b") == none
+    && path_segment(s: "a%2F") == none && path_segment(s: "..") == none
+    && device_request_path(escalation_id: "a/../b") == none
+}
+
+// The push-update assertion covers the token: a different token is different client data.
+test fn witness_push_update_client_data_binds_the_token() -> Bool {
+  device_push_update_client_data(enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z", push: fx_push)
+    != device_push_update_client_data(enrollment_id: "enr-1", requested_at: "2026-09-18T12:00:30Z", push: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "zzz" })
 }
