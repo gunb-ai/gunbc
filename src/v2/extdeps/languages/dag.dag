@@ -4610,14 +4610,36 @@ fn parse_subtree_locate_production(root: Node, emitted: Symbol) -> Node? {
   }
 }
 
-fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
-  match parse_subtree_locate_production(root: root, emitted: emitted) {
-    Absent => ParseSubtreeAbsent
-    Present { value: node } =>
-      match parse_production_captured_child_optional(node: node) {
-        Present { value: captured } => ParseSubtreeFound { captured: captured }
-        Absent => ParseSubtreeAbsent
+fn parse_subtree_find_production_captured_under_children(
+  root: Node,
+  emitted: Symbol
+) -> ParseSubtreeFind {
+  fold(
+    root.children,
+    init: ParseSubtreeAbsent,
+    f: fn(acc, edge) {
+      match acc {
+        ParseSubtreeFound { captured: _ } => acc
+        ParseSubtreeAbsent =>
+          parse_subtree_find_production_captured(root: edge.target, emitted: emitted)
       }
+    }
+  )
+}
+
+fn parse_subtree_find_production_captured(root: Node, emitted: Symbol) -> ParseSubtreeFind {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      match id == emitted {
+        true =>
+          match parse_production_captured_child_optional(node: root) {
+            Present { value: captured } => ParseSubtreeFound { captured: captured }
+            Absent =>
+              parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
+          }
+        false => parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
+      }
+    Absent => parse_subtree_find_production_captured_under_children(root: root, emitted: emitted)
   }
 }
 

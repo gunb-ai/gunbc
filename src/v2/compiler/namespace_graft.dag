@@ -302,10 +302,10 @@ fn namespace_graft_is_machinery_symbol(productions: List<GrammarProduction>, sym
     || namespace_graft_symbol_is_grammar_machinery(productions: productions, sym: sym)
 }
 
-fn namespace_graft_type_decl_target(captured: Node) -> Node {
+fn namespace_graft_type_decl_target(root: Node) -> Node {
   fold(
-    node_subtree_nodes(root: captured),
-    init: captured,
+    node_subtree_nodes(root: root),
+    init: root,
     f: fn(acc, n) {
       match acc.kind {
         TypeNode { connective: Disj } => acc
@@ -339,7 +339,7 @@ fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
           optional_present(
             value: Edge {
               label: Named { name: type_name },
-              target: namespace_graft_type_decl_target(captured: unit)
+              target: namespace_graft_type_decl_target(root: unit)
             }
           )
       }
