@@ -16,8 +16,8 @@ module std.durable_compare_and_set
 // half: the store-side check itself, whose refusal arm belongs to the store
 // rather than to a lock the caller happens to hold.
 
-import std.types { NonEmptyStr, Int }
-import std.content_hash { ContentHash }
+import std.types { NonEmptyStr, Int, String }
+import std.content_hash { ContentHash, serialize_content_hash }
 
 
 type CasGeneration =
@@ -143,6 +143,19 @@ type CasUnreadableSlot
   | CasUnreadableContentMissing { referenced: ContentHash }
   | CasUnreadableReadRefused { detail: NonEmptyStr }
   | CasUnreadableObservationBoundExceeded { bound: Int }
+
+// THE ONE RENDERING OF AN UNREADABLE CAUSE, so a consumer that must report "the slot could not be
+// read" carries the kind it was refused with rather than a fixed sentence: the first approval
+// redemption on srv1 (2026-09-17) was followed by a poll that answered unreadable, and the cause
+// had been discarded at the consumer, leaving nothing to root-cause from.
+fn cas_unreadable_slot_detail(cause: CasUnreadableSlot) -> String {
+  match cause {
+    CasUnreadableMalformed { detail: d } => concat("malformed: ", d as String)
+    CasUnreadableContentMissing { referenced: h } => concat("content missing: ", serialize_content_hash(hash: h))
+    CasUnreadableReadRefused { detail: d } => concat("read refused: ", d as String)
+    CasUnreadableObservationBoundExceeded { bound: b } => concat("observation bound exceeded at generation ", to_string(b))
+  }
+}
 
 // WHY THE STORE FAILED, AND READING AND WRITING ARE TWO WAYS FOR IT TO FAIL.
 //

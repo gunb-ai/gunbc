@@ -250,6 +250,7 @@ fn witness_show_property_local_read_holds() -> Bool {
     property: MemoryMax,
   ) {
     SystemdPropertyCaptured { value: v } => v == "8589934592"
+    SystemdPropertyBlank => false
     SystemdPropertyCaptureRefused { reason: _ } => false
   }
 }

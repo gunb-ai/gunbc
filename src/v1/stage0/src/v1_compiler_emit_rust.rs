@@ -167,12 +167,12 @@ pub use crate::v1_compiler_emit::{
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
-    capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
-    has_mock_prefix, is_leaf_type_item, is_type_alias_item, is_type_alias_return_node,
-    is_type_decl_item, is_type_def_item, is_upper, language_spec, make_indent,
-    module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
-    service_var_name, test_function_name, to_lower_char, to_pascal, to_screaming_snake, to_snake,
-    to_string, to_string_helper, to_upper_char, unique_strings,
+    capitalize_first, emitted_symbol_collision_diagnostics, escape_json_string,
+    escape_string_literal_body, extract_test_projections, has_mock_prefix, is_leaf_type_item,
+    is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
+    language_spec, make_indent, module_filename_collision_diagnostics, module_to_filename,
+    sanitize_service_name, service_var_name, test_function_name, to_lower_char, to_pascal,
+    to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -6772,6 +6772,16 @@ pub fn emit_rust_selected(
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: filename_collisions.clone(),
+            });
+        }
+        let symbol_collisions =
+            crate::v1_compiler_emit_core_support::emitted_symbol_collision_diagnostics(
+                typed.clone(),
+            );
+        if ((symbol_collisions.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: symbol_collisions.clone(),
             });
         }
         let test_projections = ctx.test_projections.clone();
