@@ -38,7 +38,7 @@ import gunbc.spark.serving_performance_subject {
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
 }
-import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff }
+import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
 
 // ── THROUGHPUT QUALIFICATION FOR THE SERVING SUBJECT (design #11540, serving side) ────────────
 //
@@ -463,6 +463,7 @@ type ServingLoadObservation {
   itl_latency: HistogramDelta
   iteration_tokens_booked: HistogramDelta
   ledger: OperationLedger
+  admission: AdmissionCost
   rate: DerivedRate
   raw_before: NonEmptyStr
   raw_after: NonEmptyStr
@@ -500,6 +501,7 @@ fn serving_load_observation(
     itl_latency: histogram_delta(before_body: before_body, after_body: after_body, metric: InterTokenLatencySeconds),
     iteration_tokens_booked: histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal),
     ledger: ledger,
+    admission: glm_native_workload_admission,
     rate: derive_rate_honest(
       ledger: ledger,
       continuity: continuity,
@@ -532,6 +534,7 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "itl latency (not a rate): ", histogram_text(d: o.itl_latency), "\n",
     "iteration_tokens booked (not occupancy): ", histogram_text(d: o.iteration_tokens_booked), "\n",
     "ledger: ", ledger_text(l: o.ledger), "\n",
+    "admission: ", admission_text(a: o.admission), "\n",
     "rate: ", rate_text(r: o.rate), "\n",
     "saturation decided from this run: ", if saturation_from_one_run(obs: o) { "yes" } else { "no" }, "\n",
   ], "")
@@ -550,6 +553,13 @@ fn agreement_text(a: LedgerCounterAgreement) -> String {
       join(["agree generation=", to_string(g), " completed=", to_string(n)], "")
     LedgerCounterDisagree { because: c } => join(["disagree ", c as String], "")
     AgreementUnread { because: c } => join(["unread ", c as String], "")
+  }
+}
+
+fn admission_text(a: AdmissionCost) -> String {
+  match a {
+    AdmissionCostUnestablished { cause: c } => join(["unread ", c as String], "")
+    AdmissionCostBlocks { blocks: _ } => "blocks (must not be minted from a pool/length quotient)"
   }
 }
 
@@ -635,8 +645,18 @@ fn rate_text(r: DerivedRate) -> String {
 //
 // Real sessions sit at ~100k-130k tokens of context after compacting a 262k window. They idle
 // between turns. Each turn is a separate request whose KV frees on completion while the prefix
-// stays in the prefix cache. Peak concurrent DECODING turns times average context is the KV
-// quantity, not total sessions.
+// stays in the prefix cache. A long-context point is how that envelope is exercised.
+//
+// THAT IS NOT AN ADMISSION CAPACITY. vLLM's printed token pool is floor(max_concurrency ×
+// max_model_len) — the same fact twice — and GLM's hybrid KV (full / sliding-window / Mamba) does
+// not scale linearly with sequence length. Dividing the pool by 100k–130k overestimates concurrent
+// sessions. Live per-request cost is extdeps.vllm.kv_layout cold_admission_blocks; with an empty
+// group roster that fold is AdmissionCostUnestablished, which is the honest state today.
+
+data glm_native_workload_admission: AdmissionCost = AdmissionCostUnestablished {
+  cause: "the live cache-group roster is unobserved, so cold_admission_blocks cannot establish per-request cost; a token-pool divided by request length is not an admission capacity" as NonEmptyStr
+}
+
 data glm_native_holistic_dataset: RandomDatasetSpec = RandomDatasetSpec {
   input_len: token_count(count: 20000),
   output_len: token_count(count: 128),

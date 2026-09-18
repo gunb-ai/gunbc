@@ -17,6 +17,7 @@ import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, RandomDatasetSpec, OpenaiChat, SendAllImmediately, PoissonProcess,
   vllm_bench_serve_request, vllm_bench_serve_arguments, vllm_bench_serve_uses_poisson_idle_gaps,
 }
+import extdeps.vllm.kv_layout { AdmissionCostUnestablished, AdmissionCostBlocks }
 import gunbc.spark.serving_load_probe {
   DrainObservedIdle,
   ExclusionNotEstablished,
@@ -32,6 +33,7 @@ import gunbc.spark.serving_load_probe {
   glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
   OccupancySampled, OccupancyUnsampled, OccupancySample,
   ClientOutputTokensUnread, ClientOutputTokensObserved,
+  glm_native_workload_admission,
 }
 
 data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
@@ -202,6 +204,17 @@ test fn occupancy_above_declared_concurrency_refuses_the_rate() -> Bool {
     RateUnreadable { because: _ } => true
     RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
     RateUndenominable { because: _ } => false
+  }
+}
+
+test fn a_long_context_protocol_does_not_mint_an_admission_ceiling() -> Bool {
+  match glm_native_workload_admission {
+    AdmissionCostUnestablished { cause: _ } =>
+      match fx_obs(ledger: closed_ok()).admission {
+        AdmissionCostUnestablished { cause: _ } => true
+        AdmissionCostBlocks { blocks: _ } => false
+      }
+    AdmissionCostBlocks { blocks: _ } => false
   }
 }
 
