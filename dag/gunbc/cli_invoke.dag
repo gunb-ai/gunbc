@@ -140,27 +140,29 @@ fn named_argument_invocation_words(arguments: List<NamedArgument>) -> List<Invoc
   fold(arguments, init: [], f: (acc, a) => concat(acc, named_argument_words(argument: a)))
 }
 
-// THE ONE `gunbc run` SHAPE. The no-named-arguments route below delegates here with an EMPTY
-// population rather than carrying a second spelling of the same argv, so there is one place where
-// the order of `run`, the source roots, the entry, the function, the named arguments and
-// `--claim-run` is decided (DESIGN section 3: interface, realization and policy are three facts, and
-// the argv shape is the interface).
-fn gunbc_run_invocation_words_with_arguments(
+// THE ONE `gunbc run` SHAPE. Every route below delegates here rather than carrying a second
+// spelling of the same argv, so there is one place where the order of `run`, the source roots,
+// the entry, the functions, the named arguments and `--claim-run` is decided (DESIGN section 3:
+// interface, realization and policy are three facts, and the argv shape is the interface).
+// `--function` is repeatable on the modeled surface (gunbc.cli_dispatch_surface), so the
+// functions are a POPULATION here: one `--function <name>` pair per member, and an empty
+// population is the no-function run -- `main` for an ordinary run, every `test fn` of the entry
+// under `--claim-run` -- with no second builder deciding that case.
+fn function_invocation_words(functions: List<String>) -> List<InvocationWord> {
+  fold(functions, init: [], f: (acc, f) => concat(acc, [LiteralWord { spelling: "--function" }, LiteralWord { spelling: f }]))
+}
+
+fn gunbc_run_invocation_words_with_functions(
   source_roots: List<String>,
   entry: String,
-  function: String,
+  functions: List<String>,
   claim_run: Bool,
   arguments: List<NamedArgument>
 ) -> List<InvocationWord> {
   let base = concat(
     concat(
       concat([LiteralWord { spelling: "run" }], source_root_invocation_words(roots: source_roots)),
-      [
-        LiteralWord { spelling: "--entry" },
-        LiteralWord { spelling: entry },
-        LiteralWord { spelling: "--function" },
-        LiteralWord { spelling: function }
-      ]
+      concat([LiteralWord { spelling: "--entry" }, LiteralWord { spelling: entry }], function_invocation_words(functions: functions))
     ),
     named_argument_invocation_words(arguments: arguments)
   )
@@ -169,6 +171,22 @@ fn gunbc_run_invocation_words_with_arguments(
   } else {
     base
   }
+}
+
+fn gunbc_run_invocation_words_with_arguments(
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool,
+  arguments: List<NamedArgument>
+) -> List<InvocationWord> {
+  gunbc_run_invocation_words_with_functions(
+    source_roots: source_roots,
+    entry: entry,
+    functions: [function],
+    claim_run: claim_run,
+    arguments: arguments
+  )
 }
 
 fn gunbc_run_invocation_words(
@@ -182,6 +200,21 @@ fn gunbc_run_invocation_words(
     entry: entry,
     function: function,
     claim_run: claim_run,
+    arguments: []
+  )
+}
+
+// EVERY CLAIM OF ONE WITNESS IN ONE PROCESS: the one builder above with an empty function
+// population under `--claim-run`.
+fn gunbc_run_all_claims_invocation_words(
+  source_roots: List<String>,
+  entry: String
+) -> List<InvocationWord> {
+  gunbc_run_invocation_words_with_functions(
+    source_roots: source_roots,
+    entry: entry,
+    functions: [],
+    claim_run: true,
     arguments: []
   )
 }
