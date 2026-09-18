@@ -77,7 +77,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import extdeps.http.client
-import extdeps.http.client { http_client_get_argv_within, http_client_max_time_flag }
+import extdeps.http.client { http_client_get_argv, http_client_max_time_flag }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type ServiceReadyEvidence {
@@ -204,7 +204,7 @@ fn live_deploy_healthz_get_fleet_ssh(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: target,
           context: context,
-          argv: http_client_get_argv_within(url: live_deploy_health_url_for_port(port: port), max_time: deadline),
+          argv: http_client_get_argv(url: live_deploy_health_url_for_port(port: port), max_time: deadline),
         ),
       )
   }
@@ -219,7 +219,7 @@ fn live_deploy_healthz_get_ssh(port: Int, spec: DeploymentSpec, host: NonEmptySt
 }
 
 fn live_deploy_healthz_get_ssh_within(url: NonEmptyStr, host: NonEmptyStr, deadline: Second) -> HealthzEffectiveRead {
-  let argv = http_client_get_argv_within(url: url, max_time: deadline)
+  let argv = http_client_get_argv(url: url, max_time: deadline)
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => HealthzProbeRefused { probe_error: why }
     Absent =>
