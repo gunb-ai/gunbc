@@ -102,6 +102,7 @@ import gunbc.install_transport_qualification {
   TransportProbeObservation,
 }
 import gunbc.network_boot_delivery {
+  NetworkBootDeliveryArchitectureRefused,
   NetworkBootDeliveryEstablished,
   NetworkBootDeliveryEstablishment,
   NetworkBootDeliveryEvidenceRefused,
@@ -347,6 +348,7 @@ type BootDeliveryCandidateIneligibility
   | CandidateUefiHttpUnestablished { missing: List<UefiHttpRequirement> }
   | CandidateNetworkBootUnestablished { missing: List<NetworkBootRequirement> }
   | CandidateNetworkBootEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
+  | CandidateNetworkBootArchitectureRefused { architecture: Architecture }
 
 type BootDeliveryCandidateStanding
   = CandidateEligible
@@ -658,6 +660,8 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
     NetworkBootDeliveryUnestablished { missing: m } => CandidateIneligible { cause: CandidateNetworkBootUnestablished { missing: m } }
     NetworkBootDeliveryEvidenceRefused { axis: axis, observation: observation } =>
       CandidateIneligible { cause: CandidateNetworkBootEvidenceRefused { axis: axis, observation: observation } }
+    NetworkBootDeliveryArchitectureRefused { architecture: a } =>
+      CandidateIneligible { cause: CandidateNetworkBootArchitectureRefused { architecture: a } }
   }
 }
 
@@ -804,6 +808,7 @@ fn build_boot_artifact_delivery(
           Present { value: BuiltBootArtifactDelivery { candidate: candidate, delivery: PxeChainBoot { evidence: e }, selected: SelectedFromNetworkBootEstablishment { establishment: e } } }
         NetworkBootDeliveryUnestablished { missing: _ } => none
         NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => none
+        NetworkBootDeliveryArchitectureRefused { architecture: _ } => none
       }
   }
 }
