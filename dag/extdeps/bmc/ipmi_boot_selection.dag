@@ -39,18 +39,14 @@ type IpmiBootPersistence
 // The wire and read-back spellings travel with the semantic axes because they are one CLI
 // serialization. A caller selects `IpmiBootCdrom`; it never authors `cdrom`,
 // an `options=` word, or one of the four strings used to adjudicate parameter 5.
-// The chassis-bootdev device word is derived from `device` (`ipmi_boot_device_label`);
-// the options token is derived from firmware_mode and persistence
-// (`ipmi_boot_selection_options_token`). Neither is stored beside the axes.
+// The chassis-bootdev device word is `ipmi_boot_device_label`; the options token is
+// `ipmi_boot_selection_options_token`; parameter-5 readback words are
+// `ipmi_boot_expected_*_rendering`. None of those strings is stored beside the axes.
 type IpmiBootSelection sole_constructor {
   architecture: Architecture
   device: IpmiBootDevice
   firmware_mode: IpmiFirmwareBootMode
   persistence: IpmiBootPersistence
-  expected_flag_rendering: NonEmptyStr
-  expected_device_rendering: NonEmptyStr
-  expected_mode_rendering: NonEmptyStr
-  expected_persistence_rendering: NonEmptyStr
 }
 
 fn aarch64_uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection {
@@ -60,20 +56,12 @@ fn aarch64_uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection
       device: IpmiBootPxe,
       firmware_mode: IpmiBootEfi,
       persistence: IpmiBootOnce,
-      expected_flag_rendering: "Boot Flag Valid",
-      expected_device_rendering: "Force PXE",
-      expected_mode_rendering: "BIOS EFI boot",
-      expected_persistence_rendering: "Options apply to only next boot",
     }
     IpmiBootCdrom => IpmiBootSelection {
       architecture: Aarch64,
       device: IpmiBootCdrom,
       firmware_mode: IpmiBootEfi,
       persistence: IpmiBootOnce,
-      expected_flag_rendering: "Boot Flag Valid",
-      expected_device_rendering: "Force Boot from CD/DVD",
-      expected_mode_rendering: "BIOS EFI boot",
-      expected_persistence_rendering: "Options apply to only next boot",
     }
   }
 }
@@ -121,5 +109,35 @@ fn ipmi_boot_selection_options_token(selection: IpmiBootSelection) -> NonEmptySt
         IpmiBootOnce => "valid"
         IpmiBootPersistent => "persistent"
       }
+  }
+}
+
+data ipmi_boot_flag_valid_rendering: NonEmptyStr = "Boot Flag Valid"
+
+fn ipmi_boot_expected_flag_rendering(selection: IpmiBootSelection) -> NonEmptyStr {
+  match selection.device {
+    IpmiBootPxe => ipmi_boot_flag_valid_rendering
+    IpmiBootCdrom => ipmi_boot_flag_valid_rendering
+  }
+}
+
+fn ipmi_boot_expected_device_rendering(selection: IpmiBootSelection) -> NonEmptyStr {
+  match selection.device {
+    IpmiBootPxe => "Force PXE"
+    IpmiBootCdrom => "Force Boot from CD/DVD"
+  }
+}
+
+fn ipmi_boot_expected_mode_rendering(selection: IpmiBootSelection) -> NonEmptyStr {
+  match selection.firmware_mode {
+    IpmiBootEfi => "BIOS EFI boot"
+    IpmiBootLegacy => "BIOS PC Compatible (legacy) boot"
+  }
+}
+
+fn ipmi_boot_expected_persistence_rendering(selection: IpmiBootSelection) -> NonEmptyStr {
+  match selection.persistence {
+    IpmiBootOnce => "Options apply to only next boot"
+    IpmiBootPersistent => "Options apply to all future boots"
   }
 }
