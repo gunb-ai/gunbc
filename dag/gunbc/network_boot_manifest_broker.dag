@@ -3,7 +3,20 @@ module gunbc.network_boot_manifest_broker
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.decl_ref { DeclarationRef }
-import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
+import extdeps.toolchain.types {
+  Architecture,
+  X86_64,
+  X86,
+  Aarch64,
+  Arm,
+  Armv7,
+  Mips,
+  Mipsel,
+  Mips64,
+  Mips64el,
+  Riscv64,
+  Wasm32,
+}
 import extdeps.crypto.mac {
   MacKey,
   MacKeyId,
@@ -19,12 +32,12 @@ import extdeps.crypto.mac {
   mac_verify,
 }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
-import std.decl_ref { DeclarationRef }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
   SignedBootManifestIdentified,
+  SignedBootManifestAbsent,
   MeasuredNetworkBootFact,
   BootstrapTrustStanding,
   ProductionTrustedBootstrap,
@@ -51,6 +64,22 @@ fn firmware_class_name(c: BootFirmwareClass) -> NonEmptyStr {
     UefiHttpFirmwareClass => "uefi-http" as NonEmptyStr
     UefiPxeFirmwareClass => "uefi-pxe" as NonEmptyStr
     LegacyBiosPxeFirmwareClass => "legacy-bios-pxe" as NonEmptyStr
+  }
+}
+
+fn boot_manifest_architecture_label(arch: Architecture) -> NonEmptyStr {
+  match arch {
+    Aarch64 => "uefi-arm64" as NonEmptyStr
+    X86_64 => "uefi-x64" as NonEmptyStr
+    X86 => "bios-x86" as NonEmptyStr
+    Arm => "uefi-arm" as NonEmptyStr
+    Armv7 => "uefi-armv7" as NonEmptyStr
+    Mips => "uefi-mips" as NonEmptyStr
+    Mipsel => "uefi-mipsel" as NonEmptyStr
+    Mips64 => "uefi-mips64" as NonEmptyStr
+    Mips64el => "uefi-mips64el" as NonEmptyStr
+    Riscv64 => "uefi-riscv64" as NonEmptyStr
+    Wasm32 => "wasm32" as NonEmptyStr
   }
 }
 
@@ -133,7 +162,7 @@ fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptySt
       id.target_unit as String,
       id.attempt_id as String,
       id.nonce as String,
-      architecture_diagnostic_name(arch: id.architecture) as String,
+      boot_manifest_architecture_label(arch: id.architecture) as String,
       firmware_class_name(c: c.firmware_class) as String,
       serialize_content_hash(hash: id.chainloader_digest) as String,
       serialize_content_hash(hash: id.kernel_digest) as String,
@@ -314,14 +343,18 @@ fn redeem_signed_boot_manifest(ticket: SignedBootManifestTicket, key: MacKey, ex
 }
 
 fn signed_boot_manifest_standing(
-  ticket: SignedBootManifestTicket,
+  verification: BootManifestVerification,
   observation: DeclarationRef,
   observed_at: EpochMs,
 ) -> SignedBootManifestStanding {
-  SignedBootManifestIdentified {
-    identity: ticket.claims.identity,
-    evidence_class: MeasuredNetworkBootFact,
-    observation: observation,
-    observed_at: observed_at,
+  match verification {
+    BootManifestAuthentic { claims: c } =>
+      SignedBootManifestIdentified {
+        identity: c.identity,
+        evidence_class: MeasuredNetworkBootFact,
+        observation: observation,
+        observed_at: observed_at,
+      }
+    BootManifestRefused { cause: _ } => SignedBootManifestAbsent
   }
 }
