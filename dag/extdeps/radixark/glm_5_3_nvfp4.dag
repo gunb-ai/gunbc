@@ -2,12 +2,12 @@ module extdeps.radixark.glm_5_3_nvfp4
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, BitWidth, bit_width, bit_width_count, bits_per_byte }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
 import extdeps.safetensors.format {
-  SafetensorsEntry, safetensors_entry, safetensors_entry_span,
+  SafetensorsEntry, safetensors_entry, safetensors_entry_span, safetensors_dtype_byte_width,
   SafeU8, SafeF8E4M3, SafeF32,
 }
 import extdeps.zhipu.glm_5_3_flash { GlmCheckpointManifest, glm_checkpoint_manifest }
@@ -117,10 +117,10 @@ data glm_moe_dsa_module_classes: List<GlmMoeDsaModuleClass> = [
 type ModeloptNvfp4Config sole_constructor {
   quant_method: NonEmptyStr
   quant_algo: NonEmptyStr
-  weight_bits: Nat
-  input_activation_bits: Nat
+  weight_width: BitWidth
+  input_activation_width: BitWidth
   group_size: Nat
-  kv_cache_bits: Nat
+  kv_cache_width: BitWidth
   producer_version: NonEmptyStr
   ignore: List<GlmMoeDsaModuleClass>
   read_by: NonEmptyStr
@@ -129,10 +129,10 @@ type ModeloptNvfp4Config sole_constructor {
 data glm_5_3_nvfp4_quantization: ModeloptNvfp4Config = ModeloptNvfp4Config {
   quant_method: "modelopt" as NonEmptyStr,
   quant_algo: "NVFP4" as NonEmptyStr,
-  weight_bits: 4,
-  input_activation_bits: 4,
+  weight_width: bit_width(count: 4),
+  input_activation_width: bit_width(count: 4),
   group_size: 16,
-  kv_cache_bits: 8,
+  kv_cache_width: bit_width(count: 8),
   producer_version: "0.47.0.dev91+g7ff81dd79" as NonEmptyStr,
   ignore: [LmHead, EmbedTokens, LeadingDenseLayerWhole, NextnPredictorLayerWhole, RouterGate, SharedExperts, SelfAttention],
   read_by: "quantization_config in config.json at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a, read 2026-09-18: config_groups.group_0 carries weights and input_activations both \{num_bits 4, type float, group_size 16, dynamic false\} targeting Linear; kv_cache_scheme \{num_bits 8, type float\}; producer \{modelopt 0.47.0.dev91+g7ff81dd79\}; quant_method modelopt; quant_algo NVFP4. The 240-entry ignore list is lm_head, model.embed_tokens, model.layers.0*, model.layers.1.*, model.layers.2.*, model.layers.78*, and for every layer 3..77 the three patterns .mlp.gate, .mlp.shared_experts* and .self_attn* -- no other pattern occurs. hf_quant_config.json restates the same under exclude_modules" as NonEmptyStr,
@@ -189,23 +189,20 @@ fn nvfp4_representative_expert_bytes() -> ByteSize {
 }
 
 // THE SAME QUANTITY DERIVED FROM THE SHAPE AND THE SCHEME, so the two can disagree. Per parameter:
-// weight_bits, plus one kv-cache-width fp8 scale per group_size parameters (weight_scale is F8_E4M3,
-// so its width is the 8 of the scheme's fp8 arms), plus per projection one F32 input_scale and one F32
-// weight_scale_2. If this equals the header sum, the model of the layout is right at byte grain; if
-// the group size or the scalar count were wrong the two would differ, and the witness reads both.
+// the weight width, plus one scale per group_size parameters at the scale tensor's own dtype width
+// (F8_E4M3, read from the representative entries rather than assumed from the scheme), plus per
+// projection two F32 scalars (input_scale and weight_scale_2). Every width is a carrier and every
+// byte figure a ByteSize: the bit widths are std.measure BitWidth and the dtype widths are
+// extdeps.safetensors.format's, so nothing here re-states "8 bits in a byte" or "4 bytes in an F32".
+// If this equals the header sum, the model of the layout is right at byte grain; if the group size
+// or the scalar count were wrong the two would differ, and the witness reads both.
 data nvfp4_per_projection_f32_scalars: Nat = 2
-
-data f32_scalar_bytes: Nat = 4
-
-data fp8_scale_bits: Nat = 8
-
-data bits_per_byte_nat: Nat = 8
 
 fn nvfp4_expert_bytes_from_shape(s: GlmMoeDsaShape, q: ModeloptNvfp4Config) -> ByteSize {
   let params = glm_5_3_routed_expert_params(s: s)
-  let value_bytes = (params * q.weight_bits) / bits_per_byte_nat
-  let scale_bytes = ((params / q.group_size) * fp8_scale_bits) / bits_per_byte_nat
-  let scalar_bytes = glm_5_3_routed_expert_projection_count() * nvfp4_per_projection_f32_scalars * f32_scalar_bytes
+  let value_bytes = (params * bit_width_count(b: q.weight_width)) / bits_per_byte()
+  let scale_bytes = (params / q.group_size) * byte_size_count(b: safetensors_dtype_byte_width(d: SafeF8E4M3))
+  let scalar_bytes = glm_5_3_routed_expert_projection_count() * nvfp4_per_projection_f32_scalars * byte_size_count(b: safetensors_dtype_byte_width(d: SafeF32))
   byte_size(count: value_bytes + scale_bytes + scalar_bytes)
 }
 
