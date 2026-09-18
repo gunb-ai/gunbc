@@ -1,10 +1,32 @@
 module extdeps.nvidia.gpu_direct_rdma
 
 import std.types { Bool, String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
 import extdeps.nvidia.cuda_driver {
   CudaDeviceAttribute, GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute,
   CudaQueryOutcome, CudaQuerySucceeded, CudaQueryFailed, CudaQueryUnparsed,
   cuda_device_attribute_name,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/gpudirect-rdma/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.gpu_direct_rdma",
+      decl_name: "GpuDirectRdmaCapability",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // ── WHAT EACH ATTRIBUTE ESTABLISHES, AND WHAT IT DOES NOT ─────────────────────────────────────

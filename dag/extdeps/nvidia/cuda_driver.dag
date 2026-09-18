@@ -3,7 +3,8 @@ module extdeps.nvidia.cuda_driver
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.nat { Nat }
 import std.algebra { trim }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.python { PythonProgramText, python_run_program_argv }
 
@@ -19,11 +20,23 @@ import extdeps.python { PythonProgramText, python_run_program_argv }
 // THE DRIVER API IS THE AUTHORITY AND ITS NUMBERING IS ITS OWN. `cuDeviceGetAttribute` takes an
 // attribute ORDINAL, so the ordinals are carried here as upstream facts rather than re-derived: an
 // ordinal that drifts silently reads a different attribute and returns a confident wrong answer.
-data cuda_driver_api_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.cuda_driver",
+      decl_name: "CudaDeviceAttribute",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // THE ATTRIBUTES THIS REPOSITORY ASKS FOR, each as a named member rather than a bare number at a
