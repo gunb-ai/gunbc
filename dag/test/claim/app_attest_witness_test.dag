@@ -8,8 +8,9 @@ import extdeps.apple.app_attest {
   AttestationChainUntrusted, AttestationNonceMismatch, AttestationKeyIdMismatch,
   AttestationAppIdMismatch, AttestationEnvironmentUnexpected, AttestationUndecodable,
   AttestationValidationCategoryAbsent, AttestationValidationCategoryRefused, AttestationBundleVersionRefused,
-  AssertionVerification, AssertionVerified, AssertionRefused,
-  AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionCounterNotIncreasing,
+  AssertionVerification, AssertionAuthentic, AssertionRefused,
+  AssertionSignatureInvalid, AssertionAppIdMismatch, AssertionValidationCategoryAbsent,
+  AssertionValidationCategoryRefused, AssertionBundleVersionRefused,
   app_attest_verify, app_attest_verify_under, app_attest_verify_assertion_of,
 }
 
@@ -94,43 +95,33 @@ test fn an_attestation_that_is_not_base64_is_undecodable() -> Bool {
 // its counter is 1. The attested key is SUPPLIED here as the value the attestation certified (the
 // credential certificate's public key, cross-checked by SHA-256 against the key id); the route that
 // produces it is exercised by the_forged_chain_verifies_under_its_own_test_root.
+//
+// Like the attestation, it PREDATES the extensions (steps 7-8), so the current procedure refuses it
+// at step 7 -- after steps 3 (signature) and 4 (RP ID) have passed on a genuine device assertion,
+// which the two refusals below that stop earlier discriminate.
 data genuine_point: NonEmptyStr = "BIjANKGQqn28WgYVAcZUKAOUJYIZiz8cxUZzyjua0gtBUoJnpU9f26BGn6-0a7aZCjlr8E-UpJ1DIMgcerJAo5g"
 
-fn assert_genuine(stored: Int?, client_data: NonEmptyStr, bundle_id: NonEmptyStr) -> AssertionVerification {
-  app_attest_verify_assertion_of(prefix: genuine_prefix, bundle_id: bundle_id, key_id: genuine_key_id, public_key_point_b64url: genuine_point, stored_counter: stored, assertion_b64: genuine_assertion, client_data: client_data)
+fn assert_genuine(client_data: NonEmptyStr, bundle_id: NonEmptyStr) -> AssertionVerification {
+  app_attest_verify_assertion_of(prefix: genuine_prefix, bundle_id: bundle_id, admitted_categories: development_categories, admitted_bundle_versions: distributed_versions, key_id: genuine_key_id, public_key_point_b64url: genuine_point, assertion_b64: genuine_assertion, client_data: client_data)
 }
 
-test fn the_genuine_assertion_verifies_under_the_attested_key_with_no_stored_counter() -> Bool {
-  match assert_genuine(stored: none, client_data: genuine_client_data, bundle_id: genuine_bundle_id) {
-    AssertionVerified { verified } => verified.key_id == genuine_key_id && verified.counter == 1 && verified.client_data == genuine_client_data
-    AssertionRefused { cause: _ } => false
-  }
-}
-
-test fn the_genuine_assertion_verifies_above_a_lower_stored_counter() -> Bool {
-  match assert_genuine(stored: Present { value: 0 }, client_data: genuine_client_data, bundle_id: genuine_bundle_id) {
-    AssertionVerified { verified } => verified.counter == 1
-    AssertionRefused { cause: _ } => false
-  }
-}
-
-// The same assertion presented again after the server stored counter 1: a replay.
-test fn a_replayed_assertion_is_refused_by_the_counter() -> Bool {
-  match assert_genuine(stored: Present { value: 1 }, client_data: genuine_client_data, bundle_id: genuine_bundle_id) {
-    AssertionRefused { cause: AssertionCounterNotIncreasing { stored, presented } } => stored == 1 && presented == 1
+test fn the_genuine_assertion_passes_signature_and_app_id_and_stops_at_the_absent_category() -> Bool {
+  match assert_genuine(client_data: genuine_client_data, bundle_id: genuine_bundle_id) {
+    AssertionRefused { cause: AssertionValidationCategoryAbsent } => true
     _ => false
   }
 }
 
+// The signature covers the client data: a different request body does not verify.
 test fn an_assertion_over_different_client_data_is_invalid() -> Bool {
-  match assert_genuine(stored: none, client_data: "wurzelpfropg", bundle_id: genuine_bundle_id) {
+  match assert_genuine(client_data: "wurzelpfropg", bundle_id: genuine_bundle_id) {
     AssertionRefused { cause: AssertionSignatureInvalid } => true
     _ => false
   }
 }
 
 test fn an_assertion_for_the_wrong_app_id_is_refused() -> Bool {
-  match assert_genuine(stored: none, client_data: genuine_client_data, bundle_id: "de.vincent-haupert.other") {
+  match assert_genuine(client_data: genuine_client_data, bundle_id: "de.vincent-haupert.other") {
     AssertionRefused { cause: AssertionAppIdMismatch { expected_app_id: _ } } => true
     _ => false
   }
@@ -184,6 +175,42 @@ test fn the_forged_chain_is_refused_under_the_pinned_apple_root() -> Bool {
 test fn a_bundle_version_outside_the_distributed_set_is_refused() -> Bool {
   match forged_under(anchor: test_root, admitted: development_categories, versions: ["2.0"]) {
     AttestationRefused { cause: AttestationBundleVersionRefused { version } } => version as String == "1.0"
+    _ => false
+  }
+}
+
+// ── A test-key assertion carrying the extensions ─────────────────────────────────────────────
+// Signed (openssl dgst -sha256 -sign, independently verified) by the test chain's credential key over
+// client data "forged-request", counter 1, extensions {validationCategory: 3, bundleVersion: "1.0"}.
+// The key is SUPPLIED as the point the_forged_chain_verifies_under_its_own_test_root reads back.
+data forged_assertion: NonEmptyStr = "omlzaWduYXR1cmVYRjBEAiA+ESxLZ8FZ2EgVWtPIlDwIKMpyGL1EO+ekOMUmdLaXqgIgJQWU6L4LVmfbiGRQprigAiCXSQujizF69Md1Q7lBulhxYXV0aGVudGljYXRvckRhdGFYTEVlEup+JpR2q5Pht5cWhVkv9z+JSsDsL9VICKCL+2yPgAAAAAGicnZhbGlkYXRpb25DYXRlZ29yeQNtYnVuZGxlVmVyc2lvbmMxLjA="
+data forged_point: NonEmptyStr = "BFIuggVA-y3RU_usJbYfvChlz-Mpq7yvbf0d60JkajVGfprBR8p3eq6QzcDEBZGY2BoW6a-aFMjRjmGipHdFPss"
+
+fn assert_forged(categories: List<Int>, versions: List<NonEmptyStr>) -> AssertionVerification {
+  app_attest_verify_assertion_of(prefix: genuine_prefix, bundle_id: genuine_bundle_id, admitted_categories: categories, admitted_bundle_versions: versions, key_id: forged_key_id, public_key_point_b64url: forged_point, assertion_b64: forged_assertion, client_data: "forged-request")
+}
+
+// Authentic carries the COUNTER OUT for the consumer's step 5, and the client data for its step 6:
+// a replay presents the same counter 1 again, which the consumer's stored counter refuses.
+test fn the_test_assertion_is_authentic_and_carries_its_counter_and_client_data() -> Bool {
+  match assert_forged(categories: development_categories, versions: distributed_versions) {
+    AssertionAuthentic { authentic } =>
+      authentic.counter == 1 && authentic.client_data as String == "forged-request"
+        && authentic.key_id == forged_key_id && authentic.public_key_point_b64url == forged_point
+    AssertionRefused { cause: _ } => false
+  }
+}
+
+test fn an_assertion_category_outside_the_admitted_set_is_refused() -> Bool {
+  match assert_forged(categories: [4], versions: distributed_versions) {
+    AssertionRefused { cause: AssertionValidationCategoryRefused { category } } => category == 3
+    _ => false
+  }
+}
+
+test fn an_assertion_bundle_version_outside_the_distributed_set_is_refused() -> Bool {
+  match assert_forged(categories: development_categories, versions: ["2.0"]) {
+    AssertionRefused { cause: AssertionBundleVersionRefused { version } } => version as String == "1.0"
     _ => false
   }
 }

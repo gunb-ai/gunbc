@@ -22533,6 +22533,8 @@ enum AppAttestAssertionRefusal {
     Undecodable(String),
     SignatureInvalid,
     AppIdMismatch,
+    ValidationCategoryAbsent,
+    BundleVersionAbsent,
 }
 
 fn app_attest_cbor_map(bytes: &[u8]) -> Result<Vec<(ciborium::Value, ciborium::Value)>, String> {
@@ -22580,12 +22582,19 @@ fn app_attest_auth_data(auth_data: &[u8], attested: bool) -> Result<AppAttestAut
     }
     let counter = u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
     if !attested {
+        // An assertion's authenticator data has no attested credential data: the extensions map,
+        // when the ED flag says there is one, starts right after the counter.
+        let mut rest: &[u8] = &auth_data[37..];
+        let extensions = app_attest_extensions(auth_data[32], &mut rest)?;
+        if !rest.is_empty() {
+            return Err("authenticator data has trailing octets".to_string());
+        }
         return Ok(AppAttestAuthData {
             rp_id_hash: &auth_data[..32],
             counter,
             aaguid: &[],
             credential_id: &[],
-            extensions: None,
+            extensions,
         });
     }
     if auth_data.len() < 55 {
@@ -22600,15 +22609,7 @@ fn app_attest_auth_data(auth_data: &[u8], attested: bool) -> Result<AppAttestAut
     let mut rest: &[u8] = &auth_data[55 + len..];
     ciborium::de::from_reader::<ciborium::Value, _>(&mut rest)
         .map_err(|e| format!("COSE credential key: {e}"))?;
-    let extensions = if auth_data[32] & 0x80 != 0 {
-        match ciborium::de::from_reader::<ciborium::Value, _>(&mut rest) {
-            Ok(ciborium::Value::Map(entries)) => Some(entries),
-            Ok(_) => return Err("extensions are not a CBOR map".to_string()),
-            Err(e) => return Err(format!("extensions: {e}")),
-        }
-    } else {
-        None
-    };
+    let extensions = app_attest_extensions(auth_data[32], &mut rest)?;
     if !rest.is_empty() {
         return Err("authenticator data has trailing octets".to_string());
     }
@@ -22619,6 +22620,45 @@ fn app_attest_auth_data(auth_data: &[u8], attested: bool) -> Result<AppAttestAut
         credential_id,
         extensions,
     })
+}
+
+/// The WebAuthn extensions map, read from `rest` when the ED flag (0x80) of `flags` is set.
+fn app_attest_extensions(
+    flags: u8,
+    rest: &mut &[u8],
+) -> Result<Option<Vec<(ciborium::Value, ciborium::Value)>>, String> {
+    if flags & 0x80 == 0 {
+        return Ok(None);
+    }
+    match ciborium::de::from_reader::<ciborium::Value, _>(rest) {
+        Ok(ciborium::Value::Map(entries)) => Ok(Some(entries)),
+        Ok(_) => Err("extensions are not a CBOR map".to_string()),
+        Err(e) => Err(format!("extensions: {e}")),
+    }
+}
+
+/// One extension value by key: the category as UInt32, the version as non-empty single-line text.
+fn app_attest_extension_category(
+    extensions: &Option<Vec<(ciborium::Value, ciborium::Value)>>,
+    key: &str,
+) -> Option<u32> {
+    extensions
+        .as_ref()
+        .and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some(key)))
+        .and_then(|(_, v)| v.as_integer())
+        .and_then(|i| u32::try_from(i).ok())
+}
+
+fn app_attest_extension_version(
+    extensions: &Option<Vec<(ciborium::Value, ciborium::Value)>>,
+    key: &str,
+) -> Option<String> {
+    extensions
+        .as_ref()
+        .and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some(key)))
+        .and_then(|(_, v)| v.as_text())
+        .filter(|v| !v.is_empty() && !v.contains('\n'))
+        .map(str::to_string)
 }
 
 /// `child` is signed by `issuer`'s key, names `issuer` as its issuer, and both are valid at
@@ -22794,22 +22834,12 @@ fn app_attest_verify_attestation(
     }
     // 9-10. The launch category (UInt32) and the distributed app version (String) from the
     // extensions map.
-    let extension = |name: &str| {
-        parsed
-            .extensions
-            .as_ref()
-            .and_then(|m| m.iter().find(|(k, _)| k.as_text() == Some(name)))
-            .map(|(_, v)| v)
-    };
-    let validation_category = extension("apple_validation_category_01")
-        .and_then(|v| v.as_integer())
-        .and_then(|i| u32::try_from(i).ok())
-        .ok_or(R::ValidationCategoryAbsent)?;
-    let bundle_version = extension("apple_bundle_version_01")
-        .and_then(|v| v.as_text())
-        .filter(|v| !v.is_empty() && !v.contains('\n'))
-        .ok_or(R::BundleVersionAbsent)?
-        .to_string();
+    let validation_category =
+        app_attest_extension_category(&parsed.extensions, "apple_validation_category_01")
+            .ok_or(R::ValidationCategoryAbsent)?;
+    let bundle_version =
+        app_attest_extension_version(&parsed.extensions, "apple_bundle_version_01")
+            .ok_or(R::BundleVersionAbsent)?;
     let receipt = app_attest_cbor_bytes(att_stmt, "receipt").map_err(R::Undecodable)?;
     if receipt.is_empty() {
         return Err(R::Undecodable("receipt is empty".to_string()));
@@ -22822,15 +22852,29 @@ fn app_attest_verify_attestation(
     })
 }
 
-/// Apple's assertion procedure: the signature over nonce = SHA256(authenticatorData ||
-/// SHA256(clientData)) verifies under the ATTESTED key, and the RP ID hash is the app's. The
-/// counter is returned; whether it must exceed a stored one is the caller's to judge.
+/// What an authentic assertion yields: the counter (the consumer compares it) and the two extension
+/// values the caller's policy judges.
+struct AppAttestAsserted {
+    counter: u32,
+    validation_category: u32,
+    bundle_version: String,
+}
+
+/// Apple's assertion procedure, the steps a verifier can decide alone: the signature over nonce =
+/// SHA256(authenticatorData || SHA256(clientData)) verifies under the ATTESTED key (3), the RP ID
+/// hash is the app's (4), and the extensions carry validationCategory (7) and bundleVersion (8).
+/// Steps 5 (counter) and 6 (challenge) need the consumer's state and are the consumer's.
+///
+/// THE EXTENSION KEYS ARE APPLE'S DOCUMENTED SPELLINGS FOR ASSERTIONS -- `validationCategory` and
+/// `bundleVersion` -- which differ from the attestation's `apple_validation_category_01` /
+/// `apple_bundle_version_01`. No genuine assertion carrying extensions is in this tree to confirm
+/// the spelling on the wire; a mismatch refuses as absent, never passes.
 fn app_attest_verify_assertion(
     assertion: &[u8],
     client_data: &[u8],
     point: &[u8],
     app_id: &str,
-) -> Result<u32, AppAttestAssertionRefusal> {
+) -> Result<AppAttestAsserted, AppAttestAssertionRefusal> {
     use p256::ecdsa::signature::Verifier;
     use sha2::{Digest, Sha256};
     use AppAttestAssertionRefusal as R;
@@ -22858,7 +22902,16 @@ fn app_attest_verify_assertion(
     if parsed.rp_id_hash != Sha256::digest(app_id.as_bytes()).as_slice() {
         return Err(R::AppIdMismatch);
     }
-    Ok(parsed.counter)
+    let validation_category =
+        app_attest_extension_category(&parsed.extensions, "validationCategory")
+            .ok_or(R::ValidationCategoryAbsent)?;
+    let bundle_version = app_attest_extension_version(&parsed.extensions, "bundleVersion")
+        .ok_or(R::BundleVersionAbsent)?;
+    Ok(AppAttestAsserted {
+        counter: parsed.counter,
+        validation_category,
+        bundle_version,
+    })
 }
 
 /// A variant of a `.dag`-declared coproduct, constructed here so the host answer arrives already
@@ -23030,11 +23083,18 @@ fn app_attest_assertion_answer(
         );
     };
     match app_attest_verify_assertion(&assertion, client_data.as_bytes(), &point, app_id) {
-        Ok(counter) => app_attest_variant(
+        Ok(a) => app_attest_variant(
             ctx,
             "AssertionImplementationAnswer",
             "AssertionImplementationVerified",
-            vec![("counter", Value::Int(i64::from(counter)))],
+            vec![
+                ("counter", Value::Int(i64::from(a.counter))),
+                (
+                    "validation_category",
+                    Value::Int(i64::from(a.validation_category)),
+                ),
+                ("bundle_version", str_value(a.bundle_version)),
+            ],
         ),
         Err(R::Undecodable(cause)) => {
             refused("AssertionUndecodable", vec![("cause", str_value(cause))])
@@ -23044,6 +23104,8 @@ fn app_attest_assertion_answer(
             "AssertionAppIdMismatch",
             vec![("expected_app_id", str_value(app_id.to_string()))],
         ),
+        Err(R::ValidationCategoryAbsent) => refused("AssertionValidationCategoryAbsent", vec![]),
+        Err(R::BundleVersionAbsent) => refused("AssertionBundleVersionAbsent", vec![]),
     }
 }
 

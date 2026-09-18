@@ -134,7 +134,9 @@ type AssertionRefusal
   = AssertionSignatureInvalid
   | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
   | AssertionValidationCategoryRefused { category: Int }
+  | AssertionValidationCategoryAbsent
   | AssertionBundleVersionAbsent
+  | AssertionBundleVersionRefused { version: NonEmptyStr }
   | AssertionUndecodable { cause: String }
 
 type AuthenticAssertion sole_constructor {
@@ -191,7 +193,7 @@ type AttestationImplementationAnswer
   | AttestationImplementationRefused { cause: AttestationRefusal }
 
 type AssertionImplementationAnswer
-  = AssertionImplementationVerified { counter: Int }
+  = AssertionImplementationVerified { counter: Int, validation_category: Int, bundle_version: NonEmptyStr }
   | AssertionImplementationRefused { cause: AssertionRefusal }
 
 // ── The bound implementation ─────────────────────────────────────────────────────────────────
@@ -325,17 +327,18 @@ fn app_attest_attestation_of(
   }
 }
 
-// `app_attest_verify_assertion` is the host primitive for the assertion procedure: the signature
-// under the STORED attested key, and the app's RP ID hash. It reports the counter and does not
-// judge it. `stored_counter` is the caller's: Absent passes the counter through (this deployment's
-// stated departure in gunbc.auth.approval_device_redemption), Present refuses anything not strictly
-// greater -- the replay refusal.
+// `app_attest_verify_assertion` is the host primitive for the steps of the assertion procedure a
+// verifier can decide alone: the signature under the STORED attested key (3), the app's RP ID hash
+// (4), and the extensions' validationCategory (7) and bundleVersion (8), judged here against the same
+// caller policy as the attestation's. Steps 5 (counter) and 6 (challenge) are the consumer's: the
+// counter and the client data are carried out on AuthenticAssertion for it to compare and join.
 fn app_attest_verify_assertion_of(
   prefix: AppIdPrefix,
   bundle_id: NonEmptyStr,
+  admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
   key_id: AttestKeyId,
   public_key_point_b64url: NonEmptyStr,
-  stored_counter: Int?,
   assertion_b64: NonEmptyStr,
   client_data: NonEmptyStr,
 ) -> AssertionVerification {
@@ -348,28 +351,50 @@ fn app_attest_verify_assertion_of(
       app_id as String,
     ),
     key_id: key_id,
-    stored_counter: stored_counter,
+    public_key_point_b64url: public_key_point_b64url,
     client_data: client_data,
+    admitted_categories: admitted_categories,
+    admitted_bundle_versions: admitted_bundle_versions,
   )
 }
 
-fn app_attest_assertion_of(answer: AssertionImplementationAnswer, key_id: AttestKeyId, stored_counter: Int?, client_data: NonEmptyStr) -> AssertionVerification {
+fn app_attest_assertion_of(
+  answer: AssertionImplementationAnswer,
+  key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
+  client_data: NonEmptyStr,
+  admitted_categories: List<Int>,
+  admitted_bundle_versions: List<NonEmptyStr>,
+) -> AssertionVerification {
   match answer {
     AssertionImplementationRefused { cause } => AssertionRefused { cause: cause }
-    AssertionImplementationVerified { counter } =>
+    AssertionImplementationVerified { counter, validation_category, bundle_version } =>
       assertion_verification_from_implementation(
         key_id: key_id,
+        public_key_point_b64url: public_key_point_b64url,
         counter: counter,
         client_data: client_data,
-        refusal: app_attest_counter_refusal(stored: stored_counter, presented: counter),
+        refusal: app_attest_assertion_policy_refusal(
+          admitted_categories: admitted_categories,
+          category: validation_category,
+          admitted_bundle_versions: admitted_bundle_versions,
+          bundle_version: bundle_version,
+        ),
       )
   }
 }
 
-fn app_attest_counter_refusal(stored: Int?, presented: Int) -> AssertionRefusal? {
-  match stored {
-    Absent => none
-    Present { value: s } =>
-      if presented > s { none } else { Present { value: AssertionCounterNotIncreasing { stored: s, presented: presented } } }
+fn app_attest_assertion_policy_refusal(
+  admitted_categories: List<Int>,
+  category: Int,
+  admitted_bundle_versions: List<NonEmptyStr>,
+  bundle_version: NonEmptyStr,
+) -> AssertionRefusal? {
+  if !app_attest_category_admitted(admitted: admitted_categories, category: category) {
+    Present { value: AssertionValidationCategoryRefused { category: category } }
+  } else if !app_attest_bundle_version_admitted(admitted: admitted_bundle_versions, version: bundle_version) {
+    Present { value: AssertionBundleVersionRefused { version: bundle_version } }
+  } else {
+    none
   }
 }
