@@ -399,6 +399,41 @@ type SupersededMarkerVisibility
 
 data superseded_marker_visibility_unobservable_reason: NonEmptyStr = "appProperties are private to the OAuth client that wrote them and this repository never observes the client its token belongs to, so an empty superseded-marker search cannot distinguish a drive with no legacy sheet from a legacy sheet whose marker this client cannot see"
 
+// THE OPERATOR'S DECLARATION, AND IT EXISTS BECAUSE THE FIRST CUT OF THIS WALL HAD NO PRODUCTION
+// CONSTRUCTOR FOR THE ARM THAT LETS A CREATE THROUGH. Review 67720 found it: the only thing building
+// SupersededFieldVisibleToThisClient was a witness fixture, so an empty drive always refused, the
+// refusal named two inputs that did not exist, and the two claims asserting a create was still
+// reachable were green only through a value the actuator never emits. That is the pairing obligation
+// inverted -- supplying an input had removed the last execution of the real path -- and it is
+// DESIGN section 4d's over-prohibition with a fixture hiding the cost.
+//
+// WHAT AN OPERATOR CAN HONESTLY DECLARE, AND WHY IT IS A HUMAN STEP RATHER THAN A GAP. Whether a
+// drive holds a sheet marked with an app-private property this credential cannot see is not
+// observable through this credential at all -- no read closes it, so this is not a capability
+// waiting to be built. A human with the Drive UI can see the file; this process cannot. The
+// declaration is therefore the whole remedy rather than a placeholder for one.
+//
+// TWO PATHS, BECAUSE THE TWO SITUATIONS NEED DIFFERENT ANSWERS. A drive that really is empty needs
+// permission to create; a drive holding an invisible legacy sheet needs that sheet ADOPTED, and the
+// operator can supply its file id from the URL. Naming one and not the other would leave the other
+// situation with a refusal and no route, which is the defect this row repairs.
+data review_sheet_no_legacy_sheet_declaration_path: String = ".gunbc/review-sheet-no-legacy-sheet"
+
+data review_sheet_legacy_sheet_id_declaration_path: String = ".gunbc/review-sheet-legacy-file-id"
+
+type SupersededMarkerDeclaration
+  = NoDeclaration
+  | DeclaredNoLegacySheet { basis: NonEmptyStr }
+  | DeclaredLegacySheetId { file_id: NonEmptyStr, basis: NonEmptyStr }
+
+fn visibility_from_declaration(declaration: SupersededMarkerDeclaration) -> SupersededMarkerVisibility {
+  match declaration {
+    DeclaredNoLegacySheet { basis: b } => SupersededFieldVisibleToThisClient { basis: b }
+    DeclaredLegacySheetId { file_id: _, basis: _ } => superseded_visibility_unobservable()
+    NoDeclaration => superseded_visibility_unobservable()
+  }
+}
+
 fn superseded_visibility_unobservable() -> SupersededMarkerVisibility {
   SupersededFieldVisibilityUnobservable { reason: superseded_marker_visibility_unobservable_reason }
 }
@@ -464,6 +499,53 @@ fn spreadsheet_from_files(files: List<DriveFile>) -> ReviewSpreadsheetObservatio
 // old field is precisely the state that cannot tell a migrated drive from an unmigrated one -- and
 // answering "create" there is the bug this whole change exists to close, repeated one generation
 // later. DESIGN section 5: a failure arm must refuse, never widen.
+// AN OPERATOR-SUPPLIED ID IS ADOPTED AHEAD OF EVERY SEARCH, and that ordering is the point rather
+// than an optimisation. The id exists precisely for the case where no search can reach the file, so
+// consulting the searches first and falling back would make the remedy conditional on the failure
+// mode it was supplied to route around. It still travels through the migration plan, so the file
+// gets the current marker written onto it and the readback still has to find it.
+fn ensure_review_spreadsheet_with_declaration(
+  policy: EnsurePolicy,
+  observed: ReviewSpreadsheetObservation,
+  superseded: SupersededSearchReading,
+  declaration: SupersededMarkerDeclaration,
+  drive_id: NonEmptyStr,
+  sheet_name: NonEmptyStr,
+  marker_value: NonEmptyStr,
+) -> UpsertDecision<SpreadsheetPlan> {
+  match declaration {
+    DeclaredLegacySheetId { file_id: id, basis: _ } =>
+      match policy {
+        EnsureObserveOnly =>
+          Refuse {
+            reason: join(
+              ["an operator declared the legacy sheet ", id as String, " for adoption and policy is observe-only; adopting it means writing the current marker onto it"],
+              "",
+            ) as NonEmptyStr,
+          }
+        EnsureMayApply =>
+          Apply {
+            plan: SpreadsheetMigrateMarker {
+              migrate: SpreadsheetMarkerMigrationPlan {
+                file_id: id,
+                marker_property_value: marker_value,
+              }
+            }
+          }
+      }
+    DeclaredNoLegacySheet { basis: _ } =>
+      ensure_review_spreadsheet(
+        policy: policy, observed: observed, superseded: superseded,
+        drive_id: drive_id, sheet_name: sheet_name, marker_value: marker_value,
+      )
+    NoDeclaration =>
+      ensure_review_spreadsheet(
+        policy: policy, observed: observed, superseded: superseded,
+        drive_id: drive_id, sheet_name: sheet_name, marker_value: marker_value,
+      )
+  }
+}
+
 fn ensure_review_spreadsheet(
   policy: EnsurePolicy,
   observed: ReviewSpreadsheetObservation,

@@ -41,7 +41,14 @@ import gunbc.review_sheet_drive_converge {
   SupersededRead,
   SupersededMarkerVisibility,
   SupersededFieldVisibleToThisClient,
+  SupersededFieldVisibilityUnobservable,
   superseded_visibility_unobservable,
+  SupersededMarkerDeclaration,
+  NoDeclaration,
+  DeclaredNoLegacySheet,
+  DeclaredLegacySheetId,
+  visibility_from_declaration,
+  ensure_review_spreadsheet_with_declaration,
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
@@ -348,12 +355,18 @@ test fn duplicate_matches_refuse_and_name_both() -> Bool {
 // no longer authorizes a create by itself, because that is exactly the state gunbc#11485 produced
 // on a drive already holding a review sheet, and a create there minted a duplicate beside live data.
 
-// The basis a real caller would have to supply: evidence that THIS OAuth client wrote the superseded
-// marker, which this repository cannot currently observe. Supplied here because the claim's subject
-// is the decision, not the observation -- and the claim immediately below is the control proving the
-// decision refuses when that basis is absent.
+// THIS GOES THROUGH THE PRODUCTION FOLD RATHER THAN NAMING THE ARM, and that is the repair review
+// 67720 asked for. An earlier cut constructed SupersededFieldVisibleToThisClient directly here, and
+// it was the ONLY constructor anywhere -- so the claims below were green through a value the
+// actuator could never emit, and bootstrap was dead while they said it was reachable. Routing the
+// fixture through visibility_from_declaration means these claims exercise the same fold the
+// actuator calls, and deleting that fold reds them.
 fn w_visible() -> SupersededMarkerVisibility {
-  SupersededFieldVisibleToThisClient { basis: "fixture: this client is the writer of the superseded marker" as NonEmptyStr }
+  visibility_from_declaration(
+    declaration: DeclaredNoLegacySheet {
+      basis: "fixture: an operator declared this drive holds no superseded-marked review sheet" as NonEmptyStr
+    }
+  )
 }
 
 fn w_absent_page() -> DriveFileList {
@@ -417,6 +430,45 @@ test fn absence_under_both_markers_still_creates() -> Bool {
       }
     Noop => false
     Refuse { reason: _ } => false
+  }
+}
+
+// THE OPERATOR'S ID IS ADOPTED AHEAD OF EVERY SEARCH, which is the route that recovers a sheet no
+// search can reach. Both searches answer absent here -- the state that refuses without a
+// declaration -- and the id turns that same state into a migration.
+test fn a_declared_legacy_file_id_is_adopted_ahead_of_the_searches() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "operator-supplied-sheet" as NonEmptyStr,
+      basis: "fixture: supplied from the Drive URL" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Apply { plan: p } =>
+      match p {
+        SpreadsheetMigrateMarker { migrate: m } => (m.file_id as String) == "operator-supplied-sheet"
+        SpreadsheetCreate { create: _ } => false
+      }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// THE CONTROL FOR THE DECLARATION FOLD ITSELF: with NO declaration the visibility stays
+// unobservable, so the create arm is closed. This is what makes the two claims above discriminate
+// rather than merely pass -- the fixture cannot reach the permissive arm without a declaration.
+test fn no_declaration_leaves_the_superseded_visibility_unobservable() -> Bool {
+  match visibility_from_declaration(declaration: NoDeclaration) {
+    SupersededFieldVisibilityUnobservable { reason: _ } => true
+    SupersededFieldVisibleToThisClient { basis: _ } => false
   }
 }
 

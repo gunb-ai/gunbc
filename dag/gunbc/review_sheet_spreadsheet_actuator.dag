@@ -1,7 +1,7 @@
 module gunbc.review_sheet_spreadsheet_actuator
 
 import std.types { NonEmptyStr, String, Bool }
-import std.resources { Network }
+import std.resources { Network, Filesystem }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.transports.rest {
@@ -34,6 +34,14 @@ import gunbc.review_sheet_drive_converge {
   SupersededRead,
   SupersededMarkerVisibility,
   superseded_visibility_unobservable,
+  SupersededMarkerDeclaration,
+  NoDeclaration,
+  DeclaredNoLegacySheet,
+  DeclaredLegacySheetId,
+  visibility_from_declaration,
+  ensure_review_spreadsheet_with_declaration,
+  review_sheet_no_legacy_sheet_declaration_path,
+  review_sheet_legacy_sheet_id_declaration_path,
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
@@ -280,10 +288,34 @@ fn perform_marker_migration(
 // IS SAFE TO SKIP IT. An adopted sheet settles the identity, so the steady state -- every run after
 // the first -- issues exactly the one files.list it issued before this change, and the refusing arms
 // have already refused for a reason that a superseded-marker file could not repair.
+// THE DECLARATION IS READ FROM DISK, WHICH IS WHAT MAKES THE ARM REACHABLE OUTSIDE A FIXTURE. The
+// id file wins over the absence file: supplying an id is the more specific statement, and an
+// operator who wrote both has told us a sheet exists, so honouring the weaker one would create
+// beside it.
+fn read_superseded_declaration() -> SupersededMarkerDeclaration uses fs: Filesystem {
+  let id_read = Filesystem.Read(path: review_sheet_legacy_sheet_id_declaration_path)
+  if id_read.success && trim(id_read.content) != "" {
+    DeclaredLegacySheetId {
+      file_id: trim(id_read.content) as NonEmptyStr,
+      basis: join(["an operator supplied this file id at ", review_sheet_legacy_sheet_id_declaration_path], "") as NonEmptyStr,
+    }
+  } else {
+    let absent_read = Filesystem.Read(path: review_sheet_no_legacy_sheet_declaration_path)
+    if absent_read.success && trim(absent_read.content) != "" {
+      DeclaredNoLegacySheet {
+        basis: join(["an operator declared this drive holds no superseded-marked review sheet at ", review_sheet_no_legacy_sheet_declaration_path], "") as NonEmptyStr,
+      }
+    } else {
+      NoDeclaration
+    }
+  }
+}
+
 fn read_superseded_marker(
   drive_id: NonEmptyStr,
   marker_value: NonEmptyStr,
   observed: ReviewSpreadsheetObservation,
+  declaration: SupersededMarkerDeclaration,
 ) -> SupersededSearchReading uses net: Network {
   match observed {
     SheetAbsent =>
@@ -292,7 +324,7 @@ fn read_superseded_marker(
           drive_id: drive_id,
           query: review_sheet_superseded_search_query(marker_value: marker_value),
         ),
-        visibility: superseded_visibility_unobservable(),
+        visibility: visibility_from_declaration(declaration: declaration),
       }
     SheetObservedOne { file_id: _ } => SupersededNotConsulted
     SheetDuplicated { file_ids: _ } => SupersededNotConsulted
@@ -307,20 +339,23 @@ fn converge_review_spreadsheet(
   sheet_name: NonEmptyStr,
   marker_value: NonEmptyStr,
   policy: EnsurePolicy,
-) -> SpreadsheetConvergeOutcome uses net: Network {
+) -> SpreadsheetConvergeOutcome uses net: Network, fs: Filesystem {
   let observed = read_spreadsheet(
     drive_id: drive_id,
     query: review_sheet_search_query(marker_value: marker_value),
   )
+  let declaration = read_superseded_declaration()
   let superseded = read_superseded_marker(
     drive_id: drive_id,
     marker_value: marker_value,
     observed: observed,
+    declaration: declaration,
   )
-  match ensure_review_spreadsheet(
+  match ensure_review_spreadsheet_with_declaration(
     policy: policy,
     observed: observed,
     superseded: superseded,
+    declaration: declaration,
     drive_id: drive_id,
     sheet_name: sheet_name,
     marker_value: marker_value,
