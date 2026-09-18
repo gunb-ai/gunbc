@@ -17,9 +17,11 @@ import extdeps.systemd.unit_file {
 import extdeps.huggingface.hub { hub_repo_cache_directory_name }
 import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire, vllm_prefix_caching_argv, vllm_kv_cache_dtype_wire }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
+import extdeps.vllm.environment {
+  VllmEngineReadyTimeoutSeconds, VllmSparseIndexerMaxLogitsMb, vllm_environment_assignment_wire,
+}
 import extdeps.zhipu.glm_5_3_flash {
   glm_5_3_flash_vllm_tool_call_parser, glm_5_3_flash_vllm_reasoning_parser,
-  glm_5_3_flash_vllm_engine_ready_timeout_seconds, glm_5_3_flash_gb10_sparse_indexer_max_logits_mb,
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, FabricLaneObserved, fabric_group_hosts, fabric_lane_for_host }
 import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
@@ -123,6 +125,27 @@ fn glm_native_ranked_hosts() -> List<HostIdentity> {
   concat([head], filter(fabric_group_hosts(g: FabricGroupB), h => !host_identity_eq(a: h, b: head)))
 }
 
+// THESE TWO ARE THIS DEPLOYMENT'S VALUES FOR vLLM ENVIRONMENT VARIABLES, not facts about the model,
+// so they live with the deployment that chose them; the variable names are vLLM's and live in
+// extdeps.vllm.environment (review 67469: a model vendor's module is not the home for an engine
+// knob). They were homed in extdeps.zhipu.glm_5_3_flash until 2026-09-18.
+//
+// THE ENGINE READY TIMEOUT IS THE RECIPE'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it
+// is carried because its absence is independently fatal on a cold multi-node start. torch's
+// distributed rendezvous defaults to 601 seconds; a four-rank group whose members are still
+// materialising exceeds that and dies with "Timed out waiting for clients", which is a different
+// failure from anything about the model and reports nothing about it.
+data glm_native_engine_ready_timeout_seconds: Nat = 3600
+
+// A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
+// vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
+// sparse-indexer logits allocation, with two independent mitigations offered. That report used a
+// different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
+// measurement of it -- which is why the figure is carried here as an upstream observation and the
+// decision to apply it is a deployment's own.
+data glm_native_sparse_indexer_max_logits_mb: Nat = 64
+data glm_native_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr
+
 fn glm_native_engine_argv(rank: Nat, ranks: Nat, master: Ipv4Address) -> List<String> {
   match glm_native_model_path_in_container() {
     Absent => []
@@ -201,8 +224,8 @@ fn glm_native_container_argv(lane: FabricLaneObserved, rank: Nat, ranks: Nat, ma
       "-e", "NCCL_DEBUG_SUBSYS=INIT,NET",
       "-e", vllm_usage_stats_disable_assignment_wire(),
       "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String], ""),
-      "-e", join(["VLLM_ENGINE_READY_TIMEOUT_S=", to_string(glm_5_3_flash_vllm_engine_ready_timeout_seconds)], ""),
-      "-e", join(["VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=", to_string(glm_5_3_flash_gb10_sparse_indexer_max_logits_mb)], ""),
+      "-e", vllm_environment_assignment_wire(variable: VllmEngineReadyTimeoutSeconds, value: to_string(glm_native_engine_ready_timeout_seconds)),
+      "-e", vllm_environment_assignment_wire(variable: VllmSparseIndexerMaxLogitsMb, value: to_string(glm_native_sparse_indexer_max_logits_mb)),
       "-v", join([spark_hub_cache_root as String, ":", glm_native_weights_container_dir as String, ":ro"], ""),
       glm_native_image_reference as String,
     ],

@@ -36,13 +36,10 @@ import gunbc.spark.v41_published_image_observation {
   RegistryTagAbsent, RegistryTagResolves, RegistryTagUnasked,
 }
 import gunbc.spark.vllm_runtime_image_build {
-  vllm_source_is_clean, vllm_image_provenance_wire, BuiltByThisRun, AdoptedUnderExpectedTag,
-  vllm_source_dir,
-  v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
-  v41_gb10_recipe, vllm_build_host_purpose, vllm_image_build_key, vllm_image_tag, vllm_image_tag_for_key, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
-  SparkHostAnswered, SparkHostIdentityMismatch, SparkHostIdentityUnjoinable,
-  SparkHostUnreachable, SparkHostUnresolved,
-  classify_reported_hostname, spark_host_answered,
+  vllm_source_is_clean, vllm_image_provenance_wire, BuiltByThisRun, AdoptedUnderExpectedTag, vllm_source_dir, v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads, v41_gb10_recipe, vllm_build_host_purpose, vllm_image_build_spec, vllm_recipe_arch_is_buildable, SparkHostAnswered, SparkHostIdentityMismatch, SparkHostIdentityUnjoinable, SparkHostUnreachable, SparkHostUnresolved, classify_reported_hostname, spark_host_answered,
+}
+import gunbc.spark.vllm_image_identity {
+  vllm_image_build_key, vllm_image_tag, vllm_image_tag_for_key,
 }
 import gunbc.spark.host_commitment { spark_unplaced_hosts, spark_host_is_unplaced, SparkHostAdmitted, SparkHostRefused, admit_unplaced_host }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }

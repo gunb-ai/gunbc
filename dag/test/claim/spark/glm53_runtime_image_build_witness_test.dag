@@ -3,12 +3,10 @@ module test.claim.spark.glm53_runtime_image_build_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { serialize_content_hash }
 import gunbc.spark.vllm_runtime_image_build {
-  vllm_image_repository, glm53_image_repository, vllm_image_repository_for,
-  vllm_image_tag, vllm_image_build_key, vllm_recipe_arch_is_buildable,
-  glm53_derived_key, glm53_derived_tag, glm53_derived_dockerfile, glm53_derived_prepare_script,
-  glm53_derived_build_spec, glm53_derived_context_dir, glm53_derived_prepare_steps,
-  glm53_derived_prepare_script_path, glm53_derived_dockerfile_path,
-  vllm_image_transfer_tar_path, vllm_image_distribution_targets,
+  vllm_recipe_arch_is_buildable, glm53_derived_dockerfile, glm53_derived_prepare_script, glm53_derived_build_spec, glm53_derived_context_dir, glm53_derived_prepare_steps, glm53_derived_prepare_script_path, glm53_derived_dockerfile_path, vllm_image_transfer_tar_path, vllm_image_distribution_targets,
+}
+import gunbc.spark.vllm_image_identity {
+  vllm_image_repository, glm53_image_repository, vllm_image_repository_for, vllm_image_tag, vllm_image_build_key, glm53_derived_key, glm53_derived_tag,
 }
 import gunbc.remote_operation { remote_operation_count, remote_operation_file_write_count, remote_operation_argv }
 import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }

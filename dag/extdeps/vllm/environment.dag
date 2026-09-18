@@ -1,0 +1,48 @@
+module extdeps.vllm.environment
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vllm-project/vllm/blob/8d09804c877c48165c6ba69bc9dc02d09bae0b83/vllm/envs.py"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.environment",
+      decl_name: "VllmEnvironmentVariable",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── vLLM'S ENVIRONMENT VARIABLES, AS vLLM NAMES THEM ──────────────────────────────────────────
+//
+// The variable NAMES are an interface fact about vLLM -- vllm/envs.py reads both at the cited
+// revision, the one gunbc.spark.vllm_image_identity's base recipe builds -- so they live here, one
+// named member each; the VALUES a deployment sets are that deployment's decision and live with it.
+// Adding a variable is a row here; spelling one as a string at a call site is the second authority
+// this closes. extdeps.vllm.usage_stats keeps its own two variables because it models the telemetry
+// contract they belong to.
+type VllmEnvironmentVariable
+  = VllmEngineReadyTimeoutSeconds
+  | VllmSparseIndexerMaxLogitsMb
+
+fn vllm_environment_variable_name(v: VllmEnvironmentVariable) -> NonEmptyStr {
+  match v {
+    VllmEngineReadyTimeoutSeconds => "VLLM_ENGINE_READY_TIMEOUT_S" as NonEmptyStr
+    VllmSparseIndexerMaxLogitsMb => "VLLM_SPARSE_INDEXER_MAX_LOGITS_MB" as NonEmptyStr
+  }
+}
+
+fn vllm_environment_assignment_wire(variable: VllmEnvironmentVariable, value: String) -> String {
+  join([vllm_environment_variable_name(v: variable) as String, "=", value], "")
+}

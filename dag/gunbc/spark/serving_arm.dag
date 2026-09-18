@@ -4,6 +4,8 @@ import std.types { String, Bool, List, NonEmptyStr, Port }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value, Gibibyte, gibibyte, gibibyte_count, BasisPoint, basis_point, basis_point_count }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo }
+import extdeps.vllm.source_build { vllm_8d09804_sm121_recipe }
+import gunbc.spark.vllm_image_identity { glm53_derived_tag, vllm_image_build_key }
 import extdeps.vllm.engine_args {
   VllmPrefixCachingRequest, PrefixCachingOmitted, PrefixCachingExplicit,
   VllmKvCacheDtypeRequest, KvAuto, KvFp8, KvFp16, KvBf16, KvFp8DsMla, vllm_kv_cache_dtype_wire,
@@ -759,7 +761,10 @@ fn serving_launch_profile_key(p: ServingLaunchProfile) -> String {
 //
 // THE BUILD NAMES ITS IMAGE, and native_serving_realization derives the arm's image reference
 // from the declared build -- one authority for "which engine the arm runs", so the admission and
-// the pin cannot drift apart.
+// the pin cannot drift apart. The derived build's tag is COMPUTED from the build key
+// (gunbc.spark.vllm_image_identity glm53_derived_tag over the base recipe's key), the same function
+// the build lane tags with, so a wheel or base-recipe change moves the pin with the build instead of
+// leaving a copied `derived-<hash>` naming an image the key no longer describes (review 67469).
 type GlmNativeEngineBuild
   = GlmNativeEngineStockG385dce36b
   | GlmNativeEngineDerived8d09804
@@ -769,7 +774,7 @@ fn glm_native_engine_build_image(build: GlmNativeEngineBuild) -> NonEmptyStr {
     GlmNativeEngineStockG385dce36b =>
       "vllm/vllm-openai@sha256:819ec9c063412e5730d1b0e82046ba540d1bf991f3c4f661a849aae8a0c52374" as NonEmptyStr
     GlmNativeEngineDerived8d09804 =>
-      "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr
+      glm53_derived_tag(base_key: vllm_image_build_key(r: vllm_8d09804_sm121_recipe))
   }
 }
 

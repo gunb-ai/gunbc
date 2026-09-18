@@ -24,6 +24,9 @@ import extdeps.ssh.client_options { serialize_ssh_client_options }
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
 import extdeps.tools.gnu_coreutils { rm_force_command }
 import gunbc.output_policy { OutcomeIsData }
+import gunbc.spark.vllm_image_identity {
+  vllm_image_repository, glm53_image_repository, vllm_image_repository_for, glm53_derived_key_inputs, glm53_derived_key, glm53_derived_tag, vllm_image_build_key_inputs, vllm_image_build_key, vllm_image_tag_for_key, vllm_image_tag,
+}
 import gunbc.spark.native_serving_realization { glm_native_ranked_hosts }
 import extdeps.git {
   git_clone_shallow_command, git_fetch_shallow_revision_command,
@@ -220,7 +223,6 @@ fn vllm_source_dir() -> NonEmptyStr {
   join([vllm_build_root() as String, "/src"], "") as NonEmptyStr
 }
 data vllm_source_remote_name: NonEmptyStr = "origin" as NonEmptyStr
-data vllm_image_repository: NonEmptyStr = "gunbc-vllm-dsv41-gb10" as NonEmptyStr
 
 // ── WHAT IS BUILT ─────────────────────────────────────────────────────────────────────────────
 //
@@ -286,42 +288,10 @@ fn vllm_recipe_arch_is_buildable(r: VllmContainerBuildRecipe) -> Bool {
 // derivation's home; the hand-built original (local tag gunbc-vllm-glm53-nope-gb10:derived-63d1a4759d0075b4)
 // is the observation it was read from, and the first build through this lane replaces it.
 
-// THE REPOSITORY IS A FUNCTION OF THE RECIPE, because one repository name per lane is what keeps
-// two image families from sharing a tag namespace. The GLM family gets its own name rather than
-// reusing the hand build's "nope" spelling: what the build IS is the recipe, and the name says so.
-data glm53_image_repository: NonEmptyStr = "gunbc-vllm-glm53-gb10" as NonEmptyStr
 
-fn vllm_image_repository_for(r: VllmContainerBuildRecipe) -> NonEmptyStr {
-  if (r.source.full_revision as String) == (vllm_glm_5_3_flash_sm121_revision.full_revision as String) {
-    glm53_image_repository
-  } else {
-    vllm_image_repository
-  }
-}
 
-// THE DERIVED STAGE'S IDENTITY: the base image's build key plus the three wheel digests, folded by
-// the same artifact-store authority that keys the base. A nightly wheel that changes under its
-// version string changes the key, which is exactly what a digest pin is for. The pure functions take
-// the base's tag and key rather than its identity record: the derived stage depends on those two
-// facts, and taking them separately keeps the text and key renderers constructible by a witness
-// (VllmImageIdentity is sole_constructor, so only a real build leg can mint one).
-fn glm53_derived_key_inputs(base_key: ContentHash) -> List<ArtifactRealizationInput> {
-  concat(
-    [ArtifactRealizationInput { identity: "base_image_build_key" as NonEmptyStr, content_digest: content_hash_atom(value: serialize_content_hash(hash: base_key)) }],
-    map(flashinfer_0_7_0_dev20260910_wheels, w => ArtifactRealizationInput {
-      identity: w.filename,
-      content_digest: content_hash_atom(value: w.sha256.hex as NonEmptyStr),
-    })
-  )
-}
 
-fn glm53_derived_key(base_key: ContentHash) -> ContentHash {
-  artifact_realization_digest(inputs: glm53_derived_key_inputs(base_key: base_key))
-}
 
-fn glm53_derived_tag(base_key: ContentHash) -> NonEmptyStr {
-  join([glm53_image_repository as String, ":derived-", serialize_content_hash(hash: glm53_derived_key(base_key: base_key)) as String], "") as NonEmptyStr
-}
 
 fn glm53_derived_context_dir() -> NonEmptyStr {
   join([vllm_build_root() as String, "/glm53-derived"], "") as NonEmptyStr
@@ -538,40 +508,9 @@ fn converge_vllm_image_for_recipe(target: SshTarget, context: FleetSshExecutionC
 // something already built. That is the redundancy DESIGN §2 prices, bought for nothing: the compiler
 // output does not depend on how many compilers ran at once.
 
-fn vllm_image_build_key_inputs(r: VllmContainerBuildRecipe) -> List<ArtifactRealizationInput> {
-  [
-    ArtifactRealizationInput { identity: "source_repository" as NonEmptyStr, content_digest: content_hash_atom(value: r.source.repository) },
-    ArtifactRealizationInput { identity: "source_revision" as NonEmptyStr, content_digest: content_hash_atom(value: r.source.full_revision) },
-    ArtifactRealizationInput { identity: "dockerfile_path" as NonEmptyStr, content_digest: content_hash_atom(value: r.dockerfile_path) },
-    ArtifactRealizationInput { identity: "build_target" as NonEmptyStr, content_digest: content_hash_atom(value: r.build_target) },
-    ArtifactRealizationInput { identity: "cuda_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.cuda_version) },
-    ArtifactRealizationInput { identity: "build_base_image" as NonEmptyStr, content_digest: content_hash_atom(value: r.build_base_image) },
-    ArtifactRealizationInput { identity: "final_base_image" as NonEmptyStr, content_digest: content_hash_atom(value: r.final_base_image) },
-    ArtifactRealizationInput { identity: "python_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.python_version) },
-    ArtifactRealizationInput { identity: "torch_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.torch_version) },
-    ArtifactRealizationInput { identity: "flashinfer_version" as NonEmptyStr, content_digest: content_hash_atom(value: r.flashinfer_version) },
-    ArtifactRealizationInput { identity: "torch_cuda_arch_list" as NonEmptyStr, content_digest: content_hash_atom(value: vllm_torch_cuda_arch_list_wire(archs: r.torch_cuda_arch_list) as NonEmptyStr) },
-    ArtifactRealizationInput { identity: "install_kv_connectors" as NonEmptyStr, content_digest: content_hash_atom(value: (if r.install_kv_connectors { "true" } else { "false" }) as NonEmptyStr) },
-  ]
-}
 
-// THE KEY IS MINTED BY std.artifact_store, NOT BY A FOLD WRITTEN HERE. An earlier revision combined
-// the input atoms with its own content_hash fold, which is a second spelling of
-// artifact_realization_digest -- the authority that already exists for "a list of named realization
-// inputs, folded into one content identity". Inhabiting it also buys the thing the hand fold did not
-// have: every input carries its NAME, so two recipes that differ only by which field holds a value
-// cannot collide, and a reader sees which inputs the key covers without counting positions.
-fn vllm_image_build_key(r: VllmContainerBuildRecipe) -> ContentHash {
-  artifact_realization_digest(inputs: vllm_image_build_key_inputs(r: r))
-}
 
-fn vllm_image_tag_for_key(r: VllmContainerBuildRecipe, key: ContentHash) -> NonEmptyStr {
-  join([vllm_image_repository_for(r: r) as String, ":", serialize_content_hash(hash: key) as String], "") as NonEmptyStr
-}
 
-fn vllm_image_tag(r: VllmContainerBuildRecipe) -> NonEmptyStr {
-  vllm_image_tag_for_key(r: r, key: vllm_image_build_key(r: r))
-}
 
 // ── THE INVOCATION ────────────────────────────────────────────────────────────────────────────
 //
