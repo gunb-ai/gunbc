@@ -303,8 +303,18 @@ fn ledger_admits_token_denomination(l: OperationLedger) -> Bool {
 
 type TokenDelta
   = TokenDeltaRead { tokens: Nat }
+  | TokenDeltaScoped { tokens: Nat, incarnation: ObservedRankIncarnation }
   | TokenDeltaUnread { cause: NonEmptyStr }
   | TokenDeltaReset { cause: NonEmptyStr }
+
+fn token_delta_tokens(d: TokenDelta) -> Nat? {
+  match d {
+    TokenDeltaRead { tokens: t } => Present { value: t }
+    TokenDeltaScoped { tokens: t, incarnation: _ } => Present { value: t }
+    TokenDeltaUnread { cause: _ } => none
+    TokenDeltaReset { cause: _ } => none
+  }
+}
 
 fn generation_token_delta(before_body: String, after_body: String) -> TokenDelta {
   match harness_gauge_value(body: before_body, metric: GenerationTokensTotal) {
@@ -356,7 +366,12 @@ fn generation_token_delta_scoped(
               ], "") as NonEmptyStr
             }
           } else {
-            generation_token_delta(before_body: before_body, after_body: after_body)
+            match generation_token_delta(before_body: before_body, after_body: after_body) {
+              TokenDeltaUnread { cause: c } => TokenDeltaUnread { cause: c }
+              TokenDeltaReset { cause: c } => TokenDeltaReset { cause: c }
+              TokenDeltaRead { tokens: t } => TokenDeltaScoped { tokens: t, incarnation: a }
+              TokenDeltaScoped { tokens: t, incarnation: i } => TokenDeltaScoped { tokens: t, incarnation: i }
+            }
           }
       }
   }
@@ -461,10 +476,15 @@ fn nat_abs_diff(a: Nat, b: Nat) -> Nat {
 }
 
 fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, client_output: ClientOutputTokens) -> LedgerCounterAgreement {
-  match generation {
-    TokenDeltaUnread { cause: c } => AgreementUnread { because: c }
-    TokenDeltaReset { cause: c } => AgreementUnread { because: c }
-    TokenDeltaRead { tokens: g } =>
+  match token_delta_tokens(d: generation) {
+    Absent =>
+      match generation {
+        TokenDeltaUnread { cause: c } => AgreementUnread { because: c }
+        TokenDeltaReset { cause: c } => AgreementUnread { because: c }
+        TokenDeltaRead { tokens: _ } => AgreementUnread { because: "generation token delta had no count" as NonEmptyStr }
+        TokenDeltaScoped { tokens: _, incarnation: _ } => AgreementUnread { because: "generation token delta had no count" as NonEmptyStr }
+      }
+    Present { value: g } =>
       match ledger {
         LedgerIncomplete { because: c } => AgreementUnread { because: c }
         LedgerClosed { offered: _, completed: n, failed: _, failed_after_tokens: _ } =>
@@ -492,10 +512,15 @@ type ForeignWorkBound
   | ForeignWorkContradiction { engine_generation: Nat, client_output: Nat, because: NonEmptyStr }
 
 fn foreign_work_bound(generation: TokenDelta, client_output: ClientOutputTokens) -> ForeignWorkBound {
-  match generation {
-    TokenDeltaUnread { cause: c } => ForeignWorkUnread { because: c }
-    TokenDeltaReset { cause: c } => ForeignWorkUnread { because: c }
-    TokenDeltaRead { tokens: g } =>
+  match token_delta_tokens(d: generation) {
+    Absent =>
+      match generation {
+        TokenDeltaUnread { cause: c } => ForeignWorkUnread { because: c }
+        TokenDeltaReset { cause: c } => ForeignWorkUnread { because: c }
+        TokenDeltaRead { tokens: _ } => ForeignWorkUnread { because: "generation token delta had no count" as NonEmptyStr }
+        TokenDeltaScoped { tokens: _, incarnation: _ } => ForeignWorkUnread { because: "generation token delta had no count" as NonEmptyStr }
+      }
+    Present { value: g } =>
       match client_output {
         ClientOutputTokensUnread { cause: c } => ForeignWorkUnread { because: c }
         ClientOutputTokensObserved { tokens: c } =>
@@ -918,7 +943,10 @@ fn ledger_text(l: OperationLedger) -> String {
 
 fn token_delta_text(d: TokenDelta) -> String {
   match d {
-    TokenDeltaRead { tokens: n } => join(["delta tokens=", to_string(n)], "")
+    TokenDeltaRead { tokens: n } =>
+      join(["delta tokens=", to_string(n), " incarnation=unscoped — generation_token_delta_scoped did not bind this reading"], "")
+    TokenDeltaScoped { tokens: n, incarnation: i } =>
+      join(["delta tokens=", to_string(n), " incarnation=", observed_rank_incarnation_text(i: i)], "")
     TokenDeltaUnread { cause: c } => join(["unread ", c as String], "")
     TokenDeltaReset { cause: c } => join(["reset ", c as String], "")
   }

@@ -32,7 +32,7 @@ import gunbc.spark.serving_load_probe {
   OperationLedger, LedgerClosed, LedgerIncomplete, ledger_admits_token_denomination,
   RateFromClientOutputTokens, RateUndenominable, RateUnreadable,
   ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
-  TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, generation_token_delta, generation_token_delta_scoped,
+  TokenDeltaRead, TokenDeltaReset, TokenDeltaUnread, TokenDeltaScoped, generation_token_delta, generation_token_delta_scoped,
   derive_rate_honest, serving_load_observation, ServingLoadObservation, tokens_per_observation_second,
   saturation_from_one_run, observation_rate_is_stored_separately,
   foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread, ForeignWorkContradiction,
@@ -200,6 +200,7 @@ test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool 
         }
     TokenDeltaUnread { cause: _ } => false
     TokenDeltaReset { cause: _ } => false
+    TokenDeltaScoped { tokens: _, incarnation: _ } => false
   }
 }
 
@@ -212,6 +213,7 @@ test fn a_generation_counter_reset_is_not_a_rate() -> Bool {
     TokenDeltaReset { cause: _ } => true
     TokenDeltaRead { tokens: _ } => false
     TokenDeltaUnread { cause: _ } => false
+    TokenDeltaScoped { tokens: _, incarnation: _ } => false
   }
 }
 
@@ -225,6 +227,7 @@ test fn generation_tokens_are_unread_across_distinct_incarnations() -> Bool {
     TokenDeltaUnread { cause: _ } => true
     TokenDeltaRead { tokens: _ } => false
     TokenDeltaReset { cause: _ } => false
+    TokenDeltaScoped { tokens: _, incarnation: _ } => false
   }
 }
 
@@ -237,6 +240,22 @@ test fn generation_tokens_are_unread_without_an_incarnation() -> Bool {
   ) {
     TokenDeltaUnread { cause: _ } => true
     TokenDeltaRead { tokens: _ } => false
+    TokenDeltaReset { cause: _ } => false
+    TokenDeltaScoped { tokens: _, incarnation: _ } => false
+  }
+}
+
+test fn a_scoped_generation_delta_names_the_incarnation() -> Bool {
+  match generation_token_delta_scoped(
+    before_incarnation: fx_same_incarnation(),
+    after_incarnation: fx_same_incarnation(),
+    before_body: fx_idle,
+    after_body: fx_after,
+  ) {
+    TokenDeltaScoped { tokens: t, incarnation: i } =>
+      t == 128 && (i.container.id as String) == "0f3a9c1d2e4b" && i.node_rank == token_count_value(t: token_count(count: 0))
+    TokenDeltaRead { tokens: _ } => false
+    TokenDeltaUnread { cause: _ } => false
     TokenDeltaReset { cause: _ } => false
   }
 }
