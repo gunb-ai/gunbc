@@ -1,0 +1,78 @@
+module gunbc.machine_intake_mtjade1_fan_standing
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import gunbc.machine_intake_bmc_first_contact_standing {
+  BmcFirmwareFamilyStanding,
+  FamilyObserved,
+  FamilyUnobserved,
+}
+import gunbc.machine_intake_mtjade1_access_observation { mtjade1_firmware_family_standing }
+
+// OPERATOR RECEIPT 2026-09-18: Jade powered on with no DIMMs; fans ran at full and did not stop;
+// operator chassis-powered the host off. Next power-on is with the Table 11 16-DIMM 1DPC fill.
+// Acoustic inaudibility is not a PWM number: cooling_qualification already keeps room acoustics
+// as a live observation. The cited tolerance here is the act of cutting host power.
+
+type JadeSite
+  = OperatorResidence
+
+type ResidenceAcousticIntent
+  = UnboundedFailsafeFullDutyNotTolerated {
+      site: JadeSite
+      cited_act: NonEmptyStr
+    }
+
+data mtjade1_residence_acoustic_intent: ResidenceAcousticIntent = UnboundedFailsafeFullDutyNotTolerated {
+  site: OperatorResidence,
+  cited_act: "2026-09-18: no DIMMs, fans at full, operator powered the host off. Unbounded failsafe full duty is not tolerated at this residence.",
+}
+
+type FailsafeWindowClose
+  = ChassisHostPowerOff
+
+data mtjade1_failsafe_window_close: FailsafeWindowClose = ChassisHostPowerOff
+
+fn mtjade1_non_posting_host_may_run_failsafe_indefinitely() -> Bool {
+  false
+}
+
+type HostThermalTelemetry
+  = HostThermalAbsentBeforePost
+  | HostThermalPresentAfterPost
+
+type FirstPostFanFinding
+  = FansLeftFailsafeForThermalCurve
+  | FansStayAtFailsafeAfterPost { discriminator: NonEmptyStr }
+
+type FirstPostFanCapture
+  = AwaitingFirstPostWithDimms
+  | FirstPostFanCaptured { finding: FirstPostFanFinding }
+
+data mtjade1_first_post_fan_capture: FirstPostFanCapture = AwaitingFirstPostWithDimms
+
+data mtjade1_host_thermal_before_next_power_on: HostThermalTelemetry = HostThermalAbsentBeforePost
+
+// OpenBMC: missing control-sensor reading is BmcFanDutyFromSensorFailsafe (extdeps.bmc.types
+// bmc_fan_duty_decision). That is the failsafe->curve transition: Present reading selects the
+// stepwise curve. MegaRAC fan PWM profile is not executed on this unit; Appendix E 100% is the
+// GSG 1P-image note, not a pid_control JSON.
+
+type JadeFanPolicyConvergence
+  = OpenBmcPidControlRows
+  | MegaRacFanProfileUnexecuted { reason: NonEmptyStr }
+  | FamilyUnobservedNoFanRealizer
+
+fn jade_fan_policy_convergence(family: BmcFirmwareFamilyStanding) -> JadeFanPolicyConvergence {
+  match family {
+    FamilyUnobserved { discriminator: _ } => FamilyUnobservedNoFanRealizer
+    FamilyObserved { family: OpenBmc } => OpenBmcPidControlRows
+    FamilyObserved { family: AmiMegaRac } => MegaRacFanProfileUnexecuted {
+      reason: "No executed MegaRAC fan-profile / PWM row for this build. GSG Appendix E states 100 percent fans without the 1P BMC image; that is not a phosphor-pid-control program.",
+    }
+  }
+}
+
+fn jade_current_fan_policy_convergence() -> JadeFanPolicyConvergence {
+  jade_fan_policy_convergence(family: mtjade1_firmware_family_standing)
+}
