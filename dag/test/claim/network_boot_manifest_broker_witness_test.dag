@@ -4,7 +4,8 @@ import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64, Wasm32 }
+import extdeps.provisioning.network_boot { UefiHttpBoot }
 import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_implementation }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 import gunbc.network_boot_delivery {
@@ -26,13 +27,13 @@ import gunbc.network_boot_delivery {
   bootstrap_trust_standing,
 }
 import gunbc.network_boot_manifest_broker {
-  UefiHttpFirmwareClass,
   SignedBootManifestClaims,
   SignedBootManifestTicket,
   BootManifestIssued,
   BootManifestIssuanceRefused,
   ManifestIssuanceTrustUnestablished,
   ManifestIssuanceWindowInverted,
+  ManifestIssuanceDhcpArchUnpublished,
   ExpectedBootArtifactDigests,
   SpentAttemptNonce,
   BootstrapTrustRoot,
@@ -91,7 +92,7 @@ fn identity_for(target: UnitKey, arch: Architecture, root_digest: ContentHash, n
 }
 
 fn claims_for(id: SignedBootManifestIdentity) -> SignedBootManifestClaims {
-  SignedBootManifestClaims { identity: id, firmware_class: UefiHttpFirmwareClass }
+  SignedBootManifestClaims { identity: id, boot_mode: UefiHttpBoot }
 }
 
 fn issued_ticket(id: SignedBootManifestIdentity) -> SignedBootManifestTicket {
@@ -119,7 +120,7 @@ fn expectation_at(observed_at: Int, spent: List<SpentAttemptNonce>) -> BootManif
   BootManifestExpectation {
     target_unit: unit,
     architecture: Aarch64,
-    firmware_class: UefiHttpFirmwareClass,
+    boot_mode: UefiHttpBoot,
     artifacts: artifacts(),
     trust: BootstrapTrustRoot { signing_key_id: broker_key_id, standing: ProductionTrustedBootstrap },
     observed_at: observed_at,
@@ -211,6 +212,21 @@ test fn digest_disagreement_is_refused() -> Bool {
   }
 }
 
+test fn unpublished_dhcp_architecture_refuses_issuance() -> Bool {
+  match issue_signed_boot_manifest(
+    claims: claims_for(id: identity_for(target: unit, arch: Wasm32, root_digest: root(), nbf: 1788000000000, exp: 1788003600000)),
+    key: broker_key,
+    trust: ProductionTrustedBootstrap,
+  ) {
+    BootManifestIssuanceRefused { cause: c } =>
+      match c {
+        ManifestIssuanceDhcpArchUnpublished => true
+        _ => false
+      }
+    BootManifestIssued { ticket: _ } => false
+  }
+}
+
 test fn inverted_window_refuses_issuance() -> Bool {
   match issue_signed_boot_manifest(
     claims: claims_for(id: identity_for(target: unit, arch: Aarch64, root_digest: root(), nbf: 1788003600000, exp: 1788000000000)),
@@ -243,21 +259,24 @@ test fn unestablished_trust_refuses_issuance() -> Bool {
 
 test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -> Bool {
   let claims = claims_for(id: good_identity())
-  let presented = signed_boot_manifest_signing_input(c: claims)
   let other_key_id: MacKeyId = "boot-manifest-impostor" as MacKeyId
   let ticket = SignedBootManifestTicket { claims: claims, tag_hex: "00" }
-  match verify_signed_boot_manifest(
-    ticket: ticket,
-    expectation: expectation_at(observed_at: 1788001800000, spent: []),
-    mac_result: mac_verification_from_implementation(
-      key_id: other_key_id,
-      suite: HmacSha256,
-      message: presented,
-      implementation_verified: true,
-    ),
-  ) {
-    BootManifestRefused { class: c } => c == ManifestVerificationVerifiedKey
-    BootManifestAuthentic { claims: _ } => false
+  match signed_boot_manifest_signing_input(c: claims) {
+    Absent => false
+    Present { value: presented } =>
+      match verify_signed_boot_manifest(
+        ticket: ticket,
+        expectation: expectation_at(observed_at: 1788001800000, spent: []),
+        mac_result: mac_verification_from_implementation(
+          key_id: other_key_id,
+          suite: HmacSha256,
+          message: presented,
+          implementation_verified: true,
+        ),
+      ) {
+        BootManifestRefused { class: c } => c == ManifestVerificationVerifiedKey
+        BootManifestAuthentic { claims: _ } => false
+      }
   }
 }
 

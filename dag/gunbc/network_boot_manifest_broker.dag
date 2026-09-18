@@ -1,21 +1,13 @@
 module gunbc.network_boot_manifest_broker
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String, to_string }
 import std.content_hash { ContentHash, serialize_content_hash }
 import std.decl_ref { DeclarationRef }
-import extdeps.toolchain.types {
-  Architecture,
-  X86_64,
-  X86,
-  Aarch64,
-  Arm,
-  Armv7,
-  Mips,
-  Mipsel,
-  Mips64,
-  Mips64el,
-  Riscv64,
-  Wasm32,
+import extdeps.toolchain.types { Architecture }
+import extdeps.provisioning.network_boot { ClientNetworkBootMode }
+import extdeps.provisioning.dhcp_client_arch {
+  dhcp_client_processor_architecture,
+  dhcp_processor_architecture_code,
 }
 import extdeps.crypto.mac {
   MacKey,
@@ -72,38 +64,9 @@ data boot_manifest_mac_key_secret_ref: SecretRef = fleet_secret_ref(secret_id: "
 
 data boot_manifest_mac_suite: MacSuite = HmacSha256
 
-type BootFirmwareClass
-  = UefiHttpFirmwareClass
-  | UefiPxeFirmwareClass
-  | LegacyBiosPxeFirmwareClass
-
-fn firmware_class_name(c: BootFirmwareClass) -> NonEmptyStr {
-  match c {
-    UefiHttpFirmwareClass => "uefi-http" as NonEmptyStr
-    UefiPxeFirmwareClass => "uefi-pxe" as NonEmptyStr
-    LegacyBiosPxeFirmwareClass => "legacy-bios-pxe" as NonEmptyStr
-  }
-}
-
-fn boot_manifest_architecture_label(arch: Architecture) -> NonEmptyStr {
-  match arch {
-    Aarch64 => "uefi-arm64" as NonEmptyStr
-    X86_64 => "uefi-x64" as NonEmptyStr
-    X86 => "bios-x86" as NonEmptyStr
-    Arm => "uefi-arm" as NonEmptyStr
-    Armv7 => "uefi-armv7" as NonEmptyStr
-    Mips => "uefi-mips" as NonEmptyStr
-    Mipsel => "uefi-mipsel" as NonEmptyStr
-    Mips64 => "uefi-mips64" as NonEmptyStr
-    Mips64el => "uefi-mips64el" as NonEmptyStr
-    Riscv64 => "uefi-riscv64" as NonEmptyStr
-    Wasm32 => "wasm32" as NonEmptyStr
-  }
-}
-
 type SignedBootManifestClaims {
   identity: SignedBootManifestIdentity
-  firmware_class: BootFirmwareClass
+  boot_mode: ClientNetworkBootMode
 }
 
 // Digests, identities, and a MAC tag only — no host credential, cloud token, or install secret field exists to put on a public origin.
@@ -117,6 +80,7 @@ type BootManifestIssuanceRefusal
   | ManifestIssuanceKeyMaterialNotHex { key_id: MacKeyId }
   | ManifestIssuanceWindowInverted { not_before: EpochMs, expiry: EpochMs }
   | ManifestIssuanceTrustUnestablished
+  | ManifestIssuanceDhcpArchUnpublished
 
 type BootManifestIssuance
   = BootManifestIssued { ticket: SignedBootManifestTicket }
@@ -142,7 +106,7 @@ type BootstrapTrustRoot {
 type BootManifestExpectation {
   target_unit: UnitKey
   architecture: Architecture
-  firmware_class: BootFirmwareClass
+  boot_mode: ClientNetworkBootMode
   artifacts: ExpectedBootArtifactDigests
   trust: BootstrapTrustRoot
   observed_at: EpochMs
@@ -161,28 +125,33 @@ fn epoch_ms_text(t: EpochMs) -> String {
   to_string(t)
 }
 
-fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr {
+fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr? {
   let id = c.identity
-  join(
-    [
-      boot_manifest_protocol as String,
-      id.target_unit as String,
-      id.attempt_id as String,
-      id.nonce as String,
-      boot_manifest_architecture_label(arch: id.architecture) as String,
-      firmware_class_name(c: c.firmware_class) as String,
-      serialize_content_hash(hash: id.chainloader_digest) as String,
-      serialize_content_hash(hash: id.kernel_digest) as String,
-      serialize_content_hash(hash: id.initrd_digest) as String,
-      serialize_content_hash(hash: id.root_digest) as String,
-      id.kernel_cmdline as String,
-      epoch_ms_text(t: id.not_before),
-      epoch_ms_text(t: id.expiry),
-      id.signing_key_identity as String,
-      id.callback_identity as String,
-    ],
-    signing_field_separator,
-  ) as NonEmptyStr
+  match dhcp_client_processor_architecture(arch: id.architecture, mode: c.boot_mode) {
+    Absent => none
+    Present { value: dhcp_arch } =>
+      Present {
+        value: join(
+          [
+            boot_manifest_protocol as String,
+            id.target_unit as String,
+            id.attempt_id as String,
+            id.nonce as String,
+            to_string(dhcp_processor_architecture_code(a: dhcp_arch)),
+            serialize_content_hash(hash: id.chainloader_digest) as String,
+            serialize_content_hash(hash: id.kernel_digest) as String,
+            serialize_content_hash(hash: id.initrd_digest) as String,
+            serialize_content_hash(hash: id.root_digest) as String,
+            id.kernel_cmdline as String,
+            epoch_ms_text(t: id.not_before),
+            epoch_ms_text(t: id.expiry),
+            id.signing_key_identity as String,
+            id.callback_identity as String,
+          ],
+          signing_field_separator,
+        ) as NonEmptyStr,
+      }
+  }
 }
 
 fn issue_signed_boot_manifest(
@@ -215,12 +184,16 @@ fn issue_signed_boot_manifest_under_trust(claims: SignedBootManifestClaims, key:
       },
     }
   } else {
-    match mac_sign(key: key, message: signed_boot_manifest_signing_input(c: claims)) {
-      MacKeyMaterialNotHex { key_id: k } =>
-        BootManifestIssuanceRefused { cause: ManifestIssuanceKeyMaterialNotHex { key_id: k } }
-      MacSigned { tag: t } =>
-        BootManifestIssued {
-          ticket: SignedBootManifestTicket { claims: claims, tag_hex: t.hex },
+    match signed_boot_manifest_signing_input(c: claims) {
+      Absent => BootManifestIssuanceRefused { cause: ManifestIssuanceDhcpArchUnpublished }
+      Present { value: message } =>
+        match mac_sign(key: key, message: message) {
+          MacKeyMaterialNotHex { key_id: k } =>
+            BootManifestIssuanceRefused { cause: ManifestIssuanceKeyMaterialNotHex { key_id: k } }
+          MacSigned { tag: t } =>
+            BootManifestIssued {
+              ticket: SignedBootManifestTicket { claims: claims, tag_hex: t.hex },
+            }
         }
     }
   }
@@ -247,19 +220,22 @@ fn verify_signed_boot_manifest_under_trust(
   expectation: BootManifestExpectation,
   mac_result: MacVerification,
 ) -> BootManifestVerification {
-  let presented = signed_boot_manifest_signing_input(c: ticket.claims)
-  match mac_result {
-    MacVerified { verified: v } =>
-      if v.message != presented {
-        refused(class: ManifestVerificationWrongMessage)
-      } else {
-        join_verified_mac(ticket: ticket, expectation: expectation, verified: v)
+  match signed_boot_manifest_signing_input(c: ticket.claims) {
+    Absent => refused(class: ManifestVerificationWrongArchitecture)
+    Present { value: presented } =>
+      match mac_result {
+        MacVerified { verified: v } =>
+          if v.message != presented {
+            refused(class: ManifestVerificationWrongMessage)
+          } else {
+            join_verified_mac(ticket: ticket, expectation: expectation, verified: v)
+          }
+        MacTagMismatch { key_id: _ } => refused(class: ManifestVerificationMac)
+        MacTagMalformed { octets_declared: _, octets_expected: _ } => refused(class: ManifestVerificationMac)
+        MacSuiteMismatch { expected: _, key_suite: _ } => refused(class: ManifestVerificationSuite)
+        MacKeyUnknown { key_id: _ } => refused(class: ManifestVerificationSigningKey)
+        MacKeyRetired { key_id: _, retired_at: _ } => refused(class: ManifestVerificationSigningKey)
       }
-    MacTagMismatch { key_id: _ } => refused(class: ManifestVerificationMac)
-    MacTagMalformed { octets_declared: _, octets_expected: _ } => refused(class: ManifestVerificationMac)
-    MacSuiteMismatch { expected: _, key_suite: _ } => refused(class: ManifestVerificationSuite)
-    MacKeyUnknown { key_id: _ } => refused(class: ManifestVerificationSigningKey)
-    MacKeyRetired { key_id: _, retired_at: _ } => refused(class: ManifestVerificationSigningKey)
   }
 }
 
@@ -289,33 +265,47 @@ fn verify_authenticated_boot_manifest(
     refused(class: ManifestVerificationWrongTarget)
   } else if id.architecture != expectation.architecture {
     refused(class: ManifestVerificationWrongArchitecture)
-  } else if firmware_class_name(c: claims.firmware_class) != firmware_class_name(c: expectation.firmware_class) {
-    refused(class: ManifestVerificationWrongFirmwareClass)
-  } else if expectation.observed_at < id.not_before {
-    refused(class: ManifestVerificationNotYetValid)
-  } else if expectation.observed_at >= id.expiry {
-    refused(class: ManifestVerificationExpired)
-  } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: id.attempt_id, nonce: id.nonce) {
-    refused(class: ManifestVerificationReplay)
-  } else if content_hash_equal(left: id.chainloader_digest, right: expectation.artifacts.chainloader) == false {
-    refused(class: ManifestVerificationDigest)
-  } else if content_hash_equal(left: id.kernel_digest, right: expectation.artifacts.kernel) == false {
-    refused(class: ManifestVerificationDigest)
-  } else if content_hash_equal(left: id.initrd_digest, right: expectation.artifacts.initrd) == false {
-    refused(class: ManifestVerificationDigest)
-  } else if content_hash_equal(left: id.root_digest, right: expectation.artifacts.root) == false {
-    refused(class: ManifestVerificationDigest)
   } else {
-    BootManifestAuthentic { claims: claims }
+    match dhcp_client_processor_architecture(arch: id.architecture, mode: claims.boot_mode) {
+      Absent => refused(class: ManifestVerificationWrongArchitecture)
+      Present { value: claimed_dhcp } =>
+        match dhcp_client_processor_architecture(arch: expectation.architecture, mode: expectation.boot_mode) {
+          Absent => refused(class: ManifestVerificationWrongArchitecture)
+          Present { value: expected_dhcp } =>
+            if claimed_dhcp != expected_dhcp {
+              refused(class: ManifestVerificationWrongFirmwareClass)
+            } else if expectation.observed_at < id.not_before {
+              refused(class: ManifestVerificationNotYetValid)
+            } else if expectation.observed_at >= id.expiry {
+              refused(class: ManifestVerificationExpired)
+            } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: id.attempt_id, nonce: id.nonce) {
+              refused(class: ManifestVerificationReplay)
+            } else if content_hash_equal(left: id.chainloader_digest, right: expectation.artifacts.chainloader) == false {
+              refused(class: ManifestVerificationDigest)
+            } else if content_hash_equal(left: id.kernel_digest, right: expectation.artifacts.kernel) == false {
+              refused(class: ManifestVerificationDigest)
+            } else if content_hash_equal(left: id.initrd_digest, right: expectation.artifacts.initrd) == false {
+              refused(class: ManifestVerificationDigest)
+            } else if content_hash_equal(left: id.root_digest, right: expectation.artifacts.root) == false {
+              refused(class: ManifestVerificationDigest)
+            } else {
+              BootManifestAuthentic { claims: claims }
+            }
+        }
+    }
   }
 }
 
 fn redeem_signed_boot_manifest(ticket: SignedBootManifestTicket, key: MacKey, expectation: BootManifestExpectation) -> BootManifestVerification {
-  verify_signed_boot_manifest(
-    ticket: ticket,
-    expectation: expectation,
-    mac_result: mac_verify(key: key, message: signed_boot_manifest_signing_input(c: ticket.claims), tag_hex: ticket.tag_hex),
-  )
+  match signed_boot_manifest_signing_input(c: ticket.claims) {
+    Absent => refused(class: ManifestVerificationWrongArchitecture)
+    Present { value: message } =>
+      verify_signed_boot_manifest(
+        ticket: ticket,
+        expectation: expectation,
+        mac_result: mac_verify(key: key, message: message, tag_hex: ticket.tag_hex),
+      )
+  }
 }
 
 fn signed_boot_manifest_standing(
