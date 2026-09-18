@@ -2553,20 +2553,20 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
 // to consult. So every chain of bare segments lowers to the one spine, and the resolver is where
 // the answer lives.
 //
-// WHAT THE RESOLVER ANSWERS TODAY, STATED AT ITS ACTUAL RUNG (review 67513 on gunbc#11582): the
-// module-path class resolves; the LOCAL-RECEIVER class does not yet, because
-// try_resolve_qualified_name_node's unique-on-chain projection is UNFIRED and it reads every spine
-// as corpus-root absolute -- except that it looks the HEAD up on the chain first
-// (qualified_head_bound_on_chain): a local field access refuses Unbound because its head is bound
-// and the projection through it is unfired, and a binder shadowing a root segment refuses
-// Ambiguous, as section 13 rules, rather than the absolute read silently winning. Neither is a
-// regression of this arm: on the production route `r.v` never reached the projection refusal
-// below -- the infix arm preempted it, lowered it to Transform(dot, r, v), and resolve refused the
-// bare `v` -- so the verdict before was refuse-for-the-wrong-reason and after is a located refusal
-// with the ruled reason. Both standings are enrolled in
-// v2.test.claim.namespace_xl0.cross_module_reference_resolution, and the local-receiver row reds
-// the day the projection arm lands. The lowering does not compensate by keeping a local-receiver
-// chain out of the spine: that would be the second resolver this header refuses to be.
+// WHAT THE RESOLVER ANSWERS TODAY, STATED AT ITS ACTUAL RUNG (reviews 67513, 67651 and 67708 on
+// gunbc#11582): the spine REACHES try_resolve_qualified_name_node and every verdict it raises is a
+// located refusal -- the module-path class is FOUND by the corpus-root absolute lookup and then
+// refused identity-unrepresentable (a fn is a declaration, not a symbol, and the resolver carries
+// no exact declaring identity yet); a chain whose head is bound on the ancestor chain refuses
+// Unbound (the unique-on-chain projection is UNFIRED) or Ambiguous when the absolute read also
+// hits (section 13's two binders), never the absolute read silently winning. Nothing Accepts a
+// qualified chain today. Neither refusal is a regression of this arm: on the production route
+// `r.v` never reached the projection refusal below -- the infix arm preempted it, lowered it to
+// Transform(dot, r, v), and resolve refused the bare `v`. Both standings are enrolled in
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution; the local-receiver row there is a
+// NEGATIVE control (`Bool` has no child `v`) and is retired by nothing. The lowering does not
+// compensate by keeping a local-receiver chain out of the spine: that would be the second
+// resolver this header refuses to be.
 //
 // THE SHAPE IS BUILT BY fold_list_node AND NOWHERE ELSE, so a spine label rename cannot fork the
 // producer from the fold that reads it. The spine root carries the source occurrence, because the

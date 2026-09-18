@@ -456,9 +456,12 @@ fn lookup_symbol_index_atom_identity(
 // pick the root and Accept a meaning the source did not spell. So the head is looked up on the
 // chain first. Head bound and absolute hit: Ambiguous. Head bound and no absolute hit: the
 // projection this arm cannot yet perform, refused Unbound rather than fabricated. Head not bound:
-// the absolute arm as before. The positive projection (`r.v` resolving through r's type) is the
-// capability the today-rows in v2.test.claim.namespace_xl0.cross_module_reference_resolution wait
-// on; this check only closes the fail-open arm beside it.
+// the absolute arm as before. The positive projection (`r.v` resolving through r's type) is a
+// capability NO enrolled row waits on yet: the local-receiver row in
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution is `Bool.v`, a permanent negative
+// control (`Bool` has no child `v`), and the positive `Rec.v` specimen needs declaration grafting
+// as well as this projection and is owned by those lanes. This check only closes the fail-open
+// arm beside the projection.
 fn qualified_head_bound_on_chain(ctx: ResolveContext, path: QualifiedName) -> Outcome<Bool> {
   match path {
     Cons { head: head, tail: _ } =>

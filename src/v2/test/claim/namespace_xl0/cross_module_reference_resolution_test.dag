@@ -50,12 +50,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // v2.test.claim.namespace_xl0.call_argument_mention_survival measures what the COLLECTOR sees. This
 // file measures what RESOLUTION does with the same lowered shape, because the two consume one
 // producer: the fold_list qualified-name spine that body lowering now constructs for a dotted chain
-// (v2.compiler.body_lowering_fold body_lower_dotted_reference_optional). A spine the collector can
-// read but the resolver refuses would be a denominator with no numerator, and a spine the resolver
-// ACCEPTS by widening what resolves would be the fail-open arm DESIGN section 5 forbids. So the
-// rows are a matched set, and the middle one is the boundary: reassembling the chain must make a
-// DECLARED cross-module target resolve and must leave an UNDECLARED one refusing for its own
-// reason.
+// (v2.compiler.body_lowering_fold body_lower_dotted_reference_optional). A spine the resolver
+// ACCEPTS by widening what resolves would be the fail-open arm DESIGN section 5 forbids, and a
+// spine it refuses without saying why would be silence. So the rows are a matched set and the
+// boundary is the REASON: reassembling the chain must make a DECLARED cross-module target FOUND --
+// refused identity-unrepresentable today, because the resolver carries no exact declaring
+// identity -- and must leave an UNDECLARED one refusing unbound. Deliberate, typed refusal is the
+// correct interim result; nothing Accepts a qualified chain today.
 //
 // WHAT RESOLVES HERE IS THE SUBJECT ROOT ALONE. v2.compiler.name_resolve resolve_with_admission_context_policy
 // resolves the module the Admission names and consults the other ingested roots only through the
@@ -382,13 +383,22 @@ test fn a_binder_shadowing_a_root_segment_refuses_ambiguous_holds() -> Bool {
   }
 }
 
-// XL-0'S OWN PRODUCER, EXECUTED ON THE PRODUCTION ROUTE. The rows above exercise the collector
-// and the resolver beside v2.compiler.repair_input_origin_roster; these execute
-// repair_input_origin_roster_over_roots itself over the same normalized roots and ask what a
-// denominator owes: is it TOTAL (no unreadable root), and does it carry the cross-module mention
-// as a SourceDeclarationCarrier whose provenance is RepairInputDeclared -- answered by the
-// resolver, not merely mentioned. Pinning a base is ACT-0's act and is not claimed here; this is
-// the delivery half, over a fixture.
+// XL-0'S OWN PRODUCER, EXECUTED ON THE PRODUCTION ROUTE -- AND WHAT ITS ANSWER IS MADE OF. These
+// rows execute repair_input_origin_roster_over_roots itself over the same normalized roots and
+// measure two facts: the roster is TOTAL (no unreadable root) and non-empty, and it carries the
+// cross-module mention as a SourceDeclarationCarrier whose provenance arm is RepairInputDeclared.
+// WHAT THAT ARM IS NOT (review 67708 on gunbc#11582): the compiler resolver's answer. The roster's
+// provenance comes from v2.compiler.resolution_provenance resolve_reference_provenance, which
+// confirms the index HIT and then derives the declaring identity from the authored SPELLING
+// (carrier_declaration_ref), while try_resolve_qualified_name_node refuses the very same reference
+// identity-unrepresentable. v2.compiler.repair_input_origin_roster's own frontier row
+// (repair_input_declared_binding_frontier_dissolve_on) says this spelling-derived identity becomes
+// a second authority the moment the roster produces on the production route -- which is now. So
+// these rows are MEASUREMENTS of a producer that answers, not a delivery of XL-0's denominator:
+// XL-0 stays NOT-DERIVABLE, citing exactly that missing observation (gunbc.compiler_frontend_program_status
+// ResolverBoundDeclaringIdentity), and the second row below reds when the roster's `declaring` is
+// derived from the resolver's binding rather than from spelling -- at which point it is re-stated
+// to assert the exact identity.
 fn xl0r_roster() -> RepairInputOriginRoster {
   match xl0r_fixture_normalized() {
     Accepted { value: roots, diagnostics: _ } =>
@@ -422,7 +432,7 @@ test fn the_repair_input_origin_roster_is_total_and_non_empty_on_the_production_
   repair_input_origin_roster_is_total(roster: roster) && length(xs: roster.carriers) > 0
 }
 
-test fn the_repair_input_origin_roster_carries_the_declared_cross_module_mention_holds() -> Bool {
+test fn the_repair_input_origin_roster_carries_the_cross_module_mention_with_a_spelling_derived_declared_arm_today() -> Bool {
   xl0r_roster_has_declared_carrier(
     roster: xl0r_roster(),
     spelling: "v2.test.xl0r_provider.xl0r_provided_fn"

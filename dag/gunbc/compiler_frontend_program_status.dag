@@ -71,7 +71,6 @@ import gunbc.namespace_cut_stage {
   stage_prerequisites,
   act0_release_milestones,
   StageDeliveryEvidenceKind,
-  DenominatorRosterInstrumentDelivered,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
   stage_delivery_kind_outstanding,
@@ -171,6 +170,7 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
 type MissingInstrument
   = PhaseCargoExecutionFact
   | DeclaringIdentitySpellingCensus
+  | ResolverBoundDeclaringIdentity
   | ExactOccurrenceResidualCensus
   | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
@@ -180,6 +180,7 @@ type MissingInstrument
 fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
+    ResolverBoundDeclaringIdentity => "the v2 resolver answering a qualified reference with an EXACT declaring identity by execution -- the binding's declaration containment path, not a leaf and not the authored spelling -- so that v2.compiler.repair_input_origin_roster derives RepairInputDeclared.declaring from that binding rather than from carrier_declaration_ref's spelling arm (XL-0's population; the roster producer itself exists and answers)"
     DeclaringIdentitySpellingCensus => "a declaring-identity spelling census that answers over XL-3's usable population on the production ingest route: QUALIFIED cross-module mentions (every position) and bare type names in FIELD position, joined to their declaring identity - the producer v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest exists and answers over the bare same-module classes only, which is not that population (XL-3's population)"
     ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
@@ -255,6 +256,7 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
   match i {
     PhaseCargoExecutionFact => NotBuilt
     DeclaringIdentitySpellingCensus => NotBuilt
+    ResolverBoundDeclaringIdentity => NotBuilt
     ExactOccurrenceResidualCensus => NotBuilt
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
@@ -720,6 +722,7 @@ fn join_names(names: List<String>) -> String {
 data all_missing_instruments: List<MissingInstrument> = [
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
+  ResolverBoundDeclaringIdentity,
   ExactOccurrenceResidualCensus,
   PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
@@ -899,12 +902,10 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
         )
       )
     StageXL0Denominator =>
-      standing_from_evidence(
-        e: observe_outstanding(
-          subject: "XL-0: the repair-input origin roster producer delivered and discriminated once on the production route" as NonEmptyStr,
-          outstanding: stage_delivery_kind_outstanding(kind: DenominatorRosterInstrumentDelivered, held: held_stage_delivery_receipts)
-        )
-      )
+      NotDerivable {
+        why: "XL-0 is the REPAIR-INPUT ORIGIN DENOMINATOR: source-declaration carriers whose DECLARING identity is what answered each mention. The producer EXISTS and ANSWERS on the production route -- v2.compiler.repair_input_origin_roster repair_input_origin_roster_over_roots is total and non-empty over a production-ingested fixture and carries the cross-module mention (gunbc#11582; re-run rather than trust: v2.test.claim.namespace_xl0.cross_module_reference_resolution, v2.test.claim.namespace_xl0.call_argument_mention_survival). THIS ARM READ CLEAR OFF THAT FOR ONE HEAD AND THAT WAS RUNG INFLATION (review 67708): the roster's RepairInputDeclared.declaring is derived from the authored SPELLING (v2.compiler.resolution_provenance resolve_reference_provenance confirms the index hit and rebuilds the declaration from the path; carrier_declaration_ref drops an owner prefix), while the compiler resolver refuses the same reference resolve_reason_qualified_target_identity_unrepresentable because it carries no exact declaring identity. The roster module's own frontier row (repair_input_declared_binding_frontier_dissolve_on) says the spelling-derived identity becomes a second authority the moment the roster produces on the production route, which is now. A denominator whose declaring identities are spelled rather than bound is not the population this stage is defined by (DESIGN section 3, one authority; section 4b(1), the reported rung equals the executed evidence). Derivable when the resolver answers a qualified reference with an exact declaring identity by execution and the roster's `declaring` is derived from that binding; the collector-side capability (the dotted-reference lowering) is landed and is not what is missing. The base-pinned execution remains ACT-0's DenominatorRosterDigest either way." as NonEmptyStr,
+        cause: needs(i: ResolverBoundDeclaringIdentity)
+      }
     StageXL1BaselineCapture =>
       standing_from_evidence(
         e: observe_outstanding(
