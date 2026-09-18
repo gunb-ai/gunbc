@@ -22,7 +22,6 @@ import gunbc.spark.collective_memory_path_standing {
   MemoryPathDefectStanding, DefectEstablished, NoDefectEstablished, DefectStandingUnread, EvidenceContradicts,
   memory_path_defect_standing,
 }
-import gunbc.spark.spark_gpu_direct_capability { spark_gb10_gpu_direct_capability }
 
 // ── THE DECODE CHAIN FOR A CAPABILITY, ONE LAYER AT A TIME ────────────────────────────────────
 //
@@ -38,7 +37,7 @@ import gunbc.spark.spark_gpu_direct_capability { spark_gb10_gpu_direct_capabilit
 
 // ── 1. THE REPLY PARSER ───────────────────────────────────────────────────────────────────────
 test fn w_a_well_formed_reply_parses_to_its_value() -> Bool {
-  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 1") {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 0 0 1") {
     CudaQuerySucceeded { value: v } => v == 1
     CudaQueryFailed { result_code: _ } => false
     CudaQueryUnparsed { cause: _ } => false
@@ -47,7 +46,7 @@ test fn w_a_well_formed_reply_parses_to_its_value() -> Bool {
 
 // A ZERO FROM A SUCCEEDING QUERY IS AN ANSWER, and it must not read as a failure.
 test fn w_a_zero_from_a_succeeding_query_is_a_reading() -> Bool {
-  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 0") {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 0 0 0") {
     CudaQuerySucceeded { value: v } => v == 0
     CudaQueryFailed { result_code: _ } => false
     CudaQueryUnparsed { cause: _ } => false
@@ -56,7 +55,7 @@ test fn w_a_zero_from_a_succeeding_query_is_a_reading() -> Bool {
 
 // AND A NONZERO CUresult IS NOT A ZERO VALUE, which is the distinction the whole module protects.
 test fn w_a_failed_query_is_not_an_unsupported_answer() -> Bool {
-  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 3 0") {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 0 3 0") {
     CudaQueryFailed { result_code: rc } => rc == 3
     CudaQuerySucceeded { value: _ } => false
     CudaQueryUnparsed { cause: _ } => false
@@ -64,7 +63,7 @@ test fn w_a_failed_query_is_not_an_unsupported_answer() -> Bool {
 }
 
 test fn w_a_reply_for_another_attribute_is_refused() -> Bool {
-  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "124 0 1") {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "124 0 0 0 1") {
     CudaQueryUnparsed { cause: _ } => true
     CudaQuerySucceeded { value: _ } => false
     CudaQueryFailed { result_code: _ } => false
@@ -72,7 +71,7 @@ test fn w_a_reply_for_another_attribute_is_refused() -> Bool {
 }
 
 test fn w_a_truncated_reply_refuses_rather_than_reading_a_zero() -> Bool {
-  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0") {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 0 0") {
     CudaQueryUnparsed { cause: _ } => true
     CudaQuerySucceeded { value: _ } => false
     CudaQueryFailed { result_code: _ } => false
@@ -80,7 +79,7 @@ test fn w_a_truncated_reply_refuses_rather_than_reading_a_zero() -> Bool {
 }
 
 test fn w_a_non_numeric_field_refuses() -> Bool {
-  match cuda_attribute_outcome(a: DmaBufSupportedAttribute, stdout: "124 0 yes") {
+  match cuda_attribute_outcome(a: DmaBufSupportedAttribute, stdout: "124 0 0 0 yes") {
     CudaQueryUnparsed { cause: _ } => true
     CudaQuerySucceeded { value: _ } => false
     CudaQueryFailed { result_code: _ } => false
@@ -240,16 +239,46 @@ test fn w_an_unread_capability_refuses_to_decide() -> Bool {
     && match s { MemoryPathStandingUnread { cause: _ } => true, MemoryPathDirectAsCapable => false, MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => false, MemoryPathBelowCapability { capability_receipt: _, observed_from: _ } => false, MemoryPathProducersContradict { capability_receipt: _, observed_from: _ } => false }
 }
 
-// ── 5. THE REAL READING ───────────────────────────────────────────────────────────────────────
+// ── 5. THE WHOLE PROBE, FROM THE REPLY THE ROUTE READS ────────────────────────────────────────
 //
-// The rows above supply their inputs; this one consumes the reading actually taken from spark-0c75,
-// so the fold is exercised over a value a real producer emitted rather than only over shapes.
-test fn w_the_group_b_reading_is_unsupported_and_its_staged_path_is_not_a_defect() -> Bool {
-  match spark_gb10_gpu_direct_capability {
+// The rows above supply a CudaQueryOutcome directly. This one starts one layer lower, at the text
+// the probe prints, and drives the same fold the live route drives: the route's reply goes through
+// `cuda_attribute_outcome` and then `gpu_direct_rdma_capability`, so a change to either layer that
+// broke the join would fail here.
+//
+// AND IT IS NO LONGER AN AUTHORED CAPABILITY ROW. An earlier revision of this section matched on a
+// `spark_gb10_gpu_direct_capability` literal in gunbc.spark.spark_gpu_direct_capability -- a
+// transcribed instrument output consumed as the production authority (review 67496, DESIGN section
+// 6). That row is deleted; the capability is now read by
+// gunbc.spark.serving_rank_observe `observe_rank_gpu_direct_capability`, which cannot run in a
+// witness because it needs a live container, so what is exercised here is the reply-to-capability
+// fold that route performs.
+test fn w_a_device_unsupported_reply_folds_to_unsupported_with_no_defect() -> Bool {
+  let capability = gpu_direct_rdma_capability(
+    platform: gb10,
+    device_api: cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 0 0 0"),
+    dma_buf: cuda_attribute_outcome(a: DmaBufSupportedAttribute, stdout: "124 0 0 0 0"),
+  )
+  match capability {
     GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } =>
-      no_defect_established(s: collective_memory_path_standing(capability: spark_gb10_gpu_direct_capability, observed: staged))
+      no_defect_established(s: collective_memory_path_standing(capability: capability, observed: staged))
     GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
     GpuDirectRdmaCapabilityUnread { cause: _ } => false
+  }
+}
+
+// AND A LEG THAT COULD NOT RUN MUST NOT READ AS A ZERO. The route hands the refusal text to
+// `CudaQueryUnparsed`, and this is the row that says the result is Unread rather than Unsupported --
+// the distinction the whole module exists for.
+test fn w_a_probe_that_could_not_run_is_unread_and_not_unsupported() -> Bool {
+  match gpu_direct_rdma_capability(
+    platform: gb10,
+    device_api: cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: ""),
+    dma_buf: cuda_attribute_outcome(a: DmaBufSupportedAttribute, stdout: ""),
+  ) {
+    GpuDirectRdmaCapabilityUnread { cause: _ } => true
+    GpuDirectRdmaDeviceUnsupported { platform: _, capability_receipt: _ } => false
+    GpuDirectRdmaDevicePrerequisiteMet { dma_buf_prerequisite: _, capability_receipt: _ } => false
   }
 }
 
@@ -290,3 +319,25 @@ test fn w_a_contradiction_does_not_read_as_no_defect() -> Bool {
     observed: enabled_announcement)
   !no_defect_established(s: s) && !defect_standing_unread(s: s)
 }
+
+// ── THE TWO FAILURES THE OLD REPLY COULD NOT EXPRESS ──────────────────────────────────────────
+//
+// The program used to throw away cuInit's and cuDeviceGet's CUresults, so a chain that never ran
+// could still print an attribute-shaped line and the reader would mint a reading from it. These are
+// the rows that make that unwritable: the value field says 1 in both, and both must still refuse.
+test fn w_a_failed_cuinit_refuses_even_with_a_plausible_value() -> Bool {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 3 0 0 1") {
+    CudaQueryFailed { result_code: rc } => rc == 3
+    CudaQuerySucceeded { value: _ } => false
+    CudaQueryUnparsed { cause: _ } => false
+  }
+}
+
+test fn w_a_failed_device_selection_refuses_even_with_a_plausible_value() -> Bool {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 101 0 1") {
+    CudaQueryFailed { result_code: rc } => rc == 101
+    CudaQuerySucceeded { value: _ } => false
+    CudaQueryUnparsed { cause: _ } => false
+  }
+}
+

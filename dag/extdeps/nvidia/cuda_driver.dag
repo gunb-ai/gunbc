@@ -67,18 +67,29 @@ data cuda_result_success: Int = 0
 // a Python emission target under extdeps/languages -- and it is not restated here.
 //
 // THE OUTPUT SHAPE IS PART OF THE CONTRACT, so the reader below and the program agree by
-// construction rather than by an author remembering: one line per attribute, `<ordinal> <rc> <value>`.
+// construction rather than by an author remembering: one line per attribute, `<ordinal> <cuInit> <cuDeviceGet> <cuDeviceGetAttribute> <value>`.
+//
+// THE WHOLE ACQUISITION CHAIN REPORTS, NOT JUST THE LAST CALL. An earlier revision ran cuInit and
+// cuDeviceGet and threw their CUresults away, keeping only the attribute query's -- so a failed
+// initialisation or a failed device selection could be followed by an attribute-shaped line whose
+// value field was whatever the uninitialised output buffer held. The reader would then have parsed
+// well-formed fields and minted a reading from a chain that never ran (review, 2026-09-18).
+//
+// THE REPLY CARRIES FIVE FIELDS FOR THAT REASON: ordinal, init result, device-get result, attribute
+// result, then the value. The value is interpretable only when all three results are success, and
+// the reader below enforces that rather than trusting the last one.
 fn cuda_device_attribute_program(a: CudaDeviceAttribute) -> PythonProgramText {
   join([
     "import ctypes;",
-    "cu=ctypes.CDLL('libcuda.so.1');cu.cuInit(0);",
-    "d=ctypes.c_int();cu.cuDeviceGet(ctypes.byref(d),0);",
-    "v=ctypes.c_int(-1);rc=cu.cuDeviceGetAttribute(ctypes.byref(v),",
+    "cu=ctypes.CDLL('libcuda.so.1');",
+    "ri=cu.cuInit(0);",
+    "d=ctypes.c_int();rd=cu.cuDeviceGet(ctypes.byref(d),0);",
+    "v=ctypes.c_int(-1);ra=cu.cuDeviceGetAttribute(ctypes.byref(v),",
     to_string(cuda_device_attribute_ordinal(a: a)),
     ",d);",
     "print(",
     to_string(cuda_device_attribute_ordinal(a: a)),
-    ",rc,v.value)",
+    ",ri,rd,ra,v.value)",
   ], "") as PythonProgramText
 }
 
@@ -88,7 +99,7 @@ fn cuda_device_attribute_argv(a: CudaDeviceAttribute) -> List<String> {
 
 // ── READING THE ANSWER BACK ───────────────────────────────────────────────────────────────────
 //
-// THREE FIELDS OR NOTHING. A line that does not carry ordinal, result code and value is unparsed --
+// FIVE FIELDS OR NOTHING. A line that does not carry the ordinal, all three results and the value is unparsed --
 // never a zero, because a zero is what an unsupported device says and a truncated line must not be
 // able to impersonate it.
 //
@@ -96,8 +107,8 @@ fn cuda_device_attribute_argv(a: CudaDeviceAttribute) -> List<String> {
 // different question is refused rather than attributed to this one.
 fn cuda_attribute_outcome(a: CudaDeviceAttribute, stdout: String) -> CudaQueryOutcome {
   let fields = split(s: trim(s: stdout), delimiter: " ")
-  if count(fields) != 3 {
-    CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " is not the three fields <ordinal> <rc> <value>: ", trim(s: stdout)], "") as NonEmptyStr }
+  if count(fields) != 5 {
+    CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " is not the five fields <ordinal> <cuInit> <cuDeviceGet> <cuDeviceGetAttribute> <value>: ", trim(s: stdout)], "") as NonEmptyStr }
   } else {
     match parse_nat_fields(fields: fields) {
       Absent => CudaQueryUnparsed { cause: join(["the reply for ", cuda_device_attribute_name(a: a) as String, " carries a field that is not a number: ", trim(s: stdout)], "") as NonEmptyStr }
@@ -108,23 +119,29 @@ fn cuda_attribute_outcome(a: CudaDeviceAttribute, stdout: String) -> CudaQueryOu
             to_string(cuda_device_attribute_ordinal(a: a)), " (", cuda_device_attribute_name(a: a) as String, ")",
           ], "") as NonEmptyStr }
         } else {
-          if parsed.result_code != cuda_result_success {
-            CudaQueryFailed { result_code: parsed.result_code }
+          if parsed.init_result != cuda_result_success {
+            CudaQueryFailed { result_code: parsed.init_result }
           } else {
-            CudaQuerySucceeded { value: parsed.value }
+            if parsed.device_result != cuda_result_success {
+              CudaQueryFailed { result_code: parsed.device_result }
+            } else {
+              if parsed.result_code != cuda_result_success {
+                CudaQueryFailed { result_code: parsed.result_code }
+              } else {
+                CudaQuerySucceeded { value: parsed.value }
+              }
+            }
           }
         }
     }
   }
 }
 
-// THE FIELDS ARE Int BECAUSE THE C API'S ARE. `cuDeviceGetAttribute` writes an int and returns a
-// CUresult, and carrying them as Nat would require a cast this language does not perform at runtime
-// -- which is how the first revision of this module failed: five rows red on `cannot cast Int to
-// Nat`. A negative is still refused below; it is refused by a guard on the value rather than by a
-// carrier that cannot hold it.
+
 type CudaAttributeFields sole_constructor {
   ordinal: Int
+  init_result: Int
+  device_result: Int
   result_code: Int
   value: Int
 }
@@ -135,11 +152,19 @@ fn parse_nat_fields(fields: List<String>) -> CudaAttributeFields? {
     Present { value: ordinal } =>
       match cuda_reply_int_at(fields: fields, index: 1) {
         Absent => none
-        Present { value: rc } =>
+        Present { value: ri } =>
           match cuda_reply_int_at(fields: fields, index: 2) {
             Absent => none
-            Present { value: v } =>
-              Present { value: CudaAttributeFields { ordinal: ordinal, result_code: rc, value: v } }
+            Present { value: rd } =>
+              match cuda_reply_int_at(fields: fields, index: 3) {
+                Absent => none
+                Present { value: ra } =>
+                  match cuda_reply_int_at(fields: fields, index: 4) {
+                    Absent => none
+                    Present { value: v } =>
+                      Present { value: CudaAttributeFields { ordinal: ordinal, init_result: ri, device_result: rd, result_code: ra, value: v } }
+                  }
+              }
           }
       }
   }

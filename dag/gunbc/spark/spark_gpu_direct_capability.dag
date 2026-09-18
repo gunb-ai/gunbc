@@ -1,36 +1,24 @@
 module gunbc.spark.spark_gpu_direct_capability
 
-import std.types { Bool, String, NonEmptyStr, List }
-import extdeps.nvidia.cuda_driver { CudaQueryOutcome, CudaQuerySucceeded }
-import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability, gpu_direct_rdma_capability }
+import std.types { NonEmptyStr }
 
-// ── WHAT THE GB10 DEVICES ANSWERED, AND WHEN ───────────────────────────────────────────────────
+// ── WHICH PLATFORM THE CAPABILITY IS BEING ASKED ABOUT ────────────────────────────────────────
 //
-// THESE ARE READINGS, NOT POLICY. The values below were returned by `cuDeviceGetAttribute` on
-// spark-0c75 inside the serving container on 2026-09-18, with the driver reporting
-// `580.173.02`. They are carried as OUTCOMES rather than as booleans so the CUresult stays visible:
-// both queries SUCCEEDED and both answered zero, which is a reading about the platform and not a
-// failure of the probe -- the distinction that decides whether a disabled GPUDirect path is a
-// supported state or a broken one.
+// THIS MODULE CARRIES A NAME AND NOT A READING, and the difference is the whole point. An earlier
+// revision also carried the two `cuDeviceGetAttribute` outcomes as authored literals -- with the
+// host, the driver revision and the date of the read in prose beside them -- and the live route
+// consumed them as the authority deciding whether a staged collective memory path is a defect. That
+// is a transcribed instrument output standing where its own producer already existed (DESIGN §6:
+// name the instrument, never transcribe its output), and a declared frontier does not authorise the
+// debt (DESIGN §5).
 //
-// THESE ARE AUTHORED LITERALS AND NOT YET A PRODUCER, WHICH IS A DECLARED FRONTIER RATHER THAN A
-// CLAIM TO HAVE EXECUTED. The values were returned by a real query on a real host at a stated time,
-// and the argv that re-derives them is rendered by extdeps.nvidia.cuda_driver
-// `cuda_device_attribute_argv` -- a consumer that wants it imports it from there rather than through
-// a second name here. What is missing is the route that RUNS that argv and folds its stdout through
-// `cuda_attribute_outcome` into these rows, so the reading refreshes instead of being re-typed.
-// TRIGGER: the observe route gaining a device-capability leg beside its container and log legs, at
-// which point these rows become the fold's output and this block deletes. SUFFICIENT FOR: a
-// capability reading that cannot silently outlive a driver or image change on the host it describes.
+// THE READING NOW COMES FROM THE ROUTE. gunbc.spark.serving_rank_observe
+// `observe_rank_gpu_direct_capability` runs `extdeps.nvidia.cuda_driver` `cuda_device_attribute_argv`
+// inside the container the engine runs in and folds both replies through
+// `extdeps.nvidia.gpu_direct_rdma` `gpu_direct_rdma_capability`, so the capability refreshes with
+// the host it describes and a leg that cannot run yields Unread rather than a stale zero.
+//
+// WHAT IS STILL AUTHORED IS THE PLATFORM NAME, which is a fact about which hardware Group B IS
+// rather than an answer any instrument returned, and it is what the Unsupported arm carries so a
+// reader knows which device said no.
 data spark_gb10_platform: NonEmptyStr = "NVIDIA GB10 Grace Blackwell (DGX Spark), unified LPDDR5X" as NonEmptyStr
-
-data spark_gb10_capability_read_provenance: NonEmptyStr = "cuDeviceGetAttribute on device 0 inside glm-native-tp4 on spark-0c75 (192.168.1.236), NVRM 580.173.02, read 2026-09-18; both queries returned CUresult 0" as NonEmptyStr
-
-data spark_gb10_peer_memory_outcome: CudaQueryOutcome = CudaQuerySucceeded { value: 0 }
-data spark_gb10_dma_buf_outcome: CudaQueryOutcome = CudaQuerySucceeded { value: 0 }
-
-data spark_gb10_gpu_direct_capability: GpuDirectRdmaCapability = gpu_direct_rdma_capability(
-  platform: spark_gb10_platform,
-  device_api: spark_gb10_peer_memory_outcome,
-  dma_buf: spark_gb10_dma_buf_outcome,
-)

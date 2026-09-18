@@ -7,6 +7,11 @@ import std.measure { TokenCount, ConcurrentRequestHundredths }
 import product.placement_supply { HostIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.python { PythonProgramText, python_run_program_argv }
+import extdeps.nvidia.cuda_driver {
+  CudaDeviceAttribute, GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute,
+  CudaQueryOutcome, CudaQueryUnparsed, cuda_device_attribute_argv, cuda_attribute_outcome,
+}
+import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability, gpu_direct_rdma_capability }
 import extdeps.docker.cli {
   docker_container_inspect_command, docker_logs_command,
   docker_container_inspect_names_no_such_container,
@@ -377,6 +382,55 @@ fn nccl_transport_read_from(t: NcclRealizedTransport) -> NonEmptyStr {
     NcclTransportIbVerbs { read_from: l } => l
     NcclTransportSocket { read_from: l } => l
   }
+}
+
+// ── (a2) WHAT THE DEVICE ANSWERS ABOUT GPUDIRECT, ASKED WHERE THE ENGINE RUNS ─────────────────
+//
+// THE CAPABILITY IS READ, NOT AUTHORED. An earlier revision of
+// gunbc.spark.spark_gpu_direct_capability carried the two CUresult outcomes as literals with the
+// host, driver and date in prose beside them, and the live route consumed those literals as the
+// authority that decides whether a staged memory path is a defect. That is a transcribed instrument
+// output standing where its producer already existed (DESIGN §6), and it rots the moment the driver
+// or the image moves under it without either end being touched.
+//
+// SO THE QUERY RUNS IN THE CONTAINER THE ENGINE RUNS IN, for the same reason the revision readback
+// does: the capability that matters is the one the process doing the collectives sees, not the one
+// a host shell would report. A leg that cannot run yields CudaQueryUnparsed carrying the refusal,
+// which `gpu_direct_rdma_capability` folds to GpuDirectRdmaCapabilityUnread -- never to a zero,
+// because zero is what an unsupported device says.
+data rank_gpu_direct_step: NonEmptyStr = "cuda-device-attribute" as NonEmptyStr
+
+fn observe_rank_cuda_attribute(
+  ctx: SparkMaterializeContext,
+  subject: ObservedRankSubject,
+  a: CudaDeviceAttribute,
+) -> CudaQueryOutcome
+  uses net: Network
+{
+  match rank_leg(
+    ctx: ctx,
+    subject: subject,
+    step: rank_gpu_direct_step,
+    command: docker_exec_command(name: subject.container, env: [], argv: cuda_device_attribute_argv(a: a)),
+  ) {
+    RankLegFailed { refusal: r, stderr: _ } =>
+      CudaQueryUnparsed { cause: rank_observation_refusal_text(r: r) as NonEmptyStr }
+    RankLegRan { stdout: out } => cuda_attribute_outcome(a: a, stdout: out)
+  }
+}
+
+fn observe_rank_gpu_direct_capability(
+  ctx: SparkMaterializeContext,
+  subject: ObservedRankSubject,
+  platform: NonEmptyStr,
+) -> GpuDirectRdmaCapability
+  uses net: Network
+{
+  gpu_direct_rdma_capability(
+    platform: platform,
+    device_api: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: GpuDirectRdmaSupportedAttribute),
+    dma_buf: observe_rank_cuda_attribute(ctx: ctx, subject: subject, a: DmaBufSupportedAttribute),
+  )
 }
 
 // ── (b) THE ENGINE'S STARTUP RESIDUALS, AND THE REVISION THAT EMITTED THEM ────────────────────

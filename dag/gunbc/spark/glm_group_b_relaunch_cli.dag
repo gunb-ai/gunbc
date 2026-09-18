@@ -14,7 +14,8 @@ import gunbc.spark.collective_memory_path_standing {
   collective_memory_path_standing, memory_path_standing_text,
   memory_path_defect_standing, DefectEstablished, NoDefectEstablished, DefectStandingUnread, EvidenceContradicts,
 }
-import gunbc.spark.spark_gpu_direct_capability { spark_gb10_gpu_direct_capability }
+import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
+import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability }
 import extdeps.nvidia.nccl {
   NcclGpuMemoryPath, NcclGpuMemoryPathUnread, NcclGpuMemoryPathReading, NcclMemoryPathAgreed,
   NcclMemoryPathDisagrees, NcclMemoryPathAbsent, nccl_gpu_memory_path_of_text,
@@ -58,6 +59,7 @@ import gunbc.spark.serving_rank_observe {
   RankLogCapture, RankLogCaptured, RankLogRefused, capture_rank_log,
   rank_transport_from_log, rank_startup_from_log,
   RankRevisionReading, RankRevisionRead, RankRevisionRefused, observe_rank_vllm_revision,
+  observe_rank_gpu_direct_capability,
   RankVerbsShape, observed_verbs_shape, verbs_shape_is_complete, verbs_shape_text,
   RankObservationRefusal, rank_observation_refusal_text,
 }
@@ -253,14 +255,14 @@ fn rank_startup_facet(
 // not an action item, so it must not fail an observation; a staged path on a CAPABLE platform is a
 // defect, and the standing says which of those a reader is looking at instead of leaving them to
 // infer it from a log line that reads the same either way.
-fn rank_memory_path_text(captured: String) -> String {
+fn rank_memory_path_text(capability: GpuDirectRdmaCapability, captured: String) -> String {
   let observed = match nccl_gpu_memory_path_of_text(captured_text: captured) {
     NcclMemoryPathAgreed { path: p, readings: _ } => p
     NcclMemoryPathAbsent => NcclGpuMemoryPathUnread { cause: "the capture carries no GPU Direct RDMA line" as NonEmptyStr }
     NcclMemoryPathDisagrees { causes: cs } => NcclGpuMemoryPathUnread { cause: join(map(cs, c => c as String), "; ") as NonEmptyStr }
   }
   let standing = collective_memory_path_standing(
-    capability: spark_gb10_gpu_direct_capability,
+    capability: capability,
     observed: observed,
   )
   match memory_path_defect_standing(s: standing) {
@@ -306,7 +308,13 @@ fn observe_rank_report(
               standing: RankNotFullyRead { what: "the transport verdict could not be read" as NonEmptyStr },
             }
             RankTransportObserved { verdict: v } => RankTransportFacet {
-              lines: [rank_transport_verdict_text(v: v), rank_memory_path_text(captured: t)],
+              lines: [
+                rank_transport_verdict_text(v: v),
+                rank_memory_path_text(
+                  capability: observe_rank_gpu_direct_capability(ctx: ctx, subject: subject, platform: spark_gb10_platform),
+                  captured: t,
+                ),
+              ],
               standing: transport_standing(v: v),
             }
           }
