@@ -348,3 +348,50 @@ test fn a_parameter_default_is_refused_at_parse_holds() -> Bool {
       }
   }
 }
+
+// Resolves module wall.<subject_segment> under the IMPORT-SCOPED policy with `wall.peer` imported, so
+// the peer's names bind at the subject's root scope as admitted imports and the wall reads their
+// origin from Namespace.imported_origins (v2.compiler.resolve root_binding_origin).
+fn wall_resolve_importing_peer(subject_segment: Symbol, subject: Outcome<NormalizedTree>, peer: Outcome<NormalizedTree>) -> String {
+  match subject {
+    Rejected { diagnostics: _ } => "SUBJECT_NOT_ADMITTED"
+    Accepted { value: s, diagnostics: _ } =>
+      match peer {
+        Rejected { diagnostics: _ } => "PEER_NOT_ADMITTED"
+        Accepted { value: p, diagnostics: _ } =>
+          wall_verdict(outcome: resolve_with_admission_policy(
+            lm: dag_language_model(),
+            roots: Cons { head: s, tail: Cons { head: p, tail: Empty } },
+            admission: Admission {
+              subject: ResolutionSubject { name: Cons { head: ^wall, tail: Cons { head: subject_segment, tail: Empty } } },
+              imports: Cons {
+                head: Import { target: Cons { head: ^wall, tail: Cons { head: ^peer, tail: Empty } }, visibility: ImportVisible },
+                tail: Empty
+              }
+            },
+            index: source_root_index_empty(),
+            active_roots: Empty,
+            policy: ImportScoped
+          ))
+      }
+  }
+}
+
+// RED, THE IMPORT DOOR: a test fn reached through an admitted import is refused. Its origin comes from
+// the admission's imported_origins, not the subject's own declarations.
+test fn an_imported_test_fn_is_refused_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: serving_module_with_body(body: wall_atom(identity: ^peer_leaf)),
+    peer: peer_test_module()
+  ) == "resolve_reason_test_code_referenced"
+}
+
+// CONTROL for the import door: the same import, referencing the peer's ordinary declaration, resolves.
+test fn an_imported_ordinary_declaration_resolves_holds() -> Bool {
+  wall_resolve_importing_peer(
+    subject_segment: ^serving,
+    subject: serving_module_with_body(body: wall_atom(identity: ^shared_fixture)),
+    peer: peer_test_module()
+  ) == "ACCEPTED"
+}
