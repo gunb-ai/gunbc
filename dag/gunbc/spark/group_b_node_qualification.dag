@@ -136,11 +136,13 @@ data group_b_all_to_all_protocol: CollectiveProtocol = CollectiveProtocol {
 data group_b_all_reduce_observation: CollectiveObservationIdentity = CollectiveObservationIdentity {
   protocol: group_b_all_reduce_protocol,
   run_identity: "group-b-all-reduce-half-2026-09-18" as NonEmptyStr,
+  ranks: group_b_expected_ranks,
 }
 
 data group_b_all_to_all_observation: CollectiveObservationIdentity = CollectiveObservationIdentity {
   protocol: group_b_all_to_all_protocol,
   run_identity: "group-b-all-to-all-half-2026-09-18" as NonEmptyStr,
+  ranks: group_b_expected_ranks,
 }
 
 data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
@@ -214,19 +216,20 @@ fn group_b_host_admission() -> HostQualificationAdmission {
   )
 }
 
+data group_b_claimed_offer: FabricIdentity<NonEmptyStr, OfferKey> = FabricIdentity {
+  principal: "gunbc",
+  key: "group-b-historical",
+}
+
 fn group_b_group_admission() -> GroupQualificationAdmission {
   admit_qualified_group(
     receipt: qualify_collective_group(
+      offer: group_b_claimed_offer,
       advertised: group_b_advertised.group,
       measured: group_b_measured.group,
       host_admissions: [],
     ),
   )
-}
-
-data group_b_claimed_offer: FabricIdentity<NonEmptyStr, OfferKey> = FabricIdentity {
-  principal: "gunbc",
-  key: "group-b-historical",
 }
 
 data group_b_delivery_claim: OfferDeliveryClaim<NonEmptyStr> = OfferClaimsNodeDelivery {

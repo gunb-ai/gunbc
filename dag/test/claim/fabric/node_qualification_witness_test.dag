@@ -3,6 +3,7 @@ module test.claim.fabric.node_qualification_witness
 import std.types { Bool, String, List, NonEmptyStr }
 import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count, nanosecond_count, byte_size_count }
 import product.placement_supply { HostIdentity }
+import product.fabric.identity { FabricIdentity, OfferKey }
 import extdeps.ethernet.link_mode {
   ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_50gbase_cr2, link_mode_eq, link_mode_aggregate,
 }
@@ -23,7 +24,7 @@ import product.fabric.node_qualification {
   EngineBufferModeUnestablished, EngineBufferModeInPlace, EngineBufferModeOutOfPlace,
   PerLayerAllReduceCountUnestablished, PerLayerAllReduceCount,
   EachRankContributesTheSizeColumn, TotalBufferSplitPerPeer, NcclTestsHalf,
-  GroupHostRosterUnread, GroupHostRosterComplete,
+  GroupHostRosterUnread, GroupHostRosterComplete, GroupMemberNotQualified,
   CollectivePrimitiveAttributionUnestablished, CollectivePrimitiveMeasuredOnDifferentRuntime,
   CollectivePrimitiveSameRuntime,
   HostRegisteredIbFallbackUnread, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
@@ -33,20 +34,27 @@ import product.fabric.node_qualification {
   RailLinkModeAgrees, RailLinkModeDiffers, RailLinkModeUnread,
   NicPcieFallsShort, NicPcieUnread, NicPcieAgrees, NicPcieOfferUngrounded,
   NicPcieExceeds, NicPcieDiffers,
-  CollectiveLatencyUnread, CollectiveLatencyAgrees, CollectiveBandwidthUnread,
+  CollectiveLatencyUnread, CollectiveLatencyAgrees, CollectiveLatencyFallsShort,
+  CollectiveBandwidthUnread, CollectiveBandwidthAgrees,
   RankSymmetryUnread, RankSymmetryStanding,
   rank_symmetry_unread_duplicate_expected, rank_symmetry_unread_missing_rank,
   rank_symmetry_unread_copied_curve, rank_symmetry_unread_protocol_mismatch,
   rank_symmetry_unread_awaits_rank_local_receipt,
   RankLocalCollectiveCurve, GroupWideCurveCopiedOntoRank,
-  HostQualified, HostNotQualified, GroupQualified, GroupNotQualified,
+  HostQualified, HostNotQualified, GroupNotQualified,
   HostQualificationAdmission, GroupQualificationAdmission,
   qualify_host, qualify_collective_group, admit_qualified_host, admit_qualified_group,
   qualify_rail_link_mode, qualify_accelerator_count,
   qualify_rank_symmetry, qualify_nic_pcie, qualify_collective_latency,
   nccl_tests_busbw_from_printed_gbs,
+  OfferClaimsNodeDelivery, GroupQualified, DeliveryClaimOfferDoesNotMatchReceipt,
+  CollectiveGroupReceipt,
   WindowStandingUnread, WindowSharedWithDeclaredTraffic, WindowIsolated,
-  claimed_delivery_refusals,
+  claimed_delivery_refusals, host_qualification_refusals,
+  AcceleratorCountDidNotHold, UsableMemoryDidNotHold, RailLinkModeDidNotHold,
+  NicPcieDidNotHold, CollectiveLatencyDidNotHold, CollectiveBandwidthDidNotHold,
+  RankSymmetryDidNotHold, AllToAllLatencyDidNotHold, HostRegisteredIbFallbackDidNotHold,
+  CollectiveWindowDidNotHold, CollectivePrimitiveDidNotHold, GroupHostRosterDidNotHold,
 }
 import gunbc.spark.group_b_node_qualification {
   group_b_group_admission, group_b_host_admission, group_b_measured,
@@ -89,6 +97,41 @@ fn fx_observation(protocol: CollectiveProtocol, run: String) -> CollectiveObserv
   CollectiveObservationIdentity {
     protocol: protocol,
     run_identity: run as NonEmptyStr,
+    ranks: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+  }
+}
+
+fn fx_offer_a() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc", key: "fixture-offer-a" }
+}
+
+fn fx_offer_b() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc", key: "fixture-offer-b" }
+}
+
+fn fx_positive_group_receipt(offer: FabricIdentity<NonEmptyStr, OfferKey>) -> CollectiveGroupReceipt {
+  CollectiveGroupReceipt {
+    offer: offer,
+    advertised: fx_advertised().group,
+    host_roster: GroupHostRosterComplete { rank_count: 2 },
+    collective_latency: CollectiveLatencyAgrees {
+      ceiling: nanosecond(count: 1000),
+      measured: nanosecond(count: 10),
+    },
+    collective_bandwidth: CollectiveBandwidthAgrees {
+      floor: bandwidth(count: 100),
+      measured: bandwidth(count: 200),
+    },
+    all_to_all_latency: CollectiveLatencyAgrees {
+      ceiling: nanosecond(count: 1000),
+      measured: nanosecond(count: 10),
+    },
+    rank_symmetry: RankSymmetryUnread { because: rank_symmetry_unread_awaits_rank_local_receipt },
+    host_registered_ib_fallback: fx_ib_ok(),
+    window: WindowIsolated,
+    primitive_attribution: CollectivePrimitiveSameRuntime {
+      nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+    },
   }
 }
 
@@ -274,6 +317,7 @@ fn fx_admit_host(m: MeasuredNodeDelivery) -> HostQualificationAdmission {
 fn fx_admit_group(m: MeasuredNodeDelivery) -> GroupQualificationAdmission {
   admit_qualified_group(
     receipt: qualify_collective_group(
+      offer: fx_offer_a(),
       advertised: fx_advertised().group,
       measured: m.group,
       host_admissions: fx_pair_hosts(),
@@ -288,6 +332,7 @@ fn fx_admit_group_for(
 ) -> GroupQualificationAdmission {
   admit_qualified_group(
     receipt: qualify_collective_group(
+      offer: fx_offer_a(),
       advertised: advertised.group,
       measured: m.group,
       host_admissions: hosts,
@@ -413,6 +458,7 @@ test fn group_b_live_receipt_is_not_qualified() -> Bool {
         && match r.host_roster {
           GroupHostRosterUnread { because: _ } => true
           GroupHostRosterComplete { rank_count: _ } => false
+          GroupMemberNotQualified { host: _, receipt: _ } => false
         }
   }
 }
@@ -595,6 +641,7 @@ test fn one_host_receipt_does_not_qualify_a_two_rank_group() -> Bool {
     GroupNotQualified { receipt: r, refusals: _ } => match r.host_roster {
       GroupHostRosterUnread { because: _ } => true
       GroupHostRosterComplete { rank_count: _ } => false
+      GroupMemberNotQualified { host: _, receipt: _ } => false
     }
   }
 }
@@ -607,7 +654,9 @@ test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> B
   ) {
     GroupQualified { receipt: _ } => false
     GroupNotQualified { receipt: r, refusals: _ } => match r.host_roster {
-      GroupHostRosterUnread { because: _ } => true
+      GroupMemberNotQualified { host: _, receipt: rec } =>
+        host_qualification_refusals(receipt: rec).length() > 0
+      GroupHostRosterUnread { because: _ } => false
       GroupHostRosterComplete { rank_count: _ } => false
     }
   }
@@ -780,5 +829,63 @@ test fn group_b_shared_window_and_different_nccl_do_not_hold() -> Bool {
           CollectivePrimitiveAttributionUnestablished => false
           CollectivePrimitiveSameRuntime { nccl: _ } => false
         }
+  }
+}
+
+test fn a_positive_admission_relabeled_as_another_offer_is_refused() -> Bool {
+  match claimed_delivery_refusals(
+    claim: OfferClaimsNodeDelivery {
+      offer: fx_offer_b(),
+      admission: GroupQualified { receipt: fx_positive_group_receipt(offer: fx_offer_a()) },
+    },
+  ) {
+    Present { value: r } => match r.first() {
+      Present { value: c } => match c {
+        DeliveryClaimOfferDoesNotMatchReceipt { claim_key: ck, receipt_key: rk } =>
+          (ck as String) == "fixture-offer-b" && (rk as String) == "fixture-offer-a"
+        AcceleratorCountDidNotHold { standing: _ } => false
+        UsableMemoryDidNotHold { standing: _ } => false
+        RailLinkModeDidNotHold { standing: _ } => false
+        NicPcieDidNotHold { standing: _ } => false
+        CollectiveLatencyDidNotHold { standing: _ } => false
+        CollectiveBandwidthDidNotHold { standing: _ } => false
+        RankSymmetryDidNotHold { standing: _ } => false
+        AllToAllLatencyDidNotHold { standing: _ } => false
+        HostRegisteredIbFallbackDidNotHold { standing: _ } => false
+        CollectiveWindowDidNotHold { standing: _ } => false
+        CollectivePrimitiveDidNotHold { attribution: _ } => false
+        GroupHostRosterDidNotHold { standing: _ } => false
+      }
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+test fn a_curve_from_another_four_host_roster_is_unread() -> Bool {
+  match qualify_collective_latency(
+    ceiling: nanosecond(count: 1000),
+    at: byte_size(count: 8),
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+    required: fx_all_reduce_protocol(),
+    reading: CollectiveCurveRead {
+      samples: [fx_sample()],
+      observation: CollectiveObservationIdentity {
+        protocol: fx_all_reduce_protocol(),
+        run_identity: "fixture-all-reduce" as NonEmptyStr,
+        ranks: ["other-0" as HostIdentity, "other-1" as HostIdentity],
+      },
+      small_message_shape: SmallMessageShapeUncharacterized,
+      engine_buffer_mode: EngineBufferModeUnestablished,
+      per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
+      primitive_attribution: CollectivePrimitiveSameRuntime {
+        nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+      },
+      window: WindowIsolated,
+    },
+  ) {
+    CollectiveLatencyUnread { ceiling: _, because: _ } => true
+    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
+    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
   }
 }

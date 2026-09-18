@@ -1,6 +1,6 @@
 module product.fabric.node_qualification
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size_count, Bandwidth, bandwidth, bandwidth_count, bits_per_byte,
@@ -143,6 +143,7 @@ type CollectiveProtocol {
 type CollectiveObservationIdentity {
   protocol: CollectiveProtocol
   run_identity: NonEmptyStr
+  ranks: List<HostIdentity>
 }
 
 type CollectiveCurveReading
@@ -177,6 +178,39 @@ fn advertised_spark_connectx7_per_port_link() -> PcieLink {
 
 fn host_eq(a: HostIdentity, b: HostIdentity) -> Bool {
   (a as String) == (b as String)
+}
+
+fn first_host_not_in(want: List<HostIdentity>, have: List<HostIdentity>) -> HostIdentity? {
+  match want.first() {
+    Absent => none
+    Present { value: h } => match first(filter(have, x => host_eq(a: x, b: h))) {
+      Absent => Present { value: h }
+      Present { value: _ } => first_host_not_in(want: want.skip(n: 1), have: have)
+    }
+  }
+}
+
+fn observation_roster_unread_reason(
+  observed: List<HostIdentity>,
+  expected: List<HostIdentity>,
+) -> NonEmptyStr? {
+  if observed.length() != expected.length() {
+    Present {
+      value: "the observation's participant roster is not the expected ranks" as NonEmptyStr,
+    }
+  } else {
+    match first_host_not_in(want: expected, have: observed) {
+      Present { value: _ } => Present {
+        value: "the observation's participant roster is not the expected ranks" as NonEmptyStr,
+      }
+      Absent => match first_host_not_in(want: observed, have: expected) {
+        Present { value: _ } => Present {
+          value: "the observation's participant roster is not the expected ranks" as NonEmptyStr,
+        }
+        Absent => none
+      }
+    }
+  }
 }
 
 fn collective_instrument_eq(a: CollectiveInstrument, b: CollectiveInstrument) -> Bool {
@@ -238,11 +272,6 @@ fn size_semantics_rank_count_holds(protocol: CollectiveProtocol) -> Bool {
     EachRankContributesTheSizeColumn => true
     TotalBufferSplitPerPeer { rank_count: n } => n == protocol.rank_count
   }
-}
-
-fn protocol_matches_roster(protocol: CollectiveProtocol, expected: List<HostIdentity>) -> Bool {
-  size_semantics_rank_count_holds(protocol: protocol)
-    && (protocol.rank_count as Int) == expected.length()
 }
 
 // ONE HOST. Accelerator count and memory here are that host's, not the serving group's.
@@ -353,6 +382,7 @@ type HostQualificationReceipt {
 }
 
 type CollectiveGroupReceipt {
+  offer: FabricIdentity<NonEmptyStr, OfferKey>
   advertised: CollectiveGroupAdvertised
   host_roster: GroupHostRosterStanding
   collective_latency: CollectiveLatencyStanding
@@ -367,6 +397,7 @@ type CollectiveGroupReceipt {
 type GroupHostRosterStanding
   = GroupHostRosterComplete { rank_count: Int }
   | GroupHostRosterUnread { because: NonEmptyStr }
+  | GroupMemberNotQualified { host: HostIdentity, receipt: HostQualificationReceipt }
 
 type HostQualificationAdmission
   = HostQualified { receipt: HostQualificationReceipt }
@@ -389,6 +420,7 @@ type QualificationRefusal
   | CollectiveWindowDidNotHold { standing: CollectiveWindowStanding }
   | CollectivePrimitiveDidNotHold { attribution: CollectivePrimitiveAttribution }
   | GroupHostRosterDidNotHold { standing: GroupHostRosterStanding }
+  | DeliveryClaimOfferDoesNotMatchReceipt { claim_key: OfferKey, receipt_key: OfferKey }
 
 fn qualify_accelerator_count(advertised: Nat, reading: CountReading) -> AcceleratorCountStanding {
   match reading {
@@ -526,7 +558,7 @@ fn qualify_collective_latency(
       CollectiveLatencyUnread { ceiling: ceiling, because: b }
     CollectiveCurveRead {
       samples: samples,
-      observation: _,
+      observation: obs,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -541,7 +573,9 @@ fn qualify_collective_latency(
         Present { value: key } => match protocol_population_unread_reason(protocol: key, expected: expected) {
           Present { value: b } => CollectiveLatencyUnread { ceiling: ceiling, because: b }
           Absent => if protocol_eq(a: key, b: required) {
-          match sample_at_message_bytes(samples: samples, want: at) {
+          match observation_roster_unread_reason(observed: obs.ranks, expected: expected) {
+            Present { value: b } => CollectiveLatencyUnread { ceiling: ceiling, because: b }
+            Absent => match sample_at_message_bytes(samples: samples, want: at) {
             Absent => CollectiveLatencyUnread {
               ceiling: ceiling,
               because: "nccl-tests returned no sample at the advertised message size" as NonEmptyStr,
@@ -553,6 +587,7 @@ fn qualify_collective_latency(
               } else {
                 CollectiveLatencyFallsShort { ceiling: ceiling, measured: measured }
               }
+            }
             }
           }
         } else {
@@ -581,7 +616,7 @@ fn qualify_collective_bandwidth(
       CollectiveBandwidthUnread { floor: floor, because: b }
     CollectiveCurveRead {
       samples: samples,
-      observation: _,
+      observation: obs,
       small_message_shape: _,
       engine_buffer_mode: _,
       per_layer_all_reduce_count: _,
@@ -596,7 +631,9 @@ fn qualify_collective_bandwidth(
         Present { value: key } => match protocol_population_unread_reason(protocol: key, expected: expected) {
           Present { value: b } => CollectiveBandwidthUnread { floor: floor, because: b }
           Absent => if protocol_eq(a: key, b: required) {
-          match sample_at_message_bytes(samples: samples, want: at) {
+          match observation_roster_unread_reason(observed: obs.ranks, expected: expected) {
+            Present { value: b } => CollectiveBandwidthUnread { floor: floor, because: b }
+            Absent => match sample_at_message_bytes(samples: samples, want: at) {
             Absent => CollectiveBandwidthUnread {
               floor: floor,
               because: "nccl-tests returned no sample at the advertised message size" as NonEmptyStr,
@@ -605,6 +642,7 @@ fn qualify_collective_bandwidth(
               CollectiveBandwidthAgrees { floor: floor, measured: s.bus_bandwidth }
             } else {
               CollectiveBandwidthFallsShort { floor: floor, measured: s.bus_bandwidth }
+            }
             }
           }
         } else {
@@ -874,11 +912,11 @@ fn admission_receipt(a: HostQualificationAdmission) -> HostQualificationReceipt 
   }
 }
 
-fn first_unqualified_admission(admissions: List<HostQualificationAdmission>) -> HostIdentity? {
+fn first_unqualified_admission(admissions: List<HostQualificationAdmission>) -> HostQualificationAdmission? {
   match admissions.first() {
     Absent => none
     Present { value: a } => match a {
-      HostNotQualified { receipt: r, refusals: _ } => Present { value: r.node }
+      HostNotQualified { receipt: _, refusals: _ } => Present { value: a }
       HostQualified { receipt: _ } => first_unqualified_admission(admissions: admissions.skip(n: 1))
     }
   }
@@ -911,8 +949,12 @@ fn qualify_group_host_roster(
               because: "a host admission is not on the expected roster" as NonEmptyStr,
             }
             Absent => match first_unqualified_admission(admissions: admissions) {
-              Present { value: _ } => GroupHostRosterUnread {
-                because: "a host on the expected roster is not qualified; group admission does not ignore HostNotQualified" as NonEmptyStr,
+              Present { value: a } => match a {
+                HostNotQualified { receipt: r, refusals: _ } =>
+                  GroupMemberNotQualified { host: r.node, receipt: r }
+                HostQualified { receipt: _ } => GroupHostRosterUnread {
+                  because: "a host on the expected roster is not qualified; group admission does not ignore HostNotQualified" as NonEmptyStr,
+                }
               }
               Absent => GroupHostRosterComplete { rank_count: expected.length() }
             }
@@ -924,11 +966,13 @@ fn qualify_group_host_roster(
 }
 
 fn qualify_collective_group(
+  offer: FabricIdentity<NonEmptyStr, OfferKey>,
   advertised: CollectiveGroupAdvertised,
   measured: CollectiveGroupMeasured,
   host_admissions: List<HostQualificationAdmission>,
 ) -> CollectiveGroupReceipt {
   CollectiveGroupReceipt {
+    offer: offer,
     advertised: advertised,
     host_roster: qualify_group_host_roster(expected: advertised.expected_ranks, admissions: host_admissions),
     collective_latency: qualify_collective_latency(
@@ -973,6 +1017,7 @@ fn host_roster_refusal(s: GroupHostRosterStanding) -> List<QualificationRefusal>
   match s {
     GroupHostRosterComplete { rank_count: _ } => []
     GroupHostRosterUnread { because: _ } => [GroupHostRosterDidNotHold { standing: s }]
+    GroupMemberNotQualified { host: _, receipt: _ } => [GroupHostRosterDidNotHold { standing: s }]
   }
 }
 
@@ -1044,12 +1089,30 @@ type OfferDeliveryClaim<P>
       admission: GroupQualificationAdmission,
     }
 
+fn group_admission_receipt(a: GroupQualificationAdmission) -> CollectiveGroupReceipt {
+  match a {
+    GroupQualified { receipt: r } => r
+    GroupNotQualified { receipt: r, refusals: _ } => r
+  }
+}
+
 fn claimed_delivery_refusals<P>(claim: OfferDeliveryClaim<P>) -> List<QualificationRefusal>? {
   match claim {
     OfferDoesNotClaimNodeDelivery => none
-    OfferClaimsNodeDelivery { offer: _, admission: a } => match a {
-      GroupQualified { receipt: _ } => none
-      GroupNotQualified { receipt: _, refusals: r } => Present { value: r }
+    OfferClaimsNodeDelivery { offer: o, admission: a } => {
+      let r = group_admission_receipt(a: a)
+      if !((o.principal as String) == (r.offer.principal as String) && (o.key as String) == (r.offer.key as String)) {
+        Present {
+          value: [
+            DeliveryClaimOfferDoesNotMatchReceipt { claim_key: o.key, receipt_key: r.offer.key },
+          ],
+        }
+      } else {
+        match a {
+          GroupQualified { receipt: _ } => none
+          GroupNotQualified { receipt: _, refusals: refusals } => Present { value: refusals }
+        }
+      }
     }
   }
 }
