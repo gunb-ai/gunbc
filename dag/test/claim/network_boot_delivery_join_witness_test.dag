@@ -34,6 +34,8 @@ import gunbc.network_boot_delivery {
   ClientBootModePredecessor,
   ClientBootModeUnobserved,
   ControlledNetworkBootstrap,
+  EstablishedProductionTrust,
+  EstablishedControlledNetwork,
   DhcpFilenameHint,
   FleetBootServiceEstablished,
   FleetBootServicePredecessor,
@@ -334,15 +336,14 @@ test fn four_receipts_join_to_established() -> Bool {
       && content_hash_equal(left: e.bundle.root_digest, right: artifact)
       && e.bundle.served_from == fleet_origin
       && match e.trust {
-        ProductionTrustedBootstrap { grounds: g } =>
+        EstablishedProductionTrust { grounds: g } =>
           match g {
             SecureBootChainloaderTrusted { secure_boot_chainloader: sb } =>
               content_hash_equal(left: sb.chainloader_digest, right: e.manifest.identity.chainloader_digest)
             FirmwareHttpsTrusted { firmware_https: _ } => false
             FirmwareHttpsAndSecureBootTrusted { firmware_https: _, secure_boot_chainloader: _ } => false
           }
-        ControlledNetworkBootstrap { evidence: _ } => false
-        BootstrapTrustUnestablished => false
+        EstablishedControlledNetwork { evidence: _ } => false
       }
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -1232,11 +1233,10 @@ test fn controlled_network_trust_can_establish() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryEstablished { evidence: e } =>
       match e.trust {
-        ControlledNetworkBootstrap { evidence: ev } =>
+        EstablishedControlledNetwork { evidence: ev } =>
           (ev.observation.decl_name as String) == (obs.decl_name as String)
           && (e.manifest.identity.callback_identity as String) == "intake-callback-0"
-        ProductionTrustedBootstrap { grounds: _ } => false
-        BootstrapTrustUnestablished => false
+        EstablishedProductionTrust { grounds: _ } => false
       }
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
