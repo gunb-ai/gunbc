@@ -77,9 +77,12 @@ import extdeps.languages.json.parse {
 // controller's session table is finite — this lane exhausted one service's sessions by opening one
 // per probe and closing none — so the release has to be observable rather than assumed.
 //
-// SessionReleaseUncertain EXISTS BECAUSE A LOST RESPONSE IS NOT A KNOWN STATE. A DELETE whose reply
-// never arrived may have released the session or may not; treating that as released would
-// under-count leaks exactly when the transport is already misbehaving, which is when leaks matter.
+// A LOST OR UNCLASSIFIED GET IS NOT A RELEASED SESSION. CloseSession's own exit is discarded on
+// purpose (this firmware has answered HTTP 401 on DELETE while an independent probe showed the
+// session gone). The standing is the GET that follows. GetSession uses curl --fail-with-body plus
+// a trailing `%{http_code}` write-out, so a timeout (`000`), a drop, and an HTTP 401 are different
+// stdout. Only 401 after a parsed X-CSRFTOKEN is evidence the cookie no longer authenticates;
+// every other failed GET, and any GET that used a sentinel header, stays SessionReleaseRefused.
 type SessionRelease
   = SessionReleased
   | SessionReleaseRefused { detail: String }
@@ -185,11 +188,66 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
 // the renderer treated the arm as "never opened". The DELETE still needs an X-CSRFTOKEN header
 // by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
 // rather than inventing a second CloseSession shape. A refused or uncertain close remains
-// SessionReleaseRefused, never NotAttempted.
+// SessionReleaseRefused, never NotAttempted. HTTP 401 after CloseSession is evidence the cookie
+// no longer authenticates only when the GET presented a parsed X-CSRFTOKEN; a sentinel header
+// makes 401 indistinguishable from header rejection (review 67653).
+type SessionCsrfStanding
+  = SessionCsrfParsed
+  | SessionCsrfUnreadable
+
+fn megarac_session_get_writeout_code(get_body: String) -> String {
+  match split(s: get_body, delimiter: "\n").last() {
+    Present { value: code } => code
+    Absent => ""
+  }
+}
+
+fn megarac_session_release_by_reobservation(
+  get_succeeded: Bool,
+  get_body: String,
+  csrf: SessionCsrfStanding,
+) -> SessionRelease {
+  if get_succeeded {
+    SessionReleaseRefused { detail: concat("GET /api/session still succeeded after CloseSession: ", get_body) }
+  } else {
+    match csrf {
+      SessionCsrfUnreadable =>
+        SessionReleaseRefused { detail: concat("GET /api/session after CloseSession used a sentinel X-CSRFTOKEN because the token was unreadable; a 401 here does not prove the cookie is gone: ", get_body) }
+      SessionCsrfParsed =>
+        if megarac_session_get_writeout_code(get_body: get_body) == "401" {
+          SessionReleased
+        } else {
+          SessionReleaseRefused { detail: concat("GET /api/session after CloseSession was unreadable; refusing to treat the session as released: ", get_body) }
+        }
+    }
+  }
+}
+
+fn megarac_close_and_reobserve(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+  csrf: SessionCsrfStanding,
+) -> SessionRelease
+  uses net: std.resources.Network
+{
+  let _closed = megarac.Media.CloseSession(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  observed = megarac.Media.GetSession(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  return megarac_session_release_by_reobservation(get_succeeded: observed.success, get_body: observed.body, csrf: csrf)
+}
+
 fn megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
-  password: NonEmptyStr,
+  password_file: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
@@ -199,7 +257,7 @@ fn megarac_attach_remote_image(
   session = megarac.Media.OpenSession(
     bmc_host: bmc_host,
     username: username,
-    password: password,
+    password_file: password_file,
     cookie_jar: cookie_jar,
   )
   if session.success == false {
@@ -243,14 +301,14 @@ fn megarac_release_unreadable_session(
 ) -> MegaRacAttachResult
   uses net: std.resources.Network
 {
-  closed = megarac.Media.CloseSession(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: "unreadable" as NonEmptyStr,
-  )
   return MegaRacAttachResult {
     outcome: MegaRacSessionTokenUnreadable { detail: session_body },
-    session_release: if closed.success { SessionReleased } else { SessionReleaseRefused { detail: closed.body } },
+    session_release: megarac_close_and_reobserve(
+      bmc_host: bmc_host,
+      cookie_jar: cookie_jar,
+      csrf_token: "unreadable" as NonEmptyStr,
+      csrf: SessionCsrfUnreadable,
+    ),
   }
 }
 
@@ -274,15 +332,14 @@ fn megarac_attach_then_release(
     firmware: firmware,
   )
 
-  closed = megarac.Media.CloseSession(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
-  )
-
   return MegaRacAttachResult {
     outcome: outcome,
-    session_release: if closed.success { SessionReleased } else { SessionReleaseRefused { detail: closed.body } },
+    session_release: megarac_close_and_reobserve(
+      bmc_host: bmc_host,
+      cookie_jar: cookie_jar,
+      csrf_token: csrf_token,
+      csrf: SessionCsrfParsed,
+    ),
   }
 }
 

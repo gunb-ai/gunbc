@@ -152,7 +152,7 @@ fn drive_is_at_fixed_output(
   match drive {
     FanDriveDuty { duty: d } => Present { value: measure_le(a: failsafe_duty, b: d) }
     FanDriveTachOnly { speed: s } => match catalog_maximum {
-      none => Absent
+      Absent => Absent
       Present { value: maximum } => Present { value: rpm_count(r: s) * 100 >= rpm_count(r: maximum) * 95 }
     }
   }
@@ -196,7 +196,7 @@ fn fan_policy_standing_of_sample(
         SteadyCurve { host: host, authority: authority, drive: sample.drive }
       } else {
         match elapsed_since_post {
-          none => FanPolicyUnderdetermined {
+          Absent => FanPolicyUnderdetermined {
             host: host,
             cause: "host is posted and at fixed output, but this run never observed the POST transition, so it cannot say whether the loop is still inside its window",
           }
@@ -255,7 +255,7 @@ fn fan_policy_against_ceiling(
     }
   } else {
     match level_at_drive {
-      none => FanPolicyCeilingUnderdetermined {
+      Absent => FanPolicyCeilingUnderdetermined {
         cause: "no published acoustic level for the observed drive point: the fan's datasheet publishes no level there and this substrate refuses to interpolate one",
       }
       Present { value: level } => {
@@ -289,16 +289,6 @@ fn fan_policy_against_ceiling(
 // off, which is a decision and not a controller fact. Zero says 'no window applies here'.
 fn unbounded_failsafe_window() -> Second {
   second(count: 0)
-}
-
-fn fan_policy_standing_host(standing: FanPolicyStanding) -> HostIdentity {
-  match standing {
-    FailsafeBeforeHostTelemetry { host: h, authority: _, post_state: _, drive: _ } => h
-    PostPostTransition { host: h, authority: _, elapsed_since_post: _, window: _, drive: _ } => h
-    SteadyCurve { host: h, authority: _, drive: _ } => h
-    FailsafeHeldAfterPost { host: h, authority: _, elapsed_since_post: _, window: _, drive: _ } => h
-    FanPolicyUnderdetermined { host: h, cause: _ } => h
-  }
 }
 
 fn fan_policy_standing_label(standing: FanPolicyStanding) -> NonEmptyStr {

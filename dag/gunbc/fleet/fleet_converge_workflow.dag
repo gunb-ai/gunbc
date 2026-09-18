@@ -63,6 +63,7 @@ import gunbc.fleet_workflow_steps {
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
@@ -73,6 +74,8 @@ import gunbc.ci_spec {
   gunbc_ci_mtcollins1_fan_observe_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
+  gunbc_ci_approval_keyring_converge_invoke,
+  gunbc_ci_mtcollins1_boot_invoke,
   gunbc_ci_runner_guest_image_observe_invoke,
   gunbc_ci_runner_guest_image_converge_invoke,
   gunbc_ci_runner_microvm_host_converge_invoke,
@@ -95,8 +98,8 @@ import gunbc.ci_spec {
   gunbc_rlm_launch_deployment_receipt_artifact_name,
   gunbc_rlm_launch_deployment_receipt_artifact_dir,
 }
-import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name, fleet_converge_plan_run_id_env_name }
-import gunbc.actions_run_binding { rlm_expected_revision_env_name }
+import gunbc.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
+import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 import gunbc.host_reset_return {
@@ -182,7 +185,9 @@ type FleetConvergeWorkflowMode
   | RunnerPasswordSessionToolConverge
   | R2MintPreflight
   | R2ObjectWriteMint
-  | Mtcollins1FanObserve
+  | ApprovalKeyringConverge
+  | MtCollins1Boot
+  | MtCollins1FanObserve
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
   match mode {
@@ -208,7 +213,9 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2ObjectWriteMint => "r2_object_write_mint"
-    Mtcollins1FanObserve => "mtcollins1_fan_observe"
+    ApprovalKeyringConverge => "approval_keyring_converge"
+    MtCollins1Boot => "mtcollins1_boot"
+    MtCollins1FanObserve => "mtcollins1_fan_observe"
   }
 }
 
@@ -233,7 +240,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, Mtcollins1FanObserve]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -279,7 +286,9 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerPasswordSessionToolConverge => none
     R2MintPreflight => none
     R2ObjectWriteMint => none
-    Mtcollins1FanObserve => none
+    ApprovalKeyringConverge => none
+    MtCollins1Boot => none
+    MtCollins1FanObserve => none
   }
 }
 
@@ -1119,7 +1128,7 @@ data fleet_converge_r2_object_write_mint_step_if: String = fleet_converge_mode_s
 // changed for a reason the series cannot see. That is a scheduling constraint between two dispatches
 // of one workflow, which this repository has no lock for, so it is stated and coordinated rather
 // than claimed as enforced.
-data fleet_converge_mtcollins1_fan_observe_step_if: String = fleet_converge_mode_step_if(mode: Mtcollins1FanObserve)
+data fleet_converge_mtcollins1_fan_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
 
 fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
   RunStep {
@@ -1202,6 +1211,61 @@ fn fleet_converge_r2_object_write_mint_step() -> Step {
     if_condition: Present { value: fleet_converge_r2_object_write_mint_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+data fleet_converge_approval_keyring_converge_step_if: String = fleet_converge_mode_step_if(mode: ApprovalKeyringConverge)
+data fleet_converge_mtcollins1_boot_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1Boot)
+
+fn fleet_converge_approval_keyring_converge_step() -> Step {
+  RunStep {
+    name: Present { value: "Materialize approval MAC keys on srv1 (SM pinned -> sha256 prefix -> /etc/gunbc-roadmap 0640)" },
+    id: Present { value: "approval_keyring_converge" },
+    run: gunbc_ci_approval_keyring_converge_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_approval_keyring_converge_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_step() -> Step {
+  RunStep {
+    name: Present { value: "Mt. Collins unit 1 approval-gated diskless boot (file request, poll, grant, attach, CD handoff)" },
+    id: Present { value: "mtcollins1_boot" },
+    run: gunbc_ci_mtcollins1_boot_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_mtcollins1_boot_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: minute_count(mtcollins1_boot_step_timeout_minutes()) }
+  }
+}
+
+fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload Mt. Collins unit 1 boot SOL capture and receipts" },
+    id: Present { value: "mtcollins1_boot_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "mtcollins1-boot-receipts")),
+      kv(key: "path", value: yaml_string(s: mtcollins1_boot_artifact_glob)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_mtcollins1_boot_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 
@@ -1589,6 +1653,9 @@ fn fleet_converge_job() -> Job {
         fleet_converge_r2_mint_preflight_receipt_upload_step(),
         fleet_converge_r2_object_write_mint_step(),
         fleet_converge_r2_object_write_mint_receipt_upload_step(),
+        fleet_converge_approval_keyring_converge_step(),
+        fleet_converge_mtcollins1_boot_step(),
+        fleet_converge_mtcollins1_boot_receipt_upload_step(),
         fleet_converge_guest_image_observe_step(),
         fleet_converge_guest_image_converge_step(),
         fleet_converge_guest_image_receipt_upload_step(),

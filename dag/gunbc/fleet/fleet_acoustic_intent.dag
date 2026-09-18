@@ -79,10 +79,12 @@ fn residence_duty_verdict(standing: FanPolicyStanding) -> FanDutyCeilingVerdict 
 
 // THE ACOUSTIC ROUTE IS A DECLARED FRONTIER, NOT A DANGLING DECLARATION (DESIGN §3c).
 //
-// product.acoustic_ceiling duty_ceiling_for_fan derives a duty bound from a fan's published table
-// under a stated dB(A) ceiling, and this site has no dB(A) ceiling to state. The function is not
-// dead: it is consumed by this module's hermetic witnesses against a catalogued fan today, and its
-// production consumer is named below with the trigger that lands it.
+// TWO FOLDS WAIT ON THE SAME MISSING FACT: product.acoustic_ceiling duty_ceiling_for_fan, which
+// derives a duty bound from a fan's published table under a stated dB(A) ceiling, and
+// product.fan_policy_standing fan_policy_against_ceiling, which bounds a standing by that ceiling
+// and carries the typed refusal for a family with no converge route. Both are executed by witnesses
+// against a catalogued fan and a real standing today; neither has a production consumer, because
+// this site has no dB(A) ceiling to state. They share one trigger because they wait on one fact.
 //
 // TRIGGER, stated as the CAPABILITY and not as an artifact: a stated-or-measured dB(A) ceiling for
 // this site at a named reference position, TOGETHER WITH a modeled fan part for the host being
@@ -93,4 +95,4 @@ fn residence_duty_ceiling_from_datasheet(row: FanCatalogRow, ceiling: AcousticCe
   duty_ceiling_for_fan(row: row, ceiling: ceiling, fan_count: fan_count)
 }
 
-data residence_acoustic_ceiling_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when this site carries a stated-or-measured dB(A) ceiling at a named reference position AND the host being bounded has a modeled fan part, at which point residence_duty_ceiling_from_datasheet gains a production consumer; a catalogued fan without a ceiling, or a ceiling without a catalogued fan, retires neither half")
+data residence_acoustic_ceiling_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when this site carries a stated-or-measured dB(A) ceiling at a named reference position AND the host being bounded has a modeled fan part, at which point residence_duty_ceiling_from_datasheet and product.fan_policy_standing fan_policy_against_ceiling both gain production consumers; a catalogued fan without a ceiling, or a ceiling without a catalogued fan, retires neither half")

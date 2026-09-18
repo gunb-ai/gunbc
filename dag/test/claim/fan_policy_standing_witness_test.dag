@@ -64,6 +64,7 @@ import product.fan_policy_standing {
   FanDutyWithinCeiling,
   FanPolicyAuthority,
   FanPolicySample,
+  FanPolicyStanding,
   FanPolicyUnderdetermined,
   HostPostState,
   HostPosted,
@@ -71,7 +72,13 @@ import product.fan_policy_standing {
   HostPoweredOnPrePost,
   PostPostTransition,
   SteadyCurve,
+  FanPolicyCeilingUnderdetermined,
+  FanPolicyCeilingUnenforceable,
+  FanPolicyFailsafeWindowOverCeiling,
+  FanPolicySteadyCurveOverCeiling,
+  FanPolicyWithinSiteCeiling,
   fan_drive_against_duty_ceiling,
+  fan_policy_against_ceiling,
   fan_policy_standing_label,
   fan_policy_standing_of_sample,
 }
@@ -86,6 +93,7 @@ import gunbc.machine_intake_bmc_fan_observation {
 }
 import gunbc.fleet_acoustic_intent {
   operator_residence_ceiling_is_policy_not_measurement,
+  residence_duty_ceiling_from_datasheet,
   operator_residence_sustained_duty_ceiling,
   residence_duty_verdict,
 }
@@ -482,6 +490,103 @@ test fn witness_residence_duty_verdict_arms_are_reachable() -> Bool {
     _ => false
   } && match fan_drive_against_duty_ceiling(drive: FanDriveTachOnly { speed: rpm(8600) }, ceiling: operator_residence_sustained_duty_ceiling) {
     FanDutyNotReported { cause: _ } => true
+    _ => false
+  }
+}
+
+// ── the acoustic bound on a standing, which is the declared frontier's executed evidence ───────
+
+fn witness_standing(duty_count: Int, post: HostPostState, elapsed: Int) -> FanPolicyStanding {
+  fan_policy_standing_of_sample(
+    host: witness_host, authority: witness_authority,
+    sample: witness_sample(duty_count: duty_count, post: post),
+    failsafe_duty: percent(100), catalog_maximum: Absent,
+    elapsed_since_post: Present { value: second(count: elapsed) },
+    transition_window: second(count: 60),
+  )
+}
+
+// A FAMILY WITH NO CONVERGE ROUTE REFUSES, AND REFUSES FIRST. This is the arm that matters most and
+// the one MegaRAC lands on today: there is no modeled way to set a duty on that family, so no
+// ceiling can be honoured OR refused against it, and reading that as "within ceiling" would be a
+// fabricated answer about the operator's own room. It fires before the level is even consulted.
+test fn witness_ceiling_is_unenforceable_without_a_converge_route() -> Bool {
+  match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(200) },
+    family_has_converge_route: false,
+  ) {
+    FanPolicyCeilingUnenforceable { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE STEADY CURVE AND THE FAILSAFE WINDOW ARE BOUNDED DIFFERENTLY BY THE SAME CEILING, which is
+// the whole reason this fold takes a standing rather than a reading. A curve above the ceiling is a
+// converge obligation; a failsafe above it is an excursion whose DURATION is the bound, so the
+// verdict carries the window.
+test fn witness_ceiling_bounds_curve_and_window_differently() -> Bool {
+  match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(598) },
+    family_has_converge_route: true,
+  ) {
+    FanPolicySteadyCurveOverCeiling { comparison: _ } => true
+    _ => false
+  } && match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 100, post: HostPoweredOnPrePost, elapsed: 0),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(598) },
+    family_has_converge_route: true,
+  ) {
+    FanPolicyFailsafeWindowOverCeiling { comparison: _, window: w } => second_count(s: w) == 0
+    _ => false
+  }
+}
+
+// WITHIN, AND THE TWO UNDERDETERMINED ARMS. A drive point the datasheet publishes no level for
+// refuses rather than interpolating, and a listening-position ceiling refuses rather than comparing
+// across positions - the same two walls the ceiling module carries, reached through the standing.
+test fn witness_ceiling_within_and_its_two_refusals() -> Bool {
+  match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Present { value: tenths_dba(200) },
+    family_has_converge_route: true,
+  ) {
+    FanPolicyWithinSiteCeiling => true
+    _ => false
+  } && match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_datasheet_ceiling,
+    level_at_drive: Absent,
+    family_has_converge_route: true,
+  ) {
+    FanPolicyCeilingUnderdetermined { cause: _ } => true
+    _ => false
+  } && match fan_policy_against_ceiling(
+    standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90),
+    ceiling: witness_listening_ceiling,
+    level_at_drive: Present { value: tenths_dba(598) },
+    family_has_converge_route: true,
+  ) {
+    FanPolicyCeilingUnderdetermined { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE SITE'S OWN DATASHEET-ROUTE WRAPPER IS EXECUTED TOO, so the declared frontier's other half is
+// evidence rather than a promise: it answers exactly what the ceiling module answers, and the
+// wrapper exists only to be the named production consumer when a dB(A) ceiling lands.
+test fn witness_residence_datasheet_route_is_executed() -> Bool {
+  match residence_duty_ceiling_from_datasheet(
+    row: dynatron_df126025bu_pwmh_catalog,
+    ceiling: witness_datasheet_ceiling,
+    fan_count: 1,
+  ) {
+    DutyCeilingPublished { duty: d, level: _ } => percent_count(p: d) == 50
     _ => false
   }
 }

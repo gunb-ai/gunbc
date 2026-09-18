@@ -32,7 +32,8 @@ import gunbc.auth.netrc_binding {
   NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains, place_netrc_binding,
 }
 import gunbc.durable_cas_file_store {
-  OwnerOnlyCreateOnly, admit_cas_attempt, file_compare_and_set }
+  OwnerOnlyCreateOnly, admit_cas_attempt, file_compare_and_set, authorization_claim_store_root,
+}
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
   boot_override_body,
@@ -148,7 +149,7 @@ fn srv3_claim_boot_once_cd_authorization(at: Timestamp) -> AuthorizationClaimOut
     CasAttemptAdmitted { verified: v } =>
       authorization_claim_outcome(
         proposed: proposed,
-        outcome: file_compare_and_set(root: srv3_authorization_claim_root, publication: OwnerOnlyCreateOnly, verified: v),
+        outcome: file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v),
       )
     CasAttemptDigestMismatch { claimed: _, actual: _ } =>
       ClaimUndecided { reason: "claim payload and its digest disagree" as NonEmptyStr }
@@ -184,7 +185,7 @@ fn srv3_settle_boot_once_cd_claim(
     ),
   ) {
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: srv3_authorization_claim_root, publication: OwnerOnlyCreateOnly, verified: v) {
+      match file_compare_and_set(root: authorization_claim_store_root, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: _ } => outcome
         CasPreconditionFailed { expected: _, observed: _ } =>
           srv3_unterminated_claim_exit(outcome: outcome, detail: "claim slot moved under us")

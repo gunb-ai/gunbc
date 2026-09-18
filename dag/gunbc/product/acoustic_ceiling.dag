@@ -60,10 +60,6 @@ fn acoustic_basis_is_operator_policy(basis: AcousticCeilingBasis) -> Bool {
   }
 }
 
-fn acoustic_ceiling_is_operator_policy(ceiling: AcousticCeiling) -> Bool {
-  acoustic_basis_is_operator_policy(basis: ceiling.basis)
-}
-
 // THE COMPARISON, AND ITS ONE REFUSAL. A level and a ceiling stated at different positions produce
 // AcousticPositionsIncomparable, never a verdict. An optional Bool would have collapsed that into
 // 'no answer', which reads to a caller as 'unknown' when the real content is 'you asked a question

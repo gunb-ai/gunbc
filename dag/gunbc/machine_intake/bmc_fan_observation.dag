@@ -3,8 +3,6 @@ module gunbc.machine_intake_bmc_fan_observation
 import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second, second_count }
-import std.process { ExitSuccess, ProcessExit, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi_sdr {
   SdrFanDuty,
@@ -109,6 +107,14 @@ fn chassis_power_on(stdout: String) -> Bool {
     }
   })
 }
+
+// THE SERIES IS A TYPED OUTCOME AND NOT A LIST, so a run that observed nothing cannot be mistaken
+// for a run that observed an empty fleet of fans. The interval travels WITH the rounds because every
+// derivation over this series - elapsed-since-post above all - is denominated in it, and a consumer
+// that had to be told the interval separately could be told the wrong one.
+type FanObservationSeries
+  = FanObservationTaken { rounds: List<FanObservationRound>, interval: Second }
+  | FanObservationRefused { cause: NonEmptyStr }
 
 // ONE ROUND: THREE READS, IN THE ORDER THAT MAKES THE SAMPLE COHERENT. Power is read first because
 // it is the fact that decides what the other two mean; the thermal read comes before the fan read so
@@ -289,16 +295,17 @@ fn render_series(rounds: List<FanObservationRound>) -> String {
   join(map(rounds, r => render_round_block(round: r)), "\n")
 }
 
-// THE SERIES IS WRITTEN TO A FILE AND NOT PRINTED, BECAUSE A RECEIPT A RUN UPLOADS IS THE WHOLE
-// POINT. A printed series lives in a log that ages out; the file is what the converge step names as
-// its receipt and what the upload step attaches to the run, so the measurement can be read again
-// later by somebody who was not watching.
+// WHAT THIS PRODUCER RETURNS IS THE SERIES, NOT A VERDICT, AND THAT BOUNDARY IS THE MODULE'S WHOLE
+// SHAPE. Which family authority a host runs, what its failsafe duty is, and which site ceiling
+// bounds it are all POLICY facts about a particular machine; a producer that reached a standing
+// would have to carry them, and the next host would need a second producer. The host's own policy
+// module folds the series into standings - see gunbc.machine_intake_mtcollins1_fan_observe.
 //
-// AND THE UNREADABLE-CHASSIS REFUSAL COMES FIRST, BEFORE THE WRITE. A series whose power column is
-// empty establishes nothing, and writing it anyway would leave an artifact that LOOKS like a
-// measurement attached to a run that failed.
+// THE UNREADABLE-CHASSIS REFUSAL LIVES HERE RATHER THAN THERE, because it is a fact about the
+// OBSERVATION and not about any host's policy: a series whose power column is empty establishes
+// nothing, whoever reads it.
 //
-// THE ENTRY A CONVERGE MODE CALLS. It refuses before the first request when it has no credential
+// THE ENTRY A HOST POLICY LAYER CALLS. It refuses before the first request when it has no credential
 // path or no host, because a run that contacts a controller with an empty username is a run that
 // produces an authentication failure and reports it as a machine fact.
 fn observe_fan_policy(
@@ -307,21 +314,20 @@ fn observe_fan_policy(
   password_file: NonEmptyStr,
   rounds: Int,
   interval_seconds: Int,
-  receipt_path: String,
-) -> ProcessExit
+) -> FanObservationSeries
   uses net: std.resources.Network, clock: std.resources.Clock
 {
   if trim(username as String) == "" {
-    return exit_failure(reason: "bmc fan observation: no controller username supplied; contacting NO host")
+    return FanObservationRefused { cause: "no controller username supplied; contacting NO host" }
   }
   if trim(password_file as String) == "" {
-    return exit_failure(reason: "bmc fan observation: no credential file path supplied; contacting NO host")
+    return FanObservationRefused { cause: "no credential file path supplied; contacting NO host" }
   }
   if rounds <= 0 {
-    return exit_failure(reason: "bmc fan observation: a series of zero rounds observes nothing and would report success for it")
+    return FanObservationRefused { cause: "a series of zero rounds observes nothing and would report success for it" }
   }
   if interval_seconds <= 0 {
-    return exit_failure(reason: "bmc fan observation: a non-positive interval is not a time series; the modeled sleep refuses it and so does this entry")
+    return FanObservationRefused { cause: "a non-positive interval is not a time series; the modeled sleep refuses it and so does this entry" }
   }
   let series = observe_fan_series(
     bmc_host: bmc_host,
@@ -332,13 +338,9 @@ fn observe_fan_policy(
     interval: second(count: interval_seconds),
     acc: [],
   )
-  if !fold(series, init: false, f: (acc, r) => acc || r.chassis_readable) {
-    return exit_failure(reason: "bmc fan observation: no round could read chassis status, so no sample has a power state beside it and the series establishes nothing")
-  }
-  let written = Filesystem.Write(path: receipt_path, content: render_series(rounds: series))
-  return if written.success {
-    ExitSuccess
+  return if fold(series, init: false, f: (acc, r) => acc || r.chassis_readable) {
+    FanObservationTaken { rounds: series, interval: second(count: interval_seconds) }
   } else {
-    exit_failure(reason: concat("bmc fan observation: the series was taken and its receipt could not be written: ", written.error))
+    FanObservationRefused { cause: "no round could read chassis status, so no sample has a power state beside it and the series establishes nothing" }
   }
 }
