@@ -1,6 +1,5 @@
 module v2.std.declaration_marker
 
-import std.occurrence_identity { OccurrenceId }
 import std.algebra { Empty }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert, map_lookup }
@@ -17,12 +16,10 @@ import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
 // Only marked declarations are rows. Absence is the unmarked arm, and it is decidable because the
 // capture that produces this channel reads every top-level item of the module it is handed.
 //
-// Two keys, because they answer two questions. `occurrence` is the authored occurrence of the
-// marked item and locates it. `name` is the declared member symbol, and it is the key a reference
-// binds on: lowering rebuilds each declaration as a synthetic named member, so the authored
-// occurrence id does not survive to resolve and cannot be the join key there.
+// Keyed by the declared member symbol, which is the key a reference binds on. Not by the authored
+// occurrence id: lowering rebuilds each declaration as a synthetic named member, so that id does not
+// survive to resolution and nothing downstream could join on it.
 type TestMarkedDeclaration {
-  occurrence: OccurrenceId
   name: Symbol
 }
 
@@ -30,6 +27,9 @@ type TestMarkerChannel {
   marked: List<TestMarkedDeclaration>
 }
 
+// The channel of a module that declares no test code. Its consumers are the fixture doors that admit
+// already-lowered roots, whose markers cannot be recovered (v2.compiler.normalized_tree
+// admit_unmarked_normalized_roots and the fixture callers of admit_normalized_tree).
 fn test_marker_channel_empty() -> TestMarkerChannel {
   TestMarkerChannel { marked: [] }
 }
@@ -39,7 +39,7 @@ fn test_marker_channel_marks(channel: TestMarkerChannel, name: Symbol) -> Bool {
 }
 
 fn test_marker_channel_count(channel: TestMarkerChannel) -> Int {
-  fold(channel.marked, init: 0, f: fn(acc, _row) { acc + 1 })
+  std.types.list_length(items: channel.marked)
 }
 
 // THE RESOLUTION-SIDE READING OF THE CHANNEL: the compilation's marked declarations as the qualified
