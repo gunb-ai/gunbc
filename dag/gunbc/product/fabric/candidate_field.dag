@@ -2,25 +2,20 @@ module product.fabric.candidate_field
 
 import std.types { List, EpochSecs }
 import std.decl_ref { DeclarationRef }
-import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
-import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.provider_route { CompliancePostureRevision }
 import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope }
 import product.fabric.offer_route { OfferRouteRow }
-import product.fabric.supply { SupplierOffer, OfferFungibility }
+import product.fabric.supply { SupplierOffer }
 import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.capacity_admission {
-  AdmittedCapacity, RouteExercisePlacement, CapacityAdmission,
-  CapacityAdmittedForOrdinaryWork, RouteExercisePlacementAdmitted, CapacityRefused, CapacityRefusal,
-  CapacityRouteNotModeled, CapacityRouteAmbiguous, CapacityRouteFactsNameAnotherRoute,
-  CapacitySupplyUnobserved, CapacityRouteNeverExercised, CapacityRouteExerciseExpired,
-  CapacityNotFungibleForWork, CapacityUseRefused, CapacityPermitNamesAnotherOffer,
-  CapacityPermitNamesAnotherRoute, CapacityPermitNamesAnotherWork, CapacityPermitNamesAnotherDemand,
-  admit_capacity,
+  CapacityRefusal, admit_capacity,
+  CapacityAdmittedForOrdinaryWork, RouteExercisePlacementAdmitted, CapacityRefused,
 }
 import product.fabric.selection {
   CandidateOffer, DispatchInputs, bind_admitted_capacity, bind_exercise_placement,
-  AdmittedCapacityBinding, CapacityCandidateBound, CapacityDispatchInputsNameAnotherOffer,
+  CapacityCandidateBound, CapacityDispatchInputsNameAnotherOffer,
 }
 
 // THE CANDIDATE FIELD IS ASSEMBLED BEFORE ANY PRICE EXISTS, AND THIS MODULE'S IMPORT LIST IS THE
@@ -81,19 +76,15 @@ import product.fabric.selection {
 // itself. Every request answers, in one arm or the other.
 
 // WHAT A CALLER BRINGS PER OFFER: the offer and the dispatch observations that price it. The
-// dispatch inputs travel with the request even though nothing here reads them, because
-// bind_candidate seals the pair and a field that admitted an offer without its inputs would have
-// moved the mismatch check to whoever assembled the candidate later.
+// dispatch inputs travel with the request because the candidate is sealed from them here -
+// product.fabric.selection bind_admitted_capacity and bind_exercise_placement pair them with the
+// admitted carrier and refuse inputs naming another offer - and a field that admitted an offer
+// without its inputs would have moved that mismatch check to whoever assembled the candidate later.
 type FieldRequest<P> {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
 }
 
-// ONE ARM PER PRODUCER, which is why there is no single NotAdmitted arm. Each of these is reached
-// by exactly one match arm below and names a different remedy: model the route, settle which route
-// the roster means, fix the row that carried real facts onto the wrong offer, clear whatever the
-// admission's own typed cause names, or repair a permit that was carried onto the wrong subject.
-// Collapsing them would hand every one of those five back to the operator as "not admitted".
 // THE EXCLUSION CAUSE IS THE CAPACITY REFUSAL, NOT A SECOND SPELLING OF IT. An earlier revision
 // re-declared one arm per producer here and mapped each capacity/binding refusal onto it, which made
 // this module a second authority on what "not admissible" means and guaranteed the two lists would
@@ -125,13 +116,10 @@ fn excluded_entry<P>(
   FieldExcluded { exclusion: FieldExclusion { offer: offer, cause: cause } }
 }
 
-// THE ORDER IS CORRESPONDENCE, THEN READINESS, THEN ADMISSION, THEN BINDING, AND IT IS THE ONLY
-// ORDER THAT CAN BE WRITTEN. Readiness and admit_provider_use both need the route the facts row
-// governs, and the correspondence is the only producer of them here; admission sits behind readiness
-// in field_entry_admitted; bind_candidate cannot be called without the admission's
-// result. So the sequence is enforced by what each step needs rather than by a comment saying to
-// run them in order - the same construction-over-validation move sole_constructor makes on the
-// permit itself.
+// THE SCREENS ARE NOT ORDERED HERE, BECAUSE THEY ARE NOT RUN HERE. product.fabric.capacity_admission
+// admit_capacity runs every one of them and owns their order; this function asks it once per request
+// and does only the two things that are this module's: seal the candidate from whichever carrier came
+// back, and refuse dispatch inputs that describe a different offer.
 //
 // THE USE SCOPE IS THE CALLER'S ONE SCOPE FOR THE WHOLE FIELD, not a per-offer parameter, because
 // admission is granted FOR a demand, a work, a customer profile and a data-handling profile, and
