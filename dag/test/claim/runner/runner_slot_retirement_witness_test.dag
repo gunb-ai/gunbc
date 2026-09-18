@@ -108,7 +108,7 @@ test fn a_present_unit_is_pending_rather_than_stopped() -> Bool {
 }
 
 // THE ORPHAN STATE: THE UNIT IS GONE AND ITS CGROUP IS NOT EMPTY. This is the exact class the
-// teardown drop-in (ExitType=cgroup, KillMode=control-group) was landed to prevent -- a unit
+// teardown drop-in (ExitType=main, KillMode=control-group) was landed to prevent -- a unit
 // reporting stopped while Runner.Worker, claim_executor and gunbc keep running under it. Capacity
 // must stay charged, because that work is still holding memory.
 test fn a_gone_unit_with_a_populated_cgroup_is_not_retired() -> Bool {

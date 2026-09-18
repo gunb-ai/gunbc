@@ -2,7 +2,7 @@ module test.claim.runner_host_file_converge_witness_test
 
 import std.types { Bool, String, NonEmptyStr, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.systemd.unit_file { ExitTypeMain, KillModeProcess, serialize_systemd_drop_in }
+import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
 import extdeps.needrestart {
   NeedrestartUnitNamePrefixAdmitted,
   NeedrestartUnitNamePrefixRefused,
@@ -13,8 +13,8 @@ import product.placement_supply { HostIdentity }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
-  gunbc_runner_listener_is_main_process,
-  lifecycle_intent_cannot_orphan,
+  gunbc_runner_main_exits_when_incarnation_ends,
+  lifecycle_intent_stops_finished_incarnation,
   runner_unit_prefix,
   runner_unit_name_of_registration,
 }
@@ -132,7 +132,7 @@ fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
 // THE ORACLE IS WRITTEN HERE, NOT DERIVED. systemd.unit(5) drop-in grammar: a section header, one
 // directive per line, a terminating newline. If the renderer and this string ever agree because both
 // moved, the witness has become a restatement, so the literal stays literal.
-data expected_teardown_dropin_text: String = "[Service]\nExitType=cgroup\nKillMode=control-group\n"
+data expected_teardown_dropin_text: String = "[Service]\nExitType=main\nKillMode=control-group\n"
 
 test fn the_teardown_dropin_carries_the_declared_pair_and_nothing_else() -> Bool {
   gunbc_runner_unit_teardown_dropin_text() == expected_teardown_dropin_text
@@ -144,13 +144,17 @@ test fn the_teardown_dropin_lands_in_the_runner_template_dropin_directory() -> B
 
 // THE DISCRIMINATING RED, AS THE LIVE FLEET CARRIES IT. `KillMode=process` with systemd's default
 // `ExitType=main` is what srv1 reported on 2026-09-11. Rendering that pair through the same function
-// must produce different bytes, and the orphan predicate must refuse it, or the drop-in is a
-// decoration that would read green whatever the fleet did.
+// must produce different bytes, and the predicate must refuse it, or the drop-in is a decoration that
+// would read green whatever the fleet did. The ExitType=cgroup drop-in this one replaces is the second
+// red: it is what the fleet carries on 2026-09-18, and a revert to it must not read green.
 test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool {
   let live = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
+  let exittype_cgroup_dropin = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeControlGroup }
   serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: live)) != expected_teardown_dropin_text
-    && !lifecycle_intent_cannot_orphan(intent: live, listener_is_main_process: gunbc_runner_listener_is_main_process)
-    && lifecycle_intent_cannot_orphan(intent: gunbc_runner_lifecycle_intent, listener_is_main_process: gunbc_runner_listener_is_main_process)
+    && !lifecycle_intent_stops_finished_incarnation(intent: live, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
+    && !lifecycle_intent_stops_finished_incarnation(intent: exittype_cgroup_dropin, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
+    && serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: exittype_cgroup_dropin)) != expected_teardown_dropin_text
+    && lifecycle_intent_stops_finished_incarnation(intent: gunbc_runner_lifecycle_intent, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
 }
 
 // The needrestart snippet, against upstream's syntax: an assignment into the override_rc hashref,
@@ -405,7 +409,7 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
 }
 
 test fn the_declared_pair_on_a_loaded_current_unit_is_effective() -> Bool {
-  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "effective"
+  standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "effective"
 }
 
 // THE FALSE-POSITIVE RED. systemctl shows a unit it has not loaded with the manager's DEFAULTS, and the
@@ -422,11 +426,12 @@ test fn a_unit_needing_reload_is_pending_whatever_it_reports() -> Bool {
     && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "yes", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
 }
 
-// srv1's and srv2's live reading (2026-09-11), and each half alone.
+// srv1's and srv2's live reading before the teardown drop-in (2026-09-11), the ExitType=cgroup drop-in
+// that replaced it (2026-09-18), and a partial kill mode alone.
 test fn the_live_reading_and_each_half_alone_are_not_effective() -> Bool {
   standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:process:main"
-    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:control-group:main"
-    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "mixed", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:mixed:cgroup"
+    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:control-group:cgroup"
+    && standing_wire_of(st: classify_runner_slot_unit(reading: reading(load: "loaded", reload: "no", kill: "mixed", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:mixed:main"
 }
 
 // ── The slot population ──────────────────────────────────────────────────────────────────────────
@@ -450,7 +455,7 @@ test fn the_population_is_desired_units_then_loaded_extras() -> Bool {
   ) == ["actions-runner@srv1-01.service", "actions-runner@srv1-03.service", "actions-runner@srv1-02.service", "actions-runner@srv1-38.service"]
 }
 
-data show_fixture: String = "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=cgroup\nKillMode=control-group\n\nId=actions-runner@srv1-02.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=process\n\nId=actions-runner@srv1-03.service\nLoadState=not-found\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"
+data show_fixture: String = "Id=actions-runner@srv1-01.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\n\nId=actions-runner@srv1-02.service\nLoadState=loaded\nNeedDaemonReload=no\nExitType=main\nKillMode=process\n\nId=actions-runner@srv1-03.service\nLoadState=not-found\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"
 
 fn population_wires(units: List<String>) -> List<String> {
   map(
