@@ -152,7 +152,7 @@ fn bitwise_fold(op: BitwiseOp, a: Int, b: Int, remaining: Int, place: Int, acc: 
       b: b / 2,
       remaining: remaining - 1,
       place: place * 2,
-      acc: acc + bitwise_place_bit(op: op, x: a % 2, y: b % 2) * place
+      acc: acc + (bitwise_place_bit(op: op, x: a % 2, y: b % 2) * place)
     )
   }
 }
@@ -323,8 +323,8 @@ fn word_wrapping_multiply(a: Word, b: Word) -> WordResult {
         match int_pow_bounded(base: 2, exp: word_width_bits(w: a.width) / 2) {
           Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
           Present { value: half } => {
-            let low_term = (a.value % half) * b.value % m
-            let high_term = ((a.value / half) * b.value % half) * half
+            let low_term = ((a.value % half) * b.value) % m
+            let high_term = (((a.value / half) * b.value) % half) * half
             word_of_int(width: a.width, value: (low_term + high_term) % m)
           }
         }
