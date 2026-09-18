@@ -109,8 +109,10 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryEstablishment,
   NetworkBootDeliveryEvidenceRefused,
   NetworkBootDeliveryManifestRefused,
+  NetworkBootDeliverySiteUnestablished,
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryTargetMismatch,
+  NetworkBootDeliveryTrustUnestablished,
   NetworkBootDeliveryUnestablished,
   NetworkBootManifestRefusal,
   NetworkBootRequirement,
@@ -357,6 +359,8 @@ type BootDeliveryCandidateIneligibility
   | CandidateNetworkBootClientModeRefused { arch: DhcpProcessorArchitecture }
   | CandidateNetworkBootTargetMismatch { axis: NetworkBootRequirement }
   | CandidateNetworkBootManifestRefused { cause: NetworkBootManifestRefusal }
+  | CandidateNetworkBootSiteUnestablished
+  | CandidateNetworkBootTrustUnestablished
 
 type BootDeliveryCandidateStanding
   = CandidateEligible
@@ -676,6 +680,10 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
       CandidateIneligible { cause: CandidateNetworkBootTargetMismatch { axis: axis } }
     NetworkBootDeliveryManifestRefused { cause: cause } =>
       CandidateIneligible { cause: CandidateNetworkBootManifestRefused { cause: cause } }
+    NetworkBootDeliverySiteUnestablished =>
+      CandidateIneligible { cause: CandidateNetworkBootSiteUnestablished }
+    NetworkBootDeliveryTrustUnestablished =>
+      CandidateIneligible { cause: CandidateNetworkBootTrustUnestablished }
   }
 }
 
@@ -826,6 +834,8 @@ fn build_boot_artifact_delivery(
         NetworkBootDeliveryClientModeRefused { arch: _ } => none
         NetworkBootDeliveryTargetMismatch { axis: _ } => none
         NetworkBootDeliveryManifestRefused { cause: _ } => none
+        NetworkBootDeliverySiteUnestablished => none
+        NetworkBootDeliveryTrustUnestablished => none
       }
   }
 }
