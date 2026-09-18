@@ -38,7 +38,6 @@ import gunbc.network_boot_delivery {
   SignedBootManifestStanding,
   SignedBootManifestVerified,
   SignedBootManifestVerificationRefused,
-  MeasuredNetworkBootFact,
   BootstrapTrustStanding,
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
@@ -383,7 +382,6 @@ fn signed_boot_manifest_standing(
     BootManifestAuthentic { claims: c } =>
       SignedBootManifestVerified {
         identity: c.identity,
-        evidence_class: MeasuredNetworkBootFact,
         observation: observation,
         observed_at: observed_at,
       }

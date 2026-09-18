@@ -14,8 +14,6 @@ import gunbc.network_boot_delivery {
   SignedBootManifestVerificationRefused,
   SignedBootManifestAbsent,
   ManifestVerificationExpired,
-  MeasuredNetworkBootFact,
-  NonEstablishingNetworkBootPredecessor,
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
   BootstrapTrustUnestablished,
@@ -292,7 +290,7 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
   }
 }
 
-test fn issued_ticket_standing_is_a_measured_network_boot_fact() -> Bool {
+test fn issued_ticket_standing_is_verified() -> Bool {
   match signed_boot_manifest_standing(
     verification: redeem_signed_boot_manifest(
       ticket: issued_ticket(id: good_identity()),
@@ -302,12 +300,9 @@ test fn issued_ticket_standing_is_a_measured_network_boot_fact() -> Bool {
     observation: standing_obs,
     observed_at: 1788001800000,
   ) {
-    SignedBootManifestVerified { identity: _, evidence_class: c, observation: _, observed_at: _ } =>
-      match c {
-        MeasuredNetworkBootFact => true
-        NonEstablishingNetworkBootPredecessor => false
-      }
-    SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
+    SignedBootManifestVerified { identity: id, observation: _, observed_at: _ } =>
+      id.target_unit == unit
+    SignedBootManifestIdentified { identity: _, observation: _, observed_at: _ } => false
     SignedBootManifestVerificationRefused { observation: _, observed_at: _, class: _ } => false
     SignedBootManifestAbsent => false
   }
@@ -326,8 +321,8 @@ test fn an_expired_ticket_is_verification_refused_not_absent() -> Bool {
     SignedBootManifestVerificationRefused { observation: o, observed_at: _, class: c } =>
       (o.decl_name as String) == "standing_obs" && c == ManifestVerificationExpired
     SignedBootManifestAbsent => false
-    SignedBootManifestVerified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
-    SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } => false
+    SignedBootManifestVerified { identity: _, observation: _, observed_at: _ } => false
+    SignedBootManifestIdentified { identity: _, observation: _, observed_at: _ } => false
   }
 }
 
