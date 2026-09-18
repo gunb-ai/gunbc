@@ -2,6 +2,7 @@ module extdeps.apple.app_attest
 
 import std.types { NonEmptyStr, String, Int, List, EpochSecs }
 import std.logic { Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -172,6 +173,17 @@ type AppAttestTrustAnchor {
 data apple_app_attestation_root_ca: AppAttestTrustAnchor = AppAttestTrustAnchor {
   root_pem: "-----BEGIN CERTIFICATE-----\nMIICITCCAaegAwIBAgIQC/O+DvHN0uD7jG5yH2IXmDAKBggqhkjOPQQDAzBSMSYw\nJAYDVQQDDB1BcHBsZSBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UECgwK\nQXBwbGUgSW5jLjETMBEGA1UECAwKQ2FsaWZvcm5pYTAeFw0yMDAzMTgxODMyNTNa\nFw00NTAzMTUwMDAwMDBaMFIxJjAkBgNVBAMMHUFwcGxlIEFwcCBBdHRlc3RhdGlv\nbiBSb290IENBMRMwEQYDVQQKDApBcHBsZSBJbmMuMRMwEQYDVQQIDApDYWxpZm9y\nbmlhMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAERTHhmLW07ATaFQIEVwTtT4dyctdh\nNbJhFs/Ii2FdCgAHGbpphY3+d8qjuDngIN3WVhQUBHAoMeQ/cLiP1sOUtgjqK9au\nYen1mMEvRq9Sk3Jm5X8U62H+xTD3FE9TgS41o0IwQDAPBgNVHRMBAf8EBTADAQH/\nMB0GA1UdDgQWBBSskRBTM72+aEH/pwyp5frq5eWKoTAOBgNVHQ8BAf8EBAMCAQYw\nCgYIKoZIzj0EAwMDaAAwZQIwQgFGnByvsiVbpTKwSga0kP0e8EeDS4+sQmTvb7vn\n53O5+FRXgeLhpJ06ysC5PrOyAjEAp5U4xDgEgllF7En3VcE3iexZZtKeYnpqtijV\noyFraWVIyd/dganmrduC1bmTBGwD\n-----END CERTIFICATE-----\n",
 }
+
+// ── Where the procedure lives, and what moves it ─────────────────────────────────────────────
+// STEPS 1-8 EXECUTE IN SEED RUST TODAY, and that is tracked debt rather than a claim that the
+// procedure is a host kernel. Only four operations are genuinely irreducible here -- CBOR decoding,
+// X.509 parsing, SHA-256, and P-256/P-384 ECDSA verification over a certificate's TBS bytes. Every
+// comparison built on them (nonce, key id, RP ID, counter, AAGUID, credential id, the chain's
+// issuer/validity/CA checks) is a decision this module could make itself once those kernels are
+// reachable as values. Steps 9-10 already are (app_attest_policy_refusal).
+data app_attest_procedure_in_seed_frontier: DissolutionCondition = unbound_dissolution(
+  description: "host kernels for CBOR decode, X.509 parse, SHA-256 and ECDSA-over-TBS reachable from .dag as typed values (or a non-v1 host route binding RustCrypto) -- SUFFICIENT FOR extdeps.apple.app_attest to decide Apple's attestation steps 1-8 and assertion steps 3-4 as .dag comparisons, at which point app_attest_verify_attestation / app_attest_verify_assertion and their Rust helpers are deleted and only the kernels remain in the seed",
+)
 
 // ── The implementation's answer ──────────────────────────────────────────────────────────────
 // WHAT THE BOUND IMPLEMENTATION ESTABLISHED, typed at the seam. The host constructs these arms
