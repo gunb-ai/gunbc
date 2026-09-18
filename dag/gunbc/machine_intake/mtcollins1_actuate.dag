@@ -44,11 +44,9 @@ import extdeps.bmc.ipmi_boot_selection {
 // around a parameterized probe. It is NOT a per-host fork of the arm: everything host-specific here
 // is a value, and a second host is a second wrapper over the identical operation, never a second
 // operation. The one argument is the credential path, for the reason given on mtcollins1_password_file.
-data mtcollins1_netboot_selection: IpmiBootSelection =
-  aarch64_uefi_once_boot_selection(device: IpmiBootPxe)
+data mtcollins1_netboot_selection: IpmiBootSelection = aarch64_uefi_once_boot_selection(device: IpmiBootPxe)
 
-data mtcollins1_cdrom_selection: IpmiBootSelection =
-  aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
+data mtcollins1_cdrom_selection: IpmiBootSelection = aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
 
 // A CYCLE AND NOT A RESET, because the unit's own SEL is the evidence that a cycle takes effect
 // here: driving `chassis power cycle` produced "Power Unit — Power cycle | Asserted" and "System
