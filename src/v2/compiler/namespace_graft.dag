@@ -108,7 +108,8 @@ fn namespace_graft_parse_projection_edge(name: Symbol) -> Bool {
 
 fn namespace_graft_is_module_header_subtree(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
-    Present { value: id } => id == ^dag_surface_module_header
+    Present { value: id } =>
+      (id == ^dag_surface_module_header) || (id == ^dag_surface_qualified_name)
     Absent => false
   }
 }
