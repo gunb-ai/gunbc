@@ -49,10 +49,15 @@ import product.fabric.selection {
 }
 import product.fabric.candidate_field {
   FieldRequest, CandidateField, FieldExclusion, FieldExclusionCause,
-  FieldRouteNotModeled, FieldRouteAmbiguous, FieldRouteFactsNameAnotherRoute,
-  FieldUseRefused, FieldDispatchInputsNameAnotherOffer, FieldPermitNamesAnotherOffer,
-  FieldPermitNamesAnotherRoute, FieldPermitNamesAnotherWork, FieldPermitNamesAnotherDemand,
+  FieldCapacityRefused, FieldDispatchInputsNameAnotherOffer,
   assemble_candidate_field,
+}
+import product.fabric.capacity_admission {
+  CapacityRefusal,
+  CapacityRouteNotModeled, CapacityRouteAmbiguous, CapacityRouteFactsNameAnotherRoute,
+  CapacitySupplyUnobserved, CapacityRouteNeverExercised, CapacityRouteExerciseExpired,
+  CapacityNotFungibleForWork, CapacityUseRefused, CapacityPermitNamesAnotherOffer,
+  CapacityPermitNamesAnotherRoute, CapacityPermitNamesAnotherWork, CapacityPermitNamesAnotherDemand,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -430,6 +435,7 @@ fn s_field_with_readiness(
     exercises: exercises,
     readiness: readiness,
     at: s_at,
+    requirements: s_requirements(),
     requests: requests,
   )
 }
@@ -492,19 +498,27 @@ fn s_selected_permit(s: SupplySelection<NonEmptyStr>) -> List<ProviderUsePermit<
   }
 }
 
+fn s_capacity_tag(r: CapacityRefusal<NonEmptyStr>) -> String {
+  match r {
+    CapacityRouteNotModeled { offer: _ } => "route-not-modeled"
+    CapacityRouteAmbiguous { offer: _, claimed: _ } => "route-ambiguous"
+    CapacityRouteFactsNameAnotherRoute { facts_route: _, offer_route: _ } => "facts-name-another-route"
+    CapacitySupplyUnobserved { offer: _, obligation: _ } => "supply-unobserved"
+    CapacityRouteNeverExercised { offer: _, route: _ } => "route-never-exercised"
+    CapacityRouteExerciseExpired { offer: _, route: _, latest_valid_through: _, at: _ } => "route-exercise-expired"
+    CapacityNotFungibleForWork { offer: _, fungibility: _ } => "not-fungible"
+    CapacityUseRefused { offer: _, cause: _ } => "use-refused"
+    CapacityPermitNamesAnotherOffer { offer: _, permit_names: _ } => "permit-names-another-offer"
+    CapacityPermitNamesAnotherRoute { offer: _ } => "permit-names-another-route"
+    CapacityPermitNamesAnotherWork { permit_work: _, subject_work: _ } => "permit-names-another-work"
+    CapacityPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
+  }
+}
+
 fn s_exclusion_tag(c: FieldExclusionCause<NonEmptyStr>) -> String {
   match c {
-    FieldRouteNotModeled => "route-not-modeled"
-    FieldRouteAmbiguous { claimed: _ } => "route-ambiguous"
-    FieldRouteFactsNameAnotherRoute { facts_route: _, offer_route: _ } => "facts-name-another-route"
-    FieldRouteNeverExercised { route: _ } => "route-never-exercised"
-    FieldRouteExerciseExpired { route: _, latest_valid_through: _, at: _ } => "route-exercise-expired"
-    FieldUseRefused { cause: _ } => "use-refused"
+    FieldCapacityRefused { refusal: r } => s_capacity_tag(r: r)
     FieldDispatchInputsNameAnotherOffer { inputs_name: _ } => "inputs-name-another-offer"
-    FieldPermitNamesAnotherOffer { permit_names: _ } => "permit-names-another-offer"
-    FieldPermitNamesAnotherRoute => "permit-names-another-route"
-    FieldPermitNamesAnotherWork { permit_work: _, subject_work: _ } => "permit-names-another-work"
-    FieldPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
   }
 }
 

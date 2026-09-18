@@ -1,18 +1,11 @@
 module product.fabric.failure_scenario_admission
 
 import std.types { Bool, Int, List, EpochSecs }
+import v2.std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, fabric_identity_eq }
 import product.fabric.work { ExecutionRequirements }
-import product.fabric.supply {
-  SupplierOffer, OfferFungibility, offer_fungibility_for,
-  OfferEvidence, ObservedSupply, QuotedSupply, UnobservedSupply,
-  Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
-}
-import product.fabric.route_readiness {
-  RouteExercise, RequireExercisedRoute, route_readiness,
-  RouteReady, RouteAdmittedForItsOwnExercise, RouteNeverExercised, RouteExerciseExpired,
-}
+import product.fabric.capacity_admission { AdmittedCapacity }
 
 // COMMITTED DEMAND IS ADMITTED ONLY IF IT SURVIVES THE FAILURES WE DECLARE WE WILL ABSORB.
 //
@@ -24,10 +17,15 @@ import product.fabric.route_readiness {
 // and cost event, never a customer outage and never an urgent repair visit. If no, the demand is not
 // admitted, and the shortfall names the scenario that breaks it.
 //
-// WHAT COUNTS AS SUPPLY IS DECIDED BY THE EXISTING AUTHORITIES, NOT RESTATED HERE. An offer counts
-// toward a demand only if it is fungible for that demand's requirements (product.fabric.supply
-// offer_fungibility_for) AND its route is ready (product.fabric.route_readiness). A listed provider
-// nobody has exercised contributes nothing, however large its quota.
+// WHAT COUNTS AS USABLE SUPPLY IS NOT DECIDED HERE AT ALL. This fold receives AdmittedCapacity
+// values: product.fabric.capacity_admission has already run route correspondence, supply evidence,
+// route readiness, provider-use admission and fungibility, and its sole constructor is the proof. An
+// earlier revision screened a SUBSET of those itself, which made this module a second authority on
+// the same question and let it disagree with the dispatch path in both directions - an unobserved
+// offer could enter the candidate field, and an offer whose use admission denied it could still be
+// counted as a reserve (DESIGN section 3, side review of this chain). What this fold decides, and all
+// it decides, is which admitted capacity a declared failure removes and whether what survives still
+// covers the committed demand.
 //
 // A FAILURE DOMAIN IS A CITED DECLARATION, the same grain as ProviderRoute's components. An offer's
 // provider and region are domains it is always in, derived from its route; everything below that -
@@ -55,11 +53,26 @@ type FailureScenario<P> {
   lost_offers: List<FabricIdentity<P, OfferKey>>
 }
 
+// DEMAND CARRIES ITS STANDING, AND THE SYMMETRY WITH SUPPLY IS THE POINT. #11532 gave supply a third
+// evidence arm because PLANNED supply could not honestly inhabit ObservedSupply. Demand has the same
+// two states and had only one spelling: a quantity derived from illustrative planning figures - an
+// unnegotiated slot shape, an assumed pool, an uncited failure rate - inhabited CommittedDemand and
+// could therefore produce FailureScenariosSurvived, which reads as "this reserve is covered" when
+// what was established is "these assumptions fit each other" (gunbc-private#141, side review).
+//
+// Only a committed demand can survive a scenario here. A planned one REFUSES, with its obligations
+// carried, and whoever wants the counterfactual answers it in a planning carrier of its own that
+// names the assumptions it made - never by minting a commitment.
+type DemandStanding
+  = DemandCommitted { receipt: DeclarationRef }
+  | DemandPlanned { obligations: List<DeclarationRef> }
+
 // grants is committed concurrent grants of this work's requirements; margin is the operational
 // headroom required above it. Both are in the unit of SupplierOffer.quantity_bound.
 type CommittedDemand<P> {
   work: FabricIdentity<P, WorkKey>
   requirements: ExecutionRequirements
+  standing: DemandStanding
   grants: Int
   margin: Int
 }
@@ -81,8 +94,8 @@ type FailureScenarioRefusal<P>
   | OfferFailureDomainsUndeclared { offer: FabricIdentity<P, OfferKey> }
   | OfferFailureDomainsAmbiguous { offer: FabricIdentity<P, OfferKey> }
   | OfferSharedAcrossDemands { offer: FabricIdentity<P, OfferKey> }
-  | OfferSupplyUnobserved { offer: FabricIdentity<P, OfferKey>, obligation: DeclarationRef }
   | ScenarioNamesUnknownOffer { scenario: DeclarationRef, offer: FabricIdentity<P, OfferKey> }
+  | DemandIsNotCommitted { work: FabricIdentity<P, WorkKey>, obligations: List<DeclarationRef> }
   | ScenarioNotSurvived { shortfall: ScenarioShortfall<P> }
 
 type FailureScenarioAdmission<P>
@@ -93,23 +106,12 @@ fn domain_rows_for<P>(roster: List<OfferFailureDomains<P>>, offer: FabricIdentit
   filter(roster, r => fabric_identity_eq(left: r.offer, right: offer))
 }
 
-// A PLANNED FLEET IS REFUSED RATHER THAN COUNTED, and by its own arm rather than by arriving at a
-// shortfall: "we reserved against twenty hosts that have never booted" and "the fleet is two nodes
-// short" are different things to go and do.
-fn evidence_refusals<P>(offer: SupplierOffer<P>) -> List<FailureScenarioRefusal<P>> {
-  match offer.evidence {
-    ObservedSupply { observed_at: _, receipt: _ } => []
-    QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => []
-    UnobservedSupply { obligation: o } => [OfferSupplyUnobserved { offer: offer.id, obligation: o }]
-  }
-}
-
-fn domain_refusals<P>(roster: List<OfferFailureDomains<P>>, offer: SupplierOffer<P>) -> List<FailureScenarioRefusal<P>> {
-  let n = count(domain_rows_for(roster: roster, offer: offer.id))
+fn domain_refusals<P>(roster: List<OfferFailureDomains<P>>, capacity: AdmittedCapacity<P>) -> List<FailureScenarioRefusal<P>> {
+  let n = count(domain_rows_for(roster: roster, offer: capacity.offer.id))
   if n == 0 {
-    [OfferFailureDomainsUndeclared { offer: offer.id }]
+    [OfferFailureDomainsUndeclared { offer: capacity.offer.id }]
   } else if n > 1 {
-    [OfferFailureDomainsAmbiguous { offer: offer.id }]
+    [OfferFailureDomainsAmbiguous { offer: capacity.offer.id }]
   } else {
     []
   }
@@ -117,41 +119,17 @@ fn domain_refusals<P>(roster: List<OfferFailureDomains<P>>, offer: SupplierOffer
 
 // The route's provider and region, then the roster's finer domains. Only called once the roster is
 // known to hold exactly one row for the offer.
-fn offer_domains<P>(roster: List<OfferFailureDomains<P>>, offer: SupplierOffer<P>) -> List<DeclarationRef> {
+fn capacity_domains<P>(roster: List<OfferFailureDomains<P>>, capacity: AdmittedCapacity<P>) -> List<DeclarationRef> {
   concat(
-    [offer.route.provider, offer.route.region],
-    flat_map(domain_rows_for(roster: roster, offer: offer.id), r => r.domains),
+    [capacity.offer.route.provider, capacity.offer.route.region],
+    flat_map(domain_rows_for(roster: roster, offer: capacity.offer.id), r => r.domains),
   )
 }
 
-fn is_fungible(f: OfferFungibility) -> Bool {
-  match f {
-    Fungible => true
-    TrustDomainMismatch { required: _, offered: _ } => false
-    CapabilitiesNotOffered { required: _, offered: _ } => false
-    IsolationNotProvided { missing: _ } => false
-    ShapeAxesNotCovered { unmet: _ } => false
-  }
-}
-
-fn route_is_ready<P>(exercises: List<RouteExercise>, offer: SupplierOffer<P>, work: FabricIdentity<P, WorkKey>, at: EpochSecs) -> Bool {
-  match route_readiness(exercises: exercises, requirement: RequireExercisedRoute, route: offer.route, work: work, at: at) {
-    RouteReady { exercise: _ } => true
-    RouteAdmittedForItsOwnExercise { route: _ } => false
-    RouteNeverExercised { route: _ } => false
-    RouteExerciseExpired { route: _, latest_valid_through: _, at: _ } => false
-  }
-}
-
-fn eligible_offers<P>(
-  offers: List<SupplierOffer<P>>,
-  exercises: List<RouteExercise>,
-  at: EpochSecs,
-  demand: CommittedDemand<P>,
-) -> List<SupplierOffer<P>> {
-  filter(offers, o =>
-    is_fungible(f: offer_fungibility_for(requirements: demand.requirements, offer: o))
-      && route_is_ready(exercises: exercises, offer: o, work: demand.work, at: at))
+// A capacity is admitted FOR one work, so the supply a demand may draw on is the capacity admitted
+// for that demand's work. Nothing is re-screened: the screens ran in capacity_admission.
+fn eligible_capacity<P>(capacities: List<AdmittedCapacity<P>>, demand: CommittedDemand<P>) -> List<AdmittedCapacity<P>> {
+  filter(capacities, c => fabric_identity_eq(left: c.work, right: demand.work))
 }
 
 fn domain_is_lost(lost: List<DeclarationRef>, domain: DeclarationRef) -> Bool {
@@ -159,39 +137,47 @@ fn domain_is_lost(lost: List<DeclarationRef>, domain: DeclarationRef) -> Bool {
 }
 
 // A HOST IS LOST BY ITS OWN IDENTITY OR BY A DOMAIN IT SITS IN, and either is enough to remove it.
-fn offer_is_named_lost<P>(scenario: FailureScenario<P>, offer: SupplierOffer<P>) -> Bool {
-  count(filter(scenario.lost_offers, o => fabric_identity_eq(left: o, right: offer.id))) > 0
+fn capacity_is_named_lost<P>(scenario: FailureScenario<P>, capacity: AdmittedCapacity<P>) -> Bool {
+  count(filter(scenario.lost_offers, o => fabric_identity_eq(left: o, right: capacity.offer.id))) > 0
 }
 
-fn offer_survives<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureScenario<P>, offer: SupplierOffer<P>) -> Bool {
-  count(filter(offer_domains(roster: roster, offer: offer), d => domain_is_lost(lost: scenario.lost, domain: d))) == 0
-    && !offer_is_named_lost(scenario: scenario, offer: offer)
+fn capacity_survives<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureScenario<P>, capacity: AdmittedCapacity<P>) -> Bool {
+  count(filter(capacity_domains(roster: roster, capacity: capacity), d => domain_is_lost(lost: scenario.lost, domain: d))) == 0
+    && !capacity_is_named_lost(scenario: scenario, capacity: capacity)
 }
 
-fn surviving_grants<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureScenario<P>, eligible: List<SupplierOffer<P>>) -> Int {
+fn surviving_grants<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureScenario<P>, eligible: List<AdmittedCapacity<P>>) -> Int {
   fold(
-    filter(eligible, o => offer_survives(roster: roster, scenario: scenario, offer: o)),
+    filter(eligible, c => capacity_survives(roster: roster, scenario: scenario, capacity: c)),
     init: 0,
-    f: (total, o) => total + o.quantity_bound,
+    f: (total, c) => total + c.offer.quantity_bound,
   )
 }
 
-// A DEMAND'S ELIGIBLE SUPPLY IS DECIDED ONCE. Fungibility and readiness do not depend on the
-// scenario, so recomputing them per scenario would repeat identical work demands x scenarios times.
+// A DEMAND'S ELIGIBLE SUPPLY IS DECIDED ONCE, not once per scenario.
 type DemandSupply<P> {
   demand: CommittedDemand<P>
-  eligible: List<SupplierOffer<P>>
+  eligible: List<AdmittedCapacity<P>>
 }
 
-// EVERY NAMED OFFER MUST BE IN THE ROSTER, checked before any scenario is evaluated. This is the
+// A PLANNED DEMAND IS REFUSED BEFORE ANY SCENARIO IS EVALUATED, so no arithmetic over assumed
+// quantities can reach a survival result.
+fn demand_standing_refusals<P>(demand: CommittedDemand<P>) -> List<FailureScenarioRefusal<P>> {
+  match demand.standing {
+    DemandCommitted { receipt: _ } => []
+    DemandPlanned { obligations: o } => [DemandIsNotCommitted { work: demand.work, obligations: o }]
+  }
+}
+
+// EVERY NAMED CAPACITY MUST BE IN THE ROSTER, checked before any scenario is evaluated. This is the
 // structural twin of the undeclared-domain refusal: both close the arm where a scenario silently
 // applies less loss than it names.
 fn unknown_offer_refusals<P>(
-  offers: List<SupplierOffer<P>>,
+  capacities: List<AdmittedCapacity<P>>,
   scenario: FailureScenario<P>,
 ) -> List<FailureScenarioRefusal<P>> {
   flat_map(scenario.lost_offers, named =>
-    if count(filter(offers, o => fabric_identity_eq(left: o.id, right: named))) == 0 {
+    if count(filter(capacities, c => fabric_identity_eq(left: c.offer.id, right: named))) == 0 {
       [ScenarioNamesUnknownOffer { scenario: scenario.scenario, offer: named }]
     } else {
       []
@@ -214,42 +200,66 @@ fn scenario_refusals<P>(
   }
 }
 
-fn offer_is_in<P>(offers: List<SupplierOffer<P>>, offer: SupplierOffer<P>) -> Bool {
-  count(filter(offers, o => fabric_identity_eq(left: o.id, right: offer.id))) > 0
+fn capacity_is_in<P>(capacities: List<AdmittedCapacity<P>>, offer: FabricIdentity<P, OfferKey>) -> Bool {
+  count(filter(capacities, c => fabric_identity_eq(left: c.offer.id, right: offer))) > 0
 }
 
-fn sharing_refusals<P>(offers: List<SupplierOffer<P>>, supplies: List<DemandSupply<P>>) -> List<FailureScenarioRefusal<P>> {
-  flat_map(offers, o =>
-    if count(filter(supplies, s => offer_is_in(offers: s.eligible, offer: o))) > 1 {
-      [OfferSharedAcrossDemands { offer: o.id }]
-    } else {
-      []
-    })
+// ONE REFUSAL PER SHARED OFFER, NOT ONE PER CAPACITY THAT MENTIONS IT. A capacity is admitted FOR a
+// work, so a roster serving two demands holds two capacities over the same offer - which is the
+// sharing this refusal is about, and reporting it twice would make the count of refusals depend on
+// how many demands happened to be asked rather than on how many offers are double-counted. The scan
+// carries the offers it has already reported, so each is named once, in roster order.
+fn shared_offer_scan<P>(
+  remaining: List<AdmittedCapacity<P>>,
+  reported: List<FabricIdentity<P, OfferKey>>,
+  supplies: List<DemandSupply<P>>,
+) -> List<FailureScenarioRefusal<P>> {
+  match remaining.first() {
+    Absent => []
+    Present { value: c } => {
+      let rest = remaining.skip(n: 1)
+      if count(filter(reported, o => fabric_identity_eq(left: o, right: c.offer.id))) > 0 {
+        shared_offer_scan(remaining: rest, reported: reported, supplies: supplies)
+      } else {
+        let seen = concat(reported, [c.offer.id])
+        if count(filter(supplies, s => capacity_is_in(capacities: s.eligible, offer: c.offer.id))) > 1 {
+          concat(
+            [OfferSharedAcrossDemands { offer: c.offer.id }],
+            shared_offer_scan(remaining: rest, reported: seen, supplies: supplies),
+          )
+        } else {
+          shared_offer_scan(remaining: rest, reported: seen, supplies: supplies)
+        }
+      }
+    }
+  }
+}
+
+fn sharing_refusals<P>(capacities: List<AdmittedCapacity<P>>, supplies: List<DemandSupply<P>>) -> List<FailureScenarioRefusal<P>> {
+  shared_offer_scan(remaining: capacities, reported: [], supplies: supplies)
 }
 
 // STRUCTURAL REFUSALS ARE DECIDED BEFORE ANY SCENARIO IS EVALUATED, because a shortfall computed over
-// an undeclared domain or a double-counted offer is a number that looks like an answer and is not.
+// an undeclared domain, a planned demand or a double-counted capacity is a number that looks like an
+// answer and is not.
 fn admit_failure_scenarios<P>(
-  offers: List<SupplierOffer<P>>,
+  capacities: List<AdmittedCapacity<P>>,
   domains: List<OfferFailureDomains<P>>,
-  exercises: List<RouteExercise>,
-  at: EpochSecs,
   demands: List<CommittedDemand<P>>,
   scenarios: List<FailureScenario<P>>,
 ) -> FailureScenarioAdmission<P> {
-  let supplies = map(demands, d =>
-    DemandSupply { demand: d, eligible: eligible_offers(offers: offers, exercises: exercises, at: at, demand: d) })
+  let supplies = map(demands, d => DemandSupply { demand: d, eligible: eligible_capacity(capacities: capacities, demand: d) })
   let structural = concat(
     if count(scenarios) == 0 { [NoFailureScenariosDeclared] } else { [] },
     concat(
+      flat_map(capacities, c => domain_refusals(roster: domains, capacity: c)),
       concat(
-        flat_map(offers, o => domain_refusals(roster: domains, offer: o)),
+        flat_map(scenarios, sc => unknown_offer_refusals(capacities: capacities, scenario: sc)),
         concat(
-          flat_map(offers, o => evidence_refusals(offer: o)),
-          flat_map(scenarios, sc => unknown_offer_refusals(offers: offers, scenario: sc)),
+          flat_map(demands, d => demand_standing_refusals(demand: d)),
+          sharing_refusals(capacities: capacities, supplies: supplies),
         ),
       ),
-      sharing_refusals(offers: offers, supplies: supplies),
     ),
   )
   if count(structural) > 0 {

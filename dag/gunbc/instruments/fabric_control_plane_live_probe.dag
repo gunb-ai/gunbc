@@ -23,7 +23,7 @@ import std.measure {
   MoneyAmountMicro, MoneyOnce, MoneyPerSecond, money_amount_micro,
   Second, second, hardware_thread_count,
 }
-import product.fabric.work { Shape, HardRequirements }
+import product.fabric.work { Shape, HardRequirements, ExecutionRequirements, ControlPlaneCapacity }
 import product.fabric.envelope { unstated_envelope }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.supply { SupplierOffer, QuotedPerSecond, ObservedSupply }
@@ -1706,6 +1706,19 @@ fn cp_live_nothing_admissible_touches_no_store(root: NonEmptyStr) -> Int {
 // through the defect this arrow repairs. So this row runs the whole path with a real roster and
 // then reads the FILESYSTEM: the slot that appears must be the cell whose offer won, spelled by
 // its canonical name and nothing else.
+// THE WORK THIS PROBE PLACES, stated as requirements so capacity admission can decide fungibility on
+// the one path that decides everything else about this offer. They match the probe's own offer shape
+// because the probe's subject is the control-plane spine, not a shape mismatch.
+fn cp_probe_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) }, envelope: unstated_envelope() },
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: IsolationProfile { guarantees: [] },
+  }
+}
+
 fn cp_probe_offer_for(executor: NonEmptyStr) -> SupplierOffer<NonEmptyStr> {
   SupplierOffer {
     id: cp_probe_offer_id(key: "offer-1"),
@@ -1853,6 +1866,7 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
     exercises: [],
     readiness: ExerciseOfRoute { route: probe_route(), work: work },
     at: 0,
+    requirements: cp_probe_requirements(),
     requests: [
       FieldRequest {
         offer: cp_probe_offer_for(executor: executor),

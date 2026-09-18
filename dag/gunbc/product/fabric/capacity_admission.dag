@@ -1,0 +1,218 @@
+module product.fabric.capacity_admission
+
+import std.types { Bool, List, EpochSecs }
+import std.decl_ref { DeclarationRef }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
+import product.fabric.provider_admission {
+  RouteScopeSanction, ProviderUseScope, ProviderUsePermit, ProviderUseRefusal, admit_provider_use,
+  ProviderUseAdmission, ProviderUseAdmitted, ProviderUseDenied, permit_standing,
+  PermitAuthorizesUse, PermitNamesAnotherOfferThan, PermitNamesAnotherRouteThan,
+  PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
+}
+import product.fabric.offer_route {
+  OfferRouteRow, correspond_offer_route,
+  OfferRouteModeled, OfferRouteNotModeled, OfferRouteAmbiguous, OfferRouteFactsNameAnotherRoute,
+}
+import product.fabric.supply {
+  SupplierOffer, OfferEvidence, ObservedSupply, QuotedSupply, UnobservedSupply,
+  OfferFungibility, offer_fungibility_for,
+  Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
+}
+import product.fabric.route_readiness {
+  RouteExercise, RouteReadinessRequirement, RouteReadiness, route_readiness,
+  RouteReady, RouteAdmittedForItsOwnExercise, RouteNeverExercised, RouteExerciseExpired,
+}
+
+// ONE AUTHORITY FOR "THIS OFFER MAY SERVE THIS WORK", BECAUSE THERE WERE TWO AND THEY DISAGREED.
+//
+// product.fabric.candidate_field screened an offer for DISPATCH: route correspondence, route
+// readiness, provider-use admission, binding. product.fabric.failure_scenario_admission screened the
+// same offers for PLANNING: fungibility, route readiness, supply evidence. Each omitted what the
+// other checked, so one offer could be admitted supply in one decision and refused in the other, in
+// both directions - an offer carrying UnobservedSupply could enter the candidate field, and an offer
+// whose provider-use admission DENIES it could still be counted as a reserve. DESIGN section 3 calls
+// that a fork of one authority, and it is exactly the shape that gets consolidated later at interest.
+//
+// The repair is NOT to copy each fold's missing checks into the other - that keeps two implementations
+// of one judgement and makes them drift more slowly. It is this carrier: the screens run ONCE, in one
+// order, and both consumers receive the result. Selection adds price and dispatch observations to it;
+// failure-scenario admission removes instances of it under each scenario. Neither re-screens.
+//
+// WHAT IS SEALED AND WHY. sole_constructor confines construction to admit_capacity below, so an
+// AdmittedCapacity cannot be assembled from parts by a caller that skipped a screen. The permit comes
+// out of the admission decision itself rather than being passed in, so there is nowhere to invent one.
+// The ceiling is unchanged and stated: this establishes that the screens RAN and agreed, never that
+// the observations handed to them were honestly taken - that stays a boundary obligation on whoever
+// produced them.
+type AdmittedCapacity<P> sole_constructor {
+  offer: SupplierOffer<P>
+  demand: FabricIdentity<P, DemandKey>
+  work: FabricIdentity<P, WorkKey>
+  permit: ProviderUsePermit<P>
+  readiness: RouteReadiness
+  evidence: OfferEvidence
+}
+
+// ONE ARM PER SCREEN THAT CAN REFUSE, each naming a different thing to go and do: model the route,
+// settle which row governs it, fix a row carried onto the wrong offer, observe the supply, exercise
+// the route, clear whatever the use admission names, or repair a permit on the wrong subject.
+type CapacityRefusal<P>
+  = CapacityRouteNotModeled { offer: FabricIdentity<P, OfferKey> }
+  | CapacityRouteAmbiguous { offer: FabricIdentity<P, OfferKey>, claimed: List<ProviderRoute> }
+  | CapacityRouteFactsNameAnotherRoute { facts_route: ProviderRoute, offer_route: ProviderRoute }
+  | CapacitySupplyUnobserved { offer: FabricIdentity<P, OfferKey>, obligation: DeclarationRef }
+  | CapacityRouteNeverExercised { offer: FabricIdentity<P, OfferKey>, route: ProviderRoute }
+  | CapacityRouteExerciseExpired { offer: FabricIdentity<P, OfferKey>, route: ProviderRoute, latest_valid_through: EpochSecs, at: EpochSecs }
+  | CapacityNotFungibleForWork { offer: FabricIdentity<P, OfferKey>, fungibility: OfferFungibility }
+  | CapacityUseRefused { offer: FabricIdentity<P, OfferKey>, cause: ProviderUseRefusal }
+  | CapacityPermitNamesAnotherOffer { offer: FabricIdentity<P, OfferKey>, permit_names: FabricIdentity<P, OfferKey> }
+  | CapacityPermitNamesAnotherRoute { offer: FabricIdentity<P, OfferKey> }
+  | CapacityPermitNamesAnotherWork { permit_work: FabricIdentity<P, WorkKey>, subject_work: FabricIdentity<P, WorkKey> }
+  | CapacityPermitNamesAnotherDemand { permit_demand: FabricIdentity<P, DemandKey>, subject_demand: FabricIdentity<P, DemandKey> }
+
+type CapacityAdmission<P>
+  = CapacityAdmitted { capacity: AdmittedCapacity<P> }
+  | CapacityRefused { refusal: CapacityRefusal<P> }
+
+fn evidence_is_current(evidence: OfferEvidence) -> Bool {
+  match evidence {
+    ObservedSupply { observed_at: _, receipt: _ } => true
+    QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => true
+    UnobservedSupply { obligation: _ } => false
+  }
+}
+
+fn unobserved_obligation(evidence: OfferEvidence, fallback: DeclarationRef) -> DeclarationRef {
+  match evidence {
+    ObservedSupply { observed_at: _, receipt: _ } => fallback
+    QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => fallback
+    UnobservedSupply { obligation: o } => o
+  }
+}
+
+fn readiness_is_admitted(readiness: RouteReadiness) -> Bool {
+  match readiness {
+    RouteReady { exercise: _ } => true
+    RouteAdmittedForItsOwnExercise { route: _ } => true
+    RouteNeverExercised { route: _ } => false
+    RouteExerciseExpired { route: _, latest_valid_through: _, at: _ } => false
+  }
+}
+
+fn fungibility_is_admitted(f: OfferFungibility) -> Bool {
+  match f {
+    Fungible => true
+    TrustDomainMismatch { required: _, offered: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    IsolationNotProvided { missing: _ } => false
+    ShapeAxesNotCovered { unmet: _ } => false
+  }
+}
+
+// THE ORDER IS THE ONE THE INPUTS FORCE, and the cheapest refusals sit earliest so an operator is
+// told the earliest unmet fact rather than the last one: a route nobody modeled is a different
+// errand from a permit on the wrong subject, and reporting the second when the first is true sends
+// someone to the wrong place. admit_provider_use cannot be called without the facts the
+// correspondence produces, so the screens before it are not merely conventionally ordered.
+fn admit_capacity<P>(
+  routes: List<OfferRouteRow<P>>,
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  exercises: List<RouteExercise>,
+  readiness_requirement: RouteReadinessRequirement<P>,
+  at: EpochSecs,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+) -> CapacityAdmission<P> {
+  match correspond_offer_route(roster: routes, offer: offer.id, route: offer.route) {
+    OfferRouteNotModeled { offer: o } => CapacityRefused { refusal: CapacityRouteNotModeled { offer: o } }
+    OfferRouteAmbiguous { offer: o, claimed: c } =>
+      CapacityRefused { refusal: CapacityRouteAmbiguous { offer: o, claimed: c } }
+    OfferRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr } =>
+      CapacityRefused { refusal: CapacityRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr } }
+    OfferRouteModeled { facts: facts } =>
+      if !evidence_is_current(evidence: offer.evidence) {
+        CapacityRefused {
+          refusal: CapacitySupplyUnobserved {
+            offer: offer.id,
+            obligation: unobserved_obligation(evidence: offer.evidence, fallback: decision_receipt),
+          },
+        }
+      } else {
+        let readiness = route_readiness(
+          exercises: exercises, requirement: readiness_requirement,
+          route: facts.route, work: scope.work, at: at)
+        match readiness {
+          RouteNeverExercised { route: r } =>
+            CapacityRefused { refusal: CapacityRouteNeverExercised { offer: offer.id, route: r } }
+          RouteExerciseExpired { route: r, latest_valid_through: v, at: t } =>
+            CapacityRefused {
+              refusal: CapacityRouteExerciseExpired { offer: offer.id, route: r, latest_valid_through: v, at: t },
+            }
+          RouteReady { exercise: _ } =>
+            admit_use_for(
+              sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+              facts: facts, requirements: requirements, offer: offer, readiness: readiness)
+          RouteAdmittedForItsOwnExercise { route: _ } =>
+            admit_use_for(
+              sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+              facts: facts, requirements: requirements, offer: offer, readiness: readiness)
+        }
+      }
+  }
+}
+
+fn admit_use_for<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+  readiness: RouteReadiness,
+) -> CapacityAdmission<P> {
+  let fungibility = offer_fungibility_for(requirements: requirements, offer: offer)
+  if !fungibility_is_admitted(f: fungibility) {
+    CapacityRefused { refusal: CapacityNotFungibleForWork { offer: offer.id, fungibility: fungibility } }
+  } else {
+    match admit_provider_use(
+      roster: sanctions,
+      facts: facts,
+      active: active,
+      scope: scope,
+      offer: offer.id,
+      decision_receipt: decision_receipt,
+    ) {
+      ProviderUseDenied { decision: _, cause: c } =>
+        CapacityRefused { refusal: CapacityUseRefused { offer: offer.id, cause: c } }
+      ProviderUseAdmitted { permit: permit } =>
+        match permit_standing(
+          permit: permit, offer: offer.id, route: offer.route, demand: scope.demand, work: scope.work) {
+          PermitNamesAnotherOfferThan { permit_names: n } =>
+            CapacityRefused { refusal: CapacityPermitNamesAnotherOffer { offer: offer.id, permit_names: n } }
+          PermitNamesAnotherRouteThan =>
+            CapacityRefused { refusal: CapacityPermitNamesAnotherRoute { offer: offer.id } }
+          PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
+            CapacityRefused { refusal: CapacityPermitNamesAnotherWork { permit_work: pw, subject_work: sw } }
+          PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
+            CapacityRefused { refusal: CapacityPermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } }
+          PermitAuthorizesUse =>
+            CapacityAdmitted {
+              capacity: AdmittedCapacity {
+                offer: offer,
+                demand: scope.demand,
+                work: scope.work,
+                permit: permit,
+                readiness: readiness,
+                evidence: offer.evidence,
+              },
+            }
+        }
+    }
+  }
+}
