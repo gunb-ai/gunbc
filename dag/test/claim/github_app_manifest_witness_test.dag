@@ -146,6 +146,11 @@ import gunbc.github_app_acquisition {
 }
 import std.human_intervention { EveryProvision, human_intervention_frequency_eq }
 import gunbc.instruments.github_app_acquire {
+  census_app_state_path,
+  census_app_code_path,
+  census_app_observed_state_path,
+  installations_report,
+  installations_report_path,
   HandoffValueRead,
   HandoffValueMissing,
   ManifestCodeAdmitted,
@@ -1084,4 +1089,42 @@ test fn w_the_capture_step_declares_itself_a_choice_and_submit_declares_the_cons
     && string_contains(s: capture.instruction as String, pattern: "redirect catcher")
     && string_contains(s: submit.instruction as String, pattern: "ownership consent")
     && string_contains(s: supply.instruction as String, pattern: "does not dissolve with browser automation")
+}
+
+// ----- the handoff paths derive from one declared directory -----
+
+// THE DIRECTORY IS LOAD-BEARING BECAUSE IT IS GIT-IGNORED, so three hand-spelled copies of it were
+// three bearer-credential paths a future edit could strand outside the ignore rule while the custody
+// authority moved (review 67504). This claim reds if any of them stops deriving.
+test fn w_every_handoff_path_derives_from_the_declared_custody_directory() -> Bool {
+  let prefix = concat(census_app_custody_handoff_directory, "/")
+  starts_with(census_app_state_path, prefix: prefix)
+    && starts_with(census_app_code_path, prefix: prefix)
+    && starts_with(census_app_observed_state_path, prefix: prefix)
+    && starts_with(installations_report_path(), prefix: prefix)
+    && (census_app_state_path != census_app_code_path)
+    && (census_app_code_path != census_app_observed_state_path)
+}
+
+// THE LISTING IS A REPORT, NOT A REFUSAL REASON. The successful read writes this and returns
+// ExitSuccess; it carries the count and one token-request line per installation, which is the budget
+// fact the whole App exists for. It must carry no secret -- an installation listing names accounts and
+// endpoints, and the tokens themselves are minted elsewhere.
+test fn w_the_installations_report_carries_the_count_and_a_token_request_per_installation() -> Bool {
+  let one = GitHubAppInstallation {
+    installation_id: GitHubAppInstallationId { value: 77 },
+    app_id: GitHubAppId { value: 4242 },
+    app_slug: "gunbc-global-census" as NonEmptyStr,
+    html_url: Uri { scheme: Https, locator: "github.com/settings/installations/77" as NonEmptyStr },
+    account: probe_owner,
+    repository_selection: SelectionAll,
+    permissions: [],
+    subscribed_events: [],
+  }
+  let report = installations_report(installations: [one])
+  string_contains(s: report, pattern: "installations=1")
+    && string_contains(s: report, pattern: "https://api.github.com/app/installations/77/access_tokens")
+    && string_contains(s: report, pattern: "selection all")
+    && string_contains(s: report, pattern: "account gunb-ai")
+    && (installations_report(installations: []) == "installations=0\n\n")
 }

@@ -131,11 +131,15 @@ import extdeps.transports.rest {
 // credential for one hour; putting it anywhere a `git add -A` reaches would publish it. This is not a
 // new ignore rule added to make a chosen path safe - the path was chosen because the rule was already
 // there, which is the direction that cannot be quietly reversed by someone tidying .gitignore.
-data census_app_state_path: String = ".gunbc/github-app-manifest-state"
+fn manifest_handoff_path(suffix: String) -> String {
+  join([census_app_custody_handoff_directory, "/github-app-manifest-", suffix], "")
+}
 
-data census_app_code_path: String = ".gunbc/github-app-manifest-code"
+data census_app_state_path: String = manifest_handoff_path(suffix: "state")
 
-data census_app_observed_state_path: String = ".gunbc/github-app-manifest-observed-state"
+data census_app_code_path: String = manifest_handoff_path(suffix: "code")
+
+data census_app_observed_state_path: String = manifest_handoff_path(suffix: "observed-state")
 
 type ManifestHandoffValue
   = HandoffValueRead { value: NonEmptyStr }
@@ -734,7 +738,7 @@ fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
   ], "")
 }
 
-fn census_app_installations_receipt() -> ProcessExit uses net: Network {
+fn census_app_installations_receipt() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   let result = github.AppInstallations.ListInstallations(auth_token: "" as Secret)
   match classify_rest_outcome(standing: RestReadExchange { rest: result.outcome }) {
     RestExchangeStatusRefused { status: status, body: body } =>
@@ -751,11 +755,46 @@ fn census_app_installations_receipt() -> ProcessExit uses net: Network {
         InstallationsUndecodable { decode: _ } =>
           exit_failure(reason: "an installation record did not decode; refusing rather than reporting a partial budget")
         InstallationsRead { installations: installations } =>
-          exit_failure(reason: join([
-            "census App installations: ", to_string(count(installations)), " -- ",
-            join(map(installations, i => installation_token_plan_line(installation: i)), " | "),
-          ], ""))
+          installations_read_exit(installations: installations)
       }
+  }
+}
+
+// A READ THAT SUCCEEDED EXITS ZERO, AND THE LISTING GOES TO A FILE RATHER THAN THROUGH THE REFUSAL
+// REASON. An earlier cut returned exit_failure on the fully-successful decode path purely because the
+// failure reason is the channel that prints, which reported a successful budget read as a failed run
+// and -- worse -- made this entry point's own frontier row unsatisfiable: the row says it dissolves
+// when this function returns ExitSuccess against a live GET, and no ExitSuccess arm existed, so the
+// trigger could only be discharged by editing the function rather than by acquiring the App (DESIGN
+// 4b(3): a drop is retired by its trigger and by nothing else). Caught by review 67504.
+//
+// THE REPORT PATH IS DERIVED FROM THE SAME DECLARED DIRECTORY the handoff files use. An installation
+// listing is not a credential, but it names every account this App can read and the exact token
+// requests that would mint against them, so it is an inventory of the fleet's API budget and does not
+// belong in a tracked path either.
+fn installations_report_path() -> String {
+  join([census_app_custody_handoff_directory, "/github-app-installations"], "")
+}
+
+fn installations_report(installations: List<GitHubAppInstallation>) -> String {
+  join([
+    "installations=", to_string(count(installations)), "\n",
+    join(map(installations, i => installation_token_plan_line(installation: i)), "\n"),
+    "\n",
+  ], "")
+}
+
+fn installations_read_exit(installations: List<GitHubAppInstallation>) -> ProcessExit
+  uses fs: std.resources.Filesystem
+{
+  let path = installations_report_path()
+  let wrote = Filesystem.Write(path: path, content: installations_report(installations: installations))
+  if wrote.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join([
+      "the installation listing was read and its report could not be written to ", path, ": ", wrote.error,
+    ], ""))
   }
 }
 
@@ -764,7 +803,7 @@ data census_app_installation_route_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.instruments.github_app_acquire", decl_name: "census_app_installations_receipt"),
     reason: "the route exists and cannot execute green yet: the census App has not been registered, so it has no installations, and the App JWT this endpoint requires is RS256-signed with a private key this corpus cannot sign with. Measured live today it refuses twice and fabricates nothing -- the transport refuses with AuthDeclaredButUnwired when GITHUB_APP_JWT is absent, and GitHub answers 401 when it holds a value that is not a valid App JWT",
     dissolution: unbound_dissolution(
-      description: "dissolves when this entry point returns ExitSuccess against a live GET /app/installations -- which needs BOTH the census App acquired through census_app_acquire_receipt AND an external step that signs an App JWT from the stored pem and exports it as GITHUB_APP_JWT. A witness over supplied GitHubAppInstallationRecord values does not fire this; only a live green does"
+      description: "dissolves when this entry point returns ExitSuccess against a live GET /app/installations -- which needs BOTH the census App acquired through census_app_acquire_receipt AND an external step that signs an App JWT from the stored pem and exports it as GITHUB_APP_JWT. The ExitSuccess arm is REACHABLE WITHOUT EDITING THIS FUNCTION: a 200 whose records decode writes the report and returns it, so acquiring the App and exporting a valid JWT is sufficient and nothing else is required. That is stated because it was briefly false -- the successful path returned exit_failure to get its listing printed, which made this trigger dischargeable only by changing the code it describes (review 67504), and DESIGN 4b(3) rules a drop is retired by its trigger and by nothing else. A witness over supplied GitHubAppInstallationRecord values does not fire this; only a live green does"
     )
   )
 ]
