@@ -64,6 +64,13 @@ import gunbc.review_sheet_header_init {
 //     a_bounded_request_is_refused_by_the_assessment goes RED, because decision_label separates
 //     request-rejected from readback-rejected; the readback claims stay GREEN under that flatten,
 //     which is why the bounded-request specimen is carried separately from the malformed ones.
+// (f) first_occupied_header_cell inspects header cell 0 only instead of enumerating the row:
+//     header_row_content_past_column_a_is_content goes RED; every other claim stays GREEN, because
+//     every OTHER occupied-header specimen here carries its content in column A. That asymmetry is
+//     the whole reason the specimen exists -- without it the column-0 reading of the header row is
+//     indistinguishable from the enumerating one, and it would stamp a header over anything sitting
+//     in B1 onward of an otherwise blank row 1. The data rows already had their non-first-column
+//     case; the header row did not.
 //
 // Each row above was RUN, and each run refused naming the claim that row lists first. Two notes on
 // the executed forms, because the table would otherwise read as stronger than what was measured.
@@ -174,6 +181,11 @@ test fn a_blank_header_row_over_data_is_not_blank() -> Bool {
 test fn whitespace_in_the_header_row_is_content() -> Bool {
   occupancy_label(decision: decide(range: qualified_readback(values: Present { value: [[" ", ""]] })))
     == "header:0: "
+}
+
+test fn header_row_content_past_column_a_is_content() -> Bool {
+  occupancy_label(decision: decide(range: qualified_readback(values: Present { value: [["", "Notes"]] })))
+    == "header:1:Notes"
 }
 
 test fn whitespace_below_the_header_row_is_content() -> Bool {
