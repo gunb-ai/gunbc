@@ -349,13 +349,25 @@ fn namespace_graft_find_disj(node: Node) -> Node? {
   }
 }
 
+fn namespace_graft_symbol_is_grammar_machinery(sym: Symbol) -> Bool {
+  fold_list(
+    xs: dag_grammar_root().productions,
+    empty: false,
+    cons: fn(found, production) {
+      if found {
+        true
+      } else {
+        match namespace_graft_production_emitted_identity_optional(production: production) {
+          Present { value: emitted } => (production.name == sym) || (emitted == sym)
+          Absent => production.name == sym
+        }
+      }
+    }
+  )
+}
+
 fn namespace_graft_is_machinery_symbol(sym: Symbol) -> Bool {
-  if dag_lex_token_symbol(sym: sym) {
-    true
-  } else {
-    let lex = symbol_lexeme(sym: sym)
-    starts_with(s: lex, prefix: "dag_") || starts_with(s: lex, prefix: "grammar_")
-  }
+  dag_lex_token_symbol(sym: sym) || namespace_graft_symbol_is_grammar_machinery(sym: sym)
 }
 
 fn namespace_graft_type_decl_target(captured: Node) -> Node {

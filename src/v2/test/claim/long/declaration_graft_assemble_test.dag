@@ -1,153 +1,22 @@
 module v2.test.long.declaration_graft_assemble
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionSubject
-}
-import v2.compiler.program_assembly { assemble_program_from_ingest }
-import v2.compiler.source_authority {
-  DagSourceReadWitness,
-  SourceRootIngest
-}
-import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { Cons, Empty }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.node { Named, Node, Positional, node_subtree_nodes }
-import v2.std.text { String }
-import v2.std.compilers.lexing { symbol_lexeme }
+import v2.test.claim.declaration_graft_assemble {
+  declaration_graft_assemble_accepts,
+  declaration_graft_named_reachable,
+  src_g,
+  src_g_type_only
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-data declaration_graft_module_artifact: Artifact = Artifact {
-  kind: SourceFile,
-  id: ^declaration_graft_module_artifact,
-  file_path: "src/v2/pilot/declaration_graft_pilot.dag"
-}
-
-fn declaration_graft_ingest_for(src: String) -> SourceRootIngest {
-  Cons {
-    head: DagSourceReadWitness {
-      source: Medium { carried: src, fidelity: Lossless },
-      artifact: declaration_graft_module_artifact,
-      compilation_unit: ^declaration_graft_pilot_cu,
-      source_root: V2Tree
-    },
-    tail: Empty
-  }
-}
-
-fn declaration_graft_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
-      name: Cons { head: ^p, tail: Empty }
-    },
-    imports: Empty
-  }
-}
-
-fn declaration_graft_assemble_for(src: String) -> Outcome<Node> {
-  assemble_program_from_ingest(
-    ingest: declaration_graft_ingest_for(src: src),
-    admission: declaration_graft_admission(),
-    lm: dag_language_model()
-  )
-}
-
-fn declaration_graft_assemble_accepts(src: String) -> Bool {
-  match declaration_graft_assemble_for(src: src) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn declaration_graft_label_present(root: Node, lexeme: String) -> Bool {
-  fold(
-    node_subtree_nodes(root: root),
-    init: false,
-    f: fn(found, n) {
-      if found {
-        true
-      } else {
-        fold(n.children, init: false, f: fn(inner, e) {
-          if inner {
-            true
-          } else {
-            match e.label {
-              Named { name: sym } => symbol_lexeme(sym: sym) == lexeme
-              Positional => false
-            }
-          }
-        })
-      }
-    }
-  )
-}
-
-fn declaration_graft_named_reachable(src: String, lexeme: String) -> Bool {
-  match declaration_graft_assemble_for(src: src) {
-    Accepted { value: root, diagnostics: _ } =>
-      declaration_graft_label_present(root: root, lexeme: lexeme)
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-data src_a: String = "module p\n"
-data src_b: String = "module p\n\nfn f(x: Int) -> Int { x }\n"
-data src_c: String = "module p\n\ntype Flag = On | Off\n"
-data src_h: String = "module p\n\ntype Name = String where brand(\"Name\")\n"
-data src_i: String = "module p\n\ntype Name = String where brand(\"Name\")\nfn f(x: Int) -> Int { x }\n"
-data src_d: String = "module p\n\ntype Flag = On | Off\nfn g(f: Flag) -> Flag { f }\n"
-data src_e: String = "module p\n\ntype Flag = On | Off\nfn h() -> Flag { On }\n"
-data src_f: String = "module p\n\ntype Flag = On | Off\nfn flip(f: Flag) -> Flag { match f { On => Off } }\n"
-data src_g: String = "module p\n\ntype Rec { n: Int }\nfn mk() -> Rec { Rec { n: 1 } }\n"
-data src_g_type_only: String = "module p\n\ntype Rec { n: Int }\n"
-
-test fn declaration_graft_empty_module_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_a)
-}
-
-test fn declaration_graft_fn_only_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_b)
-}
-
-test fn declaration_graft_type_only_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_c)
-}
-
-test fn declaration_graft_type_only_flag_is_named() -> Bool {
-  declaration_graft_named_reachable(src: src_c, lexeme: "Flag")
-}
-
-test fn declaration_graft_where_alias_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_h)
-}
-
-test fn declaration_graft_silent_drop_control_type_is_named() -> Bool {
-  declaration_graft_named_reachable(src: src_i, lexeme: "Name")
-}
-
-test fn declaration_graft_fn_referencing_type_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_d)
-}
-
-test fn declaration_graft_variant_construct_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_e)
-}
-
-test fn declaration_graft_match_variants_accepts() -> Bool {
-  declaration_graft_assemble_accepts(src: src_f)
-}
 
 // STANDING RED — body_lower_type_decl rehoming gate, not this graft.
 // smart-lynx-554: body_lower_type_decl rehomes a type_decl only when it carries a
 // where-clause; a record (`type Rec { n: Int }`, same shape as `type Wr { fld: Bool }`)
 // is absent from the normalized tree. Owner file: v2.compiler.body_lowering_fold.
 // Follow-up after gunbc#11582 merges; this PR does not open that file.
+// Green flatten-drop claims live in v2.test.claim.declaration_graft_assemble (per-PR discovery).
 test fn declaration_graft_record_type_only_accepts() -> Bool {
   declaration_graft_assemble_accepts(src: src_g_type_only)
 }
@@ -157,7 +26,6 @@ test fn declaration_graft_record_type_only_box_and_n_are_named() -> Bool {
     && declaration_graft_named_reachable(src: src_g_type_only, lexeme: "n")
 }
 
-// Same standing RED as type-only: field_decl_block never reaches the normalized tree.
 test fn declaration_graft_record_construct_accepts() -> Bool {
   declaration_graft_assemble_accepts(src: src_g)
 }
