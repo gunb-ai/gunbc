@@ -22,7 +22,6 @@ import gunbc.network_boot_delivery {
   SitePxeEdgeUnestablished,
   SitePxeEdgeArchitectureRefused,
   SiteBootstrapDiscovery,
-  SiteDiscoveryUnobserved,
   SiteBootstrapTransport,
   ArchitectureChainloader,
   BootDiscoveryHint,
@@ -54,12 +53,30 @@ type SiteDhcpOfferObservation
   | AddressOnlyOfferObserved { observation: DeclarationRef, observed_at: EpochMs }
   | NoOfferObserved
 
-fn site_discovery_from_offer(offer: SiteDhcpOfferObservation, hint: BootDiscoveryHint) -> SiteBootstrapDiscovery {
+// WHY DISCOVERY DID NOT ANSWER IS KEPT, not collapsed into SiteDiscoveryUnobserved: no offer at all,
+// an address-only offer (the measured mtcollins1 segment), and an offer naming a different boot file
+// are three different facts about the segment with three different remedies, and the two observed
+// ones carry the observation that established them.
+type SiteDiscoveryRefusal
+  = NoBootOfferObserved
+  | AddressOnlyOffer { observation: DeclarationRef, observed_at: EpochMs }
+  | OfferedFilenameMismatch { offered: NonEmptyStr, observation: DeclarationRef, observed_at: EpochMs }
+
+type SiteDiscoveryOutcome
+  = SiteDiscoveryAnswered { mode: SiteBootstrapDiscovery }
+  | SiteDiscoveryRefused { refusal: SiteDiscoveryRefusal }
+
+fn site_discovery_outcome(offer: SiteDhcpOfferObservation, hint: BootDiscoveryHint) -> SiteDiscoveryOutcome {
   match offer {
-    NoOfferObserved => SiteDiscoveryUnobserved
-    AddressOnlyOfferObserved { observation: _, observed_at: _ } => SiteDiscoveryUnobserved
-    BootOfferObserved { mode: mode, offered_filename: f, observation: _, observed_at: _ } =>
-      if offered_filename_matches_hint(offered: f, hint: hint) { mode } else { SiteDiscoveryUnobserved }
+    NoOfferObserved => SiteDiscoveryRefused { refusal: NoBootOfferObserved }
+    AddressOnlyOfferObserved { observation: o, observed_at: t } =>
+      SiteDiscoveryRefused { refusal: AddressOnlyOffer { observation: o, observed_at: t } }
+    BootOfferObserved { mode: mode, offered_filename: f, observation: o, observed_at: t } =>
+      if offered_filename_matches_hint(offered: f, hint: hint) {
+        SiteDiscoveryAnswered { mode: mode }
+      } else {
+        SiteDiscoveryRefused { refusal: OfferedFilenameMismatch { offered: f, observation: o, observed_at: t } }
+      }
   }
 }
 
@@ -163,17 +180,18 @@ type SiteEdgeClientAdmission
   | SiteEdgeUnknownMachineRefused { mac: NonEmptyStr }
   | SiteEdgeUnknownArchitectureRefused { arch_code: Int }
   | SiteEdgeArchitectureRefusedByEdge { architecture: Architecture }
+  | SiteEdgeDiscoveryRefused { refusal: SiteDiscoveryRefusal }
   | SiteEdgeNotEstablished { standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityAxis> }
 
 fn client_is_known(roster: SiteEdgeRoster, mac: NonEmptyStr) -> Bool {
   roster.known_client_macs |> any(m => m as String == mac as String)
 }
 
-fn observed_edge(roster: SiteEdgeRoster) -> SitePxeEdge {
+fn observed_edge(roster: SiteEdgeRoster, discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
   SitePxeEdge {
     site: roster.site,
     admitted_architectures: roster.admitted_architectures,
-    discovery: site_discovery_from_offer(offer: roster.offer, hint: chainloader_hint(transport: roster.bootstrap_transport)),
+    discovery: discovery,
     bootstrap_transport: roster.bootstrap_transport,
     global_endpoint_reachability: global_https_reachability_from_boot_network(obs: roster.reachability),
   }
@@ -192,10 +210,14 @@ fn site_edge_client_admission(roster: SiteEdgeRoster, request: EdgeClientRequest
     if client_is_known(roster: roster, mac: request.mac) == false {
       SiteEdgeUnknownMachineRefused { mac: request.mac }
     } else {
-      site_edge_admission_of_standing(
-        standing: site_pxe_edge_standing(edge: observed_edge(roster: roster), client_architecture: Aarch64, observation: roster.observation, observed_at: roster.observed_at),
-        unreachable: boot_network_reachability_missing(obs: roster.reachability),
-      )
+      match site_discovery_outcome(offer: roster.offer, hint: chainloader_hint(transport: roster.bootstrap_transport)) {
+        SiteDiscoveryRefused { refusal: r } => SiteEdgeDiscoveryRefused { refusal: r }
+        SiteDiscoveryAnswered { mode: mode } =>
+          site_edge_admission_of_standing(
+            standing: site_pxe_edge_standing(edge: observed_edge(roster: roster, discovery: mode), client_architecture: Aarch64, observation: roster.observation, observed_at: roster.observed_at),
+            unreachable: boot_network_reachability_missing(obs: roster.reachability),
+          )
+      }
     }
   }
 }
