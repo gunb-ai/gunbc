@@ -4,7 +4,6 @@ import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.network_boot_predecessor_census {
   AuthoredPlanNotEstablishment,
-  CitedUpstreamShape,
   DurableOriginNotBootOrigin,
   FrozenMachineLocalNotFleetAuthority,
   HttpBootConstructorBesideNotInstead,
@@ -30,7 +29,6 @@ test fn census_identity_joins_the_named_predecessors() -> Bool {
     && disposition_is(module_path: "gunbc.cloudflare.r2_origin", decl_name: "fabric_durable_origin_standing", expected: DurableOriginNotBootOrigin)
     && disposition_is(module_path: "extdeps.formats.dnsmasq", decl_name: "dnsmasq_protocol", expected: SiteAdapterMayConsumeFormat)
     && disposition_is(module_path: "extdeps.firmware.uefi_http_boot", decl_name: "extdeps_external_authority_anchor", expected: HttpBootConstructorBesideNotInstead)
-    && disposition_is(module_path: "extdeps.firmware.ipxe", decl_name: "extdeps_external_authority_anchor", expected: CitedUpstreamShape)
     && disposition_is(module_path: "gunbc.spark.dgx_pxe_boot", decl_name: "SparkUefiPxeConfiguration", expected: FrozenMachineLocalNotFleetAuthority)
     && disposition_is(module_path: "extdeps.provisioning.network_boot", decl_name: "network_uefi_bootloader_artifact", expected: AuthoredPlanNotEstablishment)
 }

@@ -191,7 +191,7 @@ test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
     && contains(cfg, "dhcp-match=set:efi-arm64,option:client-arch,11")
     && contains(cfg, "dhcp-host=02:00:00:00:0c:01,set:onboarding-known")
     && contains(cfg, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi")
-    && contains(cfg, "ipxe.org/howto/chainloading")
+    && contains(cfg, "iPXE bin-arm64-efi/snponly.efi per ipxe.org/howto/chainloading")
     && contains(cfg, "enable-tftp")
     && contains(cfg, "tftp-root=/srv/edge-tftp")
     && length(split(cfg, "dhcp-boot=")) == 2

@@ -1,6 +1,6 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
-import std.types { Bool, List, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64 }
@@ -37,10 +37,14 @@ data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: hex_a })
 data digest_b: ContentHash = Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
 
 fn pinned(digest: ContentHash) -> SitePxeEdgeChainloaderPin {
+  pinned_as(filename: "snponly.efi", digest: digest)
+}
+
+fn pinned_as(filename: NonEmptyStr, digest: ContentHash) -> SitePxeEdgeChainloaderPin {
   SitePxeEdgeChainloaderPinned {
     transport: ArchitectureChainloader {
       architecture: Aarch64,
-      filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+      filename_hint: DhcpFilenameHint { filename: filename },
       chainloader_digest: digest,
     },
   }
@@ -84,6 +88,15 @@ test fn mismatched_digest_closes_the_gate() -> Bool {
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == ["chainloader-digest-mismatch"]
+}
+
+test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool {
+  site_pxe_edge_gate_causes(
+    pin: pinned_as(filename: "grubnetaa64.efi", digest: digest_a),
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  ) == ["chainloader-not-the-ipxe-arm64-build: pinned grubnetaa64.efi, expected bin-arm64-efi/snponly.efi"]
 }
 
 test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {

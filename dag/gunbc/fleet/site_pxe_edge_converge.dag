@@ -66,6 +66,7 @@ import gunbc.network_boot_delivery {
   DhcpFilenameHint,
   PresignedUrlAvailabilityFence,
 }
+import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly, ipxe_build_target_path }
 import gunbc.site_uefi_arm64_pxe_edge { site_edge_proxy_dhcp_config, first_onboarding_known_client_macs }
 
 // THE FIRST ONBOARDING SEGMENT'S EDGE, CONVERGED ON srv4 THROUGH THE FLEET-CONVERGE WORKFLOW.
@@ -109,7 +110,7 @@ type SitePxeEdgeChainloaderPin
   | SitePxeEdgeChainloaderUnpinned { obligation: NonEmptyStr }
 
 data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChainloaderUnpinned {
-  obligation: "build the iPXE bin-arm64-efi chainloader (extdeps.firmware.ipxe) at a recorded upstream revision, pin its sha256 here as an ArchitectureChainloader, and place the file in site_pxe_edge_tftp_root",
+  obligation: "build iPXE extdeps.firmware.ipxe ipxe_arm64_efi_snponly at a recorded upstream revision, pin its sha256 here as an ArchitectureChainloader, and place the file in site_pxe_edge_tftp_root",
 }
 
 type SitePxeEdgeChainloaderTarget {
@@ -210,7 +211,11 @@ fn site_pxe_edge_gate_causes(
             ChainloaderDigestUnobservable { reason: r } => [concat("chainloader-unobservable: ", r)]
             ChainloaderDigestObserved { digest: d } =>
               if content_hash_equal(left: d, right: target.digest) { [] } else { ["chainloader-digest-mismatch"] }
-          }
+          } + (if (target.filename as String) == (ipxe_arm64_efi_snponly.image as String) {
+            []
+          } else {
+            [join(["chainloader-not-the-ipxe-arm64-build: pinned ", target.filename as String, ", expected ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String], "")]
+          })
       },
       match dnsmasq_binary {
         SitePxeEdgeProbeHeld => []

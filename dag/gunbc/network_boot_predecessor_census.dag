@@ -2,8 +2,6 @@ module gunbc.network_boot_predecessor_census
 
 import std.types { Bool, List, String }
 import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.uri { Https }
-import extdeps.firmware.ipxe { extdeps_external_authority_anchor }
 
 // Predecessor census consumed by gunbc.network_boot_delivery join_network_boot_delivery:
 // an observation that names a Frozen or AuthoredPlan (or other non-client) predecessor
@@ -16,7 +14,6 @@ type NetworkBootPredecessorDisposition
   | DurableOriginNotBootOrigin
   | SiteAdapterMayConsumeFormat
   | HttpBootConstructorBesideNotInstead
-  | CitedUpstreamShape
 
 type NetworkBootPredecessorRow {
   subject: DeclarationRef
@@ -48,10 +45,6 @@ fn network_boot_predecessor_census() -> List<NetworkBootPredecessorRow> {
     NetworkBootPredecessorRow {
       subject: decl_ref(module_path: "extdeps.firmware.uefi_http_boot", decl_name: "extdeps_external_authority_anchor"),
       disposition: HttpBootConstructorBesideNotInstead,
-    },
-    NetworkBootPredecessorRow {
-      subject: decl_ref(module_path: "extdeps.firmware.ipxe", decl_name: "extdeps_external_authority_anchor"),
-      disposition: CitedUpstreamShape,
     },
     NetworkBootPredecessorRow {
       subject: decl_ref(module_path: "gunbc.spark.dgx_pxe_boot", decl_name: "SparkUefiPxeConfiguration"),
@@ -96,11 +89,6 @@ fn observation_cannot_establish_network_boot(obs: DeclarationRef) -> Bool {
         DurableOriginNotBootOrigin => true
         SiteAdapterMayConsumeFormat => true
         HttpBootConstructorBesideNotInstead => true
-        CitedUpstreamShape =>
-          match extdeps_external_authority_anchor.uri.scheme {
-            Https => true
-            _ => true
-          }
       }
   }
 }
