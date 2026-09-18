@@ -782,6 +782,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.spark_pair_serving_apply_wet_witness", function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet" },
+      entry: "dag/test/claim/spark/spark_pair_serving_apply_wet_witness_test.dag",
+      function: "the_apply_seam_reads_the_authority_before_planning_and_refuses_off_fleet",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.devboot_text_blob_real_execution", function: "a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution" },
       entry: "dag/test/claim/devboot_text_blob_real_execution_witness_test.dag",
       function: "a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution",
