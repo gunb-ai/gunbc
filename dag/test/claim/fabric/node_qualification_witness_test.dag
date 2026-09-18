@@ -1,7 +1,7 @@
 module test.claim.fabric.node_qualification_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
-import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count }
+import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count, nanosecond_count, byte_size_count }
 import product.placement_supply { HostIdentity }
 import extdeps.ethernet.link_mode {
   ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_50gbase_cr2, link_mode_eq, link_mode_aggregate,
@@ -15,10 +15,14 @@ import extdeps.nvidia.cuda_device_attribute {
 }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
+  CollectiveCurveReading,
   CountRead, CountUnread, ByteSizeRead, ByteSizeUnread,
   LinkModeRead, LinkModeUnread, PcieLinkRead, PcieLinkUnread,
   CollectiveCurveRead, CollectiveCurveUnread,
   EthtoolLinkModes, LspciLnkSta, NcclTestsAllReducePerf,
+  SmallMessageShapeUncharacterized, SmallMessageStepThenPlateau,
+  EngineBufferModeUnestablished, EngineBufferModeInPlace, EngineBufferModeOutOfPlace,
+  PerLayerAllReduceCountUnestablished, PerLayerAllReduceCount,
   AcceleratorCountAgrees, AcceleratorCountFallsShort, AcceleratorCountUnread,
   RailLinkModeAgrees, RailLinkModeFallsShort, RailLinkModeUnread,
   NicPcieFallsShort, NicPcieUnread,
@@ -29,7 +33,7 @@ import product.fabric.node_qualification {
   qualify_node, admit_qualified_node, qualify_rail_link_mode, qualify_accelerator_count,
   qualify_rank_symmetry,
 }
-import gunbc.spark.group_b_node_qualification { group_b_qualification_admission }
+import gunbc.spark.group_b_node_qualification { group_b_qualification_admission, group_b_measured }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -55,7 +59,18 @@ fn fx_sample() -> CollectiveSample {
   CollectiveSample {
     message_bytes: byte_size(count: 8),
     bus_bandwidth: bandwidth(count: 200),
-    latency: nanosecond(count: 10),
+    in_place_latency: nanosecond(count: 10),
+    out_of_place_latency: nanosecond(count: 10),
+  }
+}
+
+fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
+  CollectiveCurveRead {
+    samples: samples,
+    instrument: NcclTestsAllReducePerf,
+    small_message_shape: SmallMessageShapeUncharacterized,
+    engine_buffer_mode: EngineBufferModeUnestablished,
+    per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
   }
 }
 
@@ -65,18 +80,15 @@ fn fx_measured_all_agree() -> MeasuredNodeDelivery {
     usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
     rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
     nic_pcie: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
-    collective: CollectiveCurveRead {
-      samples: [fx_sample()],
-      instrument: NcclTestsAllReducePerf,
-    },
+    collective: fx_curve(samples: [fx_sample()]),
     ranks: [
       RankCollectiveReading {
         rank: "rank-0" as HostIdentity,
-        curve: CollectiveCurveRead { samples: [fx_sample()], instrument: NcclTestsAllReducePerf },
+        curve: fx_curve(samples: [fx_sample()]),
       },
       RankCollectiveReading {
         rank: "rank-1" as HostIdentity,
-        curve: CollectiveCurveRead { samples: [fx_sample()], instrument: NcclTestsAllReducePerf },
+        curve: fx_curve(samples: [fx_sample()]),
       },
     ],
     gpu_direct_rdma: CudaAttributeRead {
@@ -237,14 +249,15 @@ fn fx_slow_sample() -> CollectiveSample {
   CollectiveSample {
     message_bytes: byte_size(count: 8),
     bus_bandwidth: bandwidth(count: 200),
-    latency: nanosecond(count: 5000),
+    in_place_latency: nanosecond(count: 5000),
+    out_of_place_latency: nanosecond(count: 5000),
   }
 }
 
 fn fx_rank(id: String, sample: CollectiveSample) -> RankCollectiveReading {
   RankCollectiveReading {
     rank: id as HostIdentity,
-    curve: CollectiveCurveRead { samples: [sample], instrument: NcclTestsAllReducePerf },
+    curve: fx_curve(samples: [sample]),
   }
 }
 
@@ -254,10 +267,7 @@ fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDel
     usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
     rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
     nic_pcie: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
-    collective: CollectiveCurveRead {
-      samples: [fx_sample()],
-      instrument: NcclTestsAllReducePerf,
-    },
+    collective: fx_curve(samples: [fx_sample()]),
     ranks: ranks,
     gpu_direct_rdma: CudaAttributeRead {
       attribute: CudaDevAttrGpuDirectRdmaSupported,
@@ -340,5 +350,39 @@ test fn group_b_live_receipt_is_not_qualified() -> Bool {
           GpuDirectRdmaAgrees { standing: _ } => false
           GpuDirectRdmaEvidenceMissing { standing: _ } => false
         }
+  }
+}
+
+test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
+  match group_b_measured.collective {
+    CollectiveCurveUnread { because: _ } => false
+    CollectiveCurveRead {
+      samples: samples,
+      instrument: _,
+      small_message_shape: shape,
+      engine_buffer_mode: buf,
+      per_layer_all_reduce_count: layers,
+    } =>
+      match samples.first() {
+        Absent => false
+        Present { value: s } =>
+          byte_size_count(b: s.message_bytes) == 8192
+            && nanosecond_count(n: s.in_place_latency) == 108420
+            && nanosecond_count(n: s.out_of_place_latency) == 179540
+            && nanosecond_count(n: s.in_place_latency) != nanosecond_count(n: s.out_of_place_latency)
+            && match shape {
+              SmallMessageStepThenPlateau { step_at: at } => byte_size_count(b: at) == 16384
+              SmallMessageShapeUncharacterized => false
+            }
+            && match buf {
+              EngineBufferModeUnestablished => true
+              EngineBufferModeInPlace => false
+              EngineBufferModeOutOfPlace => false
+            }
+            && match layers {
+              PerLayerAllReduceCountUnestablished => true
+              PerLayerAllReduceCount { count: _ } => false
+            }
+      }
   }
 }

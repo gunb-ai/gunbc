@@ -14,6 +14,8 @@ import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery,
   CountUnread, ByteSizeUnread, LinkModeRead, PcieLinkRead,
   CollectiveCurveRead, CollectiveSample, NcclTestsAllReducePerf,
+  SmallMessageStepThenPlateau,
+  EngineBufferModeUnestablished, PerLayerAllReduceCountUnestablished,
   EthtoolLinkModes, LspciLnkSta,
   NodeQualificationAdmission, qualify_node, admit_qualified_node,
 }
@@ -32,31 +34,41 @@ data group_b_fabric_node: HostIdentity = operator_host_srv9
 data advertised_spark_connectx7_per_port_link: PcieLink = PcieLink { generation: Gen5, lane_count: 4 }
 
 // 4-RANK all_reduce_perf ON THE LIVE GLM TP=4 ARM, 2026-09-18T03:48Z UTC.
-// Shared window with serving (vLLM glm-native-tp4, gpu_memory_utilization 0.84); these latencies
-// are therefore an UPPER BOUND, not an idle floor. dtype=half, in-place column, -c 0, 10 warmup
-// + 40 iters. Transport env copied from the serving container: NCCL_SOCKET_IFNAME=enp1s0f1np1,
-// NCCL_IB_HCA=rocep1s0f1, RoCEv2. NCCL 2.31.2 user-prefix (not the vLLM image copy). First
-// sample is 8192 B / 4096 half elements -- the TP hidden-state all-reduce size.
+// Shared window with serving (vLLM glm-native-tp4, gpu_memory_utilization 0.84); latencies are an
+// UPPER BOUND, not an idle floor. dtype=half, -c 0, 10 warmup + 40 iters. BOTH in-place and
+// out-of-place columns are carried: vLLM's tensor-parallel all-reduce buffer mode is unestablished,
+// so the receipt does not pick a column. Per-layer all-reduce count is likewise unestablished
+// (dense-TP 45x2 vs MoE replacing the second with expert-parallel all-to-all). Do not collapse
+// those into a single millisecond figure. Transport env copied from the serving container:
+// NCCL_SOCKET_IFNAME=enp1s0f1np1, NCCL_IB_HCA=rocep1s0f1, RoCEv2. NCCL 2.31.2 user-prefix.
+// First sample is 8192 B. The 8KB->16KB step then 16-32KB plateau is recorded as a protocol-
+// boundary candidate (LL/LL128/Simple), not smoothed as bandwidth.
 
-fn group_b_all_reduce_sample(message_bytes: Nat, latency_ns: Nat, busbw: Nat) -> CollectiveSample {
+fn group_b_all_reduce_sample(
+  message_bytes: Nat,
+  in_place_ns: Nat,
+  out_of_place_ns: Nat,
+  busbw: Nat,
+) -> CollectiveSample {
   CollectiveSample {
     message_bytes: byte_size(count: message_bytes),
     bus_bandwidth: bandwidth(count: busbw),
-    latency: nanosecond(count: latency_ns),
+    in_place_latency: nanosecond(count: in_place_ns),
+    out_of_place_latency: nanosecond(count: out_of_place_ns),
   }
 }
 
-fn group_b_all_reduce_in_place_half_curve() -> List<CollectiveSample> {
+fn group_b_all_reduce_half_curve() -> List<CollectiveSample> {
   [
-    group_b_all_reduce_sample(message_bytes: 8192, latency_ns: 108420, busbw: 110000000),
-    group_b_all_reduce_sample(message_bytes: 16384, latency_ns: 180250, busbw: 140000000),
-    group_b_all_reduce_sample(message_bytes: 24576, latency_ns: 189010, busbw: 200000000),
-    group_b_all_reduce_sample(message_bytes: 32768, latency_ns: 187860, busbw: 260000000),
-    group_b_all_reduce_sample(message_bytes: 65536, latency_ns: 295520, busbw: 330000000),
-    group_b_all_reduce_sample(message_bytes: 131072, latency_ns: 516750, busbw: 380000000),
-    group_b_all_reduce_sample(message_bytes: 262144, latency_ns: 945330, busbw: 420000000),
-    group_b_all_reduce_sample(message_bytes: 524288, latency_ns: 1978540, busbw: 400000000),
-    group_b_all_reduce_sample(message_bytes: 1048576, latency_ns: 4494060, busbw: 350000000),
+    group_b_all_reduce_sample(message_bytes: 8192, in_place_ns: 108420, out_of_place_ns: 179540, busbw: 110000000),
+    group_b_all_reduce_sample(message_bytes: 16384, in_place_ns: 180250, out_of_place_ns: 184410, busbw: 140000000),
+    group_b_all_reduce_sample(message_bytes: 24576, in_place_ns: 189010, out_of_place_ns: 202200, busbw: 200000000),
+    group_b_all_reduce_sample(message_bytes: 32768, in_place_ns: 187860, out_of_place_ns: 188750, busbw: 260000000),
+    group_b_all_reduce_sample(message_bytes: 65536, in_place_ns: 295520, out_of_place_ns: 302540, busbw: 330000000),
+    group_b_all_reduce_sample(message_bytes: 131072, in_place_ns: 516750, out_of_place_ns: 510550, busbw: 380000000),
+    group_b_all_reduce_sample(message_bytes: 262144, in_place_ns: 945330, out_of_place_ns: 950000, busbw: 420000000),
+    group_b_all_reduce_sample(message_bytes: 524288, in_place_ns: 1978540, out_of_place_ns: 2070680, busbw: 400000000),
+    group_b_all_reduce_sample(message_bytes: 1048576, in_place_ns: 4494060, out_of_place_ns: 4614400, busbw: 350000000),
   ]
 }
 
@@ -86,8 +98,11 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
     instrument: LspciLnkSta,
   },
   collective: CollectiveCurveRead {
-    samples: group_b_all_reduce_in_place_half_curve(),
+    samples: group_b_all_reduce_half_curve(),
     instrument: NcclTestsAllReducePerf,
+    small_message_shape: SmallMessageStepThenPlateau { step_at: byte_size(count: 16384) },
+    engine_buffer_mode: EngineBufferModeUnestablished,
+    per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
   },
   ranks: [],
   gpu_direct_rdma: CudaAttributeRead {

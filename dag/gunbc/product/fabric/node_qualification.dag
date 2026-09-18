@@ -63,11 +63,31 @@ type PcieLinkReading
 type CollectiveSample {
   message_bytes: ByteSize
   bus_bandwidth: Bandwidth
-  latency: Nanosecond
+  in_place_latency: Nanosecond
+  out_of_place_latency: Nanosecond
 }
 
+type CollectiveSmallMessageShape
+  = SmallMessageStepThenPlateau { step_at: ByteSize }
+  | SmallMessageShapeUncharacterized
+
+type EngineBufferModeStanding
+  = EngineBufferModeInPlace
+  | EngineBufferModeOutOfPlace
+  | EngineBufferModeUnestablished
+
+type PerLayerAllReduceCountStanding
+  = PerLayerAllReduceCount { count: Nat }
+  | PerLayerAllReduceCountUnestablished
+
 type CollectiveCurveReading
-  = CollectiveCurveRead { samples: List<CollectiveSample>, instrument: CollectiveInstrument }
+  = CollectiveCurveRead {
+      samples: List<CollectiveSample>,
+      instrument: CollectiveInstrument,
+      small_message_shape: CollectiveSmallMessageShape,
+      engine_buffer_mode: EngineBufferModeStanding,
+      per_layer_all_reduce_count: PerLayerAllReduceCountStanding,
+    }
   | CollectiveCurveUnread { because: NonEmptyStr }
 
 type RankCollectiveReading {
@@ -218,6 +238,14 @@ fn first_collective_sample(samples: List<CollectiveSample>) -> CollectiveSample?
   samples.first()
 }
 
+fn sample_stricter_latency(s: CollectiveSample) -> Nanosecond {
+  if nanosecond_count(n: s.in_place_latency) >= nanosecond_count(n: s.out_of_place_latency) {
+    s.in_place_latency
+  } else {
+    s.out_of_place_latency
+  }
+}
+
 fn qualify_collective_latency(
   ceiling: Nanosecond,
   reading: CollectiveCurveReading,
@@ -225,16 +253,25 @@ fn qualify_collective_latency(
   match reading {
     CollectiveCurveUnread { because: b } =>
       CollectiveLatencyUnread { ceiling: ceiling, because: b }
-    CollectiveCurveRead { samples: samples, instrument: _ } =>
+    CollectiveCurveRead {
+      samples: samples,
+      instrument: _,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+    } =>
       match first_collective_sample(samples: samples) {
         Absent => CollectiveLatencyUnread {
           ceiling: ceiling,
           because: "nccl-tests returned no samples" as NonEmptyStr,
         }
-        Present { value: s } => if nanosecond_count(n: s.latency) <= nanosecond_count(n: ceiling) {
-          CollectiveLatencyAgrees { ceiling: ceiling, measured: s.latency }
-        } else {
-          CollectiveLatencyFallsShort { ceiling: ceiling, measured: s.latency }
+        Present { value: s } => {
+          let measured = sample_stricter_latency(s: s)
+          if nanosecond_count(n: measured) <= nanosecond_count(n: ceiling) {
+            CollectiveLatencyAgrees { ceiling: ceiling, measured: measured }
+          } else {
+            CollectiveLatencyFallsShort { ceiling: ceiling, measured: measured }
+          }
         }
       }
   }
@@ -247,7 +284,13 @@ fn qualify_collective_bandwidth(
   match reading {
     CollectiveCurveUnread { because: b } =>
       CollectiveBandwidthUnread { floor: floor, because: b }
-    CollectiveCurveRead { samples: samples, instrument: _ } =>
+    CollectiveCurveRead {
+      samples: samples,
+      instrument: _,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+    } =>
       match first_collective_sample(samples: samples) {
         Absent => CollectiveBandwidthUnread {
           floor: floor,
@@ -265,7 +308,13 @@ fn qualify_collective_bandwidth(
 fn rank_curve_unread_reason(curve: CollectiveCurveReading) -> NonEmptyStr? {
   match curve {
     CollectiveCurveUnread { because: b } => Present { value: b }
-    CollectiveCurveRead { samples: _, instrument: _ } => none
+    CollectiveCurveRead {
+      samples: _,
+      instrument: _,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+    } => none
   }
 }
 
@@ -279,10 +328,16 @@ fn first_unread_rank(ranks: List<RankCollectiveReading>) -> RankCollectiveReadin
 fn rank_first_latency(curve: CollectiveCurveReading) -> Nat? {
   match curve {
     CollectiveCurveUnread { because: _ } => none
-    CollectiveCurveRead { samples: samples, instrument: _ } =>
+    CollectiveCurveRead {
+      samples: samples,
+      instrument: _,
+      small_message_shape: _,
+      engine_buffer_mode: _,
+      per_layer_all_reduce_count: _,
+    } =>
       match first_collective_sample(samples: samples) {
         Absent => none
-        Present { value: s } => Present { value: nanosecond_count(n: s.latency) }
+        Present { value: s } => Present { value: nanosecond_count(n: sample_stricter_latency(s: s)) }
       }
   }
 }
