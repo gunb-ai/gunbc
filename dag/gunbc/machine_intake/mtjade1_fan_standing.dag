@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtjade1_fan_standing
 
-import std.types { NonEmptyStr }
+import std.types { Bool, NonEmptyStr }
 import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
 import gunbc.machine_intake_bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
@@ -22,6 +22,10 @@ type ResidenceAcousticIntent
       site: JadeSite
       cited_act: NonEmptyStr
     }
+  | FailsafeFullDutyAdmitted {
+      site: JadeSite
+      cited_act: NonEmptyStr
+    }
 
 data mtjade1_residence_acoustic_intent: ResidenceAcousticIntent = UnboundedFailsafeFullDutyNotTolerated {
   site: OperatorResidence,
@@ -30,6 +34,7 @@ data mtjade1_residence_acoustic_intent: ResidenceAcousticIntent = UnboundedFails
 
 type FailsafeWindowClose
   = ChassisHostPowerOff
+  | FailsafeWindowUnbounded
 
 data mtjade1_failsafe_window_close: FailsafeWindowClose = ChassisHostPowerOff
 
@@ -48,6 +53,20 @@ type FirstPostFanCapture
 data mtjade1_first_post_fan_capture: FirstPostFanCapture = AwaitingFirstPostWithDimms
 
 data mtjade1_host_thermal_before_next_power_on: HostThermalTelemetry = HostThermalAbsentBeforePost
+
+fn residence_refuses_unbounded_failsafe(intent: ResidenceAcousticIntent) -> Bool {
+  match intent {
+    UnboundedFailsafeFullDutyNotTolerated { site: _, cited_act: _ } => true
+    FailsafeFullDutyAdmitted { site: _, cited_act: _ } => false
+  }
+}
+
+fn failsafe_window_closes_by_chassis_power_off(close: FailsafeWindowClose) -> Bool {
+  match close {
+    ChassisHostPowerOff => true
+    FailsafeWindowUnbounded => false
+  }
+}
 
 // OpenBMC: missing control-sensor reading is BmcFanDutyFromSensorFailsafe (extdeps.bmc.types
 // bmc_fan_duty_decision). That is the failsafe->curve transition: Present reading selects the

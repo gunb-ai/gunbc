@@ -1,6 +1,6 @@
 module extdeps.ampere.mt_jade_getting_started_guide.chassis
 
-import std.types { NonEmptyStr }
+import std.types { Bool, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Percent, percent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
@@ -52,6 +52,16 @@ data mt_jade_gsg_bmc_ethernet_port: GsgRearManagementEthernet = NamedOnRearPanel
 
 data mt_jade_gsg_bmc_ethernet_phy: GsgUnstated = GsgUnstated {
   topic: "PHY and controller SKU. Table 6 names BMC Ethernet Port / Management Ethernet and does not name the PHY.",
+}
+
+fn gsg_rear_management_ethernet_names(port: GsgRearManagementEthernet, expected: NonEmptyStr) -> Bool {
+  match port {
+    NamedOnRearPanel { figure_or_table: t } => t == expected
+  }
+}
+
+fn gsg_unstated_topic_eq(row: GsgUnstated, expected: NonEmptyStr) -> Bool {
+  row.topic == expected
 }
 
 // Appendix E, 2S1P / 2S2P-as-forced-1P without the 1P BMC image: "Fan will run at 100% speed".

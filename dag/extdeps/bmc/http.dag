@@ -25,13 +25,19 @@ data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffol
 data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: every operation below re-spells the shell/curl transport handler per row (the hardwired-single-transport trap; the DMTF-owned interface facts are only the method x path x auth-mode axes). Dissolves when the operations become declarative transport rows realized by the shared HTTP-client machinery - i.e. when `transport rest` (or a derived-curl realization of the extdeps.http.client shape) supports the three axes these argv rows carry by hand: netrc/basic auth, insecure-TLS (self-signed BMC certs), and request-body-from-file. Until then the argv rows stay - live BMC consumers (bmc_onboard*, bmc_read_telemetry, bmc_first_contact, srv3_boot_once_cd) execute them as-is."
 
 // LOAD-BEARING: success:Bool derives from exit_success, so curl MUST fail-close on HTTP status.
-// Every argv carries --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on 401/403/404/5xx and
-// `success` reads a rejected auth or a missing resource as TRUE — a §5 fail-open: a factory-401
-// misreads as FactoryCredentialActive (so an already-rotated BMC gets re-rotated), and a rotation
-// PATCH that 401s reports rotated while changing nothing (the 'secret populated, server never
-// rotated' state). --fail-with-body (not bare --fail) keeps the OpenBMC error body in `body` for
-// diagnosis (e.g. PropertyValueFormatError on a rejected password). Do not drop the flag; a new
-// redfish op without it re-opens the arm. Found by execution against srv4 2026-07-23.
+// Authenticated resource ops carry --fail-with-body (curl >=7.76). WITHOUT it curl exits 0 on
+// 401/403/404/5xx and `success` reads a rejected auth or a missing resource as TRUE — a §5
+// fail-open: a factory-401 misreads as FactoryCredentialActive (so an already-rotated BMC gets
+// re-rotated), and a rotation PATCH that 401s reports rotated while changing nothing (the
+// 'secret populated, server never rotated' state). --fail-with-body (not bare --fail) keeps the
+// OpenBMC error body in `body` for diagnosis (e.g. PropertyValueFormatError on a rejected
+// password). Do not drop the flag on those ops; a new authenticated redfish op without it
+// re-opens the arm. Found by execution against srv4 2026-07-23.
+//
+// ONE ADMITTED EXCEPTION: ProbeServiceRoot. HTTP status is the observation, so the argv omits
+// --fail-with-body and takes write_out so the caller binds a classified three-digit code. curl
+// still fails closed on an unreachable host. A new op may omit the flag only when status is the
+// consumed answer in that same shape, never because a caller would rather treat 404 as success.
 
 // EVERY REDFISH OPERATION AUTHENTICATES BY FILE, AND THE ABSENCE OF `Secret` IN THIS MODULE'S
 // IMPORTS IS THE RECEIPT. GetSystem, GetPower and GetThermal each declared `password: Secret` and
