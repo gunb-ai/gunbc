@@ -381,6 +381,26 @@ type FabricLegEepromObservation {
 // what a QSFP-DD breakout physically is. The receipt identity survived that defect precisely because
 // it is per-acquisition: a shared row could not have represented two legs claiming one serial, and
 // the witness that compares serials across rows is what makes the recurrence visible.
+// ── THE REPROGRAMMING DATE IS DISPUTED IN THIS CORPUS, AND IT IS NOT SETTLED HERE ─────────────
+//
+// TWO SPELLINGS ARE CARRIED TODAY AND THEY ARE ONE DAY APART. gunbc.product.breakout_leg_programming
+// -- the authority that OWNS the programming event -- and the rows below say the operator reprogrammed
+// every leg on 2026-09-16; gunbc.spark.managed_access_bootstrap's annotation about the grants says
+// 2026-09-17. One event cannot have two dates, so at least one of them is wrong, and this file is
+// about to become the historical authority for the switch investigation -- which is exactly when
+// silently picking the majority spelling would be the worst available move.
+//
+// THE LIKELIEST RECONCILIATION IS A TIME ZONE AND IT IS NOT ASSERTED AS THE ANSWER. These hosts report
+// local time at UTC-4 -- the derived image's own Created reads 2026-09-17T14:55:06-04:00 -- so an
+// evening event on the 16th local is the 17th in UTC, and two readers recording "the day it happened"
+// off different clocks would produce exactly this pair. That is a HYPOTHESIS with a named
+// discriminator, not a finding: what settles it is the programmer's own receipt with its offset, and
+// nobody has read one into this corpus.
+//
+// SO THE DATE BELOW IS THE ACQUISITION'S, WHICH IS A DIFFERENT FACT. `observed_on` says when this
+// repository read the bytes; the invalidating event names the reprogramming without re-spelling a
+// date this file cannot ground. A row that carried both would be asserting the disputed one.
+
 // ── THE PRE-REFLASH READING, RESTORED ────────────────────────────────────────────────────────
 //
 // THIS ROW WAS DELETED IN A MERGE AND THAT DELETION REWROTE HISTORY. main carried spark-ac79's last
@@ -417,7 +437,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
-    acquisition: AcquisitionInvalidatedByReflash { invalidating_event: "the operator reprogrammed every leg of both breakouts to the NVIDIA (ETH) coding on 2026-09-16; this leg was re-read on that date and its current reading is the spark-ac79 row below" as NonEmptyStr },
+    acquisition: AcquisitionInvalidatedByReflash { invalidating_event: "the operator reprogrammed every leg of both breakouts to the NVIDIA (ETH) coding with an FS BOX V4, and this leg was re-read afterwards -- its current reading is the spark-ac79 row below. THE EVENT'S DATE IS DISPUTED IN THIS CORPUS: gunbc.product.breakout_leg_programming and the post-reflash rows here say 2026-09-16, gunbc.spark.managed_access_bootstrap says 2026-09-17, and these hosts run at UTC-4 so an evening event is one day later in UTC. It is deliberately not re-spelled on this row: the ordering this row depends on -- read, then reprogram, then re-read -- holds under either date, and the programmer's own receipt with its offset is what would settle which" as NonEmptyStr },
   },
   FabricLegEepromObservation {
     host: "spark-3bd5" as NonEmptyStr,

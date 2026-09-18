@@ -21,7 +21,7 @@ import product.cable_plant_assessment { CableLegReading, LegReadingTaken, LegNev
 import gunbc.spark.fabric_switch_observed {
   fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
   fabric_leg_eeprom_observations, fabric_leg_reading, fabric_cable_plant,
-  fabric_leg_reading_of_row, FabricLegEepromObservation, AcquisitionInvalidatedByReflash,
+  fabric_leg_reading_of_row, FabricLegEepromObservation, AcquisitionInvalidatedByReflash, AcquisitionCurrent,
   fabric_forced_100g_attempts, fabric_forced_100g_ever_trained,
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
 }
@@ -147,8 +147,11 @@ test fn all_eight_legs_carry_a_reading() -> Bool {
   plant_readings_taken() == 8 && plant_readings_never() == 0
 }
 
-// AN INVALIDATED ACQUISITION IS NOT A LIVE READING, kept as a supplied row now that no leg in the
-// roster is in that state. A leg re-flashed and not re-read must project to LegNeverRead -- NOT to
+// AN INVALIDATED ACQUISITION IS NOT A LIVE READING, and the roster now carries a real one: the
+// spark-ac79 row read at 0x0B on 2026-09-10 and superseded by the re-flash sits beside its successor
+// rather than having been deleted by it. The supplied row is kept anyway, because the claim is about
+// the PROJECTION and not about the roster's current membership -- it must stay red if
+// fabric_leg_reading_of_row ever promotes an invalidated row, on a day when no real row is invalidated. A leg re-flashed and not re-read must project to LegNeverRead -- NOT to
 // LegReadingTaken with its pre-flash coding, which would present a known-false current coding (§5).
 // This is the discriminating red for the acquisition-standing projection (DESIGN §4b(4): the red
 // stays enrolled after the population it was written against moves); it reds if
@@ -160,7 +163,8 @@ test fn a_reflashed_but_unread_leg_reads_as_never_not_as_its_stale_value() -> Bo
       match fabric_leg_reading_of_row(
         endpoint: "qsfp56-dd-1-1" as NonEmptyStr,
         r: FabricLegEepromObservation {
-          host: r.host, vendor_serial: r.vendor_serial, date_code: r.date_code, coding: r.coding,
+          host: r.host, vendor_serial: r.vendor_serial, date_code: r.date_code,
+          observed_on: r.observed_on, coding: r.coding,
           acquisition: AcquisitionInvalidatedByReflash { invalidating_event: "a re-flash with no re-read" as NonEmptyStr },
         },
       ) {
@@ -177,12 +181,29 @@ test fn a_reflashed_but_unread_leg_reads_as_never_not_as_its_stale_value() -> Bo
 // programming defect and not a plant fact -- the operator re-flashed exactly those two legs and they
 // now read S2630771508-3 and -4. Checking every row against every other, rather than the first row
 // against the rest, is what makes a duplicate anywhere in the roster red.
+//
+// UNIQUENESS IS A PROPERTY OF THE CURRENT ACQUISITION SET, NOT OF EVERY RECEIPT EVER TAKEN, and that
+// distinction arrived with the restored history. spark-ac79's superseded 2026-09-10 row carries
+// S2630771509-3 -- the mis-written serial, kept exactly as it was read, because rewriting it to the
+// corrected value would erase the evidence that the programmer mis-wrote it. Two rows may therefore
+// share a serial spelling ACROSS TIME while no two legs share one TODAY, which is what the plant
+// claim was always about. Scoping the fold to AcquisitionCurrent is what keeps the claim's content
+// while letting the history exist; folding over everything would have forced a choice between the
+// two, and the one it would have forced is deleting the history.
+fn switch_current_receipts() -> List<FabricLegEepromObservation> {
+  filter(fabric_leg_eeprom_observations, r => match r.acquisition {
+    AcquisitionCurrent => true
+    AcquisitionInvalidatedByReflash { invalidating_event: _ } => false
+  })
+}
+
 test fn every_receipt_has_a_distinct_module_identity() -> Bool {
-  length(fabric_leg_eeprom_observations) == 8
-    && all(fabric_leg_eeprom_observations, a =>
-         length(filter(fabric_leg_eeprom_observations, r => r.vendor_serial == a.vendor_serial)) == 1)
-    && all(fabric_leg_eeprom_observations, a =>
+  length(switch_current_receipts()) == 8
+    && all(switch_current_receipts(), a =>
+         length(filter(switch_current_receipts(), r => r.vendor_serial == a.vendor_serial)) == 1)
+    && all(switch_current_receipts(), a =>
          length(filter(fabric_lane_observations, o => (o.spark_hostname as String) == (a.host as String))) == 1)
+    && length(fabric_leg_eeprom_observations) > length(switch_current_receipts())
 }
 
 // THE CODING NOW ATTESTS THE MODE THE FABRIC WAS BOUGHT FOR, asked of the decoder rather than
@@ -192,7 +213,7 @@ test fn every_receipt_has_a_distinct_module_identity() -> Bool {
 // attestation rests on the extended byte alone, exactly as it did when that byte said 0x0B and the
 // answer was no.
 test fn every_legs_coding_attests_100gbase_cr2_after_the_reflash() -> Bool {
-  all(fabric_leg_eeprom_observations, r =>
+  all(switch_current_receipts(), r =>
     match sff8636_interpret_extended_compliance(code: 64) {
       ComplianceUnderstood { code: c, modes: ms } =>
         any(ms, a => link_mode_eq(a: a.mode, b: ieee_100gbase_cr2))

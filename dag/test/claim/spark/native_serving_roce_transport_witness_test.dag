@@ -9,20 +9,30 @@ import gunbc.spark.collective_transport_plan {
   CollectiveTransportPlan, SocketOverInterface, RoceOverInterface, transport_plan_interface,
 }
 import gunbc.spark.native_serving_realization {
-  glm_native_launch_lines, glm_native_unit_exec_words, glm_native_head_log_path,
+  glm_native_launch_lines, glm_native_unit_exec_words,
 }
 import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
 import gunbc.spark.native_serving_apply {
-  spark_native_transport_gate_script,
   SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps,
-  spark_native_preflight_script, spark_native_readback_script, spark_native_rollback_script,
-  spark_native_reach_script, spark_native_front_door_script,
-  SparkNativeStage, NativeStagePreflight, NativeStagePreserve, NativeStageApply,
-  NativeStageTransportGate, NativeStageReadback, NativeStageCommit,
-  spark_native_stage_has_touched_a_host,
+  spark_native_preflight_script, spark_native_preserve_script, spark_native_rollback_script,
+  spark_native_metadata_cleanup_script, spark_native_front_door_script,
+  SparkNativeStage, NativeStagePreflight, NativeStagePreserve, NativeStageMetadataCleanup,
+  NativeStageApply, NativeStageReadback, NativeStageCommit,
+  spark_native_stage_has_mutated_the_serving_arm,
+  spark_native_readback_disagreements, spark_native_image_readback_gap,
 }
 import product.placement_supply { host_identity_eq }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
+import extdeps.docker.cli {
+  DockerCreateSpec, DockerDeviceMapping, DockerMount, BindMount, VolumeMount, TmpfsMount,
+  docker_namespace_mode_wire, docker_restart_policy_wire,
+}
+import extdeps.docker.container_inspect {
+  ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
+  container_inspect_from_stdout,
+}
+import gunbc.spark.serving_relaunch_transaction { RelaunchDelta, relaunch_delta, delta_comparisons, delta_unclaimed_env }
+import gunbc.spark.serving_arm_launch { arm_rail_gid_selection }
 
 // THE 2026-09-17 CORRECTNESS RULING, ENROLLED. The GLM native arm ran every rank on TCP sockets
 // for days -- `NET/IB : No device found.` then `Using network Socket` -- because its container was
@@ -65,6 +75,95 @@ fn head_exec_words() -> List<String> {
   }
 }
 
+
+// ── A DAEMON DOCUMENT BUILT FROM THE PLAN, SO ONE FIELD CAN BE TAKEN AWAY AT A TIME ───────────
+//
+// THE INSPECT IS SUPPLIED AND THE COMPARISON IS EXECUTED, which is the split DESIGN section 3 asks
+// for: the subject is what relaunch_delta answers for documents of a given shape, and obtaining a
+// document by ssh-ing to a host would put the whole observation stack inside a claim about a fold.
+// The document still goes through the REAL decoder -- container_inspect_from_stdout -- so the shape
+// asserted here is one the daemon's own reader accepts, not one this file invented.
+//
+// THE PAIRING OBLIGATION IS DISCHARGED BY THE PRODUCTION ROUTE, not by another claim: the transaction
+// reaches this same comparison through gunbc.spark.native_serving_apply spark_native_rank_readback
+// with a ContainerInspect the live daemon returned. Delete that call and nothing here changes, which
+// is exactly why these rows are paired with w_the_readback_is_incarnation_bound_and_typed rather than
+// standing alone.
+fn t_json_list(xs: List<String>) -> String {
+  join(["[", join(map(xs, x => join(["\"", x, "\""], "")), ","), "]"], "")
+}
+
+fn t_device_json(d: DockerDeviceMapping) -> String {
+  join([
+    "{\"PathOnHost\":\"", d.host_path as String,
+    "\",\"PathInContainer\":\"", d.container_path as String,
+    "\",\"CgroupPermissions\":\"", d.cgroup_permissions as String, "\"}",
+  ], "")
+}
+
+fn t_mount_bind_json(m: DockerMount) -> String {
+  match m {
+    BindMount { host_path: h, container_path: c, readonly: ro } =>
+      join(["\"", h as String, ":", c as String, if ro { ":ro" } else { "" }, "\""], "")
+    VolumeMount { volume: v, container_path: c, readonly: ro } =>
+      join(["\"", v as String, ":", c as String, if ro { ":ro" } else { "" }, "\""], "")
+    TmpfsMount { container_path: c, size_bytes: _ } => join(["\"", c as String, "\""], "")
+  }
+}
+
+// EVERY FIELD IS RENDERED FROM THE SPEC, so the agreeing document agrees by construction and each
+// falsifier differs in exactly one place. A hand-typed document would have drifted from the plan the
+// first time the plan moved, and the claim would have gone red for the wrong reason.
+fn t_inspect_text(spec: DockerCreateSpec, drop_devices: Bool, drop_capadd: Bool, drop_shm: Bool) -> String {
+  join([
+    "[{\"Id\":\"0123456789ab\",\"Created\":\"2026-09-18T00:00:00Z\",",
+    "\"Image\":\"", spec.image as String, "\",",
+    "\"Name\":\"/", spec.name as String, "\",",
+    "\"State\":{\"Status\":\"running\",\"Running\":true,\"Paused\":false,\"Restarting\":false,\"OOMKilled\":false,\"Dead\":false},",
+    "\"Config\":{\"Cmd\":", t_json_list(xs: spec.command), ",",
+    "\"Env\":", t_json_list(xs: map(spec.env, e => join([e.name as String, "=", e.value], ""))), "},",
+    "\"HostConfig\":{",
+    "\"NetworkMode\":\"", docker_namespace_mode_wire(m: spec.network) as String, "\",",
+    "\"IpcMode\":\"", docker_namespace_mode_wire(m: spec.ipc) as String, "\",",
+    "\"ShmSize\":", if drop_shm { "1" } else { to_string(spec.shm_size_bytes) }, ",",
+    "\"CapAdd\":", if drop_capadd { "[]" } else { t_json_list(xs: map(spec.cap_add, c => join(["CAP_", c as String], ""))) }, ",",
+    "\"Devices\":[", if drop_devices { "" } else { join(map(spec.devices, d => t_device_json(d: d)), ",") }, "],",
+    "\"Ulimits\":[", if spec.memlock_unlimited { "{\"Name\":\"memlock\",\"Soft\":-1,\"Hard\":-1}" } else { "" }, "],",
+    "\"Binds\":[", join(map(spec.mounts, m => t_mount_bind_json(m: m)), ","), "],",
+    "\"RestartPolicy\":{\"Name\":\"", docker_restart_policy_wire(p: spec.restart) as String, "\",\"MaximumRetryCount\":0}",
+    "}}]",
+  ], "")
+}
+
+fn t_inspect_of(spec: DockerCreateSpec, drop_devices: Bool, drop_capadd: Bool, drop_shm: Bool) -> ContainerInspect? {
+  match container_inspect_from_stdout(stdout: t_inspect_text(spec: spec, drop_devices: drop_devices, drop_capadd: drop_capadd, drop_shm: drop_shm)) {
+    ContainerInspectUnreadable { cause: _ } => none
+    ContainerInspectDecoded { container: c } => Present { value: c }
+  }
+}
+
+// THE VERDICT IS THE TRANSACTION'S OWN, AND CALLING IT IS THE POINT. spark_native_readback_disagreements
+// is what gunbc.spark.native_serving_apply applies to the live comparison, so a widening there -- back
+// to the relaunch module's off-axis predicate, say -- turns these rows red rather than passing quietly.
+//
+// THAT WIDENING IS NOT HYPOTHETICAL: it was the first spelling, and the drop-the-devices falsifier
+// PASSED it. A devices or cap_add difference is carried on TransportAxis, so "no off-axis difference"
+// is green on a container that mapped no verbs device -- the exact shape of the Group-B incident,
+// admitted by the predicate meant to catch it. The relaunch module is right for its own subject
+// (successor against incumbent, where an axis difference is the operation); a readback of a plan
+// against what was realized from it has no such axis, and these three falsifiers are what says so.
+fn t_delta_agrees(spec: DockerCreateSpec, observed: ContainerInspect?) -> Bool {
+  match observed {
+    Absent => false
+    Present { value: c } => {
+      let d = relaunch_delta(spec: spec, observed: c, gid_selection: arm_rail_gid_selection)
+      count(spark_native_readback_disagreements(comparisons: delta_comparisons(d: d))) == 0
+        && count(delta_unclaimed_env(d: d)) == 0
+        && count(spark_native_image_readback_gap(spec: spec, observed: c)) == 0
+    }
+  }
+}
+
 // ── THE PLAN IS THE RoCE ARM, KEYED BY THE LANE ───────────────────────────────────────────────
 test fn w_the_native_plan_is_the_roce_arm_keyed_by_the_lane() -> Bool {
   let lane = srv9_lane()
@@ -100,16 +199,38 @@ test fn w_the_container_argv_carries_the_roce_projections() -> Bool {
     && argv_has(argv: argv, word: "NCCL_SOCKET_IFNAME=enp1s0f1np1")
 }
 
-// ── THE GATE REFUSES THE FALLBACK AND REQUIRES THE VERDICT ────────────────────────────────────
+// ── NO SECOND NCCL PARSER SURVIVES IN THE APPLY ───────────────────────────────────────────────
 //
-// The gate is a post-pass because the head's verdict cannot exist before the workers join; these
-// rows pin the script's three obligations: it waits for NCCL's `Using network` line, it refuses
-// the Socket arm by name, and it requires the IB plugin's verdict.
-test fn w_the_gate_script_refuses_socket_and_requires_ib() -> Bool {
-  let script = spark_native_transport_gate_script(log_path: glm_native_head_log_path)
-  string_contains(s: script, pattern: "Using network")
-    && string_contains(s: script, pattern: "TRANSPORT-REFUSED-socket-bound-under-roce-plan")
-    && string_contains(s: script, pattern: "grep -q \"Using network IB\"")
+// THE RED IS A RELAPSE, AND IT IS SPELLED AS AN ABSENCE FOR A REASON. This module used to grep the
+// unit log for `Using network` and decide the transport itself -- a weaker second authority than
+// extdeps.nvidia.nccl, blind to the channel lines and to the announcement/channel contradiction arms,
+// and bound to a log path rather than to an incarnation. The verdict now comes from
+// gunbc.spark.serving_rank_observe observe_rank_transport on the exact ContainerInspect. If any stage
+// script starts spelling NCCL's own words again, that is the fork returning, and these rows go red.
+//
+// AN ABSENCE CLAIM IS THE WEAK KIND OF EVIDENCE, so it is paired: the positive half is
+// w_the_readback_is_incarnation_bound_and_typed below, which asserts the real producers are what the
+// transaction consumes. Neither row alone would establish the repair.
+test fn w_no_stage_script_parses_nccl_itself() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let scripts = join([
+            spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, image: st.launch.image_reference, host_model_path: st.launch.host_model_path),
+            spark_native_preserve_script(unit_name: st.unit_name, transaction_id: "t"),
+            spark_native_rollback_script(unit_name: st.unit_name),
+            spark_native_metadata_cleanup_script(unit_name: st.unit_name),
+            spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr),
+          ], "\n")
+          !string_contains(s: scripts, pattern: "Using network")
+            && !string_contains(s: scripts, pattern: "NET/IB")
+            && !string_contains(s: scripts, pattern: "ss -H")
+        }
+      }
+  }
 }
 
 // ── THE ARM'S ROSTER IS PLANNED HERE, HEAD FIRST ─────────────────────────────────────────────
@@ -129,20 +250,22 @@ test fn w_the_native_apply_plans_the_whole_arm_head_first() -> Bool {
   }
 }
 
-// ── THE TRANSACTION REFUSES BEFORE IT TOUCHES, AND ROLLS BACK AFTER ───────────────────────────
+// ── WHICH STAGES MAY ROLL THE LIVE ARM BACK, AND WHICH MAY ONLY REFUSE ────────────────────────
 //
-// THE STAGE ORDER IS WHAT MAKES THIS A TRANSACTION RATHER THAN A SWEEP, and the property that carries
-// it is which stages are allowed to have mutated a host: preflight alone may report "no host touched",
-// and every stage from preserve onward owes a rollback. A future stage inserted before preserve and
-// marked as touching, or preserve marked as not touching, is the defect this row is red for -- the
-// second would let a failed apply report a clean refusal over four restarted engines.
+// THE MEASURED DEFECT THIS ROW IS RED FOR RAN IN BOTH DIRECTIONS. Preserve was marked as having
+// touched a host because it writes files -- so a preserve failure, INCLUDING A CREDENTIAL REFUSAL
+// where no preserve leg ran at all, entered the rollback path, and rollback restarts every restored
+// unit. A failure while making backups could therefore reload the 328 GB live arm and then report the
+// untouched serving arm as a partial transaction. The other direction is the one that looks safe and
+// is not: marking apply as non-mutating would let a failed apply report a clean refusal over four
+// restarted engines. Both are one predicate, so both are one claim.
 test fn w_only_preflight_may_report_no_host_touched() -> Bool {
-  spark_native_stage_has_touched_a_host(st: NativeStagePreflight) == false
-    && spark_native_stage_has_touched_a_host(st: NativeStagePreserve)
-    && spark_native_stage_has_touched_a_host(st: NativeStageApply)
-    && spark_native_stage_has_touched_a_host(st: NativeStageTransportGate)
-    && spark_native_stage_has_touched_a_host(st: NativeStageReadback)
-    && spark_native_stage_has_touched_a_host(st: NativeStageCommit)
+  spark_native_stage_has_mutated_the_serving_arm(st: NativeStagePreflight) == false
+    && spark_native_stage_has_mutated_the_serving_arm(st: NativeStagePreserve) == false
+    && spark_native_stage_has_mutated_the_serving_arm(st: NativeStageMetadataCleanup) == false
+    && spark_native_stage_has_mutated_the_serving_arm(st: NativeStageApply)
+    && spark_native_stage_has_mutated_the_serving_arm(st: NativeStageReadback)
+    && spark_native_stage_has_mutated_the_serving_arm(st: NativeStageCommit)
 }
 
 // ── THE PREFLIGHT ASKS ALL FOUR QUESTIONS BEFORE ANY HOST IS TOUCHED ──────────────────────────
@@ -171,38 +294,111 @@ test fn w_the_preflight_checks_image_snapshot_and_startability() -> Bool {
   }
 }
 
-// ── THE READBACK IS EXACT, NOT A MEMBERSHIP TEST ──────────────────────────────────────────────
+// ── THE READBACK COMPARES THE WHOLE REALIZATION, THROUGH THE CANONICAL COMPARISON ─────────────
 //
-// `cmp` over one word per line is the claim: an argv carrying every planned word PLUS one nobody
-// planned must fail, which a `grep` per word would pass. The planned blob is asserted to carry the
-// arm's own served alias so the comparison is against this arm rather than against an empty list.
-test fn w_the_readback_compares_image_and_argv_exactly() -> Bool {
+// THE SUBSET THAT WAS BEING CALLED EXACT. An earlier revision compared Config.Image and Config.Cmd in
+// shell and named that an exact container readback. It never looked at HostConfig.Devices, CapAdd,
+// Ulimits, ShmSize, the binds and their readonly standing, the effective environment, the network and
+// IPC modes, or the restart policy -- which is to say it was blind to precisely the fields the Group-B
+// transport incident was made of, and to two of the three the one-launch consolidation found had
+// already drifted.
+//
+// SO THE CLAIM IS OVER THE COMPARISON THE TRANSACTION CONSUMES, not over a script. It supplies a
+// ContainerInspect that agrees with the plan on every field EXCEPT one, and requires the comparison to
+// refuse -- once per field that used to be invisible. Supplying the inspect is the §3 move: the
+// subject is the comparison at one interface, and executing an ssh leg to obtain a document would put
+// the whole observation stack inside a claim about a fold. The pairing obligation is discharged by
+// gunbc.spark.native_serving_apply spark_native_rank_readback, which runs the real producer against a
+// live host and is the route the transaction takes.
+test fn w_the_readback_compares_the_whole_realization() -> Bool {
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
-    NativeArmSteps { steps: steps, master_endpoint: endpoint } =>
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
       match first(steps) {
         Absent => false
         Present { value: st } => {
-          let script = spark_native_readback_script(image: st.launch.image_reference, engine_argv: st.launch.engine_argv)
-          string_contains(s: script, pattern: ".Config.Image")
-            && string_contains(s: script, pattern: "READBACK-REFUSED-argv-differs")
-            && string_contains(s: script, pattern: "cmp -s")
-            && string_contains(s: script, pattern: st.launch.image_reference as String)
-            && string_contains(s: script, pattern: "--max-num-seqs")
-            && string_contains(s: spark_native_reach_script(is_head: true, master_endpoint: endpoint), pattern: endpoint as String)
-            && string_contains(s: spark_native_reach_script(is_head: false, master_endpoint: endpoint), pattern: "state established dst")
-            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr), pattern: "/v1/models")
+          let spec = st.launch.container
+          let agreeing = t_inspect_of(spec: spec, drop_devices: false, drop_capadd: false, drop_shm: false)
+          t_delta_agrees(spec: spec, observed: agreeing)
+            && !t_delta_agrees(spec: spec, observed: t_inspect_of(spec: spec, drop_devices: true, drop_capadd: false, drop_shm: false))
+            && !t_delta_agrees(spec: spec, observed: t_inspect_of(spec: spec, drop_devices: false, drop_capadd: true, drop_shm: false))
+            && !t_delta_agrees(spec: spec, observed: t_inspect_of(spec: spec, drop_devices: false, drop_capadd: false, drop_shm: true))
         }
       }
   }
 }
 
+// ── THE POSITIVE GATE IS INCARNATION-BOUND, AND THE SOCKET IS NOT IN IT ───────────────────────
+//
+// WHAT THIS ROW IS THE RED FOR. The commit used to require `ss` seeing a listening socket on the head
+// and an established connection on each worker -- host-level reach, which
+// gunbc.spark.rendezvous_participation states at length is safe only as a NEGATIVE gate because it
+// attributes the socket to no process. A foreign or stale process satisfies it. Reading that as
+// positive current-epoch participation is the same overclaim this PR removed from the carrier, put
+// back by its consumer.
+//
+// SO THE CLAIM IS THAT NO STAGE SCRIPT ASKS A SOCKET ANYTHING, paired with the positive half above:
+// the transaction's evidence is the container named, its ContainerInspect compared field for field,
+// the effective --node-rank read off that same container's argv, and NCCL's typed verdict on that
+// incarnation -- a verdict that cannot exist until every rank has joined.
+test fn w_the_readback_is_incarnation_bound_and_typed() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } =>
+          length(steps) == 4
+            && !string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr), pattern: "ss ")
+            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr), pattern: "/v1/models")
+            && count(st.launch.container.devices) > 0
+            && count(st.launch.container.cap_add) > 0
+            && st.launch.container.memlock_unlimited
+      }
+  }
+}
+
 // ── A HOST THAT WAS NEVER PRESERVED IS NOT GUESSED AT ─────────────────────────────────────────
+// AND THE STOP IS FAIL-CLOSED. An earlier revision ran `systemctl disable --now <unit> || true` on
+// the remove arm, so a real stop failure was discarded and this source could report a successful
+// rollback while the SUCCESSOR container was still running and holding the GPUs with its unit file
+// deleted -- the worst reachable state, reported as the best. The absence of that `|| true` is
+// asserted, and so is the daemon read that establishes the container is actually gone.
 test fn w_the_rollback_refuses_an_unpreserved_host() -> Bool {
   let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr)
   string_contains(s: script, pattern: "ROLLBACK-REFUSED-this-host-was-never-preserved")
-    && string_contains(s: script, pattern: "rolled-back-to-incumbent")
-    && string_contains(s: script, pattern: "rolled-back-to-no-unit")
+    && string_contains(s: script, pattern: "rollback-actuation-accepted-incumbent-unit-restored-and-exec-started")
+    && string_contains(s: script, pattern: "rollback-actuation-accepted-unit-removed-and-container-gone")
+    && string_contains(s: script, pattern: "ROLLBACK-REFUSED-successor-container-still-present-after-stop")
+    && !string_contains(s: script, pattern: "|| true")
+}
+
+// ── THE FENCE: AN UNRESOLVED TRANSACTION REFUSES THE NEXT ONE ─────────────────────────────────
+//
+// THE FAILURE THIS FORBIDS IS A RETRY AFTER A PARTIAL TRANSACTION, which is the most dangerous
+// invocation this module has. Preserve used to begin by DELETING any prior backup and marker, so a
+// second run over a split arm destroyed the only record of what the incumbent had been and adopted
+// the mixed state as its new baseline -- the recovery evidence consumed by the recovery attempt.
+// Preflight now refuses on any leftover artifact and preserve refuses to clobber one, so the two
+// halves say the same thing and the construction is the one that holds.
+test fn w_an_unresolved_transaction_refuses_the_next_run() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let preflight = spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, image: st.launch.image_reference, host_model_path: st.launch.host_model_path)
+          let preserve = spark_native_preserve_script(unit_name: st.unit_name, transaction_id: "2026-09-18T00:00:00Z")
+          string_contains(s: preflight, pattern: "PREFLIGHT-REFUSED-unresolved-transaction-artifact")
+            && string_contains(s: preserve, pattern: "PRESERVE-REFUSED-artifact-already-present")
+            && string_contains(s: preserve, pattern: "2026-09-18T00:00:00Z")
+            && string_contains(s: preserve, pattern: "PRESERVE-REFUSED-incumbent-inspect-unread")
+            && string_contains(s: preserve, pattern: "preserved-incumbent-container-absent")
+            && !string_contains(s: preserve, pattern: "rm -f /etc/systemd/system/gunbc-glm-native-head.service.gunbc-incumbent ")
+        }
+      }
+  }
 }
 
 // ── THE TELEMETRY REPORTER IS DECLARED OFF, SPELLED BY UPSTREAM'S ROW ─────────────────────────
@@ -218,11 +414,14 @@ test fn w_the_container_argv_declares_the_reporter_off() -> Bool {
 test fn w_all_native_roce_transport_claims_hold() -> Bool {
   w_the_native_plan_is_the_roce_arm_keyed_by_the_lane()
     && w_the_container_argv_carries_the_roce_projections()
-    && w_the_gate_script_refuses_socket_and_requires_ib()
+    && w_no_stage_script_parses_nccl_itself()
     && w_the_native_apply_plans_the_whole_arm_head_first()
     && w_the_container_argv_declares_the_reporter_off()
     && w_only_preflight_may_report_no_host_touched()
     && w_the_preflight_checks_image_snapshot_and_startability()
-    && w_the_readback_compares_image_and_argv_exactly()
+    && w_the_readback_compares_the_whole_realization()
     && w_the_rollback_refuses_an_unpreserved_host()
+    && w_the_readback_is_incarnation_bound_and_typed()
+    && w_an_unresolved_transaction_refuses_the_next_run()
 }
+
