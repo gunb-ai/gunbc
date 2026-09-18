@@ -6,6 +6,14 @@ import std.decl_ref { decl_ref }
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.tools.mkdir { mkdir_path_resolved_program, mkdir_parents_command_at }
+import extdeps.tools.gnu_coreutils {
+  rm_force_command,
+  dd_write_file_command,
+  ln_symbolic_replace_command,
+  rmdir_empty_directory_command,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -89,37 +97,102 @@ fn usb_gadget_teardown_ops(gadget: UsbGadget) -> List<ConfigfsOp> {
   ]
 }
 
-// The ConfigfsOp list is the typed authority for the structure; each op is nonetheless
-// rendered to a POSIX shell line because a configfs attribute write is a remote file
-// write with no argv-only form (`printf > sysfs` needs a redirect) and the BMC transport
-// is SSH. This single per-variant renderer replaced 32 scattered concats.
+// THE DESCRIBED FORM (roadmap node shell-typed-invocation, rn_7T6WSS1JYCV6GQNW1PZG73B0G3, first
+// slice landed 2026-09-18). The ConfigfsOp list is the typed authority for WHAT the setup does;
+// each op derives a typed ArgvCommand for HOW one step of it executes, and the shell-rendering
+// family that used to sit here — configfs_op_line, configfs_ops_script, usb_gadget_setup_script,
+// usb_gadget_teardown_script, carrying `set -e` and `2>/dev/null || true` — is DELETED, not
+// stubbed. A configfs attribute write delivers its value on standard input (dd of=PATH), so the
+// write's content is not an argv word and no quoting decision exists to get wrong: the renderer
+// this replaces existed only because `printf > path` needed a redirect, and the stdin channel is
+// what dissolved it.
 //
-// It dissolves when host_effect_apply binds ConfigfsOp directly to a remote
-// Filesystem.Write effect — WriteAttr to Filesystem.Write, Mkdir/Symlink/Rmdir to typed
-// FS ops — over the ssh transport. That removal is observable exactly as the
-// disappearance of `configfs_op_line`, which is what the trigger names.
-data configfs_op_render_dissolution_trigger: DissolutionCondition = retires_dissolution(
-  ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "configfs_op_line")
-)
+// THE TYPED REFUSAL the node's red_control names: an op that names a path outside the gadget's
+// own configfs root refuses BEFORE any command is built, so a hand-constructed op cannot aim a
+// write at, say, /etc/passwd and ride the derived argv into a privileged shell. The constructors
+// in this file always build under the root; the refusal is the wall against the ones that do not.
+type ConfigfsOpCommand
+  = ConfigfsOpCommandBuilt { command: ArgvCommand }
+  | ConfigfsOpCommandRefused { cause: NonEmptyStr }
 
-fn configfs_op_line(op: ConfigfsOp) -> String {
+fn configfs_path_is_under(config_root: NonEmptyStr, path: NonEmptyStr) -> Bool {
+  starts_with(s: path as String, prefix: join([config_root as String, "/"], ""))
+}
+
+fn configfs_op_command(op: ConfigfsOp, config_root: NonEmptyStr) -> ConfigfsOpCommand {
   match op {
-    ConfigfsMkdir { path: p } => join(["mkdir -p ", p as String], "")
-    ConfigfsWriteAttr { path: p, value: v } => join(["printf '%s' '", v, "' > ", p as String], "")
-    ConfigfsSymlink { target: t, link: l } => join(["ln -sf ", t as String, " ", l as String], "")
-    ConfigfsRemoveLink { link: l } => join(["rm -f ", l as String, " 2>/dev/null || true"], "")
-    ConfigfsRmdir { path: p } => join(["rmdir ", p as String, " 2>/dev/null || true"], "")
+    ConfigfsMkdir { path: p } =>
+      if configfs_path_is_under(config_root: config_root, path: p) {
+        ConfigfsOpCommandBuilt {
+          command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: p as String),
+        }
+      } else {
+        ConfigfsOpCommandRefused { cause: join(["configfs op path escapes the gadget configfs root: ", p as String], "") }
+      }
+    ConfigfsWriteAttr { path: p, value: _ } =>
+      if configfs_path_is_under(config_root: config_root, path: p) {
+        ConfigfsOpCommandBuilt {
+          command: dd_write_file_command(path: p as String),
+        }
+      } else {
+        ConfigfsOpCommandRefused { cause: join(["configfs op path escapes the gadget configfs root: ", p as String], "") }
+      }
+    ConfigfsSymlink { target: t, link: l } =>
+      if configfs_path_is_under(config_root: config_root, path: t)
+        && configfs_path_is_under(config_root: config_root, path: l) {
+        ConfigfsOpCommandBuilt {
+          command: ln_symbolic_replace_command(target: t as String, link: l as String),
+        }
+      } else {
+        ConfigfsOpCommandRefused { cause: join(["configfs symlink escapes the gadget configfs root: ", l as String], "") }
+      }
+    ConfigfsRemoveLink { link: l } =>
+      if configfs_path_is_under(config_root: config_root, path: l) {
+        ConfigfsOpCommandBuilt {
+          command: rm_force_command(path: l as String),
+        }
+      } else {
+        ConfigfsOpCommandRefused { cause: join(["configfs op path escapes the gadget configfs root: ", l as String], "") }
+      }
+    ConfigfsRmdir { path: p } =>
+      if configfs_path_is_under(config_root: config_root, path: p) {
+        ConfigfsOpCommandBuilt {
+          command: rmdir_empty_directory_command(path: p as String),
+        }
+      } else {
+        ConfigfsOpCommandRefused { cause: join(["configfs op path escapes the gadget configfs root: ", p as String], "") }
+      }
   }
 }
 
-fn configfs_ops_script(ops: List<ConfigfsOp>) -> String {
-  fold(ops, init: "", f: (acc, op) => join([acc, configfs_op_line(op: op), "\n"], ""))
+fn usb_gadget_setup_commands(gadget: UsbGadget) -> List<ConfigfsOpCommand> {
+  map(usb_gadget_setup_ops(gadget: gadget), op => configfs_op_command(op: op, config_root: gadget.config_root))
 }
 
-fn usb_gadget_setup_script(gadget: UsbGadget) -> String {
-  join(["set -e", "\n", configfs_ops_script(ops: usb_gadget_setup_ops(gadget: gadget))], "")
+// THE RENDERING IS A DERIVED REALIZATION, one quoted-argv line per built command, and it is what
+// the acceptance oracle reads. A refused op renders NO command — a refusal produces no shell, so
+// the text of a refused setup is empty and a caller checking it fails closed. The line carries
+// program and operands only; a write's value is not in it, because the value is not an argument.
+fn configfs_commands_render_text(commands: List<ConfigfsOpCommand>) -> String {
+  if any(commands, c => match c {
+    ConfigfsOpCommandRefused { cause: _ } => true
+    ConfigfsOpCommandBuilt { command: _ } => false
+  }) {
+    ""
+  } else {
+    fold(commands, init: "", f: (acc, c) => match c {
+      ConfigfsOpCommandBuilt { command } => join([acc, shell_command_render(command: command), "\n"], "")
+      ConfigfsOpCommandRefused { cause: _ } => acc
+    })
+  }
 }
 
-fn usb_gadget_teardown_script(gadget: UsbGadget) -> String {
-  configfs_ops_script(ops: usb_gadget_teardown_ops(gadget: gadget))
-}
+// The retirement the corpus recorded against the deleted renderer: `configfs_op_line` — the
+// per-variant shell-string builder whose disappearance WAS the shell-typed-invocation first
+// slice — is gone as of 2026-09-18, so this condition reads Fired. What the old comment pointed
+// past it (binding ConfigfsOp to a remote Filesystem.Write effect inside host_effect_apply, over
+// the ssh transport) remains the further rung for the WET execution of these commands and is not
+// this trigger's subject; the trigger names configfs_op_line, and configfs_op_line is gone.
+data configfs_op_render_dissolution_trigger: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(module_path: "extdeps.linux.usb_gadget", decl_name: "configfs_op_line")
+)

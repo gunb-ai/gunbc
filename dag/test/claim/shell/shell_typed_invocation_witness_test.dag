@@ -1,31 +1,33 @@
 module test.claim.shell.shell_typed_invocation_witness_test
 
-import std.types { Bool, String, List }
-import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsMkdir, ConfigfsWriteAttr, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir }
-import gunbc.bmc_virtual_media { srv4_vm_gadget_setup_ops, srv4_vm_gadget_setup_script }
+import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsMkdir, ConfigfsWriteAttr, ConfigfsSymlink, ConfigfsRemoveLink, ConfigfsRmdir, ConfigfsOpCommand, ConfigfsOpCommandBuilt, ConfigfsOpCommandRefused, configfs_op_command }
+import gunbc.bmc_virtual_media { srv4_vm_gadget_setup_rendered, srv4_vm_gadget_setup_ops }
 
-// THE ACCEPTANCE ORACLE FOR shell-typed-invocation, RED BY DESIGN UNTIL THE NODE IS DONE. The node's
-// bar is that callers say which operation and which arguments and nobody hands over shell text; the
-// specimen the node's own note names is the USB gadget setup, whose script today prefixes `set -e`
-// and joins rendered lines carrying `2>/dev/null || true`. Those are shell control words, and this
-// witness reads the rendered setup for the srv4 virtual-media gadget (an authored fixture, not a live
-// observation) and refuses while any is present. It is enrolled in v2.workflow.floor_expected_red so
-// the required floor holds it as known red rather than as a failure; the transition red -> green IS
-// the work, and when it lands the row leaves that roster by the roster's own removal path.
+// THE ACCEPTANCE ORACLE FOR shell-typed-invocation, GREEN SINCE 2026-09-18. The node's bar is that
+// callers say which operation and which arguments and nobody hands over shell text; the specimen
+// the node's own note names is the USB gadget setup. Its rendering used to prefix `set -e` and join
+// lines carrying `2>/dev/null || true`, and this witness was enrolled in v2.workflow.floor_expected_red
+// while it did — the transition red -> green WAS the work, and when it landed the row left that
+// roster by the roster's own removal path (floor_expected_red_chunk_05, whose only member it was).
+// It now reads the described form's rendering (srv4_vm_gadget_setup_rendered, one quoted-argv line
+// per typed configfs command) and refuses while any shell control word appears, which is the
+// standing property, not a one-time event: a rendering that regresses to shell text fails here.
 //
-// WHAT THE WORKER MAY CHANGE HERE: if the surface this reads (`srv4_vm_gadget_setup_script`) is
-// deleted by the work, this witness is re-pointed at the described form's rendering of the same
-// fixture; its NAME and its claim do not change, because the node's contract names the function.
+// WHAT THE WORKER MAY CHANGE HERE: if the surface this reads (`srv4_vm_gadget_setup_rendered`)
+// moves, this witness is re-pointed at the described form's rendering of the same fixture; its NAME
+// and its claim do not change, because the node's contract names the function.
 
 data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
 
 test fn usb_gadget_setup_emits_no_shell_control_word() -> Bool {
-  let rendered = srv4_vm_gadget_setup_script()
+  let rendered = srv4_vm_gadget_setup_rendered()
   rendered != "" && !any(shell_control_words, w => string_contains(s: rendered, pattern: w))
 }
 
-// POSITIVE CONTROL, green today and after: the setup is a list of typed configfs operations over the
-// gadget's own configfs directory, so the red above is about the RENDERING and not about the ops.
+// POSITIVE CONTROL, green before and after: the setup is a list of typed configfs operations over
+// the gadget's own configfs directory, so the oracle above is about the RENDERING and not about
+// the ops.
 test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool {
   let ops = srv4_vm_gadget_setup_ops()
   count(ops) > 0
@@ -36,4 +38,18 @@ test fn usb_gadget_setup_is_typed_configfs_ops_under_the_gadget_root() -> Bool {
       ConfigfsRemoveLink { link } => string_contains(s: link as String, pattern: "/sys/kernel/config/usb_gadget/")
       ConfigfsRmdir { path } => string_contains(s: path as String, pattern: "/sys/kernel/config/usb_gadget/")
     })
+}
+
+// THE TYPED REFUSAL the node's red_control names: an op naming a path outside the gadget's configfs
+// root refuses BEFORE any command is built, so a hand-constructed op cannot aim a write outside the
+// configfs domain and ride the derived argv into a privileged shell. The fixture ops never hit this
+// arm (the positive control above proves they sit under the root); this exercises it directly.
+test fn usb_gadget_write_outside_config_root_refuses_before_any_command_is_built() -> Bool {
+  match configfs_op_command(
+    op: ConfigfsWriteAttr { path: "/etc/passwd" as NonEmptyStr, value: "x" },
+    config_root: "/sys/kernel/config/usb_gadget" as NonEmptyStr,
+  ) {
+    ConfigfsOpCommandRefused { cause: _ } => true
+    ConfigfsOpCommandBuilt { command: _ } => false
+  }
 }

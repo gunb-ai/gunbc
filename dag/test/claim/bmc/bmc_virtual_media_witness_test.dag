@@ -6,7 +6,6 @@ import extdeps.linux.usb_gadget { ConfigfsOp, ConfigfsWriteAttr, ConfigfsMkdir, 
 import gunbc.bmc_virtual_media {
   srv4_nbd_server_config_text,
   srv4_nbd_client_attach_command_text,
-  srv4_vm_gadget_setup_script,
   srv4_vm_gadget_setup_ops,
 }
 import gunbc.fleet_intent_network { srv1_host_lan_endpoint }
@@ -44,12 +43,19 @@ test fn srv4_nbd_client_attaches_named_export() -> Bool {
   )
 }
 
+// MIGRATED TO THE DESCRIBED FORM (shell-typed-invocation first slice, 2026-09-18). This witness
+// used to assert shell text (`printf '%s' '/dev/nbd0' > .../lun.0/file` and friends) — asserting
+// what the setup PRODUCES by quoting the very shell rendering the node deletes. The claim is
+// unchanged and now reads the typed authority: the gadget is a read-only non-cdrom mass storage
+// on /dev/nbd0 whose UDC is the srv4 vhub port, as CONFIGFS VALUES on the ops the setup derives.
+// The command half of the same fact is covered by the typed-command derivation and the oracle in
+// test.claim.shell.shell_typed_invocation_witness_test.
 test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
-  let s = srv4_vm_gadget_setup_script()
-  string_contains(s: s, pattern: "mkdir -p /sys/kernel/config/usb_gadget/gunbcvm")
-    && string_contains(s: s, pattern: "printf '%s' '/dev/nbd0' > /sys/kernel/config/usb_gadget/gunbcvm/functions/mass_storage.0/lun.0/file")
-    && string_contains(s: s, pattern: "printf '%s' '0' > /sys/kernel/config/usb_gadget/gunbcvm/functions/mass_storage.0/lun.0/cdrom")
-    && string_contains(s: s, pattern: "printf '%s' '1e6a0000.usb-vhub:p3' > /sys/kernel/config/usb_gadget/gunbcvm/UDC")
+  let ops = srv4_vm_gadget_setup_ops()
+  configfs_write_value_for(ops: ops, path_suffix: "/lun.0/file") == "/dev/nbd0"
+    && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/cdrom") == "0"
+    && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/ro") == "1"
+    && configfs_write_value_for(ops: ops, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
 }
 
 test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {

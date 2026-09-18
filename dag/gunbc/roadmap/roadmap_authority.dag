@@ -388,11 +388,16 @@ fn superseded(identity: String,
 // green unconditionally was indistinguishable from a working one, because nothing it ran could
 // return anything else.
 //
-// It now names a validation that FAILS TODAY. usb_gadget_setup_script prefixes "set -e" and joins
-// rendered shell lines, so the witness asserting no shell control word is red, and the red is this
-// node's own acceptance condition rather than a planted fixture: the node asks for a described
-// operation instead of written shell text, and the witness asserts exactly that no shell text is
-// produced. The transition red -> green IS the work being finished.
+// It named a validation that FAILED from its binding on 2026-09-06 until 2026-09-18:
+// usb_gadget_setup_script prefixed "set -e" and joined rendered shell lines, so the witness
+// asserting no shell control word was red, and the red was this node's own acceptance condition
+// rather than a planted fixture: the node asks for a described operation instead of written shell
+// text, and the witness asserts exactly that no shell text is produced. The transition red ->
+// green WAS the work being finished, and it LANDED 2026-09-18: the described form (typed per-op
+// ArgvCommand derivation, stdin-carried write values) replaced the deleted shell-rendering
+// family, the witness answers true by execution, and its row left floor_expected_red through the
+// roster's own removal path. The contract binding itself is unchanged — it is the node's standing
+// closing validation, now green rather than deliberately red.
 //
 // THE WITNESS IS ENROLLED IN floor_expected_red, NOT QuarantineProbeExpectRed, and the difference
 // is executional rather than stylistic. The sibling note above recommends the quarantine cadence,
@@ -2249,7 +2254,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "shell-typed-invocation",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
-      t: fields(
+      t: updated(t: fields(
         headline: "Describe what a command should do, instead of writing shell text",
         boundary: "Callers say which operation and which arguments; nobody hands over an opaque string of shell as the instruction.",
         displaced_cost: "Shell syntax embedded in decision-making code cannot be checked before it runs, and cannot be reused anywhere else.",
@@ -2257,7 +2262,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Bad arguments or an unavailable operation refuse before any shell is produced; the acceptance oracle refuses while `set -e`, `||`, `&&`, `;` or `2>/dev/null` appear in the rendered setup.",
         out_of_scope: "Genuinely shell-shaped leftovers stay in the shell layer. A function that returns an empty string in place of the deleted rendering is not a deletion; a `posix_sh_program_command` wrapping the old shell text is not a described operation.",
         handback: "The described version, both witness modules green by execution, and the deleted string-building."
-      )
+      ), on: "2026-09-18", note: "First slice LANDED (this change). Every ConfigfsOp of extdeps.linux.usb_gadget now derives a typed ArgvCommand through configfs_op_command — mkdir via extdeps.tools.mkdir mkdir_parents_command_at (the PATH-resolved form, the BMC being an unobserved host), write via the new gnu_coreutils dd_write_file_command (value on stdin, `of=` path in argv, so the content is never an argv word), symlink via the new ln_symbolic_replace_command (-sfnT, the flags extdeps.shell.Symlink.AtomicReplace spells for the same semantics), remove-link via the existing rm_force_command, rmdir via the new rmdir_empty_directory_command — and refuses, typed (ConfigfsOpCommandRefused), any op naming a path outside the gadget's configfs root, which the new witness usb_gadget_write_outside_config_root_refuses_before_any_command_is_built exercises. The shell-rendering family is DELETED, not stubbed: configfs_op_line, configfs_ops_script, usb_gadget_setup_script, usb_gadget_teardown_script, srv4_vm_gadget_setup_script, srv4_vm_gadget_teardown_script. The acceptance oracle usb_gadget_setup_emits_no_shell_control_word transitioned red -> green by execution and left v2.workflow.floor_expected_red by the roster's own removal path (floor_expected_red_chunk_05, its only member, emptied); the srv4 gadget witness srv4_gadget_is_readonly_cdrom_on_nbd0 migrated to reading the typed ops, its claim unchanged; the positive controls were already green and stay green. configfs_op_render_dissolution_trigger now reads Fired (its subject configfs_op_line is gone). Remaining past this slice: the WET ssh realization of the derived commands is host_effect_apply's typed-effect rung, per the cli-invocation-emission-design carrier boundary — the derivation here is the described form, not the executor.")
     )
     ),
     active_large(

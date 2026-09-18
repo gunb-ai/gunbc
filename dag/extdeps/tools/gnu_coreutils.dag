@@ -245,3 +245,63 @@ fn timeout_command(duration: Second, kill_after: Second, command: ArgvCommand) -
 // different events: a subject that ran and failed, and a subject that was still running when its
 // deadline arrived. Only the second says the bound did work.
 data coreutils_timeout_expired_exit_code: Int = 124
+
+// ln(1) — coreutils, "Making links" / ln invocation. The flag bundle is the one
+// extdeps.shell.Symlink.AtomicReplace spells for the same semantics: -s makes a symbolic link,
+// -f removes an existing destination first, -n treats a destination that names a directory as the
+// link's own path instead of nesting inside it, and -T does the same at the operand level, so
+// `link` is always a file-shaped path. A configfs gadget symlink is published into a directory
+// keyed by config label, and the described operation is "this link names this target", never
+// "nest into whatever happens to be there" — which is why the -T form is the modeled one.
+data coreutils_ln_binary_name: NonEmptyStr = "ln"
+data coreutils_ln_symbolic_replace_flags: NonEmptyStr = "-sfnT"
+
+fn ln_symbolic_replace_args(target: String, link: String) -> List<String> {
+  [coreutils_ln_symbolic_replace_flags as String, target, link]
+}
+
+fn ln_symbolic_replace_command(target: String, link: String) -> ArgvCommand {
+  argv_command(
+    program: coreutils_ln_binary_name,
+    arguments: ln_symbolic_replace_args(target: target, link: link),
+  )
+}
+
+// rmdir(1) — POSIX "Remove Directory". It refuses when the directory is missing entries' content:
+// a non-empty directory is a failure, which is the safety the operation exists for. The shell
+// renderer this builder replaces appended `2>/dev/null || true`, which absorbed BOTH the benign
+// already-gone case and a real failure (a directory that still holds entries) into one silence --
+// the fail-open shape the transport_argv_anemia lane exists to close. Idempotent teardown is a
+// convergence concern for the op's executor to decide ON ITS OWN EVIDENCE, not something a shell
+// control word should absorb blindly.
+data coreutils_rmdir_binary_name: NonEmptyStr = "rmdir"
+
+fn rmdir_empty_directory_command(path: String) -> ArgvCommand {
+  argv_command(program: coreutils_rmdir_binary_name, arguments: [path])
+}
+
+// dd(1) — coreutils, "dd invocation". THE WRITE WHOSE CONTENT CANNOT BE AN ARGUMENT. A configfs
+// attribute write carries content that is data, not an operand, and the only way the replaced
+// shell renderer could deliver it was a redirection (`printf '%s' 'v' > path`) — shell grammar,
+// quoting discipline and the injection surface that comes with them. dd delivers the same bytes
+// with the content on STANDARD INPUT and the destination as the single `of=` operand, so the path
+// is argv and the value never is — the split cli-invocation-emission-design names as the property
+// an argv-only carrier cannot state. GNU dd truncates the output before the copy unless
+// conv=notrunc or seek= is given, which is exactly the redirect's semantics; neither option is
+// passed, deliberately, because the modeled operation is "this file now holds this content".
+// THE CALLER SUPPLIES THE CONTENT ON STDIN — the ArgvCommand is the argv half of a two-channel
+// invocation, and the value lives in the typed op it was derived from (extdeps.linux.usb_gadget
+// ConfigfsWriteAttr), not in a hand-rolled quoting scheme.
+data coreutils_dd_binary_name: NonEmptyStr = "dd"
+data coreutils_dd_output_file_flag: NonEmptyStr = "of="
+
+fn dd_output_file_args(path: String) -> List<String> {
+  [join([coreutils_dd_output_file_flag, path], "")]
+}
+
+fn dd_write_file_command(path: String) -> ArgvCommand {
+  argv_command(
+    program: coreutils_dd_binary_name,
+    arguments: dd_output_file_args(path: path),
+  )
+}
