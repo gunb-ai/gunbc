@@ -701,6 +701,37 @@ test fn a_complete_roster_of_unqualified_hosts_does_not_qualify_the_group() -> B
   }
 }
 
+test fn failing_host_receipts_wrapped_as_host_qualified_do_not_complete_the_roster() -> Bool {
+  match fx_admit_group_for(
+    advertised: fx_advertised(),
+    m: fx_measured_all_agree(),
+    hosts: [
+      HostQualified {
+        receipt: qualify_host(
+          node: "rank-0" as HostIdentity,
+          advertised: fx_advertised().host,
+          measured: fx_unqualified_host_measured(),
+        ),
+      },
+      HostQualified {
+        receipt: qualify_host(
+          node: "rank-1" as HostIdentity,
+          advertised: fx_advertised().host,
+          measured: fx_unqualified_host_measured(),
+        ),
+      },
+    ],
+  ) {
+    GroupQualified { receipt: _ } => false
+    GroupNotQualified { receipt: r, refusals: _ } => match r.host_roster {
+      GroupMemberNotQualified { host: _, receipt: rec } =>
+        host_qualification_refusals(receipt: rec).length() > 0
+      GroupHostRosterUnread { because: _ } => false
+      GroupHostRosterComplete { rank_count: _ } => false
+    }
+  }
+}
+
 test fn a_copied_group_curve_labelled_rank_local_is_unread() -> Bool {
   symmetry_because(
     s: qualify_rank_symmetry(

@@ -921,13 +921,15 @@ fn admission_receipt(a: HostQualificationAdmission) -> HostQualificationReceipt 
   }
 }
 
-fn first_unqualified_admission(admissions: List<HostQualificationAdmission>) -> HostQualificationAdmission? {
-  match admissions.first() {
+fn first_unqualified_receipt(receipts: List<HostQualificationReceipt>) -> HostQualificationReceipt? {
+  match receipts.first() {
     Absent => none
-    Present { value: a } => match a {
-      HostNotQualified { receipt: _, refusals: _ } => Present { value: a }
-      HostQualified { receipt: _ } => first_unqualified_admission(admissions: admissions.skip(n: 1))
-    }
+    Present { value: r } =>
+      if host_qualification_refusals(receipt: r).length() == 0 {
+        first_unqualified_receipt(receipts: receipts.skip(n: 1))
+      } else {
+        Present { value: r }
+      }
   }
 }
 
@@ -957,14 +959,8 @@ fn qualify_group_host_roster(
             Present { value: _ } => GroupHostRosterUnread {
               because: "a host admission is not on the expected roster" as NonEmptyStr,
             }
-            Absent => match first_unqualified_admission(admissions: admissions) {
-              Present { value: a } => match a {
-                HostNotQualified { receipt: r, refusals: _ } =>
-                  GroupMemberNotQualified { host: r.node, receipt: r }
-                HostQualified { receipt: _ } => GroupHostRosterUnread {
-                  because: "a host on the expected roster is not qualified; group admission does not ignore HostNotQualified" as NonEmptyStr,
-                }
-              }
+            Absent => match first_unqualified_receipt(receipts: receipts) {
+              Present { value: r } => GroupMemberNotQualified { host: r.node, receipt: r }
               Absent => GroupHostRosterComplete { rank_count: expected.length() }
             }
           }
