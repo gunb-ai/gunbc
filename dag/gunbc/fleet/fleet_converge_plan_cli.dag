@@ -126,6 +126,13 @@ import gunbc.fleet_converge_plan {
   fleet_converge_member_set_fingerprint_matches,
   fleet_converge_plan_subject_scope_path,
   fleet_converge_apply_artifact_admits,
+  ApplyAdmitted,
+  ApplySubjectHostMismatch,
+  ApplyScopeUndecodable,
+  ApplyScopeMismatch,
+  ApplyMemberSetMismatch,
+  ApplyAllocationStorePrestateMismatch,
+  ApplyAwaitingCapability,
   fleet_converge_apply_admission_refusal_text,
   fleet_converge_scope_wire,
   fleet_converge_plan_subject,
@@ -1068,6 +1075,8 @@ fn fleet_converge_apply_bound_wet(
                   exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
                 ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
                   exit_failure(reason: join(["fleet_converge_apply: AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], ""))
+                ApplyAwaitingCapability { capability: c } =>
+                  exit_failure(reason: join(["fleet_converge_apply: AwaitingCapability ", c, " — nonempty live-deploy plan; wet apply is C8"], ""))
                 ApplyAdmitted =>
               if !fleet_converge_observed_baseline_matches(
                 observed_baseline_hex: trim(s: read_base.content),

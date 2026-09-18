@@ -60,6 +60,7 @@ import gunbc.live_deploy.member_identity {
   observed_member_member,
   converged_member_eq,
   converged_member_label,
+  observed_member_wire,
   release_member_roster,
   derive_member_plan,
   EffectDerivation,
@@ -324,14 +325,7 @@ fn live_deploy_admission_refusal_text(cause: LiveDeployAdmissionRefusal) -> Stri
 }
 
 fn observed_member_baseline_row(o: ObservedMember) -> String {
-  match o {
-    MemberObserved { identity: i } =>
-      join(["member-observed:", converged_member_label(m: member_identity_member(i: i))], "")
-    MemberAbsentOnHost { member: m } =>
-      join(["member-absent:", converged_member_label(m: m)], "")
-    MemberUnobservable { member: m, cause: c } =>
-      join(["member-unobservable:", converged_member_label(m: m), ":", c], "")
-  }
+  observed_member_wire(o: o)
 }
 
 fn live_deploy_member_basis_baseline_rows(basis: LiveDeployMemberBasis) -> List<String> {

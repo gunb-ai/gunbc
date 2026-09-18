@@ -2,7 +2,13 @@ module gunbc.live_deploy.member_identity
 
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha }
 import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512 }
-import std.content_hash { Fnv1a64Structural, content_hash_eq_structural }
+import std.content_hash {
+  Fnv1a64Structural,
+  ContentHash,
+  as_content_hash_structural,
+  content_hash_eq_structural,
+  serialize_content_hash,
+}
 import extdeps.systemd { SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, systemd_unit_active_state_wire_label }
 
 // A DEPLOYMENT CONVERGES ON IDENTITIES, NOT ON PATHS. gunbc.live_deploy.emit deployment_apply_plan
@@ -133,6 +139,77 @@ fn observed_member_member(o: ObservedMember) -> ConvergedMember {
     MemberObserved { identity } => member_identity_member(i: identity)
     MemberAbsentOnHost { member } => member
     MemberUnobservable { member, cause: _ } => member
+  }
+}
+
+fn hash_algorithm_wire(a: HashAlgorithm) -> String {
+  match a {
+    Sha256 => "sha256"
+    Sha512 => "sha512"
+  }
+}
+
+fn digest_wire(d: Digest) -> String {
+  join([hash_algorithm_wire(a: d.algorithm), ":", d.hex as String], "")
+}
+
+fn structural_digest_wire(h: Fnv1a64Structural) -> String {
+  serialize_content_hash(hash: as_content_hash_structural(structural: h)) as String
+}
+
+fn tree_publication_identity_wire(t: TreePublicationIdentity) -> String {
+  join(
+    [
+      t.revision as String,
+      ":",
+      if t.tracked_projection_clean { "clean" } else { "dirty" },
+    ],
+    "",
+  )
+}
+
+fn unit_file_identity_wire(f: UnitFileIdentity) -> String {
+  join([f.unit as String, ":", structural_digest_wire(h: f.document)], "")
+}
+
+fn unit_manager_standing_wire(s: UnitManagerStanding) -> String {
+  match s {
+    ManagerLoadedCurrent => "loaded-current"
+    ManagerNeedsReload => "needs-reload"
+  }
+}
+
+fn service_process_identity_wire(p: ServiceProcessIdentity) -> String {
+  match p {
+    ProcessRunningRelease { revision } => join(["running-release:", revision as String], "")
+    ProcessNotRunning { active } =>
+      join(["not-running:", systemd_unit_active_state_wire_label(s: active)], "")
+  }
+}
+
+fn directory_root_identity_wire(r: DirectoryRootIdentity) -> String {
+  join([r.path as String, ":owner=", r.owner as String], "")
+}
+
+// TOTAL: every MemberIdentity arm contributes every field that distinguishes it. A forgotten
+// field here is a forgotten field in the stale-plan fingerprint.
+fn member_identity_wire(i: MemberIdentity) -> String {
+  match i {
+    TreeIdentity { tree } => join(["tree:", tree_publication_identity_wire(t: tree)], "")
+    ExecutableIdentity { digest } => join(["executable:", digest_wire(d: digest)], "")
+    UnitFileAt { file } => join(["unit-file:", unit_file_identity_wire(f: file)], "")
+    UnitManagerAt { standing } => join(["unit-manager:", unit_manager_standing_wire(s: standing)], "")
+    ProcessAt { process } => join(["process:", service_process_identity_wire(p: process)], "")
+    RootAt { root } => join(["root:", directory_root_identity_wire(r: root)], "")
+  }
+}
+
+fn observed_member_wire(o: ObservedMember) -> String {
+  match o {
+    MemberObserved { identity: i } => join(["member-observed:", member_identity_wire(i: i)], "")
+    MemberAbsentOnHost { member: m } => join(["member-absent:", converged_member_label(m: m)], "")
+    MemberUnobservable { member: m, cause: c } =>
+      join(["member-unobservable:", converged_member_label(m: m), ":", c], "")
   }
 }
 
@@ -290,6 +367,28 @@ fn decision_label(d: MemberDecision) -> String {
     Create { member, to: _ } => join([converged_member_label(m: member), ": create"], "")
     Replace { member, from: _, to: _ } => join([converged_member_label(m: member), ": replace"], "")
     MemberRefused { member, cause } => join([converged_member_label(m: member), ": refused -- ", member_refusal_text(c: cause)], "")
+  }
+}
+
+fn member_decision_review_line(d: MemberDecision) -> String {
+  match d {
+    AlreadyConverged { member } =>
+      join([converged_member_label(m: member), ": already-converged"], "")
+    Create { member, to } =>
+      join([converged_member_label(m: member), ": create to=", member_identity_wire(i: to)], "")
+    Replace { member, from, to } =>
+      join(
+        [
+          converged_member_label(m: member),
+          ": replace from=",
+          member_identity_wire(i: from),
+          " to=",
+          member_identity_wire(i: to),
+        ],
+        "",
+      )
+    MemberRefused { member, cause } =>
+      join([converged_member_label(m: member), ": refused -- ", member_refusal_text(c: cause)], "")
   }
 }
 
