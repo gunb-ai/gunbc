@@ -7,7 +7,9 @@ import v2.compiler.name_resolve {
   resolve_with_admission
 }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
+import v2.compiler.parse { parse_module }
 import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_canonical_symbols,
   dag_grammar_atom,
@@ -34,6 +36,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v2.std.optional { Absent, Present }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
 
 fn probe_qn_node(seg: Symbol) -> Node {
   fold_list_node(
@@ -205,6 +208,24 @@ test fn one_member_missing_subject_still_refuses() -> Bool {
 
 test fn language_model_construction_does_not_fill_canonical_map() -> Bool {
   dag_language_model().language_identity == ^dag_language_model_surface_id
+}
+
+data probe_front_end_source: String = "module probe.one_member\n"
+
+test fn tokenize_parse_one_member_does_not_run_resolve() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(
+    text: probe_front_end_source,
+    file: ^probe_front_end_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tokens, diagnostics: _ } =>
+      match parse_module(tokens: tokens, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
 }
 
 test fn dag_canonical_symbols_keep_prelude_and_reject_uncanonical() -> Bool {
