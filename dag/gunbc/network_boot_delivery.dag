@@ -96,7 +96,6 @@ type NetworkBootManifestRefusal
       class: NetworkBootManifestVerificationClass
       observation: DeclarationRef
     }
-  | ManifestJoinWrongArchitecture { architecture: Architecture }
   | ManifestJoinDigestDisagrees
   | ManifestJoinNotYetValid { not_before: EpochMs, observed_at: EpochMs }
   | ManifestJoinExpired { expiry: EpochMs, observed_at: EpochMs }
@@ -131,7 +130,6 @@ type FleetBootServiceStanding
 // DHCP filenames and URLs are routing hints. They never become identity or integrity evidence.
 type BootDiscoveryHint
   = DhcpFilenameHint { filename: NonEmptyStr }
-  | PresignedUrlAvailabilityFence { uri: Uri }
 
 type SiteBootstrapDiscovery
   = SiteNativeDhcp
