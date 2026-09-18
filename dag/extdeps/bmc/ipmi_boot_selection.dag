@@ -1,6 +1,6 @@
 module extdeps.bmc.ipmi_boot_selection
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -38,14 +38,15 @@ type IpmiBootPersistence
 //
 // The wire and read-back spellings travel with the semantic axes because they are one CLI
 // serialization. A caller selects `IpmiBootCdrom`; it never authors `cdrom`,
-// `options=efiboot`, or one of the four strings used to adjudicate parameter 5.
+// an `options=` word, or one of the four strings used to adjudicate parameter 5.
+// The options token for `ChassisBootDevWithOptions` is derived from firmware_mode
+// and persistence (`ipmi_boot_selection_options_token`); it is not stored beside them.
 type IpmiBootSelection sole_constructor {
   architecture: Architecture
   device: IpmiBootDevice
   firmware_mode: IpmiFirmwareBootMode
   persistence: IpmiBootPersistence
   device_wire: NonEmptyStr
-  options_wire: NonEmptyStr
   expected_flag_rendering: NonEmptyStr
   expected_device_rendering: NonEmptyStr
   expected_mode_rendering: NonEmptyStr
@@ -60,7 +61,6 @@ fn aarch64_uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection
       firmware_mode: IpmiBootEfi,
       persistence: IpmiBootOnce,
       device_wire: "pxe",
-      options_wire: "options=efiboot",
       expected_flag_rendering: "Boot Flag Valid",
       expected_device_rendering: "Force PXE",
       expected_mode_rendering: "BIOS EFI boot",
@@ -72,7 +72,6 @@ fn aarch64_uefi_once_boot_selection(device: IpmiBootDevice) -> IpmiBootSelection
       firmware_mode: IpmiBootEfi,
       persistence: IpmiBootOnce,
       device_wire: "cdrom",
-      options_wire: "options=efiboot",
       expected_flag_rendering: "Boot Flag Valid",
       expected_device_rendering: "Force Boot from CD/DVD",
       expected_mode_rendering: "BIOS EFI boot",
