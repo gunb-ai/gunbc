@@ -1,6 +1,5 @@
 module v2.std.declaration_marker
 
-import std.occurrence_identity { OccurrenceId }
 import v2.std.collection { List }
 import v2.std.node { Symbol }
 
@@ -14,12 +13,10 @@ import v2.std.node { Symbol }
 // Only marked declarations are rows. Absence is the unmarked arm, and it is decidable because the
 // capture that produces this channel reads every top-level item of the module it is handed.
 //
-// Two keys, because they answer two questions. `occurrence` is the authored occurrence of the
-// marked item and locates it. `name` is the declared member symbol, and it is the key a reference
-// binds on: lowering rebuilds each declaration as a synthetic named member, so the authored
-// occurrence id does not survive to resolve and cannot be the join key there.
+// Keyed by the declared member symbol, which is the key a reference binds on. Not by the authored
+// occurrence id: lowering rebuilds each declaration as a synthetic named member, so that id does not
+// survive to resolution and nothing downstream could join on it.
 type TestMarkedDeclaration {
-  occurrence: OccurrenceId
   name: Symbol
 }
 
@@ -27,14 +24,10 @@ type TestMarkerChannel {
   marked: List<TestMarkedDeclaration>
 }
 
-fn test_marker_channel_empty() -> TestMarkerChannel {
-  TestMarkerChannel { marked: [] }
-}
-
 fn test_marker_channel_marks(channel: TestMarkerChannel, name: Symbol) -> Bool {
   fold(channel.marked, init: false, f: fn(acc, row) { acc || (row.name == name) })
 }
 
 fn test_marker_channel_count(channel: TestMarkerChannel) -> Int {
-  fold(channel.marked, init: 0, f: fn(acc, _row) { acc + 1 })
+  std.types.list_length(items: channel.marked)
 }
