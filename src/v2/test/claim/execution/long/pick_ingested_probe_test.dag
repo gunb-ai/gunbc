@@ -1,18 +1,5 @@
 module v2.test.long.pick_ingested_probe
 
-fn pick_probe_find_arrow(root: Node) -> Node {
-  match root.kind {
-    TypeNode { connective: Arrow } => root
-    _ =>
-      fold(root.children, init: root, f: fn(acc, e) {
-        match pick_probe_find_arrow(root: e.target).kind {
-          TypeNode { connective: Arrow } => pick_probe_find_arrow(root: e.target)
-          _ => acc
-        }
-      })
-  }
-}
-
 fn pick_probe_deep_unwrap(node: Node) -> Node {
   match parse_production_captured_child_optional(node: node) {
     Present { value: captured } => pick_probe_deep_unwrap(node: captured)
@@ -151,38 +138,6 @@ fn pick_probe_parsed_then_arm_literal_optional(module_outcome: Outcome<Node>) ->
       }
     Rejected { diagnostics: _ } => Absent
   }
-}
-
-fn pick_probe_normalized_has_branch_holds() -> Bool {
-  let lm = dag_language_model()
-  match tokenize(text: pick_ingested_source, file: ^pick_probe_file, rules: lm.lex) {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match parse_module(tokens: tokens, grammar: lm.grammar) {
-        Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
-            Accepted { value: normalized, diagnostics: _ } =>
-              match find_arrow_body_child(root: pick_probe_find_arrow(root: normalized.root)) {
-                Accepted { value: body, diagnostics: _ } =>
-                  match body.kind {
-                    ComputationNode { behavior: Branch } => true
-                    _ => false
-                  }
-                Rejected { diagnostics: _ } => false
-              }
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn pick_probe_normalized_branch_holds() -> Bool {
-  pick_probe_normalized_has_branch_holds()
-}
-
-test fn pick_probe_normalized_arrow_branch_holds() -> Bool {
-  pick_ingested_normalized_arrow_has_branch_body(source: pick_ingested_source)
 }
 
 // ONE RESOLVE, TWO ARMS (witness-cost consolidation, 2026-08-19). The then-arm and

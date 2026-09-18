@@ -15,10 +15,6 @@ test fn wave1_gate1_ingested_add_normalize_yields_arrow_transform_holds() -> Boo
   wave1_gate1_normalized_add_yields_arrow_transform_holds()
 }
 
-test fn wave1_gate1_ingested_add_normalize_resolves_holds() -> Bool {
-  wave1_gate1_normalized_add_resolves_holds()
-}
-
 test fn wave1_gate1_ingested_add_resolved_arrow_transform_holds() -> Bool {
   wave1_gate1_resolved_add_arrow_transform_holds()
 }

@@ -74,7 +74,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // (src/v2/test/claim/long/wave1_gate1_a1_projection_call_witness_test.dag [whole],
 // src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag [partial],
 // src/v2/test/claim/long/door_real_module_probe_test.dag [partial],
-// src/v2/test/claim/execution/long/pick_ingested_probe_test.dag [partial]), 10 identities,
+// src/v2/test/claim/execution/long/pick_ingested_probe_test.dag [partial]), 13 identities,
 // DELETED as duplicate coverage, not migrated and not exempted: each body was only a call to
 // another test fn (owner ruling 2026-09-16/17: no code may reference a test fn), so it asserted
 // nothing its target did not already assert. The targets keep the facts:
@@ -83,7 +83,12 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // door_real_module_probe quad_namespace_only_resolve_accepts_holds /
 // quad_import_scoped_admission_reds_ambiguous_export_holds, and
 // v2.test.long.pick_ingested_structural_lowering (4). The file whose every row was a wrapper
-// deletes whole. 2026-08-26 — 3 entries
+// deletes whole. Three more DELETED as duplicate claims (DESIGN §3, one assertion implies the
+// other): pick_probe_normalized_arrow_branch_holds was byte-identical to
+// pick_ingested_structural_lowering pick_ingested_normalized_arrow_has_branch_body_holds, and
+// pick_probe_normalized_branch_holds asserted the same Branch body over the same source through a
+// private arrow finder; wave1_gate1_ingested_add_normalize_resolves_holds is implied by its sibling
+// wave1_gate1_ingested_add_resolved_arrow_transform_holds, which is true only when resolve accepts. 2026-08-26 — 3 entries
 // (src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag [partial],
 // src/v2/test/claim/execution/emit_ingest_grammar_relation_round_trip_test.dag [partial],
 // src/v2/test/claim/execution/self_host_candidate_generation_test.dag [partial]), 5 identities,
@@ -732,7 +737,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
   FrozenPathDeferral {
     entry: "src/v2/test/claim/execution/long/pick_ingested_probe_test.dag",
     functions: [
-      "pick_probe_normalized_branch_holds", "pick_probe_normalized_arrow_branch_holds",
       "pick_probe_resolved_then_arm_has_magnitude_child_holds",
       "pick_probe_normalized_then_arm_has_magnitude_child_holds",
       "pick_probe_parsed_then_arm_has_magnitude_child_holds"
@@ -1187,7 +1191,6 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/wave1_gate1_general_body_producer_witness_test.dag",
     functions: [
       "wave1_gate1_ingested_add_normalize_yields_arrow_transform_holds",
-      "wave1_gate1_ingested_add_normalize_resolves_holds",
       "wave1_gate1_ingested_add_resolved_arrow_transform_holds"
     ]
   },
