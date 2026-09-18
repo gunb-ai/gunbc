@@ -35,7 +35,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional,
   qualified_name_from_module_node,
 }
-import v2.std.algebra { fold_list, list_append, list_snoc_item, length, zip_eq }
+import v2.std.algebra { fold_list, fold_list_node, is_empty, list_append, list_snoc_item, length, zip_eq }
 import v2.std.collection {
   List,
   list_at_optional
@@ -815,6 +815,10 @@ fn body_lower_is_block_delimiter_token(id: Symbol) -> Bool {
   (id == ^dag_token_lbrace) || (id == ^dag_token_rbrace)
 }
 
+fn body_lower_is_postfix_token(id: Symbol) -> Bool {
+  (id == ^dag_token_dot) || (id == ^dag_token_kw_as)
+}
+
 fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
   match sugar_sequence_pair_optional(
     node: body_lower_unwrap_surface_shell(node: captured)
@@ -833,7 +837,9 @@ fn body_lower_sequence_left_is_lbrace(captured: Node) -> Bool {
 fn body_lower_operator_atom_optional(node: Node) -> Optional<Node> {
   match node_atom_identity_optional(node: node) {
     Present { value: id } =>
-      if dag_lex_token_symbol(sym: id) && !body_lower_is_block_delimiter_token(id: id) {
+      if dag_lex_token_symbol(sym: id)
+        && !body_lower_is_block_delimiter_token(id: id)
+        && !body_lower_is_postfix_token(id: id) {
         optional_present(
           value: node_synthetic(
             kind: TypeNode { connective: Atom { identity: id } },
@@ -1926,9 +1932,24 @@ fn body_lower_last_child_optional(n: Node) -> Optional<Node> {
 }
 
 fn body_lower_atom_body_optional(expr: Node) -> Optional<Node> {
-  match body_lower_materialize_int_literal_operand_optional(node: expr) {
-    Present { value: lit } => Present { value: lit }
-    Absent => body_lower_operand_ref_optional(node: expr)
+  match body_lower_has_dotted_postfix_suffix(node: expr) {
+    true => optional_absent()
+    false =>
+      match body_lower_materialize_int_literal_operand_optional(node: expr) {
+        Present { value: lit } => Present { value: lit }
+        Absent => body_lower_operand_ref_optional(node: expr)
+      }
+  }
+}
+
+fn body_lower_eq_expr_postfix_optional(expr: Node) -> Outcome<Optional<Node>> {
+  match body_lower_find_captured(root: expr, emitted: ^dag_surface_postfix_expr) {
+    ParseSubtreeFound { captured: postfix } =>
+      match body_lower_unwrap_captured(shell: postfix) {
+        Present { value: inner } => body_lower_try_postfix_projection(node: inner)
+        Absent => body_lower_try_postfix_projection(node: postfix)
+      }
+    ParseSubtreeAbsent => body_lower_try_postfix_projection(node: expr)
   }
 }
 
@@ -1938,28 +1959,83 @@ fn body_lower_eq_expr_to_body(expr: Node) -> Outcome<Optional<Node>> {
     Accepted { value: body_opt, diagnostics: d } =>
       match body_opt {
         Present { value: lowered } =>
-          outcome_with_diagnostics(
-            value: optional_present(value: lowered),
-            diagnostics: d
-          )
+          match body_lower_eq_expr_postfix_optional(expr: expr) {
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: d, rejected: r) }
+            Accepted { value: post, diagnostics: pd } =>
+              match post {
+                Present { value: path } =>
+                  outcome_with_diagnostics(
+                    value: optional_present(value: path),
+                    diagnostics: diagnostics_merge(outer: d, inner: pd)
+                  )
+                Absent =>
+                  outcome_with_diagnostics(
+                    value: optional_present(value: lowered),
+                    diagnostics: diagnostics_merge(outer: d, inner: pd)
+                  )
+              }
+          }
         Absent =>
-          match body_lower_atom_body_optional(expr: expr) {
-            Present { value: atom } =>
-              outcome_with_diagnostics(
-                value: optional_present(value: atom),
-                diagnostics: d
-              )
-            Absent =>
-              match body_lower_last_child_optional(n: expr) {
-                Absent => outcome_with_diagnostics(value: optional_absent(), diagnostics: d)
-                Present { value: last } =>
-                  match body_lower_atom_body_optional(expr: last) {
+          match body_lower_eq_expr_postfix_optional(expr: expr) {
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: d, rejected: r) }
+            Accepted { value: post, diagnostics: pd } =>
+              match post {
+                Present { value: lowered } =>
+                  outcome_with_diagnostics(
+                    value: optional_present(value: lowered),
+                    diagnostics: diagnostics_merge(outer: d, inner: pd)
+                  )
+                Absent =>
+                  match body_lower_atom_body_optional(expr: expr) {
                     Present { value: atom } =>
                       outcome_with_diagnostics(
                         value: optional_present(value: atom),
-                        diagnostics: d
+                        diagnostics: diagnostics_merge(outer: d, inner: pd)
                       )
-                    Absent => body_lower_eq_expr_to_body(expr: last)
+                    Absent =>
+                      match body_lower_last_child_optional(n: expr) {
+                        Absent =>
+                          outcome_with_diagnostics(
+                            value: optional_absent(),
+                            diagnostics: diagnostics_merge(outer: d, inner: pd)
+                          )
+                        Present { value: last } =>
+                          match body_lower_try_postfix_projection(node: last) {
+                            Rejected { diagnostics: r2 } =>
+                              Rejected {
+                                diagnostics: rejected_with_pending(
+                                  pending: diagnostics_merge(outer: d, inner: pd),
+                                  rejected: r2
+                                )
+                              }
+                            Accepted { value: last_post, diagnostics: lpd } =>
+                              match last_post {
+                                Present { value: lowered } =>
+                                  outcome_with_diagnostics(
+                                    value: optional_present(value: lowered),
+                                    diagnostics: diagnostics_merge(
+                                      outer: diagnostics_merge(outer: d, inner: pd),
+                                      inner: lpd
+                                    )
+                                  )
+                                Absent =>
+                                  match body_lower_atom_body_optional(expr: last) {
+                                    Present { value: atom } =>
+                                      outcome_with_diagnostics(
+                                        value: optional_present(value: atom),
+                                        diagnostics: diagnostics_merge(
+                                          outer: diagnostics_merge(outer: d, inner: pd),
+                                          inner: lpd
+                                        )
+                                      )
+                                    Absent =>
+                                      body_lower_eq_expr_to_body(expr: last)
+                                  }
+                              }
+                          }
+                      }
                   }
               }
           }
@@ -2272,13 +2348,6 @@ fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
         list_snoc_item(xs: acc, item: Edge { label: Positional, target: arg })
       })
     )
-  )
-}
-
-fn body_lower_method_operator_atom(sym: Symbol) -> Node {
-  node_synthetic(
-    kind: TypeNode { connective: Atom { identity: sym } },
-    children: []
   )
 }
 
@@ -2649,41 +2718,124 @@ fn body_lower_postfix_repeat_head_optional(repeat_capture: Node) -> Optional<Nod
   }
 }
 
-fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_collect_postfix_repeat_elems(repeat_capture: Node) -> List<Node> {
+  if is_empty_conj_root(n: repeat_capture) {
+    Empty
+  } else {
+    match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
+      Accepted { value: head, diagnostics: _ } =>
+        match find_named_child(root: repeat_capture, name: ^grammar_sequence_right_node_projection) {
+          Accepted { value: tail, diagnostics: _ } =>
+            list_append(
+              left: [head],
+              right: body_lower_collect_postfix_repeat_elems(repeat_capture: tail)
+            )
+          Rejected { diagnostics: _ } => [head]
+        }
+      Rejected { diagnostics: _ } =>
+        match body_lower_postfix_projection_step(repeat_elem: repeat_capture) {
+          Present { value: _ } => [repeat_capture]
+          Absent =>
+            match find_named_child(root: repeat_capture, name: ^grammar_repeat_element_node_projection) {
+              Accepted { value: elem, diagnostics: _ } => [elem]
+              Rejected { diagnostics: _ } => Empty
+            }
+        }
+    }
+  }
+}
+
+fn body_lower_qualified_name_node(segments: QualifiedName) -> Node {
+  fold_list_node(
+    xs: segments,
+    item_node: fn(sym) {
+      node_synthetic(
+        kind: TypeNode { connective: Atom { identity: sym } },
+        children: []
+      )
+    }
+  )
+}
+
+fn body_lower_qualified_postfix_from_elems(
+  path: QualifiedName,
+  elems: List<Node>,
+  origin: Node
+) -> Outcome<Optional<Node>> {
+  match elems {
+    Empty =>
+      outcome_accepted(
+        value: optional_present(value: body_lower_qualified_name_node(segments: path))
+      )
+    Cons { head: elem, tail: rest } =>
+      match body_lower_postfix_projection_step(repeat_elem: elem) {
+        Absent => outcome_accepted(value: optional_absent())
+        Present { value: segment } =>
+          let next = qualified_name_snoc(qn: path, segment: segment)
+          if body_lower_postfix_projection_has_call_suffix(repeat_elem: elem) {
+            if is_empty(xs: rest) {
+              outcome_accepted(
+                value: optional_present(
+                  value: body_lower_transform_call(
+                    operator: body_lower_qualified_name_node(segments: next),
+                    args: body_lower_postfix_projection_args(repeat_elem: elem)
+                  )
+                )
+              )
+            } else {
+              outcome_rejected(
+                d: body_lower_diagnostic(
+                  reason: ^body_lowering_reason_postfix_field_access_refused,
+                  n: origin
+                )
+              )
+            }
+          } else {
+            body_lower_qualified_postfix_from_elems(path: next, elems: rest, origin: origin)
+          }
+      }
+  }
+}
+
+fn body_lower_unwrap_primary_or_surface(node: Node) -> Node {
   let stripped = body_lower_unwrap_surface_shell(node: node)
+  match parse_production_emitted_identity_optional(node: stripped) {
+    Present { value: emitted } =>
+      if emitted == ^dag_surface_primary_expr {
+        match parse_production_captured_child_optional(node: stripped) {
+          Present { value: captured } => captured
+          Absent => stripped
+        }
+      } else {
+        stripped
+      }
+    Absent => stripped
+  }
+}
+
+// A dotted postfix is a qualified path (or a call through one). First-atom
+// must not claim the head; this matcher keeps every segment so resolve can
+// see the whole path. A trailing call suffixes the path as Transform operator.
+fn body_lower_try_postfix_projection(node: Node) -> Outcome<Optional<Node>> {
+  let stripped = body_lower_unwrap_primary_or_surface(node: node)
   match sugar_sequence_pair_optional(node: stripped) {
     Absent => outcome_accepted(value: optional_absent())
     Present { value: pair } =>
       match body_lower_operand_ref_optional(node: pair.left) {
         Absent => outcome_accepted(value: optional_absent())
         Present { value: receiver } =>
-          match body_lower_postfix_repeat_head_optional(repeat_capture: pair.right) {
+          match node_atom_identity_optional(node: receiver) {
             Absent => outcome_accepted(value: optional_absent())
-            Present { value: repeat_elem } =>
-              match body_lower_postfix_projection_step(repeat_elem: repeat_elem) {
-                Absent => outcome_accepted(value: optional_absent())
-                Present { value: method } =>
-                  if body_lower_postfix_projection_has_call_suffix(repeat_elem: repeat_elem) {
-                    let args = body_lower_postfix_projection_args(repeat_elem: repeat_elem)
-                    outcome_accepted(
-                      value: optional_present(
-                        value: body_lower_transform_call(
-                          operator: body_lower_method_operator_atom(sym: method),
-                          args: list_append(
-                            left: [receiver],
-                            right: args
-                          )
-                        )
-                      )
-                    )
-                  } else {
-                    outcome_rejected(
-                      d: body_lower_diagnostic(
-                        reason: ^body_lowering_reason_postfix_field_access_refused,
-                        n: node
-                      )
-                    )
-                  }
+            Present { value: head } =>
+              let elems = body_lower_collect_postfix_repeat_elems(repeat_capture: pair.right)
+              if is_empty(xs: elems) {
+                outcome_accepted(value: optional_absent())
+              } else {
+                body_lower_qualified_postfix_from_elems(
+                  path: Cons { head: head, tail: Empty },
+                  elems: elems,
+                  origin: node
+                )
               }
           }
       }
@@ -2746,16 +2898,40 @@ fn body_lower_pattern_leaf_atom_optional(node: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_has_dotted_postfix_suffix(node: Node) -> Bool {
+  let stripped = body_lower_unwrap_primary_or_surface(node: node)
+  match sugar_sequence_pair_optional(node: stripped) {
+    Absent => false
+    Present { value: pair } =>
+      match body_lower_postfix_repeat_head_optional(repeat_capture: pair.right) {
+        Present { value: elem } =>
+          match body_lower_postfix_projection_step(repeat_elem: elem) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent =>
+          match body_lower_postfix_projection_step(repeat_elem: pair.right) {
+            Present { value: _ } => true
+            Absent => false
+          }
+      }
+  }
+}
+
 fn body_lower_pattern_first_atom_optional(node: Node) -> Optional<Node> {
-  match body_lower_pattern_leaf_atom_optional(node: node) {
-    Present { value: atom } => Present { value: atom }
-    Absent =>
-      fold(node.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => body_lower_pattern_first_atom_optional(node: e.target)
-        }
-      })
+  match body_lower_has_dotted_postfix_suffix(node: node) {
+    true => optional_absent()
+    false =>
+      match body_lower_pattern_leaf_atom_optional(node: node) {
+        Present { value: atom } => Present { value: atom }
+        Absent =>
+          fold(node.children, init: Absent, f: fn(acc, e) {
+            match acc {
+              Present { value: _ } => acc
+              Absent => body_lower_pattern_first_atom_optional(node: e.target)
+            }
+          })
+      }
   }
 }
 

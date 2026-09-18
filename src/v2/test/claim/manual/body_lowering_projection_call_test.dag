@@ -16,6 +16,7 @@ import v2.std.optional {
   Optional,
   Present
 }
+import v2.std.algebra { length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -23,6 +24,7 @@ import v2.std.node {
   Node,
   Transform
 }
+import v2.std.qualified_name { qualified_name_from_node }
 
 data body_lowering_projection_source: String = "module proj\n\nfn f(acc: Int, x: Int) -> Int {\n  helper.step(a: acc, b: x)\n}\n"
 
@@ -112,8 +114,16 @@ test fn body_lowering_field_access_postfix_rejects() -> Bool {
               match body_lower_unwrap_captured(shell: postfix) {
                 Present { value: captured } =>
                   match body_lower_try_postfix_projection(node: captured) {
-                    Rejected { diagnostics: _ } => true
-                    Accepted { value: _, diagnostics: _ } => false
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: found, diagnostics: _ } =>
+                      match found {
+                        Absent => false
+                        Present { value: lowered } =>
+                          match qualified_name_from_node(root: lowered) {
+                            Rejected { diagnostics: _ } => false
+                            Accepted { value: qn, diagnostics: _ } => length(xs: qn) > 1
+                          }
+                      }
                   }
                 Absent => false
               }

@@ -1,0 +1,129 @@
+module v2.test.claim.body_lowering_qualified_path
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_lex }
+import v2.std.algebra { length }
+import v2.std.collection { list_at_optional }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.grammar { node_atom_identity_optional }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Node, Symbol, Transform }
+import v2.std.node_query {
+  find_arrow_body_child,
+  find_named_child,
+  node_positional_child_targets
+}
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name {
+  qualified_name_from_node,
+  qualified_name_to_dotted_string
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data body_lowering_qualified_path_source: String = "module wall.peer\n\nfn uses_local() -> Bool = peer_leaf\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+
+fn body_lowering_qualified_path_parsed() -> Outcome<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      bind_outcome(
+        o: tokenize(
+          text: body_lowering_qualified_path_source,
+          file: ^body_lowering_qualified_path_file,
+          rules: dag_lex()
+        ),
+        f: fn(token_stream) {
+          match parse_module_prepared(
+            tokens: token_stream,
+            prepared: prepared,
+            validation_residue: residue
+          ) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: artifact, diagnostics: d } =>
+              Accepted { value: artifact.tree, diagnostics: d }
+          }
+        }
+      )
+  }
+}
+
+fn body_lowering_qualified_members(root: Node) -> Outcome<Node> {
+  match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: captured, diagnostics: _ } =>
+      match find_named_child(root: captured, name: ^wall) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: wall_n, diagnostics: _ } =>
+          find_named_child(root: wall_n, name: ^peer)
+      }
+  }
+}
+
+fn body_lowering_arrow_body_named(members: Node, name: Symbol) -> Outcome<Node> {
+  match find_named_child(root: members, name: name) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: member, diagnostics: _ } => find_arrow_body_child(root: member)
+  }
+}
+
+fn body_lowering_body_is_path(body: Node, dotted: String) -> Bool {
+  match qualified_name_from_node(root: body) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: qn, diagnostics: _ } =>
+      (length(xs: qn) > 1) && (qualified_name_to_dotted_string(qn: qn) == dotted)
+  }
+}
+
+test fn body_lowering_qualified_call_reaches_arrow_body() -> Bool {
+  match body_lowering_qualified_path_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: parsed, diagnostics: _ } =>
+      match normalize(parse_tree: parsed) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: tree, diagnostics: _ } =>
+          match body_lowering_qualified_members(root: tree.root) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: members, diagnostics: _ } =>
+              match body_lowering_arrow_body_named(members: members, name: ^uses_local) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: local_body, diagnostics: _ } =>
+                  match node_atom_identity_optional(node: local_body) {
+                    Absent => false
+                    Present { value: local_id } =>
+                      if local_id == ^peer_leaf {
+                        match body_lowering_arrow_body_named(
+                          members: members,
+                          name: ^uses_qual_call
+                        ) {
+                          Rejected { diagnostics: _ } => false
+                          Accepted { value: body, diagnostics: _ } =>
+                            match body.kind {
+                              ComputationNode { behavior: Transform } =>
+                                match list_at_optional(
+                                  xs: node_positional_child_targets(node: body),
+                                  index: 0
+                                ) {
+                                  Absent => false
+                                  Present { value: callee } =>
+                                    body_lowering_body_is_path(
+                                      body: callee,
+                                      dotted: "wall.peer.peer_leaf"
+                                    )
+                                }
+                              _ => false
+                            }
+                        }
+                      } else {
+                        false
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
