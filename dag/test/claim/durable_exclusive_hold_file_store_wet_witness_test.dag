@@ -1,0 +1,272 @@
+module test.claim.durable_exclusive_hold_file_store_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, Int, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import std.durable_compare_and_set { CasSlotObservation, cas_generation_count }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldReleaseRefusal,
+  HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner,
+  HoldReleaseAgainstAnotherGeneration, HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
+}
+import gunbc.durable_cas_file_store { observe_cas_slot_state, cas_file_slot_path }
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
+  FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+  file_hold_acquire, file_hold_acquire_observed,
+  FileHoldReleasePlan, FileHoldReleaseAssessment, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  FileHoldReleaseOutcome, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
+  FileHoldReleaseKeyNotSlotAddressable,
+  file_hold_release_assess, file_hold_release_commit,
+}
+
+// WET CONTROLS FOR THE HOLD PROTOCOL OVER THE REAL FILE STORE. The pure walls
+// are test.claim.durable_exclusive_hold_witness; this file reaches the host,
+// because the facts here -- a hold LANDS, a second contender LOSES, a release
+// COMMITS, a store fault is NOT contention -- are only establishable by running
+// the compare-and-set against a filesystem. Enrolled on the local-repo wet lane
+// (throwaway temp directory, no network), beside the CAS store's own wet rows.
+
+fn wh_owner(text: String) -> DurableHoldOwnerRef {
+  text as DurableHoldOwnerRef
+}
+
+fn wh_release(text: String) -> DurableHoldReleaseRef {
+  text as DurableHoldReleaseRef
+}
+
+fn wh_fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_hold.XXXXXX").path
+}
+
+fn wh_acquired_at(o: FileHoldAcquireOutcome, generation: Int) -> Bool {
+  match o {
+    FileHoldAcquired { slot_key: _, owner: _, generation: g } => cas_generation_count(g: g) == generation
+    _ => false
+  }
+}
+
+fn wh_occupied_by(o: FileHoldAcquireOutcome, holder: String) -> Bool {
+  match o {
+    FileHoldOccupied { slot_key: _, holder: h, generation: _ } => (h as String) == holder
+    _ => false
+  }
+}
+
+fn wh_acquire_lost(o: FileHoldAcquireOutcome) -> Bool {
+  match o {
+    FileHoldAcquireLost { slot_key: _ } => true
+    _ => false
+  }
+}
+
+fn wh_acquire_store_unavailable(o: FileHoldAcquireOutcome) -> Bool {
+  match o {
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => true
+    _ => false
+  }
+}
+
+fn wh_slot_bytes(root: NonEmptyStr, generation: Int) -> String {
+  let read = Filesystem.Read(path: cas_file_slot_path(root: root, key: "cell", generation: generation))
+  if read.success { read.content } else { "" }
+}
+
+fn wh_slot_generation_absent(root: NonEmptyStr, generation: Int) -> Bool {
+  !Filesystem.Read(path: cas_file_slot_path(root: root, key: "cell", generation: generation)).success
+}
+
+fn wh_assess(root: NonEmptyStr, owner: String, acquired: Int, reason: String) -> FileHoldReleaseAssessment {
+  file_hold_release_assess(
+    root: root, slot_key: "cell",
+    owner: wh_owner(text: owner), acquired_generation: acquired, released_by: wh_release(text: reason),
+  )
+}
+
+fn wh_plan(a: FileHoldReleaseAssessment) -> FileHoldReleasePlan? {
+  match a {
+    FileHoldReleasePlanned { plan: p } => Present { value: p }
+    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => none
+  }
+}
+
+fn wh_not_eligible(a: FileHoldReleaseAssessment) -> Bool {
+  match a {
+    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => true
+    FileHoldReleasePlanned { plan: _ } => false
+  }
+}
+
+fn wh_released_at(o: FileHoldReleaseOutcome?, generation: Int) -> Bool {
+  match o {
+    Present { value: FileHoldReleased { slot_key: _, generation: g } } => cas_generation_count(g: g) == generation
+    _ => false
+  }
+}
+
+fn wh_release_lost(o: FileHoldReleaseOutcome?) -> Bool {
+  match o {
+    Present { value: FileHoldReleaseLost { slot_key: _ } } => true
+    _ => false
+  }
+}
+
+fn wh_commit(p: FileHoldReleasePlan?) -> FileHoldReleaseOutcome? {
+  match p {
+    Present { value: plan } => Present { value: file_hold_release_commit(plan: plan) }
+    Absent => none
+  }
+}
+
+// AN ABSENT SLOT ACQUIRES AT GENERATION 1, AND THE BYTES ON DISK ARE THE
+// SHARED SPELLING: the held tag followed by exactly the owner. Read back through
+// the filesystem rather than through the store, so the row establishes what was
+// WRITTEN and not what the codec says it would write.
+test fn an_absent_slot_acquires_at_generation_one_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let bytes = wh_slot_bytes(root: root, generation: 1)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  wh_acquired_at(o: first, generation: 1) && bytes == "held|demand-7|offer-1" && removed.success
+}
+
+// A HELD SLOT REFUSES WITHOUT WRITING -- to another owner AND to its own owner's
+// spelling. The generation-2 file must not exist after either attempt: an
+// occupied answer that had nonetheless advanced the slot would be the
+// overwrite the protocol exists to forbid, wearing a refusal's name.
+test fn a_held_slot_refuses_another_owner_without_writing_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let second = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-9|offer-4"))
+  let no_advance = wh_slot_generation_absent(root: root, generation: 2)
+  let bytes = wh_slot_bytes(root: root, generation: 1)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  wh_acquired_at(o: first, generation: 1)
+    && wh_occupied_by(o: second, holder: "demand-7|offer-1")
+    && no_advance
+    && bytes == "held|demand-7|offer-1"
+    && removed.success
+}
+
+test fn a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let again = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let no_advance = wh_slot_generation_absent(root: root, generation: 2)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  wh_acquired_at(o: first, generation: 1)
+    && wh_occupied_by(o: again, holder: "demand-7|offer-1")
+    && no_advance
+    && removed.success
+}
+
+// THE FULL CYCLE: held at 1, released to free at 2 with the free bytes on
+// disk, reacquired at 3. The reacquire is the row that proves a released slot is
+// not a dead slot, and that the acquire derives generation 2 from its own read
+// rather than from anything the caller said.
+test fn a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let released = wh_commit(p: wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "attempt abandoned")))
+  let free_bytes = wh_slot_bytes(root: root, generation: 2)
+  let second = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-9|offer-4"))
+  let held_bytes = wh_slot_bytes(root: root, generation: 3)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  wh_acquired_at(o: first, generation: 1)
+    && wh_released_at(o: released, generation: 2)
+    && free_bytes == "free|attempt abandoned"
+    && wh_acquired_at(o: second, generation: 3)
+    && held_bytes == "held|demand-9|offer-4"
+    && removed.success
+}
+
+// TWO CONTENDERS, ONE OBSERVATION, ONE WINNER. Both read the slot free at 2 and
+// both are eligible; the store admits exactly one and the other is a lost race
+// AFTER its own observation -- not Occupied, which would say it was never
+// eligible, and not a store fault. This is the case the protocol exists for.
+test fn two_contenders_over_one_free_generation_give_one_commit_and_one_lost_race_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let released = wh_commit(p: wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "done")))
+  let shared = observe_cas_slot_state(root: root, key: "cell")
+  let a = file_hold_acquire_observed(root: root, slot_key: "cell", observed: shared, requested_owner: wh_owner(text: "contender-a"))
+  let b = file_hold_acquire_observed(root: root, slot_key: "cell", observed: shared, requested_owner: wh_owner(text: "contender-b"))
+  let bytes = wh_slot_bytes(root: root, generation: 3)
+  let no_fourth = wh_slot_generation_absent(root: root, generation: 4)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  wh_acquired_at(o: first, generation: 1)
+    && wh_released_at(o: released, generation: 2)
+    && wh_acquired_at(o: a, generation: 3)
+    && wh_acquire_lost(o: b)
+    && bytes == "held|contender-a"
+    && no_fourth
+    && removed.success
+}
+
+// A STORE REFUSAL IS NOT CONTENTION. The root is a regular file, so the store
+// cannot observe or publish; that must surface as unavailable and never as a
+// lost race or an occupied slot, or a caller would wait forever for a holder
+// that does not exist (recurring_failure_mode store_refusal_reported_as_contention).
+test fn a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let blocker = concat(root_path, "/not-a-directory")
+  let planted = Filesystem.Write(path: blocker, content: "not a store root")
+  let outcome = file_hold_acquire(root: blocker as NonEmptyStr, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  planted.success && wh_acquire_store_unavailable(o: outcome) && !wh_acquire_lost(o: outcome) && removed.success
+}
+
+// FOUR RELEASE REFUSALS, AND NONE OF THEM FREES. Each refusal is checked
+// against the disk as well as the outcome: the next generation must not exist
+// afterwards. Absent, already free, another owner's hold, and the right owner at
+// the wrong generation.
+test fn refused_releases_do_not_free_the_slot_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  let absent = wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "stale")
+  let absent_untouched = wh_slot_generation_absent(root: root, generation: 1)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let other = wh_assess(root: root, owner: "demand-9|offer-4", acquired: 1, reason: "not mine")
+  let wrong_generation = wh_assess(root: root, owner: "demand-7|offer-1", acquired: 2, reason: "stale")
+  let still_held = wh_slot_generation_absent(root: root, generation: 2) && wh_slot_bytes(root: root, generation: 1) == "held|demand-7|offer-1"
+  let released = wh_commit(p: wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "done")))
+  let twice = wh_assess(root: root, owner: "demand-7|offer-1", acquired: 2, reason: "again")
+  let no_third = wh_slot_generation_absent(root: root, generation: 3)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  wh_not_eligible(a: absent) && absent_untouched
+    && wh_acquired_at(o: first, generation: 1)
+    && wh_not_eligible(a: other)
+    && wh_not_eligible(a: wrong_generation)
+    && still_held
+    && wh_released_at(o: released, generation: 2)
+    && wh_not_eligible(a: twice)
+    && no_third
+    && removed.success
+}
+
+// A RACE BETWEEN ASSESS AND COMMIT IS RELEASE-LOST, NOT SUCCESS. The plan was
+// minted against the slot held at 1; before it commits, the slot moves (here,
+// the same plan is committed once, which frees it). The second commit of that
+// plan must lose rather than write free over free -- a caller that had settled
+// against the plan learns its settlement and the slot have come apart.
+test fn a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let plan = wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "done"))
+  let committed = wh_commit(p: plan)
+  let again = wh_commit(p: plan)
+  let no_third = wh_slot_generation_absent(root: root, generation: 3)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  wh_acquired_at(o: first, generation: 1)
+    && wh_released_at(o: committed, generation: 2)
+    && wh_release_lost(o: again)
+    && no_third
+    && removed.success
+}

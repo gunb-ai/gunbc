@@ -1,0 +1,318 @@
+module test.claim.durable_exclusive_hold_witness
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.content_hash { content_hash_of_value }
+import v2.std.optional { Present, Absent }
+import std.durable_compare_and_set {
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasReadableAbsent, CasReadablePresent, CasSlotVersion,
+  CasUnreadableReadRefused, cas_generation_count,
+}
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef,
+  DurableHoldState, DurableHoldHeld, DurableHoldFree,
+  DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld,
+  HoldSlotUndecodable, HoldObservationUnavailable,
+  DurableHoldAcquireAssessment, HoldAcquireEligible, HoldAcquireRefused,
+  DurableHoldAcquireRefusal, HoldAcquireOccupied, HoldAcquireSlotUndecodable,
+  HoldAcquireObservationUnavailable,
+  DurableHoldReleaseAssessment, HoldReleaseEligible, HoldReleaseRefused,
+  DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
+  HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
+  HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
+  durable_hold_acquire_assess, durable_hold_release_assess, durable_hold_owner_equal,
+}
+import gunbc.durable_exclusive_hold_file_store {
+  HoldPayloadDecode, HoldPayloadDecoded, HoldPayloadUndecodable,
+  hold_slot_payload, decode_hold_slot_payload, hold_observation_of_cas,
+  FileHoldReleaseAssessment, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  file_hold_release_assess_observed,
+}
+
+// THE PURE HALF OF THE HOLD PROTOCOL AND ITS CODEC. Every row here decides
+// from a supplied observation; nothing reaches a filesystem. The effectful
+// rows -- acquire lands, contenders race, release commits, store refusal --
+// are test.claim.durable_exclusive_hold_file_store_wet_witness.
+
+fn eh_owner(text: String) -> DurableHoldOwnerRef {
+  text as DurableHoldOwnerRef
+}
+
+fn eh_release(text: String) -> DurableHoldReleaseRef {
+  text as DurableHoldReleaseRef
+}
+
+// COMPATIBILITY, BYTE FOR BYTE. These two specimens are the spellings
+// gunbc.fabric_control_plane wrote to /var/lib/gunbc/fabric/allocation before
+// the protocol was extracted: the held tag followed by exactly the reservation
+// reference (itself a demand and an offer joined by the separator), and the free
+// tag followed by exactly the reason. A change to either tag, or to the body
+// after it, turns these red -- which is the point: slots already on disk must
+// decode unchanged.
+test fn the_held_specimen_decodes_byte_for_byte() -> Bool {
+  match decode_hold_slot_payload(payload: "held|demand-7|offer-1") {
+    HoldPayloadDecoded { state: DurableHoldHeld { owner: o } } =>
+      (o as String) == "demand-7|offer-1"
+        && (hold_slot_payload(state: DurableHoldHeld { owner: o }) as String) == "held|demand-7|offer-1"
+    HoldPayloadDecoded { state: DurableHoldFree { released_by: _ } } => false
+    HoldPayloadUndecodable { detail: _ } => false
+  }
+}
+
+test fn the_free_specimen_decodes_byte_for_byte() -> Bool {
+  match decode_hold_slot_payload(payload: "free|attempt abandoned before execution") {
+    HoldPayloadDecoded { state: DurableHoldFree { released_by: b } } =>
+      (b as String) == "attempt abandoned before execution"
+        && (hold_slot_payload(state: DurableHoldFree { released_by: b }) as String)
+          == "free|attempt abandoned before execution"
+    HoldPayloadDecoded { state: DurableHoldHeld { owner: _ } } => false
+    HoldPayloadUndecodable { detail: _ } => false
+  }
+}
+
+fn eh_refuses(payload: NonEmptyStr) -> Bool {
+  match decode_hold_slot_payload(payload: payload) {
+    HoldPayloadUndecodable { detail: _ } => true
+    HoldPayloadDecoded { state: _ } => false
+  }
+}
+
+// UNKNOWN AND MALFORMED PAYLOADS REFUSE AND NEVER READ AS FREE. The near misses
+// are chosen to defeat a decode that matches loosely: the bare reservation with
+// no tag, a tag with no separator, the wrong case, and the separator with no tag.
+// A decode that fell through to Free for anything it did not recognise would
+// let a corrupted slot be acquired over.
+test fn unknown_and_malformed_payloads_refuse_and_are_not_free() -> Bool {
+  eh_refuses(payload: "demand-7|offer-1")
+    && eh_refuses(payload: "held")
+    && eh_refuses(payload: "free")
+    && eh_refuses(payload: "HELD|demand-7|offer-1")
+    && eh_refuses(payload: "|demand-7|offer-1")
+    && eh_refuses(payload: "leased|demand-7|offer-1")
+}
+
+fn eh_present(payload: NonEmptyStr, generation: Int) -> CasSlotObservation<NonEmptyStr> {
+  CasObservedReadable {
+    readable: CasReadablePresent {
+      version: CasSlotVersion {
+        generation: generation,
+        content: content_hash_of_value(value: payload),
+        value: payload,
+      },
+    },
+  }
+}
+
+fn eh_held_at(owner: String, generation: Int) -> DurableHoldObservation {
+  hold_observation_of_cas(
+    observed: eh_present(payload: hold_slot_payload(state: DurableHoldHeld { owner: eh_owner(text: owner) }), generation: generation),
+  )
+}
+
+fn eh_free_at(generation: Int) -> DurableHoldObservation {
+  hold_observation_of_cas(
+    observed: eh_present(payload: hold_slot_payload(state: DurableHoldFree { released_by: eh_release(text: "done") }), generation: generation),
+  )
+}
+
+fn eh_unavailable() -> CasSlotObservation<NonEmptyStr> {
+  CasObservedUnreadable { cause: CasUnreadableReadRefused { detail: "store unreachable" } }
+}
+
+fn eh_acquire_expectation(a: DurableHoldAcquireAssessment) -> CasExpectation? {
+  match a {
+    HoldAcquireEligible { expected: e } => Present { value: e }
+    HoldAcquireRefused { refusal: _ } => none
+  }
+}
+
+fn eh_expects_absent(e: CasExpectation?) -> Bool {
+  match e {
+    Present { value: ExpectSlotAbsent } => true
+    Present { value: ExpectSlotGeneration { generation: _ } } => false
+    Absent => false
+  }
+}
+
+fn eh_expects_generation(e: CasExpectation?, generation: Int) -> Bool {
+  match e {
+    Present { value: ExpectSlotGeneration { generation: g } } => cas_generation_count(g: g) == generation
+    Present { value: ExpectSlotAbsent } => false
+    Absent => false
+  }
+}
+
+// THE EXPECTATION IS DERIVED FROM THE OBSERVATION. An absent slot yields
+// create-if-absent; a free slot at N yields update-from-N. There is no argument
+// through which a caller could have supplied either, so a slot held at N cannot
+// be overwritten by a caller who happens to know N.
+test fn an_absent_slot_is_acquirable_with_a_create_expectation() -> Bool {
+  eh_expects_absent(e: eh_acquire_expectation(a: durable_hold_acquire_assess(observed: HoldSlotAbsent)))
+}
+
+test fn a_free_slot_at_n_is_acquirable_expecting_generation_n() -> Bool {
+  eh_expects_generation(e: eh_acquire_expectation(a: durable_hold_acquire_assess(observed: eh_free_at(generation: 4))), generation: 4)
+}
+
+fn eh_acquire_occupied_by(a: DurableHoldAcquireAssessment, holder: String) -> Bool {
+  match a {
+    HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: h } } => (h as String) == holder
+    HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: _, detail: _ } } => false
+    HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
+    HoldAcquireEligible { expected: _ } => false
+  }
+}
+
+// A HELD SLOT IS OCCUPIED, WHOEVER HOLDS IT. The second row is the amendment's
+// sharp edge: the requesting owner's OWN spelling is still occupied, because the
+// same name proves two processes derived it and not that the first one is gone.
+// The assessment takes no requesting owner at all, so there is no comparison a
+// re-entrant reading could be smuggled through.
+test fn a_slot_held_by_another_owner_is_occupied() -> Bool {
+  eh_acquire_occupied_by(a: durable_hold_acquire_assess(observed: eh_held_at(owner: "demand-9|offer-4", generation: 1)), holder: "demand-9|offer-4")
+}
+
+test fn a_slot_held_by_the_requesting_owners_own_spelling_is_still_occupied() -> Bool {
+  eh_acquire_occupied_by(a: durable_hold_acquire_assess(observed: eh_held_at(owner: "demand-7|offer-1", generation: 1)), holder: "demand-7|offer-1")
+}
+
+// NEITHER OF THESE IS ELIGIBLE, AND NEITHER IS OCCUPIED. An undecodable slot and
+// an observation that could not be made are refused under their own arms, so a
+// caller neither acquires over a slot it cannot read nor waits for a holder that
+// may not exist.
+test fn an_undecodable_slot_is_neither_acquirable_nor_occupied() -> Bool {
+  match durable_hold_acquire_assess(observed: hold_observation_of_cas(observed: eh_present(payload: "demand-7|offer-1", generation: 2))) {
+    HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: g, detail: _ } } => cas_generation_count(g: g) == 2
+    HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
+    HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
+    HoldAcquireEligible { expected: _ } => false
+  }
+}
+
+test fn an_unavailable_observation_is_not_acquirable() -> Bool {
+  match durable_hold_acquire_assess(observed: hold_observation_of_cas(observed: eh_unavailable())) {
+    HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => true
+    HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
+    HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: _, detail: _ } } => false
+    HoldAcquireEligible { expected: _ } => false
+  }
+}
+
+fn eh_release_assess(observed: DurableHoldObservation, owner: String, acquired: Int) -> DurableHoldReleaseAssessment {
+  durable_hold_release_assess(observed: observed, owner: eh_owner(text: owner), acquired_generation: acquired)
+}
+
+fn eh_release_eligible_at(a: DurableHoldReleaseAssessment, generation: Int) -> Bool {
+  match a {
+    HoldReleaseEligible { generation: g } => cas_generation_count(g: g) == generation
+    HoldReleaseRefused { refusal: _ } => false
+  }
+}
+
+fn eh_release_refusal_label(a: DurableHoldReleaseAssessment) -> String {
+  match a {
+    HoldReleaseEligible { generation: _ } => "eligible"
+    HoldReleaseRefused { refusal: r } =>
+      match r {
+        HoldReleaseSlotAbsent => "absent"
+        HoldReleaseAlreadyFree { generation: _, released_by: _ } => "already-free"
+        HoldReleaseHeldByAnotherOwner { generation: _, holder: _ } => "another-owner"
+        HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } => "another-generation"
+        HoldReleaseSlotUndecodable { generation: _, detail: _ } => "undecodable"
+        HoldReleaseObservationUnavailable { cause: _ } => "unavailable"
+      }
+  }
+}
+
+// THE POSITIVE CONTROL FOR EVERY RELEASE WALL BELOW: the right owner at the
+// generation it acquired is eligible, and the eligible generation is the
+// observed one. Without this row a release that refused everything would
+// satisfy all five refusals.
+test fn the_right_owner_at_its_acquisition_generation_may_release() -> Bool {
+  eh_release_eligible_at(a: eh_release_assess(observed: eh_held_at(owner: "demand-7|offer-1", generation: 3), owner: "demand-7|offer-1", acquired: 3), generation: 3)
+}
+
+// FIVE REFUSALS, EACH UNDER ITS OWN NAME, because their remedies differ. Absent
+// and already-free mean the caller's picture of what it holds is stale; another
+// owner means it never held this slot; another generation is the ABA case --
+// this owner once held the slot and no longer does; undecodable sends the caller
+// to the store. None of them is "eligible", and none of them is any of the
+// others.
+test fn releasing_an_absent_slot_refuses() -> Bool {
+  eh_release_refusal_label(a: eh_release_assess(observed: HoldSlotAbsent, owner: "demand-7|offer-1", acquired: 1)) == "absent"
+}
+
+test fn releasing_an_already_free_slot_refuses() -> Bool {
+  eh_release_refusal_label(a: eh_release_assess(observed: eh_free_at(generation: 2), owner: "demand-7|offer-1", acquired: 2)) == "already-free"
+}
+
+test fn releasing_another_owners_hold_refuses() -> Bool {
+  eh_release_refusal_label(a: eh_release_assess(observed: eh_held_at(owner: "demand-9|offer-4", generation: 1), owner: "demand-7|offer-1", acquired: 1)) == "another-owner"
+}
+
+// THE ABA RELEASE. A acquired at 1 and released; a later A acquired at 3; the
+// generation-1 process resumes and presents its acquisition against the slot it
+// observes held by "A" at 3. Owner equality alone would free the new hold. The
+// generation is what refuses it, and the refusal carries both sides so the
+// stale process can see which hold it is not.
+test fn releasing_the_right_owner_at_another_generation_refuses() -> Bool {
+  match eh_release_assess(observed: eh_held_at(owner: "demand-7|offer-1", generation: 3), owner: "demand-7|offer-1", acquired: 1) {
+    HoldReleaseRefused { refusal: HoldReleaseAgainstAnotherGeneration { acquired: a, observed: o } } =>
+      cas_generation_count(g: a) == 1 && cas_generation_count(g: o) == 3
+    _ => false
+  }
+}
+
+test fn releasing_an_undecodable_slot_refuses() -> Bool {
+  eh_release_refusal_label(a: eh_release_assess(observed: hold_observation_of_cas(observed: eh_present(payload: "demand-7|offer-1", generation: 1)), owner: "demand-7|offer-1", acquired: 1)) == "undecodable"
+}
+
+test fn releasing_over_an_unavailable_observation_refuses() -> Bool {
+  eh_release_refusal_label(a: eh_release_assess(observed: hold_observation_of_cas(observed: eh_unavailable()), owner: "demand-7|offer-1", acquired: 1)) == "unavailable"
+}
+
+// THE PLAN IS MINTED FROM THE OBSERVATION AND CARRIES THE FREE PAYLOAD IN THE
+// SHARED SPELLING. The generation on the plan is the store's, and the payload
+// the commit will write is the free tag followed by exactly the release reference
+// -- the bytes the fabric's release wrote before the extraction.
+test fn an_eligible_release_plans_the_observed_generation_and_the_free_bytes() -> Bool {
+  match file_hold_release_assess_observed(
+    root: "/var/lib/gunbc/example",
+    slot_key: "srv3-06",
+    observed: eh_present(payload: "held|demand-7|offer-1", generation: 5),
+    owner: eh_owner(text: "demand-7|offer-1"),
+    acquired_generation: 5,
+    released_by: eh_release(text: "attempt abandoned before execution"),
+  ) {
+    FileHoldReleasePlanned { plan: p } =>
+      cas_generation_count(g: p.generation) == 5
+        && (p.slot_key as String) == "srv3-06"
+        && (p.free_payload as String) == "free|attempt abandoned before execution"
+    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
+  }
+}
+
+test fn an_ineligible_release_produces_no_plan() -> Bool {
+  match file_hold_release_assess_observed(
+    root: "/var/lib/gunbc/example",
+    slot_key: "srv3-06",
+    observed: eh_present(payload: "held|demand-7|offer-1", generation: 5),
+    owner: eh_owner(text: "demand-7|offer-1"),
+    acquired_generation: 4,
+    released_by: eh_release(text: "stale"),
+  ) {
+    FileHoldReleaseNotEligible { slot_key: k, refusal: HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } } => (k as String) == "srv3-06"
+    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
+    FileHoldReleasePlanned { plan: _ } => false
+  }
+}
+
+// ONE HOLDER EQUALITY, and it is exact: a prefix, a case variant and a
+// trailing-space variant are all different holders.
+test fn holder_equality_is_exact() -> Bool {
+  durable_hold_owner_equal(left: eh_owner(text: "demand-7|offer-1"), right: eh_owner(text: "demand-7|offer-1"))
+    && !durable_hold_owner_equal(left: eh_owner(text: "demand-7|offer-1"), right: eh_owner(text: "demand-7|offer-10"))
+    && !durable_hold_owner_equal(left: eh_owner(text: "demand-7|offer-1"), right: eh_owner(text: "Demand-7|offer-1"))
+    && !durable_hold_owner_equal(left: eh_owner(text: "demand-7|offer-1"), right: eh_owner(text: "demand-7|offer-1 "))
+}

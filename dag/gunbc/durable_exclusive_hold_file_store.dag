@@ -1,0 +1,295 @@
+module gunbc.durable_exclusive_hold_file_store
+
+// THE HOLD PROTOCOL REALIZED OVER THE FILE-BACKED COMPARE-AND-SET.
+//
+// std.durable_exclusive_hold owns the transitions; gunbc.durable_cas_file_store
+// owns the conditional write. This module is the join: it renders a hold state
+// into the file store's NonEmptyStr payload, reads one back, and turns an
+// eligible assessment into exactly one admitted CAS attempt. It is the ONE
+// place the held|/free| spelling exists. Two consumers that each carried their
+// own rendering would be two authorities for one wire, free to disagree, and a
+// slot written by one and read by the other would decode as garbage -- or,
+// worse, as free.
+//
+// THE TAGS ARE A MATERIALIZATION OF THE HOLD PROTOCOL INTO THIS STORE'S
+// PAYLOAD, NOT FACTS ABOUT CAS. durable_cas_file_store is not edited by this
+// module and knows nothing of holders; it is consumed through its public mint
+// and write, the same way any other CAS consumer reaches it.
+//
+// THE BYTES ARE THE ONES gunbc.fabric_control_plane WROTE BEFORE THIS MODULE
+// EXISTED -- "held|" followed by the owner, "free|" followed by the release
+// reference -- because slots already on disk under /var/lib/gunbc/fabric were
+// written in that spelling and must decode unchanged. A compatibility witness
+// pins the specimens byte-for-byte.
+
+import std.types { NonEmptyStr, String }
+import std.durable_compare_and_set {
+  ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasStoreFailure, CasSlotObservationRefused,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasReadableAbsent, CasReadablePresent, CasGeneration,
+}
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef,
+  DurableHoldState, DurableHoldHeld, DurableHoldFree,
+  DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld,
+  HoldSlotUndecodable, HoldObservationUnavailable,
+  HoldAcquireEligible, HoldAcquireRefused,
+  HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
+  HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseRefusal,
+  durable_hold_acquire_assess, durable_hold_release_assess,
+}
+import gunbc.durable_cas_file_store {
+  DefaultAccessCreateOnly, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  admit_cas_attempt_for_derived_payload, file_compare_and_set, observe_cas_slot_state,
+}
+
+// THE TAGS ARE NAMED ONCE AND THE BODY IS DERIVED FROM THE TAG THAT MATCHED.
+//
+// An earlier cut of this codec (in the fabric module) spelled each tag twice
+// and sliced the body at the length of the HELD tag for both arms, which
+// worked only because the two tags happen to be the same length. A third tag
+// of any other length would have decoded to a body cut at the wrong offset,
+// silently, with the round trip still green for the two that existed. So the
+// body is always sliced at the length of the tag that matched.
+data hold_held_tag: String = "held|"
+
+data hold_free_tag: String = "free|"
+
+fn hold_slot_body(text: String, tag: String) -> String {
+  substring(s: text, start: string_length(s: tag), end: string_length(s: text))
+}
+
+fn hold_slot_payload(state: DurableHoldState) -> NonEmptyStr {
+  match state {
+    DurableHoldHeld { owner: o } => concat(hold_held_tag, o as String) as NonEmptyStr
+    DurableHoldFree { released_by: b } => concat(hold_free_tag, b as String) as NonEmptyStr
+  }
+}
+
+// A DECODE THAT REFUSES RATHER THAN GUESSES. An unrecognised payload is not a
+// free slot and not a held one: it is a slot this module cannot interpret, and
+// it gets its own arm so a caller stops rather than proceeds on a guess.
+//
+// The parse is the render read backwards over the same two tags, not a second
+// grammar. It splits once on the tag so an owner containing the separator
+// survives the round trip -- a fabric reservation reference is itself a demand
+// and an offer joined by that character.
+type HoldPayloadDecode
+  = HoldPayloadDecoded { state: DurableHoldState }
+  | HoldPayloadUndecodable { detail: NonEmptyStr }
+
+fn decode_hold_slot_payload(payload: NonEmptyStr) -> HoldPayloadDecode {
+  let text = payload as String
+  if starts_with(s: text, prefix: hold_held_tag) {
+    HoldPayloadDecoded {
+      state: DurableHoldHeld {
+        owner: hold_slot_body(text: text, tag: hold_held_tag) as DurableHoldOwnerRef,
+      },
+    }
+  } else {
+    if starts_with(s: text, prefix: hold_free_tag) {
+      HoldPayloadDecoded {
+        state: DurableHoldFree {
+          released_by: hold_slot_body(text: text, tag: hold_free_tag) as DurableHoldReleaseRef,
+        },
+      }
+    } else {
+      HoldPayloadUndecodable {
+        detail: concat("slot payload carries no recognised state tag: ", text) as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// From what the CAS store observed to what the hold protocol decides over. Pure,
+// so a witness can supply the store's observation and exercise every arm of the
+// protocol without a filesystem; the live form below is this over a real read.
+fn hold_observation_of_cas(observed: CasSlotObservation<NonEmptyStr>) -> DurableHoldObservation {
+  match observed {
+    CasObservedUnreadable { cause: c } => HoldObservationUnavailable { cause: c }
+    CasObservedReadable { readable: CasReadableAbsent } => HoldSlotAbsent
+    CasObservedReadable { readable: CasReadablePresent { version: v } } =>
+      match decode_hold_slot_payload(payload: v.value) {
+        HoldPayloadUndecodable { detail: d } => HoldSlotUndecodable { generation: v.generation, detail: d }
+        HoldPayloadDecoded { state: DurableHoldHeld { owner: o } } => HoldSlotHeld { generation: v.generation, owner: o }
+        HoldPayloadDecoded { state: DurableHoldFree { released_by: b } } => HoldSlotFree { generation: v.generation, released_by: b }
+      }
+  }
+}
+
+fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservation {
+  hold_observation_of_cas(observed: observe_cas_slot_state(root: root, key: key))
+}
+
+// EVERY WAY AN ACQUIRE ENDS, TYPED AND SEPARATE, because the remedies differ.
+// Occupied is the protocol's answer and retrying will not change it until the
+// holder releases; Lost is a race after this caller's own observation and the
+// remedy is to re-observe; StoreUnavailable says nothing about the slot; an
+// undecodable slot needs an operator; an unaddressable key is the caller's
+// defect. Collapsing store refusal into a lost race is the class rostered as
+// store_refusal_reported_as_contention, and it is kept apart here by
+// construction of the outcome, not by a comment.
+type FileHoldAcquireOutcome
+  = FileHoldAcquired { slot_key: NonEmptyStr, owner: DurableHoldOwnerRef, generation: CasGeneration }
+  | FileHoldOccupied { slot_key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration }
+  | FileHoldAcquireLost { slot_key: NonEmptyStr }
+  | FileHoldAcquireStoreUnavailable { slot_key: NonEmptyStr, cause: CasStoreFailure }
+  | FileHoldSlotUndecodable { slot_key: NonEmptyStr, generation: CasGeneration, detail: NonEmptyStr }
+  | FileHoldKeyNotSlotAddressable { slot_key: NonEmptyStr }
+
+// The write half, split from the read so two contenders can be handed ONE
+// observation and race to the store from it -- which is the case the protocol
+// exists for, and the one a read-then-write in a single function cannot stage.
+// The observation is still a CasSlotObservation, the store's own product, and
+// never a caller-authored state.
+//
+// admit_cas_attempt_for_derived_payload rather than admit_cas_attempt: this
+// module derives the payload from the state, so there is no caller digest that
+// could legitimately disagree, and the only refusal that remains reachable is a
+// key that does not address a slot.
+fn file_hold_acquire_observed(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  observed: CasSlotObservation<NonEmptyStr>,
+  requested_owner: DurableHoldOwnerRef,
+) -> FileHoldAcquireOutcome {
+  match durable_hold_acquire_assess(observed: hold_observation_of_cas(observed: observed)) {
+    HoldAcquireRefused { refusal: r } =>
+      match r {
+        HoldAcquireOccupied { generation: g, holder: h } =>
+          FileHoldOccupied { slot_key: slot_key, holder: h, generation: g }
+        HoldAcquireSlotUndecodable { generation: g, detail: d } =>
+          FileHoldSlotUndecodable { slot_key: slot_key, generation: g, detail: d }
+        HoldAcquireObservationUnavailable { cause: c } =>
+          FileHoldAcquireStoreUnavailable { slot_key: slot_key, cause: CasSlotObservationRefused { cause: c } }
+      }
+    HoldAcquireEligible { expected: e } =>
+      match admit_cas_attempt_for_derived_payload(
+        key: slot_key,
+        expected: e,
+        proposed: hold_slot_payload(state: DurableHoldHeld { owner: requested_owner }),
+      ) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldKeyNotSlotAddressable { slot_key: slot_key }
+        DerivedPayloadAdmitted { verified: v } =>
+          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
+            CasCommitted { committed: c } =>
+              FileHoldAcquired { slot_key: slot_key, owner: requested_owner, generation: c.generation }
+            CasPreconditionFailed { expected: _, observed: _ } => FileHoldAcquireLost { slot_key: slot_key }
+            CasStoreRefused { cause: c } => FileHoldAcquireStoreUnavailable { slot_key: slot_key, cause: c }
+          }
+      }
+  }
+}
+
+// THE PRODUCTION ACQUIRE. It takes no CasExpectation: it reads the slot,
+// admits only absent or free, derives the expectation from that read, and
+// writes. A caller cannot present a generation, so it cannot overwrite a hold
+// whose generation it happens to know.
+fn file_hold_acquire(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  requested_owner: DurableHoldOwnerRef,
+) -> FileHoldAcquireOutcome {
+  file_hold_acquire_observed(
+    root: root,
+    slot_key: slot_key,
+    observed: observe_cas_slot_state(root: root, key: slot_key),
+    requested_owner: requested_owner,
+  )
+}
+
+// RELEASE IS ASSESS-THEN-COMMIT, NOT ONE INDIVISIBLE FREE, because a consumer
+// has settlement to do between the two: the fabric releases or settles money
+// and frees the cell only if the ledger advanced. So the assessment produces a
+// PLAN and the commit consumes it. The plan is minted here and nowhere else --
+// sole_constructor -- so a caller cannot author "release generation 7 for
+// owner A" from its own bookkeeping; every field is copied from the store's
+// observation at assessment time.
+type FileHoldReleasePlan sole_constructor {
+  root: NonEmptyStr
+  slot_key: NonEmptyStr
+  owner: DurableHoldOwnerRef
+  generation: CasGeneration
+  free_payload: NonEmptyStr
+}
+
+type FileHoldReleaseAssessment
+  = FileHoldReleasePlanned { plan: FileHoldReleasePlan }
+  | FileHoldReleaseNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldReleaseRefusal }
+
+// The pure form over a supplied store observation, for the same reason the
+// acquire has one: the protocol's release walls are decided from a value, and a
+// witness that supplies the store's observation exercises every one of them
+// without a filesystem. A production caller uses file_hold_release_assess,
+// which reads the slot itself.
+fn file_hold_release_assess_observed(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  observed: CasSlotObservation<NonEmptyStr>,
+  owner: DurableHoldOwnerRef,
+  acquired_generation: CasGeneration,
+  released_by: DurableHoldReleaseRef,
+) -> FileHoldReleaseAssessment {
+  match durable_hold_release_assess(
+    observed: hold_observation_of_cas(observed: observed),
+    owner: owner,
+    acquired_generation: acquired_generation,
+  ) {
+    HoldReleaseRefused { refusal: r } => FileHoldReleaseNotEligible { slot_key: slot_key, refusal: r }
+    HoldReleaseEligible { generation: g } =>
+      FileHoldReleasePlanned {
+        plan: FileHoldReleasePlan {
+          root: root,
+          slot_key: slot_key,
+          owner: owner,
+          generation: g,
+          free_payload: hold_slot_payload(state: DurableHoldFree { released_by: released_by }),
+        },
+      }
+  }
+}
+
+fn file_hold_release_assess(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  owner: DurableHoldOwnerRef,
+  acquired_generation: CasGeneration,
+  released_by: DurableHoldReleaseRef,
+) -> FileHoldReleaseAssessment {
+  file_hold_release_assess_observed(
+    root: root,
+    slot_key: slot_key,
+    observed: observe_cas_slot_state(root: root, key: slot_key),
+    owner: owner,
+    acquired_generation: acquired_generation,
+    released_by: released_by,
+  )
+}
+
+// The commit still tells a lost race from an unavailable store. A release
+// assessed at generation N and committed after the slot moved is
+// FileHoldReleaseLost -- the hold this plan described no longer exists -- and
+// a caller that has already settled against the plan needs to know that its
+// settlement and the slot have come apart, which a store fault would not tell it.
+type FileHoldReleaseOutcome
+  = FileHoldReleased { slot_key: NonEmptyStr, generation: CasGeneration }
+  | FileHoldReleaseLost { slot_key: NonEmptyStr }
+  | FileHoldReleaseStoreUnavailable { slot_key: NonEmptyStr, cause: CasStoreFailure }
+  | FileHoldReleaseKeyNotSlotAddressable { slot_key: NonEmptyStr }
+
+fn file_hold_release_commit(plan: FileHoldReleasePlan) -> FileHoldReleaseOutcome {
+  match admit_cas_attempt_for_derived_payload(
+    key: plan.slot_key,
+    expected: ExpectSlotGeneration { generation: plan.generation },
+    proposed: plan.free_payload,
+  ) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldReleaseKeyNotSlotAddressable { slot_key: plan.slot_key }
+    DerivedPayloadAdmitted { verified: v } =>
+      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, verified: v) {
+        CasCommitted { committed: c } => FileHoldReleased { slot_key: plan.slot_key, generation: c.generation }
+        CasPreconditionFailed { expected: _, observed: _ } => FileHoldReleaseLost { slot_key: plan.slot_key }
+        CasStoreRefused { cause: c } => FileHoldReleaseStoreUnavailable { slot_key: plan.slot_key, cause: c }
+      }
+  }
+}

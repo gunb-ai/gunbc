@@ -1,15 +1,17 @@
 module gunbc.fabric_control_plane
 
 import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
-import std.content_hash { ContentHash, content_hash_of_value, Fnv1a64StructuralDigestHex }
+import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import extdeps.currency.currency { CurrencyCode }
 import std.durable_compare_and_set {
-  CasExpectation, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
-  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
-  CasReadableAbsent, CasReadablePresent, CasUnreadableSlot,
-  CasSlotObservation, CasObservedReadable, CasObservedUnreadable, ExpectSlotGeneration,
-  cas_attempt, cas_generation_count,
+  CasStoreFailure, CasSlotObservationRefused, CasSlotObservation, cas_generation_count,
+}
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef,
+  DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
+  HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,
+  HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey, fabric_identity_eq }
 import product.fabric.demand { Demand }
@@ -21,11 +23,14 @@ import product.fabric.provider_admission {
 }
 import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.durable_cas_file_store {
-  DefaultAccessCreateOnly,
-  CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
-  CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable,
-  admit_cas_attempt, file_compare_and_set, observe_cas_slot_state,
+import gunbc.durable_cas_file_store { observe_cas_slot_state }
+import gunbc.durable_exclusive_hold_file_store {
+  FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
+  FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
+  FileHoldReleasePlan, FileHoldReleaseAssessment, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
+  FileHoldReleaseOutcome, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
+  FileHoldReleaseKeyNotSlotAddressable,
+  file_hold_acquire, file_hold_release_assess_observed, file_hold_release_commit,
 }
 import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
 import product.fabric.budget {
@@ -174,53 +179,70 @@ type CellReservation
   | StoreUnavailable { slot_key: NonEmptyStr, cause: CasStoreFailure }
   | AttemptRefused { slot_key: NonEmptyStr, detail: NonEmptyStr }
 
+// THE CELL'S HOLDER IS ITS RESERVATION, AND THE OWNER IS DERIVED FROM IT.
+//
+// The hold protocol asks for a holder value; the fabric's holder is the
+// reservation reference, which is already the ONE identity the money encumbrance
+// and the cell agree on. Deriving the owner here rather than rendering a second
+// spelling keeps the slot payload byte-identical to what this module wrote before
+// the protocol was extracted: "held|" followed by exactly the reservation
+// reference. A slot written by the pre-extraction broker decodes under the shared
+// codec to a hold owned by that same reservation.
+fn fabric_hold_owner(reservation: ReservationRef) -> DurableHoldOwnerRef {
+  (reservation as String) as DurableHoldOwnerRef
+}
+
+// The release reference is the reason, unchanged: "free|" followed by exactly the
+// reason the caller gave, as before.
+fn fabric_hold_release_ref(reason: NonEmptyStr) -> DurableHoldReleaseRef {
+  (reason as String) as DurableHoldReleaseRef
+}
+
 // The reservation half, reached only once selection has named an offer.
 //
-// `expected` is a PARAMETER rather than a constant, and that is deliberate. A
-// cell reserved for the first time expects an absent slot; a cell being
-// re-reserved after release expects the generation the release left behind.
-// Hard-coding ExpectSlotAbsent would make a cell reservable exactly once in its
-// lifetime and would refuse every subsequent reservation for a reason that
-// looks like a lost race. The caller states what it believes and the store
-// judges it.
+// THERE IS NO EXPECTATION PARAMETER ANY MORE, AND ITS REMOVAL IS THE FIRST
+// AMENDMENT OF THE EXTRACTION. This function used to take a CasExpectation from
+// its caller -- absent for a first reservation, the generation a release left
+// behind for a re-reservation -- and hand it to the store. CAS judged the
+// generation and nothing judged occupancy, so a caller presenting the correct
+// generation of a slot that was HELD at that generation overwrote the hold. The
+// shared acquire reads the slot itself, admits only absent or free, and derives
+// its expectation from what it read; a caller has no parameter through which to
+// name a generation. A cell held by THIS reservation's own spelling is still
+// occupied: the same spelling does not prove the earlier process is gone.
+//
+// The occupied and race-lost arms both map to ReservationLost, which is what a
+// caller presenting ExpectSlotAbsent against a held slot received before: the
+// remedy in both cases is to re-observe and try again once the holder releases.
+// An undecodable slot maps to AttemptRefused, as the live probe already
+// classified it: it is not a race and not a store fault, and nothing but an
+// operator can move it.
 fn reserve_selected_cell(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
-  expected: CasExpectation,
   demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
   account: MoneyAccount,
 ) -> CellReservation {
-  let payload = cell_slot_payload(
-    state: CellHeld {
+  match file_hold_acquire(
+    root: root,
+    slot_key: slot_key,
+    requested_owner: fabric_hold_owner(
       reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id),
-    },
-  )
-  match admit_cas_attempt(
-    attempt: cas_attempt(
-      key: slot_key,
-      expected: expected,
-      proposed: payload,
-      proposed_content: content_hash_of_value(value: payload),
-    )
+    ),
   ) {
-    CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
-        CasCommitted { committed: c } =>
-          CellReserved {
-            offer: offer_id,
-            slot_key: slot_key,
-            generation: cas_generation_count(g: c.generation),
-            account: account,
-          }
-        CasPreconditionFailed { expected: _, observed: _ } => ReservationLost { slot_key: slot_key }
-        CasStoreRefused { cause: c } => StoreUnavailable { slot_key: slot_key, cause: c }
+    FileHoldAcquired { slot_key: _, owner: _, generation: g } =>
+      CellReserved {
+        offer: offer_id,
+        slot_key: slot_key,
+        generation: cas_generation_count(g: g),
+        account: account,
       }
-    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
-      AttemptRefused { slot_key: slot_key, detail: "reservation payload and its digest disagree" }
-    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
-      AttemptRefused { slot_key: slot_key, detail: "reservation digest families are incomparable" }
-    CasAttemptKeyNotSlotAddressable { key: _ } =>
+    FileHoldOccupied { slot_key: _, holder: _, generation: _ } => ReservationLost { slot_key: slot_key }
+    FileHoldAcquireLost { slot_key: _ } => ReservationLost { slot_key: slot_key }
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: c } => StoreUnavailable { slot_key: slot_key, cause: c }
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: d } => AttemptRefused { slot_key: slot_key, detail: d }
+    FileHoldKeyNotSlotAddressable { slot_key: _ } =>
       AttemptRefused { slot_key: slot_key, detail: "allocation key is not slot-addressable" }
   }
 }
@@ -423,7 +445,6 @@ fn broker_reserve_for_demand(
   demand: Demand<NonEmptyStr>,
   roster: List<FabricCellCandidate>,
   sanctions: List<ExecutorSanction>,
-  expected: CasExpectation,
   account: MoneyAccount,
   maximum_buy_order: MoneyAmountMicro,
   delay_valuation: MoneyPerSecond,
@@ -467,7 +488,6 @@ fn broker_reserve_for_demand(
           demand_id: demand.id,
           offer: winner.offer,
           cost: k,
-          expected: expected,
           account: account,
         )
       }
@@ -489,7 +509,6 @@ fn reserve_priced_cell(
   demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
   offer: SupplierOffer<NonEmptyStr>,
   cost: SelectionCost,
-  expected: CasExpectation,
   account: MoneyAccount,
 ) -> CellReservation {
   let slot_key = selected_cell_allocation_key(offer: offer)
@@ -508,7 +527,6 @@ fn reserve_priced_cell(
       reserve_selected_cell(
         root: root,
         slot_key: slot_key,
-        expected: expected,
         demand_id: demand_id,
         offer_id: offer.id,
         account: advanced,
@@ -516,92 +534,18 @@ fn reserve_priced_cell(
   }
 }
 
-// WHAT THE SLOT SAYS ABOUT ITSELF, AND WHY IT HAS TO SAY ANYTHING AT ALL.
+// WHAT THE SLOT SAYS ABOUT ITSELF NOW LIVES IN THE SHARED HOLD PROTOCOL.
 //
-// Until release existed the slot payload was write-only: the broker wrote the
-// reservation and nothing ever read it back. Release is the first reader, and
-// it needs an answer the payload could not give -- IS THIS CELL HELD, AND BY
-// WHICH RESERVATION. Without it, releasing is a blind write: the actuator
-// would free whatever is in the slot on the strength of a generation the
-// CALLER supplied, which is a second account of who holds the cell and free to
-// disagree with the store.
-//
-// The generation fence alone does not close this. It establishes that the slot
-// has not MOVED since it was observed, which is a different question from
-// whether it is held and by whom -- a slot that is already free at generation
-// N admits a release presenting N and would be "released" a second time. That
-// is not a harmless no-op: it writes a free-over-free generation, so a
-// concurrent re-reservation racing the second release sees its own precondition
-// broken by a release of a hold it never had.
-//
-// So the state is TYPED and the rendering is the boundary. CellHeld carries the
-// reservation reference itself rather than the demand and offer separately,
-// because that reference is already the one identity the money encumbrance and
-// the cell agree on -- re-rendering the pair here would put a second spelling
-// of it in the slot, and the two could disagree.
-type CellSlotState
-  = CellHeld { reservation: ReservationRef }
-  | CellFree { released_by: NonEmptyStr }
-
-// A DECODE THAT REFUSES RATHER THAN GUESSES. An unrecognised payload is not an
-// empty cell and not a held one: it is a slot this module cannot interpret, and
-// answering either of the other two would be the fabricated plausible output.
-// It gets its own arm so the caller can stop rather than proceed on a guess.
-type CellSlotDecode
-  = CellSlotDecoded { state: CellSlotState }
-  | CellSlotUndecodable { detail: NonEmptyStr }
-
-// THE TAGS ARE NAMED ONCE AND THE BODY IS DERIVED FROM THE TAG THAT MATCHED.
-//
-// Both halves of that are the same rule. An earlier cut spelled each tag twice
-// -- once rendering, once decoding -- and computed the body ONCE against the
-// length of the held tag, reusing it for the free arm. That worked only because
-// the two tags happen to be the same length, so a third tag of any other length
-// would have decoded to a body sliced at the wrong offset, silently, with the
-// round trip still green for the two tags that already existed. The coupling
-// bought nothing and it is removed rather than commented (review 57256).
-data cell_held_tag: String = "held|"
-
-data cell_free_tag: String = "free|"
-
-fn cell_slot_body(text: String, tag: String) -> String {
-  substring(s: text, start: string_length(s: tag), end: string_length(s: text))
-}
-
-fn cell_slot_payload(state: CellSlotState) -> NonEmptyStr {
-  match state {
-    CellHeld { reservation: r } => concat(cell_held_tag, r as String) as NonEmptyStr
-    CellFree { released_by: b } => concat(cell_free_tag, b as String) as NonEmptyStr
-  }
-}
-
-// The parse is the render read backwards over the same two tags, not a second
-// grammar. It splits once on the first separator so a reservation reference
-// containing the separator survives the round trip -- the reference is itself a
-// rendering of a demand and an offer joined by that character, so a decode that
-// split on every occurrence would truncate every real payload it was given.
-fn decode_cell_slot_payload(payload: NonEmptyStr) -> CellSlotDecode {
-  let text = payload as String
-  if starts_with(s: text, prefix: cell_held_tag) {
-    CellSlotDecoded {
-      state: CellHeld {
-        reservation: cell_slot_body(text: text, tag: cell_held_tag) as ReservationRef,
-      },
-    }
-  } else {
-    if starts_with(s: text, prefix: cell_free_tag) {
-      CellSlotDecoded {
-        state: CellFree {
-          released_by: cell_slot_body(text: text, tag: cell_free_tag) as NonEmptyStr,
-        },
-      }
-    } else {
-      CellSlotUndecodable {
-        detail: concat("slot payload carries no recognised state tag: ", text) as NonEmptyStr,
-      }
-    }
-  }
-}
+// Until release existed the slot payload was write-only; release was the first
+// reader, and it needed an answer the payload could not give -- IS THIS CELL
+// HELD, AND BY WHICH RESERVATION. The typed held/free state, its refusing
+// decode and the held|/free| spelling were first written here to answer that.
+// They are now std.durable_exclusive_hold (the states and transitions) and
+// gunbc.durable_exclusive_hold_file_store (the one codec and the CAS
+// realization), because a second consumer needed the same protocol over a slot
+// that is not a cell, and a copy would have been a second authority (DESIGN 3).
+// Nothing of the old vocabulary survives here as a compatibility surface; the
+// bytes on disk are unchanged and decode under the shared codec.
 
 // EVERY WAY A RELEASE ENDS, and the separation is the same discipline the
 // reservation carries: a caller must be able to choose a remedy from the symbol
@@ -643,63 +587,82 @@ type CellHoldEnd
 // can be persisted alone. Source order is again free and is again not the
 // guarantee -- that was established by mutation on the reservation path and the
 // same laziness holds here.
+//
+// RELEASE IS ASSESS-THEN-COMMIT, and the fabric is the consumer whose settlement
+// sits between the two: the shared protocol assesses the live observation --
+// held, by THIS reservation, at the generation it was ACQUIRED -- and mints a
+// release plan only from that observation; the money transition runs; and the
+// plan is committed only on AccountAdvanced. The acquisition generation is the
+// SECOND AMENDMENT of the extraction: the release used to present the observed
+// generation and was fenced against a stale release only by the money ledger's
+// lease generation beside it. The hold now fences itself, so a generation-1
+// holder resuming after a later generation-3 reservation of the same spelling
+// refuses at the slot and never reaches the ledger.
+//
+// The refusals of the protocol all map to HoldEndSlotNotHeld, whose meaning is
+// unchanged: the store was read and the cell is NOT held by the hold being
+// released -- absent, already free, another reservation's, this reservation's at
+// another generation, or a payload nobody can read. The detail names which.
 fn end_cell_hold(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
   observed: CasSlotObservation<NonEmptyStr>,
   reservation: ReservationRef,
+  acquired_generation: Int,
   money: MoneyOutcome,
   reason: NonEmptyStr,
 ) -> CellHoldEnd {
-  match observed {
-    CasObservedUnreadable { cause: c } =>
-      HoldEndStoreUnavailable { slot_key: slot_key, cause: CasSlotObservationRefused { cause: c } }
-    CasObservedReadable { readable: r } =>
+  match file_hold_release_assess_observed(
+    root: root,
+    slot_key: slot_key,
+    observed: observed,
+    owner: fabric_hold_owner(reservation: reservation),
+    acquired_generation: acquired_generation,
+    released_by: fabric_hold_release_ref(reason: reason),
+  ) {
+    FileHoldReleaseNotEligible { slot_key: _, refusal: r } =>
       match r {
-        CasReadableAbsent =>
+        HoldReleaseObservationUnavailable { cause: c } =>
+          HoldEndStoreUnavailable { slot_key: slot_key, cause: CasSlotObservationRefused { cause: c } }
+        HoldReleaseSlotAbsent =>
           HoldEndSlotNotHeld {
             slot_key: slot_key,
             detail: "the slot is absent, so this cell is held by no reservation",
           }
-        CasReadablePresent { version: v } =>
-          match decode_cell_slot_payload(payload: v.value) {
-            CellSlotUndecodable { detail: d } =>
-              HoldEndSlotNotHeld { slot_key: slot_key, detail: d }
-            CellSlotDecoded { state: st } =>
-              match st {
-                CellFree { released_by: _ } =>
-                  HoldEndSlotNotHeld {
-                    slot_key: slot_key,
-                    detail: "the slot is already free, so there is no hold to release",
-                  }
-                CellHeld { reservation: holder } =>
-                  if (holder as String) != (reservation as String) {
-                    HoldEndSlotNotHeld {
-                      slot_key: slot_key,
-                      detail: concat(
-                        "the cell is held by another reservation: ",
-                        holder as String,
-                      ) as NonEmptyStr,
-                    }
-                  } else {
-                    commit_hold_end(
-                      root: root,
-                      slot_key: slot_key,
-                      expected: ExpectSlotGeneration { generation: v.generation },
-                      money: money,
-                      reason: reason,
-                    )
-                  }
-              }
+        HoldReleaseAlreadyFree { generation: _, released_by: _ } =>
+          HoldEndSlotNotHeld {
+            slot_key: slot_key,
+            detail: "the slot is already free, so there is no hold to release",
           }
+        HoldReleaseHeldByAnotherOwner { generation: _, holder: holder } =>
+          HoldEndSlotNotHeld {
+            slot_key: slot_key,
+            detail: concat("the cell is held by another reservation: ", holder as String) as NonEmptyStr,
+          }
+        HoldReleaseAgainstAnotherGeneration { acquired: a, observed: o } =>
+          HoldEndSlotNotHeld {
+            slot_key: slot_key,
+            detail: concat(
+              concat(
+                concat("the cell is held by this reservation at generation ", to_string(cas_generation_count(g: o))),
+                ", not the generation this release was acquired at: ",
+              ),
+              to_string(cas_generation_count(g: a)),
+            ) as NonEmptyStr,
+          }
+        HoldReleaseSlotUndecodable { generation: _, detail: d } =>
+          HoldEndSlotNotHeld { slot_key: slot_key, detail: d }
       }
+    FileHoldReleasePlanned { plan: plan } => commit_hold_end(plan: plan, money: money)
   }
 }
 
 // The half that runs once the store has confirmed THIS reservation holds the
-// cell. The generation is the one the store just reported rather than one the
-// caller stated: a caller-supplied generation would be a second account of the
-// slot's version and could name a moment the observation never saw.
+// cell at the generation it acquired. The plan carries the generation the store
+// just reported rather than one the caller stated: a caller-supplied generation
+// would be a second account of the slot's version and could name a moment the
+// observation never saw -- which is why the plan has no constructor outside the
+// store module.
 //
 // THE MONEY OUTCOME ARRIVES ALREADY COMPUTED AND THAT IS NOT A CALLER DECIDING
 // IT. Each ending owns its own money transition -- release derives the amount
@@ -713,59 +676,25 @@ fn end_cell_hold(
 // It is also effect-free to pass: the substrate is lazy, so an unreached money
 // transition is never forced, and the refusal arms above return before this
 // function is entered at all.
-fn commit_hold_end(
-  root: NonEmptyStr,
-  slot_key: NonEmptyStr,
-  expected: CasExpectation,
-  money: MoneyOutcome,
-  reason: NonEmptyStr,
-) -> CellHoldEnd {
+fn commit_hold_end(plan: FileHoldReleasePlan, money: MoneyOutcome) -> CellHoldEnd {
   match money {
-    MoneyRefused { refusal: f } => HoldEndBudgetRefused { slot_key: slot_key, refusal: f }
-    AccountAdvanced { account: advanced } =>
-      free_cell_slot(
-        root: root,
-        slot_key: slot_key,
-        expected: expected,
-        reason: reason,
-        account: advanced,
-      )
+    MoneyRefused { refusal: f } => HoldEndBudgetRefused { slot_key: plan.slot_key, refusal: f }
+    AccountAdvanced { account: advanced } => free_cell_slot(plan: plan, account: advanced)
   }
 }
 
-fn free_cell_slot(
-  root: NonEmptyStr,
-  slot_key: NonEmptyStr,
-  expected: CasExpectation,
-  reason: NonEmptyStr,
-  account: MoneyAccount,
-) -> CellHoldEnd {
-  let payload = cell_slot_payload(state: CellFree { released_by: reason })
-  match admit_cas_attempt(
-    attempt: cas_attempt(
-      key: slot_key,
-      expected: expected,
-      proposed: payload,
-      proposed_content: content_hash_of_value(value: payload),
-    )
-  ) {
-    CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
-        CasCommitted { committed: c } =>
-          CellHoldEnded {
-            slot_key: slot_key,
-            generation: cas_generation_count(g: c.generation),
-            account: account,
-          }
-        CasPreconditionFailed { expected: _, observed: _ } => HoldEndLost { slot_key: slot_key }
-        CasStoreRefused { cause: c } => HoldEndStoreUnavailable { slot_key: slot_key, cause: c }
-      }
-    CasAttemptDigestMismatch { claimed: _, actual: _ } =>
-      HoldEndAttemptRefused { slot_key: slot_key, detail: "release payload and its digest disagree" }
-    CasAttemptDigestIncomparable { claimed: _, actual: _ } =>
-      HoldEndAttemptRefused { slot_key: slot_key, detail: "release digest families are incomparable" }
-    CasAttemptKeyNotSlotAddressable { key: _ } =>
-      HoldEndAttemptRefused { slot_key: slot_key, detail: "allocation key is not slot-addressable" }
+// The commit still tells a lost race from an unavailable store: a plan assessed
+// at generation N and committed after the slot moved is HoldEndLost, which
+// tells the caller its settlement and the slot have come apart, and a store
+// fault would not tell it that.
+fn free_cell_slot(plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldEnd {
+  match file_hold_release_commit(plan: plan) {
+    FileHoldReleased { slot_key: k, generation: g } =>
+      CellHoldEnded { slot_key: k, generation: cas_generation_count(g: g), account: account }
+    FileHoldReleaseLost { slot_key: k } => HoldEndLost { slot_key: k }
+    FileHoldReleaseStoreUnavailable { slot_key: k, cause: c } => HoldEndStoreUnavailable { slot_key: k, cause: c }
+    FileHoldReleaseKeyNotSlotAddressable { slot_key: k } =>
+      HoldEndAttemptRefused { slot_key: k, detail: "allocation key is not slot-addressable" }
   }
 }
 
@@ -791,6 +720,7 @@ fn free_cell_slot(
 fn release_reserved_cell_at(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
+  acquired_generation: Int,
   lease: LeaseIdentity,
   reservation: ReservationRef,
   reason: NonEmptyStr,
@@ -802,6 +732,7 @@ fn release_reserved_cell_at(
     slot_key: slot_key,
     observed: observe_cas_slot_state(root: root, key: slot_key),
     reservation: reservation,
+    acquired_generation: acquired_generation,
     money: release_money(
       a: account,
       reference: reservation,
@@ -935,6 +866,7 @@ type CellSettlement
 fn settle_reserved_cell_at<P>(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
+  acquired_generation: Int,
   receipt: Receipt<P>,
   grant: ExecutionGrant<P>,
   reason: NonEmptyStr,
@@ -958,6 +890,7 @@ fn settle_reserved_cell_at<P>(
           slot_key: slot_key,
           observed: observe_cas_slot_state(root: root, key: slot_key),
           reservation: r,
+          acquired_generation: acquired_generation,
           money: settle_money(
             a: account,
             request: MoneySettlementRequest {
