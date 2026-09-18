@@ -890,6 +890,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "any_executor_completes_a_settled_lifecycle_and_never_restarts_it_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "any_executor_completes_a_settled_lifecycle_and_never_restarts_it_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_production_admission_commits_the_frozen_hosts_of_a_fenced_lifecycle_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "the_production_admission_commits_the_frozen_hosts_of_a_fenced_lifecycle_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
+      function: "a_listener_behind_a_failed_connect_is_read_on_the_host_and_fences_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.devboot_text_blob_real_execution", function: "a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution" },
       entry: "dag/test/claim/devboot_text_blob_real_execution_witness_test.dag",
       function: "a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution",

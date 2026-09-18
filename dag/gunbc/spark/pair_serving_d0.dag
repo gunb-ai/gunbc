@@ -1,6 +1,6 @@
 module gunbc.spark.pair_serving_d0
 
-import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs, Port }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
@@ -42,7 +42,15 @@ import gunbc.serving.serving_enrollment { ServingRouteEndpoint, ServingRouteReso
 import gunbc.harness.harness_backend { harness_bounded_get, harness_bounded_presence, HarnessResponded, HarnessConnectFailed, HarnessDeadline, HarnessTransportUnread, harness_metrics_url, harness_models_url, harness_launch_from_body }
 import gunbc.serving.serving_enrollment { serving_route_endpoint_wire }
 import gunbc.spark.vllm_endpoint_process_launch { LaunchObserved, LaunchUnobserved }
-import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitPropertyUnread, read_unit_occupancy, serving_incarnation_refusal_text }
+import gunbc.spark.serving_incarnation_observe {
+  UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitPropertyUnread, read_unit_occupancy, serving_incarnation_refusal_text,
+  EndpointListenerReading, EndpointNoListener, EndpointListening, EndpointListenerUnread, read_endpoint_listener,
+  EngineProcessScan, EngineScanLegDidNotRun, EngineScanClassified, scan_engine_processes,
+}
+import extdeps.procps.pgrep { PgrepMatched, PgrepNoMatch, PgrepScanFailed }
+import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
+import extdeps.linux.proc_net_tcp { TcpSocketRow }
+import std.algebra { trim }
 import gunbc.spark.vllm_serving_launch { DigestsAgree, DigestsDiffer, DigestsIncomparable, digests_agree }
 import gunbc.spark.pair_serving_desired { SparkPairServingUnitReady, SparkPairServingUnitRefused, spark_pair_serving_unit }
 import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
@@ -352,22 +360,25 @@ fn d0_terminate_claim(layout: EventLogLayout, escalation_id: NonEmptyStr, transa
 // Sole-constructed: the only ways to hold one are admit_d0_grant (start: permission decided,
 // claim taken) and resume_d0_grant (resume: claim found held by this attempt). The binding is a
 // SHA-256 over one canonical encoding of everything a resume must agree on -- escalation,
-// attempt, the cryptographic intent, subject, executor, expiry, and the claim's generation on the
-// fleet log -- so a pending state written under one authorization cannot be settled under
-// another, including a re-issued grant with a later expiry.
+// attempt, the cryptographic intent, subject, expiry, and the claim's generation on the fleet
+// log -- so a pending state written under one authorization cannot be settled under another,
+// including a re-issued grant with a later expiry. THE EXECUTOR IS NOT IN IT: the binding is the
+// AUTHORIZATION lifecycle, stable across whichever executor runs a rerun, so any executor reads
+// the same history for it (and may complete a settled claim, which mutates no host). WHO may
+// finish a pending transaction is a separate fact, the lease's owner fingerprint on the pending
+// state, checked by the recovery join.
 type AdmittedD0Grant sole_constructor {
   grant: OperatorGrant<D0Subject>
   claim_generation: CasGeneration
   binding: ContentHash
 }
 
-fn d0_binding_text(grant: OperatorGrant<D0Subject>, executor: NonEmptyStr, claim_generation: CasGeneration) -> String {
+fn d0_binding_text(grant: OperatorGrant<D0Subject>, claim_generation: CasGeneration) -> String {
   join([
     "escalation=", grant.escalation_id as String,
     "\nattempt=", grant.attempt as String,
     "\nintent=", serialize_content_hash(hash: grant.intent_hash) as String,
     "\n", d0_subject_wire(subject: grant.subject),
-    "\nexecutor=", executor as String,
     "\nexpires_at=", grant.expires_at,
     "\nclaim_generation=", to_string(cas_generation_count(g: claim_generation)),
     "\n",
@@ -384,8 +395,8 @@ type D0GrantAdmission
   | D0GrantClaimUndecided { reason: NonEmptyStr }
   | D0GrantBindingUnavailable { claim: D0ClaimTerminal }
 
-fn admitted_with_binding(grant: OperatorGrant<D0Subject>, executor: NonEmptyStr, generation: CasGeneration) -> AdmittedD0Grant? {
-  match sha256_of_text(text: d0_binding_text(grant: grant, executor: executor, claim_generation: generation)) {
+fn admitted_with_binding(grant: OperatorGrant<D0Subject>, generation: CasGeneration) -> AdmittedD0Grant? {
+  match sha256_of_text(text: d0_binding_text(grant: grant, claim_generation: generation)) {
     Absent => none
     Present { value: b } => Present { value: AdmittedD0Grant { grant: grant, claim_generation: generation, binding: b } }
   }
@@ -444,7 +455,7 @@ fn admit_d0_grant(layout: EventLogLayout, authorization: ScopedAuthorization<D0S
                 D0ClaimLost { holder: h } => D0GrantClaimLost { holder: h }
                 D0ClaimUndecided { reason: r } => D0GrantClaimUndecided { reason: r }
                 D0ClaimHeld { generation: gen } =>
-                  match admitted_with_binding(grant: permitted, executor: executor, generation: gen) {
+                  match admitted_with_binding(grant: permitted, generation: gen) {
                     Present { value: admitted } => D0GrantAdmitted { admitted: admitted }
                     Absent => D0GrantBindingUnavailable { claim: d0_terminate_claim(layout: layout, escalation_id: escalation_id, transaction: transaction, held: gen, completed: false, cause: "the authorization binding could not be digested after the claim landed", executor: executor, at: at, now: now) }
                   }
@@ -477,7 +488,7 @@ fn resume_d0_grant(layout: EventLogLayout, authorization: ScopedAuthorization<D0
         D0ClaimLost { holder: h } => D0GrantClaimLost { holder: h }
         D0ClaimUndecided { reason: r } => D0GrantClaimUndecided { reason: r }
         D0ClaimHeld { generation: gen } =>
-          match admitted_with_binding(grant: g, executor: executor, generation: gen) {
+          match admitted_with_binding(grant: g, generation: gen) {
             Present { value: admitted } => D0GrantAdmitted { admitted: admitted }
             Absent => D0GrantBindingUnavailable { claim: D0ClaimUnterminated { detail: "the claim stays held: a resume that cannot digest its binding leaves the transaction to a later rerun" } }
           }
@@ -539,10 +550,21 @@ type RankOccupancyReading {
 // and could not be identified, and it fences; a deadline, or a transport that could not be read,
 // says nothing about the door and is RouteUnread, which fences too. An earlier shape folded every
 // failure into "silent" and would have suspended a group whose engine stalled.
+// WHAT THE HEAD HOST SAYS ABOUT ITS OWN FRONT DOOR, read only when the door could not be connected:
+// the kernel's socket tables for a LISTEN on the enrolled port (any owner), and the engine-process
+// scan. Absence is established only by Quiet -- no listener on the port AND no engine process --
+// and the decision then still requires the declared unit inactive. A listener, an engine process,
+// or an unread table is a possible incumbent the route did not reach, and fences.
+type HeadEndpointReading
+  = HeadEndpointQuiet
+  | HeadEndpointListening { port: Int, rows: List<TcpSocketRow> }
+  | HeadEndpointEngineProcess { listing: String }
+  | HeadEndpointUnread { cause: NonEmptyStr }
+
 type IncumbentReading
   = IncumbentAnswered { agreement: PairRealizationAgreement }
   | IncumbentAnsweredUnread { cause: NonEmptyStr }
-  | IncumbentDidNotAnswer { receipt: NonEmptyStr }
+  | IncumbentDidNotAnswer { receipt: NonEmptyStr, head: HeadEndpointReading }
   | IncumbentRouteUnread { cause: NonEmptyStr }
 
 type D0Observation {
@@ -688,7 +710,12 @@ fn d0_decide(
               D0DecidedRestore { next: active, key: k }
             _ => fence(group: group, hosts: hosts, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
           }
-        IncumbentDidNotAnswer { receipt: rc } =>
+        IncumbentDidNotAnswer { receipt: rc, head: head } =>
+          match head {
+            HeadEndpointListening { port: pt, rows: rows } => fence(group: group, hosts: hosts, cause: D0IncumbentUnidentified { cause: join([rc as String, "; and ", to_string(length(rows)), " socket(s) LISTEN on port ", to_string(pt), " on the head, so a listener the route did not reach may be the incumbent"], "") as NonEmptyStr })
+            HeadEndpointEngineProcess { listing: l } => fence(group: group, hosts: hosts, cause: D0IncumbentUnidentified { cause: join([rc as String, "; and an engine process is running on the head: ", trim(s: l)], "") as NonEmptyStr })
+            HeadEndpointUnread { cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: join([rc as String, "; and the head's socket table or process scan could not be read: ", c as String], "") as NonEmptyStr })
+            HeadEndpointQuiet =>
           match head_rank_corroborates_absence(declared: d, ranks: observation.ranks) {
             HeadUnitActive { host: h } => fence(group: group, hosts: hosts, cause: D0IncumbentUnidentified { cause: join([rc as String, "; and the declared serving unit on the head ", h as String, " is ACTIVE, so a listener may exist behind the failed connect"], "") as NonEmptyStr })
             HeadUnitUnread { cause: c } => fence(group: group, hosts: hosts, cause: D0OccupancyUnread { cause: join([rc as String, "; and absence could not be corroborated on the head: ", c as String], "") as NonEmptyStr })
@@ -707,17 +734,17 @@ fn d0_decide(
               }
           }
           }
+          }
       }
   }
 }
 
-// ABSENCE IS ESTABLISHED ON THE HEAD HOST, NOT BY THE TRANSPORT. The front door lives on the head
-// rank, and the declared serving unit is the process that answers it: a failed connect is
-// corroborated as absence only when that unit is readable and not active (inactive or not
-// installed). An active unit behind a failed connect is a listener the route did not reach --
-// unidentified, so it fences; an unread head fences. What this does not exclude is a foreign
-// listener on the port with our unit inactive -- the same container/device frontier the
-// reconciliation names, and an uninstalled unit fences there for that reason.
+// ABSENCE IS ESTABLISHED ON THE HEAD HOST, NOT BY THE TRANSPORT, AND IN TWO HALVES. The first is
+// the head's endpoint reading (HeadEndpointReading: no LISTEN on the enrolled port in the host's
+// socket tables and no engine process), decided before this fn is asked. The second, here, is the
+// declared serving unit: a failed connect is corroborated as absence only when that unit is
+// readable and not active (inactive or not installed). An active unit behind a failed connect is
+// a listener the route did not reach -- unidentified, so it fences; an unread head fences.
 type HeadCorroboration
   = HeadUnitQuiet
   | HeadUnitActive { host: HostIdentity }
@@ -790,8 +817,17 @@ fn incumbent_lines(i: IncumbentReading) -> List<String> {
   match i {
     IncumbentAnswered { agreement: a } => concat(["  incumbent answered:"], map(pair_realization_agreement_lines(a: a), l => join(["  ", l], "")))
     IncumbentAnsweredUnread { cause: c } => [join(["  incumbent answered but unidentified: ", c as String], "")]
-    IncumbentDidNotAnswer { receipt: r } => [join(["  incumbent did not answer: ", r as String], "")]
+    IncumbentDidNotAnswer { receipt: r, head: h } => [join(["  incumbent did not answer: ", r as String, "; head endpoint: ", head_endpoint_line(h: h)], "")]
     IncumbentRouteUnread { cause: c } => [join(["  incumbent route unread: ", c as String], "")]
+  }
+}
+
+fn head_endpoint_line(h: HeadEndpointReading) -> String {
+  match h {
+    HeadEndpointQuiet => "quiet (no listener on the enrolled port, no engine process)"
+    HeadEndpointListening { port: p, rows: rs } => join([to_string(length(rs)), " LISTEN socket(s) on port ", to_string(p)], "")
+    HeadEndpointEngineProcess { listing: l } => join(["engine process present: ", trim(s: l)], "")
+    HeadEndpointUnread { cause: c } => join(["unread: ", c as String], "")
   }
 }
 
@@ -886,9 +922,12 @@ fn observe_front_door(endpoint: ServingRouteEndpoint) -> FrontDoorReading {
 
 // The incumbent reading a front-door answer decides on its own: Absent only when the door
 // answered 2xx and identification must follow.
-fn front_door_as_incumbent(r: FrontDoorReading) -> IncumbentReading? {
+// The incumbent reading a front-door answer decides on its own, with the head's endpoint reading
+// SUPPLIED for the no-status arm (the observer takes it only then); Absent only when the door
+// answered 2xx and identification must follow.
+fn front_door_as_incumbent(r: FrontDoorReading, head: fn() -> HeadEndpointReading) -> IncumbentReading? {
   match r {
-    FrontDoorNoStatus { receipt: rc } => Present { value: IncumbentDidNotAnswer { receipt: rc } }
+    FrontDoorNoStatus { receipt: rc } => Present { value: IncumbentDidNotAnswer { receipt: rc, head: head() } }
     FrontDoorAnsweredUnread { cause: c } => Present { value: IncumbentAnsweredUnread { cause: c } }
     FrontDoorUnread { cause: c } => Present { value: IncumbentRouteUnread { cause: c } }
     FrontDoorAnswered => none
@@ -910,11 +949,33 @@ fn identify_incumbent(context: FleetSshExecutionContext, group: FabricGroup, dec
   }
 }
 
+// THE HEAD'S OWN FRONT DOOR: the socket tables for a LISTEN on the enrolled port, then the engine
+// process scan; taken over the fleet transport to the declared head host.
+fn observe_head_endpoint(context: FleetSshExecutionContext, declared: DeclaredPairRealizationStanding, port: Port) -> HeadEndpointReading {
+  match declared {
+    DeclaredPairRealizationUnavailable { group: _, obligation: o } => HeadEndpointUnread { cause: join(["no declared head to read: ", o as String], "") as NonEmptyStr }
+    DeclaredPairRealizationKeyed { declared: d } => {
+      let target = fleet_locus_ssh_target(host: d.head.host)
+      match read_endpoint_listener(transport: FleetSsh { target: target, context: context }, port: port) {
+        EndpointListenerUnread { port: _, cause: c } => HeadEndpointUnread { cause: c as NonEmptyStr }
+        EndpointListening { port: p, rows: rs } => HeadEndpointListening { port: p, rows: rs }
+        EndpointNoListener { port: _ } =>
+          match scan_engine_processes(target: target, context: context, pattern: sparkrun_vllm_ds4_gb10_vllm_binary) {
+            EngineScanLegDidNotRun { cause: c } => HeadEndpointUnread { cause: join(["the engine process scan did not run: ", c], "") as NonEmptyStr }
+            EngineScanClassified { outcome: PgrepScanFailed { exit_code: code, stderr: err } } => HeadEndpointUnread { cause: join(["the engine process scan failed (exit ", to_string(code), "): ", err], "") as NonEmptyStr }
+            EngineScanClassified { outcome: PgrepMatched { listing: l } } => HeadEndpointEngineProcess { listing: l }
+            EngineScanClassified { outcome: PgrepNoMatch } => HeadEndpointQuiet
+          }
+      }
+    }
+  }
+}
+
 fn observe_incumbent(context: FleetSshExecutionContext, group: FabricGroup, declared: DeclaredPairRealizationStanding) -> IncumbentReading {
   match serving_route(group: group) {
     ServingRouteUnresolved { group: _, obligation: o } => IncumbentRouteUnread { cause: o }
     ServingRouteResolved { endpoint: endpoint, ceiling: _ } =>
-      match front_door_as_incumbent(r: observe_front_door(endpoint: endpoint)) {
+      match front_door_as_incumbent(r: observe_front_door(endpoint: endpoint), head: fn() { observe_head_endpoint(context: context, declared: declared, port: endpoint.port) }) {
         Present { value: decided } => decided
         Absent => identify_incumbent(context: context, group: group, declared: declared, endpoint: endpoint)
       }
@@ -1069,15 +1130,15 @@ fn d0_transaction(layout: EventLogLayout, group: FabricGroup, current_hosts: Lis
 //     authority is not that pending state                     → another writer moved a pending state
 //                                                               only T may move: fenced for an operator
 //   ClaimedBy(T), no transition by THIS lifecycle, authority
-//     pending under T's word                                  → another lifecycle of the same word wrote it
-//                                                               (another executor: the binding names the
-//                                                               executor, so a failover recomputes a different
-//                                                               one) → refuse; the claim and the authority are
-//                                                               left for the executor that owns the lease.
-//                                                               D0 is same-executor-only for a pending
-//                                                               lifecycle; a handoff is not modeled and a
-//                                                               foreign executor may not terminalize a
-//                                                               claim it did not write under.
+//     pending under T's word                                  → another authorization lifecycle of the same
+//                                                               word wrote it → refuse; nothing is written.
+//   ClaimedBy(T), Pending(T) under this lifecycle, lease owned
+//     by another executor                                     → refuse; the executor that wrote it resumes.
+//                                                               D0 is same-executor-only for a PENDING
+//                                                               lifecycle (no handoff is modeled); any
+//                                                               executor may complete or abort a claim
+//                                                               whose authority is not pending, since that
+//                                                               mutates no host.
 //   ClaimedBy(other), CompletedBy, AbortedBy, unreadable      → refuse; the consent is not this run's
 //
 // "No transition by T" is decided from the log's own record of every admitted transition, never
@@ -1096,7 +1157,7 @@ type D0Recovery
   | D0RecoverAbort { claim_generation: CasGeneration, cause: String }
   | D0RecoveryRefused { cause: String }
 
-fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: ContentHash?, current: PairServingGroupAuthority, transitions: List<AuthorityTransitionRecord>) -> D0Recovery {
+fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: ContentHash?, executor: NonEmptyStr, current: PairServingGroupAuthority, transitions: List<AuthorityTransitionRecord>) -> D0Recovery {
   match claim {
     D0ClaimUnreadable { reason: r } => D0RecoveryRefused { cause: r as String }
     D0ClaimAbsent => D0RecoverStart
@@ -1118,7 +1179,7 @@ fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: Conte
                   PairServingActive { group: _, exact_realization: _ } => D0RecoverFirstWrite { claim_generation: g }
                   SuspensionPendingReconciliation { group: _, transaction: pt, authorization_binding: _, lease: l } =>
                     if (pt as String) == (transaction as String) {
-                      D0RecoveryRefused { cause: join(["the authority is pending under this transaction but under another lifecycle (the binding names another executor or authorization; lease owner ", serialize_content_hash(hash: l.epoch.owner_fingerprint) as String, "); only that lifecycle may settle it, and this run neither aborts the claim nor moves the authority"], "") }
+                      D0RecoveryRefused { cause: join(["the authority is pending under this transaction's word but under another authorization lifecycle (lease owner ", serialize_content_hash(hash: l.epoch.owner_fingerprint) as String, "); only that lifecycle may settle it, and this run neither aborts the claim nor moves the authority"], "") }
                     } else {
                       D0RecoverAbort { claim_generation: g, cause: join(["the claim is held but no write landed and the authority is pending under another transaction (", pt as String, "), so there is nothing this consent can do"], "") }
                     }
@@ -1128,11 +1189,13 @@ fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: Conte
                 match mine.next {
                   SuspensionPendingReconciliation { group: _, transaction: _, authorization_binding: _, lease: _ } =>
                     match current {
-                      SuspensionPendingReconciliation { group: _, transaction: pt, authorization_binding: pb, lease: _ } =>
+                      SuspensionPendingReconciliation { group: _, transaction: pt, authorization_binding: pb, lease: l } =>
                         if (pt as String) != (transaction as String) {
                           D0RecoveryRefused { cause: join(["the authority is pending under ", pt as String, ", not this transaction"], "") }
                         } else if !content_hash_equal(left: pb, right: binding) {
                           D0RecoveryRefused { cause: "the authority is pending under this transaction's word but another authorization's binding; only that lifecycle may settle it" }
+                        } else if !content_hash_equal(left: l.epoch.owner_fingerprint, right: content_hash_of_value(value: executor)) {
+                          D0RecoveryRefused { cause: join(["the pending transaction is owned by another executor (lease owner ", serialize_content_hash(hash: l.epoch.owner_fingerprint) as String, "); a resume runs there, and no handoff is modeled -- the claim and the authority are left as they are"], "") }
                         } else {
                           D0RecoverResume { claim_generation: g }
                         }
@@ -1259,7 +1322,7 @@ fn d0_dispatch(layout: EventLogLayout, g: FabricGroup, group: String, current_ho
         D0GrantAdmitted { admitted: a } => Present { value: a.binding }
         _ => none
       }
-      let recovery = d0_recovery(claim: claim, transaction: tx, lifecycle: lifecycle, current: cur, transitions: recs)
+      let recovery = d0_recovery(claim: claim, transaction: tx, lifecycle: lifecycle, executor: executor, current: cur, transitions: recs)
       match recovery {
         D0RecoveryRefused { cause: c } => refuse(reason: c)
         D0RecoverStart => {

@@ -41,7 +41,7 @@ import gunbc.spark.host_commitment {
   SparkHostCommitted,
   SparkHostAdmitted,
   SparkHostRefused,
-  admit_unplaced_host,
+  admit_unplaced_host_resting,
   spark_host_commitment_causes_wire,
   spark_commitment_causes_text,
   spark_commitment_causes,
@@ -442,28 +442,28 @@ test fn an_arm_claim_commits_only_the_host_it_names() -> Bool {
 // ── RED 5: THE ONE ADMISSION SEAM REFUSES A CLAIMED HOST, AND SAYS WHY ────────────────────────
 //
 // The three effectful roots -- the source build, the image build entry and the published-image probe
-// -- all reach a host through `admit_unplaced_host`. This is the control that the seam refuses a
+// -- all reach a host through `admit_unplaced_host_live` (the resting projection here supplies the same standings shape). This is the control that the seam refuses a
 // claimed target and that its refusal names the actual cause rather than a generic sentence, which is
 // what the deleted hand-maintained producer list could never do. And the positive arm is the
 // scoping: srv10 is reserved for the GLM subject by ruling and is still admitted for a build,
 // because a ruling-derived serving reservation is not a placement.
 test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
-  (match admit_unplaced_host(raw: "srv9", purpose: "a fixture effect" as NonEmptyStr) {
+  (match admit_unplaced_host_resting(raw: "srv9", purpose: "a fixture effect" as NonEmptyStr) {
      SparkHostRefused { cause: why } =>
        string_contains(s: why as String, pattern: "srv9")
          && string_contains(s: why as String, pattern: "serving arm")
          && string_contains(s: why as String, pattern: "not a held claim")
      SparkHostAdmitted { host: _ } => false
    })
-    && (match admit_unplaced_host(raw: "srv5", purpose: "a fixture effect" as NonEmptyStr) {
+    && (match admit_unplaced_host_resting(raw: "srv5", purpose: "a fixture effect" as NonEmptyStr) {
          SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "cell role")
          SparkHostAdmitted { host: _ } => false
        })
-    && (match admit_unplaced_host(raw: "", purpose: "a fixture effect" as NonEmptyStr) {
+    && (match admit_unplaced_host_resting(raw: "", purpose: "a fixture effect" as NonEmptyStr) {
          SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "does not pick")
          SparkHostAdmitted { host: _ } => false
        })
-    && (match admit_unplaced_host(raw: "srv10", purpose: "a fixture effect" as NonEmptyStr) {
+    && (match admit_unplaced_host_resting(raw: "srv10", purpose: "a fixture effect" as NonEmptyStr) {
          SparkHostAdmitted { host: h } => host_identity_eq(a: h, b: operator_host_srv10)
          SparkHostRefused { cause: _ } => false
        })
@@ -472,7 +472,7 @@ test fn the_admission_seam_refuses_a_claimed_host_naming_its_cause() -> Bool {
 // AN UNROSTERED HOST IS NOT ADMITTED EITHER, and its refusal says it is not a Spark unit rather than
 // inventing a commitment for it.
 test fn a_host_outside_the_unit_population_is_refused_as_unrostered() -> Bool {
-  match admit_unplaced_host(raw: "srv2", purpose: "a fixture effect" as NonEmptyStr) {
+  match admit_unplaced_host_resting(raw: "srv2", purpose: "a fixture effect" as NonEmptyStr) {
     SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "not a DGX Spark unit")
     SparkHostAdmitted { host: _ } => false
   }

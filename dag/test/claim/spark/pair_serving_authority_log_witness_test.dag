@@ -215,11 +215,9 @@ test fn a_transition_to_another_groups_authority_refuses() -> Bool {
 }
 
 
-// THE LIFECYCLE RIDES THE WIRE AND THE FOLD KEEPS IT. A transition carrying a lifecycle identity
-// decodes to the same hash; one without decodes to none; a member that is not a content-hash wire
-// refuses the document; and the fold's record of transitions carries each event's lifecycle so a
-// recovery can select by it rather than by the transaction word.
-test fn the_lifecycle_identity_round_trips_and_is_recorded_by_the_fold() -> Bool {
+// THE LIFECYCLE RIDES THE WIRE. A transition carrying a lifecycle identity decodes to the same
+// hash; one without decodes to none; a member that is not a content-hash wire refuses the document.
+test fn the_lifecycle_identity_round_trips_through_the_wire() -> Bool {
   alw_with_hash(scenario: fn(h) {
     let resting = alw_w_active_unestablished()
     let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
@@ -237,12 +235,22 @@ test fn the_lifecycle_identity_round_trips_and_is_recorded_by_the_fold() -> Bool
             EventUndecodable { reason: _ } => false
           })
       && (match pair_authority_event_decode(text: pair_authority_event_wire_text(event: with).replace(from: "sha256:", to: "sha256x:")) { EventUndecodable { reason: _ } => true  EventDecoded { event: _ } => false })
-      && (match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: with), alw_env(id: "e2", e: alw_w_event(previous: pending, next: resting, parent: Present { value: "e1" as EventId }))]) {
-            AuthorityFolded { current: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } =>
-              g == 2 && length(transitions_by(records: recs, transaction: "tx-1" as NonEmptyStr, lifecycle: h)) == 1
-                && (match first(recs) { Present { value: r } => (r.id as String) == "e1" && (match r.lifecycle { Present { value: _ } => true  Absent => false })  Absent => false })
-                && (match last(recs) { Present { value: r } => (r.id as String) == "e2" && (match r.lifecycle { Absent => true  Present { value: _ } => false })  Absent => false })
-            AuthorityFoldRefused { at_event: _, reason: _ } => false
-          })
+  })
+}
+
+// AND THE FOLD KEEPS IT: the record of transitions carries each event's lifecycle so a recovery
+// can select by it rather than by the transaction word; an operator's write carries none.
+test fn the_fold_records_each_transitions_lifecycle() -> Bool {
+  alw_with_hash(scenario: fn(h) {
+    let resting = alw_w_active_unestablished()
+    let pending = SuspensionPendingReconciliation { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), transaction: "tx-1" as NonEmptyStr, authorization_binding: h, lease: alw_w_lease(h: h, inaccessible: false) }
+    let with = ChainEvent { partition: pair_authority_partition(group: FabricGroupA), parent: none, recorded_at: 1000, actor: "witness" as NonEmptyStr, payload: AuthorityTransitioned { previous: resting, next: pending, transaction: "tx-1" as NonEmptyStr, lifecycle: Present { value: h }, grant: none, entry_state: none } }
+    match authority_fold(resting: resting, oldest_first: [alw_env(id: "e1", e: with), alw_env(id: "e2", e: alw_w_event(previous: pending, next: resting, parent: Present { value: "e1" as EventId }))]) {
+      AuthorityFolded { current: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } =>
+        g == 2 && length(transitions_by(records: recs, transaction: "tx-1" as NonEmptyStr, lifecycle: h)) == 1
+          && (match first(recs) { Present { value: r } => (r.id as String) == "e1" && (match r.lifecycle { Present { value: _ } => true  Absent => false })  Absent => false })
+          && (match last(recs) { Present { value: r } => (r.id as String) == "e2" && (match r.lifecycle { Absent => true  Present { value: _ } => false })  Absent => false })
+      AuthorityFoldRefused { at_event: _, reason: _ } => false
+    }
   })
 }

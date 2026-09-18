@@ -44,7 +44,7 @@ import gunbc.spark.vllm_runtime_image_build {
   SparkHostUnreachable, SparkHostUnresolved,
   classify_reported_hostname, spark_host_answered,
 }
-import gunbc.spark.host_commitment { spark_unplaced_hosts, spark_host_is_unplaced, SparkHostAdmitted, SparkHostRefused, admit_unplaced_host }
+import gunbc.spark.host_commitment { spark_unplaced_hosts, spark_host_is_unplaced, SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_resting }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
 import gunbc.spark.serving_runtime_capability_probe {
   v41_sm121_capability_probe_rows, v41_gb10_source_build_probe, gb10_observed_compute_capability,
@@ -428,11 +428,11 @@ test fn the_admissible_build_hosts_exclude_the_claimed_serving_group() -> Bool {
     && !spark_host_is_unplaced(host: "srv8" as HostIdentity)
     && spark_host_is_unplaced(host: "srv10" as HostIdentity)
     && any(spark_unplaced_hosts, h => (h as String) == "srv10")
-    && (match admit_unplaced_host(raw: "srv5", purpose: vllm_build_host_purpose) {
+    && (match admit_unplaced_host_resting(raw: "srv5", purpose: vllm_build_host_purpose) {
       SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "not admissible for")
       SparkHostAdmitted { host: _ } => false
     })
-    && (match admit_unplaced_host(raw: "", purpose: vllm_build_host_purpose) {
+    && (match admit_unplaced_host_resting(raw: "", purpose: vllm_build_host_purpose) {
       SparkHostRefused { cause: why } => string_contains(s: why as String, pattern: "does not pick")
       SparkHostAdmitted { host: _ } => false
     })

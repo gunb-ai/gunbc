@@ -46,8 +46,9 @@ import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host_operation_exec {
   HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
-  ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, GetconfClockTicksPerSecond, Sha256SumFile,
+  ProcfsReadStat, ProcfsReadPidStat, ProcfsReadPidCgroup, ProcfsReadNetTcp, ProcfsReadNetTcp6, GetconfClockTicksPerSecond, Sha256SumFile,
 }
+import extdeps.linux.proc_net_tcp { TcpSocketRow, ProcNetTcpParsed, ProcNetTcpUnparseable, proc_net_tcp_table, tcp_rows_listening_on }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.fleet_ssh_locus { fleet_locus_ssh_target }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -610,5 +611,43 @@ fn observe_endpoint_incarnation(
         transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
         invocation: invocation, unit_digest: digest,
       )
+  }
+}
+
+// ── DOES ANYTHING LISTEN ON THE ENROLLED PORT, READ ON THE HOST ────────────────────────────────
+//
+// The kernel's socket tables (/proc/net/tcp and /proc/net/tcp6, extdeps.linux.proc_net_tcp) are
+// read on the host and every LISTEN row on the port is returned, whatever bound it: our unit, an
+// orphan engine, a foreign process. This is the host-side half of an absence reading -- a front
+// door that could not be connected says nothing about a listener the route did not reach, and the
+// declared unit's invocation id says nothing about a process that is not the unit. Both tables
+// are read because a v6 wildcard bind serves v4 too; one table unreadable is the reading unread.
+// A listener in another network namespace (a container with its own netns) is not in these
+// tables; the enrolled address is reached through the host's namespace, and a port published from
+// a container appears there as the proxy's listener.
+type EndpointListenerReading
+  = EndpointNoListener { port: Int }
+  | EndpointListening { port: Int, rows: List<TcpSocketRow> }
+  | EndpointListenerUnread { port: Int, cause: String }
+
+fn read_endpoint_listener(transport: HostEffectTransport, port: Int) -> EndpointListenerReading {
+  match host_read_text(transport: transport, operation: ProcfsReadNetTcp) {
+    HostTextRefused { cause: c } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp: ", c], "") }
+    HostTextObserved { stdout: v4 } =>
+      match proc_net_tcp_table(text: v4) {
+        ProcNetTcpUnparseable { line: l } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp row could not be read: ", l], "") }
+        ProcNetTcpParsed { rows: rows4 } =>
+          match host_read_text(transport: transport, operation: ProcfsReadNetTcp6) {
+            HostTextRefused { cause: c } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp6: ", c], "") }
+            HostTextObserved { stdout: v6 } =>
+              match proc_net_tcp_table(text: v6) {
+                ProcNetTcpUnparseable { line: l } => EndpointListenerUnread { port: port, cause: join(["/proc/net/tcp6 row could not be read: ", l], "") }
+                ProcNetTcpParsed { rows: rows6 } => {
+                  let listening = tcp_rows_listening_on(rows: concat(rows4, rows6), port: port)
+                  if length(listening) == 0 { EndpointNoListener { port: port } } else { EndpointListening { port: port, rows: listening } }
+                }
+              }
+          }
+      }
   }
 }

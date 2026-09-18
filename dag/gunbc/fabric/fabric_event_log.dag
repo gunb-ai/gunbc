@@ -84,6 +84,23 @@ fn partition_ref(partition: PartitionId) -> String {
   join(["refs/fabric/", partition as String], "")
 }
 
+// EVERY EVENT IS ALSO PUBLISHED UNDER ITS OWN REF, AND THIS IS TRANSPORT, NOT A SECOND HEAD. A
+// partition's head ref names one blob, and git's fetch transfers the objects a ref reaches --
+// which for a blob is that blob alone: the parent an event names is text inside it, not a git
+// edge. A mirror that did not write the earlier events therefore fetched the head and could not
+// walk past it (the second executor of the D0 controls: "cat-file <parent> refused"). So the
+// append first publishes the object under refs/fabric-events/<partition>/<oid> -- idempotent,
+// force-pushed, carrying no lease and deciding nothing -- and a read fetches that namespace before
+// it walks. The head ref remains the only linearization point; these refs are how a reader
+// obtains bytes it did not write.
+fn event_ref(partition: PartitionId, oid: String) -> String {
+  join(["refs/fabric-events/", partition as String, "/", oid], "")
+}
+
+fn event_refs_fetch_refspec(partition: PartitionId) -> String {
+  join(["refs/fabric-events/", partition as String, "/*:refs/fabric-events/", partition as String, "/*"], "")
+}
+
 // The leased push: the refspec publishes the object to the partition ref, and the lease names the
 // head the writer expects there. An absent expectation is spelled as an empty old value, which git
 // reads as "the ref must not exist".
@@ -228,8 +245,11 @@ fn event_log_read_partition_with<P>(layout: EventLogLayout, partition: Partition
             Absent => PartitionReadRefused { step: "remote", reason: "the event log is unplaced" }
             Present { value: remote } => {
               let f = git.Core.FetchForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: join([partition_ref(partition: partition), ":", partition_ref(partition: partition)], ""))
+              let fe = git.Core.FetchForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: event_refs_fetch_refspec(partition: partition))
               if f.exit_code != 0 {
                 PartitionReadRefused { step: "fetch", reason: join(["exit ", to_string(f.exit_code), ": ", trim(s: f.stderr)], "") }
+              } else if fe.exit_code != 0 {
+                PartitionReadRefused { step: "fetch-events", reason: join(["exit ", to_string(fe.exit_code), ": ", trim(s: fe.stderr)], "") }
               } else {
                 let st = fold(nat_range_inclusive(lo: 1, hi: budget), init: CollectState { current: HeadAt { id: h }, collected: [], refused: none }, f: (acc, _i) => collect_step(layout: layout, st: acc, decode: decode))
                 match st.refused {
@@ -277,6 +297,10 @@ fn event_log_append_with<P>(layout: EventLogLayout, partition: PartitionId, even
               EventAppendRefused { step: "hash-object", reason: join(["exit ", to_string(h.exit_code), ": ", trim(s: h.stderr)], "") }
             } else {
               let oid = trim(s: h.oid)
+              let pe = git.Core.PushForcedRefInRepo(repo: layout.mirror, remote: remote, refspec: join([oid, ":", event_ref(partition: partition, oid: oid)], ""))
+              if pe.exit_code != 0 {
+                EventAppendRefused { step: "publish-event", reason: join(["exit ", to_string(pe.exit_code), ": ", trim(s: pe.stderr)], "") }
+              } else {
               let p = git.Core.PushRefWithLeaseInRepo(repo: layout.mirror, remote: remote, refspec: partition_push_refspec(oid: oid, partition: partition), lease: partition_push_lease(partition: partition, expected: expected))
               if p.exit_code == 0 {
                 EventAppended { id: oid as EventId }
@@ -290,6 +314,7 @@ fn event_log_append_with<P>(layout: EventLogLayout, partition: PartitionId, even
                       EventAppendStale { expected: expected, observed: observed }
                     }
                 }
+              }
               }
             }
           }

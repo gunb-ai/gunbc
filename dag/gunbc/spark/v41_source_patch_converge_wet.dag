@@ -18,7 +18,7 @@ import gunbc.fleet_ssh_credential_verify {
   fleet_ssh_credential_verification_refusal_reason,
 }
 import gunbc.fleet_multi_principal_probe { probe_agent_credential_verification }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, admit_unplaced_host_live }
 import gunbc.spark.managed_access_bootstrap { spark_managed_executor_login }
 import gunbc.spark.fabric_reach { ReachManagementLan, spark_reach_endpoint, spark_reach_path_wire }
 import gunbc.spark.v41_runtime_candidate {
@@ -54,7 +54,7 @@ fn v41_patched_source_acquire_wet(host: String) -> ProcessExit
     V41PatchesUnestablished { obligation: o } => exit_failure(reason: o as String)
     V41PatchesObserved { patches: ps, partition: _ } => {
       let now = clock_now_probed_at()
-      match admit_unplaced_host(raw: host, purpose: vllm_build_host_purpose) {
+      match admit_unplaced_host_live(raw: host, purpose: vllm_build_host_purpose) {
         SparkHostRefused { cause: why } => exit_failure(reason: why as String)
         SparkHostAdmitted { host: build_host } =>
           match fleet_ssh_attempt_identity(raw: v41_patched_source_acquire_attempt_raw) {

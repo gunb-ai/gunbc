@@ -18,6 +18,9 @@ import gunbc.spark.cell_role {
 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, fabric_group_wire }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_commits_hosts, pair_serving_authority_group, pair_serving_committed_hosts }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.llama_cpp_rpc_observed { llama_cpp_rpc_undischarged_peer_reservation_hosts }
 import gunbc.spark.serving_arm_placement { ServingArmHostClaim, spark_serving_arm_host_claims }
 import gunbc.spark.dgx_procurement { dgx_spark_reserved_identities }
@@ -65,7 +68,7 @@ import gunbc.spark.serving_subject {
 // The container build and the published-image probe ask it, and the answer reads only OBSERVED
 // causes -- a role, a claimed group, a placed arm, a held reservation -- because those are the facts
 // that something is already running or reserved on the machine. Its projection is
-// `spark_unplaced_hosts` and its admission seam is `admit_unplaced_host`.
+// `spark_unplaced_hosts` and its admission seam is `admit_unplaced_host_live` (an effect reads the current authority first; `admit_unplaced_host_resting` is the pure projection over the source rows).
 //
 // The second is ADMISSIBILITY TO A SERVING SUBJECT: which units a particular deployment may use. A
 // host is admissible to subject S iff EVERY commitment cause on it is held by S. That reading is
@@ -520,16 +523,58 @@ fn spark_claimed_serving_group_hosts() -> List<HostIdentity> {
   map(spark_claimed_serving_group_members(), m => m.host)
 }
 
-data spark_host_standings: List<SparkHostStanding> = spark_host_standings_in(
-  units: dgx_spark_reserved_identities(),
-  assignments: spark_cell_role_assignments,
-  claimed_group_members: spark_claimed_serving_group_members(),
-  arm_claims: spark_serving_arm_host_claims,
-  held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
-  serving_reservations: spark_serving_reservations,
-)
+// THE STANDINGS OVER SUPPLIED AUTHORITIES. The resting projection below hands in the source rows
+// (pure, the population every pure consumer reads); the effectful admission seams hand in the
+// CURRENT authorities read from the event log (spark_host_standings_current), so an effect that
+// runs while a transaction is open commits the hosts the transaction froze, not the roster.
+fn spark_host_standings_under(authorities: List<PairServingGroupAuthority>) -> List<SparkHostStanding> {
+  spark_host_standings_in(
+    units: dgx_spark_reserved_identities(),
+    assignments: spark_cell_role_assignments,
+    claimed_group_members: spark_claimed_members_under(authorities: authorities),
+    arm_claims: spark_serving_arm_host_claims,
+    held_reservation_hosts: llama_cpp_rpc_undischarged_peer_reservation_hosts(),
+    serving_reservations: spark_serving_reservations,
+  )
+}
+
+data spark_host_standings: List<SparkHostStanding> = spark_host_standings_under(authorities: spark_pair_serving_authorities)
 
 data spark_unplaced_hosts: List<HostIdentity> = spark_unplaced_hosts_of(standings: spark_host_standings)
+
+// ── THE CURRENT STANDINGS, FOR AN EFFECT ───────────────────────────────────────────────────────
+//
+// An effect that places work on a Spark host (a build, a probe, a source acquisition) may run
+// while a pair-serving transaction is open, and then the resting row is not the authority: the
+// event log is (gunbc.spark.pair_serving_authority_log). So the admission an effect asks is over
+// the CURRENT authorities of every claimed group, read on the executor's layout, and refuses when
+// any of them could not be read -- an unread authority is not an empty commitment.
+type CurrentStandings
+  = CurrentStandingsRead { standings: List<SparkHostStanding> }
+  | CurrentStandingsUnread { cause: NonEmptyStr }
+
+fn spark_host_standings_current(current: List<CurrentAuthority>) -> CurrentStandings {
+  let unread = flat_map(current, c => match c {
+    CurrentAuthorityUnread { group: g, step: st, reason: why } => [join([fabric_group_wire(g: g) as String, " at ", st, ": ", why], "")]
+    CurrentAuthorityRead { authority: _ } => [] as List<String>
+  })
+  if length(unread) != 0 {
+    CurrentStandingsUnread { cause: join(["the current pair-serving authority could not be read for every claimed group, so host commitment cannot be derived: ", join(unread, "; ")], "") as NonEmptyStr }
+  } else {
+    CurrentStandingsRead { standings: spark_host_standings_under(authorities: flat_map(current, c => match c { CurrentAuthorityRead { authority: a } => [a]  CurrentAuthorityUnread { group: _, step: _, reason: _ } => [] as List<PairServingGroupAuthority> })) }
+  }
+}
+
+fn spark_host_standings_live() -> CurrentStandings {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => CurrentStandingsUnread { cause: join(["the executor could not be identified, so the current authority cannot be read: ", c], "") as NonEmptyStr }
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => CurrentStandingsUnread { cause: "the clock could not be read as epoch seconds, so the lease standing of the current authority cannot be derived" as NonEmptyStr }
+        Present { value: at } => spark_host_standings_current(current: current_pair_serving_authorities(short_hostname: executor, at: at))
+      }
+  }
+}
 
 fn spark_host_is_unplaced(host: HostIdentity) -> Bool {
   any(spark_unplaced_hosts, h => host_identity_eq(a: h, b: host))
@@ -682,7 +727,11 @@ type SparkHostAdmission
   | SparkHostRefused { cause: NonEmptyStr }
 
 fn spark_authority_held_causes_wire(host: HostIdentity) -> NonEmptyStr {
-  match spark_host_standing(host: host) {
+  spark_authority_held_causes_in(standings: spark_host_standings, host: host)
+}
+
+fn spark_authority_held_causes_in(standings: List<SparkHostStanding>, host: HostIdentity) -> NonEmptyStr {
+  match spark_standing_of(standings: standings, host: host) {
     Absent => "that host is not a DGX Spark unit in gunbc.spark.dgx_procurement, so this fleet has no standing for it" as NonEmptyStr
     Present { value: standing } =>
       match standing {
@@ -693,21 +742,35 @@ fn spark_authority_held_causes_wire(host: HostIdentity) -> NonEmptyStr {
   }
 }
 
-fn admit_unplaced_host(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
+fn admit_unplaced_host_in(raw: String, purpose: NonEmptyStr, standings: List<SparkHostStanding>) -> SparkHostAdmission {
   let host = raw as HostIdentity
+  let unplaced = spark_unplaced_hosts_of(standings: standings)
   if raw == "" {
     SparkHostRefused { cause: join(["no host was named for ", purpose as String, "; this entry takes one and does not pick"], "") as NonEmptyStr }
-  } else if !spark_host_is_unplaced(host: host) {
+  } else if !any(unplaced, h => host_identity_eq(a: h, b: host)) {
     SparkHostRefused {
       cause: join([
         raw, " is not admissible for ", purpose as String, ", because ",
-        spark_authority_held_causes_wire(host: host) as String,
+        spark_authority_held_causes_in(standings: standings, host: host) as String,
         ". Unplaced as of this read: ",
-        join(map(spark_unplaced_hosts, h => h as String), ", "),
+        join(map(unplaced, h => h as String), ", "),
         ". This is an eligibility read and not a held claim",
       ], "") as NonEmptyStr,
     }
   } else {
     SparkHostAdmitted { host: host }
+  }
+}
+
+// The admission over the RESTING rows -- the pure projection, for consumers with no effect to
+// admit. An effect asks admit_unplaced_host_live, which reads the current authority first.
+fn admit_unplaced_host_resting(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
+  admit_unplaced_host_in(raw: raw, purpose: purpose, standings: spark_host_standings)
+}
+
+fn admit_unplaced_host_live(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
+  match spark_host_standings_live() {
+    CurrentStandingsUnread { cause: c } => SparkHostRefused { cause: join([raw, " is not admissible for ", purpose as String, ": ", c as String], "") as NonEmptyStr }
+    CurrentStandingsRead { standings: st } => admit_unplaced_host_in(raw: raw, purpose: purpose, standings: st)
   }
 }
