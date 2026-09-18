@@ -2,7 +2,10 @@ module product.fabric.node_qualification
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size_count, Bandwidth, bandwidth_count, Nanosecond, nanosecond_count }
+import std.measure {
+  ByteSize, byte_size_count, Bandwidth, bandwidth_count, Nanosecond, nanosecond_count,
+  measure_le, measure_scale_fraction_floor,
+}
 import product.placement_supply { HostIdentity }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.storage.types { PcieLink }
@@ -534,7 +537,7 @@ fn first_unread_rank(ranks: List<RankCollectiveReading>) -> RankCollectiveReadin
   }))
 }
 
-fn rank_latency_at(curve: CollectiveCurveReading, at: ByteSize) -> Nat? {
+fn rank_latency_at(curve: CollectiveCurveReading, at: ByteSize) -> Nanosecond? {
   match curve {
     CollectiveCurveUnread { because: _ } => none
     CollectiveCurveRead {
@@ -549,12 +552,12 @@ fn rank_latency_at(curve: CollectiveCurveReading, at: ByteSize) -> Nat? {
     } =>
       match sample_at_message_bytes(samples: samples, want: at) {
         Absent => none
-        Present { value: s } => Present { value: nanosecond_count(n: sample_stricter_latency(s: s)) }
+        Present { value: s } => Present { value: sample_stricter_latency(s: s) }
       }
   }
 }
 
-fn min_rank_latency(at: ByteSize, ranks: List<RankCollectiveReading>) -> Nat? {
+fn min_rank_latency(at: ByteSize, ranks: List<RankCollectiveReading>) -> Nanosecond? {
   match ranks.first() {
     Absent => none
     Present { value: r } => {
@@ -563,7 +566,9 @@ fn min_rank_latency(at: ByteSize, ranks: List<RankCollectiveReading>) -> Nat? {
         Absent => rest
         Present { value: lat } => match rest {
           Absent => Present { value: lat }
-          Present { value: m } => Present { value: if lat < m { lat } else { m } }
+          Present { value: m } => Present {
+            value: if measure_le(a: lat, b: m) { lat } else { m }
+          }
         }
       }
     }
@@ -581,7 +586,7 @@ fn first_rank_without_latency(at: ByteSize, ranks: List<RankCollectiveReading>) 
 }
 
 fn first_degraded_rank(
-  floor: Nat,
+  floor: Nanosecond,
   max_latency_multiple: Nat,
   at: ByteSize,
   ranks: List<RankCollectiveReading>,
@@ -595,16 +600,20 @@ fn first_degraded_rank(
         at: at,
         ranks: ranks.skip(n: 1),
       )
-      Present { value: lat } => if lat > (floor * max_latency_multiple) {
-        Present { value: r.rank }
-      } else {
-        first_degraded_rank(
-          floor: floor,
-          max_latency_multiple: max_latency_multiple,
-          at: at,
-          ranks: ranks.skip(n: 1),
-        )
-      }
+      Present { value: lat } =>
+        if measure_le(
+          a: lat,
+          b: measure_scale_fraction_floor(m: floor, num: max_latency_multiple, den: 1),
+        ) {
+          first_degraded_rank(
+            floor: floor,
+            max_latency_multiple: max_latency_multiple,
+            at: at,
+            ranks: ranks.skip(n: 1),
+          )
+        } else {
+          Present { value: r.rank }
+        }
     }
   }
 }
