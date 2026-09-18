@@ -478,6 +478,18 @@ import v2.std.collection { List }
 // rather than trust: the run's [floor-shared-fill] ledger must show this fill landing at
 // preparation with disposition=Stored and the claims serving hits. Nullary, pure, inline sources,
 // and the value is the same Outcome<FreeMonoid<NormalizedTree>> carrier the row before it stores.
+//
+// AND THE ROW AFTER IT IS THAT FILE'S RESOLUTION CONTEXT, EARNED BY A FLOOR REFUSAL RATHER THAN
+// PREDICTED. gunbc#11582 run 35317696454: every resolve row in that file reached its verdict and
+// was refused COMPLETED-OVER-COST-REQUIREMENT at ~92k eval steps against the 72,300-step
+// new-witness line, with the ingest fill already served. The steps left were root validation and
+// the symbol-index fill over seven roots -- v2.compiler.name_resolve resolution_context, which
+// production builds ONCE per assembly and resolves each subject through. Sharing it is the same
+// seam production uses, and it is still not the stage the rows name: resolution of the admitted
+// subject (resolve_with_admission_context_policy) runs per claim. Nullary, pure; the value is a
+// LanguageModel, validated roots and a SymbolIndex -- Nodes, symbols, maps -- with no closure.
+// Re-derive rather than trust: the run's [floor-shared-fill] ledger must show this fill Stored at
+// preparation and the resolve rows serving hits under the line.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -507,7 +519,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized",
-  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized"
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_fixture_normalized",
+  "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolution_context"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

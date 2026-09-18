@@ -1,11 +1,16 @@
 module v2.test.claim.namespace_xl0.cross_module_reference_resolution
 
-import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
-import v2.compiler.program_assembly {
-  assemble_program_from_module_roots,
-  module_roots_from_source_root_ingest
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionContext,
+  ResolutionSubject,
+  resolution_context,
+  resolve_with_admission_context_policy
 }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.resolution_policy { default_name_resolution_policy }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.repair_input_origin_roster {
   RepairInputOriginRoster,
   repair_input_origin_roster_is_total,
@@ -161,16 +166,33 @@ fn xl0r_admission(subject: String) -> Admission {
   }
 }
 
-fn xl0r_resolve_subject(subject: String) -> Outcome<Node> {
+// THE SECOND SHARED SEAM, AND WHY IT IS STILL NOT THE STAGE THE ROWS NAME. The first floor run of
+// this file (gunbc#11582, run 35317696454) reached every verdict and was REFUSED on cost: each
+// resolve row performed ~92k eval steps against the 72,300-step budget for work arriving after the
+// cut. What those steps were was root validation and the symbol-index fill over seven modules --
+// v2.compiler.name_resolve resolution_context, the production hand-off that
+// resolve_with_admission builds once and then resolves ONE subject through. Re-deriving it per
+// claim is the class gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame
+// names, and the remedy is the same seam production uses: the CONTEXT is the nullary warm producer
+// (enrolled beside the ingest in v2.workflow.floor_pure_producer_share), and
+// resolve_with_admission_context_policy -- the resolution of the admitted subject, which is what
+// every row below asserts on -- runs per claim.
+fn xl0r_resolution_context() -> Outcome<ResolutionContext> {
   match xl0r_fixture_normalized() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: roots, diagnostics: _ } =>
-      assemble_program_from_module_roots(
-        roots: roots,
-        admission: xl0r_admission(subject: subject),
-        lm: dag_language_model()
-      )
+      resolution_context(lm: dag_language_model(), roots: roots)
   }
+}
+
+fn xl0r_resolve_subject(subject: String) -> Outcome<Node> {
+  resolve_with_admission_context_policy(
+    context: xl0r_resolution_context(),
+    admission: xl0r_admission(subject: subject),
+    index: source_root_index_empty(),
+    active_roots: Empty,
+    policy: default_name_resolution_policy()
+  )
 }
 
 fn xl0r_resolved_atom_present(root: Node, identity: Symbol) -> Bool {
