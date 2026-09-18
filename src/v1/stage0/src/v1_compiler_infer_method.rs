@@ -369,7 +369,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "Int".to_string(),
     }),
     })]),
-        returns: string_type(),
+        returns: type_variable_node("app_attest_attestation_answer".to_string()),
     }));
                 __m.insert("app_attest_verify_assertion".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {
@@ -393,7 +393,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
         name: "String".to_string(),
     }),
     })]),
-        returns: string_type(),
+        returns: type_variable_node("app_attest_assertion_answer".to_string()),
     }));
                 __m.insert("string_length".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![Rc::new(BuiltinParam {

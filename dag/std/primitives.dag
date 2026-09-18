@@ -76,8 +76,8 @@ data es256_jwt_sign_contract: PrimitiveContract = {
 }
 
 // Apple App Attest attestation (extdeps.apple.app_attest app_attest_verify): work linear in the
-// attestation object (CBOR decode, two certificate signatures, three SHA-256s), output one code line
-// bounded by the verified point and hash or a refusal's detail.
+// attestation object (CBOR decode, two certificate signatures, three SHA-256s), output one typed
+// AttestationImplementationAnswer bounded by the attestation object.
 data app_attest_verify_attestation_contract: PrimitiveContract = {
   name: "app_attest_verify_attestation",
   work: "n",
@@ -86,7 +86,8 @@ data app_attest_verify_attestation_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-// Apple App Attest assertion: work linear in the assertion and client data, output one code line.
+// Apple App Attest assertion: work linear in the assertion and client data, output one typed
+// AssertionImplementationAnswer.
 data app_attest_verify_assertion_contract: PrimitiveContract = {
   name: "app_attest_verify_assertion",
   work: "n",

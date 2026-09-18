@@ -19726,14 +19726,14 @@ macro_rules! v1_builtin_arms {
             },
 
             // APPLE APP ATTEST, ATTESTATION (extdeps.apple.app_attest app_attest_verify): Apple's
-            // eight validation steps in Apple's order, over RustCrypto p256/p384 + sha2, ciborium
+            // ten validation steps in Apple's order, over RustCrypto p256/p384 + sha2, ciborium
             // and x509-parser. The trust anchor is the ROOT_PEM ARGUMENT alone -- the .dag passes
-            // the pinned apple_app_attestation_root_ca_pem -- and x5c past the intermediate is
-            // never read. `now_epoch` is supplied, never read from a clock, so one input has one
-            // answer. The answer is a one-line code the .dag maps totally onto
-            // AttestationRefusal / AttestationVerified.
+            // the pinned apple_app_attestation_root_ca -- and x5c past the intermediate is never
+            // read. `now_epoch` is supplied, never read from a clock, so one input has one answer.
+            // The answer is a typed AttestationImplementationAnswer, never a verified attestation.
             arm "free_call.app_attest_verify_attestation" { "app_attest_verify_attestation" } => {
-                Ok(Some(str_value(app_attest_attestation_line(
+                Ok(Some(app_attest_attestation_answer(
+                    $ctx,
                     expect_value_str($positional.first().copied(), "app_attest_verify_attestation attestation")?.as_str(),
                     expect_value_str($positional.get(1).copied(), "app_attest_verify_attestation client_data")?.as_str(),
                     expect_value_str($positional.get(2).copied(), "app_attest_verify_attestation key_id")?.as_str(),
@@ -19741,19 +19741,20 @@ macro_rules! v1_builtin_arms {
                     expect_bool($positional.get(4).copied(), "app_attest_verify_attestation production")?,
                     expect_value_str($positional.get(5).copied(), "app_attest_verify_attestation root_pem")?.as_str(),
                     expect_int($positional.get(6).copied(), "app_attest_verify_attestation now")?,
-                ))))
+                )))
             },
 
             // APPLE APP ATTEST, ASSERTION: the signature over SHA256(authenticatorData ||
             // SHA256(clientData)) under the ATTESTED key, and the app's RP ID hash. The counter is
             // returned, not judged: whether it must exceed a stored one is the caller's.
             arm "free_call.app_attest_verify_assertion" { "app_attest_verify_assertion" } => {
-                Ok(Some(str_value(app_attest_assertion_line(
+                Ok(Some(app_attest_assertion_answer(
+                    $ctx,
                     expect_value_str($positional.first().copied(), "app_attest_verify_assertion assertion")?.as_str(),
                     expect_value_str($positional.get(1).copied(), "app_attest_verify_assertion client_data")?.as_str(),
                     expect_value_str($positional.get(2).copied(), "app_attest_verify_assertion key")?.as_str(),
                     expect_value_str($positional.get(3).copied(), "app_attest_verify_assertion app_id")?.as_str(),
-                ))))
+                )))
             },
 
             arm "free_call.string_length" { "string_length" } => {
@@ -22860,11 +22861,30 @@ fn app_attest_verify_assertion(
     Ok(parsed.counter)
 }
 
-/// The `app_attest_verify_attestation` builtin's answer as the one-line code
-/// extdeps.apple.app_attest app_attest_attestation_of reads: `verified <point b64url> <category>
-/// <receipt base64> <bundle version>` (the version last, as the rest of the line), or one refusal
-/// code per step. Malformed input is `undecodable <cause>`, never a verified line.
-fn app_attest_attestation_line(
+/// A variant of a `.dag`-declared coproduct, constructed here so the host answer arrives already
+/// typed: the `.dag` declaration is the one spelling, and nothing on either side re-parses text.
+fn app_attest_variant(
+    ctx: &InterpContext,
+    type_name: &str,
+    variant: &str,
+    fields: Vec<(&str, Value)>,
+) -> Value {
+    Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    }
+}
+
+/// The `app_attest_verify_attestation` builtin's answer: an
+/// extdeps.apple.app_attest AttestationImplementationAnswer. The verified arm carries the facts
+/// the implementation established; the refused arm carries an AttestationRefusal built here, one
+/// arm per step. It is NOT a VerifiedAttestation: that stays sole-constructed by
+/// attestation_verification_from_implementation, which the `.dag` calls with these facts.
+fn app_attest_attestation_answer(
+    ctx: &InterpContext,
     attestation_b64: &str,
     client_data: &str,
     key_id_b64: &str,
@@ -22872,15 +22892,32 @@ fn app_attest_attestation_line(
     production: bool,
     root_pem: &str,
     now: i64,
-) -> String {
+) -> Value {
     use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
     use base64::Engine;
     use AppAttestAttestationRefusal as R;
+    let refused = |variant: &str, fields: Vec<(&str, Value)>| {
+        app_attest_variant(
+            ctx,
+            "AttestationImplementationAnswer",
+            "AttestationImplementationRefused",
+            vec![(
+                "cause",
+                app_attest_variant(ctx, "AttestationRefusal", variant, fields),
+            )],
+        )
+    };
     let (Ok(attestation), Ok(key_id)) = (
         STANDARD.decode(attestation_b64),
         STANDARD.decode(key_id_b64),
     ) else {
-        return "undecodable attestation or key id is not base64".to_string();
+        return refused(
+            "AttestationUndecodable",
+            vec![(
+                "cause",
+                str_value("attestation or key id is not base64".to_string()),
+            )],
+        );
     };
     match app_attest_verify_attestation(
         &attestation,
@@ -22891,48 +22928,122 @@ fn app_attest_attestation_line(
         root_pem,
         now,
     ) {
-        Ok(a) => format!(
-            "verified {} {} {} {}",
-            URL_SAFE_NO_PAD.encode(a.point),
-            a.validation_category,
-            STANDARD.encode(a.receipt),
-            a.bundle_version
+        Ok(a) => app_attest_variant(
+            ctx,
+            "AttestationImplementationAnswer",
+            "AttestationImplementationVerified",
+            vec![
+                (
+                    "public_key_point_b64url",
+                    str_value(URL_SAFE_NO_PAD.encode(a.point)),
+                ),
+                (
+                    "validation_category",
+                    Value::Int(i64::from(a.validation_category)),
+                ),
+                ("receipt_b64", str_value(STANDARD.encode(a.receipt))),
+                ("bundle_version", str_value(a.bundle_version)),
+            ],
         ),
-        Err(R::Undecodable(cause)) => format!("undecodable {cause}"),
-        Err(R::FormatUnexpected(declared)) => format!("format {declared}"),
-        Err(R::ChainUntrusted(detail)) => format!("chain {detail}"),
-        Err(R::NonceMismatch) => "nonce".to_string(),
-        Err(R::KeyIdMismatch) => "key_id".to_string(),
-        Err(R::AppIdMismatch) => "app_id".to_string(),
-        Err(R::CounterNonZero(counter)) => format!("counter {counter}"),
-        Err(R::EnvironmentUnexpected) => "environment".to_string(),
-        Err(R::CredentialIdMismatch) => "credential_id".to_string(),
-        Err(R::ValidationCategoryAbsent) => "category_absent".to_string(),
-        Err(R::BundleVersionAbsent) => "bundle_version_absent".to_string(),
+        Err(R::Undecodable(cause)) => {
+            refused("AttestationUndecodable", vec![("cause", str_value(cause))])
+        }
+        Err(R::FormatUnexpected(declared)) => refused(
+            "AttestationFormatUnexpected",
+            vec![("declared", str_value(declared))],
+        ),
+        Err(R::ChainUntrusted(detail)) => refused(
+            "AttestationChainUntrusted",
+            vec![("detail", str_value(detail))],
+        ),
+        Err(R::NonceMismatch) => refused("AttestationNonceMismatch", vec![]),
+        Err(R::KeyIdMismatch) => refused(
+            "AttestationKeyIdMismatch",
+            vec![("declared", str_value(key_id_b64.to_string()))],
+        ),
+        Err(R::AppIdMismatch) => refused(
+            "AttestationAppIdMismatch",
+            vec![("expected_app_id", str_value(app_id.to_string()))],
+        ),
+        Err(R::CounterNonZero(counter)) => refused(
+            "AttestationCounterNonZero",
+            vec![("counter", Value::Int(i64::from(counter)))],
+        ),
+        Err(R::EnvironmentUnexpected) => refused(
+            "AttestationEnvironmentUnexpected",
+            vec![(
+                "expected",
+                app_attest_variant(
+                    ctx,
+                    "AppAttestEnvironment",
+                    if production {
+                        "AppAttestProduction"
+                    } else {
+                        "AppAttestDevelopment"
+                    },
+                    vec![],
+                ),
+            )],
+        ),
+        Err(R::CredentialIdMismatch) => refused(
+            "AttestationCredentialIdMismatch",
+            vec![("declared", str_value(key_id_b64.to_string()))],
+        ),
+        Err(R::ValidationCategoryAbsent) => refused("AttestationValidationCategoryAbsent", vec![]),
+        Err(R::BundleVersionAbsent) => refused("AttestationBundleVersionAbsent", vec![]),
     }
 }
 
-/// The `app_attest_verify_assertion` builtin's answer: `verified <counter>` or one refusal code.
-fn app_attest_assertion_line(
+/// The `app_attest_verify_assertion` builtin's answer: an extdeps.apple.app_attest
+/// AssertionImplementationAnswer -- the presented counter, or an AssertionRefusal built here.
+fn app_attest_assertion_answer(
+    ctx: &InterpContext,
     assertion_b64: &str,
     client_data: &str,
     point_b64url: &str,
     app_id: &str,
-) -> String {
+) -> Value {
     use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
     use base64::Engine;
     use AppAttestAssertionRefusal as R;
+    let refused = |variant: &str, fields: Vec<(&str, Value)>| {
+        app_attest_variant(
+            ctx,
+            "AssertionImplementationAnswer",
+            "AssertionImplementationRefused",
+            vec![(
+                "cause",
+                app_attest_variant(ctx, "AssertionRefusal", variant, fields),
+            )],
+        )
+    };
     let (Ok(assertion), Ok(point)) = (
         STANDARD.decode(assertion_b64),
         URL_SAFE_NO_PAD.decode(point_b64url),
     ) else {
-        return "undecodable assertion is not base64 or key is not base64url".to_string();
+        return refused(
+            "AssertionUndecodable",
+            vec![(
+                "cause",
+                str_value("assertion is not base64 or key is not base64url".to_string()),
+            )],
+        );
     };
     match app_attest_verify_assertion(&assertion, client_data.as_bytes(), &point, app_id) {
-        Ok(counter) => format!("verified {counter}"),
-        Err(R::Undecodable(cause)) => format!("undecodable {cause}"),
-        Err(R::SignatureInvalid) => "signature".to_string(),
-        Err(R::AppIdMismatch) => "app_id".to_string(),
+        Ok(counter) => app_attest_variant(
+            ctx,
+            "AssertionImplementationAnswer",
+            "AssertionImplementationVerified",
+            vec![("counter", Value::Int(i64::from(counter)))],
+        ),
+        Err(R::Undecodable(cause)) => {
+            refused("AssertionUndecodable", vec![("cause", str_value(cause))])
+        }
+        Err(R::SignatureInvalid) => refused("AssertionSignatureInvalid", vec![]),
+        Err(R::AppIdMismatch) => refused(
+            "AssertionAppIdMismatch",
+            vec![("expected_app_id", str_value(app_id.to_string()))],
+        ),
     }
 }
 
