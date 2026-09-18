@@ -1,6 +1,6 @@
 module extdeps.vllm.bench_serve
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
