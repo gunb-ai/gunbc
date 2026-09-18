@@ -11,7 +11,12 @@ import gunbc.heal_candidate {
   BaseIndexObservation, BaseIndexAbsent, BaseIndexBlob, BaseIndexRefused, base_index_observation,
   CandidateEntryDecision, EntryUnchanged, EntryDrifted, EntryDecisionRefused, candidate_entry_decision
 }
-import gunbc.heal_publication_boundary { CandidateEntry }
+import gunbc.heal_publication_boundary {
+  CandidateEntry, PublisherPathPolicy, publisher_path_admission, PathAdmitted, PathAdmissionRefused
+}
+import gunbc.generated_artifact { committed_generated_artifact_paths }
+import extdeps.github.effect { RepositoryPath, is_workflow_projection_path }
+import gunbc.heal_candidate { candidate_proposable_paths }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -157,4 +162,31 @@ test fn witness_an_unreadable_base_refuses_rather_than_adding() -> Bool {
     EntryUnchanged => false
     EntryDrifted { entry: _ } => false
   }
+}
+
+// ── which paths the candidate is willing to propose ─────────────────────────────────────────
+
+// THE PRODUCER PROPOSES NO PATH THE PUBLISHER STRUCTURALLY REFUSES. publisher_path_admission rejects
+// a workflow projection with PathRequiresAuthorCommit, and that refusal rejects the WHOLE candidate,
+// so one drifted workflow beside five ordinary artifacts would publish nothing. One edit to
+// gunbc.ci_spec regenerates witnesses.yml and docs/design-rung-drops.md together, so that shape is
+// ordinary rather than exotic.
+//
+// THE CLAIM ASKS ONLY THE HALF THAT CAN BE FALSE. An earlier revision ran the full
+// publisher_path_admission over every proposable path, passing the registry as the admitted set --
+// 51,169 eval steps and 102ms, quadratic, and half of it TAUTOLOGICAL: candidate_proposable_paths is
+// a filter OF that registry, so "every proposable path is admitted" cannot fail. What can fail is the
+// workflow exclusion, and that is linear. The tautological half was not just expensive, it was
+// noise -- a claim that cannot go red for one of the two reasons it appears to check.
+test fn witness_no_proposable_path_is_a_workflow_projection() -> Bool {
+  all(candidate_proposable_paths(), p =>
+    !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
+}
+
+// THE DISCRIMINATOR. If the registry carried no workflow projection at all, the claim above would
+// pass on an unfiltered list and establish nothing -- so the filter must actually remove something.
+test fn witness_the_filter_removes_a_path_the_registry_carries() -> Bool {
+  count(candidate_proposable_paths()) < count(committed_generated_artifact_paths())
+    && any(committed_generated_artifact_paths(), p =>
+         is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr }))
 }

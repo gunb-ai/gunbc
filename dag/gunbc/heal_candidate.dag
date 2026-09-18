@@ -7,7 +7,7 @@ import std.bytes { utf8_encode_bytes }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.github.effect { RepositoryPath }
+import extdeps.github.effect { RepositoryPath, is_workflow_projection_path }
 import extdeps.git.object_store {
   GitObjectId, git_sha1_object_id, git_object_id_eq, git_object_id_wire_hex,
   GitTreeMode, GitRegularBlobMode, GitExecutableBlobMode, GitSymlinkMode, GitSubtreeMode, GitlinkMode,
@@ -223,6 +223,31 @@ type DriftPopulation
   = DriftPopulationObserved { drifted: List<DriftedEntry> }
   | DriftPopulationRefused { cause: String }
 
+// THE CANDIDATE PROPOSES ONLY PATHS THE PUBLISHER CAN ACCEPT, and this filter is a correctness fix
+// rather than an optimisation. gunbc.heal_publication_boundary publisher_path_admission refuses a
+// workflow projection with PathRequiresAuthorCommit -- the installation token carries contents:write
+// and GitHub requires the separate `workflows` permission to modify .github/workflows -- and that
+// refusal rejects the WHOLE candidate, not the offending entry. So a candidate carrying one drifted
+// workflow beside five ordinary artifacts would publish NOTHING.
+//
+// THAT SHAPE IS COMMON, NOT EXOTIC: one edit to gunbc.ci_spec regenerates witnesses.yml AND
+// docs/design-rung-drops.md together, which is exactly what the change introducing this filter did.
+// The heal job this replaced pushed what it could and bundled the rest for the author; proposing the
+// unpublishable path and being refused wholesale is strictly worse than either.
+//
+// NOTHING IS SILENCED BY FILTERING. A drifted workflow projection still reds the generated-artifact
+// drift gate, a different mechanism on a different lane, and that is the signal the author acts on.
+// What is gone is the convenience bundle the old job uploaded; DETECTION is unchanged, so this is a
+// lost convenience rather than a lowered rung. The predicate is imported from extdeps.github.effect,
+// which owns what a workflow path IS, so the producer and the publisher cannot disagree about the
+// population.
+fn candidate_proposable_paths() -> List<String> {
+  filter(
+    committed_generated_artifact_paths(),
+    p => !is_workflow_projection_path(path: RepositoryPath { value: p as NonEmptyStr })
+  )
+}
+
 fn observe_drift_population(paths: List<String>) -> DriftPopulation {
   fold(paths, init: DriftPopulationObserved { drifted: [] }, f: fn(acc, path) {
     match acc {
@@ -347,7 +372,7 @@ fn heal_candidate_produce_wet() -> ProcessExit {
   match prepare_candidate_directory() {
     CandidateWriteRefused { cause } => exit_failure(reason: cause)
     CandidateWritten =>
-      match observe_drift_population(paths: committed_generated_artifact_paths()) {
+      match observe_drift_population(paths: candidate_proposable_paths()) {
         DriftPopulationRefused { cause } => exit_failure(reason: cause)
         DriftPopulationObserved { drifted } =>
           if count(drifted) == 0 {
