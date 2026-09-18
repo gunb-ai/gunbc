@@ -2,7 +2,7 @@ module extdeps.radixark.glm_5_3_nvfp4
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size, byte_size_count, BitWidth, bit_width, bit_width_count, bits_per_byte }
+import std.measure { ByteSize, byte_size, byte_size_count, BitWidth, bit_width, bit_width_count, bits_per_byte, BasisPoint, basis_point, basis_point_unity_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri, HubCheckpointManifest, hub_checkpoint_manifest }
@@ -243,8 +243,9 @@ fn nvfp4_routed_experts_total_bytes(s: GlmMoeDsaShape) -> ByteSize? {
 // THE ALL-SHARD PARTITION IS A REPORTED MEASUREMENT, AND ITS STANDING SAYS SO. The two totals below
 // were produced by a header census over all 47 shards that this repository does not execute: no
 // producer here fetches the headers, so a moved artifact would not redden them, and the witness that
-// checks the routed total against the shape-derived figure compares one authored number to one
-// derivation. That is the §4d transcribed standing, carried as such with the read obligation named --
+// compares the routed total with the shape-derived figure is a consistency check between one
+// authored number and one derivation -- it verifies neither, and the transcription is not an
+// oracle. That is the §4d transcribed standing, carried as such with the read obligation named --
 // an executing, content-addressed header-census producer over the pinned revision -- rather than a
 // `measured` label the corpus cannot back. The REPRESENTATIVE expert's twelve entries above are the
 // part that IS carried at the format's grain.
@@ -258,26 +259,27 @@ type ReportedBytePartition sole_constructor {
 data nvfp4_reported_partition: ReportedBytePartition = ReportedBytePartition {
   routed_experts: byte_size(count: 407686809600),
   nextn_layer: byte_size(count: 19905841664),
-  standing: TranscribedUncited { read_obligation: "an executing header-census producer over the 47 safetensors shards at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a -- fetch each header by HTTP range, classify every entry by the quantization_config ignore classes, sum -- whose output is content-addressed and re-derived by the witness, so the artifact moving under the pin reddens rather than agreeing" as NonEmptyStr },
+  standing: TranscribedUncited { read_obligation: "an executing header-census producer over the 47 safetensors shards at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a -- fetch each header by HTTP range, classify every entry by the quantization_config ignore classes, sum -- whose content-addressed output a witness would compare against the derivation. NO SUCH PRODUCER EXISTS IN THIS REPOSITORY TODAY: nothing here fetches headers, so the artifact moving under the pin does not redden anything, and the witness that reads this row is a consistency check between a derivation and a transcribed figure, not a verification of either" as NonEmptyStr },
   read_by: "all 47 safetensors headers at revision 6e389189d564d9d3e4ea7fa284fe91f136d8ae2a, fetched by HTTP range on 2026-09-18; every entry named model.layers.\{3..77\}.mlp.experts.\{e\}.* summed for the routed-expert figure (232,385 entries total in the headers; 5,435,824,128 bytes in each of the 75 MoE layers), every entry named model.layers.78.* summed for the nextn figure (its 256 experts are bf16, 19,327,352,832 bytes of the 19,905,841,664). The remainder -- self_attn 26,137,084,416; shared_experts 5,662,310,400; embed_tokens plus lm_head 3,806,330,880; the three dense MLPs 1,358,954,496; router gates 236,006,400; norms 1,929,216 -- is bf16 or f32 and sums with these two to the headers' 464,795,267,072 payload bytes, which is the safetensors total of 464,823,042,096 less the 47 headers themselves" as NonEmptyStr,
 }
 
-// THE SHARE OF THE ARTIFACT THAT IS NVFP4, in basis points so a consumer can screen on it without a
+// THE SHARE OF THE ARTIFACT THAT IS NVFP4, as a BasisPoint so a consumer can screen on it without a
 // float -- DERIVED from the modelled expert layout (one representative expert's header bytes, the
 // expert count and the MoE layer count) over the manifest's safetensors bytes, so it rests on
-// nothing transcribed. An empty manifest has no share and the fold refuses rather than divides.
-fn nvfp4_routed_experts_share_basis_points(s: GlmMoeDsaShape, m: HubCheckpointManifest) -> Nat? {
+// nothing transcribed. The scale is the basis-point unity std.measure owns, not a literal. An empty
+// manifest has no share and the fold refuses rather than divides.
+fn nvfp4_routed_experts_share(s: GlmMoeDsaShape, m: HubCheckpointManifest) -> BasisPoint? {
   let total = byte_size_count(b: m.safetensors_bytes)
   match nvfp4_routed_experts_total_bytes(s: s) {
     Absent => none
-    Present { value: routed } => if total == 0 { none } else { Present { value: (byte_size_count(b: routed) * 10000) / total } }
+    Present { value: routed } => if total == 0 { none } else { Present { value: basis_point(count: (byte_size_count(b: routed) * basis_point_unity_count()) / total) } }
   }
 }
 
 // WHAT THE REDISTRIBUTION COMPRESSED, in basis points of the base's native FP8 safetensors: the
 // 465 GB artifact against Z.ai's 756 GB one. This is the one place the base manifest is consumed,
 // and it is why the base module carries it.
-fn nvfp4_share_of_native_basis_points() -> Nat? {
+fn nvfp4_share_of_native() -> BasisPoint? {
   let native = byte_size_count(b: glm_5_3_native_manifest.safetensors_bytes)
-  if native == 0 { none } else { Present { value: (byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes) * 10000) / native } }
+  if native == 0 { none } else { Present { value: basis_point(count: (byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes) * basis_point_unity_count()) / native) } }
 }

@@ -2,14 +2,14 @@ module test.claim.spark.serving_fit_projection_witness_test
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { byte_size, byte_size_count, basis_point }
+import std.measure { byte_size, byte_size_count, basis_point, basis_point_count }
 import extdeps.zhipu.glm_5_3 { glm_5_3_shape, glm_5_3_moe_layer_count, glm_5_3_routed_expert_visits_per_token }
 import extdeps.radixark.glm_5_3_nvfp4 {
   GlmMoeDsaModuleClass, RoutedExperts, glm_moe_dsa_module_class_label,
   glm_5_3_nvfp4_manifest, glm_5_3_nvfp4_quantization,
   nvfp4_representative_expert_bytes, nvfp4_expert_bytes_from_shape, nvfp4_group_size_from_layout,
   nvfp4_routed_experts_total_bytes, nvfp4_reported_partition,
-  nvfp4_routed_experts_share_basis_points, nvfp4_share_of_native_basis_points, nvfp4_quantized_classes,
+  nvfp4_routed_experts_share, nvfp4_share_of_native, nvfp4_quantized_classes,
 }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, Glm53RadixArkNvfp4Modelopt, Glm53Nvfp4CompressedTensors, ServingRuntime, GunbcGlm53DerivedGb10, GunbcGlm53NopeDerivedGb10,
@@ -49,11 +49,12 @@ test fn w_group_size_read_off_the_scale_tensor_equals_the_declared_one() -> Bool
   }
 }
 
-// THE ROUTED-EXPERT TOTAL, DERIVED FROM ONE EXPERT AND THE SHAPE, EQUALS THE TOTAL REPORTED BY THE
-// ALL-47-HEADER CENSUS -- a transcribed figure at TranscribedUncited standing, so this is a
-// derivation agreeing with a report, not with an executing producer; the producer is the row's read
-// obligation.
-test fn w_routed_expert_total_derived_equals_reported() -> Bool {
+// THE ROUTED-EXPERT TOTAL DERIVED FROM ONE EXPERT AND THE SHAPE IS CONSISTENT WITH THE TOTAL A
+// TRANSCRIBED ALL-47-HEADER CENSUS REPORTED. This is a consistency check and not a verification: the
+// report is TranscribedUncited and nothing here fetches headers, so a moved artifact under the pin
+// reddens nothing. The executing producer that would make the derivation falsifiable is the row's
+// read obligation.
+test fn w_derived_routed_total_is_consistent_with_the_reported_census() -> Bool {
   match nvfp4_routed_experts_total_bytes(s: glm_5_3_shape) {
     Absent => false
     Present { value: derived } => byte_size_count(b: derived) == byte_size_count(b: nvfp4_reported_partition.routed_experts)
@@ -66,9 +67,9 @@ test fn w_reported_partition_sits_inside_the_manifest_and_compresses_the_base() 
   let routed = byte_size_count(b: nvfp4_reported_partition.routed_experts)
   let nextn = byte_size_count(b: nvfp4_reported_partition.nextn_layer)
   routed + nextn < byte_size_count(b: glm_5_3_nvfp4_manifest.safetensors_bytes)
-    && match nvfp4_share_of_native_basis_points() {
+    && match nvfp4_share_of_native() {
       Absent => false
-      Present { value: share } => share >= 6000 && share < 6500
+      Present { value: share } => basis_point_count(bp: share) >= 6000 && basis_point_count(bp: share) < 6500
     }
 }
 
@@ -76,9 +77,9 @@ test fn w_reported_partition_sits_inside_the_manifest_and_compresses_the_base() 
 // not 88 and not 92, the nextn layer's 256 bf16 experts being the difference between "every expert
 // tensor" and "every NVFP4 expert tensor".
 test fn w_routed_experts_are_between_8700_and_8800_basis_points_of_the_safetensors() -> Bool {
-  match nvfp4_routed_experts_share_basis_points(s: glm_5_3_shape, m: glm_5_3_nvfp4_manifest) {
+  match nvfp4_routed_experts_share(s: glm_5_3_shape, m: glm_5_3_nvfp4_manifest) {
     Absent => false
-    Present { value: bp } => bp >= 8700 && bp < 8800
+    Present { value: bp } => basis_point_count(bp: bp) >= 8700 && basis_point_count(bp: bp) < 8800
   }
 }
 
