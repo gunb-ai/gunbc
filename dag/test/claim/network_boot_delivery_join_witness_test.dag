@@ -7,6 +7,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64, X86_64, Wasm32 }
 import extdeps.provisioning.dhcp_client_arch { HttpBootArm64, UefiArm64 }
+import extdeps.provisioning.network_boot { NativeDhcpBootOptions }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_subject {
@@ -72,9 +73,9 @@ import gunbc.network_boot_delivery {
   SignedBootManifestVerified,
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
+  SiteAnsweredDhcp,
   SiteBootstrapDiscovery,
   SiteDiscoveryUnobserved,
-  SiteNativeDhcp,
   ManifestJoinChainloaderDigestDisagrees,
   ManifestJoinWrongSigningKey,
   SitePxeEdge,
@@ -161,7 +162,7 @@ fn reachable_edge(discovery: SiteBootstrapDiscovery) -> SitePxeEdge {
 
 fn site_ok() -> SitePxeEdgeStanding {
   site_pxe_edge_standing(
-    edge: reachable_edge(discovery: SiteNativeDhcp),
+    edge: reachable_edge(discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions }),
     client_architecture: Aarch64,
     observation: obs,
     observed_at: 1788000000000,
@@ -310,7 +311,7 @@ test fn mismatched_chainloader_architecture_does_not_establish() -> Bool {
     edge: SitePxeEdge {
       site: "onboarding-segment" as SiteIdentity,
       admitted_architectures: first_slice_admitted_architectures,
-      discovery: SiteNativeDhcp,
+      discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
       bootstrap_transport: ArchitectureChainloader {
         architecture: Wasm32,
         filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
@@ -331,7 +332,7 @@ test fn mismatched_chainloader_architecture_does_not_establish() -> Bool {
 
 test fn unknown_architecture_does_not_establish() -> Bool {
   match site_pxe_edge_standing(
-    edge: reachable_edge(discovery: SiteNativeDhcp),
+    edge: reachable_edge(discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions }),
     client_architecture: X86_64,
     observation: obs,
     observed_at: 1788000000000,
@@ -345,7 +346,7 @@ test fn unknown_architecture_does_not_establish() -> Bool {
 
 test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
   let site = site_pxe_edge_standing(
-    edge: reachable_edge(discovery: SiteNativeDhcp),
+    edge: reachable_edge(discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions }),
     client_architecture: X86_64,
     observation: obs,
     observed_at: 1788000000000,
@@ -381,7 +382,7 @@ test fn unreachable_origin_does_not_establish_site() -> Bool {
     edge: SitePxeEdge {
       site: "onboarding-segment" as SiteIdentity,
       admitted_architectures: first_slice_admitted_architectures,
-      discovery: SiteNativeDhcp,
+      discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
       bootstrap_transport: ArchitectureChainloader {
         architecture: Aarch64,
         filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
@@ -734,7 +735,7 @@ test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
         edge: SitePxeEdge {
           site: "onboarding-segment" as SiteIdentity,
           admitted_architectures: first_slice_admitted_architectures,
-          discovery: SiteNativeDhcp,
+          discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
           bootstrap_transport: ArchitectureChainloader {
             architecture: Wasm32,
             filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
@@ -777,7 +778,7 @@ test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool {
         edge: SitePxeEdge {
           site: "onboarding-segment" as SiteIdentity,
           admitted_architectures: [Wasm32],
-          discovery: SiteNativeDhcp,
+          discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
           bootstrap_transport: ArchitectureChainloader {
             architecture: Aarch64,
             filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
@@ -820,7 +821,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
         edge: SitePxeEdge {
           site: "onboarding-segment" as SiteIdentity,
           admitted_architectures: [Wasm32],
-          discovery: SiteNativeDhcp,
+          discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions },
           bootstrap_transport: ArchitectureChainloader {
             architecture: Aarch64,
             filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
@@ -878,7 +879,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
     fleet: fleet_ok(),
     site: SitePxeEdgeEstablished {
       receipt: SitePxeEdgeReceipt {
-        edge: reachable_edge(discovery: SiteNativeDhcp),
+        edge: reachable_edge(discovery: SiteAnsweredDhcp { direction: NativeDhcpBootOptions }),
         observation: obs,
         observed_at: 1788000000000,
       },

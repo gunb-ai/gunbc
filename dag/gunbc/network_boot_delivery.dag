@@ -13,6 +13,7 @@ import extdeps.provisioning.dhcp_client_arch {
   HttpBootX86_64,
   HttpBootArm64,
 }
+import extdeps.provisioning.network_boot { DhcpBootDirection }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
@@ -145,9 +146,12 @@ type FleetBootServiceStanding
 type BootDiscoveryHint
   = DhcpFilenameHint { filename: NonEmptyStr }
 
+// Who answers DHCP is extdeps.provisioning.network_boot DhcpBootDirection
+// (NativeDhcpBootOptions | ProxyDhcp). Relay and unobserved are not that
+// coproduct: a relay is not an answering server, and unobserved is not a
+// direction.
 type SiteBootstrapDiscovery
-  = SiteNativeDhcp
-  | SiteProxyDhcp
+  = SiteAnsweredDhcp { direction: DhcpBootDirection }
   | SiteDhcpRelay
   | SiteDiscoveryUnobserved
 
@@ -191,8 +195,7 @@ fn architecture_admitted_on_edge(arch: Architecture, admitted: List<Architecture
 fn site_pxe_edge_standing(edge: SitePxeEdge, client_architecture: Architecture, observation: DeclarationRef, observed_at: EpochMs) -> SitePxeEdgeStanding {
   match edge.discovery {
     SiteDiscoveryUnobserved => SitePxeEdgeUnestablished
-    SiteNativeDhcp => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
-    SiteProxyDhcp => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
+    SiteAnsweredDhcp { direction: _ } => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
     SiteDhcpRelay => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
   }
 }
