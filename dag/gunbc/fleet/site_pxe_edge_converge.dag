@@ -27,8 +27,10 @@ import extdeps.systemd.unit_file {
   Installable,
   WantedBy,
   serialize_systemd_unit_file,
+  systemd_system_unit_directory,
 }
 import product.placement_supply { HostIdentity }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name }
@@ -81,11 +83,11 @@ import gunbc.site_uefi_arm64_pxe_edge { site_edge_proxy_dhcp_config, first_onboa
 // from an observed boot offer reaching a client. A daemon that started is not an offer that arrived.
 data site_pxe_edge_host: HostIdentity = "srv4" as HostIdentity
 
-data site_pxe_edge_segment_network: NonEmptyStr = "192.168.1.0"
+data site_pxe_edge_segment_network: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)
 
 data site_pxe_edge_unit_name: NonEmptyStr = "gunbc-site-pxe-edge.service"
 
-data site_pxe_edge_unit_path: FilePath = "/etc/systemd/system/gunbc-site-pxe-edge.service"
+data site_pxe_edge_unit_path: FilePath = join([systemd_system_unit_directory as String, "/", site_pxe_edge_unit_name as String], "") as FilePath
 
 data site_pxe_edge_config_path: FilePath = "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
 
