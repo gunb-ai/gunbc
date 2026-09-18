@@ -16,22 +16,24 @@ import product.fabric.node_qualification {
   NodeQualificationAdmission, qualify_node, admit_qualified_node,
 }
 
-// GROUP B DELIVERY AS READ 2026-09-18, NOT AS THE PRODUCT BRIEF WOULD HAVE IT.
+// GROUP B DELIVERY AS READ 2026-09-18, NOT AS A GENERIC CONNECTX-7 CARD BRIEF WOULD HAVE IT.
 //
-// The advertised row is what fabric selection already believes: four GB10s, 100GBASE-CR2 rail.
-// The measured row is only what has actually been read. Collective curves are unread because
-// nccl-tests all_reduce_perf needs the ranks idle and Group B is live-serving; an opportunistic
-// run would contend with the GLM sweeps. Unread is a refusal, not a pass.
+// The advertised row is what this PLATFORM offers: four GB10s, 100GBASE-CR2 rail, and a ConnectX-7
+// attached as two independent Gen5 x4 links (NVIDIA DGX Spark hardware docs; live LnkCap matches).
+// A discrete ConnectX-7 adapter brief that says x16 is not this host's advertisement -- putting
+// x16 here would be the product-brief substitution this lane exists to refuse. Measured PCIe is
+// LnkSta, not LnkCap: both currently read Gen5 x4, so the axis agrees when the live link is
+// the platform attachment rather than a card SKU.
 
 data group_b_fabric_node: HostIdentity = operator_host_srv9
 
-data advertised_connectx7_host_link: PcieLink = PcieLink { generation: Gen5, lane_count: 16 }
+data advertised_spark_connectx7_per_port_link: PcieLink = PcieLink { generation: Gen5, lane_count: 4 }
 
 data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
   accelerator_count: 4,
   usable_memory: gibibyte_to_byte_size(g: gibibyte(count: 484)),
   rail_link_mode: ieee_100gbase_cr2,
-  nic_pcie: advertised_connectx7_host_link,
+  nic_pcie: advertised_spark_connectx7_per_port_link,
   collective_latency_ceiling: nanosecond(count: 100000),
   collective_bandwidth_floor: bandwidth(count: 10000000000),
   gpu_direct_rdma_expected: true,
