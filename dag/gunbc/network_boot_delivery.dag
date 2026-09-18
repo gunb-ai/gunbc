@@ -67,6 +67,7 @@ type NetworkBootDeliveryStanding
   = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
   | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
   | NetworkBootDeliveryEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
+  | NetworkBootDeliveryArchitectureRefused { architecture: Architecture }
 
 // An authored plan cannot inhabit MeasuredNetworkBootFact. The class travels on
 // the receipt so an unrostered DeclarationRef cannot silently establish.
@@ -222,8 +223,17 @@ type SignedBootManifestIdentity {
   callback_identity: NonEmptyStr
 }
 
+// Identified is an unsigned identity blob. Only Verified (minted from 0D
+// BootManifestAuthentic) can establish the artifacts axis — otherwise an expired
+// or MAC-less ticket would join as Established.
 type SignedBootManifestStanding
-  = SignedBootManifestIdentified {
+  = SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity
+      evidence_class: NetworkBootEvidenceClass
+      observation: DeclarationRef
+      observed_at: EpochMs
+    }
+  | SignedBootManifestIdentified {
       identity: SignedBootManifestIdentity
       evidence_class: NetworkBootEvidenceClass
       observation: DeclarationRef
@@ -282,7 +292,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
         MeasuredNetworkBootFact =>
           match inputs.site {
             SitePxeEdgeUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
-            SitePxeEdgeArchitectureRefused { architecture: _ } => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
+            SitePxeEdgeArchitectureRefused { architecture: a } => NetworkBootDeliveryArchitectureRefused { architecture: a }
             SitePxeEdgeEstablished { receipt: _ } =>
               match inputs.client {
                 ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
@@ -312,7 +322,9 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                                     } else {
                                       match inputs.manifest {
                                         SignedBootManifestAbsent => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
-                                        SignedBootManifestIdentified { identity: id, evidence_class: man_class, observation: manifest_obs, observed_at: manifest_at } =>
+                                        SignedBootManifestIdentified { identity: _, evidence_class: _, observation: _, observed_at: _ } =>
+                                          NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                        SignedBootManifestVerified { identity: id, evidence_class: man_class, observation: manifest_obs, observed_at: manifest_at } =>
                                           match man_class {
                                             NonEstablishingNetworkBootPredecessor =>
                                               NetworkBootDeliveryEvidenceRefused { axis: NetworkBootBootArtifacts, observation: manifest_obs }
@@ -323,24 +335,28 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                                                 if content_hash_equal(left: id.root_digest, right: inputs.artifact_digest) == false {
                                                   NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
                                                 } else {
-                                                  if id.expiry <= id.not_before {
+                                                  if manifest_at < id.not_before {
                                                     NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
                                                   } else {
-                                                    if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
+                                                    if manifest_at >= id.expiry {
                                                       NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
                                                     } else {
-                                                      if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
+                                                      if (id.target_unit as NonEmptyStr) != (inputs.target.subject.subject.unit_key as NonEmptyStr) {
                                                         NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
                                                       } else {
-                                                        NetworkBootDeliveryEstablished {
-                                                          evidence: NetworkBootDeliveryEstablishment {
-                                                            target: inputs.target,
-                                                            boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
-                                                            client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
-                                                            serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
-                                                            boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
-                                                            artifact_digest: inputs.artifact_digest,
-                                                          },
+                                                        if (id.attempt_id as NonEmptyStr) != (inputs.target.subject.attempt_id as NonEmptyStr) {
+                                                          NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
+                                                        } else {
+                                                          NetworkBootDeliveryEstablished {
+                                                            evidence: NetworkBootDeliveryEstablishment {
+                                                              target: inputs.target,
+                                                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
+                                                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
+                                                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
+                                                              boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
+                                                              artifact_digest: inputs.artifact_digest,
+                                                            },
+                                                          }
                                                         }
                                                       }
                                                     }
