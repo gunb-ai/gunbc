@@ -5,7 +5,6 @@ import std.measure { bandwidth_count }
 import extdeps.ethernet.link_mode { LinkMode, ieee_25gbase_cr, lane_rate_25g }
 import extdeps.linux.mlx5_core { mlx5_core_module_name }
 import extdeps.mikrotik.crs812 { crs812_lane_speed_for_link_mode, Crs812LaneSpeedForMode, NoLaneSpeedForMode }
-import extdeps.network.ibm_01ft753 { Ibm01ft753, ibm_01ft753 }
 import extdeps.network.mcx4121a_acat { Mcx4121aAcat, mcx4121a_acat }
 import extdeps.network.mikrotik_crs812 { crs812_catalog }
 import extdeps.standards.nic_attachment { NicAttachmentClass, PcieCem }
@@ -107,7 +106,6 @@ data mtcollins1_connectx4lx_fleet_intent: NicFleetIntentStanding = NicIntentUnde
 }
 
 data arrived_card: Mcx4121aAcat = mcx4121a_acat
-data ordered_catalog: Ibm01ft753 = ibm_01ft753
 
 fn arrived_is_pcie_cem() -> Bool {
   match arrived_card.attachment {
