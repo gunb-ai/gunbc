@@ -3,8 +3,21 @@ module test.claim.base64_rfc4648_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// base64_encode gained a refusal channel when NUMERIC-BIT-0 (gunbc#11627) switched its packing to
+// std.machine_word: an octet outside the byte range used to be multiplied into a plausible wrong
+// string, and now refuses. This projection discharges that channel with a sentinel that no valid
+// encoding can produce, so a refusal reds a golden vector rather than being read as an empty
+// string -- "" is base64_encode's answer for the empty input and is therefore not available as a
+// failure marker. The refusal itself is claimed directly in machine_word_witness_test.
 fn b64_std_of_utf8(s: String) -> String {
-  base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)
+  base64_encode_or_refused(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)
+}
+
+fn base64_encode_or_refused(octets: List<std.integer.UInt8>, variant: Base64Variant) -> String {
+  match base64_encode(octets: octets, variant: variant) {
+    Present { value: encoded } => encoded
+    Absent => "REFUSED"
+  }
 }
 
 data url_witness_octets: List<std.integer.UInt8> = [251, 255, 191]
@@ -20,7 +33,7 @@ test fn utf8_total_direction_holds() -> Bool {
 
 test fn base64_octet_roundtrip_holds() -> Bool {
   let o = bytes_octets(b: utf8_encode_bytes(s: "foobar"))
-  match base64_decode(s: base64_encode(octets: o, variant: Standard), variant: Standard) {
+  match base64_decode(s: base64_encode_or_refused(octets: o, variant: Standard), variant: Standard) {
     Present { value: d } => d == o
     Absent => false
   }
@@ -73,12 +86,12 @@ test fn base64_rfc4648_golden_vectors_holds() -> Bool {
 }
 
 test fn base64url_alphabet_golden_holds() -> Bool {
-  base64_encode(octets: url_witness_octets, variant: Standard) == "+/+/"
-    && base64_encode(octets: url_witness_octets, variant: UrlSafe) == "-_-_"
+  base64_encode_or_refused(octets: url_witness_octets, variant: Standard) == "+/+/"
+    && base64_encode_or_refused(octets: url_witness_octets, variant: UrlSafe) == "-_-_"
 }
 
 test fn base64url_roundtrip_holds() -> Bool {
-  match base64_decode(s: base64_encode(octets: url_witness_octets, variant: UrlSafe), variant: UrlSafe) {
+  match base64_decode(s: base64_encode_or_refused(octets: url_witness_octets, variant: UrlSafe), variant: UrlSafe) {
     Present { value: d } => d == url_witness_octets
     Absent => false
   }

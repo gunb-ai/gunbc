@@ -178,6 +178,7 @@ type CapabilityIssuanceRefusal
   = IssuanceKeyIdDisagrees { claimed: MacKeyId, signing_key: MacKeyId }
   | IssuanceKeyMaterialNotHex { key_id: MacKeyId }
   | IssuanceImplementationTagNotHex { key_id: MacKeyId }
+  | IssuanceImplementationTagNotOctets { key_id: MacKeyId }
 
 type CapabilityIssuance
   = CapabilityIssued { capability: ApprovalCapability }
@@ -196,11 +197,15 @@ fn issue_capability(claims: ApprovalCapabilityClaims, key: MacKey) -> Capability
         match base16_decode_lower(hex: t.hex as String) {
           Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotHex { key_id: t.key_id } }
           Present { value: octets } =>
-            CapabilityIssued {
-              capability: ApprovalCapability {
-                claims: claims,
-                tag_b64url: base64_encode(octets: octets, variant: UrlSafe) as NonEmptyStr,
-              }
+            match base64_encode(octets: octets, variant: UrlSafe) {
+              Absent => CapabilityIssuanceRefused { cause: IssuanceImplementationTagNotOctets { key_id: t.key_id } }
+              Present { value: encoded } =>
+                CapabilityIssued {
+                  capability: ApprovalCapability {
+                    claims: claims,
+                    tag_b64url: encoded as NonEmptyStr,
+                  }
+                }
             }
         }
     }
@@ -216,10 +221,14 @@ fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
   match base64_decode(s: presented, variant: UrlSafe) {
     Absent => none
     Present { value: octets } =>
-      if base64_encode(octets: octets, variant: UrlSafe) != presented || octets == [] {
-        none
-      } else {
-        Present { value: base16_encode_lower(octets: octets) as NonEmptyStr }
+      match base64_encode(octets: octets, variant: UrlSafe) {
+        Absent => none
+        Present { value: canonical } =>
+          if canonical != presented || octets == [] {
+            none
+          } else {
+            Present { value: base16_encode_lower(octets: octets) as NonEmptyStr }
+          }
       }
   }
 }
