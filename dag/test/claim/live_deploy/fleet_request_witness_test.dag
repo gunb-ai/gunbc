@@ -304,14 +304,15 @@ test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool {
 
 test fn admit_refuses_a_desired_unit_that_is_not_the_roster_row_unit() -> Bool {
   let live = srv1_production_desired_deployment()
+  let lab_unit = srv1_lab_desired_deployment().names.unit_name
   match admit_live_deploy_fleet_request(
     desired: live,
     candidate: candidate(),
-    observed: matching_obs(),
-    desired_member: m => desired_for(m: m),
+    observed: matching_obs_for(unit: lab_unit),
+    desired_member: m => desired_for_unit(unit: lab_unit, m: m),
   ) {
     LiveDeployFleetRequestUnitMismatch { carried, rostered } =>
-      (carried as String) == (unit_name() as String)
+      carried == lab_unit
         && rostered == live.names.unit_name
         && !(carried == rostered)
     LiveDeployFleetRequestAdmitted { desired: _, basis: _ } => false
