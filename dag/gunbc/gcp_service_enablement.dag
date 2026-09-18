@@ -30,10 +30,18 @@ type ServiceEnablementDesire
   = ServiceDesiredEnabled { project: GcpProjectId, service_id: NonEmptyStr }
   | ServiceDesiredDisabled { project: GcpProjectId, service_id: NonEmptyStr }
 
+// UNOBSERVED CARRIES WHY, because the three ways a read fails need three different human actions
+// and the arm used to make them indistinguishable. A 403 means the writer lacks
+// serviceusage.services.get and the remedy is an IAM grant; an unreached host means the network or
+// the endpoint is wrong and no permission change will help; an undecodable body means the response
+// shape moved and the model is what needs editing. An operator reading "unobserved" alone has to
+// reproduce the call by hand to learn which. The sibling read in gunbc.sheets_bootstrap_converge
+// already carried its cause into ProjectUnreadable, so this arm was the one place in that converge
+// where a classified outcome was classified and then discarded.
 type ServiceEnablementObservation
   = ServiceObservedEnabled { project: GcpProjectId, service_id: NonEmptyStr }
   | ServiceObservedDisabled { project: GcpProjectId, service_id: NonEmptyStr }
-  | ServiceEnablementUnobserved { project: GcpProjectId, service_id: NonEmptyStr }
+  | ServiceEnablementUnobserved { project: GcpProjectId, service_id: NonEmptyStr, cause: NonEmptyStr }
   | ServiceEnablementStateForeign { project: GcpProjectId, service_id: NonEmptyStr, raw: String }
 
 type EnableApiPlan {
@@ -90,7 +98,7 @@ fn decide_service_enablement(
       Refuse { reason: disable_refused_reason(project: p, service_id: s) }
     ServiceDesiredEnabled { project: p, service_id: s } =>
       match observed {
-        ServiceEnablementUnobserved { project: op, service_id: os } =>
+        ServiceEnablementUnobserved { project: op, service_id: os, cause: _ } =>
           ensure_decide(
             policy: policy,
             observation: EnsureInaccessible {

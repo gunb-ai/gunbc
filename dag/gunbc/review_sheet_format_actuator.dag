@@ -1,0 +1,695 @@
+module gunbc.review_sheet_format_actuator
+
+// THIS MODULE HAD A Scaffold DECLARING ITSELF UNREACHED AND IT NO LONGER DOES, because the
+// consumer landed rather than the trigger being restated. gunbc.review_sheet_converge_cli
+// converge_drive_half_cli now formats the spreadsheet its own converge just verified by readback,
+// which is the route that was missing: an argv-free entry, an id established by observation rather
+// than supplied, and a refusal when the converge produced no id to format.
+import std.types { NonEmptyStr, String, Bool, Int, Float, List }
+import std.resources { Network }
+import std.integer { uint8_channel_inclusive_max_value_derived }
+import extdeps.color.srgb { Srgb8 }
+import extdeps.color.okabe_ito { okabe_ito_bluish_green, okabe_ito_vermillion, okabe_ito_blue }
+import extdeps.transports.rest {
+  RestOutcome,
+  RestReadExchange,
+  RestMutationExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import gunbc.review_sheet_projection {
+  ReviewSheetSchema,
+  ReviewColumn,
+  ReviewColumnKind,
+  DerivedField,
+  OperatorEntered,
+  ListingStanding,
+  DerivedErasureMark,
+}
+import extdeps.google.sheets
+import extdeps.google.sheets {
+  SheetsColor,
+  spreadsheet_first_sheet_id,
+  SpreadsheetRead,
+  SheetsSheetRead,
+  SheetsColorRead,
+  SheetsCellFormatRead,
+  SheetsCellDataRead,
+  sheets_color_channel_read,
+}
+import v2.std.algebra { fold_list }
+
+// THE PALETTE IS CITED AND THE CHANNELS ARE DERIVED. gunbc.design.catalog carries okabe_ito as a
+// CitedUpstream set anchored at jfly.uni-koeln.de, and it is the right set for this sheet for a
+// reason beyond availability: the column a reader scans fastest is Standing, and Okabe-Ito is
+// constructed to stay distinguishable under the common colour vision deficiencies. A palette
+// chosen to look pleasant would fail exactly the reader who most needs the distinction.
+//
+// AN EARLIER REVISION TRANSCRIBED EACH CHANNEL AS A DECIMAL and said the corpus could not compute
+// the quotient. That was false, and it is worth recording because the false claim was about to be
+// landed as declared debt: std.coercion enrols Int -> Float as an admitted cast, std.integer
+// derives the 8-bit inclusive maximum, and (158 as Float) / (255 as Float) evaluates. Nothing had
+// to be transcribed. The swatches below are references to the cited rows, and every channel is a
+// division this module performs.
+//
+// THE MAXIMUM IS OPTIONAL AND SO IS THE COLOUR. uint8_channel_inclusive_max_value_derived returns
+// Int? because it is derived through a bounded exponentiation that can decline. A colour that
+// cannot be derived is therefore a reading rather than a value, and a format step holding one
+// refuses instead of substituting a default -- a wrong colour is a silently wrong sheet, which is
+// worse than a step that says why it did not run.
+type SheetsColorReading
+  = SheetsColorDerived { color: SheetsColor }
+  | SheetsColorUnderivable { cause: NonEmptyStr }
+
+fn sheets_channel(value: Int, inclusive_max: Int) -> Float {
+  (value as Float) / (inclusive_max as Float)
+}
+
+fn sheets_color_from_srgb8(c: Srgb8) -> SheetsColorReading {
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent =>
+      SheetsColorUnderivable {
+        cause: "std.integer uint8_channel_inclusive_max_value_derived declined, so an 8-bit channel has no inclusive maximum to divide by and no Sheets channel can be derived from this swatch" as NonEmptyStr
+      }
+    Present { value: m } =>
+      SheetsColorDerived {
+        color: SheetsColor {
+          red: sheets_channel(value: c.r, inclusive_max: m),
+          green: sheets_channel(value: c.g, inclusive_max: m),
+          blue: sheets_channel(value: c.b, inclusive_max: m),
+        }
+      }
+  }
+}
+
+fn standing_admitted_color() -> SheetsColorReading {
+  sheets_color_from_srgb8(c: okabe_ito_bluish_green)
+}
+
+fn standing_refused_color() -> SheetsColorReading {
+  sheets_color_from_srgb8(c: okabe_ito_vermillion)
+}
+
+fn header_background_color() -> SheetsColorReading {
+  sheets_color_from_srgb8(c: okabe_ito_blue)
+}
+
+// NOT A PALETTE HUE, AND DERIVED RATHER THAN WRITTEN. White is the ground the header figure sits
+// on, not a colour chosen from a set, and okabe_ito carries no white -- borrowing across swatch
+// sets to satisfy a sentence would be worse than saying this plainly. It is still derived: every
+// channel at the 8-bit inclusive maximum IS white, so the same fold answers for it and the literal
+// 255 never appears.
+fn header_foreground_color() -> SheetsColorReading {
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent =>
+      SheetsColorUnderivable {
+        cause: "the 8-bit inclusive maximum declined, so full-intensity white cannot be derived" as NonEmptyStr
+      }
+    Present { value: m } => sheets_color_from_srgb8(c: Srgb8 { r: m, g: m, b: m })
+  }
+}
+
+data review_sheet_header_row_count: Int = 1
+
+// THE SHEET'S SHAPE IS NOT THIS MODULE'S FACT AND AN EARLIER REVISION AUTHORED IT TWICE OVER. It
+// carried `review_sheet_column_count: Int = 17` and `standing_column_index: Int = 3` as bare
+// literals, while gunbc.review_sheet_projection ReviewSheetSchema already owns the column roster
+// and marks the standing column with the ListingStanding kind. Two sources for "how wide is this
+// sheet" and "which column is Standing" can produce different answers, and this pair would have
+// drifted SILENTLY: format_is_converged checks frozen rows, header colours and a rule count, never
+// extent or column position, so adding one derived column would leave the header band stopping
+// short and the conditional rule painting a column that is no longer Standing -- with every call
+// answering success and the converge still reporting converged.
+//
+// Both are derived from the supplied schema now. A schema with no ListingStanding column cannot be
+// formatted and says so, rather than colouring index 3 and hoping.
+fn schema_column_count(schema: ReviewSheetSchema) -> Int {
+  count(schema.columns)
+}
+
+type StandingColumnIndex
+  = StandingColumnAt { index: Int }
+  | StandingColumnAbsent
+
+type StandingScan {
+  next_index: Int
+  found: StandingColumnIndex
+}
+
+// The FIRST ListingStanding column wins and later ones are ignored rather than refused, because a
+// schema carrying two is a defect in the schema and this module is not its validator. The scan
+// keeps counting after a hit so next_index stays the true column position rather than freezing.
+fn advance_standing_scan(acc: StandingScan, col: ReviewColumn) -> StandingScan {
+  match acc.found {
+    StandingColumnAt { index: i } =>
+      StandingScan { next_index: acc.next_index + 1, found: StandingColumnAt { index: i } }
+    StandingColumnAbsent =>
+      match col.kind {
+        ListingStanding =>
+          StandingScan {
+            next_index: acc.next_index + 1,
+            found: StandingColumnAt { index: acc.next_index },
+          }
+        DerivedField { source_field: _ } =>
+          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
+        OperatorEntered =>
+          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
+        DerivedErasureMark =>
+          StandingScan { next_index: acc.next_index + 1, found: StandingColumnAbsent }
+      }
+  }
+}
+
+fn standing_column_index(schema: ReviewSheetSchema) -> StandingColumnIndex {
+  fold_list(
+    schema.columns,
+    StandingScan { next_index: 0, found: StandingColumnAbsent },
+    (acc, col) => advance_standing_scan(acc: acc, col: col),
+  ).found
+}
+
+type FormatStepOutcome
+  = FormatStepApplied { step: NonEmptyStr }
+  | FormatStepRefused { step: NonEmptyStr, cause: NonEmptyStr }
+
+// A FORMAT WRITE HAS NO READBACK HERE AND THAT IS A STATED LIMIT, not an oversight. Reading a
+// cell's format back means spreadsheets.get with includeGridData, a response shape this module does
+// not model, so these steps report what the API answered and nothing about what the sheet now
+// looks like. That is weaker evidence than the values converge carries, and the honest consequence
+// is that formatting is NOT idempotent-by-observation: re-running re-applies rather than adopting.
+// Conditional rules in particular accumulate, which is why the rule steps take an explicit index.
+fn classify_format_step(step: NonEmptyStr, outcome: RestOutcome) -> FormatStepOutcome {
+  match classify_rest_outcome(standing: RestMutationExchange { rest: outcome }) {
+    RestExchangeSucceeded => FormatStepApplied { step: step }
+    RestExchangeStatusRefused { status, body } =>
+      FormatStepRefused {
+        step: step,
+        cause: join(["refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      FormatStepRefused { step: step, cause: join(["never reached Sheets: ", cause as String], "") as NonEmptyStr }
+    RestExchangeUndecodable { status, cause } =>
+      FormatStepRefused {
+        step: step,
+        cause: join(["answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      FormatStepRefused {
+        step: step,
+        cause: join(["left the write ambiguous: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+fn freeze_header(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Network {
+  let r = sheets.Spreadsheets.SetFrozenRows(
+    spreadsheet_id: spreadsheet_id as String,
+    sheet_id: spreadsheet_first_sheet_id,
+    frozen_row_count: review_sheet_header_row_count,
+  )
+  classify_format_step(step: "freeze header row" as NonEmptyStr, outcome: r.outcome)
+}
+
+fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) -> FormatStepOutcome uses net: Network {
+  match header_background_color() {
+    SheetsColorUnderivable { cause: c } =>
+      FormatStepRefused { step: "header band" as NonEmptyStr, cause: c }
+    SheetsColorDerived { color: bg } =>
+      match header_foreground_color() {
+        SheetsColorUnderivable { cause: c } =>
+          FormatStepRefused { step: "header band" as NonEmptyStr, cause: c }
+        SheetsColorDerived { color: fg } => {
+          let r = sheets.Spreadsheets.FormatCellRange(
+            spreadsheet_id: spreadsheet_id as String,
+            sheet_id: spreadsheet_first_sheet_id,
+            start_row: 0,
+            end_row: review_sheet_header_row_count,
+            start_col: 0,
+            end_col: schema_column_count(schema: schema),
+            background: bg,
+            foreground: fg,
+            bold: true,
+          )
+          classify_format_step(step: "header band" as NonEmptyStr, outcome: r.outcome)
+        }
+      }
+  }
+}
+
+fn color_standing(
+  spreadsheet_id: NonEmptyStr,
+  match_text: String,
+  color: SheetsColorReading,
+  rule_index: Int,
+  standing_col: Int,
+) -> FormatStepOutcome uses net: Network {
+  match color {
+    SheetsColorUnderivable { cause: c } =>
+      FormatStepRefused {
+        step: join(["standing colour for ", match_text], "") as NonEmptyStr,
+        cause: c,
+      }
+    SheetsColorDerived { color: fg } => color_standing_derived(
+      spreadsheet_id: spreadsheet_id, match_text: match_text, color: fg,
+      rule_index: rule_index, standing_col: standing_col)
+  }
+}
+
+fn color_standing_derived(
+  spreadsheet_id: NonEmptyStr,
+  match_text: String,
+  color: SheetsColor,
+  rule_index: Int,
+  standing_col: Int,
+) -> FormatStepOutcome uses net: Network {
+  let r = sheets.Spreadsheets.AddTextColorRule(
+    spreadsheet_id: spreadsheet_id as String,
+    sheet_id: spreadsheet_first_sheet_id,
+    start_row: review_sheet_header_row_count,
+    start_col: standing_col,
+    end_col: standing_col + 1,
+    match_text: match_text,
+    foreground: color,
+    rule_index: rule_index,
+  )
+  classify_format_step(
+    step: join(["standing colour for ", match_text], "") as NonEmptyStr,
+    outcome: r.outcome,
+  )
+}
+
+type StandingColorRule {
+  fragment: String
+  color: SheetsColorReading
+}
+
+// SUBSTRING RULES, NOT ONE PER STANDING, and that is a modelling choice rather than a shortcut.
+// Matching "Opportunity" colours CostOpportunity, ConcurrencyOpportunity and LatencyOpportunity
+// together because they are one thing to a reader -- a row worth acting on -- and because a
+// standing arm added to ci_acquisition later inherits the colour instead of arriving invisible.
+// An exact-match rule per arm would silently fail to cover the next arm anyone writes.
+//
+// Evidence-insufficient and no-commercial-signal rows match nothing here on purpose. They are most
+// of the sheet, and a colour spent on them is attention taken from the rows that earned it.
+fn standing_color_rules() -> List<StandingColorRule> {
+  [
+    StandingColorRule { fragment: "Opportunity", color: standing_admitted_color() },
+    StandingColorRule { fragment: "Arbitrage", color: standing_admitted_color() },
+    StandingColorRule { fragment: "Incompatible", color: standing_refused_color() },
+    StandingColorRule { fragment: "Required", color: standing_refused_color() },
+    StandingColorRule { fragment: "Replay", color: standing_refused_color() },
+  ]
+}
+
+fn format_step_text(o: FormatStepOutcome) -> String {
+  match o {
+    FormatStepApplied { step: s } => join(["applied: ", s as String], "")
+    FormatStepRefused { step: s, cause: c } => join(["REFUSED ", s as String, ": ", c as String], "")
+  }
+}
+
+fn format_step_is_applied(o: FormatStepOutcome) -> Bool {
+  match o {
+    FormatStepApplied { step: _ } => true
+    FormatStepRefused { step: _, cause: _ } => false
+  }
+}
+
+
+type FormatReport {
+  freeze: FormatStepOutcome
+  header: FormatStepOutcome
+  opportunity: FormatStepOutcome
+  arbitrage: FormatStepOutcome
+  incompatible: FormatStepOutcome
+  required: FormatStepOutcome
+  replay: FormatStepOutcome
+}
+
+// The steps are named individually rather than folded over the roster because each is an EFFECT
+// and the report names which one refused. A fold would answer "one of five failed", which is the
+// shape of diagnostic this session has repeatedly had to go back and re-derive.
+fn format_review_sheet(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema, standing_col: Int) -> FormatReport uses net: Network {
+  FormatReport {
+    freeze: freeze_header(spreadsheet_id: spreadsheet_id),
+    header: format_header_band(spreadsheet_id: spreadsheet_id, schema: schema),
+    opportunity: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Opportunity",
+      color: standing_admitted_color(), rule_index: 0, standing_col: standing_col),
+    arbitrage: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Arbitrage",
+      color: standing_admitted_color(), rule_index: 1, standing_col: standing_col),
+    incompatible: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Incompatible",
+      color: standing_refused_color(), rule_index: 2, standing_col: standing_col),
+    required: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Required",
+      color: standing_refused_color(), rule_index: 3, standing_col: standing_col),
+    replay: color_standing(
+      spreadsheet_id: spreadsheet_id, match_text: "Replay",
+      color: standing_refused_color(), rule_index: 4, standing_col: standing_col),
+  }
+}
+
+fn format_report_text(r: FormatReport) -> String {
+  join(
+    [
+      format_step_text(o: r.freeze), "\n", format_step_text(o: r.header), "\n",
+      format_step_text(o: r.opportunity), "\n", format_step_text(o: r.arbitrage), "\n",
+      format_step_text(o: r.incompatible), "\n", format_step_text(o: r.required), "\n",
+      format_step_text(o: r.replay),
+    ],
+    "",
+  )
+}
+
+fn format_report_all_applied(r: FormatReport) -> Bool {
+  format_step_is_applied(o: r.freeze)
+    && format_step_is_applied(o: r.header)
+    && format_step_is_applied(o: r.opportunity)
+    && format_step_is_applied(o: r.arbitrage)
+    && format_step_is_applied(o: r.incompatible)
+    && format_step_is_applied(o: r.required)
+    && format_step_is_applied(o: r.replay)
+}
+
+// -------------------------------------------------------------------------------------
+// THE READBACK. Everything above writes; this reads what the sheet now carries so the converge can
+// ADOPT rather than re-apply. It is the difference between an actuator and a converge, and its
+// absence was a stated limit of the earlier revision rather than an oversight -- conditional rules
+// accumulate on every pass, so a formatter with no readback makes the sheet worse each run.
+// -------------------------------------------------------------------------------------
+
+// A FLOAT COMPARISON NEEDS A TOLERANCE AND THE TOLERANCE IS DERIVED. std.algebra declares Float an
+// ApproximateFieldProfile carrier, so an equality test against a channel that has been through JSON
+// and a spreadsheet's own storage is the wrong instrument: two values naming the same 8-bit swatch
+// can differ in the last place, and an exact comparison would report a difference forever and
+// rewrite the format on every run. Half an 8-bit step is the principled width, because two channels
+// closer than that round to the same swatch. There is no absolute-value fold in reach, so the
+// bound is checked in both directions.
+fn channel_is_same_swatch(observed: Float, desired: Float, inclusive_max: Int) -> Bool {
+  let half_step = 1.0 / ((inclusive_max as Float) + (inclusive_max as Float))
+  ((observed - desired) < half_step) && ((desired - observed) < half_step)
+}
+
+fn color_is_same_swatch(observed: SheetsColorRead, desired: SheetsColor, inclusive_max: Int) -> Bool {
+  channel_is_same_swatch(observed: sheets_color_channel_read(channel: observed.red), desired: desired.red, inclusive_max: inclusive_max)
+    && channel_is_same_swatch(observed: sheets_color_channel_read(channel: observed.green), desired: desired.green, inclusive_max: inclusive_max)
+    && channel_is_same_swatch(observed: sheets_color_channel_read(channel: observed.blue), desired: desired.blue, inclusive_max: inclusive_max)
+}
+
+type FormatObservation
+  = FormatObserved { frozen_rows: Int, header: SheetsCellFormatRead?, rule_count: Int }
+  | FormatUnreadable { cause: NonEmptyStr }
+
+// THE FIELD MASK AND THE RANGE ARE DECLARED HERE because they are a fact about what this module
+// inspects, not about the Sheets API. The range is the header row alone: nothing below it is read,
+// so the cost of this readback does not grow with the census.
+data review_sheet_format_field_mask: String = "sheets.properties.gridProperties.frozenRowCount,sheets.conditionalFormats,sheets.data.rowData.values.userEnteredFormat"
+
+data review_sheet_header_range: String = "A1:Q1"
+
+// THE FIRST ELEMENT OF A LIST, AS A FOLD, because this corpus has no head. Written once here and
+// reused by every nesting level of the response walk below, rather than five copies of the same
+// match. It answers Absent for an empty list, which is what every caller needs: a response branch
+// the API did not send is not an error, it is an absence with a meaning the caller decides.
+fn first_of<T>(items: List<T>) -> T? {
+  fold_list(
+    items,
+    none,
+    (acc, x) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => Present { value: x }
+      },
+  )
+}
+
+fn first_sheet(read: SpreadsheetRead) -> SheetsSheetRead? {
+  match read.sheets {
+    Absent => none
+    Present { value: sheets } => first_of(items: sheets)
+  }
+}
+
+fn observed_frozen_rows(sheet: SheetsSheetRead) -> Int {
+  match sheet.properties {
+    Absent => 0
+    Present { value: props } =>
+      match props.gridProperties {
+        Absent => 0
+        Present { value: grid } =>
+          match grid.frozenRowCount {
+            Absent => 0
+            Present { value: n } => n
+          }
+      }
+  }
+}
+
+fn observed_rule_count(sheet: SheetsSheetRead) -> Int {
+  match sheet.conditionalFormats {
+    Absent => 0
+    Present { value: rules } => count(rules)
+  }
+}
+
+fn observed_header_format(sheet: SheetsSheetRead) -> SheetsCellFormatRead? {
+  match sheet.data {
+    Absent => none
+    Present { value: grids } =>
+      match first_of(items: grids) {
+        Absent => none
+        Present { value: grid } =>
+          match grid.rowData {
+            Absent => none
+            Present { value: rows } =>
+              match first_of(items: rows) {
+                Absent => none
+                Present { value: row } =>
+                  match row.values {
+                    Absent => none
+                    Present { value: cells } =>
+                      match first_of(items: cells) {
+                        Absent => none
+                        Present { value: cell } => cell.userEnteredFormat
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn read_format(spreadsheet_id: NonEmptyStr) -> FormatObservation uses net: Network {
+  let read = sheets.Spreadsheets.GetSpreadsheet(
+    spreadsheet_id: spreadsheet_id as String,
+    range: review_sheet_header_range,
+    fields: review_sheet_format_field_mask,
+    include_grid_data: true,
+  )
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded =>
+      match first_sheet(read: read.result) {
+        Absent =>
+          FormatUnreadable {
+            cause: "spreadsheets.get answered with no sheets, so the first sheet's format could not be read and nothing may be adopted from it" as NonEmptyStr
+          }
+        Present { value: sheet } =>
+          FormatObserved {
+            frozen_rows: observed_frozen_rows(sheet: sheet),
+            header: observed_header_format(sheet: sheet),
+            rule_count: observed_rule_count(sheet: sheet),
+          }
+      }
+    RestExchangeStatusRefused { status, body } =>
+      FormatUnreadable {
+        cause: join(["spreadsheets.get answered ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      FormatUnreadable {
+        cause: join(["spreadsheets.get never reached Sheets: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      FormatUnreadable {
+        cause: join(["spreadsheets.get answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      FormatUnreadable {
+        cause: join(["spreadsheets.get is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// THE CONVERGE. Observe, decide, actuate only if the decision says so, then read back
+// INDEPENDENTLY -- the same shape the membership, spreadsheet and values converges use, and the
+// shape the earlier revision of this module could not reach because it had no read.
+// -------------------------------------------------------------------------------------
+fn desired_rule_count() -> Int {
+  count(standing_color_rules())
+}
+
+// ALREADY-FORMATTED IS A JUDGEMENT ABOUT THREE FACTS AND ALL THREE MUST HOLD. The frozen row count
+// is exact. The header colours are compared at swatch width, never by float equality. The rule
+// count is compared rather than the rules themselves, and that is a DECLARED WEAKNESS rather than
+// a claim: this reads how many conditional rules the sheet carries, not whether each one matches
+// the fragment and colour this module would write. A sheet carrying five unrelated rules reads as
+// converged. The narrower check needs the rule's condition values and format compared per rule,
+// which the response models but this fold does not yet walk.
+fn format_is_converged(o: FormatObservation, inclusive_max: Int, header_bg: SheetsColor, header_fg: SheetsColor) -> Bool {
+  match o {
+    FormatUnreadable { cause: _ } => false
+    FormatObserved { frozen_rows: rows, header: h, rule_count: rules } =>
+      (rows == review_sheet_header_row_count)
+        && (rules == desired_rule_count())
+        && header_matches(h: h, inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg)
+  }
+}
+
+fn header_matches(h: SheetsCellFormatRead?, inclusive_max: Int, header_bg: SheetsColor, header_fg: SheetsColor) -> Bool {
+  match h {
+    Absent => false
+    Present { value: fmt } =>
+      match fmt.backgroundColor {
+        Absent => false
+        Present { value: bg } =>
+          color_is_same_swatch(observed: bg, desired: header_bg, inclusive_max: inclusive_max)
+            && header_text_matches(t: fmt.textFormat, inclusive_max: inclusive_max, header_fg: header_fg)
+      }
+  }
+}
+
+fn header_text_matches(t: SheetsTextFormatRead?, inclusive_max: Int, header_fg: SheetsColor) -> Bool {
+  match t {
+    Absent => false
+    Present { value: tf } =>
+      match tf.foregroundColor {
+        Absent => false
+        Present { value: fg } => color_is_same_swatch(observed: fg, desired: header_fg, inclusive_max: inclusive_max)
+      }
+  }
+}
+
+type FormatConvergeOutcome
+  = FormatAlreadyConverged
+  | FormatAppliedAndVerified { report: FormatReport }
+  | FormatAppliedUnverified { report: FormatReport, cause: NonEmptyStr }
+  | FormatConvergeRefused { cause: NonEmptyStr }
+
+// THE READBACK IS THE SAME READ THE CONVERGE OPENED WITH, not a trusted echo of the writes. A
+// batchUpdate answering 200 has told us what it did, not what the sheet now carries, and the
+// distance between those two is where the first live run lost an hour.
+fn converge_review_sheet_format(
+  spreadsheet_id: NonEmptyStr,
+  schema: ReviewSheetSchema,
+) -> FormatConvergeOutcome uses net: Network {
+  match standing_column_index(schema: schema) {
+    StandingColumnAbsent =>
+      FormatConvergeRefused {
+        cause: "the supplied schema carries no ListingStanding column, so there is no column to colour by standing and painting a positional guess would colour whatever now sits there" as NonEmptyStr
+      }
+    StandingColumnAt { index: standing_col } =>
+      converge_format_with_standing(spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col)
+  }
+}
+
+fn converge_format_with_standing(
+  spreadsheet_id: NonEmptyStr,
+  schema: ReviewSheetSchema,
+  standing_col: Int,
+) -> FormatConvergeOutcome uses net: Network {
+  match uint8_channel_inclusive_max_value_derived() {
+    Absent =>
+      FormatConvergeRefused {
+        cause: "the 8-bit inclusive maximum declined, so no desired colour can be derived and nothing may be compared or written" as NonEmptyStr
+      }
+    Present { value: m } =>
+      match header_background_color() {
+        SheetsColorUnderivable { cause: c } => FormatConvergeRefused { cause: c }
+        SheetsColorDerived { color: bg } =>
+          match header_foreground_color() {
+            SheetsColorUnderivable { cause: c } => FormatConvergeRefused { cause: c }
+            SheetsColorDerived { color: fg } =>
+              converge_with_desired(
+                spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col,
+                inclusive_max: m, header_bg: bg, header_fg: fg)
+          }
+      }
+  }
+}
+
+fn converge_with_desired(
+  spreadsheet_id: NonEmptyStr,
+  schema: ReviewSheetSchema,
+  standing_col: Int,
+  inclusive_max: Int,
+  header_bg: SheetsColor,
+  header_fg: SheetsColor,
+) -> FormatConvergeOutcome uses net: Network {
+  let observed = read_format(spreadsheet_id: spreadsheet_id)
+  match observed {
+    FormatUnreadable { cause: c } =>
+      FormatConvergeRefused {
+        cause: join(["the sheet's current format could not be read, so applying would be writing blind: ", c as String], "") as NonEmptyStr
+      }
+    FormatObserved { frozen_rows: _, header: _, rule_count: _ } =>
+      if format_is_converged(o: observed, inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg) {
+        FormatAlreadyConverged
+      } else {
+        verify_applied_format(
+          spreadsheet_id: spreadsheet_id,
+          report: format_review_sheet(spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col),
+          inclusive_max: inclusive_max,
+          header_bg: header_bg,
+          header_fg: header_fg,
+        )
+      }
+  }
+}
+
+fn verify_applied_format(
+  spreadsheet_id: NonEmptyStr,
+  report: FormatReport,
+  inclusive_max: Int,
+  header_bg: SheetsColor,
+  header_fg: SheetsColor,
+) -> FormatConvergeOutcome uses net: Network {
+  if format_report_all_applied(r: report) {
+    if format_is_converged(o: read_format(spreadsheet_id: spreadsheet_id), inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg) {
+      FormatAppliedAndVerified { report: report }
+    } else {
+      FormatAppliedUnverified {
+        report: report,
+        cause: "every format step answered success and the readback still does not show the desired format; the writes did not take, or they landed somewhere this read does not look" as NonEmptyStr
+      }
+    }
+  } else {
+    FormatAppliedUnverified {
+      report: report,
+      cause: "at least one format step refused, so the sheet is partly formatted and no claim is made about the rest" as NonEmptyStr
+    }
+  }
+}
+
+fn format_converge_text(o: FormatConvergeOutcome) -> String {
+  match o {
+    FormatAlreadyConverged => "format: already converged, nothing applied"
+    FormatAppliedAndVerified { report: r } => join(["format: applied and verified by readback\n", format_report_text(r: r)], "")
+    FormatAppliedUnverified { report: r, cause: c } => join(["format UNVERIFIED: ", c as String, "\n", format_report_text(r: r)], "")
+    FormatConvergeRefused { cause: c } => join(["format REFUSED: ", c as String], "")
+  }
+}
+
+fn format_converge_is_converged(o: FormatConvergeOutcome) -> Bool {
+  match o {
+    FormatAlreadyConverged => true
+    FormatAppliedAndVerified { report: _ } => true
+    FormatAppliedUnverified { report: _, cause: _ } => false
+    FormatConvergeRefused { cause: _ } => false
+  }
+}

@@ -1,8 +1,9 @@
 module extdeps.google.sheets
 
-import std.types { NonEmptyStr, String, Int, List, Secret, Bool, HttpMethod, AuthScheme }
+import std.types { NonEmptyStr, String, Int, List, Secret, Bool, Float, HttpMethod, AuthScheme }
 import extdeps.transports.rest { RestOutcome }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
@@ -57,6 +58,30 @@ data sheets_oauth_scope_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data sheets_batch_update_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/batchUpdate" }
+}
+
+data sheets_cell_format_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/cells#cellformat" }
+}
+
+data sheets_color_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/other#Color" }
+}
+
+data sheets_get_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/get" }
+}
+
+data sheets_grid_properties_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/sheets#gridproperties" }
+}
+
+data sheets_conditional_format_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https locator: "developers.google.com/sheets/api/reference/rest/v4/spreadsheets/sheets#conditionalformatrule" }
+}
+
 data google_sheets_api: NonEmptyStr = "Google Sheets API"
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
@@ -74,9 +99,28 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     sheets_values_batch_update_citation,
     sheets_value_render_option_citation,
     sheets_quota_citation,
-    sheets_oauth_scope_citation
+    sheets_oauth_scope_citation,
+    sheets_batch_update_citation,
+    sheets_cell_format_citation,
+    sheets_color_citation,
+    sheets_get_citation,
+    sheets_grid_properties_citation,
+    sheets_conditional_format_citation
   ]
 }
+
+// The same credential the Drive service reads, and for the same measured reason: gunbc run passes
+// arguments only as argv, and on this fleet an argv word is readable by any job payload a pull
+// request can influence. One variable serves both services because it is one operator credential
+// for one converge; splitting it would mean two secrets with the same blast radius and one more
+// thing to rotate. The literal is repeated here because the config parse extracts a literal. What
+// test.claim.review_sheet_transport_pin_witness sheets_token_env_matches_the_configured_literal
+// pins is THIS ROW against a third copy inside the claim, not the auth_source literal in the config
+// below, which no fold can read -- so the claim cannot go red for a drift confined to the transport
+// spelling. The sibling claim drive_and_sheets_read_one_credential is the stronger of the two,
+// because it compares two DECLARATIONS with no third copy between them. See the matching note in
+// extdeps.google.drive for the construction fix that would make the duplicate unwritable.
+data sheets_token_env: String = "GUNBC_REVIEW_SHEET_TOKEN"
 
 data sheets_api_version: NonEmptyStr = "v4"
 
@@ -207,6 +251,130 @@ data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> 
 
 // Proto3 JSON omits default integers, so a zero-cell batchUpdate may omit totalUpdatedCells.
 // The operation output uses the same optionality; a required Int would refuse a legal body or mint 0.
+// A REQUEST VALUE RANGE IS NOT A RESPONSE VALUE RANGE, and the first live write is what proved it.
+// ValueRange.values is Optional because a response may omit it -- values.get on an empty range
+// returns no values field at all -- but an Optional does not serialise to a bare array: it carries
+// its variant, so a request body built from ValueRange reaches Sheets as
+// {"values":{"_variant":"Present","value":[[...]]}} and is refused with "Unknown name _variant".
+//
+// The mock corpus could not catch this. PublishedMockCase fixes the RESPONSE shape, so a witness
+// over it agrees with a request encoding nobody ever sent. That is shape agreement standing in for
+// execution, and the wire is where the two part company.
+//
+// gunbc.review_sheet_sheets value_range_from_derived_write builds the Optional form and has never
+// executed -- it is the caller live_sheets_transport_frontier reserved. It needs this type before
+// its first write, and that is a defect in a landed module rather than a gap in a new one.
+type BatchUpdateSpreadsheetResponse {
+  spreadsheetId: String
+}
+
+// A SHEETS COLOUR CHANNEL IS A FLOAT IN [0,1] AND A SWATCH IS AN 8-BIT INTEGER. An earlier revision
+// of the consuming module transcribed the quotient as a decimal and said the corpus could not
+// compute it. That was wrong: std.coercion enrols Int -> Float as an admitted cast, and
+// std.integer derives the 8-bit inclusive maximum, so the whole conversion is expressible and the
+// consumer derives it. This type stays the wire shape and carries no arithmetic.
+type SheetsColor {
+  red: Float
+  green: Float
+  blue: Float
+}
+
+data spreadsheet_first_sheet_id: Int = 0
+
+// THE READ SIDE OF A COLOUR, AND IT IS NOT THE WRITE SIDE'S TYPE. Google's JSON omits a field whose
+// value equals the proto3 default, so a channel of zero comes back ABSENT rather than 0.0 -- the
+// vermillion this sheet writes, Srgb8 { r: 213, g: 94, b: 0 }, reads back with no blue key at all.
+// Modelling the read with the write's non-optional Float would make the decoder refuse a response
+// the API is entitled to send, and defaulting absent to anything but zero would invent a colour.
+// Absent IS zero here, and sheets_color_channel_read is the only place that says so.
+type SheetsColorRead {
+  red: Float?
+  green: Float?
+  blue: Float?
+}
+
+fn sheets_color_channel_read(channel: Float?) -> Float {
+  match channel {
+    Present { value: v } => v
+    Absent => 0.0
+  }
+}
+
+type SheetsTextFormatRead {
+  foregroundColor: SheetsColorRead?
+  bold: Bool?
+}
+
+type SheetsCellFormatRead {
+  backgroundColor: SheetsColorRead?
+  textFormat: SheetsTextFormatRead?
+}
+
+// userEnteredFormat IS WHAT THIS REPOSITORY WROTE; effectiveFormat is what a viewer sees after
+// inheritance from the sheet and workbook defaults. They answer different questions and both are
+// modelled so a consumer must choose: a converge verifying its own write reads userEnteredFormat,
+// and a consumer asking what the sheet looks like on screen reads effectiveFormat. Folding them
+// into one field would let a converge adopt a colour it never wrote.
+type SheetsCellDataRead {
+  userEnteredFormat: SheetsCellFormatRead?
+  effectiveFormat: SheetsCellFormatRead?
+}
+
+type SheetsRowDataRead {
+  values: List<SheetsCellDataRead>?
+}
+
+type SheetsGridDataRead {
+  rowData: List<SheetsRowDataRead>?
+}
+
+// frozenRowCount is absent when no rows are frozen, for the same proto3 reason as a zero colour
+// channel, so an unfrozen header and an unread response are distinguished by the OPTIONAL being
+// absent versus the whole properties record being absent -- not by a count of zero.
+type SheetsGridPropertiesRead {
+  frozenRowCount: Int?
+}
+
+type SheetsSheetPropertiesRead {
+  sheetId: Int?
+  gridProperties: SheetsGridPropertiesRead?
+}
+
+type SheetsBooleanConditionValueRead {
+  userEnteredValue: String?
+}
+
+type SheetsBooleanConditionRead {
+  type: String?
+  values: List<SheetsBooleanConditionValueRead>?
+}
+
+type SheetsBooleanRuleRead {
+  condition: SheetsBooleanConditionRead?
+  format: SheetsCellFormatRead?
+}
+
+type SheetsConditionalFormatRuleRead {
+  booleanRule: SheetsBooleanRuleRead?
+}
+
+type SheetsSheetRead {
+  properties: SheetsSheetPropertiesRead?
+  data: List<SheetsGridDataRead>?
+  conditionalFormats: List<SheetsConditionalFormatRuleRead>?
+}
+
+type SpreadsheetRead {
+  spreadsheetId: String?
+  sheets: List<SheetsSheetRead>?
+}
+
+type ValueRangeWrite {
+  range: String
+  majorDimension: String
+  values: List<List<String>>
+}
+
 type BatchUpdateValuesResponse {
   spreadsheetId: String
   totalUpdatedRows: Int?
@@ -216,16 +384,58 @@ type BatchUpdateValuesResponse {
   responses: List<ValueRange>?
 }
 
+// THE READ THAT MAKES FORMATTING CONVERGEABLE. Without it a format actuator can only report what
+// the API answered to its write, never what the sheet now carries, so re-running re-applies
+// instead of adopting and a conditional rule accumulates on every pass.
+//
+// TWO INPUTS KEEP THIS CHEAP AND THEY ARE NOT OPTIONAL IN PRACTICE. `range` bounds the grid data
+// to the rows a caller actually inspects -- reading a whole prospect sheet to check one header row
+// would grow with the census -- and `fields` is a field mask restricting the response to the
+// branches read here. Sheets returns grid data only when the mask selects it, so the mask is what
+// makes include_grid_data meaningful rather than a second switch that can disagree with it.
+//
+// ONE RANGE, NOT A LIST, AND THAT IS A TRANSPORT LIMIT STATED RATHER THAN PAPERED OVER. Upstream
+// accepts `ranges` repeated, and the obvious modelling is List<String>. This transport cannot
+// send a repeated query parameter: the interpreter renders a query value with Display, and a list
+// renders as "[A1:Q1]", so a List input would have sent one bracketed literal that Sheets would
+// read as a malformed range. A caller needing several ranges needs repeated-parameter support in
+// the transport first, which is the trigger for widening this back.
 service sheets.Spreadsheets {
   config {
     endpoint: sheets_api_base
     auth: Bearer
-    auth_input: access_token
+    auth_source: EnvVar { name: "GUNBC_REVIEW_SHEET_TOKEN" }
   }
 
+  operation GetSpreadsheet {
+    input {
+      spreadsheet_id: String
+      range: String
+      fields: String
+      include_grid_data: Bool = false
+    }
+    output {
+      result: SpreadsheetRead
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/spreadsheets/\{spreadsheet_id\}",
+      query: { ranges: range, fields: fields, includeGridData: include_grid_data }
+    }
+    response {
+      200 => SpreadsheetRead
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      500 => SheetsError
+    }
+  }
   operation GetValues {
     input {
-      access_token: Secret
       spreadsheet_id: String
       range: String
       value_render_option: SheetsValueRenderOption
@@ -253,10 +463,9 @@ service sheets.Spreadsheets {
 
   operation BatchUpdateValues {
     input {
-      access_token: Secret
       spreadsheet_id: String
       value_input_option: SheetsValueInputOption
-      data: List<ValueRange>
+      data: List<ValueRangeWrite>
       include_values_in_response: Bool = false
     }
     output {
@@ -275,6 +484,132 @@ service sheets.Spreadsheets {
     }
     response {
       200 => BatchUpdateValuesResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+
+  operation SetFrozenRows {
+    input { spreadsheet_id: String, sheet_id: Int, frozen_row_count: Int }
+    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
+      body: {
+        requests: [
+          {
+            updateSheetProperties: {
+              properties: { sheetId: sheet_id, gridProperties: { frozenRowCount: frozen_row_count } },
+              fields: "gridProperties.frozenRowCount"
+            }
+          }
+        ]
+      }
+    }
+    response {
+      200 => BatchUpdateSpreadsheetResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+  operation FormatCellRange {
+    input {
+      spreadsheet_id: String
+      sheet_id: Int
+      start_row: Int
+      end_row: Int
+      start_col: Int
+      end_col: Int
+      background: SheetsColor
+      foreground: SheetsColor
+      bold: Bool
+    }
+    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
+      body: {
+        requests: [
+          {
+            repeatCell: {
+              range: {
+                sheetId: sheet_id,
+                startRowIndex: start_row,
+                endRowIndex: end_row,
+                startColumnIndex: start_col,
+                endColumnIndex: end_col
+              },
+              cell: {
+                userEnteredFormat: {
+                  backgroundColor: background,
+                  textFormat: { bold: bold, foregroundColor: foreground }
+                }
+              },
+              fields: "userEnteredFormat(backgroundColor,textFormat)"
+            }
+          }
+        ]
+      }
+    }
+    response {
+      200 => BatchUpdateSpreadsheetResponse
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      5xx => SheetsError
+    }
+  }
+  operation AddTextColorRule {
+    input {
+      spreadsheet_id: String
+      sheet_id: Int
+      start_row: Int
+      start_col: Int
+      end_col: Int
+      match_text: String
+      foreground: SheetsColor
+      rule_index: Int
+    }
+    output { spreadsheet_id: String from "spreadsheetId", outcome: RestOutcome }
+    transport rest {
+      method: POST,
+      path: "/spreadsheets/\{spreadsheet_id\}:batchUpdate",
+      body: {
+        requests: [
+          {
+            addConditionalFormatRule: {
+              rule: {
+                ranges: [
+                  {
+                    sheetId: sheet_id,
+                    startRowIndex: start_row,
+                    startColumnIndex: start_col,
+                    endColumnIndex: end_col
+                  }
+                ],
+                booleanRule: {
+                  condition: { type: "TEXT_CONTAINS", values: [{ userEnteredValue: match_text }] },
+                  format: { textFormat: { bold: true, foregroundColor: foreground } }
+                }
+              },
+              index: rule_index
+            }
+          }
+        ]
+      }
+    }
+    response {
+      200 => BatchUpdateSpreadsheetResponse
       400 => SheetsError
       401 => SheetsError
       403 => SheetsError
