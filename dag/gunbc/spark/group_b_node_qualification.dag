@@ -1,6 +1,6 @@
 module gunbc.spark.group_b_node_qualification
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import std.measure { ByteSize, Bandwidth, Nanosecond, gibibyte, gibibyte_to_byte_size, bandwidth, nanosecond, byte_size }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
@@ -8,7 +8,9 @@ import gunbc.fleet_intent_network {
 }
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_50gbase_cr2 }
 import extdeps.storage.types { PcieLink, Gen5 }
-import extdeps.nvidia.cuda_driver { CudaQuerySucceeded }
+import extdeps.nvidia.cuda_driver {
+  GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute, cuda_attribute_outcome,
+}
 import extdeps.nvidia.gpu_direct_rdma {
   gpu_direct_rdma_capability,
 }
@@ -144,6 +146,9 @@ data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
   },
 }
 
+data group_b_gdr_cu_device_get_attribute_stdout: String = "116 0 0 0 0"
+data group_b_dmabuf_cu_device_get_attribute_stdout: String = "124 0 0 0 0"
+
 data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
   host: HostMeasuredDelivery {
     accelerator_count: CountUnread {
@@ -162,8 +167,14 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
     },
     gpu_direct_rdma: gpu_direct_rdma_capability(
       platform: "GB10" as NonEmptyStr,
-      device_api: CudaQuerySucceeded { value: 0 },
-      dma_buf: CudaQuerySucceeded { value: 0 },
+      device_api: cuda_attribute_outcome(
+        a: GpuDirectRdmaSupportedAttribute,
+        stdout: group_b_gdr_cu_device_get_attribute_stdout,
+      ),
+      dma_buf: cuda_attribute_outcome(
+        a: DmaBufSupportedAttribute,
+        stdout: group_b_dmabuf_cu_device_get_attribute_stdout,
+      ),
     ),
   },
   group: CollectiveGroupMeasured {

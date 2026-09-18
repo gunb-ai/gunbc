@@ -1,16 +1,23 @@
 module test.claim.fabric.node_qualification_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
+import std.algebra { Cons, Empty }
+import extdeps.python { python_interpreter_command, python_program_flag }
 import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count, nanosecond_count, byte_size_count }
 import product.placement_supply { HostIdentity }
 import extdeps.ethernet.link_mode {
   ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_50gbase_cr2, link_mode_eq, link_mode_aggregate,
 }
 import extdeps.storage.types { PcieLink, Gen5 }
-import extdeps.nvidia.cuda_driver { CudaQuerySucceeded, CudaQueryFailed }
+import extdeps.nvidia.cuda_driver {
+  CudaQuerySucceeded, CudaQueryFailed, CudaQueryUnparsed,
+  GpuDirectRdmaSupportedAttribute,
+  cuda_attribute_outcome, cuda_device_attribute_argv, cuda_device_attribute_ordinal,
+  cuda_device_attribute_program,
+}
 import extdeps.nvidia.gpu_direct_rdma {
   GpuDirectRdmaCapability, GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet,
-  GpuDirectRdmaCapabilityUnread, gpu_direct_rdma_capability,
+  GpuDirectRdmaCapabilityUnread, gpu_direct_rdma_capability, gpu_direct_rdma_capability_wire,
 }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
@@ -45,7 +52,10 @@ import product.fabric.node_qualification {
   CollectivePrimitiveSameRuntime,
   claimed_delivery_refusals, OfferClaimsNodeDelivery,
 }
-import gunbc.spark.group_b_node_qualification { group_b_qualification_admission, group_b_measured }
+import gunbc.spark.group_b_node_qualification {
+  group_b_qualification_admission, group_b_measured,
+  group_b_gdr_cu_device_get_attribute_stdout,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -680,4 +690,52 @@ test fn group_b_shared_window_and_different_nccl_do_not_hold() -> Bool {
           CollectivePrimitiveSameRuntime { nccl: _ } => false
         }
   }
+}
+
+test fn a_truncated_cuda_reply_is_unparsed_not_unsupported() -> Bool {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "116 0 0 0") {
+    CudaQueryUnparsed { cause: _ } => true
+    CudaQuerySucceeded { value: _ } => false
+    CudaQueryFailed { result_code: _ } => false
+  }
+}
+
+test fn a_wrong_ordinal_cuda_reply_is_unparsed_not_this_attribute() -> Bool {
+  match cuda_attribute_outcome(a: GpuDirectRdmaSupportedAttribute, stdout: "124 0 0 0 0") {
+    CudaQueryUnparsed { cause: _ } => true
+    CudaQuerySucceeded { value: _ } => false
+    CudaQueryFailed { result_code: _ } => false
+  }
+}
+
+test fn group_b_gdr_stdout_parses_as_succeeding_zero() -> Bool {
+  match cuda_attribute_outcome(
+    a: GpuDirectRdmaSupportedAttribute,
+    stdout: group_b_gdr_cu_device_get_attribute_stdout,
+  ) {
+    CudaQuerySucceeded { value: v } => v == 0
+    CudaQueryFailed { result_code: _ } => false
+    CudaQueryUnparsed { cause: _ } => false
+  }
+}
+
+test fn cuda_gdr_argv_is_python_dash_c_with_ordinal_116() -> Bool {
+  cuda_device_attribute_ordinal(a: GpuDirectRdmaSupportedAttribute) == 116
+    && match cuda_device_attribute_argv(a: GpuDirectRdmaSupportedAttribute) {
+      Cons {
+        head: interpreter,
+        tail: Cons {
+          head: flag,
+          tail: Cons { head: program, tail: Empty },
+        },
+      } =>
+        interpreter == python_interpreter_command
+          && flag == python_program_flag
+          && program == (cuda_device_attribute_program(a: GpuDirectRdmaSupportedAttribute) as String)
+      _ => false
+    }
+}
+
+test fn group_b_gdr_wire_is_device_unsupported() -> Bool {
+  (gpu_direct_rdma_capability_wire(c: group_b_measured.host.gpu_direct_rdma) as String) == "device-unsupported"
 }
