@@ -71,5 +71,5 @@ test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool 
   judged
     && string_contains(s: body, pattern: "gunbc_health")
     && bmc_health_reader_secret_id(host: "srv3") == "bmc-srv3-health-reader"
-    && bmc_health_reader_body_path == "/tmp/bmc_health_reader_body.json"
+    && bmc_health_reader_body_path(host_name: "srv3") != bmc_health_reader_body_path(host_name: "srv4")
 }

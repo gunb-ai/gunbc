@@ -326,14 +326,6 @@ fn bmc_establish_custody_container(secret_id: NonEmptyStr, token: Secret) -> Bmc
   }
 }
 
-fn bmc_custody_refused(custody: BmcCustodyContainer) -> Bool {
-  match custody { BmcCustodyEstablished => false BmcCustodyRefused { reason: _ } => true }
-}
-
-fn bmc_custody_refusal_reason(custody: BmcCustodyContainer) -> String {
-  match custody { BmcCustodyEstablished => "" BmcCustodyRefused { reason: r } => r }
-}
-
 // STORE, THEN READ BACK THE EXACT VERSION, BEFORE THE CREDENTIAL IS PUT TO USE ANYWHERE. Shared by
 // every flow that mints a BMC credential -- the administrator rotation and the health-reader account
 // -- because the rule is the same for both: a credential the BMC accepts but custody cannot return
@@ -341,40 +333,41 @@ fn bmc_custody_refusal_reason(custody: BmcCustodyContainer) -> String {
 fn bmc_store_credential_verified(secret_id: NonEmptyStr, token: Secret, credential: Secret, host_label: String) -> BmcCustodyContainer
   uses net: Network
 {
-  let custody = bmc_establish_custody_container(secret_id: secret_id, token: token)
-  if bmc_custody_refused(custody: custody) {
-    return custody
-  }
-  stored = gcp.SecretManager.AddVersion(
-    access_token: token,
-    secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
-    payload_b64: encode_sm_access_version_payload_wire(credential: credential)
-  )
-  match bmc_readback_target(stored_name: stored.name as String) {
-    BmcReadbackUnaddressable { supplied: supplied } =>
-      return BmcCustodyRefused { reason: concat("store: AddVersion returned a name this run cannot address a read-back against: ", supplied) }
-    BmcReadbackAddressed { identity: stored_identity, version: stored_version } => {
-      readback = gcp.SecretManager.AccessVersion(
+  match bmc_establish_custody_container(secret_id: secret_id, token: token) {
+    BmcCustodyRefused { reason: r } => return BmcCustodyRefused { reason: r }
+    BmcCustodyEstablished => {
+      stored = gcp.SecretManager.AddVersion(
         access_token: token,
-        project_id: fleet_secrets_gcp_project,
-        secret: secret_id,
-        version: stored_version
+        secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
+        payload_b64: encode_sm_access_version_payload_wire(credential: credential)
       )
-      let expected_payload = utf8_encode_bytes(s: credential as String)
-      let readback_ok = match decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
-        SmAccessVersionPayloadDecoded { payload: stored_payload } =>
-          stored_payload == expected_payload
-        SmAccessVersionPayloadDecodeRefused { cause: _ } => false
-      }
-      match decode_sm_resolved_version_identity_wire(name: readback.name as String) {
-        SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
-          return BmcCustodyRefused { reason: "store: GCP read-back resolved version identity refused by wire decoder" }
-        SmResolvedVersionIdentityDecoded { identity: readback_identity } =>
-          return if !readback_ok || stored_identity != readback_identity {
-            BmcCustodyRefused { reason: concat("store: GCP durability read-back mismatch -- refusing to use the credential on ", host_label, "; stored version ", stored_identity as String) }
-          } else {
-            BmcCustodyEstablished
+      match bmc_readback_target(stored_name: stored.name as String) {
+        BmcReadbackUnaddressable { supplied: supplied } =>
+          return BmcCustodyRefused { reason: concat("store: AddVersion returned a name this run cannot address a read-back against: ", supplied) }
+        BmcReadbackAddressed { identity: stored_identity, version: stored_version } => {
+          readback = gcp.SecretManager.AccessVersion(
+            access_token: token,
+            project_id: fleet_secrets_gcp_project,
+            secret: secret_id,
+            version: stored_version
+          )
+          let expected_payload = utf8_encode_bytes(s: credential as String)
+          let readback_ok = match decode_sm_access_version_payload_wire(data_b64: readback.data_b64) {
+            SmAccessVersionPayloadDecoded { payload: stored_payload } =>
+              stored_payload == expected_payload
+            SmAccessVersionPayloadDecodeRefused { cause: _ } => false
           }
+          match decode_sm_resolved_version_identity_wire(name: readback.name as String) {
+            SmResolvedVersionIdentityDecodeRefused { cause: _ } =>
+              return BmcCustodyRefused { reason: "store: GCP read-back resolved version identity refused by wire decoder" }
+            SmResolvedVersionIdentityDecoded { identity: readback_identity } =>
+              return if !readback_ok || stored_identity != readback_identity {
+                BmcCustodyRefused { reason: concat("store: GCP durability read-back mismatch -- refusing to use the credential on ", host_label, "; stored version ", stored_identity as String) }
+              } else {
+                BmcCustodyEstablished
+              }
+          }
+        }
       }
     }
   }
@@ -391,11 +384,10 @@ fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource
     AccessTokenEnsureRefused { reason: reason } =>
       return exit_failure(reason: reason as String)
     AccessTokenReady { token: token } => {
-      let stored = bmc_store_credential_verified(secret_id: onboarding_secret_id(plan: plan), token: token, credential: credential, host_label: plan.bmc.host as String)
-      if bmc_custody_refused(custody: stored) {
-        return exit_failure(reason: bmc_custody_refusal_reason(custody: stored))
+      match bmc_store_credential_verified(secret_id: onboarding_secret_id(plan: plan), token: token, credential: credential, host_label: plan.bmc.host as String) {
+        BmcCustodyRefused { reason: r } => return exit_failure(reason: r)
+        BmcCustodyEstablished => return bmc_rotate_credential(plan: plan, current_password: current_password, new_credential: credential)
       }
-      return bmc_rotate_credential(plan: plan, current_password: current_password, new_credential: credential)
     }
   }
 }
