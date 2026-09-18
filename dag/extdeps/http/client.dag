@@ -31,14 +31,18 @@ fn http_client_max_time_flag(max_time: Second) -> NonEmptyStr {
   to_string(second_count(s: max_time)) as NonEmptyStr
 }
 
-fn http_client_get_argv(url: NonEmptyStr) -> List<String> {
+// THE ONE GET ARGV BUILDER FOR CALLERS THAT RUN CURL OVER A REMOTE SHELL, taking the caller's
+// deadline (the GetWithin operation is the local-transport twin): the deadline is the caller's
+// policy, never this module's number. A builder that baked curl_localhost_max_time in was the
+// second authority on the probe bound (review 67443).
+fn http_client_get_argv(url: NonEmptyStr, max_time: Second) -> List<String> {
   [
     "curl",
     "-fsS",
     "--connect-timeout",
     http_client_localhost_connect_timeout_flag(),
     "--max-time",
-    http_client_localhost_max_time_flag(),
+    http_client_max_time_flag(max_time: max_time) as String,
     url as String,
   ]
 }

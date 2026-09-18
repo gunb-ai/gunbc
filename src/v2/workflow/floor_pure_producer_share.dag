@@ -495,6 +495,7 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.expression_bodied_literal_fn_parsed",
   "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_control_parsed",
+  "v2.test.claim.body_lowering_block_body_call.body_lowering_block_call_parsed",
   "v2.test.claim.namespace_xl0.call_argument_mention_survival.call_argument_fixture_normalized"
 ]
 
