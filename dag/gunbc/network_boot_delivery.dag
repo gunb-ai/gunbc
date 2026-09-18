@@ -407,7 +407,7 @@ fn bootstrap_trust_standing(
 
 fn firmware_https_trust_refusal(https: FirmwareHttpsTrustObservation, fleet: FleetBootServiceReceipt) -> NetworkBootTrustRefusal? {
   if https.endpoint == fleet.https_boot_endpoint {
-    Absent
+    none
   } else {
     Present { value: FirmwareHttpsTrustForOtherEndpoint { expected: fleet.https_boot_endpoint, observed: https.endpoint } }
   }
@@ -420,7 +420,7 @@ fn secure_boot_trust_refusal(chainloader: SecureBootChainloaderTrustObservation,
     if content_hash_equal(left: chainloader.chainloader_digest, right: id.chainloader_digest) == false {
       Present { value: SecureBootTrustForOtherChainloader }
     } else {
-      Absent
+      none
     }
   }
 }
