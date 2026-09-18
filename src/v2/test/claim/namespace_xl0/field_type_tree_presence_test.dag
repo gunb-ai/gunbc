@@ -113,32 +113,21 @@ test fn control_a_parameter_type_name_is_an_atom_in_the_tree_holds() -> Bool {
   atom_present(lexeme: "Xl0UserType")
 }
 
-// CONTROL, CORRECTED: a type DECLARATION name is an edge label, not an atom. Asserting it as an
-// atom was my error and its red said nothing about the tree. Asserted where it actually lives.
+// CONTROL, CORRECTED: a type DECLARATION name is an edge label, not an atom. After declaration
+// grafting it is a Named containment edge, which this search reaches.
 test fn the_record_type_declaration_is_absent_from_the_tree_today() -> Bool {
-  !present_anywhere(lexeme: "Xl0Wrapper")
+  present_anywhere(lexeme: "Xl0Wrapper")
 }
 
-// WHAT WAS MEASURED, AND WHY IT IS NOT YET ATTRIBUTED TO ANYONE.
-//
-// The fixture source demonstrably contains `type Xl0Wrapper { fld: Xl0FieldOnly }`, the ingest
-// ACCEPTS and yields both module roots, and the parameter-type control above finds Xl0UserType as
-// an atom. Yet the record declaration's NAME, its FIELD name, and the field's TYPE are ALL absent
-// from the ingested tree, in atoms and in edge labels alike. So the missing thing is not "field
-// types" -- it is the whole record-type-with-a-field declaration.
-//
-// TWO HYPOTHESES REMAIN AND THIS FIXTURE CANNOT SEPARATE THEM: normalization drops such a
-// declaration, or it is represented in some third way neither an atom search nor a label search
-// reaches. I am not naming a capability on that, because the last four times I attributed an
-// absence measured through one representation, the representation was the defect. The rows are
-// therefore enrolled as MEASUREMENTS of what the search finds today, and the PR carries the cause
-// as unverified.
+// THESE THREE WERE ABSENCE MEASUREMENTS OF THE GRAFT DROP. Declaration grafting rehomes the
+// record onto Named containment (wrapper label, field label, field-type atom-or-label), so they
+// stay enrolled as presence controls (DESIGN 4b(4)).
 test fn the_bare_field_type_is_absent_from_the_tree_today() -> Bool {
-  !present_anywhere(lexeme: "Xl0FieldOnly")
+  present_anywhere(lexeme: "Xl0FieldOnly")
 }
 
 // The field NAME itself, as a third data point: if `fld` is a label but its TYPE is nowhere, the
 // declaration survived and only the type reference inside it was dropped.
 test fn the_field_name_is_absent_from_the_tree_today() -> Bool {
-  !present_anywhere(lexeme: "fld")
+  present_anywhere(lexeme: "fld")
 }

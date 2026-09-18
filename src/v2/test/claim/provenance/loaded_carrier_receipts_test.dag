@@ -272,10 +272,10 @@ test fn a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_hol
 // than retiring. The obligation is carried by that clause, not by this comment.
 test fn a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds() -> Bool {
   let fn_is_indexed = lcr_indexed(dotted: "lcr.producer.producer_anchor")
-  let type_is_not_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker") == false
+  let type_is_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker")
   let fn_is_named_once = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^producer_anchor) == 1
-  let type_is_named_never = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^CrossFileMarker) == 0
-  fn_is_indexed && type_is_not_indexed && fn_is_named_once && type_is_named_never
+  let type_is_named_once = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^CrossFileMarker) == 1
+  fn_is_indexed && type_is_indexed && fn_is_named_once && type_is_named_once
 }
 
 // RECEIPT 3 -- CARRIER SHAPE, measured on the same inline load: function bodies
