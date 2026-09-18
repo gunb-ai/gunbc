@@ -1319,12 +1319,7 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
                     }
                 }
             }
-            std::option::Option::None => {
-                match v1_rt::map_get(&scope.service_registry.clone(), name.clone()) {
-                    Some(_) => Rc::new(VarBindingKind::ServiceValueBinding),
-                    std::option::Option::None => Rc::new(VarBindingKind::FunctionValueBinding),
-                }
-            }
+            std::option::Option::None => Rc::new(VarBindingKind::FunctionValueBinding),
         },
     }
 }

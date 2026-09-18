@@ -872,11 +872,7 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
           if map_has(scope.match_bound_names, name) { MatchBoundBinding }
           else if local_is_service_root_binding(scope: scope, name: name, binding: binding) { ServiceValueBinding }
           else { LocalValueBinding }
-        Absent =>
-          match map_get(scope.service_registry, name) {
-            Present { value: _ } => ServiceValueBinding
-            Absent => FunctionValueBinding
-          }
+        Absent => FunctionValueBinding
       }
   }
 }
