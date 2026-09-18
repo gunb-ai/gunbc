@@ -35,12 +35,15 @@ test fn only_an_exact_member_counts_as_the_reader() -> Bool {
   listed && near_miss
 }
 
-// An unreadable collection is not an empty one: absence would authorize a create.
+// An unreadable collection is not an empty one: absence would authorize a create. That includes a
+// collection with one member that does not name itself (review 67794), which used to be skipped.
 test fn an_unreadable_collection_never_reads_as_absent() -> Bool {
   let garbage = match reader_listed_in_accounts(body: "<html>login</html>") { ReaderListingUnreadable { cause: _ } => true _ => false }
   let no_members = match reader_listed_in_accounts(body: "{\"Name\":\"Accounts\"}") { ReaderListingUnreadable { cause: _ } => true _ => false }
+  let unnamed_member = match reader_listed_in_accounts(body: "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"Name\":\"gunbc_health\"}]}") { ReaderListingUnreadable { cause: _ } => true _ => false }
+  let duplicated_id = match reader_listed_in_accounts(body: "{\"Members\":[{\"@odata.id\":\"a\",\"@odata.id\":\"b\"}]}") { ReaderListingUnreadable { cause: _ } => true _ => false }
   let refused = match plan_reader_account(observation: ReaderAccountUnreadable { cause: "x" }) { ReaderAccountRefused { cause: _ } => true _ => false }
-  garbage && no_members && refused
+  garbage && no_members && unnamed_member && duplicated_id && refused
 }
 
 test fn absent_creates_and_an_enabled_read_only_reader_is_converged() -> Bool {
