@@ -100,6 +100,13 @@ import gunbc.runner_service_activation {
 import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled }
 import gunbc.live_deploy.unit_standing { read_unit_property, UnitPropertyValue, UnitPropertyUnreadable }
 import extdeps.systemd { ActiveState, UnitFileState }
+import gunbc.host_convergence_protocol {
+  bind_canonical_protocol,
+  canonical_protocol_gate,
+  canonical_protocol_standing_label,
+  CanonicalProtocolAdmitted,
+  CanonicalProtocolRefused,
+}
 import gunbc.fleet_converge_plan_manifest {
   FleetConvergeApplyPayload,
   PayloadAdmitted,
@@ -822,6 +829,16 @@ fn fleet_converge_plan_scoped_bound_wet(
 ) -> ProcessExit
   uses net: Network
 {
+  // THE LINE STOPS BEFORE THE HOST IS READ when the canonical host-convergence protocol does
+  // not bind (gunbc.host_convergence_protocol canonical_protocol_gate). A declared frontier
+  // openly awaiting its consumer does not stop it; a self-naming or fired frontier does.
+  match canonical_protocol_gate(standing: bind_canonical_protocol()) {
+    CanonicalProtocolRefused { standing: why } =>
+      exit_failure(reason: concat(
+        "fleet_converge_plan: CanonicalProtocolRefused — gunbc.host_convergence_protocol bind_canonical_protocol answered ",
+        canonical_protocol_standing_label(standing: why),
+      ))
+    CanonicalProtocolAdmitted { frontiers: _ } =>
   match observe_host_short_wet() {
     Absent =>
       exit_failure(reason: "fleet_converge_plan: HostObservationFailed — hostname probe did not succeed or returned empty output, refuse to plan")
@@ -942,6 +959,7 @@ fn fleet_converge_plan_scoped_bound_wet(
   }
   }
     }
+  }
   }
   }
 }
