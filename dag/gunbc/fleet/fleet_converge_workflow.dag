@@ -249,8 +249,8 @@ data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostP
 //
 // THIS FUNCTION HAS NO PRODUCTION CALLER TODAY. Production dashboard_deploy reaches
 // live_deploy_apply_srv1_transaction_wet, not this mapping and not observe_fleet_converge_request_wet.
-// The request coproduct arm that would carry DesiredDeployment waits on C2. A host-only LiveDeploy
-// request has no spelling.
+// Wet observe still cannot mint LiveDeployConverge from a hostname; that arm is constructed
+// from DesiredDeployment.selected_identity plus LiveDeployMemberBasis.
 fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeScope? {
   match mode {
     FullHostPlan => Present { value: FullHost }

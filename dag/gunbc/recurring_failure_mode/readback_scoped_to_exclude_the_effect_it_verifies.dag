@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.readback_scoped_to_exclude_the_effect_it_verifies
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data readback_scoped_to_exclude_the_effect_it_verifies: RecurringFailureMode = RecurringFailureMode {
+  identity: "readback_scoped_to_exclude_the_effect_it_verifies" as NonEmptyStr,
+
+  receipts: [
+    "**a convergence readback asks a question whose SCOPE excludes the very effect it exists to confirm, so the effect reads as absent and the converge applies it again on every run** (INVALID STATE: the observation half of an observe/decide/actuate/readback cycle is bounded -- by a range, a filter, a projection, a field mask, a page -- for a reason that is correct about ONE of the facts it gathers, and the SAME bound silently removes another.",
+
+    "The read succeeds, the response is well-formed, and the missing fact is reported with the same value a genuinely absent fact would carry.",
+
+    "HARM, AND IT IS UNBOUNDED RATHER THAN MERELY WRONG. A readback exists to make an actuation idempotent; a readback that cannot see its own work inverts that guarantee into a RATCHET. The decision reads `not converged`, applies, reports `unverified`, and the next run applies again on top -- so the mechanism installed to prevent accumulation becomes its engine, and the resource grows once per invocation of a loop designed to be safe to run continuously.",
+
+    "DISTINGUISHING FACT, and it is the one worth carrying away: the bug is in the RELATIONSHIP between the request's scope and the effect's extent, and neither end is wrong read alone. The bound is justified where it was authored, the effect is correct where it was applied, and no reading of either establishes that the first contains the second.",
+
+    "RECOGNITION RULE: for every fact a readback gathers, name the scope the request imposed and the extent of the effect that fact describes, and state which contains which. Where one request gathers facts of different extents, that is not an optimisation to preserve -- it is the defect, and the repair is to SPLIT THE READ along what each question needs rather than along what one call can carry.",
+
+    "**DISTINCT FROM ITS NEIGHBOURS, all of which are about the instrument and not about its scope.** [[absent_reads_identically_to_never_looked]] is an instrument that MISSED its subject -- wrong path, wrong window, wrong directory; here the instrument reached the right subject and the SERVER correctly filtered the answer to what was asked. [[edit_range_bounded_by_a_neighbour_rather_than_the_target]] is a bound that lands on the wrong subject; here the bound lands on the right subject and is too small for one of the facts asked of it. [[empty_observation_narrow]] is an empty result whose admissibility was never established; this class names WHY such a result is empty and what it costs when the reader is a converge rather than a person.",
+
+    "**SPECIMEN (zesty-crane-846, gunbc#11581, 2026-09-18), and it took a live API to find it.** `gunbc.review_sheet_format_actuator` read the header cell's format, the frozen row count and the conditional format rules in ONE ranged `spreadsheets.get`. The range was `A1:Q1` -- the header row -- and that bound is CORRECT for grid data, whose cost would otherwise grow with the census. Sheets filters `conditionalFormats` to the rules intersecting the requested ranges; the rules start at row index 1; the range is row 0. So five applied rules came back absent, the fold counted zero, `format_is_converged` compared the count and answered false, and the converge reported UNVERIFIED over a spreadsheet it had just formatted correctly -- and would have added five more rules per run, forever. THE REPAIR IS THE SPLIT: grid data stays bounded to the header row, metadata is read unranged.",
+
+    "**A SECOND, SMALLER FACT FROM THE SAME REPAIR, recorded here rather than as its own row because it has no life apart from this one: an EMPTY parameter is not an ABSENT parameter.** The first attempt at the unranged read passed `ranges=\"\"` and Sheets answered `400 Unable to parse range: `. A declared query parameter has no absent encoding, so removing a range from a request means an OPERATION THAT NAMES NO RANGE, not an operation whose range is empty -- which is why the repair added `GetSpreadsheetMetadata` beside `GetSpreadsheet` rather than passing a different value to the one that existed.",
+
+    "RUNG FOUND AT: 1, mitigatable, and only because a human ran it. CEILING: 2, mechanically preventable, and the reason it stops there is honest rather than modest -- whether a request's scope contains an effect's extent is a fact about an EXTERNAL API's filtering semantics, which is DESIGN's outside-the-modeled-guarantee column and cannot be derived from the corpus. NEXT TRIGGER: a converge whose readback asserts, against a recorded prior actuation, that every fact it decides on was within the scope it requested -- the run that applies N rules and then reads back fewer than N refuses instead of re-applying.",
+
+    "**WHY NO WITNESS COULD HAVE HELD THIS WALL, stated because the obvious follow-up is to write one.** Every witness supplies its own observation at the boundary it discriminates, so a witness over `format_is_converged` supplies a `FormatObservation` and asks what the function decides -- it cannot discover that a REQUEST does not return what the request asked for, because it never issues one. The missing evidence is the inhabitance half of the pairing obligation, and for an effectful external boundary the only instrument that carries it is an execution against the real service."
+  ],
+
+  evidence: [],
+}

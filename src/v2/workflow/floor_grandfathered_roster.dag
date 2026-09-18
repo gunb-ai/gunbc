@@ -192,6 +192,60 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "v2.test.lens_idempotency.sg_claims.lens_idempotency_write_effect_holds" as NonEmptyStr,
     deleted_in: "it only re-asserted the enrolled v2.test.lens_idempotency.write_effect.idempotency_write_effect_claim_holds by calling it, and no code may reference a test fn (owner ruling 2026-09-16/17); the fact stays asserted by that claim" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "v2.test.claim.generated_conformance_floor.generated_lbe_conj_snapshot_passes" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test data v2.test.generated.language_behavior_equivalence.witness_lbe_conj_snapshot_pass; the fact stays enrolled at its declaration" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.generated_conformance_floor.generated_lbe_disj_snapshot_passes" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test data v2.test.generated.language_behavior_equivalence.witness_lbe_disj_snapshot_pass; the fact stays enrolled at its declaration" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.generated_conformance_floor.generated_lbe_transform_snapshot_passes" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test data v2.test.generated.language_behavior_equivalence.witness_lbe_transform_snapshot_pass; the fact stays enrolled at its declaration" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.generated_conformance_floor.generated_lbe_schedules_three_generators" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test data v2.test.generated.language_behavior_equivalence.witness_testgen_schedules_three_lbe_generators; the fact stays enrolled at its declaration" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.generated_conformance_floor.generated_lbe_dag_surface_language_identity" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test data v2.test.generated.language_behavior_equivalence.witness_dag_surface_language_identity; the fact stays enrolled at its declaration" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.generated_conformance_floor.generated_wishlist_pending_count_holds" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test fn v2.test.generated.testgen_category_wishlist.pending_non_tautological_generator_count_is_three" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.generated_conformance_floor.generated_wishlist_dispatched_count_holds" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test fn v2.test.generated.testgen_category_wishlist.dispatched_non_tautological_generator_count_is_four" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler.compile_eval_thesis_proof.isolate_t1_holds" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test fn compile_eval_bool_reaches_node_value_holds of its own module" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler.compile_eval_thesis_proof.isolate_t2_holds" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test fn compile_eval_bool_via_compile_entry_refuses_underived_holds of its own module" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler.compile_eval_thesis_proof.isolate_t3_holds" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test fn compile_eval_unit_unrepresentable_red_holds of its own module" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.grounding_typescript.sg_claims.ts_g2_sg5_absence_fail_closed_holds" as NonEmptyStr,
+    deleted_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): a test fn that only re-asserted the enrolled test fn ts_g2_sg5_collection_realization_absence_holds of its own module" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_synthetic_unrostered_red_holds" as NonEmptyStr,
+    new_identity: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_synthetic_unrostered_red_control_holds" as NonEmptyStr,
+    renamed_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): the test fn shared the spelling of the interpreter primitive it enrols (std.primitives free_call), so every call of that name in the module bound at name resolution to the test fn; the enrolling test fn now carries a distinct name and calls the primitive directly" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_wildcard_red_fixture_holds" as NonEmptyStr,
+    new_identity: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_wildcard_red_fixture_control_holds" as NonEmptyStr,
+    renamed_in: "gunbc test-reference cleanup (gates, generated, compiler, imports area): the test fn shared the spelling of the interpreter primitive it enrols (std.primitives free_call), so every call of that name in the module bound at name resolution to the test fn; the enrolling test fn now carries a distinct name and calls the primitive directly" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {
@@ -883,7 +937,7 @@ fn floor_grandfathered_cut() -> List<String> {
 // THE COST ORDER IS DELIBERATE. The cut scan short-circuits on a hit and the removal scan runs only
 // after one, so a MISS -- the worst case this module's own consumer measures -- pays nothing for the
 // subtraction, and a hit pays a walk over a list whose length is the number of rows that have ever
-// left (four at this writing).
+// left (`floor_grandfathered_removals`, whose length is not transcribed here).
 fn floor_grandfathered_holds(name: String) -> Bool {
   if grandfathered_cut_holds(name: name) {
     removal_withdraws(name: name, removals: floor_grandfathered_removals) == false

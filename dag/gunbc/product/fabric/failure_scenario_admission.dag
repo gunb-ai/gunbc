@@ -40,9 +40,19 @@ type OfferFailureDomains<P> {
   domains: List<DeclarationRef>
 }
 
-type FailureScenario {
+// A SCENARIO LOSES DECLARED DOMAINS, NAMED OFFERS, OR BOTH, AND THE TWO ARE DIFFERENT KINDS OF FACT.
+//
+// A domain is a CITED DECLARATION - a provider, a region, a site, a circuit - and it resolves to a
+// symbol the namespace authority already checks. An individual host has no such declaration: it is
+// one offer in a roster, and its identity is a FabricIdentity. Before this field, a caller wanting
+// "lose one node" had to MINT a DeclarationRef for it, which is a dangling citation wearing the
+// carrier that promises resolution (gunbc-private#141, review 67435: twenty field-grain refs against
+// a declaration carrying no fields, which v2.std.decl_ref_resolution refuses as
+// DeclarationRefFieldAbsent). Losing an offer by its own identity needs no synthetic name at all.
+type FailureScenario<P> {
   scenario: DeclarationRef
   lost: List<DeclarationRef>
+  lost_offers: List<FabricIdentity<P, OfferKey>>
 }
 
 // grants is committed concurrent grants of this work's requirements; margin is the operational
@@ -72,10 +82,11 @@ type FailureScenarioRefusal<P>
   | OfferFailureDomainsAmbiguous { offer: FabricIdentity<P, OfferKey> }
   | OfferSharedAcrossDemands { offer: FabricIdentity<P, OfferKey> }
   | OfferSupplyUnobserved { offer: FabricIdentity<P, OfferKey>, obligation: DeclarationRef }
+  | ScenarioNamesUnknownOffer { scenario: DeclarationRef, offer: FabricIdentity<P, OfferKey> }
   | ScenarioNotSurvived { shortfall: ScenarioShortfall<P> }
 
 type FailureScenarioAdmission<P>
-  = FailureScenariosSurvived { scenarios: List<FailureScenario>, demands: List<CommittedDemand<P>> }
+  = FailureScenariosSurvived { scenarios: List<FailureScenario<P>>, demands: List<CommittedDemand<P>> }
   | FailureScenariosRefused { refusals: List<FailureScenarioRefusal<P>> }
 
 fn domain_rows_for<P>(roster: List<OfferFailureDomains<P>>, offer: FabricIdentity<P, OfferKey>) -> List<OfferFailureDomains<P>> {
@@ -147,11 +158,17 @@ fn domain_is_lost(lost: List<DeclarationRef>, domain: DeclarationRef) -> Bool {
   count(filter(lost, l => declaration_ref_eq(a: l, b: domain))) > 0
 }
 
-fn offer_survives<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureScenario, offer: SupplierOffer<P>) -> Bool {
-  count(filter(offer_domains(roster: roster, offer: offer), d => domain_is_lost(lost: scenario.lost, domain: d))) == 0
+// A HOST IS LOST BY ITS OWN IDENTITY OR BY A DOMAIN IT SITS IN, and either is enough to remove it.
+fn offer_is_named_lost<P>(scenario: FailureScenario<P>, offer: SupplierOffer<P>) -> Bool {
+  count(filter(scenario.lost_offers, o => fabric_identity_eq(left: o, right: offer.id))) > 0
 }
 
-fn surviving_grants<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureScenario, eligible: List<SupplierOffer<P>>) -> Int {
+fn offer_survives<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureScenario<P>, offer: SupplierOffer<P>) -> Bool {
+  count(filter(offer_domains(roster: roster, offer: offer), d => domain_is_lost(lost: scenario.lost, domain: d))) == 0
+    && !offer_is_named_lost(scenario: scenario, offer: offer)
+}
+
+fn surviving_grants<P>(roster: List<OfferFailureDomains<P>>, scenario: FailureScenario<P>, eligible: List<SupplierOffer<P>>) -> Int {
   fold(
     filter(eligible, o => offer_survives(roster: roster, scenario: scenario, offer: o)),
     init: 0,
@@ -166,10 +183,25 @@ type DemandSupply<P> {
   eligible: List<SupplierOffer<P>>
 }
 
+// EVERY NAMED OFFER MUST BE IN THE ROSTER, checked before any scenario is evaluated. This is the
+// structural twin of the undeclared-domain refusal: both close the arm where a scenario silently
+// applies less loss than it names.
+fn unknown_offer_refusals<P>(
+  offers: List<SupplierOffer<P>>,
+  scenario: FailureScenario<P>,
+) -> List<FailureScenarioRefusal<P>> {
+  flat_map(scenario.lost_offers, named =>
+    if count(filter(offers, o => fabric_identity_eq(left: o.id, right: named))) == 0 {
+      [ScenarioNamesUnknownOffer { scenario: scenario.scenario, offer: named }]
+    } else {
+      []
+    })
+}
+
 fn scenario_refusals<P>(
   roster: List<OfferFailureDomains<P>>,
   supply: DemandSupply<P>,
-  scenario: FailureScenario,
+  scenario: FailureScenario<P>,
 ) -> List<FailureScenarioRefusal<P>> {
   let surviving = surviving_grants(roster: roster, scenario: scenario, eligible: supply.eligible)
   let required = supply.demand.grants + supply.demand.margin
@@ -203,7 +235,7 @@ fn admit_failure_scenarios<P>(
   exercises: List<RouteExercise>,
   at: EpochSecs,
   demands: List<CommittedDemand<P>>,
-  scenarios: List<FailureScenario>,
+  scenarios: List<FailureScenario<P>>,
 ) -> FailureScenarioAdmission<P> {
   let supplies = map(demands, d =>
     DemandSupply { demand: d, eligible: eligible_offers(offers: offers, exercises: exercises, at: at, demand: d) })
@@ -212,7 +244,10 @@ fn admit_failure_scenarios<P>(
     concat(
       concat(
         flat_map(offers, o => domain_refusals(roster: domains, offer: o)),
-        flat_map(offers, o => evidence_refusals(offer: o)),
+        concat(
+          flat_map(offers, o => evidence_refusals(offer: o)),
+          flat_map(scenarios, sc => unknown_offer_refusals(offers: offers, scenario: sc)),
+        ),
       ),
       sharing_refusals(offers: offers, supplies: supplies),
     ),
