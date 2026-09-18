@@ -685,22 +685,34 @@ data nccl_gdr_marker: String = "GPU Direct RDMA "
 data nccl_gdr_state_disabled: String = "Disabled"
 data nccl_gdr_state_enabled: String = "Enabled"
 
-fn nccl_gpu_memory_path_of_line(line: NcclLogLine) -> NcclGpuMemoryPath {
+// NOT A GDR LINE AND A GDR LINE THIS MODULE CANNOT READ ARE DIFFERENT FACTS, and collapsing them is
+// the defect the channel reader above was already repaired for (NcclChannelNotAChannelLine versus
+// NcclChannelUnreadable). A capture is mostly lines about other things, so "not a GDR line" is the
+// ordinary case and says nothing; a line that carries the marker and a state this module does not
+// know is the producer saying something we failed to understand, and it must reach the caller as a
+// refusal rather than vanish into "the capture carries no GPU Direct RDMA line" (review 67523).
+type NcclGpuDirectLineReading
+  = NcclGpuDirectLineEnabled { read_from: NonEmptyStr }
+  | NcclGpuDirectLineDisabled { read_from: NonEmptyStr }
+  | NcclNotAGpuDirectLine
+  | NcclGpuDirectLineUnreadable { cause: NonEmptyStr }
+
+fn nccl_gpu_memory_path_of_line(line: NcclLogLine) -> NcclGpuDirectLineReading {
   let body = line.body as String
   let halves = split(s: body, delimiter: nccl_gdr_marker)
   if count(halves) < 2 {
-    NcclGpuMemoryPathUnread { cause: join(["the line carries no ", nccl_gdr_marker, " marker: ", line.raw as String], "") as NonEmptyStr }
+    NcclNotAGpuDirectLine
   } else {
     match halves.last() {
-      Absent => NcclGpuMemoryPathUnread { cause: join(["the ", nccl_gdr_marker, " marker is present with nothing after it: ", line.raw as String], "") as NonEmptyStr }
+      Absent => NcclGpuDirectLineUnreadable { cause: join(["the ", nccl_gdr_marker, " marker is present with nothing after it: ", line.raw as String], "") as NonEmptyStr }
       Present { value: rest } =>
         if starts_with(s: rest, prefix: nccl_gdr_state_disabled) {
-          NcclGpuDirectDisabled { read_from: line.raw }
+          NcclGpuDirectLineDisabled { read_from: line.raw }
         } else {
           if starts_with(s: rest, prefix: nccl_gdr_state_enabled) {
-            NcclGpuDirectEnabled { read_from: line.raw }
+            NcclGpuDirectLineEnabled { read_from: line.raw }
           } else {
-            NcclGpuMemoryPathUnread { cause: join([
+            NcclGpuDirectLineUnreadable { cause: join([
               "the ", nccl_gdr_marker, " marker is followed by neither ", nccl_gdr_state_enabled,
               " nor ", nccl_gdr_state_disabled, ", so the memory path stays unread rather than assumed: ",
               line.raw as String,
@@ -736,57 +748,53 @@ fn nccl_gpu_memory_path_wire(p: NcclGpuMemoryPath) -> NonEmptyStr {
 type NcclGpuMemoryPathReading
   = NcclMemoryPathAgreed { path: NcclGpuMemoryPath, readings: Nat }
   | NcclMemoryPathDisagrees { causes: List<NonEmptyStr> }
+  | NcclMemoryPathUnreadable { causes: List<NonEmptyStr> }
   | NcclMemoryPathAbsent
 
+// THE ACCUMULATOR CARRIES THE READINGS, NOT COUNTS BESIDE OPTIONALS. An earlier revision kept
+// `enabled: Nat` next to `first_enabled: NonEmptyStr?`, which made "one enabled line and no first
+// enabled line" representable and gave the fold two arms that could never run (review 67523). A list
+// of the lines each state was read from carries both the count and the evidence in one field.
 type NcclMemoryPathAcc sole_constructor {
-  enabled: Nat
-  disabled: Nat
-  first_enabled: NonEmptyStr?
-  first_disabled: NonEmptyStr?
+  enabled: List<NonEmptyStr>
+  disabled: List<NonEmptyStr>
+  unreadable: List<NonEmptyStr>
 }
 
 fn nccl_memory_path_step(acc: NcclMemoryPathAcc, line: NcclLogLine) -> NcclMemoryPathAcc {
   match nccl_gpu_memory_path_of_line(line: line) {
-    NcclGpuMemoryPathUnread { cause: _ } => acc
-    NcclGpuDirectEnabled { read_from: l } =>
-      NcclMemoryPathAcc {
-        enabled: acc.enabled + 1,
-        disabled: acc.disabled,
-        first_enabled: match acc.first_enabled { Absent => Present { value: l }, Present { value: p } => Present { value: p } },
-        first_disabled: acc.first_disabled,
-      }
-    NcclGpuDirectDisabled { read_from: l } =>
-      NcclMemoryPathAcc {
-        enabled: acc.enabled,
-        disabled: acc.disabled + 1,
-        first_enabled: acc.first_enabled,
-        first_disabled: match acc.first_disabled { Absent => Present { value: l }, Present { value: p } => Present { value: p } },
-      }
+    NcclNotAGpuDirectLine => acc
+    NcclGpuDirectLineUnreadable { cause: c } =>
+      NcclMemoryPathAcc { enabled: acc.enabled, disabled: acc.disabled, unreadable: concat(acc.unreadable, [c]) }
+    NcclGpuDirectLineEnabled { read_from: l } =>
+      NcclMemoryPathAcc { enabled: concat(acc.enabled, [l]), disabled: acc.disabled, unreadable: acc.unreadable }
+    NcclGpuDirectLineDisabled { read_from: l } =>
+      NcclMemoryPathAcc { enabled: acc.enabled, disabled: concat(acc.disabled, [l]), unreadable: acc.unreadable }
   }
 }
 
+// AN UNREADABLE GDR LINE REFUSES THE WHOLE CAPTURE, even beside readable ones that agree. The
+// unreadable line is a state this module cannot place, so it may be the one that disagrees; agreeing
+// on the lines we understood would be the absorbing fallback DESIGN section 5 names.
 fn nccl_gpu_memory_path_of_text(captured_text: String) -> NcclGpuMemoryPathReading {
   let acc = fold(nccl_log_lines(text: captured_text),
-    init: NcclMemoryPathAcc { enabled: 0, disabled: 0, first_enabled: none, first_disabled: none },
+    init: NcclMemoryPathAcc { enabled: [], disabled: [], unreadable: [] },
     f: (a, l) => nccl_memory_path_step(acc: a, line: l))
-  if acc.enabled > 0 && acc.disabled > 0 {
-    NcclMemoryPathDisagrees { causes: [
-      join([to_string(acc.enabled), " line(s) report GPU Direct RDMA enabled and ", to_string(acc.disabled), " report it disabled in one capture"], "") as NonEmptyStr,
-    ] }
+  if count(acc.unreadable) > 0 {
+    NcclMemoryPathUnreadable { causes: acc.unreadable }
   } else {
-    if acc.enabled > 0 {
-      match acc.first_enabled {
-        Absent => NcclMemoryPathAbsent
-        Present { value: l } => NcclMemoryPathAgreed { path: NcclGpuDirectEnabled { read_from: l }, readings: acc.enabled }
-      }
+    if count(acc.enabled) > 0 && count(acc.disabled) > 0 {
+      NcclMemoryPathDisagrees { causes: [
+        join([to_string(count(acc.enabled)), " line(s) report GPU Direct RDMA enabled and ", to_string(count(acc.disabled)), " report it disabled in one capture"], "") as NonEmptyStr,
+      ] }
     } else {
-      if acc.disabled > 0 {
-        match acc.first_disabled {
-          Absent => NcclMemoryPathAbsent
-          Present { value: l } => NcclMemoryPathAgreed { path: NcclGpuDirectDisabled { read_from: l }, readings: acc.disabled }
-        }
-      } else {
-        NcclMemoryPathAbsent
+      match acc.enabled.first() {
+        Present { value: l } => NcclMemoryPathAgreed { path: NcclGpuDirectEnabled { read_from: l }, readings: count(acc.enabled) }
+        Absent =>
+          match acc.disabled.first() {
+            Present { value: l } => NcclMemoryPathAgreed { path: NcclGpuDirectDisabled { read_from: l }, readings: count(acc.disabled) }
+            Absent => NcclMemoryPathAbsent
+          }
       }
     }
   }

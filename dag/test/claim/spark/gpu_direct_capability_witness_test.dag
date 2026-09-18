@@ -12,7 +12,9 @@ import extdeps.nvidia.gpu_direct_rdma {
 }
 import extdeps.nvidia.nccl {
   NcclLogLine, NcclGpuMemoryPath, NcclGpuDirectEnabled, NcclGpuDirectDisabled, NcclGpuMemoryPathUnread,
-  nccl_parse_log_line, nccl_gpu_memory_path_of_line,
+  nccl_parse_log_line, nccl_gpu_memory_path_of_line, nccl_gpu_memory_path_of_text,
+  NcclGpuDirectLineReading, NcclGpuDirectLineEnabled, NcclGpuDirectLineDisabled, NcclNotAGpuDirectLine, NcclGpuDirectLineUnreadable,
+  NcclMemoryPathAgreed, NcclMemoryPathDisagrees, NcclMemoryPathUnreadable, NcclMemoryPathAbsent,
 }
 import gunbc.spark.collective_memory_path_standing {
   CollectiveMemoryPathStanding, MemoryPathDirectAsCapable, MemoryPathStagedAsPlatformRequires,
@@ -148,36 +150,93 @@ test fn w_a_failed_secondary_query_does_not_unread_a_decided_negative() -> Bool 
 }
 
 // ── 3. THE NCCL LINE READER ───────────────────────────────────────────────────────────────────
-fn memory_path_of(raw: String) -> NcclGpuMemoryPath {
+fn memory_path_of(raw: String) -> NcclGpuDirectLineReading {
   match nccl_parse_log_line(raw: raw) {
-    Absent => NcclGpuMemoryPathUnread { cause: "the line is not an NCCL INFO line" as NonEmptyStr }
+    Absent => NcclNotAGpuDirectLine
     Present { value: l } => nccl_gpu_memory_path_of_line(line: l)
   }
 }
 
 test fn w_a_disabled_line_reads_as_host_staged() -> Bool {
   match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'") {
-    NcclGpuDirectDisabled { read_from: _ } => true
-    NcclGpuDirectEnabled { read_from: _ } => false
-    NcclGpuMemoryPathUnread { cause: _ } => false
+    NcclGpuDirectLineDisabled { read_from: _ } => true
+    NcclGpuDirectLineEnabled { read_from: _ } => false
+    NcclNotAGpuDirectLine => false
+    NcclGpuDirectLineUnreadable { cause: _ } => false
   }
 }
 
 test fn w_an_enabled_line_reads_as_registered() -> Bool {
   match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 0 'rocep1s0f1'") {
-    NcclGpuDirectEnabled { read_from: _ } => true
-    NcclGpuDirectDisabled { read_from: _ } => false
-    NcclGpuMemoryPathUnread { cause: _ } => false
+    NcclGpuDirectLineEnabled { read_from: _ } => true
+    NcclGpuDirectLineDisabled { read_from: _ } => false
+    NcclNotAGpuDirectLine => false
+    NcclGpuDirectLineUnreadable { cause: _ } => false
   }
 }
 
-// A LINE ABOUT SOMETHING ELSE IS UNREAD, not a default. The transport announcement in particular
-// must not answer this question.
+// A LINE ABOUT SOMETHING ELSE IS NOT A GDR LINE, and in particular the transport announcement must
+// not answer this question.
 test fn w_the_network_announcement_does_not_answer_the_memory_path() -> Bool {
   match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO Using network IB") {
-    NcclGpuMemoryPathUnread { cause: _ } => true
-    NcclGpuDirectDisabled { read_from: _ } => false
-    NcclGpuDirectEnabled { read_from: _ } => false
+    NcclNotAGpuDirectLine => true
+    NcclGpuDirectLineUnreadable { cause: _ } => false
+    NcclGpuDirectLineDisabled { read_from: _ } => false
+    NcclGpuDirectLineEnabled { read_from: _ } => false
+  }
+}
+
+// AND A GDR LINE WITH AN UNKNOWN STATE IS UNREADABLE, NOT "NOT A GDR LINE" (review 67523). This is
+// the per-line half of the split; the capture-level half is below.
+test fn w_a_gdr_line_with_an_unknown_state_is_unreadable_not_absent() -> Bool {
+  match memory_path_of(raw: "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Partial for HCA 0 'rocep1s0f1'") {
+    NcclGpuDirectLineUnreadable { cause: _ } => true
+    NcclNotAGpuDirectLine => false
+    NcclGpuDirectLineDisabled { read_from: _ } => false
+    NcclGpuDirectLineEnabled { read_from: _ } => false
+  }
+}
+
+// ── 3b. THE WHOLE-CAPTURE FOLD THE LIVE ROUTE CALLS ───────────────────────────────────────────
+//
+// gunbc.spark.glm_group_b_relaunch_cli rank_memory_path_text reads a captured log through
+// `nccl_gpu_memory_path_of_text`, not the per-line reader, so the fold is claimed directly: agreement,
+// disagreement, an unreadable line and a capture with no GDR line are four different answers.
+data gdr_disabled_ib: String = "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'"
+data gdr_disabled_gin: String = "spark-0c75:385:385 [0] NCCL INFO NET/GIN_IB_GDAKI : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'"
+data gdr_enabled_ib: String = "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Enabled for HCA 1 'rocep1s0f0'"
+data gdr_unknown_ib: String = "spark-0c75:385:385 [0] NCCL INFO NET/IB : GPU Direct RDMA Partial for HCA 0 'rocep1s0f1'"
+data nccl_unrelated: String = "spark-0c75:385:385 [0] NCCL INFO Using network IB"
+
+fn capture(lines: List<String>) -> String { join(lines, "\n") }
+
+test fn w_agreeing_disabled_lines_fold_to_disabled_with_their_count() -> Bool {
+  match nccl_gpu_memory_path_of_text(captured_text: capture(lines: [nccl_unrelated, gdr_disabled_ib, gdr_disabled_gin])) {
+    NcclMemoryPathAgreed { path: NcclGpuDirectDisabled { read_from: _ }, readings: n } => n == 2
+    _ => false
+  }
+}
+
+test fn w_lines_that_disagree_refuse_to_answer() -> Bool {
+  match nccl_gpu_memory_path_of_text(captured_text: capture(lines: [gdr_disabled_ib, gdr_enabled_ib])) {
+    NcclMemoryPathDisagrees { causes: _ } => true
+    _ => false
+  }
+}
+
+// THE RED THE REVIEW NAMED: an unreadable GDR line beside readable ones that agree must refuse, and
+// must not read as a capture with no GDR line.
+test fn w_an_unreadable_gdr_line_refuses_the_capture_and_is_not_absence() -> Bool {
+  match nccl_gpu_memory_path_of_text(captured_text: capture(lines: [gdr_disabled_ib, gdr_unknown_ib, gdr_disabled_gin])) {
+    NcclMemoryPathUnreadable { causes: cs } => count(cs) == 1
+    _ => false
+  }
+}
+
+test fn w_a_capture_with_no_gdr_line_is_absent() -> Bool {
+  match nccl_gpu_memory_path_of_text(captured_text: capture(lines: [nccl_unrelated])) {
+    NcclMemoryPathAbsent => true
+    _ => false
   }
 }
 

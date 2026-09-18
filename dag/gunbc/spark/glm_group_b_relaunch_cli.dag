@@ -18,7 +18,7 @@ import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
 import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability }
 import extdeps.nvidia.nccl {
   NcclGpuMemoryPath, NcclGpuMemoryPathUnread, NcclGpuMemoryPathReading, NcclMemoryPathAgreed,
-  NcclMemoryPathDisagrees, NcclMemoryPathAbsent, nccl_gpu_memory_path_of_text,
+  NcclMemoryPathDisagrees, NcclMemoryPathUnreadable, NcclMemoryPathAbsent, nccl_gpu_memory_path_of_text,
   NcclRoceGidSelection, NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
   nccl_realized_transport_wire,
 }
@@ -260,6 +260,7 @@ fn rank_memory_path_text(capability: GpuDirectRdmaCapability, captured: String) 
     NcclMemoryPathAgreed { path: p, readings: _ } => p
     NcclMemoryPathAbsent => NcclGpuMemoryPathUnread { cause: "the capture carries no GPU Direct RDMA line" as NonEmptyStr }
     NcclMemoryPathDisagrees { causes: cs } => NcclGpuMemoryPathUnread { cause: join(map(cs, c => c as String), "; ") as NonEmptyStr }
+    NcclMemoryPathUnreadable { causes: cs } => NcclGpuMemoryPathUnread { cause: join(["the capture carries GPU Direct RDMA line(s) this reader could not read: ", join(map(cs, c => c as String), "; ")], "") as NonEmptyStr }
   }
   let standing = collective_memory_path_standing(
     capability: capability,
