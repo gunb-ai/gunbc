@@ -57,9 +57,24 @@ type NetworkBootDeliveryEstablishment {
   site: SitePxeEdgeReceipt
   client: ObservedClientBootModeReceipt
   boot_control: NetworkBootBootControlReceipt
-  manifest: SignedBootManifestIdentity
+  manifest: SignedBootManifestReceipt
   trust: BootstrapTrustStanding
 }
+
+// The verified manifest as observed, the fifth axis receipt beside fleet, site, client and
+// boot control: the identity the join adjudicated plus the observation and instant it was
+// verified at, so the established evidence names where its manifest reading came from.
+type SignedBootManifestReceipt {
+  identity: SignedBootManifestIdentity
+  observation: DeclarationRef
+  observed_at: EpochMs
+}
+
+// Which observation disagreed with the expected site. The edge and the client each carry a
+// site; a mismatch on one is a different defect from a mismatch on the other.
+type NetworkBootSiteAxis
+  = SiteEdgeSite
+  | ClientObservationSite
 
 type NetworkBootDeliveryStanding
   = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
@@ -70,7 +85,7 @@ type NetworkBootDeliveryStanding
   | NetworkBootDeliveryTargetMismatch { axis: NetworkBootRequirement }
   | NetworkBootDeliveryManifestRefused { cause: NetworkBootManifestRefusal }
   | NetworkBootDeliverySiteUnestablished
-  | NetworkBootDeliverySiteMismatch { expected: SiteIdentity, observed: SiteIdentity }
+  | NetworkBootDeliverySiteMismatch { axis: NetworkBootSiteAxis, expected: SiteIdentity, observed: SiteIdentity }
   | NetworkBootDeliveryTrustUnestablished
 
 // A computed rejection of an observed ticket. Missing means no ticket was presented.
@@ -377,7 +392,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
           NetworkBootDeliveryArchitectureRefused { cause: ChainloaderMismatch { client: c, chainloader: l } }
         SitePxeEdgeEstablished { receipt: site } =>
           if !site_identity_eq(a: site.edge.site, b: inputs.expected_site) {
-            NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: site.edge.site }
+            NetworkBootDeliverySiteMismatch { axis: SiteEdgeSite, expected: inputs.expected_site, observed: site.edge.site }
           } else {
           match inputs.client {
             ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
@@ -394,7 +409,7 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                     NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
                   } else {
                   if !site_identity_eq(a: client.site, b: inputs.expected_site) {
-                    NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: client.site }
+                    NetworkBootDeliverySiteMismatch { axis: ClientObservationSite, expected: inputs.expected_site, observed: client.site }
                   } else {
                     match inputs.boot_control {
                       BootControlUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
@@ -519,7 +534,7 @@ fn join_verified_ticket_after_trust(
                               site: site,
                               client: client,
                               boot_control: control,
-                              manifest: id,
+                              manifest: SignedBootManifestReceipt { identity: id, observation: manifest_obs, observed_at: manifest_at },
                               trust: inputs.trust,
                             },
                           }
