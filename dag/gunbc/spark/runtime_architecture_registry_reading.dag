@@ -2,6 +2,7 @@ module gunbc.spark.runtime_architecture_registry_reading
 
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_class }
+import extdeps.zhipu.glm_5_3 { glm_5_3_architecture_class }
 
 // WHICH ARCHITECTURES AN IMAGE ANSWERS FOR IS SOMETHING WE READ, NOT SOMETHING ITS PUBLISHER SAYS.
 //
@@ -1937,6 +1938,48 @@ data v41_published_arm64_architecture_asked: ArchitectureObservation = Architect
   present: true,
 }
 
+// ── THE IMAGE GROUP B SERVES, ASKED TWICE INSIDE ITS OWN CONTENT ID ───────────────────────────
+//
+// THIS IS THE LANE-BUILT DERIVED IMAGE THAT REPLACED THE NoPE ONE ON 2026-09-17, and until these two
+// rows it had no reading at all: the arm's runtime row still pinned the NoPE content id it was built
+// as on 2026-09-13, so every consumer of that row described an image that had stopped serving.
+// Found by an exact-match refusal in gunbc.spark.serving_fit_projection, whose report was keyed by
+// this tag while the row pinned sha256:41366caf...; `docker images` on the head then showed two
+// repositories, gunbc-vllm-glm53-nope-gb10 (41366caf, 09-13) and gunbc-vllm-glm53-gb10 (c7d63d15,
+// 09-17), and the four running containers' .Image is the latter.
+//
+// KEYED BY THE CONFIG ID BECAUSE IT IS THE ONLY IDENTITY THE IMAGE HAS: RepoDigests is empty (built
+// locally, never pushed), so there is no registry manifest digest to confuse it with -- the inverse
+// of the v41 published case above.
+//
+// TWO ASKED ROWS RATHER THAN ONE DUMP, at the strength the instrument had: the script tested
+// membership of two names and reported the total count (378); it did not print the roster, so a
+// RegistryDump would be a list nobody read. A miss on either row would be a measured negative for
+// that name only; nothing here answers for any third architecture.
+data glm53_group_b_head_host: NonEmptyStr = "192.168.1.236 (the Group B head, NVIDIA GB10)" as NonEmptyStr
+
+data glm53_derived_observed_config_id: NonEmptyStr = "sha256:c7d63d153f991b9f1bd7e6419dcd1a5109746670747be90f4ff6da74f0e8fe84" as NonEmptyStr
+
+data glm53_derived_asked_instrument: NonEmptyStr = "docker run --rm --entrypoint python3 gunbc-vllm-glm53-gb10:derived-c99be081f219d123 -c: vllm.__version__ (0.1.dev1+g8d09804c8), flashinfer-python/cubin/jit-cache 0.7.0.dev20260910, torch 2.13.0+cu130, membership of the named architecture in vllm.model_executor.models.registry.ModelRegistry.get_supported_archs(), 378 registered in total; the tag resolved by `docker image inspect` to the config id this row is keyed by, RepoDigests empty, Created 2026-09-17T14:55:06-04:00. Executed by the GLM performance lane (calm-bat-65), driver and observer the same principal, 2026-09-18. No checkpoint was loaded and no kernel was executed" as NonEmptyStr
+
+data glm53_derived_glm5next_asked: ArchitectureObservation = ArchitectureAsked {
+  image_reference: glm53_derived_observed_config_id,
+  host: glm53_group_b_head_host,
+  observed_at: "2026-09-18" as NonEmptyStr,
+  instrument: glm53_derived_asked_instrument,
+  architecture: "Glm5NextForConditionalGeneration" as NonEmptyStr,
+  present: true,
+}
+
+data glm53_derived_glm_moe_dsa_asked: ArchitectureObservation = ArchitectureAsked {
+  image_reference: glm53_derived_observed_config_id,
+  host: glm53_group_b_head_host,
+  observed_at: "2026-09-18" as NonEmptyStr,
+  instrument: glm53_derived_asked_instrument,
+  architecture: glm_5_3_architecture_class,
+  present: true,
+}
+
 data spark_architecture_observations: List<ArchitectureObservation> = [
   RegistryDump { reading: sparkrun_vllm_ds4_gb10_registry_reading },
   RegistryDump { reading: gitcommit90_glm_53_one_spark_registry_reading },
@@ -1944,7 +1987,31 @@ data spark_architecture_observations: List<ArchitectureObservation> = [
   RegistryDump { reading: xomoxcc_dgx_spark_sglang_registry_reading },
   RegistryDump { reading: gunbc_vllm_dsv41_gb10_registry_reading },
   v41_published_arm64_architecture_asked,
+  glm53_derived_glm5next_asked,
+  glm53_derived_glm_moe_dsa_asked,
 ]
+
+// ONE IMAGE MAY HAVE SEVERAL ASKED ROWS, ONE PER NAME, so a lookup for a specific architecture keys
+// on both. `architecture_observation_for` keeps its one-per-image meaning for dump consumers; this
+// one answers "was THIS name asked inside THIS image, and what did it say". A dump for the image is
+// also an answer, folded through registry_reading_contains, so a consumer asks once.
+type ArchitectureAskedAnswer
+  = ArchitectureAnswered { present: Bool, observed_at: NonEmptyStr, host: NonEmptyStr }
+  | ArchitectureUnasked
+
+fn architecture_asked_answer(observations: List<ArchitectureObservation>, image_reference: NonEmptyStr, architecture: NonEmptyStr) -> ArchitectureAskedAnswer {
+  fold(observations, init: ArchitectureUnasked, f: (acc, o) =>
+    match o {
+      RegistryDump { reading: r } =>
+        if reading_applies_to(r: r, desired_reference: image_reference) {
+          ArchitectureAnswered { present: registry_reading_contains(r: r, architecture: architecture), observed_at: r.observed_at, host: r.host }
+        } else { acc }
+      ArchitectureAsked { image_reference: i, host: h, observed_at: d, instrument: _, architecture: a, present: p } =>
+        if (i as String) == (image_reference as String) && (a as String) == (architecture as String) {
+          ArchitectureAnswered { present: p, observed_at: d, host: h }
+        } else { acc }
+    })
+}
 
 fn architecture_observation_exists(image_reference: NonEmptyStr) -> Bool {
   match architecture_observation_for(observations: spark_architecture_observations, image_reference: image_reference) {

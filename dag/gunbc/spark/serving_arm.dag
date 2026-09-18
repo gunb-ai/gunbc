@@ -25,7 +25,7 @@ import extdeps.docker.images.gitcommit90_glm_53_one_spark {
 import gunbc.spark.runtime_architecture_registry_reading {
   ArchitectureRegistryReading, registry_reading_contains, reading_applies_to,
   sparkrun_vllm_ds4_gb10_registry_reading, gitcommit90_glm_53_one_spark_registry_reading,
-  glm53_nope_derived_registry_reading,
+  glm53_nope_derived_registry_reading, glm53_derived_observed_config_id,
 }
 import gunbc.spark.model_snapshot_acquisition {
   SnapshotPlacement, HubCachePlacement, LocalDirectoryPlacement, spark_hub_cache_root,
@@ -60,6 +60,7 @@ type ServingRuntime
   | Tonyd2wildSm121Nvfp4
   | VllmOpenaiGlm53Flash
   | GunbcGlm53NopeDerivedGb10
+  | GunbcGlm53DerivedGb10
 
 // THE EIGHT-RANK TOPOLOGY IS A CANDIDATE SHAPE, NOT A DEPLOYED ONE. It exists because
 // gunbc.spark.serving_fit_projection projects the RadixArk GLM-5.3 NVFP4 checkpoint onto it and finds
@@ -127,6 +128,7 @@ fn serving_runtime_wire(r: ServingRuntime) -> NonEmptyStr {
     Tonyd2wildSm121Nvfp4 => "tonyd2wild-sm121-nvfp4" as NonEmptyStr
     VllmOpenaiGlm53Flash => "vllm-openai-glm53-flash" as NonEmptyStr
     GunbcGlm53NopeDerivedGb10 => "gunbc-glm53-nope-derived-gb10" as NonEmptyStr
+    GunbcGlm53DerivedGb10 => "gunbc-glm53-derived-gb10" as NonEmptyStr
   }
 }
 
@@ -556,6 +558,7 @@ fn serving_runtime_row(r: ServingRuntime) -> ServingRuntimeRow? {
     Tonyd2wildSm121Nvfp4 => none
     VllmOpenaiGlm53Flash => Present { value: vllm_openai_glm53_flash_row }
     GunbcGlm53NopeDerivedGb10 => Present { value: glm53_nope_derived_row }
+    GunbcGlm53DerivedGb10 => Present { value: glm53_derived_row }
   }
 }
 
@@ -877,5 +880,52 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
   registry_reading: Present { value: glm53_nope_derived_registry_reading },
   reasoning_projection: Present { value: ParsedReasoningField { field: "reasoning" as NonEmptyStr } },
   provenance: "read inside this exact image on srv9 2026-09-13: 378 registered architectures including all three Glm5Next entries and no DeepseekV41ForCausalLM; flashinfer 0.7.0.dev20260910 and vllm 0.1.dev1+g8d09804c8 reported by import; entrypoint [vllm, serve]; platform linux/arm64; hf at /usr/local/bin/hf; the reasoning parser name this fleet's argv requests (glm45) and the tool parser name (glm47) both RESOLVE here, to Glm47MoeParserReasoningAdapter and Glm47MoeModelToolParser -- established by lookup rather than by reading the registry dict, which is populated lazily and answers empty to a bare import. The NoPE kernel probes both pass: the writer accepts pe_dim 0 and zeroes the reserved tail, and the SM120 sparse reader accepts the 512+0 layout when asked with arbitrary_fp32 scales. THE REASONING PROJECTION IS NO LONGER ABSENT, and it was filled the only way it could be: this image served. A routed completion against the four-rank arm returned a response carrying a `reasoning` member DISTINCT from `content`, with 47 of its 73 completion tokens counted as reasoning_tokens -- so the parser that resolves here also SEPARATES, which resolution alone never showed. That a name resolves in a registry and that a served response comes back split are two different facts, and only the second can be read from a launch" as NonEmptyStr,
+  claimed_defaults_revision: Present { value: Vllm8d09804 },
+}
+
+// ── THE RUNTIME GROUP B SERVES TODAY, WHICH IS NOT THE ROW ABOVE ─────────────────────────────
+//
+// THE NoPE-DERIVED ROW WAS THE SERVING IMAGE ON 2026-09-13 AND STOPPED BEING IT ON 2026-09-17, when
+// Group B was relaunched on a lane-built image from a different repository
+// (gunbc-vllm-glm53-gb10, tag derived-c99be081f219d123) and nothing in this module followed. That
+// is the adopted-out-of-band shape one layer up: a converge landed a new image, and the authority
+// that says which image serves kept describing the old one, so every consumer of
+// GunbcGlm53NopeDerivedGb10 -- the launch planner, the compatibility standing, the selection -- was
+// describing an image that had not served for a day by the time this was found. It was found by an
+// exact-match refusal in gunbc.spark.serving_fit_projection, not by anything watching the arm.
+//
+// PINNED BY CONFIG ID, the image's only identity: RepoDigests is empty because it was never pushed.
+// The tag it is reached through is the derived tag gunbc.spark.vllm_runtime_image_build
+// glm53_derived_tag folds from the wheel set, and that fold is the right authority for the TAG; the
+// content id is what a launch and a reading are keyed by, and it is read from the daemon.
+//
+// WHAT THIS ROW DOES NOT KNOW, STATED RATHER THAN FILLED. (1) registry_reading is Absent: the probe
+// asked two names and reported a count of 378, it did not print the roster, so the two answers live
+// as ArchitectureAsked rows in gunbc.spark.runtime_architecture_registry_reading and a consumer asks
+// architecture_asked_answer; serving_arm_admits will refuse this row until a dump is taken inside
+// the digest, which is one execution of vllm_registry_instrument. (2) hub_cli_path is the NoPE row's
+// value, UNREAD in this image -- a read obligation on the head (`which hf` inside the container),
+// carried here because the field is required and a wrong path is loud at container start rather
+// than silent. (3) reasoning_projection is Absent: nothing here has read a completion from this
+// image, although the harness lanes serving through it have. (4) The base image's own build commit
+// is self-declared unknown (VLLM_BUILD_COMMIT=unknown, VLLM_BUILD_PIPELINE=local in its labels), so
+// source_revision below is the version string's commit and not a label the base carries.
+data glm53_derived_row: ServingRuntimeRow = ServingRuntimeRow {
+  runtime: GunbcGlm53DerivedGb10,
+  artifact: runtime_artifact_identity(
+    pin: PinnedByDigest { reference: glm53_derived_observed_config_id },
+    source_revision: (defaults_source_revision(r: Vllm8d09804)).full_revision,
+    patch_set: [
+      "flashinfer_python-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_cubin-0.7.0.dev20260910-py3-none-any.whl" as NonEmptyStr,
+      "flashinfer_jit_cache-0.7.0.dev20260910+cu130-cp39-abi3-manylinux_2_28_aarch64.whl" as NonEmptyStr,
+    ],
+    provenance: "docker history on the Group B head (192.168.1.236), read by the GLM performance lane 2026-09-18, top layers first: RUN python3 -m pip install --no-deps --force-reinstall /tmp/gunbc-wheels/<the three flashinfer 0.7.0.dev20260910 wheels>; COPY of those wheels into /tmp/gunbc-wheels/; ENTRYPOINT [vllm, serve]; base labels org.opencontainers.image.version=local/vllm-openai:dev, VLLM_BUILD_COMMIT=unknown, VLLM_BUILD_PIPELINE=local. So the derived layer is the wheel set force-reinstalled over a locally built vLLM base whose own build commit is recorded as unknown -- a gap in the chain, stated. Image Id sha256:c7d63d15..., Created 2026-09-17T14:55:06-04:00, RepoDigests empty; the four running Group B containers report this Id as .Image" as NonEmptyStr,
+  ),
+  hub_cli_path: glm53_nope_derived_row.hub_cli_path,
+  vllm_version: glm53_nope_derived_vllm_version,
+  registry_reading: none,
+  reasoning_projection: none,
+  provenance: "read inside this exact image on the Group B head 2026-09-18 by the GLM performance lane: vllm 0.1.dev1+g8d09804c8; flashinfer-python, flashinfer-cubin 0.7.0.dev20260910 and flashinfer-jit-cache 0.7.0.dev20260910+cu130; torch 2.13.0+cu130; Glm5NextForConditionalGeneration registered True (what Group B serves) and GlmMoeDsaForCausalLM registered True, 378 architectures in total; a modelopt.py quantization module present in the package. NOT established: any kernel execution, any checkpoint load, the FP4 W4A4 path on SM121, the hf path, or the reasoning projection -- each is named as a read obligation above rather than inherited from the NoPE row" as NonEmptyStr,
   claimed_defaults_revision: Present { value: Vllm8d09804 },
 }

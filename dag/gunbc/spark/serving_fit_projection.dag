@@ -16,14 +16,18 @@ import extdeps.zhipu.glm_5_3 { GlmMoeDsaShape, glm_5_3_shape, glm_5_3_routed_exp
 import extdeps.radixark.glm_5_3_nvfp4 {
   glm_5_3_nvfp4_manifest, glm_5_3_nvfp4_quantization, nvfp4_representative_expert_bytes,
 }
+import gunbc.spark.runtime_architecture_registry_reading {
+  ArchitectureAskedAnswer, ArchitectureAnswered, ArchitectureUnasked,
+  architecture_asked_answer, spark_architecture_observations,
+}
 import gunbc.spark.serving_arm {
   ServingCheckpoint, Glm53RadixArkNvfp4Modelopt,
-  ServingRuntime, GunbcGlm53NopeDerivedGb10,
+  ServingRuntime, GunbcGlm53DerivedGb10,
   ServingTopology, FourSparkTp4, EightSparkTp8,
   serving_topology_rank_count, serving_topology_wire, serving_checkpoint_wire, serving_runtime_wire,
   gb10_unified_pool_gib,
   ServingCheckpointRow, serving_checkpoint_row,
-  ServingRuntimeRow, serving_runtime_row, runtime_registers, runtime_reading_is_current,
+  ServingRuntimeRow, serving_runtime_row,
   runtime_artifact_wire,
   glm_native_initial_profile,
 }
@@ -175,42 +179,34 @@ fn answer_text(a: StaticCompatibilityAnswer) -> String {
   }
 }
 
-// THE ARCHITECTURE QUESTION IS THE ADMISSION FOLD'S OWN CHECK, asked through the same two functions
-// serving_arm_admits uses -- the reading must have been taken inside the digest this arm would
-// launch, and it must contain the class. No second registry lookup is written here.
+// THE ARCHITECTURE QUESTION IS ASKED OF THE OBSERVATION ROSTER, keyed by the runtime row's own pin:
+// a dump taken inside that digest answers through registry_reading_contains, an asked row answers
+// for its one name, and an image nobody has asked is NotEstablished with the instrument named. This
+// is the same roster serving_arm_admits reads through the row's registry_reading; the difference is
+// that an asked row -- the strength at which the Group B image was actually probed -- can answer
+// here, while the admission fold still waits for a dump.
 fn architecture_answer(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> StaticCompatibilityAnswer {
-  if !runtime_reading_is_current(rrow: rrow) {
-    NotEstablished {
+  let pin = runtime_artifact_wire(a: rrow.artifact)
+  match architecture_asked_answer(observations: spark_architecture_observations, image_reference: pin, architecture: architecture) {
+    ArchitectureUnasked => NotEstablished {
       question: ArchitectureRegisteredInRuntime,
       missing: join([
-        "no registry reading was taken inside ", runtime_artifact_wire(a: rrow.artifact) as String,
+        "no reading inside ", pin as String, " has asked for ", architecture as String,
         "; one execution of the registry instrument inside that digest settles it",
       ], "") as NonEmptyStr,
     }
-  } else if runtime_registers(rrow: rrow, architecture: architecture) {
-    match rrow.registry_reading {
-      Absent => NotEstablished { question: ArchitectureRegisteredInRuntime, missing: "unreachable: a current reading is present" as NonEmptyStr }
-      Present { value: r } => Established {
-        question: ArchitectureRegisteredInRuntime,
-        evidence: join([
-          architecture as String, " is among the ", to_string(length(r.architectures)),
-          " architectures the registry answered inside ", r.image_reference as String,
-          " on ", r.host as String, ", ", r.observed_at as String,
-        ], "") as NonEmptyStr,
+    ArchitectureAnswered { present: p, observed_at: d, host: h } =>
+      if p {
+        Established {
+          question: ArchitectureRegisteredInRuntime,
+          evidence: join([architecture as String, " is registered inside ", pin as String, " (", h as String, ", ", d as String, ")"], "") as NonEmptyStr,
+        }
+      } else {
+        MeasuredNegative {
+          question: ArchitectureRegisteredInRuntime,
+          evidence: join([architecture as String, " is not registered inside ", pin as String, " (", h as String, ", ", d as String, ")"], "") as NonEmptyStr,
+        }
       }
-    }
-  } else {
-    match rrow.registry_reading {
-      Absent => NotEstablished { question: ArchitectureRegisteredInRuntime, missing: "unreachable: a current reading is present" as NonEmptyStr }
-      Present { value: r } => MeasuredNegative {
-        question: ArchitectureRegisteredInRuntime,
-        evidence: join([
-          architecture as String, " is not among the ", to_string(length(r.architectures)),
-          " architectures the registry answered inside ", r.image_reference as String,
-          " on ", r.observed_at as String,
-        ], "") as NonEmptyStr,
-      }
-    }
   }
 }
 
@@ -227,14 +223,12 @@ fn architecture_answer(rrow: ServingRuntimeRow, architecture: NonEmptyStr) -> St
 // report never stands in for it.
 //
 // THE FIRST REVISION OF THIS ROW WAS KEYED BY THE TAG, AND THE EXACT-MATCH JOIN REFUSED IT -- WHICH
-// CAUGHT SOMETHING REAL. `docker image inspect` on the head answered Id
-// sha256:c7d63d15... for the tag, and the running container's .Image is that id. The serving-arm
-// row this projection asks about (GunbcGlm53NopeDerivedGb10) pins sha256:41366caf..., which
-// `docker images` shows is a DIFFERENT repository, gunbc-vllm-glm53-nope-gb10, built five days
-// earlier. So the modelled runtime is the NoPE-derived image it was built as on 2026-09-13, and the
-// image Group B serves today has no runtime row at all. A lenient join would have attached this
-// report to the NoPE image and called the serving image covered; the refusal below says instead
-// that the serving image is unmodelled, which is the fact a deployment decision needs.
+// CAUGHT SOMETHING REAL. `docker image inspect` on the head answered Id sha256:c7d63d15... for the
+// tag, and the running containers' .Image is that id; the only modelled GLM runtime at the time
+// (GunbcGlm53NopeDerivedGb10) pinned sha256:41366caf..., a DIFFERENT repository built five days
+// earlier. The serving image had no runtime row at all. A lenient join would have attached this
+// report to the NoPE image and called the serving image covered; instead the refusal named the
+// unmodelled image, and gunbc.spark.serving_arm glm53_derived_row now models it, pinned by this id.
 //
 // THE REPORT IS KEYED BY THE CONTENT ID THAT WAS PROBED, never by the tag it was reached through.
 // THE PROBE THAT WOULD REPLACE THIS is a RuntimeCapabilityProbeRow in
@@ -396,12 +390,12 @@ fn project_deployment(
 // ── THE RadixArk NVFP4 PROJECTIONS ON THE LIVE RUNTIME ───────────────────────────────────────
 //
 // THE TWO ROWS THE OPERATOR ASKED FOR, and one more that is the comparison baseline. Both NVFP4 rows
-// use the derived NoPE runtime the Group B arm serves on, the live arm's utilisation and the
-// redistribution's manifest; only the rank count differs.
+// use the runtime Group B serves on (the lane-built derived image, pinned by its config id), the
+// live arm's utilisation and the redistribution's manifest; only the rank count differs.
 fn radixark_nvfp4_projection(topology: ServingTopology) -> DeploymentProjection {
   project_deployment(
     checkpoint: Glm53RadixArkNvfp4Modelopt,
-    runtime: GunbcGlm53NopeDerivedGb10,
+    runtime: GunbcGlm53DerivedGb10,
     topology: topology,
     manifest: glm_5_3_nvfp4_manifest,
     utilization: live_arm_utilization(),

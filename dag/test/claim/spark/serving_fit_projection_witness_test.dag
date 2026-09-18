@@ -12,7 +12,7 @@ import extdeps.radixark.glm_5_3_nvfp4 {
   nvfp4_routed_experts_share_basis_points, nvfp4_share_of_native_basis_points, nvfp4_quantized_classes,
 }
 import gunbc.spark.serving_arm {
-  ServingCheckpoint, Glm53RadixArkNvfp4Modelopt, ServingRuntime, GunbcGlm53NopeDerivedGb10,
+  ServingCheckpoint, Glm53RadixArkNvfp4Modelopt, ServingRuntime, GunbcGlm53DerivedGb10,
   ServingTopology, FourSparkTp4, EightSparkTp8,
   serving_runtime_row, runtime_artifact_wire,
 }
@@ -157,8 +157,8 @@ fn established(p: DeploymentProjection, q: StaticCompatibilityQuestion) -> Bool 
   }
 }
 
-// THE ARCHITECTURE IS ESTABLISHED THROUGH THE REAL ROUTE: the derived NoPE runtime row, its registry
-// reading taken inside its own digest, and GlmMoeDsaForCausalLM found among the answered names.
+// THE ARCHITECTURE IS ESTABLISHED THROUGH THE REAL ROUTE: the serving runtime row's pin, the asked
+// observation taken inside that config id, and GlmMoeDsaForCausalLM answered present there.
 test fn w_the_derived_runtime_registers_the_architecture() -> Bool {
   established(p: radixark_nvfp4_tp8(), q: ArchitectureRegisteredInRuntime)
 }
@@ -170,55 +170,65 @@ test fn w_tp4_refuses_on_fit_before_anything_else() -> Bool {
   }
 }
 
-// TP8 REFUSES TODAY, AND FOR THE RIGHT REASON: the image that was probed (the one Group B serves) is
-// not the image the modelled runtime row pins, and no FP4-on-device probe row exists for either. Neither
-// is a measured negative; both are named absences, and the first one is a finding -- the serving image
-// has no runtime row.
-test fn w_tp8_refuses_until_the_quantization_path_is_joined_to_the_pin() -> Bool {
+// TP8 REFUSES TODAY ON EXACTLY ONE NAMED ABSENCE: the serving image's runtime row is now modelled and
+// the report is keyed by its pin, so the architecture and the modelopt module are Established; what no
+// reading has established is the FP4 kernel path on this device, and module presence never answers
+// for it. The refusal names the probe that would.
+test fn w_tp8_refuses_on_the_fp4_device_probe_alone() -> Bool {
   let p = radixark_nvfp4_tp8()
   match p.verdict {
     ProjectionAdmitsStatically { fit: _, answers: _ } => false
-    ProjectionRefused { cause: _, fit: _, answers: _ } =>
-      !established(p: p, q: QuantizationMethodShippedByRuntime)
+    ProjectionRefused { cause: c, fit: _, answers: _ } =>
+      established(p: p, q: ArchitectureRegisteredInRuntime)
+        && established(p: p, q: QuantizationMethodShippedByRuntime)
         && !established(p: p, q: Fp4WeightsSupportedOnDevice)
-        && match answer_for(p: p, q: QuantizationMethodShippedByRuntime) {
-          Absent => false
-          Present { value: a } => match a {
-            NotEstablished { question: _, missing: m } => string_contains(s: m as String, pattern: "they are different images")
-            Established { question: _, evidence: _ } => false
-            MeasuredNegative { question: _, evidence: _ } => false
-          }
-        }
+        && string_contains(s: c as String, pattern: "fp4-weight-kernels-supported-here")
   }
 }
 
-// THE DISCRIMINATING CONTROL: a report keyed by the modelled runtime's own pin flips the quantization
-// answer to Established, and the FP4-on-device answer stays unestablished -- module presence never
-// stands in for the kernel probe. This is the RED for a join that ignored the reference, and for a
-// fold that let the weaker reading answer the stronger question.
-test fn w_a_report_keyed_by_the_pin_establishes_the_quantization_path() -> Bool {
-  match serving_runtime_row(r: GunbcGlm53NopeDerivedGb10) {
+// THE DISCRIMINATING RED FOR THE JOIN: the same report keyed by a reference no row pins refuses the
+// quantization question and names both images, so a report cannot be attached to a runtime it did not
+// probe.
+test fn w_a_report_keyed_by_another_reference_does_not_establish_the_quantization_path() -> Bool {
+  let elsewhere = RuntimeImageReport {
+    image_reference: "sha256:0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+    reached_through_tag: glm53_group_b_image_report.reached_through_tag,
+    vllm_version: glm53_group_b_image_report.vllm_version,
+    architecture_registered: glm53_group_b_image_report.architecture_registered,
+    quant_method_module_present: glm53_group_b_image_report.quant_method_module_present,
+    instrument: glm53_group_b_image_report.instrument,
+    reported_by: "fixture: the live report keyed by a reference no row pins" as NonEmptyStr,
+  }
+  let p = project_deployment(
+    checkpoint: Glm53RadixArkNvfp4Modelopt,
+    runtime: GunbcGlm53DerivedGb10,
+    topology: EightSparkTp8,
+    manifest: glm_5_3_nvfp4_manifest,
+    utilization: live_arm_utilization(),
+    report: elsewhere,
+    required_method: glm_5_3_nvfp4_quantization.quant_method,
+  )
+  !established(p: p, q: QuantizationMethodShippedByRuntime)
+    && match answer_for(p: p, q: QuantizationMethodShippedByRuntime) {
+      Absent => false
+      Present { value: a } => match a {
+        NotEstablished { question: _, missing: m } => string_contains(s: m as String, pattern: "they are different images")
+        Established { question: _, evidence: _ } => false
+        MeasuredNegative { question: _, evidence: _ } => false
+      }
+    }
+}
+
+// THE LIVE REPORT IS KEYED BY THE ROW'S OWN PIN -- read both from their homes and compared, so a repin
+// of the row without a new probe reddens here -- and establishes the quantization module while the
+// FP4-on-device answer stays unestablished: module presence never stands in for the kernel probe.
+test fn w_the_live_report_is_keyed_by_the_serving_rows_pin() -> Bool {
+  match serving_runtime_row(r: GunbcGlm53DerivedGb10) {
     Absent => false
     Present { value: rrow } => {
-      let joined = RuntimeImageReport {
-        image_reference: runtime_artifact_wire(a: rrow.artifact),
-        reached_through_tag: glm53_group_b_image_report.reached_through_tag,
-        vllm_version: glm53_group_b_image_report.vllm_version,
-        architecture_registered: glm53_group_b_image_report.architecture_registered,
-        quant_method_module_present: glm53_group_b_image_report.quant_method_module_present,
-        instrument: glm53_group_b_image_report.instrument,
-        reported_by: "fixture: the live report re-keyed by the modelled runtime's pin" as NonEmptyStr,
-      }
-      let p = project_deployment(
-        checkpoint: Glm53RadixArkNvfp4Modelopt,
-        runtime: GunbcGlm53NopeDerivedGb10,
-        topology: EightSparkTp8,
-        manifest: glm_5_3_nvfp4_manifest,
-        utilization: live_arm_utilization(),
-        report: joined,
-        required_method: glm_5_3_nvfp4_quantization.quant_method,
-      )
-      established(p: p, q: QuantizationMethodShippedByRuntime)
+      let p = radixark_nvfp4_tp8()
+      (glm53_group_b_image_report.image_reference as String) == (runtime_artifact_wire(a: rrow.artifact) as String)
+        && established(p: p, q: QuantizationMethodShippedByRuntime)
         && !established(p: p, q: Fp4WeightsSupportedOnDevice)
     }
   }
