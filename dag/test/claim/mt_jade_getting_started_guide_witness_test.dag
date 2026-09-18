@@ -4,27 +4,43 @@ import std.types { Bool, String, concat, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.ampere.mt_jade_getting_started_guide.subject {
+  mt_jade_gsg_authority,
   mt_jade_gsg_content_digest,
   mt_jade_gsg_issue,
+  mt_jade_gsg_operator_drive_mirror_authority,
+  mt_jade_gsg_publication_status,
   mt_jade_gsg_title,
+}
+import extdeps.ampere.mt_jade_getting_started_guide.chassis {
+  mt_jade_gsg_carton_power_cable_count,
+  mt_jade_gsg_carton_rail_kit_count,
+  mt_jade_gsg_chassis_fan_count,
+  mt_jade_gsg_chassis_model_scope,
+  mt_jade_gsg_chassis_weight,
+  mt_jade_gsg_inlet_connector_face,
+  mt_jade_gsg_minimum_bmc_firmware_family,
+  mt_jade_gsg_rear_psu_count,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, external_model_scope_citations }
+import extdeps.publication { publication_status_is_publicly_published }
+import gunbc.upstream_document_carriage {
+  FactsMayBeCarried,
+  carriage_permits_facts,
+  upstream_fact_carriage,
+}
+import gunbc.specification_citation_read_provenance {
+  RecordedReadBytesAgree,
+  mt_jade_gsg_citation_read_comparison,
 }
 import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count }
 import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
+  mt_jade_gsg_memory_population_model_scope,
   mt_jade_gsg_one_dpc_empty_slot_labels,
   mt_jade_gsg_population_2s2p_16_dimms,
   mt_jade_gsg_socket0_channel_pairs,
   mt_jade_gsg_socket0_one_dpc_slot_labels,
   mt_jade_gsg_socket1_channel_pairs,
   mt_jade_gsg_socket1_one_dpc_slot_labels,
-}
-import extdeps.ampere.mt_jade_getting_started_guide.chassis {
-  mt_jade_gsg_carton_power_cable_count,
-  mt_jade_gsg_carton_rail_kit_count,
-  mt_jade_gsg_chassis_fan_count,
-  mt_jade_gsg_chassis_weight,
-  mt_jade_gsg_inlet_connector_face,
-  mt_jade_gsg_minimum_bmc_firmware_family,
-  mt_jade_gsg_rear_psu_count,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -66,4 +82,25 @@ test fn w_jade_gsg_states_cables_rails_fans_and_does_not_state_inlet_or_weight()
     && mt_jade_gsg_minimum_bmc_firmware_family == AmiMegaRac
     && (mt_jade_gsg_inlet_connector_face.topic as String) != ""
     && (mt_jade_gsg_chassis_weight.topic as String) != ""
+}
+
+fn jade_gsg_scope_cites(scope: ExternalModelScope, authority: ExternalAuthority) -> Bool {
+  fold(external_model_scope_citations(scope: scope), init: false, f: (acc, c) => acc || (c == authority))
+}
+
+test fn w_jade_gsg_publisher_is_first_citation_drive_is_mirror_and_carriage_admits() -> Bool {
+  (mt_jade_gsg_authority.uri.locator as String) == "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?file=new-private-files/94/tech/Altra_Family_Mt._Jade_PVT_DVT_NVMe_GSG_v1.00_20220412.pdf&type=technical-document&doc_id=631"
+    && mt_jade_gsg_chassis_model_scope.first_citation == mt_jade_gsg_authority
+    && mt_jade_gsg_memory_population_model_scope.first_citation == mt_jade_gsg_authority
+    && jade_gsg_scope_cites(scope: mt_jade_gsg_chassis_model_scope, authority: mt_jade_gsg_operator_drive_mirror_authority)
+    && jade_gsg_scope_cites(scope: mt_jade_gsg_memory_population_model_scope, authority: mt_jade_gsg_operator_drive_mirror_authority)
+    && mt_jade_gsg_operator_drive_mirror_authority != mt_jade_gsg_authority
+    && publication_status_is_publicly_published(status: mt_jade_gsg_publication_status)
+    && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_jade_gsg_publication_status))
+    && (upstream_fact_carriage(status: mt_jade_gsg_publication_status) == FactsMayBeCarried)
+    && match mt_jade_gsg_citation_read_comparison.standing {
+      RecordedReadBytesAgree => true
+      RecordedReadBytesDiffer => false
+      ReadBytesNotComparable => false
+    }
 }

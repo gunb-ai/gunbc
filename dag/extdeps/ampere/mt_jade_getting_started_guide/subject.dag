@@ -13,19 +13,27 @@ import extdeps.vendor.ampere { ampere_vendor }
 // AMPERE ALTRA FAMILY MT. JADE PVT/DVT (NVME) GETTING STARTED GUIDE, Document Issue 1.00.
 // Independently versioned from the OCP Mt. Jade motherboard specification (extdeps.ocp.mt_jade).
 // FrameMaker source name in the PDF info dictionary: Altra_Family_Mt._Jade_PVT_DVT_NVMe_GSG_v1.00_20220412.fm.
-// The operator-supplied readable copy is the Drive locator below (fetched without credentials).
 // Every page is footed Ampere Computing Proprietary; that marking grants nothing and decides
 // nothing for carriage (gunbc.upstream_document_carriage). This is not the Customer Connect
-// reference-board design package.
+// reference-board design package. The publisher locator is first_citation. The operator Drive
+// copy is a further citation (a mirror), never the publisher slot. How this repository read
+// either locator is gunbc.specification_citation_read_provenance.
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?file=new-private-files/94/tech/Altra_Family_Mt._Jade_PVT_DVT_NVMe_GSG_v1.00_20220412.pdf&type=technical-document&doc_id=631",
+  }
+}
+
+data mt_jade_gsg_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data mt_jade_gsg_operator_drive_mirror_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "drive.google.com/uc?export=download&id=13SIlqviMX8RGa13G8pu4xsr2EwblbYbe",
   }
 }
-
-data mt_jade_gsg_authority: ExternalAuthority = extdeps_external_authority_anchor
 
 data mt_jade_gsg_title: NonEmptyStr = "Ampere Altra Family Mt. Jade PVT/DVT (NVMe) Getting Started Guide"
 
@@ -70,7 +78,7 @@ data mt_jade_gsg_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [],
+  further_citations: [mt_jade_gsg_operator_drive_mirror_authority],
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_jade_gsg_model_scope
