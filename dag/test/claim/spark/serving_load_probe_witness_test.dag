@@ -74,6 +74,7 @@ import gunbc.spark.serving_load_probe {
   ClientOutputTokensObserved,
   pinned_load_protocol_matches, bench_output_len, glm_native_sweep_num_prompts,
   glm_native_holistic_execution, LongContextLoadProtocolPrototype, LongContextRunnable,
+  glm_native_live_runtime_is_derived_gb10_row,
 }
 
 data start_field: NonEmptyStr = "1789300000.12" as NonEmptyStr
@@ -642,4 +643,8 @@ test fn qualify_client_rate_refuses_two_boundary_occupancy() -> Bool {
     ClientRateUnqualified { because: _ } => true
     ClientRateQualified { tokens: _, scrape_millis: _ } => false
   }
+}
+
+test fn live_subject_consumes_the_derived_gb10_runtime_row() -> Bool {
+  glm_native_live_runtime_is_derived_gb10_row()
 }

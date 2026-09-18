@@ -34,8 +34,8 @@ import gunbc.spark.vllm_endpoint_process_launch {
   VllmEndpointProcessLaunchObservation, LaunchObserved, LaunchUnobserved,
 }
 import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4, glm_native_concurrent_profile,
-  glm53_native_fp8_row,
+  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4, glm_native_concurrent_profile,
+  glm53_native_fp8_row, glm53_derived_row, runtime_artifact_wire, serving_runtime_wire,
 }
 import gunbc.spark.serving_arm_launch { glm_native_weights_container_dir }
 import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCachePlacement }
@@ -1559,11 +1559,12 @@ data glm_native_single_stream_decode_bound_standing: CitedFigureStanding = Trans
 }
 
 // max_num_seqs is 16 on the live units (parent reverted the out-of-band 64 edit).
+// Runtime is glm53_derived_row (GunbcGlm53DerivedGb10); checkpoint revision is the native Flash row.
 data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(
   checkpoint: Glm53NativeFp8,
-  checkpoint_revision: none,
-  runtime: GunbcGlm53NopeDerivedGb10,
-  runtime_image_reference: glm53_nope_derived_registry_reading.image_reference,
+  checkpoint_revision: Present { value: glm53_native_fp8_row.revision },
+  runtime: GunbcGlm53DerivedGb10,
+  runtime_image_reference: runtime_artifact_wire(a: glm53_derived_row.artifact),
   topology: Present { value: FourSparkTp4 },
   rank_population: Present { value: 4 },
   context_ceiling: Present { value: glm_native_concurrent_profile.max_model_len },
@@ -1577,9 +1578,14 @@ data glm_native_live_subject: ServingPerformanceSubject = serving_performance_su
 fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding {
   serving_subject_standing(
     subject: glm_native_live_subject,
-    believed: "checkpoint revision and collective transport were unread; the live image digest is the one named on the arm" as NonEmptyStr,
-    would_settle: "read the running launch's checkpoint pin and NCCL transport announcement" as NonEmptyStr,
+    believed: "collective transport was unread; the runtime is glm53_derived_row and the checkpoint revision is glm53_native_fp8_row.revision" as NonEmptyStr,
+    would_settle: "read the running launch's NCCL transport announcement on this incarnation" as NonEmptyStr,
   )
+}
+
+fn glm_native_live_runtime_is_derived_gb10_row() -> Bool {
+  (serving_runtime_wire(r: glm_native_live_subject.runtime) as String) == (serving_runtime_wire(r: GunbcGlm53DerivedGb10) as String)
+    && (glm_native_live_subject.runtime_image_reference as String) == (runtime_artifact_wire(a: glm53_derived_row.artifact) as String)
 }
 
 fn holistic_protocol_is_session_shaped(req: VllmBenchServeRequest) -> Bool {
