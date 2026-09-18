@@ -131,6 +131,9 @@ import std.human_intervention {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.review_sheet_operator {
   admit_review_sheet_operator,
+  review_sheet_residency,
+  SheetInOwnerMyDrive,
+  review_sheet_access_intervention,
   fleet_review_sheet_operator_admission,
   buyer_review_spreadsheet,
   buyer_review_workspace_domain_sharing,
@@ -169,7 +172,13 @@ import gunbc.gcp_service_enablement {
   ServiceEnablementStateForeign,
 }
 import gunbc.secret_provision { gcp_fleet_secrets_wif_binding_intervention }
-import gunbc.gcp_estate_observation { sheets_calling_home, SheetsCallingHomeUnresolved }
+import gunbc.gcp_estate_observation {
+  sheets_calling_home,
+  SheetsCallingHomeUnresolved,
+  SheetsCallingHomeSelected,
+  gunbai_sheets_project_id,
+  review_sheet_writer_sa_email,
+}
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId }
 
 fn w_schema() -> ReviewSheetSchema {
@@ -1755,75 +1764,47 @@ fn w_observed_disabled() -> ServiceEnablementObservation {
   ServiceObservedDisabled { project: w_fixture_project(), service_id: sheets_serviceusage_api_id }
 }
 
-test fn committed_project_and_writer_are_unresolved_not_secrets_defaults() -> Bool {
+// The home is selected now, so the admission no longer stops at the estate. It stops one step
+// later and for a different reason: nobody has observed serviceusage on gunbai-sheets, because
+// the operator creates that project by hand. The proposition worth keeping across that move is
+// the one in the name -- the committed project and writer are not the secrets-project defaults --
+// so it is asserted against the SELECTED arm rather than deleted with the unresolved one.
+test fn committed_project_and_writer_are_selected_not_secrets_defaults() -> Bool {
   match fleet_review_sheet_operator_admission() {
-    ReviewSheetEstateUnresolved { subject: s, reason: r } =>
-      (s as String) == "sheets_calling_home"
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "unobserved")
+        && string_contains(s: r as String, pattern: "sheets.googleapis.com")
+        && string_contains(s: r as String, pattern: gunbai_sheets_project_id as String)
         && match sheets_calling_home() {
           SheetsCallingHomeUnresolved {
-            refused_api_surface_project: p,
-            refused_writer: w,
+            refused_api_surface_project: _,
+            refused_writer: _,
             candidate_writer_in_secrets: _,
             kitchen_sink_project: _,
             pool_host_without_sts: _,
             sts_host_without_sheets: _,
+          } => false
+          SheetsCallingHomeSelected {
+            project_id: pid,
+            writer: wr,
+            refused_api_surface_project: refused,
+            refused_writer: rw,
           } =>
-            string_contains(s: r as String, pattern: p as String)
-              && string_contains(s: r as String, pattern: w as String)
+            pid == gunbai_sheets_project_id
+              && wr == review_sheet_writer_sa_email
+              && pid != refused
+              && (wr as String) != (rw as String)
         }
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
-    ReviewSheetOperatorRefused { reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
-    && match buyer_review_spreadsheet {
-      SpreadsheetAwaitingCreation => true
-      SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
-    }
-    && match buyer_review_account_tenancy {
-      ReviewSheetWorkspaceDomain => true
-      ReviewSheetPlainGoogleAccount => false
-      AccountTenancyUnobserved => false
-    }
-    && match buyer_review_workspace_domain_sharing() {
-      DomainSharingAllowsServiceAccountShare =>
-        (buyer_review_workspace_sharing_reading.read_on as String) == "2026-09-11"
-          && string_contains(
-            s: buyer_review_workspace_sharing_reading.source as String,
-            pattern: "Drive and Docs > Sharing settings",
-          )
-          && string_contains(
-            s: buyer_review_workspace_sharing_reading.quoted_selection as String,
-            pattern: "shared outside of gunb.ai",
-          )
-      DomainSharingPolicyUnobserved => false
-      DomainSharingForbidsExternalPrincipals => false
-    }
-    && match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
-      NoDischargeSiteModeled => true
-      DischargedAt { evidence: _ } => false
-    }
-    && match review_sheet_live_access(
-      credential: SecretRef {
-        project: "custody-only",
-        secret: "unused" as NonEmptyStr,
-        version: "pending",
-        hash_state: HashPending,
-      },
-    ) {
-      ReviewSheetLiveNotAdmitted { admission: a } =>
-        match a {
-          ReviewSheetEstateUnresolved { subject: s, reason: _ } =>
-            (s as String) == "sheets_calling_home"
-          ReviewSheetAwaitingHuman { intervention: _ } => false
-          ReviewSheetOperatorRefused { reason: _ } => false
-          ReviewSheetNeedsApiEnable { plan: _ } => false
-          ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
-        }
-      ReviewSheetLiveOpen { access: _ } => false
-    }
 }
 
+// Still the point of this witness: the admission reads the estate's home and keeps no second
+// standing of its own. With the home selected, "follows the estate" means it carries the estate's
+// project into its refusal rather than answering about some project of its own.
 test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bool {
   match sheets_calling_home() {
     SheetsCallingHomeUnresolved {
@@ -1840,6 +1821,20 @@ test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bo
         ReviewSheetAwaitingHuman { intervention: _ } => false
         ReviewSheetNeedsApiEnable { plan: _ } => false
         ReviewSheetOperatorRefused { reason: _ } => false
+        ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+      }
+    SheetsCallingHomeSelected {
+      project_id: pid,
+      writer: _,
+      refused_api_surface_project: _,
+      refused_writer: _,
+    } =>
+      match fleet_review_sheet_operator_admission() {
+        ReviewSheetOperatorRefused { reason: r } =>
+          string_contains(s: r as String, pattern: pid as String)
+        ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+        ReviewSheetAwaitingHuman { intervention: _ } => false
+        ReviewSheetNeedsApiEnable { plan: _ } => false
         ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
       }
   }
@@ -1879,6 +1874,7 @@ test fn admit_observe_only_refuses_disabled_api_instead_of_needing_enable() -> B
     enablement: w_observed_disabled(),
     enablement_policy: EnsureObserveOnly,
     spreadsheet: SpreadsheetAwaitingCreation,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -1910,14 +1906,16 @@ test fn enablement_converge_never_disables() -> Bool {
   }
 }
 
-test fn fleet_admission_does_not_admit_while_calling_home_is_unresolved() -> Bool {
+// The wall this witness is: no path reaches Admitted before the project is real. Selecting a home
+// moved the blocking reason from the estate to the unobserved enablement; it must not have moved
+// the admission any closer to admitting.
+test fn fleet_admission_does_not_admit_while_enablement_is_unobserved() -> Bool {
   match fleet_review_sheet_operator_admission() {
-    ReviewSheetEstateUnresolved { subject: s, reason: r } =>
-      (s as String) == "sheets_calling_home"
-        && string_contains(s: r as String, pattern: "refused writer")
+    ReviewSheetOperatorRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "unobserved")
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
     ReviewSheetAwaitingHuman { intervention: _ } => false
     ReviewSheetNeedsApiEnable { plan: _ } => false
-    ReviewSheetOperatorRefused { reason: _ } => false
     ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
   }
 }
@@ -1929,6 +1927,7 @@ test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> B
     enablement: w_observed_disabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetAwaitingCreation,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -1951,6 +1950,7 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetAwaitingCreation,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -1979,6 +1979,7 @@ test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_pending_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -2037,7 +2038,7 @@ test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
     ServiceObservedEnabled { project: p, service_id: s } =>
       (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
     ServiceObservedDisabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
     ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
   }
 }
@@ -2051,7 +2052,7 @@ test fn enablement_state_wire_disabled_is_not_unobserved() -> Bool {
     ServiceObservedDisabled { project: p, service_id: s } =>
       (p as String) == "fixture-api-project" && (s as String) == "sheets.googleapis.com"
     ServiceObservedEnabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
     ServiceEnablementStateForeign { project: _, service_id: _, raw: _ } => false
   }
 }
@@ -2091,11 +2092,11 @@ test fn unspecified_or_unknown_serviceusage_state_is_foreign_not_unobserved() ->
               }
           ServiceObservedEnabled { project: _, service_id: _ } => false
           ServiceObservedDisabled { project: _, service_id: _ } => false
-          ServiceEnablementUnobserved { project: _, service_id: _ } => false
+          ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
         }
     ServiceObservedEnabled { project: _, service_id: _ } => false
     ServiceObservedDisabled { project: _, service_id: _ } => false
-    ServiceEnablementUnobserved { project: _, service_id: _ } => false
+    ServiceEnablementUnobserved { project: _, service_id: _, cause: _ } => false
   }
 }
 
@@ -2265,6 +2266,7 @@ test fn discharged_share_for_another_spreadsheet_does_not_admit() -> Bool {
       spreadsheet_id: "sheet-other" as NonEmptyStr,
       owner: "operator" as NonEmptyStr,
     },
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -2293,6 +2295,7 @@ test fn discharged_share_for_another_writer_does_not_admit() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: review_sheet_residency,
     serviceusage_enable_iam: w_discharged_iam(),
     share: HumanIntervention {
       identity: other.identity,
@@ -2328,6 +2331,7 @@ test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -2349,6 +2353,7 @@ test fn enabled_api_does_not_demand_serviceusage_enable_iam() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(
       project: w_fixture_project(),
       writer: w_fixture_writer(),
@@ -2372,6 +2377,7 @@ test fn disabled_api_awaits_serviceusage_enable_iam_before_enable() -> Bool {
     enablement: w_observed_disabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetAwaitingCreation,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: serviceusage_enable_iam_grant_intervention(
       project: w_fixture_project(),
       writer: w_fixture_writer(),
@@ -2399,6 +2405,7 @@ test fn discharged_iam_for_another_project_does_not_need_enable() -> Bool {
     enablement: w_observed_disabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetAwaitingCreation,
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam_for(
       project: "other-api-project",
       writer: w_fixture_writer(),
@@ -2426,6 +2433,7 @@ test fn unread_workspace_sharing_policy_refuses() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingPolicyUnobserved,
@@ -2448,6 +2456,7 @@ test fn domain_policy_forbidding_sa_share_refuses() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingForbidsExternalPrincipals,
@@ -2470,6 +2479,7 @@ test fn admitted_admission_opens_live_access() -> Bool {
     enablement: w_observed_enabled(),
     enablement_policy: EnsureMayApply,
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: SheetInOwnerMyDrive,
     serviceusage_enable_iam: w_discharged_iam(),
     share: w_discharged_share(),
     sharing_policy: DomainSharingAllowsServiceAccountShare,
@@ -2486,5 +2496,169 @@ test fn admitted_admission_opens_live_access() -> Bool {
   ) {
     ReviewSheetLiveOpen { access: a } => a.spreadsheet_id == id
     ReviewSheetLiveNotAdmitted { admission: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE RESIDENCY BUG, and it is here because nothing in this file could
+// have gone red for it. The validator used to build its expectation as a My Drive FILE share while
+// the entry supplied a shared-drive MEMBER step for the live residency, so an identified
+// spreadsheet in a shared drive refused forever -- and every witness above passes a My Drive
+// fixture, so every one of them agreed with the broken validator. This claim supplies the
+// mismatch on purpose: a discharged FILE share under a SHARED DRIVE residency is not the access
+// step that residency requires, and admitting it would be admitting the wrong human action.
+test fn a_file_share_does_not_admit_a_shared_drive_residency() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: review_sheet_residency,
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_share(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorRefused { reason: _ } => true
+    ReviewSheetAwaitingHuman { intervention: _ } => true
+    ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+// AND THE POSITIVE CONTROL, so the row above cannot be satisfied by a validator that refuses
+// everything: the shared-drive residency admits when the MEMBER step is the discharged one.
+test fn a_discharged_drive_membership_admits_a_shared_drive_residency() -> Bool {
+  let id = "sheet-abc" as NonEmptyStr
+  match admit_review_sheet_operator(
+    project: w_fixture_project(),
+    writer: w_fixture_writer(),
+    enablement: w_observed_enabled(),
+    enablement_policy: EnsureMayApply,
+    spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
+    residency: review_sheet_residency,
+    serviceusage_enable_iam: w_discharged_iam(),
+    share: w_discharged_drive_member(),
+    sharing_policy: DomainSharingAllowsServiceAccountShare,
+    tenancy: ReviewSheetWorkspaceDomain,
+  ) {
+    ReviewSheetOperatorAdmitted { spreadsheet_id: sid } => sid == id
+    ReviewSheetAwaitingHuman { intervention: _ } => false
+    ReviewSheetOperatorRefused { reason: _ } => false
+    ReviewSheetNeedsApiEnable { plan: _ } => false
+    ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+  }
+}
+
+fn w_discharged_drive_member() -> HumanIntervention {
+  let pending = review_sheet_access_intervention(
+    residency: review_sheet_residency,
+    spreadsheet: SpreadsheetIdentified {
+      spreadsheet_id: "sheet-abc" as NonEmptyStr,
+      owner: "operator" as NonEmptyStr,
+    },
+    writer: w_fixture_writer(),
+  )
+  HumanIntervention {
+    identity: pending.identity,
+    frequency: pending.frequency,
+    subject: pending.subject,
+    instruction: pending.instruction,
+    completion_evidence: DischargedAt {
+      evidence: DeclarationRef {
+        module_path: "test.claim.review_sheet_converge_witness",
+        decl_name: "w_discharged_drive_member",
+        field: WholeDeclaration,
+      },
+    },
+  }
+}
+
+// -------------------------------------------------------------------------------------
+// EVIDENCE RE-ENROLLED AFTER A REWRITE DROPPED IT. When
+// committed_project_and_writer_are_unresolved_not_secrets_defaults was rewritten for the estate's
+// move to a SELECTED home, four independent conjuncts went with it that had nothing to do with that
+// move. Their subjects did not change, so DESIGN section 4b(4) applies exactly: a climb deletes the
+// production machinery it obsoletes, and the evidence stays enrolled. Nothing climbed -- the
+// assertions were collateral, and the dangling imports left behind were the tell.
+//
+// They return as four tests rather than one conjunction, which is the split the witness-standing
+// rule wants anyway: a conjunction forces every case through one budget and reports "one of four
+// failed" when the point of each is a different subject.
+//
+// A fifth conjunct is NOT restored here on purpose. The WIF intervention's NoDischargeSiteModeled
+// standing is already covered by fleet_secrets_wif_binding_is_still_undischarged, with a control,
+// so re-adding it would be a second copy of one fact rather than recovered coverage.
+// -------------------------------------------------------------------------------------
+
+// THE SHARING READING IS A TRANSCRIBED OBSERVATION AND ITS PROVENANCE IS THE EVIDENCE. A policy
+// reading with no read date and no named source is an assertion about a Workspace console someone
+// looked at once; these three fields are what make it checkable by a second reader.
+test fn workspace_sharing_reading_carries_its_provenance() -> Bool {
+  match buyer_review_workspace_domain_sharing() {
+    DomainSharingAllowsServiceAccountShare =>
+      (buyer_review_workspace_sharing_reading.read_on as String) == "2026-09-11"
+        && string_contains(
+          s: buyer_review_workspace_sharing_reading.source as String,
+          pattern: "Drive and Docs > Sharing settings",
+        )
+        && string_contains(
+          s: buyer_review_workspace_sharing_reading.quoted_selection as String,
+          pattern: "shared outside of gunb.ai",
+        )
+    DomainSharingPolicyUnobserved => false
+    DomainSharingForbidsExternalPrincipals => false
+  }
+}
+
+// THE TENANCY IS WORKSPACE, NOT A PLAIN ACCOUNT, and the difference decides which admission path
+// runs: a plain account never consults a domain sharing policy at all.
+test fn fleet_account_tenancy_is_a_workspace_domain() -> Bool {
+  match buyer_review_account_tenancy {
+    ReviewSheetWorkspaceDomain => true
+    ReviewSheetPlainGoogleAccount => false
+    AccountTenancyUnobserved => false
+  }
+}
+
+// THE BUYER SPREADSHEET IS STILL AWAITING CREATION, which is what keeps the identified-spreadsheet
+// arm of the admission unreached. A test that assumed an identified sheet would be asserting a
+// state the fleet has never been in.
+test fn buyer_review_spreadsheet_is_still_awaiting_creation() -> Bool {
+  match buyer_review_spreadsheet {
+    SpreadsheetAwaitingCreation => true
+    SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
+  }
+}
+
+// LIVE ACCESS IS STILL CLOSED, AND THE REASON MOVED. The dropped conjunct asserted this through
+// ReviewSheetEstateUnresolved with subject sheets_calling_home -- true when the home was unresolved
+// and FALSE now, which is why it could not be restored as written. The home is selected, so the
+// fleet standing stops one step later, at a serviceusage state nobody has observed. What the wall
+// establishes is unchanged and is what this asserts: the zero-argument entry, which reads the FLEET
+// standing rather than a supplied admission, does not open live access. The sibling at
+// live_access_opens_for_an_admitted_fleet drives the same fold from an ADMITTED admission, so
+// between them the open and closed directions are both executed.
+test fn fleet_live_access_is_not_open() -> Bool {
+  match review_sheet_live_access(
+    credential: SecretRef {
+      project: "custody-only",
+      secret: "unused" as NonEmptyStr,
+      version: "pending",
+      hash_state: HashPending,
+    },
+  ) {
+    ReviewSheetLiveNotAdmitted { admission: a } =>
+      match a {
+        ReviewSheetOperatorRefused { reason: r } =>
+          string_contains(s: r as String, pattern: "unobserved")
+        ReviewSheetEstateUnresolved { subject: _, reason: _ } => false
+        ReviewSheetAwaitingHuman { intervention: _ } => false
+        ReviewSheetNeedsApiEnable { plan: _ } => false
+        ReviewSheetOperatorAdmitted { spreadsheet_id: _ } => false
+      }
+    ReviewSheetLiveOpen { access: _ } => false
   }
 }

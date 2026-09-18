@@ -1,0 +1,215 @@
+module test.claim.approval_request_submission_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String, Secret }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex, MacVerified, mac_verify }
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, approval_capability_signing_input }
+import gunbc.auth.approval_decision_store {
+  ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyFileAbsent, StoredApprovalRequest, stored_request_json, claims_for,
+  approval_mac_key_id, capability_path_segment, parse_capability_segment, CapabilitySegmentParsed, EscalationUnreadable, EscalationPending, EscalationDecided, EscalationNotFiled,
+}
+import gunbc.auth.approval_ntfy_deployment { hermetic_ntfy_publish_message_id }
+import gunbc.auth.approval_broker { BrokerDenied }
+import gunbc.auth.approval_request_submission {
+  approval_submission_mac_key_id,
+  sign_submission, submission_envelope_json, parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
+  admit_parsed_submission, SubmissionVerdict, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
+  issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status, escalation_status_of,
+  notify_filed, occupied_slot_standing, OccupiedRenotifiable, OccupiedConflict, OccupiedUnreadable, PublisherTokenLoaded, SubmissionFiledCapabilityKeyUnavailable, SubmissionFiledAndNotified, SubmissionFiledPublisherTokenUnavailable, PublisherTokenUnavailable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data submission_key_hex: String = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+data capability_key_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+fn submission_key() -> MacKey {
+  MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: submission_key_hex as Secret }
+}
+
+fn capability_key() -> MacKey {
+  MacKey { id: approval_mac_key_id, suite: HmacSha256, material: capability_key_hex as Secret }
+}
+
+fn request() -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: "esc-mtc1-boot-1",
+    request_revision: "sha256:abababababababababababababababababababababababababababababababab",
+    attempt: "mtc1-boot-attempt-1" as AttemptIdentity,
+    requester: "fleet-converge mtcollins1_boot",
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    destructive: true,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: "2026-09-17T20:00:00Z",
+    key_id: approval_mac_key_id,
+  }
+}
+
+fn signed_envelope() -> String {
+  match sign_submission(key: submission_key(), request: request()) {
+    MacSigned { tag: t } => submission_envelope_json(request: request(), tag_hex: t.hex)
+    MacKeyMaterialNotHex { key_id: _ } => ""
+  }
+}
+
+// ── the envelope authenticates the canonical record ────────────────────────────────────────────
+
+test fn a_signed_envelope_parses_back_to_the_same_request_and_tag() -> Bool {
+  match parse_submission_envelope(text: signed_envelope()) {
+    SubmissionEnvelopeParsed { tag_hex: t, request: r } =>
+      stored_request_json(r: r) == stored_request_json(r: request())
+        && match mac_verify(key: submission_key(), message: stored_request_json(r: r) as NonEmptyStr, tag_hex: t) { MacVerified { verified: _ } => true  _ => false }
+    SubmissionEnvelopeUnreadable { detail: _ } => false
+  }
+}
+
+test fn a_non_canonical_record_is_refused_before_it_is_verified() -> Bool {
+  match parse_submission_envelope(text: "{\"tag\":\"00\",\"request\":\"{\\\"kind\\\": \\\"request\\\", \\\"escalation_id\\\": \\\"e\\\", \\\"request_revision\\\": \\\"r\\\", \\\"attempt\\\": \\\"a\\\", \\\"requester\\\": \\\"q\\\", \\\"purpose\\\": \\\"p\\\", \\\"destructive\\\": true, \\\"issued_at\\\": \\\"2026-09-16T20:00:00Z\\\", \\\"expires_at\\\": \\\"2026-09-17T20:00:00Z\\\", \\\"key_id\\\": \\\"k\\\",  \\\"extra\\\": 1}\"}") {
+    SubmissionEnvelopeUnreadable { detail: _ } => true
+    SubmissionEnvelopeParsed { tag_hex: _, request: _ } => false
+  }
+    && match parse_submission_envelope(text: "{\"request\":\"{}\"}") { SubmissionEnvelopeUnreadable { detail: _ } => true  _ => false }
+    && match parse_submission_envelope(text: "nope") { SubmissionEnvelopeUnreadable { detail: _ } => true  _ => false }
+}
+
+// THE ROUTE THE SERVER RUNS, composed the way gunbc.roadmap_serve composes it: parse, then admit
+// the parsed envelope. A wrapper doing this in the production module had no production caller.
+fn admit(text: String, keyring: ApprovalKeyringRead) -> SubmissionVerdict {
+  match parse_submission_envelope(text: text) {
+    SubmissionEnvelopeUnreadable { detail: d } => SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: d } }
+    SubmissionEnvelopeParsed { tag_hex: tag, request: r } => admit_parsed_submission(tag_hex: tag, request: r, keyring: keyring)
+  }
+}
+
+// ── admission: the submission key IS enrolment ─────────────────────────────────────────────────
+
+test fn a_correctly_signed_submission_is_admitted_and_a_wrong_key_is_not_enrolled() -> Bool {
+  let other = MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: capability_key_hex as Secret }
+  match admit(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionVerified { request: r } => r.escalation_id == "esc-mtc1-boot-1"  _ => false }
+    && match admit(text: signed_envelope(), keyring: ApprovalKeyLoaded { key: other }) { SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true  _ => false }
+    && match admit(text: signed_envelope(), keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-submission-mac-key" } }) { SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: _ } } => true  _ => false }
+    && match admit(text: "garbage", keyring: ApprovalKeyLoaded { key: submission_key() }) { SubmissionNotAdmitted { refusal: SubmissionUnreadable { detail: _ } } => true  _ => false }
+}
+
+// THE CAPABILITY KEY MUST NOT FILE: a runner holding only the key that mints consent is exactly
+// the requester the broker refuses to let reach the operator.
+test fn the_capability_key_cannot_file_a_request() -> Bool {
+  match sign_submission(key: capability_key(), request: request()) {
+    MacSigned { tag: t } =>
+      match admit(text: submission_envelope_json(request: request(), tag_hex: t.hex), keyring: ApprovalKeyLoaded { key: submission_key() }) {
+        SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: _ } } => true
+        _ => false
+      }
+    MacKeyMaterialNotHex { key_id: _ } => false
+  }
+}
+
+// ── the links: issued with mac_sign, redeemable by the store's verifier ────────────────────────
+
+test fn issued_links_carry_tags_that_verify_over_the_stored_claims_for_their_own_decision_only() -> Bool {
+  match issue_links(capability_key: capability_key(), base: "https://srv1.tailecbe08.ts.net", request: request()) {
+    LinksNotIssued { key_id: _ } => false
+    LinksIssued { approve: a, deny: d } => {
+      let approve_seg = (a as String).split(sep: "/approve/")
+      let deny_seg = (d as String).split(sep: "/approve/")
+      match approve_seg.skip(n: 1).first() {
+        Absent => false
+        Present { value: seg } => match parse_capability_segment(segment: seg) {
+          CapabilitySegmentParsed { escalation_id: e, decision: ProposeApprove, tag_hex: t } =>
+            e == "esc-mtc1-boot-1"
+              && match mac_verify(key: capability_key(), message: approval_capability_signing_input(c: claims_for(request: request(), decision: ProposeApprove)), tag_hex: t) { MacVerified { verified: _ } => true  _ => false }
+              && match mac_verify(key: capability_key(), message: approval_capability_signing_input(c: claims_for(request: request(), decision: ProposeDeny)), tag_hex: t) { MacVerified { verified: _ } => false  _ => true }
+          _ => false
+        }
+      }
+        && match deny_seg.skip(n: 1).first() {
+          Absent => false
+          Present { value: seg } => match parse_capability_segment(segment: seg) {
+            CapabilitySegmentParsed { escalation_id: _, decision: ProposeDeny, tag_hex: t } =>
+              match mac_verify(key: capability_key(), message: approval_capability_signing_input(c: claims_for(request: request(), decision: ProposeDeny)), tag_hex: t) { MacVerified { verified: _ } => true  _ => false }
+            _ => false
+          }
+        }
+    }
+  }
+}
+
+test fn the_message_carries_purpose_both_links_and_the_destructive_mark() -> Bool {
+  let links = issue_links(capability_key: capability_key(), base: "https://srv1.tailecbe08.ts.net", request: request())
+  match approval_message(request: request(), links: links) {
+    Absent => false
+    Present { value: m } =>
+      contains(m.body as String, "Boot Mt. Collins unit 1")
+        && contains(m.body as String, "DESTRUCTIVE")
+        && contains(m.body as String, "/approve/esc-mtc1-boot-1.deny.")
+        && contains(m.click as String, "/approve/esc-mtc1-boot-1.approve.")
+        && contains(m.title as String, "esc-mtc1-boot-1")
+  }
+}
+
+test fn a_non_hex_capability_key_issues_no_link() -> Bool {
+  let bad = MacKey { id: approval_mac_key_id, suite: HmacSha256, material: "not hex at all" as Secret }
+  match issue_links(capability_key: bad, base: "https://srv1.tailecbe08.ts.net", request: request()) {
+    LinksNotIssued { key_id: _ } => true
+    LinksIssued { approve: _, deny: _ } => false
+  }
+}
+
+// THE STATUS TEXT A POLLING RUN READS, over a store root under the checkout that holds no slot:
+// the not-filed standing is the filesystem's absence, read through the CAS probe, never inferred
+// from empty content. The pending and decided renderings are covered by the live probe over a real
+// store; this is the one arm the hermetic frame can reach.
+test fn status_text_reports_not_filed_for_an_absent_slot_and_unreadable_off_the_success_channel() -> Bool {
+  let absent = escalation_status(root: "dag/test/claim", escalation_id: "esc-no-such-escalation")
+  let unreadable = escalation_status_of(slot: EscalationUnreadable { detail: "gen1 record is not a request" })
+  absent.status == 200 && absent.body == "standing=not-filed\n"
+    && unreadable.status == 503 && contains(unreadable.body, "standing=unreadable")
+}
+
+// THE PUBLISH RUNS. notify_filed reaches ntfy.Publish.PublishMessage, whose hermetic arm answers
+// the fixture message id; deleting the publish call, or the token arm, fails this control. The
+// token-unavailable arm is the same fold one input earlier, so both are read from one route.
+test fn a_filed_request_with_a_publisher_token_is_published_and_without_one_is_reported() -> Bool {
+  match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, request: request()) {
+    SubmissionFiledAndNotified { escalation_id: e, message_id: m } => e == "esc-mtc1-boot-1" && (m as String) == hermetic_ntfy_publish_message_id
+    _ => false
+  }
+    && match notify_filed(capability_keyring: ApprovalKeyLoaded { key: capability_key() }, publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "absent" }, request: request()) {
+      SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: d } => d == "absent"
+      _ => false
+    }
+}
+
+// A FAILED NOTIFY IS RETRIED BY RESUBMITTING: an occupied slot re-notifies only while pending with
+// exactly these bytes; a decided slot or a pending slot for other bytes is a conflict; an
+// unreadable slot -- or one that reads absent after the write said occupied -- is the store's own
+// refusal and never a conflict that would tell the filer its request is on file.
+test fn an_occupied_slot_is_renotifiable_only_while_pending_with_the_same_bytes() -> Bool {
+  let same = request()
+  let other = StoredApprovalRequest {
+    escalation_id: "esc-mtc1-boot-1",
+    request_revision: "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    attempt: "mtc1-boot-attempt-2" as AttemptIdentity,
+    requester: "fleet-converge mtcollins1_boot",
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    destructive: true,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: "2026-09-17T20:00:00Z",
+    key_id: approval_mac_key_id,
+  }
+  match occupied_slot_standing(slot: EscalationPending { request: same }, request: request()) { OccupiedRenotifiable => true  _ => false }
+    && match occupied_slot_standing(slot: EscalationPending { request: other }, request: request()) { OccupiedConflict => true  _ => false }
+    && match occupied_slot_standing(slot: EscalationDecided { decision: BrokerDenied { escalation_id: "esc-mtc1-boot-1", revision: "sha256:abababababababababababababababababababababababababababababababab", decided_by: "briansrls@gmail.com", decided_at: "2026-09-16T21:00:00Z", reason: "no" } }, request: request()) { OccupiedConflict => true  _ => false }
+    && match occupied_slot_standing(slot: EscalationUnreadable { detail: "gen1 unreadable" }, request: request()) { OccupiedUnreadable { detail: _ } => true  _ => false }
+    && match occupied_slot_standing(slot: EscalationNotFiled, request: request()) { OccupiedUnreadable { detail: _ } => true  _ => false }
+}
+
+// A CAPABILITY-KEY REFUSAL AFTER THE WRITE STILL SAYS WHICH ESCALATION WAS FILED, like every other
+// post-write arm, so the filer retries the same bytes instead of minting a new id (review 67295).
+test fn a_capability_key_refusal_after_filing_names_the_filed_escalation() -> Bool {
+  match notify_filed(capability_keyring: ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: "/etc/gunbc-roadmap/approval-mac-key" } }, publisher: PublisherTokenLoaded { token: "hermetic-publisher-token" as Secret }, request: request()) {
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: e, cause: _ } => e == "esc-mtc1-boot-1"
+    _ => false
+  }
+}
