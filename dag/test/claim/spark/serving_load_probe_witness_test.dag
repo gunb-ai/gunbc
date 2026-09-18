@@ -118,9 +118,9 @@ test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool 
           generation: TokenDeltaRead { tokens: t },
           scrape_millis: Present { value: 2000 },
           arrival: tight_arrival(),
-          occupancy: OccupancySampled { samples: [] },
+          occupancy: OccupancySampled { samples: [OccupancySample { running: 2, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
           max_concurrency: Present { value: 2 },
-          client_output: ClientOutputTokensUnread { cause: "fixture has no client token total" as NonEmptyStr },
+          client_output: ClientOutputTokensObserved { tokens: t },
         ) {
           RateFromGenerationTokens { tokens: tok, scrape_millis: ms } =>
             tok == 128 && ms == 2000 &&
@@ -155,7 +155,7 @@ fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
     window: window_from_drain(drain: DrainObservedIdle, traffic_receipt: "fx" as NonEmptyStr),
     continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
     arrival: tight_arrival(),
-    occupancy: OccupancySampled { samples: [] },
+    occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
     client_output: ClientOutputTokensUnread { cause: "fixture has no client token total" as NonEmptyStr },
     before_at: 100,
     after_at: 102,
@@ -199,7 +199,58 @@ test fn occupancy_above_declared_concurrency_refuses_the_rate() -> Bool {
     arrival: tight_arrival(),
     occupancy: OccupancySampled { samples: [OccupancySample { running: 5, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
     max_concurrency: Present { value: 2 },
-    client_output: ClientOutputTokensUnread { cause: "none" as NonEmptyStr },
+    client_output: ClientOutputTokensObserved { tokens: 128 },
+  ) {
+    RateUnreadable { because: _ } => true
+    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateUndenominable { because: _ } => false
+  }
+}
+
+test fn unread_client_output_tokens_refuse_the_rate() -> Bool {
+  match derive_rate_honest(
+    ledger: closed_ok(),
+    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+    generation: TokenDeltaRead { tokens: 128 },
+    scrape_millis: Present { value: 2000 },
+    arrival: tight_arrival(),
+    occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
+    max_concurrency: Present { value: 2 },
+    client_output: ClientOutputTokensUnread { cause: "bench stdout not parsed" as NonEmptyStr },
+  ) {
+    RateUnreadable { because: _ } => true
+    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateUndenominable { because: _ } => false
+  }
+}
+
+test fn extra_engine_tokens_beyond_the_client_ledger_refuse_the_rate() -> Bool {
+  match derive_rate_honest(
+    ledger: closed_ok(),
+    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+    generation: TokenDeltaRead { tokens: 200 },
+    scrape_millis: Present { value: 2000 },
+    arrival: tight_arrival(),
+    occupancy: OccupancySampled { samples: [OccupancySample { running: 1, waiting: 0, capacity_waiting: 0, preemptions: 0 }] },
+    max_concurrency: Present { value: 2 },
+    client_output: ClientOutputTokensObserved { tokens: 128 },
+  ) {
+    RateUnreadable { because: _ } => true
+    RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false
+    RateUndenominable { because: _ } => false
+  }
+}
+
+test fn unsampled_occupancy_refuses_the_rate() -> Bool {
+  match derive_rate_honest(
+    ledger: closed_ok(),
+    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+    generation: TokenDeltaRead { tokens: 128 },
+    scrape_millis: Present { value: 2000 },
+    arrival: tight_arrival(),
+    occupancy: OccupancyUnsampled { cause: "blocking bench; no mid-run scrape" as NonEmptyStr },
+    max_concurrency: Present { value: 2 },
+    client_output: ClientOutputTokensObserved { tokens: 128 },
   ) {
     RateUnreadable { because: _ } => true
     RateFromGenerationTokens { tokens: _, scrape_millis: _ } => false

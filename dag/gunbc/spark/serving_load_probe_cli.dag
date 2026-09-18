@@ -20,12 +20,14 @@ import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_f
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.serving_load_probe {
   glm_native_holistic_protocol, glm_native_live_subject_standing,
+  glm_native_declared_shared_traffic,
   serving_load_observation, serving_load_observation_text,
   drain_from_queue, window_from_drain, counter_continuity,
   DrainObservedIdle, DrainNotIdle, DrainUnread, ArrivalSkewUnread,
   OperationLedger, LedgerClosed, LedgerIncomplete,
   OccupancyUnsampled,
   ClientOutputTokensUnread,
+  RateFromGenerationTokens, RateUndenominable, RateUnreadable,
 }
 
 // ── THE INHABITANCE ROUTE ─────────────────────────────────────────────────────────────────────
@@ -93,7 +95,7 @@ fn glm_native_serving_load_wet() -> ProcessExit
       let drain = drain_from_queue(q: harness_queue_from_body(body: before))
       let window = window_from_drain(
         drain: drain,
-        traffic_receipt: "operator-coordinated window; drain snapshot only; no route withdrawal exclusion receipt" as NonEmptyStr,
+        traffic_receipt: glm_native_declared_shared_traffic,
       )
       match drain {
         DrainNotIdle { running: n } =>
@@ -143,7 +145,11 @@ fn glm_native_serving_load_wet() -> ProcessExit
             } else if !bench_ok {
               exit_failure(reason: body)
             } else {
-              ExitSuccess
+              match obs.rate {
+                RateFromGenerationTokens { tokens: _, scrape_millis: _ } => ExitSuccess
+                RateUndenominable { because: _ } => exit_failure(reason: body)
+                RateUnreadable { because: _ } => exit_failure(reason: body)
+              }
             }
           }
         }

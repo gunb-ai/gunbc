@@ -85,8 +85,9 @@ fn drain_from_queue(q: ServingQueueReading) -> DrainReceipt {
   }
 }
 
-// A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT. It is not exclusion: production work can arrive after
-// the read. Without an exclusion receipt the standing cannot be WindowIsolated.
+// A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT. It is not exclusion: gunbc.harness.harness_cli
+// harness_probe_cli can bind a seat and POST a turn after the read, on purpose beside other load.
+// Without an exclusion receipt the standing cannot be WindowIsolated.
 fn window_from_drain(drain: DrainReceipt, traffic_receipt: NonEmptyStr) -> ProbeWindowStanding {
   match drain {
     DrainUnread { cause: c } => WindowIsolationUnread { cause: c, drain: drain }
@@ -344,14 +345,20 @@ fn occupancy_from_body(body: String) -> OccupancySample? {
   }
 }
 
+// Unsampled occupancy cannot exclude a harness_probe_cli arrival mid-window, so it does not
+// admit a comparable rate. running above declared max-concurrency is the same refuse.
 fn occupancy_admits_declared_load(trace: OccupancyTrace, max_concurrency: Nat?) -> Bool {
   match trace {
-    OccupancyUnsampled { cause: _ } => true
+    OccupancyUnsampled { cause: _ } => false
     OccupancySampled { samples: ss } =>
-      match max_concurrency {
-        Absent => true
-        Present { value: cap } =>
-          length(filter(ss, s => s.running > cap)) == 0
+      if length(ss) == 0 {
+        false
+      } else {
+        match max_concurrency {
+          Absent => true
+          Present { value: cap } =>
+            length(filter(ss, s => s.running > cap)) == 0
+        }
       }
   }
 }
@@ -365,6 +372,12 @@ type LedgerCounterAgreement
   | LedgerCounterDisagree { because: NonEmptyStr }
   | AgreementUnread { because: NonEmptyStr }
 
+data generation_client_token_agreement_bound: Nat = 0
+
+fn nat_abs_diff(a: Nat, b: Nat) -> Nat {
+  if a >= b { a - b } else { b - a }
+}
+
 fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, client_output: ClientOutputTokens) -> LedgerCounterAgreement {
   match generation {
     TokenDeltaUnread { cause: c } => AgreementUnread { because: c }
@@ -377,13 +390,13 @@ fn ledger_counter_agreement(ledger: OperationLedger, generation: TokenDelta, cli
             LedgerCounterDisagree { because: "generation_tokens_total advanced while the client ledger completed zero requests; foreign load is the remaining explanation" as NonEmptyStr }
           } else {
             match client_output {
-              ClientOutputTokensUnread { cause: _ } =>
-                LedgerAndCounterAgree { generation_tokens: g, completed_requests: n }
+              ClientOutputTokensUnread { cause: c } =>
+                AgreementUnread { because: c }
               ClientOutputTokensObserved { tokens: c } =>
-                if c == g {
+                if nat_abs_diff(a: c, b: g) <= generation_client_token_agreement_bound {
                   LedgerAndCounterAgree { generation_tokens: g, completed_requests: n }
                 } else {
-                  LedgerCounterDisagree { because: "client completed-token count and generation_tokens_total delta disagree; the rate is not reported" as NonEmptyStr }
+                  LedgerCounterDisagree { because: "client completed-token count and generation_tokens_total delta disagree beyond the declared bound; foreign load (including harness_probe_cli) is the remaining explanation and the rate is not reported" as NonEmptyStr }
                 }
             }
           }
@@ -674,7 +687,7 @@ data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_requ
   ignore_eos: true,
 )
 
-data glm_native_live_image_reference: NonEmptyStr = "gunbc-vllm-glm53-gb10:derived-c99be081f219d123" as NonEmptyStr
+data glm_native_declared_shared_traffic: NonEmptyStr = "gunbc.harness.harness_cli harness_probe_cli may POST a real turn mid-window; drain snapshot is not exclusion" as NonEmptyStr
 
 // max_num_seqs is 16 on the live units (parent reverted the out-of-band 64 edit).
 data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(
