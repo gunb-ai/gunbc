@@ -1,11 +1,12 @@
 module test.claim.network_boot_delivery_join_witness
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64, X86_64, Wasm32 }
+import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_subject {
@@ -34,14 +35,17 @@ import gunbc.network_boot_delivery {
   FleetBootServiceUnestablished,
   GlobalHttpsEndpointReachable,
   GlobalHttpsEndpointUnreachable,
+  MeasuredNetworkBootFact,
   NetworkBootBootArtifacts,
   NetworkBootBootControlReceipt,
   NetworkBootBootSourceOverride,
   NetworkBootClientBootMode,
   NetworkBootDeliveryEstablished,
+  NetworkBootDeliveryEvidenceRefused,
   NetworkBootDeliveryUnestablished,
   NetworkBootJoinInputs,
   NetworkBootServingInfrastructure,
+  NonEstablishingNetworkBootPredecessor,
   ObservedClientBootModeReceipt,
   ObservedDhcpPxeClient,
   ProductionTrustedBootstrap,
@@ -61,11 +65,6 @@ import gunbc.network_boot_delivery {
   first_slice_admitted_architectures,
   join_network_boot_delivery,
   site_pxe_edge_standing,
-  wet_acceptance_binds_mt_collins_now,
-  wet_acceptance_subject,
-  WetAcceptanceSubjectUnbound,
-  MtJadeArrivingBarebones,
-  MtCollinsAfterCdBoot,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -113,6 +112,7 @@ fn fleet_ok() -> FleetBootServiceStanding {
       https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
       origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
       signing_key_identity: "boot-manifest-key-0",
+      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -148,8 +148,9 @@ fn client_ok() -> ClientBootModeObserved {
       target: target,
       client: ObservedDhcpPxeClient {
         vendor_class: "PXEClient:Arch:00011:UNDI:003016",
-        arch_code: 11,
+        arch: UefiArm64,
       },
+      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -160,6 +161,7 @@ fn control_ok() -> BootControlObserved {
   BootControlObserved {
     receipt: NetworkBootBootControlReceipt {
       target: target,
+      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -183,6 +185,7 @@ fn manifest_ok() -> SignedBootManifestStanding {
       signing_key_identity: "boot-manifest-key-0",
       callback_identity: "intake-callback-0",
     },
+    evidence_class: MeasuredNetworkBootFact,
     observation: obs,
     observed_at: 1788000000000,
   }
@@ -204,6 +207,7 @@ test fn four_receipts_join_to_established() -> Bool {
   match join_network_boot_delivery(inputs: complete_inputs()) {
     NetworkBootDeliveryEstablished { evidence: e } => e.artifact_digest == artifact
     NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
   }
 }
 
@@ -220,6 +224,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootServingInfrastructure)
     NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
   }
 }
 
@@ -305,6 +310,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     boot_control: BootControlObserved {
       receipt: NetworkBootBootControlReceipt {
         target: other_target,
+        evidence_class: MeasuredNetworkBootFact,
         observation: obs,
         observed_at: 1788000000000,
       },
@@ -314,6 +320,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootSourceOverride)
     NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
   }
 }
 
@@ -341,6 +348,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
         signing_key_identity: "boot-manifest-key-0",
         callback_identity: "intake-callback-0",
       },
+      evidence_class: MeasuredNetworkBootFact,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -348,6 +356,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
   }
 }
 
@@ -364,6 +373,7 @@ test fn absent_manifest_unestablishes_artifacts() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
   }
 }
 
@@ -380,6 +390,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootClientBootMode)
     NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
   }
 }
 
@@ -404,17 +415,38 @@ test fn neither_trust_input_is_unestablished() -> Bool {
   }
 }
 
-test fn wet_acceptance_subject_is_unbound_and_not_mt_collins_now() -> Bool {
-  match wet_acceptance_subject() {
-    WetAcceptanceSubjectUnbound { proposed_first: first, fallback: fallback } =>
-      match first {
-        MtJadeArrivingBarebones =>
-          match fallback {
-            MtCollinsAfterCdBoot => wet_acceptance_binds_mt_collins_now(standing: wet_acceptance_subject()) == false
-            MtJadeArrivingBarebones => false
-          }
-        MtCollinsAfterCdBoot => false
-      }
+test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
+  let frozen = DeclarationRef {
+    module_path: "gunbc.bmc_netboot_serve",
+    decl_name: "srv4_bmc_netboot_serve_plan",
+    field: WholeDeclaration,
+  }
+  let client = ClientBootModeObserved {
+    receipt: ObservedClientBootModeReceipt {
+      target: target,
+      client: ObservedDhcpPxeClient {
+        vendor_class: "PXEClient:Arch:00011:UNDI:003016",
+        arch: UefiArm64,
+      },
+      evidence_class: NonEstablishingNetworkBootPredecessor,
+      observation: frozen,
+      observed_at: 1788000000000,
+    },
+  }
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client,
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryEvidenceRefused { axis: axis, observation: o } =>
+      axis == NetworkBootClientBootMode && (o.decl_name as String) == "srv4_bmc_netboot_serve_plan"
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
   }
 }
 
@@ -429,6 +461,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
       https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
       origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
       signing_key_identity: "boot-manifest-key-0",
+      evidence_class: NonEstablishingNetworkBootPredecessor,
       observation: frozen,
       observed_at: 1788000000000,
     },
@@ -443,7 +476,9 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
     manifest: manifest_ok(),
   }
   match join_network_boot_delivery(inputs: inputs) {
-    NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootServingInfrastructure)
+    NetworkBootDeliveryEvidenceRefused { axis: axis, observation: o } =>
+      axis == NetworkBootServingInfrastructure && (o.decl_name as String) == "srv4_bmc_netboot_serve_plan"
     NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
   }
 }
