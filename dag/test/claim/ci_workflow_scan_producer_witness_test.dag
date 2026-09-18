@@ -42,6 +42,10 @@ import gunbc.ci_workflow_scan_producer {
   exhausted_if_short,
   scan_is_a_declared_population,
   walk_stop_or_bound,
+  ScanOutcome,
+  ScanDeclaredPopulation,
+  ScanNotAPopulation,
+  scan_outcome,
 }
 
 // THE DECISIONS THIS DRIVES ARE THE ONES THAT DECIDE WHETHER A SAMPLE GETS CALLED A CENSUS, and
@@ -50,10 +54,28 @@ import gunbc.ci_workflow_scan_producer {
 // exercised against whatever a mock happens to publish -- and the mock publishes one result, so the
 // truncated and saturated arms would be unreachable through the effectful path.
 //
-// Every fixture below is a SUPPLIED page rather than a fetched one. The pairing obligation is met
-// by gunbc.ci_workflow_scan_producer scan_partition, which calls the same folds against
-// perform_code_search_page: the real route still executes, and these claims discriminate at the
-// boundary where the meaning is decided.
+// Every fixture below is a SUPPLIED page rather than a fetched one, and THE PAIRING OBLIGATION IS
+// NOT DISCHARGED IN THIS CHANGE. An earlier revision of this annotation said it was -- "met by
+// scan_partition, which calls the same folds against perform_code_search_page: the real route still
+// executes" -- and that sentence was doing the work of a claim while being prose. No claim in this
+// module invokes scan_partition, nothing else in the corpus invokes it either, and an annotation is
+// never evidence that a machine claim holds (DESIGN section 4c). The test the obligation actually
+// sets is that DELETING THE INTEGRATION MUST MAKE A CONTROL FAIL; delete perform_code_search_page's
+// call site today and every claim below stays green, which is the definition of the gap rather than
+// a quibble about wording.
+//
+// WHY IT CANNOT BE DISCHARGED HERE, stated so the gap is bounded rather than open-ended:
+// perform_code_search_page needs a network and a GitHub credential, and the witness lanes run with
+// neither. WHAT DISCHARGES IT: one inhabitance claim executed against the live endpoint, asserting
+// the ROUTE and not only the answer -- that a real CodeSearchPage reaches scan_observation and the
+// record it produces carries the query it was asked for. That is the same shape of evidence the
+// review sheet converge takes, and it is a receipt from a run rather than a lane that can be made
+// to pass without a token.
+//
+// So what the claims below establish is bounded and worth saying exactly: they discriminate at the
+// boundary where the MEANING is decided -- what a page and a walk state mean for whether a sample
+// may be called a census -- and they establish nothing about whether GitHub emits the shapes they
+// supply.
 
 fn w_repo() -> CodeSearchRepository {
   CodeSearchRepository {
@@ -216,6 +238,37 @@ test fn an_exhausted_walk_over_a_saturated_query_is_not_a_population() -> Bool {
       cause: "fixture" as NonEmptyStr,
     },
   )) == false
+}
+
+// THE PRODUCT OF THIS MODULE IS A GATED POPULATION, AND THESE TWO CLAIMS ARE ITS WALL AND ITS
+// CONTROL. The gate used to be a function taking hits the caller had no way to obtain; it is a
+// coproduct now, so the only route to the hits is the arm that says they are a declared population.
+test fn a_declared_population_hands_out_its_hits() -> Bool {
+  match scan_outcome(receipt: w_receipt(
+      stop: StoppedExhausted { pages_read: 3 },
+      enumerability: PartitionFullyEnumerable { total_count: 250 },
+    ), hits: [w_hit()]) {
+    ScanDeclaredPopulation { receipt: _, hits: h } => count(h) == 1
+    ScanNotAPopulation { receipt: _ } => false
+  }
+}
+
+// THE CONTROL, AND IT IS THE ARM THAT MATTERS: a walk that saturated the retrievable ceiling is a
+// SAMPLE, and handing its hits out as a population is how a lower bound gets reported as a total --
+// which this lane has already done once, with the occupancy figures. The receipt still travels, so
+// a caller that got nothing can say why.
+test fn a_saturated_walk_withholds_its_hits_and_keeps_the_receipt() -> Bool {
+  match scan_outcome(receipt: w_receipt(
+      stop: StoppedExhausted { pages_read: 10 },
+      enumerability: PartitionSaturated {
+        total_count: 5000,
+        ceiling: retrievable_result_ceiling,
+        cause: "fixture" as NonEmptyStr,
+      },
+    ), hits: [w_hit()]) {
+    ScanNotAPopulation { receipt: r } => (r.query as String) == "fixture-query"
+    ScanDeclaredPopulation { receipt: _, hits: _ } => false
+  }
 }
 
 // THE BOUND IS DERIVED FROM THE ENDPOINT'S CEILING, not authored beside it, so a caller cannot ask
