@@ -10,6 +10,7 @@ import gunbc.membership_reconcile {
   MemberChanged,
   MemberRemoved,
   MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
   membership_reconcile,
   membership_plan_admitting_outcome,
   membership_added_count,
@@ -46,7 +47,14 @@ import gunbc.command_runner {
   LocalExec,
 }
 import extdeps.tools.gnu_coreutils { ls_one_per_line_command }
-import gunbc.runner_unit { runner_unit_prefix, runner_unit_suffix }
+import gunbc.runner_unit {
+  runner_unit_prefix,
+  runner_unit_suffix,
+  read_runner_unit_name,
+  RunnerUnitInstance,
+  RunnerUnitInstanceMalformed,
+  NotARunnerUnit,
+}
 import extdeps.systemd.systemctl { systemctl_mask_now_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import gunbc.shell_command_text { shell_command_text_of_argv }
@@ -59,6 +67,8 @@ import gunbc.runner_slot_retirement {
   RemovalRetirementPending,
   RemovalTeardownAuthorized,
   slot_removal_realization,
+  transition_required_retiring,
+  retirement_unit,
 }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
@@ -141,6 +151,146 @@ type RunnerSlotMember {
 // retirement authority is keyed by the systemd unit. One derivation, so the two cannot drift.
 fn slot_member_unit_name(m: RunnerSlotMember) -> NonEmptyStr {
   join([runner_unit_prefix, m.instance_name as String, runner_unit_suffix], "") as NonEmptyStr
+}
+
+fn retirement_mask_line(unit: String) -> String {
+  shell_command_text_of_argv(argv: sudo_elevate_argv(command: systemctl_mask_now_argv(unit: unit as NonEmptyStr)))
+}
+
+fn realization_requires_actuation(evidence: SlotRetirementEvidence, unit: String) -> Bool {
+  match slot_removal_realization(evidence: evidence, unit: unit) {
+    RemovalActuationRequired { unit: _ } => true
+    RemovalRetirementRefused { unit: _, cause: _ } => false
+    RemovalRetirementPending { unit: _, cause: _ } => false
+    RemovalTeardownAuthorized { unit: _ } => false
+  }
+}
+
+fn first_occurrences(items: List<String>) -> List<String> {
+  fold(items, init: [], f: (acc, x) => if any(acc, y => y == x) { acc } else { concat(acc, [x]) })
+}
+
+fn membership_removed_unit_names(
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
+) -> List<String> {
+  flat_map(membership.actions, a =>
+    match a {
+      MemberRemoved { at: _, from: m } => [slot_member_unit_name(m: m) as String]
+      MemberAdded { at: _, to: _ } => []
+      MemberChanged { at: _, from: _, to: _ } => []
+      MemberRemovalRefused { from: _, cause: _ } => []
+      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
+    }
+  )
+}
+
+// MASK IS AN OBLIGATION OVER THE TRANSITION, NOT A SIDE EFFECT OF TREE TEARDOWN.
+//
+// Membership only admits a removal when provenance says the incarnation is already dead
+// (unregistered/ephemeral, inactive, disabled). The 21-to-12 retirees can still be serving when the
+// obligation exists, so they never become `MemberRemoved` and the inhibitor never reached the apply
+// script -- which is why `cap_converge_decision` stayed withheld after 22-50 completed. Required
+// retirees that `slot_removal_realization` says need actuation are therefore masked from the
+// transition set itself. Tree deletion stays on the membership path and still requires
+// `RetirementComplete`.
+fn evidence_has_standing_for(evidence: SlotRetirementEvidence, unit: String) -> Bool {
+  match evidence {
+    SlotRetirementEvidenceAbsent { cause: _ } => false
+    SlotRetirementEvidencePresent { authorization: _, standings: ss } =>
+      any(ss, s => retirement_unit(s: s) == unit)
+  }
+}
+
+fn membership_does_not_name(removed: List<String>, unit: String) -> Bool {
+  !any(removed, r => r == unit)
+}
+
+fn obligation_withheld_line(unit: String, cause: String) -> List<String> {
+  match read_runner_unit_name(observed: unit as NonEmptyStr) {
+    RunnerUnitInstance { registration_name: n } =>
+      [slot_removal_withheld_line(
+        unit: unit,
+        tree: runner_slot_instance_dir(instance_name: n),
+        cause: cause,
+      )]
+    NotARunnerUnit { observed: o } =>
+      [join(
+        [
+          "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
+          o as String,
+          " cause=the required identity is not a runner unit, so no slot tree is derived; ",
+          cause,
+          "' >&2",
+        ],
+        "",
+      )]
+    RunnerUnitInstanceMalformed { observed: o, cause: mc } =>
+      [join(
+        [
+          "echo '__GUNBC_CONVERGE_WITHHELD__ runner-slot obligation: unit=",
+          o as String,
+          " cause=",
+          mc as String,
+          "; ",
+          cause,
+          "' >&2",
+        ],
+        "",
+      )]
+  }
+}
+
+// REQUIRED RETIREES THAT MEMBERSHIP NEVER SAW MUST STILL BE NAMED WHEN THEY ARE NOT MASKED.
+//
+// `retirement_actuation_units` only emits `RemovalActuationRequired`. An unobserved readback, a
+// refused interruption, or a required identity with no bound standing produced no mask and no
+// withheld line — the silent-degradation arm DESIGN section 5 forbids, and the exact population
+// this planner exists to reach (serving 13..21). Membership teardown already prints those
+// dispositions for `MemberRemoved` trees; this is the same diagnostic for the obligation set.
+fn obligation_withheld_scripts(
+  deploy: RunnerHostDeploy,
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
+  evidence: SlotRetirementEvidence,
+) -> List<String> {
+  let removed = membership_removed_unit_names(membership: membership)
+  transition_required_retiring(host: deploy.host_label as HostIdentity)
+    |> map(u => u as String)
+    |> filter(u => membership_does_not_name(removed: removed, unit: u))
+    |> flat_map(u =>
+      if evidence_has_standing_for(evidence: evidence, unit: u)
+        && realization_requires_actuation(evidence: evidence, unit: u) {
+        []
+      } else {
+        match slot_removal_realization(evidence: evidence, unit: u) {
+          RemovalActuationRequired { unit: au } =>
+            obligation_withheld_line(
+              unit: au,
+              cause: "no retirement standing is bound for this required retiree, so neither mask nor deletion is authorized",
+            )
+          RemovalRetirementPending { unit: pu, cause: c } =>
+            obligation_withheld_line(unit: pu, cause: c)
+          RemovalRetirementRefused { unit: ru, cause: c } =>
+            obligation_withheld_line(unit: ru, cause: c)
+          RemovalTeardownAuthorized { unit: _ } => []
+        }
+      }
+    )
+}
+
+fn retirement_actuation_units(
+  deploy: RunnerHostDeploy,
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>,
+  evidence: SlotRetirementEvidence,
+) -> List<String> {
+  let from_membership = membership_removed_unit_names(membership: membership)
+    |> filter(u => realization_requires_actuation(evidence: evidence, unit: u))
+  let from_obligation = transition_required_retiring(host: deploy.host_label as HostIdentity)
+    |> map(u => u as String)
+    |> filter(u =>
+      evidence_has_standing_for(evidence: evidence, unit: u)
+        && realization_requires_actuation(evidence: evidence, unit: u)
+    )
+  first_occurrences(items: concat(from_membership, from_obligation))
 }
 
 // A WITHHELD DELETION SAYS SO RATHER THAN VANISHING. A skipped teardown that printed nothing would
@@ -450,26 +600,13 @@ fn runner_slot_provision_plan(
         MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
     ),
-    retirement_scripts: flat_map(membership.actions, a =>
-      match a {
-        MemberRemoved { at: _, from: m } =>
-          match slot_removal_realization(
-            evidence: retirement_evidence,
-            unit: slot_member_unit_name(m: m) as String,
-          ) {
-            RemovalActuationRequired { unit: u } =>
-              [shell_command_text_of_argv(argv: sudo_elevate_argv(command: systemctl_mask_now_argv(unit: u as NonEmptyStr)))]
-            RemovalRetirementRefused { unit: _, cause: _ } => []
-            RemovalRetirementPending { unit: _, cause: _ } => []
-            RemovalTeardownAuthorized { unit: _ } => []
-          }
-        MemberAdded { at: _, to: _ } => []
-        MemberChanged { at: _, from: _, to: _ } => []
-        MemberRemovalRefused { from: _, cause: _ } => []
-        MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
-      }
-    ),
-    teardown_scripts: flat_map(membership.actions, a =>
+    retirement_scripts: retirement_actuation_units(
+      deploy: deploy,
+      membership: membership,
+      evidence: retirement_evidence,
+    ) |> map(u => retirement_mask_line(unit: u)),
+    teardown_scripts: concat(
+      flat_map(membership.actions, a =>
       match a {
         MemberRemoved { at: _, from: m } =>
           match slot_removal_realization(
@@ -490,6 +627,12 @@ fn runner_slot_provision_plan(
         MemberRemovalRefused { from: _, cause: _ } => []
         MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => []
       }
+      ),
+      obligation_withheld_scripts(
+        deploy: deploy,
+        membership: membership,
+        evidence: retirement_evidence,
+      ),
     ),
   }
 }

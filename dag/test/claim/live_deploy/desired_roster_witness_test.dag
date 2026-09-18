@@ -1,6 +1,7 @@
 module test.claim.live_deploy.desired_roster
 
 import std.types { Bool, String, Int, List }
+import std.decl_ref { declaration_ref_eq }
 import std.dissolution {
   dissolution_status,
   dissolution_description,
@@ -25,6 +26,14 @@ import gunbc.live_deploy.desired {
   srv1_production_desired_deployment,
   srv1_lab_desired_deployment,
   srv2_deploy_desired_deployment,
+  srv1_production_selected_identity,
+  srv1_lab_selected_identity,
+  srv2_deploy_selected_identity,
+  bind_desired_selected_identity,
+  DesiredSelectedIdentityBound,
+  DesiredSelectedIdentityMismatch,
+  DesiredSelectedIdentityUnknownInstance,
+  DesiredSelectedIdentityRosterRefused,
   spec_owned_identities,
   srv1_production_wrapper_dissolution,
   srv1_production_wrapper_frontier,
@@ -85,6 +94,7 @@ fn witness_colliding_same_host_roster() -> List<DesiredDeployment> {
       instance: lab.instance,
       target: lab.target,
       names: live.names,
+      selected_identity: lab.selected_identity,
     },
   ]
 }
@@ -216,4 +226,46 @@ test fn production_and_lab_receipt_paths_and_instance_ids_differ() -> Bool {
 test fn srv2_target_states_empty_ensured_directories() -> Bool {
   srv2_deploy_desired_deployment().target.ensured_directories == []
     && count(srv1_production_desired_deployment().target.ensured_directories) > 0
+}
+
+test fn each_roster_row_carries_its_own_selected_identity() -> Bool {
+  let live = srv1_production_desired_deployment()
+  let lab = srv1_lab_desired_deployment()
+  let srv2 = srv2_deploy_desired_deployment()
+  declaration_ref_eq(a: live.selected_identity, b: srv1_production_selected_identity())
+    && declaration_ref_eq(a: lab.selected_identity, b: srv1_lab_selected_identity())
+    && declaration_ref_eq(a: srv2.selected_identity, b: srv2_deploy_selected_identity())
+    && !declaration_ref_eq(a: live.selected_identity, b: lab.selected_identity)
+    && !declaration_ref_eq(a: live.selected_identity, b: srv2.selected_identity)
+}
+
+test fn bind_admits_the_roster_row_for_its_selected_identity() -> Bool {
+  let live = srv1_production_desired_deployment()
+  match bind_desired_selected_identity(desired: live) {
+    DesiredSelectedIdentityBound { row } =>
+      declaration_ref_eq(a: row.selected_identity, b: srv1_production_selected_identity())
+        && row.instance.instance_id == live.instance.instance_id
+    DesiredSelectedIdentityMismatch { carried: _, rostered: _ } => false
+    DesiredSelectedIdentityUnknownInstance { instance_id: _ } => false
+    DesiredSelectedIdentityRosterRefused { refusal: _ } => false
+  }
+}
+
+test fn a_row_that_carries_another_row_selected_identity_is_a_mismatch() -> Bool {
+  let live = srv1_production_desired_deployment()
+  let forged = DesiredDeployment {
+    instance: live.instance,
+    target: live.target,
+    names: live.names,
+    selected_identity: srv1_lab_selected_identity(),
+  }
+  match bind_desired_selected_identity(desired: forged) {
+    DesiredSelectedIdentityMismatch { carried, rostered } =>
+      declaration_ref_eq(a: carried, b: srv1_lab_selected_identity())
+        && declaration_ref_eq(a: rostered, b: srv1_production_selected_identity())
+        && !declaration_ref_eq(a: carried, b: rostered)
+    DesiredSelectedIdentityBound { row: _ } => false
+    DesiredSelectedIdentityUnknownInstance { instance_id: _ } => false
+    DesiredSelectedIdentityRosterRefused { refusal: _ } => false
+  }
 }

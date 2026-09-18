@@ -1,0 +1,364 @@
+module gunbc.review_sheet_values_actuator
+
+import std.types { NonEmptyStr, String, Bool, List, Int }
+import v2.std.algebra { fold_list }
+import std.resources { Network }
+import extdeps.transports.rest {
+  RestReadExchange,
+  RestMutationExchange,
+  RestExchangeSucceeded,
+  RestExchangeStatusRefused,
+  RestExchangeUnreached,
+  RestExchangeUndecodable,
+  RestExchangeCommitAmbiguous,
+  classify_rest_outcome,
+}
+import extdeps.google.sheets
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.google.sheets {
+  ValueRange,
+  ValueRangeWrite,
+  SheetsValueInputOption,
+  InputRaw,
+  SheetsValueRenderOption,
+  RenderFormattedValue,
+  SheetsMajorDimension,
+  DimensionRows,
+  DimensionColumns,
+  sheets_major_dimension_wire,
+  sheets_major_dimension_from_wire,
+}
+
+// THE FIRST EXECUTED CALLER OF THE SHEETS SERVICE, which until this module ran had zero call sites.
+//
+// IT DOES NOT DISSOLVE live_sheets_transport_frontier, and the earlier wording here claimed
+// otherwise. That frontier reserves a caller for review_sheet_ensure specifically -- the cell-level
+// converge with conflict detection over an operator-edited sheet -- and this module does not call
+// it: it converges a whole range against a supplied ValueRange. The frontier is still open and
+// review_sheet_ensure still has no caller. What this module did establish is that the frontier was
+// hiding a defect: value_range_from_derived_write builds an Optional-wrapped body that Sheets
+// refuses, which no witness over a mock response corpus could ever have caught.
+//
+// NO MODULE IN THIS REPOSITORY IMPORTS THIS ONE, and that is a real consumption gap rather than a
+// stylistic one. Its consumer is strategy.ci_prospect_sheet_write in the gunbc-private repository,
+// which this corpus cannot import and a reader here cannot see, so from inside gunbc this module
+// reads exactly like the dangling declaration DESIGN section 3c refuses. The frontier row below is
+// the declaration that makes it honest -- a named consumer and a named trigger -- and not an
+// argument that the gap is acceptable: a cross-repository consumer is invisible to every
+// consumption check this repository runs, and the trigger is the thing that closes that.
+//
+// WHY RAW AND FORMATTED_VALUE, AND WHY THAT PAIRING IS NOT ARBITRARY. gunbc.review_sheet_sheets
+// already reasons it out: USER_ENTERED parses a derived string, so "1/2" becomes a date and a
+// leading = becomes a formula, and the FORMATTED_VALUE readback is then not the string this lane
+// wrote -- the next converge would see a difference it caused and report a conflict against its own
+// output. RAW stores the string as a string, and FORMATTED_VALUE reads cells back as strings, so
+// write and read are inverses. This module consumes that decision rather than restating it.
+//
+// THE READBACK IS NOT THE WRITE'S OWN RESPONSE. batchUpdate answers with counts of what it changed,
+// which is a statement about the request, not about the sheet. A separate values.get is what
+// establishes the cells now hold what was sent, and it is the same read the next converge performs.
+
+// updated_cells was removed rather than computed. It carried a ROW count under a name that promises
+// cells, which is a reader getting a plausible number that is not the fact its name names -- and a
+// batchUpdate response does report totalUpdatedCells, so the field could have been filled honestly.
+// It is gone instead of filled because nothing consumed it: inventing a consumer to justify a field
+// is how a model grows facts nobody asked for.
+type ValuesWriteOutcome
+  = ValuesAlreadyMatch { rows: Int }
+  | ValuesWrittenAndVerified { rows: Int }
+  | ValuesWriteUnverified { cause: NonEmptyStr }
+  | ValuesWriteRefused { cause: NonEmptyStr }
+
+type ValuesReadOutcome
+  = ValuesRead { range: ValueRange }
+  | ValuesUnreadable { cause: NonEmptyStr }
+
+fn read_values(spreadsheet_id: NonEmptyStr, a1: String) -> ValuesReadOutcome uses net: Network {
+  let read = sheets.Spreadsheets.GetValues(
+    spreadsheet_id: spreadsheet_id as String,
+    range: a1,
+    value_render_option: RenderFormattedValue,
+  )
+  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
+    RestExchangeSucceeded => ValuesRead { range: read.value_range }
+    RestExchangeStatusRefused { status, body } =>
+      ValuesUnreadable {
+        cause: join(["values.get refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      ValuesUnreadable {
+        cause: join(["values.get never reached Sheets: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ValuesUnreadable {
+        cause: join(["values.get answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      ValuesUnreadable {
+        cause: join(["values.get reported commit ambiguity, which a read may not: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// The write shape carries the rows unwrapped, and an absent values field becomes an empty list
+// rather than a refusal: writing nothing to a range is a legitimate request, and the caller has
+// already decided a write is wanted.
+fn value_range_for_write(r: ValueRange, a1: String) -> ValueRangeWrite {
+  ValueRangeWrite {
+    range: a1,
+    majorDimension: sheets_major_dimension_wire(d: DimensionRows),
+    values: value_range_values_raw(r: r),
+  }
+}
+
+fn value_range_row_count(r: ValueRange) -> Int {
+  count(value_range_values_raw(r: r))
+}
+
+// EQUALITY IS LINEAR AND IT REFUSES RATHER THAN ASSUMING. Indexing one list while folding the
+// other is O(n^2) because skip walks, and DESIGN section 6 fixes a proven quadratic regardless of
+// the realized n -- this table is 58 rows today and the reason it is 58 is not a stable fact.
+// So both sides are serialised once and compared, which is linear.
+//
+// The separators are printable sentinels rather than the ASCII unit separators they would ideally
+// be, because the lexer does not admit a unicode escape and a raw control byte in source is worse
+// than a long implausible string that is checked anyway.
+//
+// The serialisation is only sound while no cell contains the separator, and that is a property of
+// the DATA, not of this code: a repository description can contain anything. So the fold does not
+// assume it -- cells_carry_separator answers whether any cell does, and the caller refuses on true
+// rather than reporting an equality it cannot establish. A false equality here would skip a write
+// the sheet needs; a false difference would rewrite an identical sheet forever.
+data rows_field_separator: String = "<<gunbc-field-sep>>"
+
+data rows_record_separator: String = "<<gunbc-record-sep>>"
+
+fn cells_carry_separator(rows: List<List<String>>) -> Bool {
+  any(rows, row =>
+    any(row, cell =>
+      string_contains(s: cell, pattern: rows_field_separator)
+        || string_contains(s: cell, pattern: rows_record_separator)))
+}
+
+// SHEETS DOES NOT STORE TRAILING BLANKS, and the first live write is what established it: 58 rows
+// went out at 17 cells each and came back at 15 or 17, the 15s being exactly the rows whose
+// Decision and Note are empty. The readback is therefore semantically identical and structurally
+// shorter, and a literal comparison reports a difference the sheet does not have -- which would
+// rewrite an identical sheet on every run, forever. Both sides are trimmed to their last non-empty
+// cell before comparison, which is the normalisation the API performs rather than a tolerance
+// invented to make a test pass: a cell that is empty in the middle of a row still compares.
+fn rows_fingerprint(rows: List<List<String>>) -> String {
+  join(map(rows, row => join(trailing_trimmed(row: row), rows_field_separator)), rows_record_separator)
+}
+
+type TrimScan {
+  seen: Int
+  keep: Int
+}
+
+fn trailing_trimmed(row: List<String>) -> List<String> {
+  take(row, n: last_non_empty_count(row: row))
+}
+
+fn last_non_empty_count(row: List<String>) -> Int {
+  fold_list(row, TrimScan { seen: 0, keep: 0 }, (acc, cell) => trim_scan_step(acc: acc, cell: cell)).keep
+}
+
+fn trim_scan_step(acc: TrimScan, cell: String) -> TrimScan {
+  if cell == "" {
+    TrimScan { seen: acc.seen + 1, keep: acc.keep }
+  } else {
+    TrimScan { seen: acc.seen + 1, keep: acc.seen + 1 }
+  }
+}
+
+type RowsComparison
+  = RowsEqual
+  | RowsDiffer
+  | RowsIncomparable { cause: NonEmptyStr }
+
+fn compare_rows(a: List<List<String>>, b: List<List<String>>) -> RowsComparison {
+  if cells_carry_separator(rows: a) || cells_carry_separator(rows: b) {
+    RowsIncomparable {
+      cause: "a cell contains the record or field separator, so a serialised comparison cannot establish equality" as NonEmptyStr
+    }
+  } else {
+    if rows_fingerprint(rows: a) == rows_fingerprint(rows: b) {
+      RowsEqual
+    } else {
+      RowsDiffer
+    }
+  }
+}
+
+fn compare_value_ranges(a: ValueRange, b: ValueRange) -> RowsComparison {
+  match value_range_row_major(r: a) {
+    RowsNotRowMajor { cause: c } => RowsIncomparable { cause: c }
+    RowsRead { rows: ar } =>
+      match value_range_row_major(r: b) {
+        RowsNotRowMajor { cause: c } => RowsIncomparable { cause: c }
+        RowsRead { rows: br } => compare_rows(a: ar, b: br)
+      }
+  }
+}
+
+// A ValueRange IS NOT NECESSARILY ROW-MAJOR AND THIS MODULE USED TO ASSUME IT WAS. The upstream
+// resource permits majorDimension of ROWS or COLUMNS; reading r.values as rows without consulting
+// it means a COLUMNS-major range compares its columns against the desired rows, reports a
+// difference that is really a transposition, and then rewrites the sheet with the same nested list
+// under changed semantics. The private specimen happened to be row-major, so nothing caught it.
+//
+// ABSENT IS ROWS, and that is the upstream default rather than a guess: Sheets omits majorDimension
+// when it is ROWS, the same proto3 omission that hides a zero colour channel. An unrecognised
+// spelling is neither, and refuses.
+type RowMajorReading
+  = RowsRead { rows: List<List<String>> }
+  | RowsNotRowMajor { cause: NonEmptyStr }
+
+fn value_range_row_major(r: ValueRange) -> RowMajorReading {
+  match r.majorDimension {
+    Absent => RowsRead { rows: value_range_values_raw(r: r) }
+    Present { value: raw } =>
+      match sheets_major_dimension_from_wire(raw: raw) {
+        Absent =>
+          RowsNotRowMajor {
+            cause: join(["the range reports majorDimension '", raw, "', which is neither ROWS nor COLUMNS, so its nesting cannot be read as rows or as columns"], "") as NonEmptyStr
+          }
+        Present { value: DimensionRows } => RowsRead { rows: value_range_values_raw(r: r) }
+        Present { value: DimensionColumns } =>
+          RowsNotRowMajor {
+            cause: "the range is COLUMNS-major, so its outer list is columns and comparing it against row-major desired values would compare a transposition and then write it back as rows" as NonEmptyStr
+          }
+      }
+  }
+}
+
+fn value_range_values_raw(r: ValueRange) -> List<List<String>> {
+  match r.values {
+    Absent => []
+    Present { value: rows } => rows
+  }
+}
+
+fn perform_values_write(
+  spreadsheet_id: NonEmptyStr,
+  a1: String,
+  desired: ValueRange,
+) -> ValuesWriteOutcome uses net: Network {
+  let written = sheets.Spreadsheets.BatchUpdateValues(
+    spreadsheet_id: spreadsheet_id as String,
+    value_input_option: InputRaw,
+    data: [value_range_for_write(r: desired, a1: a1)],
+    include_values_in_response: false,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: written.outcome }) {
+    RestExchangeSucceeded =>
+      verify_written_values(
+        spreadsheet_id: spreadsheet_id,
+        a1: a1,
+        desired: desired,
+        detail: "values.batchUpdate answered success" as NonEmptyStr,
+      )
+    RestExchangeCommitAmbiguous { detail } =>
+      verify_written_values(
+        spreadsheet_id: spreadsheet_id,
+        a1: a1,
+        desired: desired,
+        detail: join(["values.batchUpdate left the write ambiguous (", detail, ")"], "") as NonEmptyStr,
+      )
+    RestExchangeStatusRefused { status, body } =>
+      ValuesWriteRefused {
+        cause: join(["values.batchUpdate refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      ValuesWriteRefused {
+        cause: join(["values.batchUpdate never reached Sheets: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      ValuesWriteRefused {
+        cause: join(["values.batchUpdate answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// A write that reports cells updated and then reads back different cells is NOT a success, and the
+// count is exactly what would hide it: batchUpdate reporting 2000 updated cells says the request
+// was applied, not that the sheet now holds these rows.
+fn verify_written_values(
+  spreadsheet_id: NonEmptyStr,
+  a1: String,
+  desired: ValueRange,
+  detail: NonEmptyStr,
+) -> ValuesWriteOutcome uses net: Network {
+  match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
+    ValuesUnreadable { cause: c } =>
+      ValuesWriteUnverified {
+        cause: join([detail as String, ", and the verifying read could not settle it: ", c as String], "") as NonEmptyStr
+      }
+    ValuesRead { range: got } =>
+      match compare_value_ranges(a: got, b: desired) {
+        RowsEqual =>
+          ValuesWrittenAndVerified { rows: value_range_row_count(r: desired) }
+        RowsIncomparable { cause: c } =>
+          ValuesWriteUnverified {
+            cause: join([detail as String, ", and the readback could not be compared: ", c as String], "") as NonEmptyStr
+          }
+        RowsDiffer =>
+          ValuesWriteUnverified {
+            cause: join(
+              [
+                detail as String,
+                ", but the readback does not equal what was sent: wrote ",
+                to_string(value_range_row_count(r: desired)),
+                " rows and read ",
+                to_string(value_range_row_count(r: got)),
+                " back",
+              ],
+              "",
+            ) as NonEmptyStr
+          }
+      }
+  }
+}
+
+// Read, compare, write only on difference, read again. An unchanged sheet costs one call and
+// writes nothing, which is what makes this safe to run on a schedule.
+fn converge_sheet_values(
+  spreadsheet_id: NonEmptyStr,
+  a1: String,
+  desired: ValueRange,
+) -> ValuesWriteOutcome uses net: Network {
+  match read_values(spreadsheet_id: spreadsheet_id, a1: a1) {
+    ValuesUnreadable { cause: c } => ValuesWriteRefused { cause: c }
+    ValuesRead { range: got } =>
+      match compare_value_ranges(a: got, b: desired) {
+        RowsEqual => ValuesAlreadyMatch { rows: value_range_row_count(r: desired) }
+        RowsIncomparable { cause: c } => ValuesWriteRefused { cause: c }
+        RowsDiffer => perform_values_write(spreadsheet_id: spreadsheet_id, a1: a1, desired: desired)
+      }
+  }
+}
+
+fn values_outcome_text(o: ValuesWriteOutcome) -> String {
+  match o {
+    ValuesAlreadyMatch { rows: n } => join(["already matches: ", to_string(n), " rows"], "")
+    ValuesWrittenAndVerified { rows: n } =>
+      join(["written and verified by readback: ", to_string(n), " rows"], "")
+    ValuesWriteUnverified { cause: c } => join(["UNVERIFIED: ", c as String], "")
+    ValuesWriteRefused { cause: c } => join(["REFUSED: ", c as String], "")
+  }
+}
+
+
+// The consumer is real and executed -- it wrote 58 rows on 2026-09-16 -- but it lives in another
+// repository, so no check in this one can see it. The trigger is a consumer INSIDE this corpus:
+// when the census producer lands here and a public entry point converges a sheet, this row goes.
+data review_sheet_values_consumer_frontier: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.review_sheet_values_actuator",
+    decl_name: "converge_sheet_values",
+    field: WholeDeclaration
+  }
+}

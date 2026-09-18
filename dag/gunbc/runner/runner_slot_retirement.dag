@@ -3,7 +3,8 @@ module gunbc.runner_slot_retirement
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
-import gunbc.runner_slot_population_census { unit_is_owned_by_host }
+import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
 import gunbc.runner_width_transition { required_retirees_for_host }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
@@ -24,6 +25,7 @@ import extdeps.systemd { SystemdUnitProperty, UnitFileState, ActiveState, Contro
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
   systemctl_show_property_read,
 }
@@ -148,6 +150,14 @@ fn retirement_is_complete(s: RunnerRetirementStanding) -> Bool {
     RetirementComplete { unit: _ } => true
     RetirementPendingDrain { unit: _, cause: _ } => false
     RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+fn retirement_is_unobserved(s: RunnerRetirementStanding) -> Bool {
+  match s {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
   }
 }
 
@@ -286,6 +296,39 @@ data srv4_transition_interruption_authorization: InterruptionAuthorization = Int
     "actions-runner@srv4-21.service" as NonEmptyStr,
   ],
   operator_reason: "operator decision 2026-09-12, scoped to srv4's surplus internal CI slots 13-21: these carry disposable dev/test jobs and may be interrupted for the 26/25 GiB transition; the decision does not extend to sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+}
+
+// srv1'S SURPLUS IS THE 50-SLOT REMAINDER, NOT THE NINE-SLOT 21-TO-12 DELTA ALONE.
+//
+// The operator work item names srv1-22..50 as the unregistered/inactive/disabled trees to retire.
+// The declared prior width for that host is 50, so the obligation is 13..50: 22..50 plus the
+// 21-to-12 retirees. Permission is authored here, independently of that obligation, as coverage
+// over exactly those identities. It does not name srv1-01..12 -- the committed remaining
+// population -- and membership already refuses to act on an active or enabled tree.
+fn srv1_transition_interruption_scope() -> List<NonEmptyStr> {
+  desired_unit_names_range(host: operator_host_srv1, slot: 13, limit: 50) |> map(u => u as NonEmptyStr)
+}
+
+data srv1_transition_interruption_authorization: InterruptionAuthorization = InterruptionAuthorization {
+  scope: srv1_transition_interruption_scope(),
+  operator_reason: "operator decision 2026-09-17, scoped to srv1 surplus internal CI slots 13-50 (historical 50-slot remainder 22-50 and the 21-to-12 width-transition retirees 13-21): these may be interrupted for the 26/25 GiB transition; the decision does not name srv1-01..12, sessions, the deployment service, or any other workload on the host" as NonEmptyStr,
+}
+
+type HostInterruptionAuthorizationStanding
+  = HostInterruptionAuthorizationPresent { authorization: InterruptionAuthorization }
+  | HostInterruptionAuthorizationAbsent { host: HostIdentity, cause: String }
+
+fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAuthorizationStanding {
+  if (host as String) == (operator_host_srv1 as String) {
+    HostInterruptionAuthorizationPresent { authorization: srv1_transition_interruption_authorization }
+  } else if (host as String) == (operator_host_srv4 as String) {
+    HostInterruptionAuthorizationPresent { authorization: srv4_transition_interruption_authorization }
+  } else {
+    HostInterruptionAuthorizationAbsent {
+      host: host,
+      cause: join([host as String, " has no operator interruption authorization for this width transition, so surplus slots may be neither masked nor deleted"], ""),
+    }
+  }
 }
 
 // THE OBLIGATION LIVES IN ITS OWN AUTHORITY, AND THIS MODULE ONLY CHECKS PERMISSION OVER IT.
@@ -470,12 +513,16 @@ fn observe_runner_retirement(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
 ) -> RunnerRetirementObservation {
-  match systemctl_show_property_read(transport: transport, unit: unit, property: UnitFileState) {
-    SystemdPropertyCaptureRefused { reason: r } => retirement_observation_unreadable(unit: unit, cause: r)
-    SystemdPropertyCaptured { value: file_state } =>
-      match systemctl_show_property_read(transport: transport, unit: unit, property: ActiveState) {
-        SystemdPropertyCaptureRefused { reason: r } => retirement_observation_unreadable(unit: unit, cause: r)
-        SystemdPropertyCaptured { value: active_state } =>
+  match retirement_property_text(
+    capture: systemctl_show_property_read(transport: transport, unit: unit, property: UnitFileState),
+  ) {
+    RetirementPropertyUnreadable { cause: r } => retirement_observation_unreadable(unit: unit, cause: r)
+    RetirementPropertyRead { value: file_state } =>
+      match retirement_property_text(
+        capture: systemctl_show_property_read(transport: transport, unit: unit, property: ActiveState),
+      ) {
+        RetirementPropertyUnreadable { cause: r } => retirement_observation_unreadable(unit: unit, cause: r)
+        RetirementPropertyRead { value: active_state } =>
           retirement_observation_from_readings(
             unit: unit,
             unit_file_state: file_state,
@@ -483,6 +530,21 @@ fn observe_runner_retirement(
             occupancy: observe_slot_cgroup_occupancy(transport: transport, unit: unit),
           )
       }
+  }
+}
+
+// `systemctl show` OF A NOT-FOUND OR STOPPED UNIT RETURNS EMPTY STDOUT FOR THE PROPERTY. That is
+// `SystemdPropertyBlank` at the reader, not a refused capture: UnitFileState is not `masked`,
+// ActiveState is not running, ControlGroup has no path. A refused show stays unreadable.
+type RetirementPropertyReading
+  = RetirementPropertyRead { value: String }
+  | RetirementPropertyUnreadable { cause: String }
+
+fn retirement_property_text(capture: SystemdPropertyCapture) -> RetirementPropertyReading {
+  match capture {
+    SystemdPropertyCaptured { value: v } => RetirementPropertyRead { value: v }
+    SystemdPropertyBlank => RetirementPropertyRead { value: "" }
+    SystemdPropertyCaptureRefused { reason: r } => RetirementPropertyUnreadable { cause: r }
   }
 }
 
@@ -551,6 +613,15 @@ fn cgroup_occupancy_from_reads(
   }
 }
 
+// AN EMPTY ControlGroup IS ABSENCE, NOT DOUBT. systemd reports a blank path for a unit that has no
+// workload cgroup -- stopped, not-found, or never started. Plan 35233964848 read srv1-22..50 as
+// RetirementUnobserved on that blank, so mask --now was withheld for the exact trees the membership
+// reconcile had already named REMOVE. A refused property read stays unobserved; a successfully read
+// empty path is CgroupAbsent.
+fn control_group_property_means_cgroup_absent(value: String) -> Bool {
+  trim(s: value) == ""
+}
+
 // THE I/O HALF. It performs at most two reads and decides nothing: the second read is skipped when the
 // directory test says the cgroup is gone, because there is no file to read and a refusal there would
 // be reported as doubt about a question already answered.
@@ -558,13 +629,15 @@ fn observe_slot_cgroup_occupancy(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
 ) -> CgroupOccupancy {
-  match systemctl_show_property_read(transport: transport, unit: unit, property: ControlGroup) {
-    SystemdPropertyCaptureRefused { reason: r } =>
+  match retirement_property_text(
+    capture: systemctl_show_property_read(transport: transport, unit: unit, property: ControlGroup),
+  ) {
+    RetirementPropertyUnreadable { cause: r } =>
       CgroupUnobserved { cause: join(["the unit's ControlGroup property could not be read: ", r], "") }
-    SystemdPropertyCaptured { value: rel } => {
+    RetirementPropertyRead { value: rel } => {
       let relative = trim(s: rel)
-      if relative == "" {
-        CgroupUnobserved { cause: "the unit reported an empty ControlGroup path, so its workload cgroup identity is unknown" }
+      if control_group_property_means_cgroup_absent(value: relative) {
+        CgroupAbsent
       } else {
         let cgroup_path = join([gunbc_cgroup_v2_root, relative], "") as NonEmptyStr
         let dir = host_operation_exec(transport: transport, operation: CgroupPathIsDirectory { path: cgroup_path })
@@ -633,8 +706,13 @@ fn observe_retirement_standings(
 //   RemovalActuationRequired    -- permitted and not yet retired. Emits the mask on THIS pass and no
 //                                 deletion, because the postcondition cannot be established in the
 //                                 same breath as the action that is supposed to bring it about.
-//   RemovalRetirementPending    -- permitted, actuated, and the readback says pending or unreadable.
-//                                 No deletion. This is where an orphaned cgroup lands.
+//                                 THE PRODUCTION OBSERVER ALWAYS SUPPLIES STANDINGS, so "no standing"
+//                                 is a fixture shape, not a live one: a live first pass reads
+//                                 RetirementPendingDrain (replacement not inhibited) and must still
+//                                 actuate, or mask --now is unreachable on the fleet route.
+//   RemovalRetirementPending    -- permitted, and the readback is UNOBSERVED (ambiguous). No mask,
+//                                 no deletion. A slot whose cgroup or properties could not be read
+//                                 stays withheld.
 //   RemovalTeardownAuthorized   -- an exact `RetirementComplete` for THIS unit. Only here does a tree
 //                                 get deleted.
 //
@@ -686,11 +764,13 @@ fn slot_removal_realization(
         let mine = standing_for_unit(standings: ss, unit: unit)
         if list_length(items: mine) == 0 {
           RemovalActuationRequired { unit: unit }
-        } else if any(mine, s => !retirement_is_complete(s: s)) {
+        } else if any(mine, s => retirement_is_unobserved(s: s)) {
           RemovalRetirementPending {
             unit: unit,
-            cause: "the retirement readback for this unit is pending or unobserved, so its tree stays and its capacity stays charged",
+            cause: "the retirement readback for this unit is unobserved, so neither mask nor deletion is authorized",
           }
+        } else if any(mine, s => !retirement_is_complete(s: s)) {
+          RemovalActuationRequired { unit: unit }
         } else {
           RemovalTeardownAuthorized { unit: unit }
         }

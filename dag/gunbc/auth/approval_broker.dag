@@ -86,12 +86,27 @@ type Redemption
     }
   | RedemptionRefused { cause: RedemptionRefusal }
 
+// WHO THE RECORD MAY NAME. Stage 3 compares the presented tailnet login to the operator the claims
+// name ONLY when the deployment can attribute the header to the tailscale proxy. Where it cannot
+// -- a loopback bind that any co-located POSIX user can reach -- the header is not evidence and
+// the record must not carry a login it cannot stand behind: the redemption is then admitted on
+// the capability alone (the bearer authority delivered to the operator's phone) and decided_by
+// names the BEARER of that capability, never a person. A record that says "bearer" is a weaker
+// truth; a record that says "briansrls" on a forgeable header is a fabricated one (review 67348).
+type IdentityAttribution
+  = HeaderAttributedToProxy { presented: TailnetIdentity }
+  | HeaderUnattributed { residual: NonEmptyStr }
+
+fn bearer_decided_by(capability: ApprovalCapability) -> NonEmptyStr {
+  join(["bearer of capability ", capability.claims.escalation_id as String, ".", proposed_decision_name(d: capability.claims.decision)], "") as NonEmptyStr
+}
+
 fn redeem_capability(
   method: HttpMethod,
   capability: ApprovalCapability,
   expectation: CapabilityExpectation,
   mac_result: MacVerification,
-  presented_identity: TailnetIdentity,
+  attribution: IdentityAttribution,
   expected_operator: NonEmptyStr,
   observed_at: Timestamp,
 ) -> Redemption {
@@ -110,6 +125,9 @@ fn redeem_capability(
         CapabilityRefused { cause: c } =>
           RedemptionRefused { cause: RedemptionCapabilityRefused { cause: c } }
         CapabilityAuthentic { claims: cl } =>
+          match attribution {
+            HeaderUnattributed { residual: _ } => RedemptionAdmitted { claims: cl, decided_by: bearer_decided_by(capability: capability) }
+            HeaderAttributedToProxy { presented: presented_identity } =>
           match match_tailnet_identity(presented: presented_identity, expected: expected_operator) {
             IdentityMatches { login: l } =>
               RedemptionAdmitted { claims: cl, decided_by: l }
@@ -125,6 +143,7 @@ fn redeem_capability(
                   detail: identity_match_reason(m: IdentityMissing { expected: e })
                 }
               }
+          }
           }
       }
   }

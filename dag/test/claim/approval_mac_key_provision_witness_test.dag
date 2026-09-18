@@ -1,0 +1,24 @@
+module test.claim.approval_mac_key_provision_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.transports.rest { RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeUnreached }
+import extdeps.cloud.gcp.gcp { GcpProjectId }
+import gunbc.secret_provision_actuator { classify_secret_observation, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ABSENT IS 404 AND ONLY 404: a forbidden read, a transport failure, and a 200 naming another
+// resource all refuse; only the store's own not-found establishes that nothing exists. This is the
+// arm that decides whether the provisioning run may CREATE (review 67090).
+test fn only_a_404_establishes_an_absent_container() -> Bool {
+  let project = "gunbai-secrets" as GcpProjectId
+  match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "", performance: RestExchangeStatusRefused { status: 404, body: "not found" }) {
+    SecretContainerAbsent { project: _, secret_id: id } => id == "approval-submission-mac-key"
+    _ => false
+  }
+    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "", performance: RestExchangeStatusRefused { status: 403, body: "forbidden" }) { SecretObservationRefused { cause: _ } => true  _ => false }
+    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "", performance: RestExchangeUnreached { cause: "connection refused" }) { SecretObservationRefused { cause: _ } => true  _ => false }
+    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "projects/gunbai-secrets/secrets/some-other-secret", performance: RestExchangeSucceeded) { SecretObservationRefused { cause: _ } => true  _ => false }
+    && match classify_secret_observation(project: project, secret_id: "approval-submission-mac-key", observed_name: "projects/gunbai-secrets/secrets/approval-submission-mac-key", performance: RestExchangeSucceeded) { SecretContainerObserved { container: c } => c.secret_id == "approval-submission-mac-key"  _ => false }
+}

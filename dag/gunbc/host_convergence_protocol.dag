@@ -279,8 +279,8 @@ fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence
 
 // C3 plan-side discharge. named_consumer is the function that actually calls the declaration.
 // trigger_capability is a remaining capability, not the consumer: inspect_via still observes via
-// supplied ObservedMember rather than wet observe_executable; HostEffectDomainProjection is used
-// by admit but does not yet mint fleet_converge_plan_artifact (no LiveDeploy request arm until C2).
+// supplied ObservedMember rather than wet observe_executable. HostEffectDomainProjection is used
+// by admit; fleet_converge_plan_artifact_of_request now consumes LiveDeployConverge.
 // host_effect_decide_apply_frontier is untouched — C4. bind_declared_frontiers stays Unbound.
 data live_deploy_inspect_member_id: DeclarationRef = decl_ref(
   module_path: "gunbc.live_deploy.fleet_request",
