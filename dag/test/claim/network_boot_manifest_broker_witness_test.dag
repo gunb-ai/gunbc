@@ -21,6 +21,8 @@ import gunbc.network_boot_delivery {
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
   BootstrapTrustUnestablished,
+  BootstrapTrustStanding,
+  BootstrapTrustObservation,
   bootstrap_trust_standing,
 }
 import gunbc.network_boot_manifest_broker {
@@ -90,11 +92,22 @@ fn claims_for(id: SignedBootManifestIdentity) -> SignedBootManifestClaims {
   SignedBootManifestClaims { identity: id }
 }
 
+fn https_obs() -> BootstrapTrustObservation {
+  BootstrapTrustObservation { observation: standing_obs, observed_at: 1788000000000 }
+}
+
+fn production_trust() -> BootstrapTrustStanding {
+  ProductionTrustedBootstrap {
+    firmware_https: Present { value: https_obs() },
+    secure_boot_chainloader: none,
+  }
+}
+
 fn issued_ticket(id: SignedBootManifestIdentity) -> SignedBootManifestTicket {
   match issue_signed_boot_manifest(
     claims: claims_for(id: id),
     key: broker_key,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
   ) {
     BootManifestIssued { ticket: t } => t
     BootManifestIssuanceRefused { cause: _ } =>
@@ -104,7 +117,7 @@ fn issued_ticket(id: SignedBootManifestIdentity) -> SignedBootManifestTicket {
 
 fn expectation_at(spent: List<SpentAttemptNonce>) -> BootManifestExpectation {
   BootManifestExpectation {
-    trust: BootstrapTrustRoot { signing_key_id: broker_key_id, standing: ProductionTrustedBootstrap },
+    trust: BootstrapTrustRoot { signing_key_id: broker_key_id, standing: production_trust() },
     spent_attempt_nonces: spent,
   }
 }
@@ -153,7 +166,7 @@ test fn unpublished_dhcp_architecture_refuses_issuance() -> Bool {
   match issue_signed_boot_manifest(
     claims: claims_for(id: identity_for(target: unit, arch: Wasm32, root_digest: root(), nbf: 1788000000000, exp: 1788003600000)),
     key: broker_key,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
   ) {
     BootManifestIssuanceRefused { cause: c } =>
       match c {
@@ -168,7 +181,7 @@ test fn inverted_window_refuses_issuance() -> Bool {
   match issue_signed_boot_manifest(
     claims: claims_for(id: identity_for(target: unit, arch: Aarch64, root_digest: root(), nbf: 1788003600000, exp: 1788000000000)),
     key: broker_key,
-    trust: ProductionTrustedBootstrap,
+    trust: production_trust(),
   ) {
     BootManifestIssuanceRefused { cause: c } =>
       match c {
@@ -236,14 +249,22 @@ test fn issued_ticket_standing_is_verified() -> Bool {
 }
 
 test fn controlled_network_bootstrap_is_not_production_trust() -> Bool {
-  match bootstrap_trust_standing(firmware_https_or_secure_boot: false, isolated_onboarding_network: true) {
-    ControlledNetworkBootstrap =>
-      match bootstrap_trust_standing(firmware_https_or_secure_boot: true, isolated_onboarding_network: true) {
-        ProductionTrustedBootstrap => true
-        ControlledNetworkBootstrap => false
+  match bootstrap_trust_standing(
+    firmware_https: none,
+    secure_boot_chainloader: none,
+    isolated_onboarding_network: Present { value: https_obs() },
+  ) {
+    ControlledNetworkBootstrap { evidence: _ } =>
+      match bootstrap_trust_standing(
+        firmware_https: Present { value: https_obs() },
+        secure_boot_chainloader: none,
+        isolated_onboarding_network: Present { value: https_obs() },
+      ) {
+        ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => true
+        ControlledNetworkBootstrap { evidence: _ } => false
         BootstrapTrustUnestablished => false
       }
-    ProductionTrustedBootstrap => false
+    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => false
     BootstrapTrustUnestablished => false
   }
 }

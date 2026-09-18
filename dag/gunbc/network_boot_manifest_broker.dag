@@ -152,8 +152,8 @@ fn issue_signed_boot_manifest(
 ) -> BootManifestIssuance {
   match trust {
     BootstrapTrustUnestablished => BootManifestIssuanceRefused { cause: ManifestIssuanceTrustUnestablished }
-    ProductionTrustedBootstrap => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
-    ControlledNetworkBootstrap => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
+    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
+    ControlledNetworkBootstrap { evidence: _ } => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
   }
 }
 
@@ -201,8 +201,8 @@ fn verify_signed_boot_manifest(
 ) -> BootManifestVerification {
   match expectation.trust.standing {
     BootstrapTrustUnestablished => refused(class: ManifestVerificationTrust)
-    ProductionTrustedBootstrap => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
-    ControlledNetworkBootstrap => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
+    ProductionTrustedBootstrap { firmware_https: _, secure_boot_chainloader: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
+    ControlledNetworkBootstrap { evidence: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
   }
 }
 
