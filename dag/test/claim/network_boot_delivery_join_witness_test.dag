@@ -22,7 +22,10 @@ import gunbc.machine_intake_subject {
   qualification_subject_of,
 }
 import gunbc.machine_intake_access { BootDeliveryTarget }
+import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
+import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.network_boot_delivery {
+  network_boot_delivery_join_frontier_rows,
   ArchitectureChainloader,
   BootControlObserved,
   BootstrapTrustUnestablished,
@@ -1245,4 +1248,16 @@ test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool {
     NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
   }
+}
+
+fn census_contains_frontier_subject(row: FrontierRow) -> Bool {
+  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
+}
+
+test fn join_frontier_rows_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: network_boot_delivery_join_frontier_rows)
+}
+
+test fn join_frontier_rows_are_in_the_census() -> Bool {
+  all(network_boot_delivery_join_frontier_rows, row => census_contains_frontier_subject(row: row))
 }

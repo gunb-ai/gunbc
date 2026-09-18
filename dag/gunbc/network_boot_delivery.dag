@@ -1,7 +1,9 @@
 module gunbc.network_boot_delivery
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -366,12 +368,8 @@ fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRe
 // 0WET stays unbound this slice: operator 2026-09-18 named Mt. Jade (arriving,
 // barebones) as first candidate and Mt. Collins after CD as fallback. No UnitKey
 // is minted here.
-// Production consumer of this join: BoundBootDeliveryEvidence.network_boot, read
-// by gunbc.boot_artifact_delivery pxe_chain_candidate. 0C does not call this
-// function: it owns only the site edge and binds NetworkBootJoinInputs.site
-// when the first boot offer is observed from the srv4 edge. 0B/0D likewise own
-// one receipt family. The mint is the intake assembler that holds fleet + site
-// + client + control + SignedBootManifestVerified together.
+// 0B, 0C and 0D each own one receipt family and none of them holds all five
+// join inputs, so none may mint here; the frontier is the typed row below.
 fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliveryStanding {
   match inputs.fleet {
     FleetBootServiceUnestablished => NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
@@ -542,3 +540,25 @@ fn join_verified_ticket_after_trust(
       }
   }
 }
+
+// The join has no executing production route yet: NetworkBootJoinInputs needs
+// fleet, site, client, boot control and a verified ticket held together, and
+// each of those is minted by a different lane (0A fleet, 0C site, 0B/0D client
+// and ticket). The row names the consumer that retires it so the census counts
+// the gap instead of a comment carrying it.
+data network_boot_delivery_join_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "join_network_boot_delivery"),
+    reason: "join_network_boot_delivery is called only by its witness; no production fold assembles a NetworkBootJoinInputs from fleet, site, client, boot-control and SignedBootManifestVerified receipts, so NetworkBootDeliveryEstablished is never minted on a production path",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an intake assembler in gunbc.machine_intake calls join_network_boot_delivery with a NetworkBootJoinInputs whose fleet, site, client, boot_control and manifest arms are each produced by their owning observation fold, and its result is the value bound into BoundBootDeliveryEvidence.network_boot; a witness that builds the inputs by hand does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_field_ref(module_path: "gunbc.boot_artifact_delivery", decl_name: "BoundBootDeliveryEvidence", field_name: "network_boot"),
+    reason: "BoundBootDeliveryEvidence.network_boot is constructed only in the boot-artifact-delivery witness, so pxe_chain_candidate and every NetworkBootDeliveryStanding refusal arm it matches are reached by no production route",
+    dissolution: unbound_dissolution(
+      description: "dissolves with the join row above: the same assembler that mints the join result binds it into BoundBootDeliveryEvidence.network_boot on the production intake path"
+    )
+  ),
+]
