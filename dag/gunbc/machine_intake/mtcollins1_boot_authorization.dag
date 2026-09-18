@@ -25,13 +25,11 @@ import gunbc.auth.approval_request_client {
 }
 import gunbc.machine_intake_mtcollins1_boot_artifact { mtcollins1_diskless_image_name, mtcollins1_boot_export_dir }
 import gunbc.machine_intake_mtcollins1_boot_image_fetch { mtcollins1_boot_image_sha256 }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_power_action, mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.fleet_intent_network { operator_host_srv2 }
 import extdeps.bmc.ipmi_boot_selection {
-  IpmiBootCdrom,
   IpmiBootSelection,
-  aarch64_uefi_once_boot_selection,
   ipmi_boot_selection_label,
 }
 import extdeps.toolchain.types { architecture_diagnostic_name }
@@ -50,9 +48,6 @@ type MtCollins1BootSubject {
 
 data mtcollins1_boot_machine: NonEmptyStr = "mtcollins1"
 
-data mtcollins1_boot_selection: IpmiBootSelection =
-  aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)
-
 fn mtcollins1_boot_subject(execution_revision: NonEmptyStr) -> MtCollins1BootSubject {
   MtCollins1BootSubject {
     machine: mtcollins1_boot_machine,
@@ -61,7 +56,7 @@ fn mtcollins1_boot_subject(execution_revision: NonEmptyStr) -> MtCollins1BootSub
     image_sha256: mtcollins1_boot_image_sha256,
     export_host: operator_host_srv2 as NonEmptyStr,
     export_dir: mtcollins1_boot_export_dir,
-    selection: mtcollins1_boot_selection,
+    selection: mtcollins1_cdrom_selection,
     power_action: mtcollins1_power_action,
     execution_revision: execution_revision,
   }

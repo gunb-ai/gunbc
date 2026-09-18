@@ -40,10 +40,10 @@ import gunbc.auth.approval_status_wire {
 import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff, mtcollins1_bmc_username }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_bmc_username, mtcollins1_drive_handoff }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc, mtcollins1_edac_topology }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64 }
-import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_capability_row }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical }
@@ -440,7 +440,13 @@ fn mtcollins1_boot_after_gate(
                       )
                     ExitSuccess => {
                       let issued = match mtcollins1_attach_diskless_image(authorization: auth, password_file: password_file, attempt: attempt) {
-                        ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
+                        ExitSuccess =>
+                          mtcollins1_drive_handoff(
+                            label: "mtcollins1 cdrom handoff",
+                            password_file_raw: password_file,
+                            capability_row: mtcollins1_capability_row,
+                            selection: request.subject.selection,
+                          )
                         other => other
                       }
                       let observed = match issued {

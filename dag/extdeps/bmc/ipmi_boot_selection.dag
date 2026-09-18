@@ -1,6 +1,6 @@
 module extdeps.bmc.ipmi_boot_selection
 
-import std.types { Bool, NonEmptyStr, String, Unit }
+import std.types { Bool, NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture, Aarch64 }
@@ -112,36 +112,17 @@ fn ipmi_boot_selection_label(selection: IpmiBootSelection) -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-// ONE ARGV WORD PER UPSTREAM CONCEPT. No `sh -c`, no joined command, and no caller-supplied
-// `options=` string. ipmitool receives the secret by -f exactly as extdeps.bmc.ipmi does; the
-// boot selection is projected from the sole-constructor record above.
-service diagnostic.ipmi.BootSelection {
-  operation Set {
-    input {
-      bmc_host: NonEmptyStr
-      username: NonEmptyStr
-      password_file: NonEmptyStr
-      selection: IpmiBootSelection
-    }
-    output {
-      stdout: String from "stdout"
-      success: Bool from "exit_success"
-    }
-    transport shell {
-      argv: [
-        "ipmitool",
-        "-H", "{bmc_host}",
-        "-I", "lanplus",
-        "-U", "{username}",
-        "-f", "{password_file}",
-        "chassis", "bootdev",
-        selection.device_wire,
-        selection.options_wire
-      ]
-    }
-    exit {
-      0 => Unit
-      nonzero => String "ipmitool typed boot selection failed"
-    }
+fn ipmi_boot_selection_options_token(selection: IpmiBootSelection) -> NonEmptyStr {
+  match selection.firmware_mode {
+    IpmiBootEfi =>
+      match selection.persistence {
+        IpmiBootOnce => "efiboot"
+        IpmiBootPersistent => "efiboot,persistent"
+      }
+    IpmiBootLegacy =>
+      match selection.persistence {
+        IpmiBootOnce => "valid"
+        IpmiBootPersistent => "persistent"
+      }
   }
 }
