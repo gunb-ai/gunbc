@@ -58,13 +58,17 @@ final class AppState: ObservableObject {
         Task { await forwardToken(hex) }
     }
 
-    /// Forward a token the server has not been told about. The update route is not modeled yet, so
-    /// this refuses visibly (WireError.unmodeled) rather than pretending the server knows.
+    /// PUT /approve/device/push for a token the server has not been told about. The assertion covers
+    /// device_push_update_client_data, which frames the exact body bytes sent.
     private func forwardToken(_ hex: String) async {
         guard case .enrolled(var e) = state, e.forwarded_apns_token != hex else { return }
         do {
             let client = try requireClient()
-            try await client.updatePushRegistration(registration(hex), try await readAuth(path: Route.pending))
+            let body = WireEncode.pushUpdate(registration(hex))
+            let requestedAt = Self.now()
+            let auth = try await assertion(e, requestedAt: requestedAt,
+                                           clientData: devicePushUpdateClientData(enrollmentId: e.enrollment_id, requestedAt: requestedAt, pushBodyJson: body))
+            try await client.updatePush(bodyJson: body, auth)
             e.forwarded_apns_token = hex
             try transition(.enrolled(e))
         } catch {
@@ -124,7 +128,7 @@ final class AppState: ObservableObject {
                 try transition(.prepared(p))
             }
             let token = try await awaitToken()
-            let submission = EnrolmentSubmission(
+            let submission = EnrolmentRequest(
                 code: p.code, platform: .ios, decision_key: p.decision_key_pub,
                 evidence: IosAppAttestBoundDecisionKey(attest_key_id: p.attest_key_id, attestation_b64: p.attestation_b64!),
                 push: registration(token))
@@ -143,17 +147,27 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// After an ambiguous POST: re-read before generating anything new. The readback route is not
-    /// modeled yet, so this refuses typed; the operator sees the state, not a fake answer.
-    func resolveUnknownSubmission() async {
+    /// After an ambiguous POST: re-read before generating anything new, via
+    /// GET /approve/device/enrollments/<enrollment_id> under the App Attest key just attested. The
+    /// route is keyed by enrollment_id, which a lost answer never delivered: the operator supplies it
+    /// (the enrol command on srv1 prints it beside the code). An absent id refuses; nothing is guessed.
+    func resolveUnknownSubmission(enrollmentId: String) async {
         lastError = nil
         guard case .submissionUnknown(let p) = state else { return }
         do {
             let client = try requireClient()
-            let grant = try await client.readbackEnrolment(decisionKey: p.decision_key_pub)
-            try transition(.enrolled(EnrolledDevice(
-                enrollment_id: grant.enrollment_id, decision_key_blob: p.decision_key_blob,
-                attest_key_id: p.attest_key_id, forwarded_apns_token: nil)))
+            let path = try Route.enrollment(enrollmentId)
+            let probe = EnrolledDevice(enrollment_id: enrollmentId, decision_key_blob: p.decision_key_blob,
+                                       attest_key_id: p.attest_key_id, forwarded_apns_token: nil)
+            let back = try await client.readback(path, try await readAuth(probe, path: path))
+            switch back.standing {
+            case .active:
+                try transition(.enrolled(EnrolledDevice(
+                    enrollment_id: back.enrollment_id, decision_key_blob: p.decision_key_blob,
+                    attest_key_id: p.attest_key_id, forwarded_apns_token: nil)))
+            case .revoked:
+                try transition(.revoked(probe, reason: "enrolment \(back.enrollment_id) is revoked"))
+            }
         } catch {
             lastError = error.localizedDescription
         }
@@ -173,14 +187,26 @@ final class AppState: ObservableObject {
     // ── Authenticated reads ──────────────────────────────────────────────────────────────────
     /// An App Attest assertion over device_read_client_data for this path, now. No Face ID: reading
     /// is not deciding. requested_at is a Timestamp in the .dag's spelling (RFC 3339, UTC, seconds).
-    private func readAuth(path: String) async throws -> ReadAuth {
-        guard let e = state.enrolled else { throw WireError.configMissing("this phone is not enrolled") }
+    private static func now() -> String {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
-        let requestedAt = f.string(from: Date())
-        let clientData = deviceReadClientData(path: path, enrollmentId: e.enrollment_id, requestedAt: requestedAt)
-        let assertion = try await AppAttest.assert(keyId: e.attest_key_id, clientData: clientData)
-        return ReadAuth(enrollmentId: e.enrollment_id, requestedAt: requestedAt, assertionB64: assertion.assertion_b64)
+        return f.string(from: Date())
+    }
+
+    private func assertion(_ e: EnrolledDevice, requestedAt: String, clientData: Data) async throws -> ReadAuth {
+        let a = try await AppAttest.assert(keyId: e.attest_key_id, clientData: clientData)
+        return ReadAuth(enrollmentId: e.enrollment_id, requestedAt: requestedAt, assertionB64: a.assertion_b64)
+    }
+
+    private func readAuth(_ e: EnrolledDevice, path: String) async throws -> ReadAuth {
+        let requestedAt = Self.now()
+        return try await assertion(e, requestedAt: requestedAt,
+                                   clientData: deviceReadClientData(path: path, enrollmentId: e.enrollment_id, requestedAt: requestedAt))
+    }
+
+    private func readAuth(path: String) async throws -> ReadAuth {
+        guard let e = state.enrolled else { throw WireError.configMissing("this phone is not enrolled") }
+        return try await readAuth(e, path: path)
     }
 
     func fetch(_ escalationId: String) async throws -> FetchedRequest {
@@ -233,7 +259,7 @@ final class AppState: ObservableObject {
         }
         let signature = try DecisionKey.sign(key, bytes)
         let proof = try await AppAttest.assert(keyId: e.attest_key_id, clientData: bytes)
-        let outcome = try await client.redeem(SignedRedemption(signing_input: input, signature_b64url: signature.b64url, platform_proof: proof))
+        let outcome = try await client.redeem(SignedRedemption(signing_input: input, signature: signature, platform_proof: proof))
         // DeviceRedemptionOutcome arms that end this enrolment's authority, by their wire name.
         if outcome.outcome == "DeviceEnrollmentRevoked" || outcome.outcome == "DeviceEnrollmentUnknown" {
             try transition(.revoked(e, reason: outcome.message))

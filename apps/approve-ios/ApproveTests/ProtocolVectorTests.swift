@@ -42,10 +42,15 @@ struct Vectors: Decodable {
         var input: Input
         var expected: String
     }
+    struct Envelope: Decodable {
+        var name: String
+        var body: String
+    }
     var framing: String
     var redemption: [Redemption]
     var enrolment: [Enrolment]
     var read: [Read]
+    var envelope: [Envelope]
 }
 
 final class ProtocolVectorTests: XCTestCase {
@@ -57,6 +62,7 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertFalse(v.redemption.isEmpty, "no redemption vectors")
         XCTAssertFalse(v.enrolment.isEmpty, "no enrolment vectors")
         XCTAssertFalse(v.read.isEmpty, "no read vectors")
+        XCTAssertFalse(v.envelope.isEmpty, "no envelope vectors")
         return v
     }
 
@@ -99,19 +105,6 @@ final class ProtocolVectorTests: XCTestCase {
         }
     }
 
-    /// The wire spelling of the signing input is the fixture's flat key set: a round trip must
-    /// preserve every field, and the challenge must flatten to challenge_expires_at + nonce_hex.
-    func testSigningInputWireKeysAreTheFixtureKeys() throws {
-        let input = DeviceRedemptionSigningInput(
-            audience: "a", enrollment_id: "e", challenge: RedemptionChallenge(expires_at: "x", nonce_hex: "n"),
-            escalation_id: "s", request_revision: "r", stored_request_text: "t", decision: .deny,
-            capability_text: "c", capability_tag_b64url: "g")
-        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(input)) as? [String: Any]
-        XCTAssertEqual(Set(json?.keys ?? []), ["audience", "enrollment_id", "challenge_expires_at", "nonce_hex",
-            "escalation_id", "request_revision", "stored_request_text", "decision", "capability_text", "capability_tag_b64url"])
-        XCTAssertEqual(try JSONDecoder().decode(DeviceRedemptionSigningInput.self, from: JSONEncoder().encode(input)), input)
-    }
-
     /// Discriminating control on the builder itself: swapping the verb must move the bytes, and a
     /// field that contains the frame's own punctuation must not collide with a split field.
     func testBuilderDiscriminatesTheVerbAndFramingIsInjective() {
@@ -130,5 +123,69 @@ final class ProtocolVectorTests: XCTestCase {
             let got = deviceReadClientData(path: v.input.path, enrollmentId: v.input.enrollment_id, requestedAt: v.input.requested_at)
             XCTAssertEqual(got, Data(v.expected.utf8), v.name)
         }
+    }
+
+    // ── Envelopes: the HTTP wire, matched as bytes ───────────────────────────────────────────
+    private func envelope(_ name: String) throws -> String {
+        try XCTUnwrap(try load().envelope.first { $0.name == name }?.body, "envelope vector \(name) missing")
+    }
+
+    /// Each request body the fixture carries is decoded by the app's strict reader and re-encoded
+    /// by the app's encoder; the bytes must be the authority's. No input is typed here.
+    func testEnrolmentRequestRoundTripsToTheFixtureBytes() throws {
+        let body = try envelope("enrolment_request")
+        XCTAssertEqual(WireEncode.enrolmentRequest(try WireDecode.enrolmentRequest(Data(body.utf8))), body)
+    }
+
+    func testSignedRedemptionRoundTripsToTheFixtureBytes() throws {
+        let body = try envelope("signed_redemption")
+        XCTAssertEqual(WireEncode.signedRedemption(try WireDecode.signedRedemption(Data(body.utf8))), body)
+    }
+
+    func testPushUpdateRoundTripsToTheFixtureBytes() throws {
+        let body = try envelope("push_update")
+        XCTAssertEqual(WireEncode.pushUpdate(try WireDecode.pushUpdate(Data(body.utf8))), body)
+    }
+
+    /// Every response body decodes strictly, with its declared members present and non-empty.
+    func testResponsesDecode() throws {
+        XCTAssertFalse(try WireDecode.enrolmentGrant(Data(try envelope("enrolment_grant").utf8)).enrollment_id.isEmpty)
+        XCTAssertFalse(try WireDecode.pendingList(Data(try envelope("pending_list").utf8)).isEmpty)
+        let f = try WireDecode.fetchedRequest(Data(try envelope("fetched_request").utf8))
+        XCTAssertNotEqual(f.approve, f.deny)
+        XCTAssertEqual(try WireDecode.enrolmentReadback(Data(try envelope("enrolment_readback").utf8)).standing, .active)
+        XCTAssertFalse(try WireDecode.redemptionResponse(Data(try envelope("redemption_response").utf8)).outcome.isEmpty)
+    }
+
+    /// The strict reader refuses an unknown member, an empty string and an unadmitted kind.
+    func testStrictReaderRefusesUnknownAndEmptyMembers() {
+        XCTAssertThrowsError(try WireDecode.enrolmentGrant(Data(#"{"enrollment_id": "e", "extra": 1}"#.utf8)))
+        XCTAssertThrowsError(try WireDecode.enrolmentGrant(Data(#"{"enrollment_id": ""}"#.utf8)))
+        XCTAssertThrowsError(try WireDecode.pushUpdate(Data(#"{"kind": "fcm", "project": "p", "token": "t"}"#.utf8)))
+    }
+
+    /// device_push_update_client_data frames the exact push body; the enrolment id and time are the
+    /// read vectors' inputs, so the only bytes compared are the authority's.
+    func testPushUpdateClientDataMatchesTheFixture() throws {
+        let read = try XCTUnwrap(try load().read.first).input
+        let body = try envelope("push_update")
+        let got = devicePushUpdateClientData(enrollmentId: read.enrollment_id, requestedAt: read.requested_at, pushBodyJson: body)
+        XCTAssertEqual(got, Data(try envelope("push_update_client_data").utf8))
+    }
+
+    func testPathsMatchTheFixtureAndRefuseOutsideTheAlphabet() throws {
+        let f = try WireDecode.fetchedRequest(Data(try envelope("fetched_request").utf8))
+        XCTAssertEqual(try Route.request(f.escalation_id), try envelope("request_path"))
+        let g = try WireDecode.enrolmentGrant(Data(try envelope("enrolment_grant").utf8))
+        XCTAssertEqual(try Route.enrollment(g.enrollment_id), try envelope("enrollment_path"))
+        XCTAssertThrowsError(try Route.request("a/b"))
+        XCTAssertThrowsError(try Route.request("a%2Fb"))
+        XCTAssertThrowsError(try Route.request(".."))
+    }
+
+    /// The emitter's escaping is serialize_json's: controls as \u00XX upper-case, "/" literal.
+    func testEmitterEscapesLikeSerializeJson() {
+        XCTAssertEqual(WireJson.string("a\u{1F}b/\"c\\").serialized, #""a\u001Fb/\"c\\""#)
+        XCTAssertEqual(WireJson.object([("k", .array([.string("x")]))]).serialized, #"{"k": ["x"]}"#)
     }
 }
