@@ -49,6 +49,7 @@ import v2.std.grammar {
   VoidGrammar,
   grammar_carries_symbol,
   grammar_carried_symbol_map,
+  grammar_symbol_list_put,
   formal_production_to_node,
   formal_productions_catalog_to_node,
   grammar_production_to_node,
@@ -2213,10 +2214,6 @@ fn dag_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_grammar_root() }
 }
 
-fn dag_symbol_map_put(m: Map<Symbol, Bool>, sym: Symbol) -> Map<Symbol, Bool> {
-  map_insert(m: m, key: sym, value: true)
-}
-
 fn dag_pointwise_from_symbol_map(m: Map<Symbol, Bool>) -> PointwisePower<Symbol> {
   PointwisePower {
     member: fn(sym) {
@@ -2229,15 +2226,14 @@ fn dag_pointwise_from_symbol_map(m: Map<Symbol, Bool>) -> PointwisePower<Symbol>
 }
 
 fn dag_surface_sugar_symbol_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
-  dag_symbol_map_put(
-    m: dag_symbol_map_put(
-      m: dag_symbol_map_put(
-        m: dag_symbol_map_put(m: m, sym: ^dag_c3_surface_sugar_service),
-        sym: ^dag_c3_surface_sugar_fn
-      ),
-      sym: ^dag_c3_surface_sugar_type
-    ),
-    sym: ^dag_c3_surface_sugar_operation
+  grammar_symbol_list_put(
+    m: m,
+    xs: [
+      ^dag_c3_surface_sugar_service,
+      ^dag_c3_surface_sugar_fn,
+      ^dag_c3_surface_sugar_type,
+      ^dag_c3_surface_sugar_operation
+    ]
   )
 }
 
@@ -2258,39 +2254,22 @@ fn dag_language_model_empty_canonical_symbol_set() -> PointwisePower<Symbol> {
 }
 
 fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol, Bool> {
-  dag_symbol_map_put(
-    m: dag_symbol_map_put(
-      m: dag_symbol_map_put(
-        m: dag_symbol_map_put(
-          m: dag_symbol_map_put(
-            m: dag_symbol_map_put(
-              m: dag_symbol_map_put(
-                m: dag_symbol_map_put(
-                  m: dag_symbol_map_put(
-                    m: dag_symbol_map_put(
-                      m: dag_symbol_map_put(
-                        m: dag_symbol_map_put(m: m, sym: ^dag_binding_fn_add),
-                        sym: ^dag_binding_param_x
-                      ),
-                      sym: ^dag_binding_param_y
-                    ),
-                    sym: ^dag_binding_type_int
-                  ),
-                  sym: ^dag_binding_fn_one_or_two
-                ),
-                sym: ^dag_binding_fn_one
-              ),
-              sym: ^dag_binding_bind_x
-            ),
-            sym: ^dag_binding_pick_lit_one
-          ),
-          sym: ^dag_binding_pick_lit_two
-        ),
-        sym: ^dag_binding_type_bool
-      ),
-      sym: ^bool_node_symbol
-    ),
-    sym: ^dag_loop_measure_sym
+  grammar_symbol_list_put(
+    m: m,
+    xs: [
+      ^dag_binding_fn_add,
+      ^dag_binding_param_x,
+      ^dag_binding_param_y,
+      ^dag_binding_type_int,
+      ^dag_binding_fn_one_or_two,
+      ^dag_binding_fn_one,
+      ^dag_binding_bind_x,
+      ^dag_binding_pick_lit_one,
+      ^dag_binding_pick_lit_two,
+      ^dag_binding_type_bool,
+      ^bool_node_symbol,
+      ^dag_loop_measure_sym
+    ]
   )
 }
 
