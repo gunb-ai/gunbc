@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_authority_log
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash }
+import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.temporal_effect {
   HeldLease, HeldLeaseObservedState, LeaseEpoch, held_lease, held_lease_with_observed,
   LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
@@ -86,11 +86,18 @@ fn pair_authority_partition(group: FabricGroup) -> PartitionId {
 // wherever the log is, fetchable by any executor -- and then names that event's id on the
 // settling transition. Recording moves the head but not the authority: the fold passes it
 // through with the current state, generation and lease unchanged.
+// `lifecycle` IS THE AUTHORIZATION LIFECYCLE THAT WROTE THE TRANSITION -- the transaction's
+// authorization binding (a SHA-256 over escalation, attempt, intent, subject, executor, expiry and
+// claim generation), when a D0 transaction wrote it; Absent for an operator's or a cleanup's
+// write. The transaction word is a branded string and nothing allocates it uniquely, so a later
+// escalation may reuse it: recovery that selected history by the word alone would complete a new
+// consent from an old transaction's terminal. The identity is on the event so the fold can keep it.
 type PairAuthorityEvent
   = AuthorityTransitioned {
       previous: PairServingGroupAuthority
       next: PairServingGroupAuthority
       transaction: NonEmptyStr
+      lifecycle: ContentHash?
       grant: LeaseGrant?
       entry_state: ContentHash?
     }
@@ -189,6 +196,13 @@ fn grant_members(g: LeaseGrant?) -> List<JsonKeyValue> {
   }
 }
 
+fn lifecycle_members(l: ContentHash?) -> List<JsonKeyValue> {
+  match l {
+    Absent => [] as List<JsonKeyValue>
+    Present { value: h } => [kv(prefix: "", key: "lifecycle", value: serialize_content_hash(hash: h) as String)]
+  }
+}
+
 fn entry_state_members(d: ContentHash?) -> List<JsonKeyValue> {
   match d {
     Absent => [] as List<JsonKeyValue>
@@ -198,8 +212,8 @@ fn entry_state_members(d: ContentHash?) -> List<JsonKeyValue> {
 
 fn pair_authority_event_members(e: PairAuthorityEvent) -> List<JsonKeyValue> {
   match e {
-    AuthorityTransitioned { previous: p, next: n, transaction: t, grant: g, entry_state: d } =>
-      concat([kv(prefix: "", key: "transaction", value: t as String)], concat(authority_members(prefix: "prev_", a: p), concat(authority_members(prefix: "next_", a: n), concat(grant_members(g: g), entry_state_members(d: d)))))
+    AuthorityTransitioned { previous: p, next: n, transaction: t, lifecycle: lc, grant: g, entry_state: d } =>
+      concat([kv(prefix: "", key: "transaction", value: t as String)], concat(lifecycle_members(l: lc), concat(authority_members(prefix: "prev_", a: p), concat(authority_members(prefix: "next_", a: n), concat(grant_members(g: g), entry_state_members(d: d))))))
     EntryStateRecorded { transaction: t, body: b } =>
       [kv(prefix: "", key: "transaction", value: t as String), kv(prefix: "", key: "body", value: b)]
   }
@@ -207,7 +221,7 @@ fn pair_authority_event_members(e: PairAuthorityEvent) -> List<JsonKeyValue> {
 
 fn pair_authority_event_kind(e: PairAuthorityEvent) -> String {
   match e {
-    AuthorityTransitioned { previous: _, next: _, transaction: _, grant: _, entry_state: _ } => "transitioned"
+    AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: _, grant: _, entry_state: _ } => "transitioned"
     EntryStateRecorded { transaction: _, body: _ } => "entry-state-recorded"
   }
 }
@@ -367,6 +381,17 @@ type EntryStateDecode
   = EntryStateDecoded { digest: ContentHash? }
   | EntryStateIncoherent
 
+fn lifecycle_decode(doc: JsonValue) -> EntryStateDecode {
+  match member_string(doc: doc, key: "lifecycle") {
+    Absent => EntryStateDecoded { digest: none }
+    Present { value: w } =>
+      match parse_content_hash(wire: w) {
+        Absent => EntryStateIncoherent
+        Present { value: h } => EntryStateDecoded { digest: Present { value: h } }
+      }
+  }
+}
+
 // Absent is a value; a member that is present but is not a content-hash wire is incoherent.
 fn entry_state_decode(doc: JsonValue) -> EntryStateDecode {
   match member_string(doc: doc, key: "entry_state_digest") {
@@ -401,14 +426,18 @@ fn pair_authority_kind_decode(doc: JsonValue, word: String) -> PairAuthorityEven
             match authority_decode(doc: doc, prefix: "next_") {
               Absent => none
               Present { value: n } =>
+                match lifecycle_decode(doc: doc) {
+                  EntryStateIncoherent => none
+                  EntryStateDecoded { digest: lc } =>
                 match entry_state_decode(doc: doc) {
                   EntryStateIncoherent => none
                   EntryStateDecoded { digest: d } =>
                     match grant_decode(doc: doc) {
                       GrantIncoherent => none
-                      GrantAbsent => Present { value: AuthorityTransitioned { previous: p, next: n, transaction: t, grant: none, entry_state: d } }
-                      GrantDecoded { grant: g } => Present { value: AuthorityTransitioned { previous: p, next: n, transaction: t, grant: Present { value: g }, entry_state: d } }
+                      GrantAbsent => Present { value: AuthorityTransitioned { previous: p, next: n, transaction: t, lifecycle: lc, grant: none, entry_state: d } }
+                      GrantDecoded { grant: g } => Present { value: AuthorityTransitioned { previous: p, next: n, transaction: t, lifecycle: lc, grant: Present { value: g }, entry_state: d } }
                     }
+                }
                 }
             }
         }
@@ -441,11 +470,23 @@ type AuthorityFold
 type AuthorityTransitionRecord {
   id: EventId
   transaction: NonEmptyStr
+  lifecycle: ContentHash?
   next: PairServingGroupAuthority
 }
 
-fn transitions_by(records: List<AuthorityTransitionRecord>, transaction: NonEmptyStr) -> List<AuthorityTransitionRecord> {
-  filter(records, r => (r.transaction as String) == (transaction as String))
+// THE SELECTION IS BY LIFECYCLE, NOT BY THE TRANSACTION WORD: a record belongs to a lifecycle only
+// when it carries that lifecycle's identity and the word agrees. A record with no lifecycle (an
+// operator's write) belongs to none.
+fn transitions_by(records: List<AuthorityTransitionRecord>, transaction: NonEmptyStr, lifecycle: ContentHash) -> List<AuthorityTransitionRecord> {
+  filter(records, r => (r.transaction as String) == (transaction as String) && (match r.lifecycle { Absent => false  Present { value: l } => content_hash_eq(a: l, b: lifecycle) }))
+}
+
+fn content_hash_eq(a: ContentHash, b: ContentHash) -> Bool {
+  match compare_content_hash(left: a, right: b) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
 }
 
 // THE GRANT MUST BE THE LEASE'S OWN, AND THE FOLD CHECKS THE GENEALOGY. Co-location in one event
@@ -501,13 +542,13 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
       match env.event.payload {
         EntryStateRecorded { transaction: _, body: _ } =>
           AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs }
-        AuthorityTransitioned { previous: p, next: n, transaction: t, grant: gr, entry_state: es } =>
+        AuthorityTransitioned { previous: p, next: n, transaction: t, lifecycle: lc, grant: gr, entry_state: es } =>
           if !authority_eq(a: p, b: cur) {
             AuthorityFoldRefused { at_event: env.id, reason: join(["the event leaves state ", authority_wire(a: p), " but the current state was ", authority_wire(a: cur)], "") }
           } else if (fabric_group_wire(g: pair_serving_authority_group(a: n)) as String) != (fabric_group_wire(g: pair_serving_authority_group(a: cur)) as String) {
             AuthorityFoldRefused { at_event: env.id, reason: "the event's next state names a different group than the partition's" }
           } else {
-            let recorded = concat(recs, [AuthorityTransitionRecord { id: env.id, transaction: t, next: n }])
+            let recorded = concat(recs, [AuthorityTransitionRecord { id: env.id, transaction: t, lifecycle: lc, next: n }])
             match gr {
               Absent => AuthorityFolded { current: n, generation: g + 1, grant: none, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id }, transitions: recorded }
               Present { value: grant } =>
@@ -633,6 +674,7 @@ fn pair_serving_authority_transition(
   expected: PairServingGroupAuthority,
   next: PairServingGroupAuthority,
   transaction: NonEmptyStr,
+  lifecycle: ContentHash?,
   grant: LeaseGrant?,
   entry_state: ContentHash?,
   actor: NonEmptyStr,
@@ -664,7 +706,7 @@ fn pair_serving_authority_transition(
             parent: parent,
             recorded_at: at,
             actor: actor,
-            payload: AuthorityTransitioned { previous: cur, next: next, transaction: transaction, grant: grant, entry_state: entry_state },
+            payload: AuthorityTransitioned { previous: cur, next: next, transaction: transaction, lifecycle: lifecycle, grant: grant, entry_state: entry_state },
           }
           match event_log_append_with(layout: layout, partition: pair_authority_partition(group: group), event: event, expected: head, encode: fn(e) { pair_authority_event_wire_text(event: e) }) {
             EventAppendRefused { step: s, reason: why } => AuthorityTransitionRefused { group: group, step: s, reason: why }

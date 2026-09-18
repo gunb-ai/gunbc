@@ -104,27 +104,27 @@ test fn a_transition_is_read_back_and_a_stale_one_names_the_current_by_real_exec
         Present { value: resting } =>
           alr_witness_remote_ready(dir: dir)
             && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000), expected: resting, generation: 0)
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: alr_w_pending(h: h), transaction: "tx-real" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: alr_w_pending(h: h), transaction: "tx-real" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
                   AuthorityTransitionAppended { id: admitting, generation: g1, next: _ } =>
                     g1 == 1
                       && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000), expected: alr_w_pending(h: h), generation: 1)
-                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: alr_w_pending(h: h), next: alr_w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, grant: Present { value: alr_w_grant(admitting: "not-the-admitting-event" as EventId, reference: "tx-real" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: alr_w_pending(h: h), next: alr_w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, lifecycle: none, grant: Present { value: alr_w_grant(admitting: "not-the-admitting-event" as EventId, reference: "tx-real" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
                             AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "grant"
                             _ => false
                           })
-                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: alr_w_pending(h: h), next: alr_w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, grant: Present { value: alr_w_grant(admitting: admitting, reference: "tx-other" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: alr_w_pending(h: h), next: alr_w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, lifecycle: none, grant: Present { value: alr_w_grant(admitting: admitting, reference: "tx-other" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
                             AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "grant"
                             _ => false
                           })
                       && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001), expected: alr_w_pending(h: h), generation: 1)
-                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: alr_w_pending(h: h), next: alr_w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, grant: Present { value: alr_w_grant(admitting: admitting, reference: "tx-real" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: alr_w_pending(h: h), next: alr_w_suspended(h: h), transaction: "tx-real" as NonEmptyStr, lifecycle: none, grant: Present { value: alr_w_grant(admitting: admitting, reference: "tx-real" as NonEmptyStr, generation: 1) }, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
                             AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2
                             _ => false
                           })
                       && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001), expected: alr_w_suspended(h: h), generation: 2)
                       && alr_current_may_launch(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001))
                       && !alr_current_may_launch(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500))
-                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: alr_w_pending(h: h), transaction: "tx-late" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 2600) {
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: alr_w_pending(h: h), transaction: "tx-late" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 2600) {
                             AuthorityTransitionStale { expected: _, current: c } => authority_eq(a: c, b: alr_w_suspended(h: h))
                             _ => false
                           })
@@ -146,7 +146,7 @@ test fn an_unclaimed_group_is_refused_at_the_claim_by_real_execution() -> Bool {
               CurrentAuthorityUnread { group: _, step: s, reason: _ } => s == "claim"
               CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => false
             })
-        && (match pair_serving_authority_transition(layout: layout, group: FabricGroupB, expected: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }, next: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }, transaction: "tx" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
+        && (match pair_serving_authority_transition(layout: layout, group: FabricGroupB, expected: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }, next: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }, transaction: "tx" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
               AuthorityTransitionRefused { group: _, step: s, reason: _ } => s == "claim"
               _ => false
             })

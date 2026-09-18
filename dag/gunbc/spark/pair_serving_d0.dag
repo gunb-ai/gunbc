@@ -39,7 +39,7 @@ import gunbc.fleet_ssh_locus { fleet_locus_ssh_target, FleetSshContextReady, Fle
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, parse_fabric_group, fabric_group_hosts }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint, ServingRouteResolved, ServingRouteUnresolved, serving_route }
-import gunbc.harness.harness_backend { harness_bounded_get, harness_bounded_presence, HarnessResponded, HarnessNoResponse, harness_metrics_url, harness_models_url, harness_launch_from_body }
+import gunbc.harness.harness_backend { harness_bounded_get, harness_bounded_presence, HarnessResponded, HarnessConnectionRefused, HarnessAcceptedNoAnswer, HarnessTransportUnread, harness_metrics_url, harness_models_url, harness_launch_from_body }
 import gunbc.serving.serving_enrollment { serving_route_endpoint_wire }
 import gunbc.spark.vllm_endpoint_process_launch { LaunchObserved, LaunchUnobserved }
 import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, read_unit_occupancy, serving_incarnation_refusal_text }
@@ -102,11 +102,12 @@ import gunbc.spark.pair_serving_authority_log {
 // beyond the unit, and free disk are named by the redesign and are NOT read here; the receipt
 // says what it holds and a later reader may not infer the rest.
 //
-// THE RECEIPT IS WRITTEN BEFORE THE SETTLING WRITE, AND THE WRITE NAMES IT. The entry-state
-// receipt is rendered, digested and written to disk before the second compare-and-set, and that
-// set carries the receipt's digest on its event -- so a receipt that cannot be written refuses
-// BEFORE the authority moves, and a later reader of the suspended authority can prove which
-// four-rank reading it was settled from rather than trusting a file on one host.
+// THE RECEIPT IS RECORDED ON THE LOG BEFORE THE SETTLING WRITE, AND THE WRITE NAMES IT. The
+// entry-state receipt is rendered and appended to the authority partition as its own event before
+// the second compare-and-set, and that set carries the event's content address -- so a receipt
+// that cannot be recorded refuses BEFORE the authority moves, and a later reader of the suspended
+// authority fetches the exact four-rank reading it was settled from by that id, from any mirror.
+// A local copy under target/ is a convenience derived from the id, and its failure changes nothing.
 //
 // THE TRANSACTION IS TOTAL OVER ITS CRASH POINTS. Consent is consumed by a claim on the fleet
 // event log BEFORE the first authority write, and the claim and the authority are two durable
@@ -164,8 +165,9 @@ type D0Population
   = D0PopulationAgrees
   | D0PopulationDiffers { granted: List<HostIdentity>, current: List<HostIdentity> }
 
-fn d0_population(subject: D0Subject) -> D0Population {
-  let current = fabric_group_hosts(g: subject.group)
+// `current` is SUPPLIED -- the entry passes fabric_group_hosts(group) -- so the join is one
+// interface over two host lists and its controls can drive a roster the source does not carry.
+fn d0_population(subject: D0Subject, current: List<HostIdentity>) -> D0Population {
   if length(current) == length(subject.hosts)
     && list_cover(held: current, expected: subject.hosts, eq: fn(a, b) { host_identity_eq(a: a, b: b) })
     && list_cover(held: subject.hosts, expected: current, eq: fn(a, b) { host_identity_eq(a: a, b: b) }) {
@@ -395,15 +397,29 @@ type D0SubjectStanding
   | D0SubjectDisagrees { admission: D0GrantAdmission }
   | D0SubjectNotGranted
 
-fn d0_subject_standing(authorization: ScopedAuthorization<D0Subject>, group: FabricGroup) -> D0SubjectStanding {
+// THE POPULATION IS CHECKED AT THE START AND NOT ON A RESUME. Before any claim or write, the
+// operator's hosts must be the group's current hosts. Once the claim is held the check moves to
+// the dispatcher (d0_dispatch), where its consequence depends on how far the lifecycle got: no
+// authority write yet means the claim is aborted; a pending state already written means the
+// transaction must still reach a terminal under the population it was authorized for -- a source
+// edit may not revoke the right to finish -- so the drift is carried into the readings and fences.
+type D0PopulationCheck
+  = PopulationAgainst { current: List<HostIdentity> }
+  | PopulationNotChecked
+
+fn d0_subject_standing(authorization: ScopedAuthorization<D0Subject>, group: FabricGroup, check_population: D0PopulationCheck) -> D0SubjectStanding {
   match authorization {
     AuthorizationGranted { grant: g, claim: _ } =>
       if (fabric_group_wire(g: g.subject.group) as String) != (fabric_group_wire(g: group) as String) {
         D0SubjectDisagrees { admission: D0GrantForAnotherGroup { granted: g.subject.group } }
       } else {
-        match d0_population(subject: g.subject) {
+        match check_population {
+          PopulationNotChecked => D0SubjectAgrees { grant: g }
+          PopulationAgainst { current: current } =>
+        match d0_population(subject: g.subject, current: current) {
           D0PopulationDiffers { granted: gr, current: cur } => D0SubjectDisagrees { admission: D0GrantForAnotherPopulation { granted: gr, current: cur } }
           D0PopulationAgrees => D0SubjectAgrees { grant: g }
+        }
         }
       }
     _ => D0SubjectNotGranted
@@ -412,8 +428,8 @@ fn d0_subject_standing(authorization: ScopedAuthorization<D0Subject>, group: Fab
 
 // START: the subject checks, the intent, the permission decision, then the claim; a binding that
 // cannot be digested AFTER the claim landed aborts the claim rather than stranding it.
-fn admit_d0_grant(layout: EventLogLayout, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String) -> D0GrantAdmission {
-  match d0_subject_standing(authorization: authorization, group: group) {
+fn admit_d0_grant(layout: EventLogLayout, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, current_hosts: List<HostIdentity>, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String) -> D0GrantAdmission {
+  match d0_subject_standing(authorization: authorization, group: group, check_population: PopulationAgainst { current: current_hosts }) {
     D0SubjectNotGranted => D0GrantRefused { cause: d0_not_granted_cause(authorization: authorization, escalation_id: escalation_id, group: group) }
     D0SubjectDisagrees { admission: a } => a
     D0SubjectAgrees { grant: g } =>
@@ -452,7 +468,7 @@ fn d0_not_granted_cause(authorization: ScopedAuthorization<D0Subject>, escalatio
 // re-decided, so an expired grant can still finish what it started. The binding is recomputed and
 // compared to the pending state's by the transaction.
 fn resume_d0_grant(layout: EventLogLayout, authorization: ScopedAuthorization<D0Subject>, escalation_id: NonEmptyStr, group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr) -> D0GrantAdmission {
-  match d0_subject_standing(authorization: authorization, group: group) {
+  match d0_subject_standing(authorization: authorization, group: group, check_population: PopulationNotChecked) {
     D0SubjectNotGranted => D0GrantClaimLost { holder: "the authorization is not granted, so no claim of it can be resumed" as NonEmptyStr }
     D0SubjectDisagrees { admission: a } => a
     D0SubjectAgrees { grant: g } =>
@@ -515,11 +531,12 @@ type RankOccupancyReading {
   occupancy: UnitOccupancy
 }
 
-// FOUR ARMS, BECAUSE "NO LAUNCH OBSERVED" IS TWO FACTS. The metrics endpoint not answering within
-// the front-door bound is the only reading that establishes an absent incumbent; the endpoint
-// answering with a document that names no launch is an incumbent that IS there and could not be
-// identified, and it fences. An earlier shape folded both into "silent" and would have suspended
-// a group whose engine answered.
+// FOUR ARMS, BECAUSE "NO LAUNCH OBSERVED" IS SEVERAL FACTS. The front door REFUSING the connection
+// within the bound is the only reading that establishes an absent incumbent; the door answering
+// with any HTTP status, or the metrics naming no launch, is an incumbent that IS there and could
+// not be identified, and it fences; the door accepting and not answering, or a transport that
+// could not be read, says nothing about the door and is RouteUnread, which fences too. An earlier
+// shape folded every failure into "silent" and would have suspended a group whose engine stalled.
 type IncumbentReading
   = IncumbentAnswered { agreement: PairRealizationAgreement }
   | IncumbentAnsweredUnread { cause: NonEmptyStr }
@@ -796,16 +813,26 @@ fn observe_ranks(context: FleetSshExecutionContext, group: FabricGroup) -> List<
 // a local listener that answers a chosen status: the distinction between "answered 500" and "no
 // response" lives in http.Client.StatusWithin's argv, and a control over a supplied reading cannot
 // notice that argv regaining -f.
+// "NO HTTP RESPONSE" IS NOT ABSENCE. Only a REFUSED connection says nobody listens on the door; a
+// connection the door accepted and never answered within the bound is a listener -- a stalled
+// engine is an incumbent -- and a transport that could not be read (no route, reset) establishes
+// nothing either way. Both of those are Unread and fence; an earlier shape read every failure
+// as silence, and a group whose engine hung would have been suspended out from under it.
 type FrontDoorReading
   = FrontDoorSilent { receipt: NonEmptyStr }
   | FrontDoorAnsweredUnread { cause: NonEmptyStr }
+  | FrontDoorUnread { cause: NonEmptyStr }
   | FrontDoorAnswered
 
 fn observe_front_door(endpoint: ServingRouteEndpoint) -> FrontDoorReading {
   let front_door = harness_models_url(endpoint: endpoint)
   match harness_bounded_presence(url: front_door) {
-    HarnessNoResponse { url: u } =>
-      FrontDoorSilent { receipt: join(["the serving front door at ", u, " returned no HTTP response within the front-door bound"], "") as NonEmptyStr }
+    HarnessConnectionRefused { url: u } =>
+      FrontDoorSilent { receipt: join(["the serving front door at ", u, " refused the connection within the front-door bound"], "") as NonEmptyStr }
+    HarnessAcceptedNoAnswer { url: u } =>
+      FrontDoorUnread { cause: join(["the serving front door at ", u, " accepted the connection and did not answer within the front-door bound: a listener is there and its state is unread"], "") as NonEmptyStr }
+    HarnessTransportUnread { url: u, curl_exit: code } =>
+      FrontDoorUnread { cause: join(["the serving front door at ", u, " could not be read (curl exit ", to_string(code), "), so nothing is established about the incumbent"], "") as NonEmptyStr }
     HarnessResponded { status: status } =>
       if starts_with(s: status, prefix: "2") {
         FrontDoorAnswered
@@ -821,6 +848,7 @@ fn front_door_as_incumbent(r: FrontDoorReading) -> IncumbentReading? {
   match r {
     FrontDoorSilent { receipt: rc } => Present { value: IncumbentDidNotAnswer { receipt: rc } }
     FrontDoorAnsweredUnread { cause: c } => Present { value: IncumbentAnsweredUnread { cause: c } }
+    FrontDoorUnread { cause: c } => Present { value: IncumbentRouteUnread { cause: c } }
     FrontDoorAnswered => none
   }
 }
@@ -926,7 +954,7 @@ fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, head: H
             D0DecidedRestore { next: _, key: _ } => none
             D0DecidedFence { next: _, cause: _ } => none
           }
-          match pair_serving_authority_transition(layout: layout, group: group, expected: pending, next: d0_decision_next(d: decision), transaction: transaction, grant: term, entry_state: Present { value: digest }, actor: executor, at: at) {
+          match pair_serving_authority_transition(layout: layout, group: group, expected: pending, next: d0_decision_next(d: decision), transaction: transaction, lifecycle: Present { value: admitted.binding }, grant: term, entry_state: Present { value: digest }, actor: executor, at: at) {
             AuthorityTransitionAppended { id: _, generation: g, next: _ } =>
               D0Settled { decision: decision, generation: g, receipt_path: if wr.success { path } else { join(["(local copy not written: ", wr.error, ")"], "") }, entry_state: digest }
             AuthorityTransitionStale { expected: e, current: c } => D0Refused { cause: join(["the settling write did not land; the authority is as the log says: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c })], "") }
@@ -945,19 +973,19 @@ fn d0_settle(layout: EventLogLayout, pending: PairServingGroupAuthority, head: H
 // and restores, if it restores, the EXACT Active state the first write left (the log's `previous`
 // for the pending state -- never the resting row, which may not be what was suspended); anything
 // else refuses without a write.
-fn d0_transaction(layout: EventLogLayout, group: FabricGroup, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> D0Outcome {
+fn d0_transaction(layout: EventLogLayout, group: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> D0Outcome {
   match current_pair_serving_authority(layout: layout, group: group, at: at) {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => D0Refused { cause: join(["authority unread at ", st, ": ", why], "") }
     CurrentAuthorityRead { authority: cur, head: head, generation: gen, grant: _, entry_state: _, previous: previous, admitted_by: admitted_by, transitions: _ } =>
       match cur {
         PairServingActive { group: _, exact_realization: _ } =>
-          match d0_population(subject: admitted.grant.subject) {
+          match d0_population(subject: admitted.grant.subject, current: current_hosts) {
             D0PopulationDiffers { granted: gr, current: cu } =>
               D0Refused { cause: join(["the grant's host population [", hosts_wire(hs: gr), "] is not the group's current population [", hosts_wire(hs: cu), "], so nothing is moved"], "") }
             D0PopulationAgrees => {
               let lease = d0_held_lease(group: group, transaction: transaction, executor: executor, generation: gen + 1)
               let pending = SuspensionPendingReconciliation { group: group, transaction: transaction, authorization_binding: admitted.binding, lease: lease }
-              match pair_serving_authority_transition(layout: layout, group: group, expected: cur, next: pending, transaction: transaction, grant: none, entry_state: none, actor: executor, at: at) {
+              match pair_serving_authority_transition(layout: layout, group: group, expected: cur, next: pending, transaction: transaction, lifecycle: Present { value: admitted.binding }, grant: none, entry_state: none, actor: executor, at: at) {
                 AuthorityTransitionAppended { id: admitting, generation: pending_generation, next: _ } =>
                   d0_settle(layout: layout, pending: pending, head: HeadAt { id: admitting }, active: cur, lease: lease, admitted: admitted, admitting: admitting, pending_generation: pending_generation, transaction: transaction, executor: executor, at: at, now: now, declared: declared_pair_realization(group: group), observation: observe(group))
                 AuthorityTransitionStale { expected: e, current: c } => D0Refused { cause: join(["the transfer into suspension did not land: ", transition_text(t: AuthorityTransitionStale { expected: e, current: c })], "") }
@@ -1009,7 +1037,12 @@ fn d0_transaction(layout: EventLogLayout, group: FabricGroup, admitted: Admitted
 //
 // "No transition by T" is decided from the log's own record of every admitted transition, never
 // from the current state: a completed T followed by another transaction's writes would otherwise
-// read as "T never ran" and be started again on a spent consent.
+// read as "T never ran" and be started again on a spent consent. AND THE RECORD IS SELECTED BY
+// THE LIFECYCLE, NOT THE TRANSACTION WORD: the word is a branded string nothing allocates
+// uniquely, so a later escalation may reuse it, and a join by the word alone would complete the
+// new consent from the old transaction's terminal. The lifecycle is the authorization binding
+// (escalation, attempt, intent, subject, executor, expiry, claim generation), carried on every
+// D0 transition; the dispatcher digests it from the held claim before asking the join.
 type D0Recovery
   = D0RecoverStart
   | D0RecoverFirstWrite { claim_generation: CasGeneration }
@@ -1018,7 +1051,7 @@ type D0Recovery
   | D0RecoverAbort { claim_generation: CasGeneration, cause: String }
   | D0RecoveryRefused { cause: String }
 
-fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, current: PairServingGroupAuthority, transitions: List<AuthorityTransitionRecord>) -> D0Recovery {
+fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, lifecycle: ContentHash?, current: PairServingGroupAuthority, transitions: List<AuthorityTransitionRecord>) -> D0Recovery {
   match claim {
     D0ClaimUnreadable { reason: r } => D0RecoveryRefused { cause: r as String }
     D0ClaimAbsent => D0RecoverStart
@@ -1031,7 +1064,10 @@ fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, current: PairSer
           if (who as String) != (transaction as String) {
             D0RecoveryRefused { cause: join(["the grant is held by attempt ", who as String, ", not this transaction"], "") }
           } else {
-            match last(transitions_by(records: transitions, transaction: transaction)) {
+            match lifecycle {
+              Absent => D0RecoveryRefused { cause: "the grant is held by this transaction but its authorization binding could not be digested, so its history on the log cannot be identified" }
+              Present { value: binding } =>
+            match last(transitions_by(records: transitions, transaction: transaction, lifecycle: binding)) {
               Absent =>
                 match current {
                   PairServingActive { group: _, exact_realization: _ } => D0RecoverFirstWrite { claim_generation: g }
@@ -1041,12 +1077,19 @@ fn d0_recovery(claim: D0ClaimReading, transaction: NonEmptyStr, current: PairSer
                 match mine.next {
                   SuspensionPendingReconciliation { group: _, transaction: _, authorization_binding: _, lease: _ } =>
                     match current {
-                      SuspensionPendingReconciliation { group: _, transaction: pt, authorization_binding: _, lease: _ } =>
-                        if (pt as String) == (transaction as String) { D0RecoverResume { claim_generation: g } } else { D0RecoveryRefused { cause: join(["the authority is pending under ", pt as String, ", not this transaction"], "") } }
+                      SuspensionPendingReconciliation { group: _, transaction: pt, authorization_binding: pb, lease: _ } =>
+                        if (pt as String) != (transaction as String) {
+                          D0RecoveryRefused { cause: join(["the authority is pending under ", pt as String, ", not this transaction"], "") }
+                        } else if !hashes_agree(l: pb, r: binding) {
+                          D0RecoveryRefused { cause: "the authority is pending under this transaction's word but another authorization's binding; only that lifecycle may settle it" }
+                        } else {
+                          D0RecoverResume { claim_generation: g }
+                        }
                       _ => D0RecoveryRefused { cause: join(["this transaction's pending state was moved by another writer (the authority is ", authority_wire(a: current), "); the group needs an operator's disposition"], "") }
                     }
                   _ => D0RecoverComplete { claim_generation: g, settled: mine }
                 }
+            }
             }
           }
       }
@@ -1088,29 +1131,45 @@ fn d0_admission_text(a: D0GrantAdmission, group: String) -> String {
   }
 }
 
-fn d0_run_admitted(layout: EventLogLayout, g: FabricGroup, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, claimed_here: Bool) -> ProcessExit {
-  match prepare_fleet_ssh_agent_context(attempt_raw: pair_serving_d0_attempt_raw) {
-    FleetSshContextRefused { cause: c } => {
-      let terminal = if claimed_here { d0_terminate_claim(layout: layout, escalation_id: escalation_id, transaction: transaction, held: admitted.claim_generation, completed: false, cause: "no fleet ssh context before the first write", executor: executor, at: at, now: now) } else { D0ClaimTerminated }
-      refuse(reason: join(["no fleet ssh context, so nothing is read and nothing is moved: ", c, claim_terminal_text(t: terminal)], ""))
-    }
-    FleetSshContextReady { context: context, receipt: _ } => {
-      let outcome = d0_transaction(
-        layout: layout, group: g, admitted: admitted, transaction: transaction, executor: executor, at: at, now: now,
-        observe: fn(og) { observe_d0(context: context, group: og, declared: declared_pair_realization(group: og)) },
-      )
-      match outcome {
-        D0Settled { decision: _, generation: _, receipt_path: _, entry_state: _ } => {
-          let terminal = d0_terminate_claim(layout: layout, escalation_id: escalation_id, transaction: transaction, held: admitted.claim_generation, completed: true, cause: "", executor: executor, at: at, now: now)
-          if d0_outcome_is_eligible(o: outcome) {
-            match terminal { D0ClaimTerminated => ExitSuccess  D0ClaimUnterminated { detail: d } => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  settled, but the authorization claim was left unterminated: ", d], "")) }
-          } else {
-            exit_failure(reason: join([d0_outcome_text(o: outcome), claim_terminal_text(t: terminal)], ""))
-          }
+// A DRIFTED POPULATION ON A RESUME IS CARRIED INTO THE READINGS, NOT REFUSED AT THE DOOR: the
+// pending state must reach a terminal under its original authorization, and the honest terminal
+// when the hosts are no longer the ones the operator saw is a fence naming both populations.
+fn d0_drift_observation(group: FabricGroup, granted: List<HostIdentity>, current: List<HostIdentity>) -> D0Observation {
+  D0Observation {
+    group: group,
+    incumbent: IncumbentRouteUnread { cause: join(["the group's host population changed after this transaction was authorized: authorized [", hosts_wire(hs: granted), "], current [", hosts_wire(hs: current), "]; the pending transaction is settled by fencing rather than read against hosts the operator never saw"], "") as NonEmptyStr },
+    ranks: [] as List<RankOccupancyReading>,
+  }
+}
+
+fn d0_run_admitted(layout: EventLogLayout, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, claimed_here: Bool) -> ProcessExit {
+  match d0_population(subject: admitted.grant.subject, current: current_hosts) {
+    D0PopulationDiffers { granted: gr, current: cu } =>
+      d0_settle_admitted(layout: layout, g: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, escalation_id: escalation_id, at: at, now: now, observe: fn(og) { d0_drift_observation(group: og, granted: gr, current: cu) })
+    D0PopulationAgrees =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: pair_serving_d0_attempt_raw) {
+        FleetSshContextRefused { cause: c } => {
+          let terminal = if claimed_here { d0_terminate_claim(layout: layout, escalation_id: escalation_id, transaction: transaction, held: admitted.claim_generation, completed: false, cause: "no fleet ssh context before the first write", executor: executor, at: at, now: now) } else { D0ClaimTerminated }
+          refuse(reason: join(["no fleet ssh context, so nothing is read and nothing is moved: ", c, claim_terminal_text(t: terminal)], ""))
         }
-        D0Refused { cause: _ } => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  the authorization claim stays held; a rerun under this transaction recovers from the claim and the log"], ""))
+        FleetSshContextReady { context: context, receipt: _ } =>
+          d0_settle_admitted(layout: layout, g: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, escalation_id: escalation_id, at: at, now: now, observe: fn(og) { observe_d0(context: context, group: og, declared: declared_pair_realization(group: og)) })
+      }
+  }
+}
+
+fn d0_settle_admitted(layout: EventLogLayout, g: FabricGroup, current_hosts: List<HostIdentity>, admitted: AdmittedD0Grant, transaction: NonEmptyStr, executor: NonEmptyStr, escalation_id: NonEmptyStr, at: EpochSecs, now: String, observe: fn(FabricGroup) -> D0Observation) -> ProcessExit {
+  let outcome = d0_transaction(layout: layout, group: g, current_hosts: current_hosts, admitted: admitted, transaction: transaction, executor: executor, at: at, now: now, observe: observe)
+  match outcome {
+    D0Settled { decision: _, generation: _, receipt_path: _, entry_state: _ } => {
+      let terminal = d0_terminate_claim(layout: layout, escalation_id: escalation_id, transaction: transaction, held: admitted.claim_generation, completed: true, cause: "", executor: executor, at: at, now: now)
+      if d0_outcome_is_eligible(o: outcome) {
+        match terminal { D0ClaimTerminated => ExitSuccess  D0ClaimUnterminated { detail: d } => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  settled, but the authorization claim was left unterminated: ", d], "")) }
+      } else {
+        exit_failure(reason: join([d0_outcome_text(o: outcome), claim_terminal_text(t: terminal)], ""))
       }
     }
+    D0Refused { cause: _ } => exit_failure(reason: join([d0_outcome_text(o: outcome), "\n  the authorization claim stays held; a rerun under this transaction recovers from the claim and the log"], ""))
   }
 }
 
@@ -1121,27 +1180,64 @@ fn claim_terminal_text(t: D0ClaimTerminal) -> String {
   }
 }
 
-fn d0_dispatch(layout: EventLogLayout, g: FabricGroup, group: String, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, current: CurrentAuthority) -> ProcessExit {
+// THE DISPATCH. The claim is read first; when it is held by this transaction the grant is resumed
+// (no re-decision) so the lifecycle binding exists BEFORE the join is asked -- the join selects
+// this lifecycle's history by it. Then each recovery arm has one consequence:
+//   Start       → decide, claim, write (admit_d0_grant, then the transaction)
+//   FirstWrite  → the population is re-checked against the current group: drift ABORTS the claim
+//                 (nothing was written under it); agreement performs the first write
+//   Resume      → the pending transaction finishes under its original authorization; drift is
+//                 carried into the readings and fences rather than stranding the group
+//   Complete    → the claim's terminal only; the authority is not touched
+//   Abort       → the claim's terminal only
+fn d0_dispatch(layout: EventLogLayout, g: FabricGroup, group: String, current_hosts: List<HostIdentity>, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, current: CurrentAuthority) -> ProcessExit {
   match current {
     CurrentAuthorityUnread { group: _, step: st, reason: why } => refuse(reason: join(["authority unread at ", st, ": ", why], ""))
     CurrentAuthorityRead { authority: cur, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: recs } => {
-      let recovery = d0_recovery(claim: d0_read_claim(layout: layout, escalation_id: esc), transaction: tx, current: cur, transitions: recs)
+      let claim = d0_read_claim(layout: layout, escalation_id: esc)
+      let held_here = match claim {
+        D0ClaimAt { state: ClaimedBy { attempt: who, claimed_at: _ }, generation: _ } => (who as String) == (tx as String)
+        _ => false
+      }
+      let resumed = if held_here { resume_d0_grant(layout: layout, authorization: scoped, escalation_id: esc, group: g, transaction: tx, executor: executor) } else { D0GrantClaimLost { holder: "no claim held by this transaction" as NonEmptyStr } }
+      let lifecycle = match resumed {
+        D0GrantAdmitted { admitted: a } => Present { value: a.binding }
+        _ => none
+      }
+      let recovery = d0_recovery(claim: claim, transaction: tx, lifecycle: lifecycle, current: cur, transitions: recs)
       match recovery {
         D0RecoveryRefused { cause: c } => refuse(reason: c)
-        D0RecoverStart =>
-          {
-            let admission = admit_d0_grant(layout: layout, authorization: scoped, escalation_id: esc, group: g, transaction: tx, executor: executor, at: at, now: now)
-            match admission {
-              D0GrantAdmitted { admitted: admitted } => d0_run_admitted(layout: layout, g: g, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: true)
-              _ => refuse(reason: d0_admission_text(a: admission, group: group))
-            }
+        D0RecoverStart => {
+          let admission = admit_d0_grant(layout: layout, authorization: scoped, escalation_id: esc, group: g, current_hosts: current_hosts, transaction: tx, executor: executor, at: at, now: now)
+          match admission {
+            D0GrantAdmitted { admitted: admitted } => d0_run_admitted(layout: layout, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: true)
+            _ => refuse(reason: d0_admission_text(a: admission, group: group))
           }
-        D0RecoverFirstWrite { claim_generation: _ } => d0_dispatch_resumed(layout: layout, g: g, group: group, scoped: scoped, tx: tx, esc: esc, executor: executor, at: at, now: now, recovery: recovery)
-        D0RecoverResume { claim_generation: _ } => d0_dispatch_resumed(layout: layout, g: g, group: group, scoped: scoped, tx: tx, esc: esc, executor: executor, at: at, now: now, recovery: recovery)
-        D0RecoverComplete { claim_generation: cg, settled: s } =>
+        }
+        D0RecoverFirstWrite { claim_generation: cg } =>
+          match resumed {
+            D0GrantAdmitted { admitted: admitted } =>
+              match d0_population(subject: admitted.grant.subject, current: current_hosts) {
+                D0PopulationAgrees => d0_run_admitted(layout: layout, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
+                D0PopulationDiffers { granted: gr, current: cu } => {
+                  let cause = join(["the group's host population changed after the claim and before any write: authorized [", hosts_wire(hs: gr), "], current [", hosts_wire(hs: cu), "]"], "")
+                  match d0_terminate_claim(layout: layout, escalation_id: esc, transaction: tx, held: cg, completed: false, cause: cause, executor: executor, at: at, now: now) {
+                    D0ClaimTerminated => refuse(reason: join([cause, "; the claim is aborted and the authority was not moved"], ""))
+                    D0ClaimUnterminated { detail: d } => refuse(reason: join([cause, claim_terminal_text(t: D0ClaimUnterminated { detail: d })], ""))
+                  }
+                }
+              }
+            _ => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
+          }
+        D0RecoverResume { claim_generation: _ } =>
+          match resumed {
+            D0GrantAdmitted { admitted: admitted } => d0_run_admitted(layout: layout, g: g, current_hosts: current_hosts, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
+            _ => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: resumed, group: group)], ""))
+          }
+        D0RecoverComplete { claim_generation: cg, settled: st } =>
           match d0_terminate_claim(layout: layout, escalation_id: esc, transaction: tx, held: cg, completed: true, cause: "", executor: executor, at: at, now: now) {
             D0ClaimTerminated =>
-              match s.next {
+              match st.next {
                 SuspendedForAuthorizedSuccessor { group: _, authorization: _, exact_candidate_realization: _, lease: _, cleanup: _ } => ExitSuccess
                 _ => exit_failure(reason: join([d0_recovery_text(r: recovery), "; the claim is completed and the authority was not moved by this run"], ""))
               }
@@ -1154,14 +1250,6 @@ fn d0_dispatch(layout: EventLogLayout, g: FabricGroup, group: String, scoped: Sc
           }
       }
     }
-  }
-}
-
-fn d0_dispatch_resumed(layout: EventLogLayout, g: FabricGroup, group: String, scoped: ScopedAuthorization<D0Subject>, tx: NonEmptyStr, esc: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, now: String, recovery: D0Recovery) -> ProcessExit {
-  let admission = resume_d0_grant(layout: layout, authorization: scoped, escalation_id: esc, group: g, transaction: tx, executor: executor)
-  match admission {
-    D0GrantAdmitted { admitted: admitted } => d0_run_admitted(layout: layout, g: g, admitted: admitted, transaction: tx, executor: executor, escalation_id: esc, at: at, now: now, claimed_here: false)
-    _ => refuse(reason: join([d0_recovery_text(r: recovery), "; ", d0_admission_text(a: admission, group: group)], ""))
   }
 }
 
@@ -1187,7 +1275,7 @@ fn pair_serving_d0_wet(group: String, transaction: String, authorization: String
                     match now_epoch_seconds() {
                       Absent => refuse(reason: "the clock could not be read as epoch seconds")
                       Present { value: at } =>
-                        d0_dispatch(layout: layout, g: g, group: group, scoped: scoped, tx: transaction as NonEmptyStr, esc: authorization as NonEmptyStr, executor: executor as NonEmptyStr, at: at, now: now, current: current_pair_serving_authority(layout: layout, group: g, at: at))
+                        d0_dispatch(layout: layout, g: g, group: group, current_hosts: fabric_group_hosts(g: g), scoped: scoped, tx: transaction as NonEmptyStr, esc: authorization as NonEmptyStr, executor: executor as NonEmptyStr, at: at, now: now, current: current_pair_serving_authority(layout: layout, group: g, at: at))
                     }
                 }
             }

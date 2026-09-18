@@ -359,10 +359,10 @@ fn d0w_t_subject_over(hs: List<HostIdentity>, successor: ContentHash, term: Nat)
 test fn the_grant_population_is_joined_to_the_current_group_by_identity() -> Bool {
   d0w_with_digests(scenario: fn(a, b, c) {
     d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
-      (match d0_population(subject: d0w_t_subject_over(hs: [h4, h3, h2, h1], successor: c, term: 1000)) { D0PopulationAgrees => true  _ => false })
-        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3], successor: c, term: 1000)) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
-        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3, h3], successor: c, term: 1000)) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
-        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3, operator_host_srv1], successor: c, term: 1000)) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+      (match d0_population(subject: d0w_t_subject_over(hs: [h4, h3, h2, h1], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationAgrees => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3, h3], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3, operator_host_srv1], successor: c, term: 1000), current: [h1, h2, h3, h4]) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
     })
   })
 }
@@ -386,8 +386,17 @@ test fn the_intent_text_is_canonical_over_the_operation() -> Bool {
 
 // ── RECOVERY: THE JOIN OVER THE CLAIM AND THE AUTHORITY HISTORY ────────────────────────────────
 
+fn d0w_rec_of(id: String, tx: String, lifecycle: ContentHash?, next: PairServingGroupAuthority) -> AuthorityTransitionRecord {
+  AuthorityTransitionRecord { id: (id as NonEmptyStr) as EventId, transaction: tx as NonEmptyStr, lifecycle: lifecycle, next: next }
+}
+
+// A record written by THIS lifecycle (binding c, the same hash the claims pass as the lifecycle).
 fn d0w_rec(id: String, tx: String, next: PairServingGroupAuthority) -> AuthorityTransitionRecord {
-  AuthorityTransitionRecord { id: (id as NonEmptyStr) as EventId, transaction: tx as NonEmptyStr, next: next }
+  d0w_rec_of(id: id, tx: tx, lifecycle: none, next: next)
+}
+
+fn d0w_mine(id: String, h: ContentHash, next: PairServingGroupAuthority) -> AuthorityTransitionRecord {
+  d0w_rec_of(id: id, tx: "tx-w", lifecycle: Present { value: h }, next: next)
 }
 
 fn d0w_pending(tx: String, h: ContentHash) -> PairServingGroupAuthority {
@@ -410,13 +419,33 @@ fn d0w_suspended(h: ContentHash) -> PairServingGroupAuthority {
 test fn the_recovery_join_dispatches_every_crash_point() -> Bool {
   d0w_with_digests(scenario: fn(a, b, c) {
     let active = d0w_t_active()
-    (match d0_recovery(claim: D0ClaimAbsent, transaction: d0w_t_tx, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverStart => true  _ => false })
-      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverFirstWrite { claim_generation: _ } => true  _ => false })
-      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: FencedRefusal { group: FabricGroupA, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }, transitions: [d0w_rec(id: "e1", tx: "tx-other", next: FencedRefusal { group: FabricGroupA, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr })]) { D0RecoverAbort { claim_generation: _, cause: _ } => true  _ => false })
-      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: d0w_pending(tx: "tx-w", h: c), transitions: [d0w_rec(id: "e1", tx: "tx-w", next: d0w_pending(tx: "tx-w", h: c))]) { D0RecoverResume { claim_generation: _ } => true  _ => false })
-      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: d0w_suspended(h: c), transitions: [d0w_rec(id: "e1", tx: "tx-w", next: d0w_pending(tx: "tx-w", h: c)), d0w_rec(id: "e2", tx: "tx-w", next: d0w_suspended(h: c))]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
-      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: active, transitions: [d0w_rec(id: "e1", tx: "tx-w", next: d0w_pending(tx: "tx-w", h: c)), d0w_rec(id: "e2", tx: "tx-w", next: active), d0w_rec(id: "e3", tx: "tx-later", next: d0w_pending(tx: "tx-later", h: c)), d0w_rec(id: "e4", tx: "tx-later", next: active)]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
-      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: active, transitions: [d0w_rec(id: "e1", tx: "tx-w", next: d0w_pending(tx: "tx-w", h: c)), d0w_rec(id: "e2", tx: "tx-operator", next: active)]) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    (match d0_recovery(claim: D0ClaimAbsent, transaction: d0w_t_tx, lifecycle: none, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverStart => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverFirstWrite { claim_generation: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: FencedRefusal { group: FabricGroupA, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }, transitions: [d0w_rec(id: "e1", tx: "tx-other", next: FencedRefusal { group: FabricGroupA, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr })]) { D0RecoverAbort { claim_generation: _, cause: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: d0w_pending(tx: "tx-w", h: c), transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c))]) { D0RecoverResume { claim_generation: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: d0w_suspended(h: c), transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_mine(id: "e2", h: c, next: d0w_suspended(h: c))]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: active, transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_mine(id: "e2", h: c, next: active), d0w_rec(id: "e3", tx: "tx-later", next: d0w_pending(tx: "tx-later", h: c)), d0w_rec(id: "e4", tx: "tx-later", next: active)]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: active, transitions: [d0w_mine(id: "e1", h: c, next: d0w_pending(tx: "tx-w", h: c)), d0w_rec(id: "e2", tx: "tx-operator", next: active)]) { D0RecoveryRefused { cause: _ } => true  _ => false })
+  })
+}
+
+// RED: THE TRANSACTION WORD IS NOT THE LIFECYCLE. Escalation E1 under word tx-w settled (its
+// transitions carry binding a); an operator restored the group; escalation E2 under the SAME word
+// claimed (binding c) and died before its first write. E2's recovery must be FirstWrite -- never
+// Complete from E1's terminal -- and a claim whose binding could not be digested identifies no
+// history at all and is refused rather than joined by the word.
+test fn a_reused_transaction_word_does_not_inherit_another_lifecycles_history() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let active = d0w_t_active()
+    let history = [
+      d0w_rec_of(id: "e1", tx: "tx-w", lifecycle: Present { value: a }, next: d0w_pending(tx: "tx-w", h: a)),
+      d0w_rec_of(id: "e2", tx: "tx-w", lifecycle: Present { value: a }, next: d0w_suspended(h: a)),
+      d0w_rec(id: "e3", tx: "tx-operator-restore", next: active),
+    ]
+    (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: active, transitions: history) { D0RecoverFirstWrite { claim_generation: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: a }, current: active, transitions: history) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: none, current: active, transitions: history) { D0RecoveryRefused { cause: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, lifecycle: Present { value: c }, current: d0w_pending(tx: "tx-w", h: a), transitions: concat(history, [d0w_rec_of(id: "e4", tx: "tx-w", lifecycle: Present { value: c }, next: d0w_pending(tx: "tx-w", h: c))])) { D0RecoveryRefused { cause: _ } => true  _ => false })
   })
 }
 
@@ -426,11 +455,11 @@ test fn the_recovery_join_dispatches_every_crash_point() -> Bool {
 test fn a_claim_that_is_not_this_transactions_is_refused_before_any_write() -> Bool {
   let active = d0w_t_active()
   let none_yet = [] as List<AuthorityTransitionRecord>
-  (match d0_recovery(claim: d0w_claimed(by: "tx-other"), transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
-    && (match d0_recovery(claim: D0ClaimAt { state: CompletedBy { attempt: ("tx-w" as NonEmptyStr) as AttemptIdentity, completed_at: "t" }, generation: 2 }, transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
-    && (match d0_recovery(claim: D0ClaimAt { state: AbortedBy { attempt: ("tx-w" as NonEmptyStr) as AttemptIdentity, aborted_at: "t", cause: "w" as NonEmptyStr }, generation: 2 }, transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
-    && (match d0_recovery(claim: D0ClaimAt { state: Unclaimed, generation: 1 }, transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
-    && (match d0_recovery(claim: D0ClaimUnreadable { reason: "w" as NonEmptyStr }, transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+  (match d0_recovery(claim: d0w_claimed(by: "tx-other"), transaction: d0w_t_tx, lifecycle: none, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: CompletedBy { attempt: ("tx-w" as NonEmptyStr) as AttemptIdentity, completed_at: "t" }, generation: 2 }, transaction: d0w_t_tx, lifecycle: none, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: AbortedBy { attempt: ("tx-w" as NonEmptyStr) as AttemptIdentity, aborted_at: "t", cause: "w" as NonEmptyStr }, generation: 2 }, transaction: d0w_t_tx, lifecycle: none, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: Unclaimed, generation: 1 }, transaction: d0w_t_tx, lifecycle: none, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimUnreadable { reason: "w" as NonEmptyStr }, transaction: d0w_t_tx, lifecycle: none, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
 }
 
 // A declaration that could not be keyed fences: there is nothing to reconcile against.

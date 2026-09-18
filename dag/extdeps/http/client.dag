@@ -1,6 +1,6 @@
 module extdeps.http.client
 
-import std.types { NonEmptyStr, Bool, List, Unit }
+import std.types { NonEmptyStr, Bool, Int, List, Unit }
 import std.string_type { String }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
@@ -57,8 +57,18 @@ fn http_client_get_argv(url: NonEmptyStr) -> List<String> {
 // turns a 4xx or 5xx into a failed operation -- right for a caller that wants a body, wrong for a
 // caller asking whether anything is THERE: a front door returning 401 or 500 answered. That
 // operation asks only for the status line, within the caller's deadline, and fails only when no
-// HTTP response was received at all (no connection, no route, deadline) -- the transport-level
-// distinction a presence reading needs.
+// HTTP response was received at all -- and WHY is carried as curl's exit code, because "no
+// response" is not one fact: a refused connection (nobody listens, curl 7) and a deadline on an
+// accepted connection (something listens and did not answer, curl 28) are opposite readings for a
+// caller asking whether anything is THERE. The consumer maps the code; the transport reports it.
+// curl_exit_connection_refused / curl_exit_deadline below are the cited codes.
+// curl's exit codes for the two arms a presence reading must tell apart (curl(1) EXIT CODES):
+// 7 "Failed to connect to host" -- the connection was refused or could not be made; 28
+// "Operation timeout" -- the deadline passed. Every other nonzero code is a transport the caller
+// could not read.
+data curl_exit_connection_refused: Int = 7
+data curl_exit_deadline: Int = 28
+
 service http.Client {
   operation Get {
     input { url: NonEmptyStr }
@@ -139,7 +149,7 @@ service http.Client {
 
   operation StatusWithin {
     input { url: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { status: String from "stdout", success: Bool from "exit_success" }
+    output { status: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
     readonly
     transport shell {
       argv: ["curl", "-sS", "-o", "/dev/null", "-w", "%\{http_code}", "--max-time", "{max_seconds}", "{url}"]
@@ -149,7 +159,7 @@ service http.Client {
       nonzero => String "http client status GET within a caller deadline received no response"
     }
     mock_response {
-      0 => { status: "", success: false } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
+      0 => { status: "", success: false, exit_code: 28 } "hermetic: no live HTTP endpoint; a bounded presence reading refuses rather than fabricate a status"
     }
   }
 

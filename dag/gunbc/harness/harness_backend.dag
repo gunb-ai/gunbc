@@ -38,6 +38,7 @@ import gunbc.spark.vllm_observed {
 }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
 import extdeps.http.client
+import extdeps.http.client { curl_exit_connection_refused, curl_exit_deadline }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
 }
@@ -74,13 +75,29 @@ fn harness_bounded_get(url: String) -> HarnessBoundedRead {
 // PRESENCE, NOT CONTENT: whether ANY HTTP response came back within the front-door bound, and
 // with what status. Consumed by the Cut D D0 incumbent question, for which a 401 or a 500 is an
 // incumbent that answered and -f's failure would have read as absence.
+//
+// "NO RESPONSE" IS THREE READINGS, NOT ONE. A REFUSED connection is the only one of them that
+// says nobody listens; a DEADLINE is a listener that accepted and did not answer -- a stalled
+// engine is still an incumbent -- and any other transport failure (no route, reset, resolution)
+// says nothing about the door at all. Folding the three into one "silent" arm made a timeout read
+// as absence, which for a transaction that suspends the group on absence is the wrong side.
 type HarnessBoundedPresence
   = HarnessResponded { status: String }
-  | HarnessNoResponse { url: String }
+  | HarnessConnectionRefused { url: String }
+  | HarnessAcceptedNoAnswer { url: String }
+  | HarnessTransportUnread { url: String, curl_exit: Int }
 
 fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
   let read = http.Client.StatusWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
-  if read.success { HarnessResponded { status: trim(s: read.status) } } else { HarnessNoResponse { url: url } }
+  if read.success {
+    HarnessResponded { status: trim(s: read.status) }
+  } else if read.exit_code == curl_exit_connection_refused {
+    HarnessConnectionRefused { url: url }
+  } else if read.exit_code == curl_exit_deadline {
+    HarnessAcceptedNoAnswer { url: url }
+  } else {
+    HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+  }
 }
 
 type HarnessBoundedRead {

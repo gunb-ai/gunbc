@@ -15,14 +15,14 @@ import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 
 import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
-import gunbc.harness.harness_backend { HarnessBoundedPresence, HarnessResponded, HarnessNoResponse, harness_bounded_presence, harness_models_url }
+import gunbc.harness.harness_backend { HarnessBoundedPresence, HarnessResponded, HarnessConnectionRefused, HarnessAcceptedNoAnswer, HarnessTransportUnread, harness_bounded_presence, harness_models_url }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
 import gunbc.spark.pair_serving_authority { FencedRefusal }
 import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority }
 import gunbc.spark.pair_serving_d0 {
-  FrontDoorReading, FrontDoorSilent, FrontDoorAnsweredUnread, FrontDoorAnswered, observe_front_door, front_door_as_incumbent,
-  IncumbentReading, IncumbentAnsweredUnread, IncumbentDidNotAnswer, D0Observation, RankOccupancyReading,
-  D0Outcome, D0Settled, D0Decision, D0DecidedFence, D0Cause, D0IncumbentUnidentified, d0_transaction,
+  FrontDoorReading, FrontDoorSilent, FrontDoorAnsweredUnread, FrontDoorUnread, FrontDoorAnswered, observe_front_door, front_door_as_incumbent,
+  IncumbentReading, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation, RankOccupancyReading,
+  D0Outcome, D0Settled, D0Decision, D0DecidedFence, D0Cause, D0IncumbentUnidentified, D0OccupancyUnread, d0_transaction,
   AdmittedD0Grant, D0GrantAdmitted, admit_d0_grant, D0Subject, d0_intent_hash, d0_authorized_action,
 }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity }
@@ -42,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // background by the fixture below, which prints the port and pid; it is killed at the end of the
 // scenario and exits by itself after a bounded lifetime if the kill never comes.
 
-data d0fd_listener_fixture: String = "import http.server, os, socketserver, sys, threading, time\nstatus = int(sys.argv[1])\nlifetime = float(sys.argv[2])\nclass H(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(status)\n        self.send_header('Content-Length', '0')\n        self.end_headers()\n    def log_message(self, *a):\n        pass\nsocketserver.TCPServer.allow_reuse_address = True\nsrv = socketserver.TCPServer(('127.0.0.1', 0), H)\nport = srv.server_address[1]\npid = os.fork()\nif pid:\n    sys.stdout.write('%d %d\\n' % (port, pid))\n    sys.stdout.flush()\n    os._exit(0)\nos.setsid()\nnull = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 0)\nos.dup2(null, 1)\nos.dup2(null, 2)\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\ntime.sleep(lifetime)\nos._exit(0)\n"
+data d0fd_listener_fixture: String = "import http.server, os, socketserver, sys, threading, time\nstatus = int(sys.argv[1]) if sys.argv[1] != 'hang' else 0\nlifetime = float(sys.argv[2])\nclass H(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n        if status == 0:\n            time.sleep(lifetime)\n            return\n        self.send_response(status)\n        self.send_header('Content-Length', '0')\n        self.end_headers()\n    def log_message(self, *a):\n        pass\nsocketserver.TCPServer.allow_reuse_address = True\nsrv = socketserver.TCPServer(('127.0.0.1', 0), H)\nport = srv.server_address[1]\npid = os.fork()\nif pid:\n    sys.stdout.write('%d %d\\n' % (port, pid))\n    sys.stdout.flush()\n    os._exit(0)\nos.setsid()\nnull = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 0)\nos.dup2(null, 1)\nos.dup2(null, 2)\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\ntime.sleep(lifetime)\nos._exit(0)\n"
 
 data d0fd_kill_fixture: String = "import os, signal, sys\nos.kill(int(sys.argv[1]), signal.SIGTERM)\n"
 
@@ -110,7 +110,7 @@ fn d0fd_endpoint(port: Int) -> ServingRouteEndpoint {
 fn d0fd_status_is(p: HarnessBoundedPresence, status: String) -> Bool {
   match p {
     HarnessResponded { status: s } => s == status
-    HarnessNoResponse { url: _ } => false
+    _ => false
   }
 }
 
@@ -136,16 +136,52 @@ test fn an_error_status_is_an_answer_and_no_listener_is_silence_by_real_executio
   })
 }
 
-// The port a killed listener vacated answers nothing: the same transport, the same bound.
+// The port a killed listener vacated REFUSES the connection: the same transport, the same bound,
+// and the one failure arm that establishes nobody listens.
 test fn a_vacated_port_reads_as_no_response_by_real_execution() -> Bool {
   d0fd_with_temp_dir(scenario: fn(dir) {
     match d0fd_vacated_port(dir: dir) {
       Absent => false
       Present { value: port } =>
-        (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: port))) { HarnessNoResponse { url: _ } => true  HarnessResponded { status: _ } => false })
+        (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: port))) { HarnessConnectionRefused { url: _ } => true  _ => false })
           && (match observe_front_door(endpoint: d0fd_endpoint(port: port)) { FrontDoorSilent { receipt: _ } => true  _ => false })
           && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: port))) { Present { value: IncumbentDidNotAnswer { receipt: _ } } => true  _ => false })
     }
+  })
+}
+
+// A LISTENER THAT ACCEPTS AND NEVER ANSWERS IS NOT ABSENCE. The fixture in `hang` mode accepts the
+// connection and writes no status line; after the front-door bound curl exits 28, the presence
+// reading is AcceptedNoAnswer, the front door is Unread, the incumbent reading is RouteUnread --
+// and through the transaction the group is FENCED at generation 2, never suspended as absent.
+test fn a_listener_that_accepts_and_never_answers_fences_rather_than_reading_as_absent_by_real_execution() -> Bool {
+  d0fd_with_hash(scenario: fn(h) {
+    d0fd_with_temp_dir(scenario: fn(dir) {
+      let layout = d0fd_witness_layout(dir: dir)
+      d0fd_witness_remote_ready(dir: dir)
+        && d0fd_with_listener(dir: dir, status: "hang", scenario: fn(l) {
+          (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))) { HarnessAcceptedNoAnswer { url: _ } => true  _ => false })
+            && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port))) { Present { value: IncumbentRouteUnread { cause: _ } } => true  _ => false })
+            && (match d0fd_w_admitted(layout: layout, successor: h) {
+                  Absent => false
+                  Present { value: admitted } =>
+                    (match d0_transaction(layout: layout, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z",
+                           observe: fn(g) {
+                             D0Observation {
+                               group: g,
+                               incumbent: match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port))) {
+                                 Present { value: r } => r
+                                 Absent => IncumbentDidNotAnswer { receipt: "witness: the front door answered 2xx, which this fixture does not" as NonEmptyStr }
+                               },
+                               ranks: [] as List<RankOccupancyReading>,
+                             }
+                           }) {
+                       D0Settled { decision: D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
+                       _ => false
+                     })
+                })
+        })
+    })
   })
 }
 
@@ -208,7 +244,7 @@ fn d0fd_w_admitted(layout: EventLogLayout, successor: ContentHash) -> AdmittedD0
         },
         claim: Unclaimed,
       }
-      match admit_d0_grant(layout: layout, authorization: auth, escalation_id: esc, group: FabricGroupA, transaction: tx, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z") {
+      match admit_d0_grant(layout: layout, authorization: auth, escalation_id: esc, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), transaction: tx, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z") {
         D0GrantAdmitted { admitted: a } => Present { value: a }
         _ => none
       }
@@ -228,7 +264,7 @@ test fn a_front_door_answering_500_fences_the_group_through_the_transaction_by_r
           match d0fd_w_admitted(layout: layout, successor: h) {
             Absent => false
             Present { value: admitted } =>
-              (match d0_transaction(layout: layout, group: FabricGroupA, admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z",
+              (match d0_transaction(layout: layout, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z",
                      observe: fn(g) {
                        D0Observation {
                          group: g,
