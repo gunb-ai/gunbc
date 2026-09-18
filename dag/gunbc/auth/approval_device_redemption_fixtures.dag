@@ -6,7 +6,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, F
 import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
-import gunbc.auth.approval_device_redemption {
+import gunbc.auth.approval_device_wire {
   DeviceRedemptionSigningInput, RedemptionChallenge, MobilePlatform, MobileIos, MobileAndroid,
   device_redemption_signing_input, enrolment_transcript, platform_wire, approval_device_audience,
 }

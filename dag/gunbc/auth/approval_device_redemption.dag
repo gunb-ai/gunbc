@@ -1,8 +1,7 @@
 module gunbc.auth.approval_device_redemption
 
-import std.types { NonEmptyStr, String, Timestamp, Int, List }
+import std.types { NonEmptyStr, String, Timestamp, Int }
 import std.logic { Bool }
-import std.measure { Second, second }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.crypto.signature { VerifyingKey, SignatureBytes, SignatureVerification, SignatureVerified }
 import extdeps.apple.apns {
@@ -10,7 +9,6 @@ import extdeps.apple.apns {
   ApnsEnvironment, ApnsTopic, ApnsDeviceToken, ApnsRefusalClass,
   ApnsBadRequest, ApnsAuthenticationRefused, ApnsBadPath, ApnsBadMethod, ApnsTokenUnregistered,
   ApnsPayloadTooLarge, ApnsTooManyRequests, ApnsServerError, ApnsServiceUnavailable, ApnsStatusUnlisted,
-  ApnsCustomKey,
 }
 import extdeps.apple.app_attest {
   AttestKeyId, AttestationVerification, AttestationVerified, AttestationRefused, AttestationRefusal,
@@ -32,6 +30,10 @@ import gunbc.auth.approval_decision_store {
   ApprovalKeyringRead, ApprovalKeyLoaded, ApprovalKeyringRefused, ApprovalKeyringRefusal,
   claims_for, commit_broker_decision, StoreWritten, StoreSlotOccupied, StoreRefused,
   approval_capability_expectation, approval_operator_login,
+}
+import gunbc.auth.approval_device_wire {
+  MobilePlatform, MobileIos, MobileAndroid, enrolment_transcript, DeviceRedemptionSigningInput,
+  device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 
@@ -55,33 +57,6 @@ import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_vers
 // depends on it (enrolment commit, decision commit) takes that value and nothing looser. A caller
 // cannot reach the decision commit with raw claims and a login it chose.
 
-type MobilePlatform
-  = MobileIos
-  | MobileAndroid
-
-fn platform_wire(p: MobilePlatform) -> NonEmptyStr {
-  match p {
-    MobileIos => "ios" as NonEmptyStr
-    MobileAndroid => "android" as NonEmptyStr
-  }
-}
-
-// ── One injective byte rendering ─────────────────────────────────────────────────────────────
-// EVERY SIGNED OR MAC'D MESSAGE IN THIS PROTOCOL IS LENGTH-FRAMED: each field is rendered
-// "<n>:<field>," where n is the field's length in Unicode code points (string_length here,
-// String.unicodeScalars.count in Swift). A plain separator join is not injective when a field may
-// contain the separator -- and one field here, capability_text, is itself a unit-separator join --
-// so two different field lists could render to the same bytes and one signature would stand for
-// both. Framing makes the rendering injective for ANY field content, with no alphabet restriction to
-// enforce on ids, request text or capability text.
-fn framed_field(f: String) -> String {
-  join([to_string(string_length(s: f)), ":", f, ","], "")
-}
-
-fn framed(fields: List<String>) -> NonEmptyStr {
-  join(map(fields, f => framed_field(f: f)), "") as NonEmptyStr
-}
-
 // ── Identity evidence ────────────────────────────────────────────────────────────────────────
 // Named by MECHANISM. The two Legacy arms are what the existing /approve route admits today; they
 // exist exactly as long as that route and the ntfy loop do, and are deleted at cutover
@@ -103,8 +78,6 @@ type RedemptionIdentityEvidence
 // peer attribution at the serve boundary (approval_identity_attribution_frontier) is what would make
 // it operator-only.
 data enrolment_code_residual_note: NonEmptyStr = "The one-time enrolment code is issued on the dashboard, which binds loopback behind tailscale serve: off-tailnet callers are excluded, on-host POSIX users are not. It is single-use and short-lived; it is not operator-only until peer attribution at the serve boundary lands (approval_identity_attribution_frontier)."
-
-data approval_enrolment_protocol: NonEmptyStr = "gunbc.approval-enrolment.v1" as NonEmptyStr
 
 // THE CODE IS THE IDENTIFIER: the operator types one thing, so a separate id would be a second key
 // for one fact. It also names the enrolment it produces (enrollment_id_for_code), so issuance,
@@ -160,19 +133,6 @@ type VerifiedDeviceEnrollment sole_constructor {
   decision_key: VerifyingKey
   evidence: VerifiedPlatformEvidence
   enrolled_at: Timestamp
-}
-
-// The bytes the platform attestation commits to (App Attest: SHA-256 of these is the
-// clientDataHash; Android: the attestation challenge). It binds the server-issued code (so a
-// replayed attestation cannot enrol under a fresh code) to the decision key (so a leaked code cannot
-// enrol a key the app did not attest alongside it). The login is not here: the server derives it.
-fn enrolment_transcript(code: NonEmptyStr, decision_key: VerifyingKey, platform: MobilePlatform) -> NonEmptyStr {
-  framed(fields: [
-    approval_enrolment_protocol as String,
-    code as String,
-    platform_wire(p: platform) as String,
-    decision_key.point_b64url as String,
-  ])
 }
 
 type EnrolmentRefusal
@@ -231,93 +191,6 @@ fn enrolment_admission(
         }
       }
   }
-}
-
-// ── The push ─────────────────────────────────────────────────────────────────────────────────
-// THE PUSH WAKES; IT DOES NOT CARRY WHAT IS DECIDED. One opaque, non-authorizing locator, carried as
-// a top-level APNs custom key beside aps. The capabilities are bearer credentials that must not
-// transit or rest at APNs or FCM, and anything rendered from the payload would be a second copy of
-// the request. The alert is generic. The app also lists pending approvals on open, so a lost push
-// costs latency, never a decision.
-type ApprovalPushHint {
-  notification_id: NonEmptyStr
-}
-
-data approval_push_alert_title: NonEmptyStr = "Approval requested" as NonEmptyStr
-
-fn approval_push_custom_keys(h: ApprovalPushHint) -> List<ApnsCustomKey> {
-  [ApnsCustomKey { key: "notification_id", value: h.notification_id }]
-}
-
-// ── Authenticated reads ──────────────────────────────────────────────────────────────────────
-// THE FETCH RETURNS BEARER CAPABILITIES, so it is authenticated, not merely hidden behind an opaque
-// push. The app proves it is the enrolled app instance with an App Attest assertion (no Face ID --
-// reading is not deciding) over a framed read request naming the path, the enrolment and the app's
-// claimed time; the server admits it only inside a short skew window and only for an ACTIVE iOS
-// enrolment. Residual, stated: the counter is not stored (see PlatformRedemptionProof), so a
-// captured read request replays inside its window -- over the tailnet's TLS -- and would disclose a
-// capability that, until cutover, the legacy bearer route still honours. Cutover closes it.
-data approval_device_read_protocol: NonEmptyStr = "gunbc.approval-device-read.v1" as NonEmptyStr
-data approval_device_read_skew: Second = second(count: 60)
-
-fn device_read_client_data(path: NonEmptyStr, enrollment_id: NonEmptyStr, requested_at: Timestamp) -> NonEmptyStr {
-  framed(fields: [approval_device_read_protocol as String, path as String, enrollment_id as String, requested_at])
-}
-
-// ── Redemption ───────────────────────────────────────────────────────────────────────────────
-// STATELESS CHALLENGE: nonce_hex is the server's MAC, under the capability key it already holds,
-// over redemption_challenge_message. Nothing is stored to issue it or to check it.
-type RedemptionChallenge {
-  expires_at: Timestamp
-  nonce_hex: NonEmptyStr
-}
-
-data approval_redemption_challenge_protocol: NonEmptyStr = "gunbc.approval-redemption-challenge.v1" as NonEmptyStr
-
-fn redemption_challenge_message(escalation_id: NonEmptyStr, request_revision: NonEmptyStr, enrollment_id: NonEmptyStr, expires_at: Timestamp) -> NonEmptyStr {
-  framed(fields: [
-    approval_redemption_challenge_protocol as String,
-    escalation_id as String,
-    request_revision as String,
-    enrollment_id as String,
-    expires_at,
-  ])
-}
-
-data approval_redemption_protocol: NonEmptyStr = "gunbc.approval-redemption.v1" as NonEmptyStr
-data approval_device_audience: NonEmptyStr = "gunbc.roadmap_serve/device-redemption" as NonEmptyStr
-
-// stored_request_text is gunbc.auth.approval_decision_store stored_request_json of the record the
-// app displayed, byte for byte; capability_text is approval_capability_signing_input of the
-// capability for the chosen verb; capability_tag_hex is that capability's MAC tag in the lowercase
-// hex the existing /approve segment and mac_verify both use. The server re-renders all three from
-// the STORED request and refuses any disagreement, so the device signs no third spelling.
-type DeviceRedemptionSigningInput {
-  audience: NonEmptyStr
-  enrollment_id: NonEmptyStr
-  challenge: RedemptionChallenge
-  escalation_id: NonEmptyStr
-  request_revision: NonEmptyStr
-  stored_request_text: NonEmptyStr
-  decision: ProposedDecision
-  capability_text: NonEmptyStr
-  capability_tag_hex: NonEmptyStr
-}
-
-fn device_redemption_signing_input(i: DeviceRedemptionSigningInput) -> NonEmptyStr {
-  framed(fields: [
-    approval_redemption_protocol as String,
-    i.audience as String,
-    i.enrollment_id as String,
-    i.challenge.expires_at,
-    i.challenge.nonce_hex as String,
-    i.escalation_id as String,
-    i.request_revision as String,
-    i.stored_request_text as String,
-    proposed_decision_name(d: i.decision) as String,
-    i.capability_text as String,
-    i.capability_tag_hex as String,
-  ])
 }
 
 // Per-redemption platform proof. iOS: an App Attest assertion whose client data is EXACTLY the
@@ -380,14 +253,6 @@ fn push_outcome_of_apns(o: ApnsSendOutcome) -> PushProviderOutcome {
     ApnsUndecodable { status, cause } => PushProviderUndecodable { provider: ProviderApns, status: status, cause: cause }
   }
 }
-
-// ── The device routes ────────────────────────────────────────────────────────────────────────
-// ONE SPELLING OF EACH PATH, read by the server's route table and by the app, so neither coins its
-// own. All sit under /approve/device beside the existing /approve route, which they do not touch.
-data approval_device_enrol_path: NonEmptyStr = "/approve/device/enrol" as NonEmptyStr
-data approval_device_pending_path: NonEmptyStr = "/approve/device/pending" as NonEmptyStr
-data approval_device_request_path_prefix: NonEmptyStr = "/approve/device/requests/" as NonEmptyStr
-data approval_device_redeem_path: NonEmptyStr = "/approve/device/redeem" as NonEmptyStr
 
 // ── Redemption admission ─────────────────────────────────────────────────────────────────────
 // THE DEVICE ROUTE'S FOLD, BESIDE redeem_over_store AND REUSING ITS PARTS: the same slot read
@@ -497,7 +362,7 @@ fn platform_proof_disagreement(enrollment: VerifiedDeviceEnrollment, assertion: 
         AssertionVerified { verified: v } =>
           if v.key_id != k { Present { value: DevicePlatformProofWrongKey } }
           else if v.client_data != signed_bytes { Present { value: DevicePlatformProofForOtherBytes } }
-          else { Absent }
+          else { none }
       }
   }
 }
