@@ -18,7 +18,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Named, Node, Positional, node_subtree_nodes }
-import v2.std.text { String, starts_with }
+import v2.std.text { String }
 import v2.std.compilers.lexing { symbol_lexeme }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
