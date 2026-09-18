@@ -2,12 +2,14 @@ module test.claim.spark.pair_serving_d0_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
 import v2.std.optional { Present, Absent }
+import std.measure { second }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
 import product.placement_supply { HostIdentity }
 import product.fabric.demand { ObservationReceiptRef }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitNotActive }
 import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
@@ -19,23 +21,27 @@ import gunbc.spark.pair_incumbent_identity {
 }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_authority {
-  PairServingGroupAuthority, PairServingActive, SuspendedForAuthorizedSuccessor, FencedRefusal,
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
   PairRealizationKeyed, PairRealizationUnestablished, pair_serving_apply_admits, pair_serving_successor_may_launch,
 }
 import std.scoped_authorization {
   OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity, AuthorizedAction,
-  AuthorizationScopeNotGranted, AuthorizationExpired, AuthorizationIntentMismatch, AuthorizationAttemptMismatch,
+  AuthorizationClaimState, ClaimedBy, CompletedBy, AbortedBy,
 }
 import std.effect_grant { Read, Write, NamespacePosition, CodeNameTree }
-import std.content_hash { content_hash_of_value }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, RankOccupancyReading, IncumbentReading, IncumbentAnswered, IncumbentAnsweredUnread, IncumbentDidNotAnswer, IncumbentRouteUnread, D0Observation,
   OccupancyReconciliation, DeclaredOccupantObserved, DeclaredOccupantDrifted, OccupancyUnread, reconcile_occupancy,
   D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, D0Cause, D0IncumbentLive, D0IncumbentUnidentified, D0OccupancyUnread, D0DeclarationUnavailable,
-  d0_decide, d0_decision_is_eligible, d0_intent_hash, d0_authorized_action,
+  d0_decide, d0_decision_is_eligible, d0_authorized_action, d0_intent_text,
+  D0Population, D0PopulationAgrees, D0PopulationDiffers, d0_population,
   D0AuthorizationStanding, D0AuthorizationResolved, D0AuthorizationUnestablished, resolve_d0_authorization,
-  D0GrantAdmission, D0GrantForAnotherGroup, D0GrantRefused, admit_d0_grant,
+  D0ClaimReading, D0ClaimAbsent, D0ClaimAt, D0ClaimUnreadable,
+  D0Recovery, D0RecoverStart, D0RecoverFirstWrite, D0RecoverResume, D0RecoverComplete, D0RecoverAbort, D0RecoveryRefused, d0_recovery,
 }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+import gunbc.spark.pair_serving_authority_log { AuthorityTransitionRecord }
+import product.capacity.event_chain { EventId }
 
 // THE DECISION AND THE RECONCILIATION, OVER SUPPLIED READINGS. Every branch of the redesign's D0
 // table is driven here with a constructed observation; the transfer and the readings themselves
@@ -96,12 +102,13 @@ fn d0w_t_lease(h: ContentHash) -> HeldLease {
 data d0w_t_tx: NonEmptyStr = "tx-w" as NonEmptyStr
 
 fn d0w_t_subject(successor: ContentHash) -> D0Subject {
-  D0Subject { group: FabricGroupA, successor: successor, cleanup: QuiescentReservedBaseline, term_seconds: 1000 }
+  D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
 }
 
 // A grant over the exact operation: the write scope over the authority, the transaction as the
-// attempt, the intent hash over this subject/group/transaction. The knobs let the reds below
-// vary one binding fact at a time.
+// attempt, and an intent hash SUPPLIED as a fixture -- the real intent is a SHA-256 taken through
+// the sha256sum realization, an effect the wet witness executes; the decision here consumes only
+// the grant's subject and escalation. The knobs let the reds vary one binding fact at a time.
 fn d0w_t_authorization(successor: ContentHash, scope_verb_write: Bool, attempt: NonEmptyStr, intent: ContentHash, expires_at: String) -> ScopedAuthorization<D0Subject> {
   AuthorizationGranted {
     grant: OperatorGrant {
@@ -120,7 +127,7 @@ fn d0w_t_authorization(successor: ContentHash, scope_verb_write: Bool, attempt: 
 }
 
 fn d0w_t_good_authorization(successor: ContentHash) -> ScopedAuthorization<D0Subject> {
-  d0w_t_authorization(successor: successor, scope_verb_write: true, attempt: d0w_t_tx, intent: d0_intent_hash(subject: d0w_t_subject(successor: successor), group: FabricGroupA, transaction: d0w_t_tx), expires_at: "2026-09-19T00:00:00Z")
+  d0w_t_authorization(successor: successor, scope_verb_write: true, attempt: d0w_t_tx, intent: successor, expires_at: "2026-09-19T00:00:00Z")
 }
 
 // The grant the decision is judged under: the fixture authorization's own grant. The DECISION
@@ -320,26 +327,110 @@ test fn no_authorization_resolves_today_so_the_entry_cannot_admit() -> Bool {
   }
 }
 
-// REFUSALS ARE DECIDED BEFORE ANY CLAIM IS TAKEN, so these rows never touch a claim store and the
-// root handed in is never read; the ADMITTED case takes a claim and is driven by the
-// real-execution witness against a temporary store.
-fn d0w_admit(auth: ScopedAuthorization<D0Subject>, group: FabricGroup, at: String) -> D0GrantAdmission {
-  admit_d0_grant(authorization: auth, escalation_id: "auth-w" as NonEmptyStr, group: group, transaction: d0w_t_tx, executor: "witness" as NonEmptyStr, claim_root: "/nonexistent/claims-never-reached-on-refusal" as NonEmptyStr, at: at)
+fn d0w_with_four_hosts(scenario: fn(HostIdentity, HostIdentity, HostIdentity, HostIdentity) -> Bool) -> Bool {
+  let current = fabric_group_hosts(g: FabricGroupA)
+  if length(current) != 4 { false } else {
+    match get(xs: current, index: 0) {
+      Absent => false
+      Present { value: h1 } =>
+        match get(xs: current, index: 1) {
+          Absent => false
+          Present { value: h2 } =>
+            match get(xs: current, index: 2) {
+              Absent => false
+              Present { value: h3 } =>
+                match get(xs: current, index: 3) {
+                  Absent => false
+                  Present { value: h4 } => scenario(h1, h2, h3, h4)
+                }
+            }
+        }
+    }
+  }
 }
 
-// A grant is refused under std.scoped_authorization's whole decision when it names another group;
-// carries a READ scope over the authority (a read scope does not authorize the mutation); names
-// another attempt than the transaction; carries an intent hash over another operation; or has
-// expired -- each refusal typed with its cause, and none of them taking a claim.
-test fn a_grant_is_refused_off_the_exact_operation() -> Bool {
+fn d0w_t_subject_over(hs: List<HostIdentity>, successor: ContentHash, term: Nat) -> D0Subject {
+  D0Subject { group: FabricGroupA, hosts: hs, successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: term) }
+}
+
+// THE SUBJECT NAMES THE EXACT HOSTS. A grant whose host list is the group's current population,
+// in any order, agrees; one with a host swapped, one dropped, or one duplicated differs -- by an
+// identity join in both directions, so a count could not have passed the swap.
+test fn the_grant_population_is_joined_to_the_current_group_by_identity() -> Bool {
   d0w_with_digests(scenario: fn(a, b, c) {
-    let good_intent = d0_intent_hash(subject: d0w_t_subject(successor: c), group: FabricGroupA, transaction: d0w_t_tx)
-    (match d0w_admit(d0w_t_good_authorization(successor: c), FabricGroupB, "2026-09-18T12:00:00Z") { D0GrantForAnotherGroup { granted: _ } => true  _ => false })
-      && (match d0w_admit(d0w_t_authorization(successor: c, scope_verb_write: false, attempt: d0w_t_tx, intent: good_intent, expires_at: "2026-09-19T00:00:00Z"), FabricGroupA, "2026-09-18T12:00:00Z") { D0GrantRefused { cause: AuthorizationScopeNotGranted { required: _, granted: _ } } => true  _ => false })
-      && (match d0w_admit(d0w_t_authorization(successor: c, scope_verb_write: true, attempt: "tx-other" as NonEmptyStr, intent: good_intent, expires_at: "2026-09-19T00:00:00Z"), FabricGroupA, "2026-09-18T12:00:00Z") { D0GrantRefused { cause: AuthorizationAttemptMismatch { requested: _, granted: _ } } => true  _ => false })
-      && (match d0w_admit(d0w_t_authorization(successor: c, scope_verb_write: true, attempt: d0w_t_tx, intent: content_hash_of_value(value: "another operation" as NonEmptyStr), expires_at: "2026-09-19T00:00:00Z"), FabricGroupA, "2026-09-18T12:00:00Z") { D0GrantRefused { cause: AuthorizationIntentMismatch { requested: _, granted: _ } } => true  _ => false })
-      && (match d0w_admit(d0w_t_good_authorization(successor: c), FabricGroupA, "2026-09-20T00:00:00Z") { D0GrantRefused { cause: AuthorizationExpired { expires_at: _, observed_at: _ } } => true  _ => false })
+    d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
+      (match d0_population(subject: d0w_t_subject_over(hs: [h4, h3, h2, h1], successor: c, term: 1000)) { D0PopulationAgrees => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3], successor: c, term: 1000)) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3, h3], successor: c, term: 1000)) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+        && (match d0_population(subject: d0w_t_subject_over(hs: [h1, h2, h3, operator_host_srv1], successor: c, term: 1000)) { D0PopulationDiffers { granted: _, current: _ } => true  _ => false })
+    })
   })
+}
+
+// THE INTENT'S CANONICAL TEXT is one line per fact and the hosts are sorted: two subjects that
+// list the same hosts in different orders encode identically, and any other fact moving --
+// successor, term, transaction -- changes the text.
+test fn the_intent_text_is_canonical_over_the_operation() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    d0w_with_four_hosts(scenario: fn(h1, h2, h3, h4) {
+      let one = d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1000)
+      let t = d0_intent_text(subject: one, group: FabricGroupA, transaction: d0w_t_tx)
+      t == d0_intent_text(subject: d0w_t_subject_over(hs: [h4, h2, h1, h3], successor: c, term: 1000), group: FabricGroupA, transaction: d0w_t_tx)
+        && t != d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: c, term: 1001), group: FabricGroupA, transaction: d0w_t_tx)
+        && t != d0_intent_text(subject: d0w_t_subject_over(hs: [h1, h2, h3, h4], successor: a, term: 1000), group: FabricGroupA, transaction: d0w_t_tx)
+        && t != d0_intent_text(subject: one, group: FabricGroupA, transaction: "tx-other" as NonEmptyStr)
+        && t.contains("suspend-pair-serving-authority")
+    })
+  })
+}
+
+// ── RECOVERY: THE JOIN OVER THE CLAIM AND THE AUTHORITY HISTORY ────────────────────────────────
+
+fn d0w_rec(id: String, tx: String, next: PairServingGroupAuthority) -> AuthorityTransitionRecord {
+  AuthorityTransitionRecord { id: (id as NonEmptyStr) as EventId, transaction: tx as NonEmptyStr, next: next }
+}
+
+fn d0w_pending(tx: String, h: ContentHash) -> PairServingGroupAuthority {
+  SuspensionPendingReconciliation { group: FabricGroupA, transaction: tx as NonEmptyStr, authorization_binding: h, lease: d0w_t_lease(h: h) }
+}
+
+fn d0w_claimed(by: String) -> D0ClaimReading {
+  D0ClaimAt { state: ClaimedBy { attempt: (by as NonEmptyStr) as AttemptIdentity, claimed_at: "2026-09-18T00:00:00Z" }, generation: 1 }
+}
+
+fn d0w_suspended(h: ContentHash) -> PairServingGroupAuthority {
+  SuspendedForAuthorizedSuccessor { group: FabricGroupA, authorization: "auth-w" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h }, lease: d0w_t_lease(h: h), cleanup: QuiescentReservedBaseline }
+}
+
+// EVERY CRASH POINT HAS ONE DISPOSITION. No claim starts. A claim held by this transaction with no
+// transition by it performs the first write when the authority is Active and aborts otherwise. A
+// pending state under this transaction resumes. A settling transition by this transaction means
+// only the claim's terminal is owed. A pending state written by this transaction that another
+// writer moved is refused for an operator.
+test fn the_recovery_join_dispatches_every_crash_point() -> Bool {
+  d0w_with_digests(scenario: fn(a, b, c) {
+    let active = d0w_t_active()
+    (match d0_recovery(claim: D0ClaimAbsent, transaction: d0w_t_tx, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverStart => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: active, transitions: [] as List<AuthorityTransitionRecord>) { D0RecoverFirstWrite { claim_generation: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: FencedRefusal { group: FabricGroupA, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr }, transitions: [d0w_rec(id: "e1", tx: "tx-other", next: FencedRefusal { group: FabricGroupA, cause: "w" as NonEmptyStr, disposition_authority: "w" as NonEmptyStr })]) { D0RecoverAbort { claim_generation: _, cause: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: d0w_pending(tx: "tx-w", h: c), transitions: [d0w_rec(id: "e1", tx: "tx-w", next: d0w_pending(tx: "tx-w", h: c))]) { D0RecoverResume { claim_generation: _ } => true  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: d0w_suspended(h: c), transitions: [d0w_rec(id: "e1", tx: "tx-w", next: d0w_pending(tx: "tx-w", h: c)), d0w_rec(id: "e2", tx: "tx-w", next: d0w_suspended(h: c))]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: active, transitions: [d0w_rec(id: "e1", tx: "tx-w", next: d0w_pending(tx: "tx-w", h: c)), d0w_rec(id: "e2", tx: "tx-w", next: active), d0w_rec(id: "e3", tx: "tx-later", next: d0w_pending(tx: "tx-later", h: c)), d0w_rec(id: "e4", tx: "tx-later", next: active)]) { D0RecoverComplete { claim_generation: _, settled: s } => (s.id as String) == "e2"  _ => false })
+      && (match d0_recovery(claim: d0w_claimed(by: "tx-w"), transaction: d0w_t_tx, current: active, transitions: [d0w_rec(id: "e1", tx: "tx-w", next: d0w_pending(tx: "tx-w", h: c)), d0w_rec(id: "e2", tx: "tx-operator", next: active)]) { D0RecoveryRefused { cause: _ } => true  _ => false })
+  })
+}
+
+// RED: consent that is not this run's is refused whatever the authority says -- held by another
+// attempt, completed, aborted, or unreadable -- and an Active authority with a completed claim is
+// NOT a start.
+test fn a_claim_that_is_not_this_transactions_is_refused_before_any_write() -> Bool {
+  let active = d0w_t_active()
+  let none_yet = [] as List<AuthorityTransitionRecord>
+  (match d0_recovery(claim: d0w_claimed(by: "tx-other"), transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: CompletedBy { attempt: ("tx-w" as NonEmptyStr) as AttemptIdentity, completed_at: "t" }, generation: 2 }, transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: AbortedBy { attempt: ("tx-w" as NonEmptyStr) as AttemptIdentity, aborted_at: "t", cause: "w" as NonEmptyStr }, generation: 2 }, transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimAt { state: Unclaimed, generation: 1 }, transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
+    && (match d0_recovery(claim: D0ClaimUnreadable { reason: "w" as NonEmptyStr }, transaction: d0w_t_tx, current: active, transitions: none_yet) { D0RecoveryRefused { cause: _ } => true  _ => false })
 }
 
 // A declaration that could not be keyed fences: there is nothing to reconcile against.

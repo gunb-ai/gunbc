@@ -812,6 +812,54 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_event_log_real_execution", function: "one_slot_is_one_partition_and_two_mirrors_see_one_generation_by_real_execution" },
+      entry: "dag/test/claim/durable_cas_event_log_real_execution_witness_test.dag",
+      function: "one_slot_is_one_partition_and_two_mirrors_see_one_generation_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "the_same_grant_claimed_from_two_executors_is_held_once_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "the_same_grant_claimed_from_two_executors_is_held_once_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_crash_after_the_claim_and_before_the_first_write_is_recovered_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_crash_after_the_claim_and_before_the_first_write_is_recovered_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_crash_after_the_settling_write_and_before_completion_completes_the_claim_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_crash_after_the_settling_write_and_before_completion_completes_the_claim_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_grant_over_another_host_population_is_refused_before_any_claim_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_grant_over_another_host_population_is_refused_before_any_claim_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "an_error_status_is_an_answer_and_no_listener_is_silence_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
+      function: "an_error_status_is_an_answer_and_no_listener_is_silence_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_vacated_port_reads_as_no_response_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
+      function: "a_vacated_port_reads_as_no_response_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_front_door_real_execution", function: "a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_front_door_real_execution_witness_test.dag",
+      function: "a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.devboot_text_blob_real_execution", function: "a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution" },
       entry: "dag/test/claim/devboot_text_blob_real_execution_witness_test.dag",
       function: "a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution",

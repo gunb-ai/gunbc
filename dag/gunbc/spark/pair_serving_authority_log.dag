@@ -429,8 +429,24 @@ fn pair_authority_event_decode(text: String) -> EventDecode<PairAuthorityEvent> 
 // fence must name. It is not the partition head: a recorded receipt may sit between the admitting
 // write and the settling one.
 type AuthorityFold
-  = AuthorityFolded { current: PairServingGroupAuthority, generation: Nat, grant: LeaseGrant?, entry_state: ContentHash?, previous: PairServingGroupAuthority?, admitted_by: EventId? }
+  = AuthorityFolded { current: PairServingGroupAuthority, generation: Nat, grant: LeaseGrant?, entry_state: ContentHash?, previous: PairServingGroupAuthority?, admitted_by: EventId?, transitions: List<AuthorityTransitionRecord> }
   | AuthorityFoldRefused { at_event: EventId, reason: String }
+
+// EVERY ADMITTED TRANSITION, OLDEST FIRST, BY THE TRANSACTION THAT WROTE IT. A transaction that
+// recovers after a crash has to know whether IT ever moved this authority and what its last write
+// landed -- a claim held with no transition means the first write never happened; a claim held
+// with a settling transition means only the claim's terminal is owed. Neither is readable from
+// the current state alone once other transactions have written after it, so the fold keeps the
+// record. Receipt events are not transitions and are not recorded here.
+type AuthorityTransitionRecord {
+  id: EventId
+  transaction: NonEmptyStr
+  next: PairServingGroupAuthority
+}
+
+fn transitions_by(records: List<AuthorityTransitionRecord>, transaction: NonEmptyStr) -> List<AuthorityTransitionRecord> {
+  filter(records, r => (r.transaction as String) == (transaction as String))
+}
 
 // THE GRANT MUST BE THE LEASE'S OWN, AND THE FOLD CHECKS THE GENEALOGY. Co-location in one event
 // is not provenance: a grant whose reference names another transaction, whose fence names
@@ -481,21 +497,22 @@ fn grant_genealogy(gr: LeaseGrant, next: PairServingGroupAuthority, transaction:
 fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent>) -> AuthorityFold {
   match acc {
     AuthorityFoldRefused { at_event: _, reason: _ } => acc
-    AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab } =>
+    AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs } =>
       match env.event.payload {
         EntryStateRecorded { transaction: _, body: _ } =>
-          AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab }
+          AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs }
         AuthorityTransitioned { previous: p, next: n, transaction: t, grant: gr, entry_state: es } =>
           if !authority_eq(a: p, b: cur) {
             AuthorityFoldRefused { at_event: env.id, reason: join(["the event leaves state ", authority_wire(a: p), " but the current state was ", authority_wire(a: cur)], "") }
           } else if (fabric_group_wire(g: pair_serving_authority_group(a: n)) as String) != (fabric_group_wire(g: pair_serving_authority_group(a: cur)) as String) {
             AuthorityFoldRefused { at_event: env.id, reason: "the event's next state names a different group than the partition's" }
           } else {
+            let recorded = concat(recs, [AuthorityTransitionRecord { id: env.id, transaction: t, next: n }])
             match gr {
-              Absent => AuthorityFolded { current: n, generation: g + 1, grant: none, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id } }
+              Absent => AuthorityFolded { current: n, generation: g + 1, grant: none, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id }, transitions: recorded }
               Present { value: grant } =>
                 match grant_genealogy(gr: grant, next: n, transaction: t, admitted_by: cab) {
-                  GrantGenealogyAgrees => AuthorityFolded { current: n, generation: g + 1, grant: gr, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id } }
+                  GrantGenealogyAgrees => AuthorityFolded { current: n, generation: g + 1, grant: gr, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id }, transitions: recorded }
                   GrantWithoutLease => AuthorityFoldRefused { at_event: env.id, reason: "the event carries a grant into a state that holds no lease" }
                   GrantGenealogyDisagrees { join: j } => AuthorityFoldRefused { at_event: env.id, reason: join(["the event's grant is not its lease's: ", j], "") }
                 }
@@ -508,13 +525,13 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
 // From the resting authority through every recorded transition, oldest first. Generation 0 is the
 // resting state itself; each admitted transition adds one.
 fn authority_fold(resting: PairServingGroupAuthority, oldest_first: List<ChainEnvelope<PairAuthorityEvent>>) -> AuthorityFold {
-  fold(oldest_first, init: AuthorityFolded { current: resting, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none }, f: (acc, env) => authority_fold_step(acc: acc, env: env))
+  fold(oldest_first, init: AuthorityFolded { current: resting, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> }, f: (acc, env) => authority_fold_step(acc: acc, env: env))
 }
 
 // ── THE READ ───────────────────────────────────────────────────────────────────────────────────
 
 type CurrentAuthority
-  = CurrentAuthorityRead { authority: PairServingGroupAuthority, head: HeadExpectation, generation: Nat, grant: LeaseGrant?, entry_state: ContentHash?, previous: PairServingGroupAuthority?, admitted_by: EventId? }
+  = CurrentAuthorityRead { authority: PairServingGroupAuthority, head: HeadExpectation, generation: Nat, grant: LeaseGrant?, entry_state: ContentHash?, previous: PairServingGroupAuthority?, admitted_by: EventId?, transitions: List<AuthorityTransitionRecord> }
   | CurrentAuthorityUnread { group: FabricGroup, step: String, reason: String }
 
 // THE LEASE'S OBSERVED STATE IS DERIVED AT THE READ, FROM THE GRANT AND THE INSTANT. The bytes
@@ -564,8 +581,8 @@ fn current_pair_serving_authority(layout: EventLogLayout, group: FabricGroup, at
               match authority_fold(resting: resting, oldest_first: xs) {
                 AuthorityFoldRefused { at_event: e, reason: why } =>
                   CurrentAuthorityUnread { group: group, step: "fold", reason: join(["event ", e as String, " refused: ", why], "") }
-                AuthorityFolded { current: cur, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab } =>
-                  CurrentAuthorityRead { authority: authority_with_lease_observed(a: cur, grant: gr, at: at), head: head, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab }
+                AuthorityFolded { current: cur, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs } =>
+                  CurrentAuthorityRead { authority: authority_with_lease_observed(a: cur, grant: gr, at: at), head: head, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs }
               }
           }
       }
@@ -592,7 +609,7 @@ fn current_authority_for(current: List<CurrentAuthority>, group: FabricGroup) ->
 
 fn current_authority_group(c: CurrentAuthority) -> FabricGroup {
   match c {
-    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } => pair_serving_authority_group(a: a)
+    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => pair_serving_authority_group(a: a)
     CurrentAuthorityUnread { group: g, step: _, reason: _ } => g
   }
 }
@@ -626,7 +643,7 @@ fn pair_serving_authority_transition(
   } else {
     match current_pair_serving_authority(layout: layout, group: group, at: at) {
       CurrentAuthorityUnread { group: g, step: s, reason: why } => AuthorityTransitionRefused { group: g, step: s, reason: why }
-      CurrentAuthorityRead { authority: cur, head: head, generation: g, grant: _, entry_state: _, previous: _, admitted_by: admitted_by } =>
+      CurrentAuthorityRead { authority: cur, head: head, generation: g, grant: _, entry_state: _, previous: _, admitted_by: admitted_by, transitions: _ } =>
         if !authority_eq(a: cur, b: expected) {
           AuthorityTransitionStale { expected: expected, current: cur }
         } else {
@@ -654,7 +671,7 @@ fn pair_serving_authority_transition(
             EventAppendStale { expected: _, observed: _ } =>
               match current_pair_serving_authority(layout: layout, group: group, at: at) {
                 CurrentAuthorityUnread { group: g2, step: s, reason: why } => AuthorityTransitionRefused { group: g2, step: join(["stale/", s], ""), reason: why }
-                CurrentAuthorityRead { authority: now_cur, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } => AuthorityTransitionStale { expected: expected, current: now_cur }
+                CurrentAuthorityRead { authority: now_cur, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => AuthorityTransitionStale { expected: expected, current: now_cur }
               }
             EventAppended { id: h } => AuthorityTransitionAppended { id: h, generation: g + 1, next: next }
           }
@@ -695,7 +712,7 @@ fn pair_serving_authority_record_entry_state(layout: EventLogLayout, group: Fabr
 
 fn current_authority_wire(c: CurrentAuthority) -> String {
   match c {
-    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _ } => join(["generation ", to_string(g), ": ", authority_wire(a: a)], "")
+    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => join(["generation ", to_string(g), ": ", authority_wire(a: a)], "")
     CurrentAuthorityUnread { group: g, step: s, reason: why } => join([fabric_group_wire(g: g) as String, " authority unread at ", s, ": ", why], "")
   }
 }

@@ -1,0 +1,185 @@
+module gunbc.durable_cas_event_log
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, parse_content_hash }
+import std.durable_compare_and_set {
+  CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
+  CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasSlotObservationRefused, CasGenerationPublicationRefused,
+  cas_generation_count, cas_generation_first, cas_generation_next,
+}
+import gunbc.durable_cas_file_store { VerifiedCasAttempt }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string }
+import product.capacity.event_chain {
+  PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt,
+  EventDecode, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
+}
+import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_string, member_nonempty }
+import gunbc.fabric_event_log {
+  EventLogLayout, PartitionReadOk, PartitionReadRefused, event_log_read_partition_with,
+  EventAppended, EventAppendStale, EventAppendRefused, event_log_append_with,
+}
+
+// ── A SECOND REALIZATION OF THE DURABLE COMPARE-AND-SET: ONE SLOT IS ONE PARTITION ─────────────
+//
+// std.durable_compare_and_set is a shape, and gunbc.durable_cas_file_store is one handler bound to
+// it: an exclusive create under a root on ONE filesystem, whose own authority says its guarantee
+// holds only for writers addressing the same store instance. A claim that has to be single-use
+// across the FLEET -- an operator's consent to a destructive transaction, consumed once whichever
+// executor runs it -- cannot live there: two hosts have two roots, and each sees the other's slot
+// absent. The fabric event log already carries exactly the fleet-wide linearization such a claim
+// needs (one placed remote, one ref per partition, the head advanced by a leased push), so this
+// module binds the same CAS shape to it. DESIGN §3: transport is a realization handler bound to
+// the shape, one of N, never a fact about the operation -- the attempt a caller builds is the
+// same CasAttempt<NonEmptyStr> the file store takes, and the caller chooses the store.
+//
+// THE MAPPING. The slot key names the partition `cas-slot/<key>`; every committed generation is
+// one event whose payload is the value; generation N is the N-th event from the oldest, so the
+// slot's generation is the chain's length and the head is its newest event. ExpectSlotAbsent is
+// an append against an absent head; ExpectSlotGeneration { N } is an append whose parent is the
+// event that landed generation N -- so the store's own head lease is the precondition, and a
+// writer that observed generation N while another landed N+1 is stale at the push, exactly as a
+// seat writer is. An unreadable partition is CasStoreRefused, never an absent slot.
+//
+// THE DIGEST OBLIGATION IS DISCHARGED AT THE SAME MINT. The interface says the immutable object
+// store that holds the bytes verifies bytes against digest; the file store's admit_cas_attempt is
+// that mint and this store takes only its VerifiedCasAttempt, so one admission serves both
+// handlers rather than each re-spelling the comparison.
+
+data cas_slot_event_schema: String = "cas-slot-event/v1"
+data cas_slot_partition_prefix: String = "cas-slot/"
+data cas_slot_read_budget: Nat = 4096
+
+fn cas_slot_partition(key: NonEmptyStr) -> PartitionId {
+  join([cas_slot_partition_prefix, key as String], "") as PartitionId
+}
+
+type CasSlotEvent {
+  value: NonEmptyStr
+  content: ContentHash
+}
+
+fn cas_slot_event_wire_text(event: ChainEvent<CasSlotEvent>) -> String {
+  chain_event_wire_text(schema: cas_slot_event_schema, e: event, kind: "set", members: [
+    json_kv(key: "value", value: json_string(s: event.payload.value as String)),
+    json_kv(key: "content", value: json_string(s: serialize_content_hash(hash: event.payload.content) as String)),
+  ])
+}
+
+fn cas_slot_kind_decode(doc: JsonValue, word: String) -> CasSlotEvent? {
+  if word != "set" { none } else {
+    match member_nonempty(doc: doc, key: "value") {
+      Absent => none
+      Present { value: v } =>
+        match member_string(doc: doc, key: "content") {
+          Absent => none
+          Present { value: c } =>
+            match parse_content_hash(wire: c) {
+              Absent => none
+              Present { value: h } => Present { value: CasSlotEvent { value: v, content: h } }
+            }
+        }
+    }
+  }
+}
+
+fn cas_slot_event_decode(text: String) -> EventDecode<CasSlotEvent> {
+  chain_event_decode(text: text, schema: cas_slot_event_schema, kind_decode: fn(doc, word) { cas_slot_kind_decode(doc: doc, word: word) })
+}
+
+// ── THE OBSERVATION ────────────────────────────────────────────────────────────────────────────
+
+// What the partition holds, with the head the next append must name. Kept beside the readable
+// slot rather than folded into it because the interface's CasReadableSlot deliberately carries
+// no store position -- the head is this realization's fact.
+type CasSlotHead
+  = CasSlotHeadAbsent
+  | CasSlotHeadAt { head: EventId, version: CasSlotVersion<NonEmptyStr> }
+  | CasSlotHeadUnreadable { cause: CasUnreadableSlot }
+
+fn event_log_observe_cas_slot_head(layout: EventLogLayout, key: NonEmptyStr) -> CasSlotHead {
+  match event_log_read_partition_with(layout: layout, partition: cas_slot_partition(key: key), budget: cas_slot_read_budget, decode: fn(text) { cas_slot_event_decode(text: text) }) {
+    PartitionReadRefused { step: s, reason: why } =>
+      CasSlotHeadUnreadable { cause: CasUnreadableReadRefused { detail: join([s, ": ", why], "") as NonEmptyStr } }
+    PartitionReadOk { head: head, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } =>
+          CasSlotHeadUnreadable { cause: CasUnreadableMalformed { detail: join(["partition chain is missing event ", m as String], "") as NonEmptyStr } }
+        ChainBudgetExhausted { at: _ } =>
+          CasSlotHeadUnreadable { cause: CasUnreadableObservationBoundExceeded { bound: cas_slot_read_budget } }
+        ChainWalked { oldest_first: xs } =>
+          match head {
+            HeadAbsent => CasSlotHeadAbsent
+            HeadAt { id: h } =>
+              match last(xs) {
+                Absent => CasSlotHeadUnreadable { cause: CasUnreadableMalformed { detail: "the partition has a head but its walk is empty" as NonEmptyStr } }
+                Present { value: newest } =>
+                  CasSlotHeadAt { head: h, version: CasSlotVersion { generation: length(xs), content: newest.event.payload.content, value: newest.event.payload.value } }
+              }
+          }
+      }
+  }
+}
+
+fn event_log_observe_cas_slot(layout: EventLogLayout, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  match event_log_observe_cas_slot_head(layout: layout, key: key) {
+    CasSlotHeadUnreadable { cause: c } => CasObservedUnreadable { cause: c }
+    CasSlotHeadAbsent => CasObservedReadable { readable: CasReadableAbsent }
+    CasSlotHeadAt { head: _, version: v } => CasObservedReadable { readable: CasReadablePresent { version: v } }
+  }
+}
+
+// ── THE COMPARE-AND-SET ────────────────────────────────────────────────────────────────────────
+//
+// THE TARGET GENERATION IS DERIVED FROM THE OBSERVATION, NEVER FROM THE EXPECTATION -- the file
+// store's correction, kept: the expectation is a claim about the store and is compared to what
+// the store holds; the append then names the observed head, and the push's lease decides the
+// race. A stale push re-observes so the losing side reports what is now there.
+fn event_log_compare_and_set(layout: EventLogLayout, verified: VerifiedCasAttempt, actor: NonEmptyStr, at: EpochSecs) -> CasOutcome<NonEmptyStr> {
+  let attempt = verified.attempt
+  match event_log_observe_cas_slot_head(layout: layout, key: attempt.key) {
+    CasSlotHeadUnreadable { cause: c } => CasStoreRefused { cause: CasSlotObservationRefused { cause: c } }
+    CasSlotHeadAbsent =>
+      match attempt.expected {
+        ExpectSlotGeneration { generation: _ } => CasPreconditionFailed { expected: attempt.expected, observed: CasReadableAbsent }
+        ExpectSlotAbsent => cas_slot_append(layout: layout, verified: verified, head: HeadAbsent, target: cas_generation_first(), actor: actor, at: at)
+      }
+    CasSlotHeadAt { head: h, version: v } =>
+      match attempt.expected {
+        ExpectSlotAbsent => CasPreconditionFailed { expected: attempt.expected, observed: CasReadablePresent { version: v } }
+        ExpectSlotGeneration { generation: g } =>
+          if cas_generation_count(g: g) == cas_generation_count(g: v.generation) {
+            cas_slot_append(layout: layout, verified: verified, head: HeadAt { id: h }, target: cas_generation_next(g: v.generation), actor: actor, at: at)
+          } else {
+            CasPreconditionFailed { expected: attempt.expected, observed: CasReadablePresent { version: v } }
+          }
+      }
+  }
+}
+
+fn cas_slot_append(layout: EventLogLayout, verified: VerifiedCasAttempt, head: HeadExpectation, target: CasGeneration, actor: NonEmptyStr, at: EpochSecs) -> CasOutcome<NonEmptyStr> {
+  let attempt = verified.attempt
+  let event = ChainEvent {
+    partition: cas_slot_partition(key: attempt.key),
+    parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+    recorded_at: at,
+    actor: actor,
+    payload: CasSlotEvent { value: attempt.proposed, content: attempt.proposed_content },
+  }
+  match event_log_append_with(layout: layout, partition: cas_slot_partition(key: attempt.key), event: event, expected: head, encode: fn(e) { cas_slot_event_wire_text(event: e) }) {
+    EventAppended { id: _ } =>
+      CasCommitted { committed: CasSlotVersion { generation: target, content: attempt.proposed_content, value: attempt.proposed } }
+    EventAppendRefused { step: s, reason: why } =>
+      CasStoreRefused { cause: CasGenerationPublicationRefused { detail: join([s, ": ", why], "") as NonEmptyStr } }
+    EventAppendStale { expected: _, observed: _ } =>
+      match event_log_observe_cas_slot(layout: layout, key: attempt.key) {
+        CasObservedUnreadable { cause: c } => CasStoreRefused { cause: CasSlotObservationRefused { cause: c } }
+        CasObservedReadable { readable: r } => CasPreconditionFailed { expected: attempt.expected, observed: r }
+      }
+  }
+}

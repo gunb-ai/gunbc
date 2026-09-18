@@ -1,0 +1,253 @@
+module test.claim.spark.pair_serving_d0_front_door_real_execution
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, FilePath, List, Int, Port }
+import v2.std.optional { Present, Absent }
+import std.measure { second }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.python
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitWorktreeAt }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { trim }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
+
+import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
+import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
+import gunbc.harness.harness_backend { HarnessBoundedPresence, HarnessResponded, HarnessNoResponse, harness_bounded_presence, harness_models_url }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
+import gunbc.spark.pair_serving_authority { FencedRefusal }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority }
+import gunbc.spark.pair_serving_d0 {
+  FrontDoorReading, FrontDoorSilent, FrontDoorAnsweredUnread, FrontDoorAnswered, observe_front_door, front_door_as_incumbent,
+  IncumbentReading, IncumbentAnsweredUnread, IncumbentDidNotAnswer, D0Observation, RankOccupancyReading,
+  D0Outcome, D0Settled, D0Decision, D0DecidedFence, D0Cause, D0IncumbentUnidentified, d0_transaction,
+  AdmittedD0Grant, D0GrantAdmitted, admit_d0_grant, D0Subject, d0_intent_hash, d0_authorized_action,
+}
+import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity }
+import std.effect_grant { Write, NamespacePosition, CodeNameTree }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.fabric_switch_observed { fabric_group_hosts }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HTTP-STATUS DISTINCTION AT ITS PRODUCTION INTERFACE, BY REAL EXECUTION. The D0 decision has
+// hermetic controls over a SUPPLIED IncumbentAnsweredUnread; what none of them can notice is the
+// transport regaining curl's -f, or the %{http_code} binding drifting, after which a 500 would read
+// as silence again and the supplied-arm claims would stay green. So a local listener that answers
+// one chosen status is started, the real http.Client.StatusWithin is run against it through
+// harness_bounded_presence and observe_front_door, and the reading is carried through the real
+// transaction to FencedRefusal on the log. The listener is CPython's http.server, forked into the
+// background by the fixture below, which prints the port and pid; it is killed at the end of the
+// scenario and exits by itself after a bounded lifetime if the kill never comes.
+
+data d0fd_listener_fixture: String = "import http.server, os, socketserver, sys, threading, time\nstatus = int(sys.argv[1])\nlifetime = float(sys.argv[2])\nclass H(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(status)\n        self.send_header('Content-Length', '0')\n        self.end_headers()\n    def log_message(self, *a):\n        pass\nsocketserver.TCPServer.allow_reuse_address = True\nsrv = socketserver.TCPServer(('127.0.0.1', 0), H)\nport = srv.server_address[1]\npid = os.fork()\nif pid:\n    sys.stdout.write('%d %d\\n' % (port, pid))\n    sys.stdout.flush()\n    os._exit(0)\nos.setsid()\nnull = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 0)\nos.dup2(null, 1)\nos.dup2(null, 2)\nthreading.Thread(target=srv.serve_forever, daemon=True).start()\ntime.sleep(lifetime)\nos._exit(0)\n"
+
+data d0fd_kill_fixture: String = "import os, signal, sys\nos.kill(int(sys.argv[1]), signal.SIGTERM)\n"
+
+type D0fdListener {
+  port: Int
+  pid: Int
+}
+
+fn d0fd_with_temp_dir(scenario: fn(FilePath) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn d0fd_parse_listener(out: String) -> D0fdListener? {
+  let parts = split(s: trim(s: out), delimiter: " ")
+  match get(xs: parts, index: 0) {
+    Absent => none
+    Present { value: p } =>
+      match get(xs: parts, index: 1) {
+        Absent => none
+        Present { value: q } =>
+          match parse_int(s: p) {
+            Absent => none
+            Present { value: port } =>
+              match parse_int(s: q) {
+                Absent => none
+                Present { value: pid } => Present { value: D0fdListener { port: port, pid: pid } }
+              }
+          }
+      }
+  }
+}
+
+// A listener answering `status` for the scenario, killed afterwards whatever the scenario says.
+fn d0fd_with_listener(dir: FilePath, status: String, scenario: fn(D0fdListener) -> Bool) -> Bool {
+  let script = join([dir as String, "/listener.py"], "")
+  let kill = join([dir as String, "/kill.py"], "")
+  let w1 = Filesystem.Write(path: script, content: d0fd_listener_fixture)
+  let w2 = Filesystem.Write(path: kill, content: d0fd_kill_fixture)
+  if !w1.success || !w2.success { false } else {
+    let run = python.Interpreter.RunFile(workdir: dir, script_path: script as FilePath, args: [status, "60"])
+    if !run.success { false } else {
+      match d0fd_parse_listener(out: run.stdout) {
+        Absent => false
+        Present { value: l } => {
+          let observed = scenario(l)
+          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid)])
+          observed && killed.success
+        }
+      }
+    }
+  }
+}
+
+fn d0fd_port(n: Int) -> Port {
+  n
+}
+
+fn d0fd_endpoint(port: Int) -> ServingRouteEndpoint {
+  ServingRouteEndpoint { group: FabricGroupA, address: "127.0.0.1" as NonEmptyStr, port: d0fd_port(n: port) }
+}
+
+fn d0fd_status_is(p: HarnessBoundedPresence, status: String) -> Bool {
+  match p {
+    HarnessResponded { status: s } => s == status
+    HarnessNoResponse { url: _ } => false
+  }
+}
+
+// 500 and 401 are ANSWERS -- the transport reports the status, the front door reads as answered
+// and unread, and the incumbent reading fences. No listener (the port just vacated) is SILENCE:
+// no HTTP response, the front door reads silent, and the incumbent reading is absence.
+test fn an_error_status_is_an_answer_and_no_listener_is_silence_by_real_execution() -> Bool {
+  d0fd_with_temp_dir(scenario: fn(dir) {
+    d0fd_with_listener(dir: dir, status: "500", scenario: fn(l) {
+      d0fd_status_is(p: harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))), status: "500")
+        && (match observe_front_door(endpoint: d0fd_endpoint(port: l.port)) { FrontDoorAnsweredUnread { cause: c } => (c as String).contains("HTTP 500")  _ => false })
+        && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port))) { Present { value: IncumbentAnsweredUnread { cause: _ } } => true  _ => false })
+    })
+      && d0fd_with_listener(dir: dir, status: "401", scenario: fn(l) {
+        d0fd_status_is(p: harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))), status: "401")
+          && (match observe_front_door(endpoint: d0fd_endpoint(port: l.port)) { FrontDoorAnsweredUnread { cause: _ } => true  _ => false })
+      })
+      && d0fd_with_listener(dir: dir, status: "200", scenario: fn(l) {
+        d0fd_status_is(p: harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: l.port))), status: "200")
+          && (match observe_front_door(endpoint: d0fd_endpoint(port: l.port)) { FrontDoorAnswered => true  _ => false })
+          && (match front_door_as_incumbent(r: FrontDoorAnswered) { Absent => true  Present { value: _ } => false })
+      })
+  })
+}
+
+// The port a killed listener vacated answers nothing: the same transport, the same bound.
+test fn a_vacated_port_reads_as_no_response_by_real_execution() -> Bool {
+  d0fd_with_temp_dir(scenario: fn(dir) {
+    match d0fd_vacated_port(dir: dir) {
+      Absent => false
+      Present { value: port } =>
+        (match harness_bounded_presence(url: harness_models_url(endpoint: d0fd_endpoint(port: port))) { HarnessNoResponse { url: _ } => true  HarnessResponded { status: _ } => false })
+          && (match observe_front_door(endpoint: d0fd_endpoint(port: port)) { FrontDoorSilent { receipt: _ } => true  _ => false })
+          && (match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: port))) { Present { value: IncumbentDidNotAnswer { receipt: _ } } => true  _ => false })
+    }
+  })
+}
+
+// Start a listener, kill it, and hand back its port -- vacated, since the kill's success is
+// checked before the port is returned.
+fn d0fd_vacated_port(dir: FilePath) -> Int? {
+  let script = join([dir as String, "/listener.py"], "")
+  let kill = join([dir as String, "/kill.py"], "")
+  let w1 = Filesystem.Write(path: script, content: d0fd_listener_fixture)
+  let w2 = Filesystem.Write(path: kill, content: d0fd_kill_fixture)
+  if !w1.success || !w2.success { none } else {
+    let run = python.Interpreter.RunFile(workdir: dir, script_path: script as FilePath, args: ["204", "60"])
+    if !run.success { none } else {
+      match d0fd_parse_listener(out: run.stdout) {
+        Absent => none
+        Present { value: l } => {
+          let killed = python.Interpreter.RunFile(workdir: dir, script_path: kill as FilePath, args: [to_string(l.pid)])
+          if killed.success { Present { value: l.port } } else { none }
+        }
+      }
+    }
+  }
+}
+
+// ── THROUGH THE TRANSACTION TO THE LOG ─────────────────────────────────────────────────────────
+
+fn d0fd_witness_layout(dir: FilePath) -> EventLogLayout {
+  event_log_layout(root: dir, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
+}
+
+fn d0fd_witness_remote_ready(dir: FilePath) -> Bool {
+  git.Plumbing.InitBareAt(address: GitWorktreeAt { path: dir }, path: join([dir as String, "/remote.git"], "") as FilePath).exit_code == 0
+}
+
+fn d0fd_with_hash(scenario: fn(ContentHash) -> Bool) -> Bool {
+  match sha256_hex_digest(hex: "4444444444444444444444444444444444444444444444444444444444444444") {
+    Absent => false
+    Present { value: d } => scenario(Sha256Hash(d))
+  }
+}
+
+fn d0fd_w_admitted(layout: EventLogLayout, successor: ContentHash) -> AdmittedD0Grant? {
+  let tx = "tx-front-door" as NonEmptyStr
+  let esc = "esc-front-door" as NonEmptyStr
+  let subject = D0Subject { group: FabricGroupA, hosts: fabric_group_hosts(g: FabricGroupA), successor: successor, cleanup: QuiescentReservedBaseline, term: second(count: 1000) }
+  match d0_intent_hash(subject: subject, group: FabricGroupA, transaction: tx) {
+    Absent => none
+    Present { value: intent } => {
+      let auth = AuthorizationGranted {
+        grant: OperatorGrant {
+          escalation_id: esc,
+          subject: subject,
+          scopes: [AuthorizationScope { verb: Write, resource: NamespacePosition { tree: CodeNameTree, path: ["gunbc", "spark", "pair_serving_authority"] }, action: d0_authorized_action }],
+          purpose: "witness d0 front door" as NonEmptyStr,
+          attempt: (tx as String) as AttemptIdentity,
+          intent_hash: intent,
+          granted_by: "witness" as NonEmptyStr,
+          granted_at: "2026-09-18T00:00:00Z",
+          expires_at: "2026-09-19T00:00:00Z",
+        },
+        claim: Unclaimed,
+      }
+      match admit_d0_grant(layout: layout, authorization: auth, escalation_id: esc, group: FabricGroupA, transaction: tx, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z") {
+        D0GrantAdmitted { admitted: a } => Present { value: a }
+        _ => none
+      }
+    }
+  }
+}
+
+// A front door answering 500, read by the real transport INSIDE the transaction's observer (under
+// the pending state, as production reads it), reaches D0DecidedFence with the unidentified-
+// incumbent cause and FencedRefusal on the log at generation 2 -- the ranks never consulted.
+test fn a_front_door_answering_500_fences_the_group_through_the_transaction_by_real_execution() -> Bool {
+  d0fd_with_hash(scenario: fn(h) {
+    d0fd_with_temp_dir(scenario: fn(dir) {
+      let layout = d0fd_witness_layout(dir: dir)
+      d0fd_witness_remote_ready(dir: dir)
+        && d0fd_with_listener(dir: dir, status: "500", scenario: fn(l) {
+          match d0fd_w_admitted(layout: layout, successor: h) {
+            Absent => false
+            Present { value: admitted } =>
+              (match d0_transaction(layout: layout, group: FabricGroupA, admitted: admitted, transaction: "tx-front-door" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1000, now: "2026-09-18T00:00:00Z",
+                     observe: fn(g) {
+                       D0Observation {
+                         group: g,
+                         incumbent: match front_door_as_incumbent(r: observe_front_door(endpoint: d0fd_endpoint(port: l.port))) {
+                           Present { value: r } => r
+                           Absent => IncumbentDidNotAnswer { receipt: "witness: the front door answered 2xx, which this fixture does not" as NonEmptyStr }
+                         },
+                         ranks: [] as List<RankOccupancyReading>,
+                       }
+                     }) {
+                 D0Settled { decision: D0DecidedFence { next: _, cause: D0IncumbentUnidentified { cause: _ } }, generation: g2, receipt_path: _, entry_state: _ } => g2 == 2
+                 _ => false
+               })
+                && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001) {
+                      CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: c, disposition_authority: _ }, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => g == 2 && (c as String).contains("HTTP 500")
+                      _ => false
+                    })
+          }
+        })
+    })
+  })
+}

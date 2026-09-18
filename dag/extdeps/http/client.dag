@@ -142,7 +142,7 @@ service http.Client {
     output { status: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "{max_seconds}", "{url}"]
+      argv: ["curl", "-sS", "-o", "/dev/null", "-w", "%\{http_code}", "--max-time", "{max_seconds}", "{url}"]
     }
     exit {
       0 => Unit

@@ -20,7 +20,7 @@ import gunbc.instruments.fabric_capacity_standing {
   GroupStanding, capacity_standing_verdict, group_report, fabric_capacity_standing_current,
   standing_for_authority,
 }
-import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, AuthorityTransitionRecord }
 import product.capacity.event_chain { HeadAbsent }
 import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
@@ -317,7 +317,7 @@ test fn one_refusing_member_refuses_the_whole_standing() -> Bool {
 // live entry, which reads that roster from the event log first, is executed by
 // test.claim.spark.fabric_capacity_standing_wet_witness on the local-repo wet lane.
 fn w_resting_current() -> List<CurrentAuthority> {
-  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none })
+  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
 }
 
 test fn the_verdict_over_the_resting_roster_runs_its_real_producer_and_refuses_today() -> Bool {

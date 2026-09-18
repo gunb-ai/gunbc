@@ -1,6 +1,7 @@
 module std.scoped_authorization
 
-import std.types { NonEmptyStr, String, Bool, Timestamp }
+import std.types { NonEmptyStr, String, Bool, Timestamp, List }
+import v2.std.optional { Present, Absent }
 import std.content_hash {
   ContentHash,
   ContentHashComparison,
@@ -424,6 +425,65 @@ fn serialize_authorization_claim_state(state: AuthorizationClaimState) -> NonEmp
         "aborted-by\t",
         concat(who as String, concat("\t", concat(when, concat("\t", why as String)))),
       ) as NonEmptyStr
+  }
+}
+
+// THE EXACT INVERSE OF THE SERIALIZER, for a reader that must know WHO holds a slot rather than
+// only that it lost to someone. A transaction recovering after a crash reads its grant's slot and
+// has to decide from the state found there -- claimed by this attempt, claimed by another,
+// completed, aborted -- and each answer is a different remedy, so the bytes are decoded into
+// the same closed type they were written from and a payload that inhabits no arm is Absent,
+// never a guessed state. The LOST arm of authorization_claim_outcome still carries the raw
+// winner's payload: a loser needs no decision from it, only the report.
+fn parse_authorization_claim_state(payload: NonEmptyStr) -> AuthorizationClaimState? {
+  let parts = split(s: payload as String, delimiter: "\t")
+  match get(xs: parts, index: 0) {
+    Absent => none
+    Present { value: word } =>
+      if word == "unclaimed" {
+        if length(parts) == 1 { Present { value: Unclaimed } } else { none }
+      } else if word == "claimed-by" {
+        claim_state_two_fields(parts: parts, completed: false)
+      } else if word == "completed-by" {
+        claim_state_two_fields(parts: parts, completed: true)
+      } else if word == "aborted-by" {
+        if length(parts) != 4 { none } else {
+          match get(xs: parts, index: 1) {
+            Absent => none
+            Present { value: who } =>
+              match get(xs: parts, index: 2) {
+                Absent => none
+                Present { value: when } =>
+                  match get(xs: parts, index: 3) {
+                    Absent => none
+                    Present { value: why } =>
+                      if who == "" || why == "" { none } else {
+                        Present { value: AbortedBy { attempt: (who as NonEmptyStr) as AttemptIdentity, aborted_at: when, cause: why as NonEmptyStr } }
+                      }
+                  }
+              }
+          }
+        }
+      } else {
+        none
+      }
+  }
+}
+
+fn claim_state_two_fields(parts: List<String>, completed: Bool) -> AuthorizationClaimState? {
+  if length(parts) != 3 { none } else {
+    match get(xs: parts, index: 1) {
+      Absent => none
+      Present { value: who } =>
+        match get(xs: parts, index: 2) {
+          Absent => none
+          Present { value: when } =>
+            if who == "" { none } else {
+              let attempt = (who as NonEmptyStr) as AttemptIdentity
+              Present { value: if completed { CompletedBy { attempt: attempt, completed_at: when } } else { ClaimedBy { attempt: attempt, claimed_at: when } } }
+            }
+        }
+    }
   }
 }
 

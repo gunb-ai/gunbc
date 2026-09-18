@@ -78,14 +78,14 @@ fn alr_w_suspended(h: ContentHash) -> PairServingGroupAuthority {
 
 fn alr_current_is(c: CurrentAuthority, expected: PairServingGroupAuthority, generation: Int) -> Bool {
   match c {
-    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _ } => authority_eq(a: a, b: expected) && g == generation
+    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => authority_eq(a: a, b: expected) && g == generation
     CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
   }
 }
 
 fn alr_current_may_launch(c: CurrentAuthority) -> Bool {
   match c {
-    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } => pair_serving_successor_may_launch(a: a)
+    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => pair_serving_successor_may_launch(a: a)
     CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
   }
 }
@@ -144,7 +144,7 @@ test fn an_unclaimed_group_is_refused_at_the_claim_by_real_execution() -> Bool {
       alr_witness_remote_ready(dir: dir)
         && (match current_pair_serving_authority(layout: layout, group: FabricGroupB, at: 1000) {
               CurrentAuthorityUnread { group: _, step: s, reason: _ } => s == "claim"
-              CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } => false
+              CurrentAuthorityRead { authority: _, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } => false
             })
         && (match pair_serving_authority_transition(layout: layout, group: FabricGroupB, expected: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }, next: PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }, transaction: "tx" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
               AuthorityTransitionRefused { group: _, step: s, reason: _ } => s == "claim"

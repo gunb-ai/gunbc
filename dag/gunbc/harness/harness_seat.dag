@@ -1080,7 +1080,7 @@ fn harness_seat_authority_gate(layout: EventLogLayout, group: FabricGroup, now: 
       match current_pair_serving_authority(layout: layout, group: group, at: now) {
         CurrentAuthorityUnread { group: _, step: st, reason: why } =>
           SeatAuthorityRefuses { cause: join(["the pair-serving authority could not be read at ", st, ", so no seat is minted: ", why], "") }
-        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } =>
+        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
           if pair_serving_apply_admits(a: a) { SeatAuthorityAdmits }
           else { SeatAuthorityRefuses { cause: join(["the pair-serving authority does not admit new work: ", authority_wire(a: a)], "") } }
       }
