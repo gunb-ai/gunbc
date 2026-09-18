@@ -291,8 +291,24 @@ type CandidateBinding<P>
 // SEALING A CANDIDATE FROM AN ALREADY-ADMITTED CAPACITY. product.fabric.capacity_admission ran every
 // screen and its sole constructor is the proof, so this does not re-run them: it adds the pricing
 // observations, and checks the ONE thing the capacity cannot know - that the dispatch inputs describe
-// the same offer. bind_candidate below stays for callers holding a raw admission (the probe fixtures
-// and the witnesses whose subject IS its refusal arms).
+// the same offer.
+//
+// bind_candidate below IS STILL A SECOND WAY TO MINT A CandidateOffer, AND ONE PRODUCTION CALLER USES
+// IT - named here because an earlier revision of this note said only fixtures did, and a later author
+// deleting bind_candidate on the strength of that would break the serving spine (review 67583).
+//   - gunbc.harness.harness_seat harness_admit_bound_offer (reached from harness_bind_candidate) binds
+//     first-party Spark serving seats. It admits through spark_first_party_admission, the first-party
+//     serving realization authority, rather than product.fabric.capacity_admission, and so it does not
+//     pass the supply-evidence or route-readiness screens that authority runs.
+//   - the witnesses whose subject IS bind_candidate's refusal arms (fabric_selection_witness
+//     t_unadmitted_bound and its neighbours), which must keep calling it directly.
+// So "one authority for usable supply" holds for PROVIDER-ROUTE supply and does not yet hold for
+// first-party serving seats. That is a declared frontier, not a finished consolidation: serving seats
+// are a different occupancy subject (a seat on a replica with loaded state, per the serving capacity
+// home ruling), and forcing them through provider-route correspondence would model a route they do not
+// have. TRIGGER: first-party serving seats gain an admission carrier that consumes
+// capacity_admission's screens for the facts they share (evidence, readiness) - at which point
+// harness_admit_bound_offer binds from that carrier and bind_candidate keeps only its witnesses.
 // ITS OWN TWO-ARM RESULT RATHER THAN CandidateBinding, because the other five arms of that coproduct
 // are decided by capacity admission and cannot be reached from here. Returning the wider type would
 // force every caller to match five variants this function can never produce, and an unreachable arm
