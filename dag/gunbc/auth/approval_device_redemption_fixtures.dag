@@ -1,8 +1,6 @@
 module gunbc.auth.approval_device_redemption_fixtures
 
 import std.types { NonEmptyStr, String, Timestamp, List }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import extdeps.languages.json.emit { JsonValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name, signing_field_separator }
@@ -16,10 +14,10 @@ import gunbc.auth.approval_device_wire {
 // The iOS app builds the signing input and the enrolment transcript in Swift; the server builds
 // them here. The two must agree BYTE FOR BYTE or every signature fails. The contract is not
 // re-typed in Swift tests: this module renders each vector's EXPECTED bytes through the very
-// functions the server verifies against, and the app's XCTest reads the emitted file. A change to
-// field order or separator on this side changes the file; `agree` refuses a stale commit, and the
-// app's test refuses the new bytes until its builder follows.
-data approval_device_vectors_path: String = "dag/test/fixture/approval_device_redemption/vectors.json"
+// functions the server verifies against, and the app's XCTest reads the emitted file. The file is
+// gunbc.generated_artifact ApprovalDeviceVectorsArtifact: the required generated-artifact phase
+// refuses a commit that differs from approval_device_vectors_json, the refusing merge driver guards
+// it, and the app's test refuses the new bytes until its builder follows.
 
 type RedemptionVector {
   name: NonEmptyStr
@@ -141,21 +139,4 @@ fn approval_device_vectors_json() -> String {
     ])),
     "\n",
   )
-}
-
-// Writes the projection. Run from the repository root.
-fn regen() -> ProcessExit {
-  let w = Filesystem.Write(path: approval_device_vectors_path, content: approval_device_vectors_json())
-  if w.success { ExitSuccess } else { exit_failure(reason: concat("write failed: ", w.error)) }
-}
-
-// Refuses a committed file that is not exactly the projection.
-fn agree() -> ProcessExit {
-  let r = Filesystem.Read(path: approval_device_vectors_path)
-  match filesystem_read_outcome(content: r.content, success: r.success, error: r.error) {
-    FilesystemReadRefused { error } => exit_failure(reason: concat("vectors.json unreadable: ", error))
-    FilesystemReadSucceeded { content } =>
-      if content == approval_device_vectors_json() { ExitSuccess }
-      else { exit_failure(reason: "vectors.json is stale; run gunbc.auth.approval_device_redemption_fixtures regen") }
-  }
 }

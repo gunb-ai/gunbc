@@ -40,7 +40,7 @@ import gunbc.durable_cas_file_store {
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
-  ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_next, cas_generation_count,
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_next, cas_generation_count,
 }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
@@ -469,10 +469,7 @@ type DeviceStoreWrite
   | DeviceStoreSlotOccupied
   | DeviceStoreRefused { detail: NonEmptyStr }
 
-fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected_generation: Int, payload: NonEmptyStr) -> DeviceStoreWrite {
-  let expected = if expected_generation == 0 { ExpectSlotAbsent }
-    else if expected_generation == 1 { ExpectSlotGeneration { generation: cas_generation_first() } }
-    else { ExpectSlotGeneration { generation: cas_generation_next(g: cas_generation_first()) } }
+fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectation, payload: NonEmptyStr) -> DeviceStoreWrite {
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DeviceStoreRefused { detail: "enrolment code is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
@@ -613,7 +610,7 @@ fn observe_enrollment(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> Enrolmen
 }
 
 fn issue_enrolment_code(root: NonEmptyStr, challenge: EnrolmentChallenge) -> DeviceStoreWrite {
-  device_store_write(root: root, key: challenge.code, expected_generation: 0, payload: enrolment_code_json(c: challenge) as NonEmptyStr)
+  device_store_write(root: root, key: challenge.code, expected: ExpectSlotAbsent, payload: enrolment_code_json(c: challenge) as NonEmptyStr)
 }
 
 // THE ONLY ENROLMENT WRITE, and it takes the admitted value: consuming the code and creating the
@@ -622,14 +619,14 @@ fn commit_enrolment(root: NonEmptyStr, admitted: EnrolmentAdmission) -> DeviceSt
   match admitted {
     EnrolmentRefused { cause: _ } => DeviceStoreRefused { detail: "nothing admitted to commit" }
     EnrolmentAdmitted { enrollment: e } =>
-      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected_generation: 1, payload: enrolment_json(e: e) as NonEmptyStr)
+      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected: ExpectSlotGeneration { generation: cas_generation_first() }, payload: enrolment_json(e: e) as NonEmptyStr)
   }
 }
 
 fn revoke_enrolment(root: NonEmptyStr, standing: EnrolmentSlotStanding, revoked_at: Timestamp, reason: NonEmptyStr) -> DeviceStoreWrite {
   match standing {
     EnrolmentCodeConsumed { enrollment: e } =>
-      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected_generation: 2, payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
+      device_store_write(root: root, key: code_of_enrollment_id(enrollment_id: e.enrollment_id) as NonEmptyStr, expected: ExpectSlotGeneration { generation: cas_generation_next(g: cas_generation_first()) }, payload: revocation_json(e: e, revoked_at: revoked_at, reason: reason) as NonEmptyStr)
     _ => DeviceStoreRefused { detail: "only a live enrolment can be revoked" }
   }
 }
