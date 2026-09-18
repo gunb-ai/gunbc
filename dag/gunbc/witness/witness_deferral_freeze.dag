@@ -938,9 +938,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/door_real_module_probe_test.dag",
     functions: [
       "quad_namespace_only_resolve_accepts_holds",
-      "quad_import_scoped_admission_reds_ambiguous_export_holds",
-      "quad_with_peer_import_scoped_reds_ambiguous_export_holds",
-      "quad_with_peer_greens_under_namespace_only_projection"
+      "quad_import_scoped_admission_reds_ambiguous_export_holds"
     ]
   },
   FrozenPathDeferral { entry: "src/v2/test/claim/long/free_monoid_not_diverged_green_test.dag", functions: ["corpus_free_monoid_not_diverged_green_holds"] },

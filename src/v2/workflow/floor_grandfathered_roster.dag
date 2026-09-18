@@ -180,6 +180,46 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "test.claim.bare_name_fork_lens_witness_test.two_declarations_of_one_name_inside_the_subject_are_not_a_fork_with_itself" as NonEmptyStr,
     deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler.compile_eval_thesis_proof.isolate_t1_holds" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler.compile_eval_thesis_proof.isolate_t2_holds" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler.compile_eval_thesis_proof.isolate_t3_holds" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.grounding_typescript.sg_claims.ts_g2_sg5_absence_fail_closed_holds" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_emit_holds_keystone" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_grammar_inverse_holds_keystone" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.field_access_emit.field_access_ingest_via_coerce_holds_keystone" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_emit_holds_keystone" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_grammar_inverse_holds_keystone" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_holds_keystone" as NonEmptyStr,
+    deleted_in: "the test-fn call removal (owner ruling 2026-09-16/17: no code may call a test fn): its whole body was a call to one other test fn of the same module, which is still enrolled under its own identity, so the deletion removes a duplicate execution and no coverage" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {

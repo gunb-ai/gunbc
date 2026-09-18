@@ -149,11 +149,3 @@ test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
     }
   }
 }
-
-test fn quad_with_peer_import_scoped_reds_ambiguous_export_holds() -> Bool {
-  quad_import_scoped_admission_reds_ambiguous_export_holds()
-}
-
-test fn quad_with_peer_greens_under_namespace_only_projection() -> Bool {
-  quad_namespace_only_resolve_accepts_holds()
-}

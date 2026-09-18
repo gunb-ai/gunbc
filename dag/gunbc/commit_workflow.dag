@@ -1485,7 +1485,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "witness_recompute_fixture_carries_recompute_verdict",
         "witness_door_insert_refused_for_recompute_table",
         "witness_door_lookup_refused_for_recompute_table",
-        "parse_table_memo_door_order_independent",
         "parse_table_memo_bypass_store_reds",
         "witness_memoize_carrier_allows_store",
         "witness_content_key_subject_stable"
