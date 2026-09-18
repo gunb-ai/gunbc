@@ -60,10 +60,6 @@ fn gsg_rear_management_ethernet_names(port: GsgRearManagementEthernet, expected:
   }
 }
 
-fn gsg_unstated_topic_eq(row: GsgUnstated, expected: NonEmptyStr) -> Bool {
-  row.topic == expected
-}
-
 // Appendix E, 2S1P / 2S2P-as-forced-1P without the 1P BMC image: "Fan will run at 100% speed".
 // That is a documented MegaRAC-package behaviour on this GSG, not a phosphor-pid-control row and
 // not a reading of the used unit's flash.
