@@ -471,17 +471,49 @@ fn fan_policy_standing_label(standing: FanPolicyStanding) -> NonEmptyStr {
 // needs the fan's maximum - which is a catalog fact that may not exist for this host. Answering
 // "within" from a tach reading would be the fabricated-plausible-output failure at the one place the
 // operator's own room is the subject.
+// OVER THE CEILING ON A CURVE AND OVER IT DURING A FAILSAFE ARE TWO VERDICTS, NOT ONE, for the same
+// reason the acoustic fold above splits them - and an earlier revision of this type collapsed them
+// while an annotation elsewhere claimed it did not. That annotation said the consuming function
+// "takes a standing rather than a bare reading" precisely so a pre-POST failsafe would not be read
+// as a ceiling violation; the fold then projected the drive out of the standing and compared it,
+// so a pre-POST failsafe at 100% landed FanDutyOverCeiling - the exact verdict the prose said the
+// standing argument existed to prevent. A comment promising a distinction the code does not make is
+// worse than no comment, and DESIGN §4c says so outright: an annotation is never evidence that a
+// machine claim holds.
+//
+// WHAT THE SPLIT MEANS, and it is not that an excursion is acceptable. A controller with no host
+// thermals has no safe alternative to a high fixed output, so its excursion cannot be converged
+// away by lowering a curve - it is bounded by its DURATION and, in the last resort, by the operator
+// powering the machine off. That is exactly the Mt. Jade complaint: the excursion was unbounded
+// because the host never posted. So the excursion arm carries the window rather than excusing the
+// reading, and a consumer that wants "is this room too loud right now" reads both arms as over.
 type FanDutyCeilingVerdict
   = FanDutyWithinCeiling { duty: Percent, ceiling: Percent }
-  | FanDutyOverCeiling { duty: Percent, ceiling: Percent }
+  | FanDutySteadyCurveOverCeiling { duty: Percent, ceiling: Percent }
+  | FanDutyExcursionOverCeiling { duty: Percent, ceiling: Percent, window: Second }
   | FanDutyNotReported { cause: NonEmptyStr }
 
+// EVERY ARM THAT IS OVER, WHICHEVER KIND. Offered because the two over-arms exist to separate the
+// REMEDY, not to let a consumer asking "is the room over the ceiling" have to know the difference.
+fn duty_verdict_is_over_ceiling(verdict: FanDutyCeilingVerdict) -> Bool {
+  match verdict {
+    FanDutyWithinCeiling { duty: _, ceiling: _ } => false
+    FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => true
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, window: _ } => true
+    FanDutyNotReported { cause: _ } => false
+  }
+}
+
+// THE BARE-READING FORM KEEPS ITS OWN NAME AND ITS OWN MEANING: given a duty and a ceiling and no
+// standing, the only honest over-arm is the steady one, because nothing here knows whether an
+// excursion is in progress. It is used where the caller genuinely has no standing - the tach
+// refusal path - and a caller holding a standing must use fan_policy_against_duty_ceiling instead.
 fn fan_drive_against_duty_ceiling(drive: FanDriveReading, ceiling: Percent) -> FanDutyCeilingVerdict {
   match drive {
     FanDriveDuty { duty: d } => if measure_le(a: d, b: ceiling) {
       FanDutyWithinCeiling { duty: d, ceiling: ceiling }
     } else {
-      FanDutyOverCeiling { duty: d, ceiling: ceiling }
+      FanDutySteadyCurveOverCeiling { duty: d, ceiling: ceiling }
     }
     FanDriveTachOnly { speed: _ } => FanDutyNotReported {
       cause: "this controller reports the fan in RPM and not in duty; converting needs the fan part's catalogued maximum, which is a datasheet fact this host does not carry",
@@ -489,20 +521,44 @@ fn fan_drive_against_duty_ceiling(drive: FanDriveReading, ceiling: Percent) -> F
   }
 }
 
-fn fan_policy_drive(standing: FanPolicyStanding) -> FanDriveReading? {
-  match standing {
-    FailsafeBeforeHostTelemetry { host: _, authority: _, post_state: _, drive: d } => Present { value: d }
-    PostPostTransition { host: _, authority: _, elapsed_since_post: _, window: _, drive: d } => Present { value: d }
-    SteadyCurve { host: _, authority: _, drive: d } => Present { value: d }
-    FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: _, window: _, drive: d } => Present { value: d }
-    RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } => Absent
-    FanPolicyUnderdetermined { host: _, cause: _ } => Absent
+fn duty_against_ceiling_in_excursion(
+  drive: FanDriveReading,
+  ceiling: Percent,
+  window: Second,
+) -> FanDutyCeilingVerdict {
+  match fan_drive_against_duty_ceiling(drive: drive, ceiling: ceiling) {
+    FanDutySteadyCurveOverCeiling { duty: d, ceiling: c } =>
+      FanDutyExcursionOverCeiling { duty: d, ceiling: c, window: window }
+    FanDutyWithinCeiling { duty: d, ceiling: c } => FanDutyWithinCeiling { duty: d, ceiling: c }
+    FanDutyExcursionOverCeiling { duty: d, ceiling: c, window: w } =>
+      FanDutyExcursionOverCeiling { duty: d, ceiling: c, window: w }
+    FanDutyNotReported { cause: cz } => FanDutyNotReported { cause: cz }
   }
 }
 
+// THE STANDING DECIDES WHICH OVER-ARM, WHICH IS THE WHOLE REASON THIS FUNCTION TAKES ONE. A curve
+// above the ceiling is a converge obligation; a failsafe above it is an excursion whose bound is its
+// duration. FailsafeHeldAfterPost is the excursion arm too, and deliberately: it IS an excursion,
+// the finding is that it has outlived its window, and the window it carries is what says so.
+//
+// THE PRE-POST WINDOW IS ZERO, meaning no post-transition window applies - the same reading the
+// acoustic fold takes. What bounds that excursion is the operator powering the machine off, which
+// is a decision and not a controller fact.
 fn fan_policy_against_duty_ceiling(standing: FanPolicyStanding, ceiling: Percent) -> FanDutyCeilingVerdict {
-  match fan_policy_drive(standing: standing) {
-    Absent => FanDutyNotReported { cause: "the standing is underdetermined, so there is no drive reading to bound" }
-    Present { value: d } => fan_drive_against_duty_ceiling(drive: d, ceiling: ceiling)
+  match standing {
+    RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } => FanDutyNotReported {
+      cause: "this controller reports the fan in RPM and not in duty; no duty ceiling can be applied to a speed",
+    }
+    FanPolicyUnderdetermined { host: _, cause: _ } => FanDutyNotReported {
+      cause: "the standing is underdetermined, so there is no drive reading to bound",
+    }
+    SteadyCurve { host: _, authority: _, drive: d } =>
+      fan_drive_against_duty_ceiling(drive: d, ceiling: ceiling)
+    FailsafeBeforeHostTelemetry { host: _, authority: _, post_state: _, drive: d } =>
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, window: unbounded_failsafe_window())
+    PostPostTransition { host: _, authority: _, elapsed_since_post: _, window: w, drive: d } =>
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, window: w)
+    FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: _, window: w, drive: d } =>
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, window: w)
   }
 }

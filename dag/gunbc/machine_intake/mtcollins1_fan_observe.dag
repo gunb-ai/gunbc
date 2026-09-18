@@ -4,14 +4,15 @@ import extdeps.shell
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Int, List, NonEmptyStr, String }
-import std.measure { Second, percent, second }
+import std.measure { Second, percent, second, second_count }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import product.placement_supply { HostIdentity }
 import product.fan_policy_standing {
   FanDutyCeilingVerdict,
+  FanDutyExcursionOverCeiling,
   FanDutyNotReported,
-  FanDutyOverCeiling,
+  FanDutySteadyCurveOverCeiling,
   FanDutyWithinCeiling,
   FanPolicyAuthority,
   FanPolicySample,
@@ -146,10 +147,14 @@ fn render_sample_standing(sample: FanPolicySample, elapsed: Second?) -> String {
   ], "")
 }
 
+// THE TWO OVER-ARMS RENDER DISTINCTLY, because their remedies differ: a curve over the ceiling is
+// something to converge, and an excursion over it is something to bound in time or to end by
+// powering the machine off.
 fn render_duty_verdict(verdict: FanDutyCeilingVerdict) -> String {
   match verdict {
     FanDutyWithinCeiling { duty: _, ceiling: _ } => "WithinCeiling"
-    FanDutyOverCeiling { duty: _, ceiling: _ } => "OverCeiling"
+    FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => "SteadyCurveOverCeiling"
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, window: w } => join(["ExcursionOverCeiling(window=", to_string(second_count(s: w)), "s)"], "")
     FanDutyNotReported { cause: _ } => "NotReported"
   }
 }

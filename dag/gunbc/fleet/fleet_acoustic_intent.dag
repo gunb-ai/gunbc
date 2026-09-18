@@ -50,11 +50,21 @@ data operator_residence_site: SiteIdentity = operator_site
 // behind it, which is why it sits beside the basis row below rather than alone - a bare percent
 // would be indistinguishable from a datasheet figure to anybody reading it later.
 //
-// IT BOUNDS THE SUSTAINED STATE AND NOT THE EXCURSION. A controller with no host thermal sensors has
-// no safe alternative to a high fixed output, so the failsafe window is bounded by its DURATION and
-// by the operator's ability to power the machine off - never by this percentage. Applying this
-// ceiling to a pre-POST failsafe would demand that a family violate its own thermal contract, which
-// is why the consuming function takes a standing rather than a bare reading.
+// IT SEPARATES THE SUSTAINED STATE FROM THE EXCURSION RATHER THAN EXEMPTING THE EXCURSION, and the
+// difference between those two sentences is a defect this module's prose once carried. An earlier
+// revision claimed the ceiling did not apply to a pre-POST failsafe "which is why the consuming
+// function takes a standing rather than a bare reading" - while that function projected the drive
+// out of the standing and compared it, so a pre-POST failsafe at 100% came back plain over-ceiling.
+// The prose promised a discrimination the fold did not make (DESIGN §4c: an annotation is never
+// evidence that a machine claim holds).
+//
+// The fold now branches, and what it branches to is NOT an exemption: a controller with no host
+// thermals has no safe alternative to a high fixed output, so its excursion cannot be converged
+// away by lowering a curve - it is bounded by DURATION and, in the last resort, by the operator
+// powering the machine off. That is exactly what he described on Mt. Jade, where the excursion was
+// unbounded because the host never posted. So a failsafe over this ceiling is still OVER it; it is
+// reported as FanDutyExcursionOverCeiling carrying its window, and only a steady curve over the
+// ceiling is a converge obligation.
 data operator_residence_sustained_duty_ceiling: Percent = percent(60)
 
 data operator_residence_duty_ceiling_basis: AcousticCeilingBasis = OperatorStatedTolerance { statement: "operator statement 2026-09-18: cannot tolerate sustained full-duty fans in the residence during testing; the percentage is this repository's conservative reading of that sentence and not a figure the operator gave" }

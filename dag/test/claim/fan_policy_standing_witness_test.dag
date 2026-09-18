@@ -59,7 +59,9 @@ import product.fan_policy_standing {
   FanDriveDuty,
   FanDriveTachOnly,
   FanDutyNotReported,
-  FanDutyOverCeiling,
+  FanDutyExcursionOverCeiling,
+  FanDutySteadyCurveOverCeiling,
+  duty_verdict_is_over_ceiling,
   FanDutyWithinCeiling,
   FanPolicyAuthority,
   FanPolicySample,
@@ -552,8 +554,13 @@ test fn witness_residence_ceiling_is_policy_not_measurement() -> Bool {
   } && percent_count(p: operator_residence_sustained_duty_ceiling) == 60
 }
 
-// ALL THREE DUTY VERDICT ARMS ARE REACHABLE THROUGH THE SITE'S OWN CEILING, INCLUDING THE TACH
-// REFUSAL. The refusal arm is not decoration: it is the arm Mt. Collins lands on.
+// THE ARMS REACHABLE THROUGH THE SITE'S OWN CEILING, INCLUDING THE TACH REFUSAL -- which is not
+// decoration: it is the arm Mt. Collins actually landed on, 108 samples out of 108, on
+// fleet-converge run 35402673990.
+//
+// EIGHTY AND NOT ONE HUNDRED FOR THE CURVE ARM. At the supplied failsafe duty of 100, a reading of
+// 100 is AT the fixed output and is an excursion, never a curve; this claim asserted 100 into the
+// curve arm until the curve/excursion split made the two distinguishable and red it.
 test fn witness_residence_duty_verdict_arms_are_reachable() -> Bool {
   match residence_duty_verdict(standing: fan_policy_standing_of_sample(
     host: witness_host, authority: witness_authority,
@@ -565,11 +572,11 @@ test fn witness_residence_duty_verdict_arms_are_reachable() -> Bool {
     _ => false
   } && match residence_duty_verdict(standing: fan_policy_standing_of_sample(
     host: witness_host, authority: witness_authority,
-    sample: witness_sample(duty_count: 100, post: HostPosted),
+    sample: witness_sample(duty_count: 80, post: HostPosted),
     failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
     elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
   )) {
-    FanDutyOverCeiling { duty: d, ceiling: _ } => percent_count(p: d) == 100
+    FanDutySteadyCurveOverCeiling { duty: d, ceiling: _ } => percent_count(p: d) == 80
     _ => false
   } && match fan_drive_against_duty_ceiling(drive: FanDriveTachOnly { speed: rpm(8600) }, ceiling: operator_residence_sustained_duty_ceiling) {
     FanDutyNotReported { cause: _ } => true
@@ -707,4 +714,35 @@ test fn witness_residence_datasheet_route_is_executed() -> Bool {
     DutyCeilingPublished { duty: d, level: _ } => percent_count(p: d) == 50
     _ => false
   }
+}
+
+// EIGHTY PERCENT POSTED IS THE CURVE CASE AND ONE HUNDRED IS NOT, which is worth stating because
+// the first draft of this claim got it wrong: at the supplied failsafe duty of 100, a reading of
+// 100 is AT the fixed output and can never be SteadyCurve. A curve over a 60 percent ceiling needs
+// a duty between the ceiling and the fixed output.
+//
+// A PRE-POST FAILSAFE OVER THE CEILING IS AN EXCURSION, NOT A CURVE VIOLATION -- AND IT IS STILL
+// OVER. This is the discriminating red for the defect that produced the split: the prose claimed
+// the fold branched on the standing while the fold projected the drive out and compared it, so a
+// pre-POST failsafe at 100% came back as a plain curve violation. Both halves are asserted here,
+// because getting either one wrong is a different wrong answer about the operator's own room:
+// SteadyCurve at 100% is a converge obligation, the pre-POST failsafe at the same duty is an
+// excursion carrying its window, and duty_verdict_is_over_ceiling answers true for BOTH.
+test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
+  let curve = residence_duty_verdict(standing: witness_standing(duty_count: 80, post: HostPosted, elapsed: 90))
+  let prepost = residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPoweredOnPrePost, elapsed: 0))
+  match curve {
+    FanDutySteadyCurveOverCeiling { duty: d, ceiling: c } => percent_count(p: d) == 80 && percent_count(p: c) == 60
+    _ => false
+  } && match prepost {
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, window: w } => second_count(s: w) == 0
+    _ => false
+  } && duty_verdict_is_over_ceiling(verdict: curve)
+    && duty_verdict_is_over_ceiling(verdict: prepost)
+    && match residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPosted, elapsed: 90)) {
+      FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => false
+      FanDutyExcursionOverCeiling { duty: _, ceiling: _, window: w } => second_count(s: w) == 60
+      _ => false
+    }
+    && !duty_verdict_is_over_ceiling(verdict: residence_duty_verdict(standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90)))
 }
