@@ -11,8 +11,7 @@ import gunbc.machine_intake_mtcollins1_expansion_candidates { expansion_candidat
 import gunbc.machine_intake_mtcollins1_connectx4lx_observation {
   connectx4lx_host_observation, Connectx4LxHostUnobserved, Connectx4LxHostObserved,
   seated_transceiver_observation, SeatedTransceiverUnobserved, SeatedTransceiverObserved,
-  mtcollins1_to_crs812_link_plan, MediaUnchosen,
-  crs812_has_no_25gbase_cr_lane_speed, sfp56_group_publishes_25g,
+  mtcollins1_to_crs812_link_plan, MediaUnchosen, sfp56_group_publishes_25g,
   mtcollins1_crs812_cable_order_today, mtcollins1_crs812_cable_order_with,
   mtcollins1_connectx4lx_fleet_intent, NicIntentUndeclared, NicIntentDeclared,
 }
@@ -49,8 +48,6 @@ test fn crs812_sfp56_publishes_25g_but_has_no_25gbase_cr_wire() -> Bool {
   sfp56_group_publishes_25g()
     && mtcollins1_to_crs812_link_plan.nic_port_connector == "SFP28"
     && mtcollins1_to_crs812_link_plan.switch_port_connector == "SFP56"
-    && mtcollins1_to_crs812_link_plan.switch_publishes_25g_on_sfp56
-    && crs812_has_no_25gbase_cr_lane_speed
     && match mtcollins1_to_crs812_link_plan.switch_lane_speed_for_dac {
       NoLaneSpeedForMode { mode: m } => link_mode_eq(a: m, b: ieee_25gbase_cr)
       _ => false

@@ -5,7 +5,7 @@ import std.measure { bandwidth_count }
 import extdeps.ethernet.link_mode { LinkMode, ieee_25gbase_cr, lane_rate_25g }
 import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.linux.mlx5_core { mlx5_core_module_name }
-import extdeps.mikrotik.crs812 { crs812_lane_speed_for_link_mode, Crs812LaneSpeedForMode, NoLaneSpeedForMode }
+import extdeps.mikrotik.crs812 { crs812_lane_speed_for_link_mode, Crs812LaneSpeedForMode }
 import extdeps.network.mcx4121a_acat { mcx4121a_acat }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
@@ -62,7 +62,6 @@ type LinkMediaStanding
 type MtCollins1ToCrs812LinkPlan {
   nic_port_connector: NonEmptyStr
   switch_port_connector: NonEmptyStr
-  switch_publishes_25g_on_sfp56: Bool
   media: LinkMediaStanding
   switch_lane_speed_for_dac: Crs812LaneSpeedForMode
   actuation: NonEmptyStr
@@ -77,17 +76,11 @@ fn sfp56_group_publishes_25g() -> Bool {
 data mtcollins1_to_crs812_link_plan: MtCollins1ToCrs812LinkPlan = MtCollins1ToCrs812LinkPlan {
   nic_port_connector: mcx4121a_acat.port_connector,
   switch_port_connector: "SFP56",
-  switch_publishes_25g_on_sfp56: sfp56_group_publishes_25g(),
   media: MediaUnchosen {
     reason: "transceiver seated, far end unconnected; DAC vs optic is not chosen, and optic 25GBASE-SR is not a link_mode row",
   },
   switch_lane_speed_for_dac: crs812_lane_speed_for_link_mode(m: ieee_25gbase_cr),
   actuation: "typed plan only; do not cable the host or the CRS812 from this module",
-}
-
-data crs812_has_no_25gbase_cr_lane_speed: Bool = match mtcollins1_to_crs812_link_plan.switch_lane_speed_for_dac {
-  NoLaneSpeedForMode { mode: _ } => true
-  _ => false
 }
 
 // No vendor claim for a 25G SFP28 DAC or optic is authored. admit_cable_order on LegCodingUndeclared refuses.
