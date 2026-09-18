@@ -3,7 +3,7 @@ module gunbc.boot_artifact_delivery
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash }
-import extdeps.uri { Uri }
+import product.placement_supply { SiteIdentity }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
 import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -103,12 +103,14 @@ import gunbc.install_transport_qualification {
   TransportProbeObservation,
 }
 import gunbc.network_boot_delivery {
+  NetworkBootArchitectureRefusal,
   NetworkBootDeliveryArchitectureRefused,
   NetworkBootDeliveryClientModeRefused,
   NetworkBootDeliveryEstablished,
   NetworkBootDeliveryEstablishment,
   NetworkBootDeliveryEvidenceRefused,
   NetworkBootDeliveryManifestRefused,
+  NetworkBootDeliverySiteMismatch,
   NetworkBootDeliverySiteUnestablished,
   NetworkBootDeliveryStanding,
   NetworkBootDeliveryTargetMismatch,
@@ -355,11 +357,12 @@ type BootDeliveryCandidateIneligibility
   | CandidateUefiHttpUnestablished { missing: List<UefiHttpRequirement> }
   | CandidateNetworkBootUnestablished { missing: List<NetworkBootRequirement> }
   | CandidateNetworkBootEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
-  | CandidateNetworkBootArchitectureRefused { architecture: Architecture }
+  | CandidateNetworkBootArchitectureRefused { cause: NetworkBootArchitectureRefusal }
   | CandidateNetworkBootClientModeRefused { arch: DhcpProcessorArchitecture }
   | CandidateNetworkBootTargetMismatch { axis: NetworkBootRequirement }
   | CandidateNetworkBootManifestRefused { cause: NetworkBootManifestRefusal }
   | CandidateNetworkBootSiteUnestablished
+  | CandidateNetworkBootSiteMismatch { expected: SiteIdentity, observed: SiteIdentity }
   | CandidateNetworkBootTrustUnestablished
 
 type BootDeliveryCandidateStanding
@@ -672,8 +675,8 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
     NetworkBootDeliveryUnestablished { missing: m } => CandidateIneligible { cause: CandidateNetworkBootUnestablished { missing: m } }
     NetworkBootDeliveryEvidenceRefused { axis: axis, observation: observation } =>
       CandidateIneligible { cause: CandidateNetworkBootEvidenceRefused { axis: axis, observation: observation } }
-    NetworkBootDeliveryArchitectureRefused { architecture: a } =>
-      CandidateIneligible { cause: CandidateNetworkBootArchitectureRefused { architecture: a } }
+    NetworkBootDeliveryArchitectureRefused { cause: cause } =>
+      CandidateIneligible { cause: CandidateNetworkBootArchitectureRefused { cause: cause } }
     NetworkBootDeliveryClientModeRefused { arch: arch } =>
       CandidateIneligible { cause: CandidateNetworkBootClientModeRefused { arch: arch } }
     NetworkBootDeliveryTargetMismatch { axis: axis } =>
@@ -682,6 +685,8 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
       CandidateIneligible { cause: CandidateNetworkBootManifestRefused { cause: cause } }
     NetworkBootDeliverySiteUnestablished =>
       CandidateIneligible { cause: CandidateNetworkBootSiteUnestablished }
+    NetworkBootDeliverySiteMismatch { expected: expected, observed: observed } =>
+      CandidateIneligible { cause: CandidateNetworkBootSiteMismatch { expected: expected, observed: observed } }
     NetworkBootDeliveryTrustUnestablished =>
       CandidateIneligible { cause: CandidateNetworkBootTrustUnestablished }
   }
@@ -830,11 +835,12 @@ fn build_boot_artifact_delivery(
           Present { value: BuiltBootArtifactDelivery { candidate: candidate, delivery: PxeChainBoot { evidence: e }, selected: SelectedFromNetworkBootEstablishment { establishment: e } } }
         NetworkBootDeliveryUnestablished { missing: _ } => none
         NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => none
-        NetworkBootDeliveryArchitectureRefused { architecture: _ } => none
+        NetworkBootDeliveryArchitectureRefused { cause: _ } => none
         NetworkBootDeliveryClientModeRefused { arch: _ } => none
         NetworkBootDeliveryTargetMismatch { axis: _ } => none
         NetworkBootDeliveryManifestRefused { cause: _ } => none
         NetworkBootDeliverySiteUnestablished => none
+        NetworkBootDeliverySiteMismatch { expected: _, observed: _ } => none
         NetworkBootDeliveryTrustUnestablished => none
       }
   }
