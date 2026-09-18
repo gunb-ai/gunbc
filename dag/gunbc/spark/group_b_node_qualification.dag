@@ -1,0 +1,73 @@
+module gunbc.spark.group_b_node_qualification
+
+import std.types { NonEmptyStr }
+import std.measure { gibibyte, gibibyte_to_byte_size, bandwidth, nanosecond }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9 }
+import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_50gbase_cr2 }
+import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.nvidia.cuda_device_attribute {
+  CudaDevAttrGpuDirectRdmaSupported, CudaAttributeRead,
+}
+import product.fabric.node_qualification {
+  AdvertisedNodeOffer, MeasuredNodeDelivery,
+  CountUnread, ByteSizeUnread, LinkModeRead, PcieLinkRead,
+  CollectiveCurveUnread, EthtoolLinkModes, LspciLnkSta,
+  NodeQualificationAdmission, qualify_node, admit_qualified_node,
+}
+
+// GROUP B DELIVERY AS READ 2026-09-18, NOT AS THE PRODUCT BRIEF WOULD HAVE IT.
+//
+// The advertised row is what fabric selection already believes: four GB10s, 100GBASE-CR2 rail.
+// The measured row is only what has actually been read. Collective curves are unread because
+// nccl-tests all_reduce_perf needs the ranks idle and Group B is live-serving; an opportunistic
+// run would contend with the GLM sweeps. Unread is a refusal, not a pass.
+
+data group_b_fabric_node: HostIdentity = operator_host_srv9
+
+data advertised_connectx7_host_link: PcieLink = PcieLink { generation: Gen5, lane_count: 16 }
+
+data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
+  accelerator_count: 4,
+  usable_memory: gibibyte_to_byte_size(g: gibibyte(count: 484)),
+  rail_link_mode: ieee_100gbase_cr2,
+  nic_pcie: advertised_connectx7_host_link,
+  collective_latency_ceiling: nanosecond(count: 100000),
+  collective_bandwidth_floor: bandwidth(count: 10000000000),
+  gpu_direct_rdma_expected: true,
+}
+
+data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
+  accelerator_count: CountUnread {
+    because: "cudaGetDeviceCount was not executed for this receipt; serving process presence is not a device-count reading" as NonEmptyStr,
+  },
+  usable_memory: ByteSizeUnread {
+    because: "a succeeding CUDA/torch memory query was not executed for this receipt; NVML unsupported-on-unified is not a zero-byte reading" as NonEmptyStr,
+  },
+  rail_link_mode: LinkModeRead {
+    mode: ieee_50gbase_cr2,
+    instrument: EthtoolLinkModes,
+  },
+  nic_pcie: PcieLinkRead {
+    link: PcieLink { generation: Gen5, lane_count: 4 },
+    instrument: LspciLnkSta,
+  },
+  collective: CollectiveCurveUnread {
+    because: "nccl-tests all_reduce_perf was not run; Group B is live-serving and the ranks were not in a reserved idle window" as NonEmptyStr,
+  },
+  ranks: [],
+  gpu_direct_rdma: CudaAttributeRead {
+    attribute: CudaDevAttrGpuDirectRdmaSupported,
+    value: 0,
+  },
+}
+
+fn group_b_qualification_admission() -> NodeQualificationAdmission {
+  admit_qualified_node(
+    receipt: qualify_node(
+      node: group_b_fabric_node,
+      advertised: group_b_advertised,
+      measured: group_b_measured,
+    ),
+  )
+}

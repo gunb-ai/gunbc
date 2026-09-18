@@ -1,0 +1,88 @@
+module extdeps.nvidia.cuda_device_attribute
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// cudaDeviceGetAttribute IS A QUERY THAT CAN FAIL, AND THE CUDA RUNTIME RETURNS AN INT ON SUCCESS.
+//
+// This module exists so a consumer cannot treat those two outcomes as one number. A succeeding
+// query that returns 0 is a READING: the device does not have the attribute. A failed query is
+// not a reading, and it is not a zero. Module presence (libcuda.so, a driver, a container that
+// imported CUDA) is not the attribute either. gunbc#11560 recorded the Boolean that answered
+// false for unread and had to be replaced; there is deliberately no Bool projection here that
+// maps failure or unread onto false.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DEVICE.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.nvidia.cuda_device_attribute",
+      decl_name: "CudaDeviceAttributeReading",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// CLOSED. A new CUDA device attribute is a row here, not a string the caller invents. The first
+// consumer is GPUDirect RDMA, because whether a collective can use it is a device capability,
+// not a driver-module inventory fact.
+type CudaDeviceAttribute
+  = CudaDevAttrGpuDirectRdmaSupported
+  | CudaDevAttrConcurrentManagedAccess
+
+fn cuda_device_attribute_enum_name(a: CudaDeviceAttribute) -> NonEmptyStr {
+  match a {
+    CudaDevAttrGpuDirectRdmaSupported => "cudaDevAttrGPUDirectRDMASupported" as NonEmptyStr
+    CudaDevAttrConcurrentManagedAccess => "cudaDevAttrConcurrentManagedAccess" as NonEmptyStr
+  }
+}
+
+type CudaDeviceAttributeReading
+  = CudaAttributeRead { attribute: CudaDeviceAttribute, value: Nat }
+  | CudaAttributeQueryFailed { attribute: CudaDeviceAttribute, error: NonEmptyStr }
+  | CudaAttributeUnread { attribute: CudaDeviceAttribute, because: NonEmptyStr }
+
+// GPUDirect RDMA standing is derived from a READING only. Query failure and unread have no
+// supported/unsupported arm, so they cannot be consumed as "unavailable" or "available".
+type GpuDirectRdmaStanding
+  = GpuDirectRdmaSupported
+  | GpuDirectRdmaUnsupported
+  | GpuDirectRdmaQueryFailed { error: NonEmptyStr }
+  | GpuDirectRdmaUnread { because: NonEmptyStr }
+
+fn gpu_direct_rdma_standing(reading: CudaDeviceAttributeReading) -> GpuDirectRdmaStanding {
+  match reading {
+    CudaAttributeRead { attribute: a, value: v } => match a {
+      CudaDevAttrGpuDirectRdmaSupported =>
+        if v == 0 {
+          GpuDirectRdmaUnsupported
+        } else {
+          GpuDirectRdmaSupported
+        }
+      CudaDevAttrConcurrentManagedAccess => GpuDirectRdmaUnread {
+        because: "the supplied reading is cudaDevAttrConcurrentManagedAccess, not GPUDirect RDMA" as NonEmptyStr,
+      }
+    }
+    CudaAttributeQueryFailed { attribute: a, error: e } => match a {
+      CudaDevAttrGpuDirectRdmaSupported => GpuDirectRdmaQueryFailed { error: e }
+      CudaDevAttrConcurrentManagedAccess => GpuDirectRdmaUnread {
+        because: "the failed query is cudaDevAttrConcurrentManagedAccess, not GPUDirect RDMA" as NonEmptyStr,
+      }
+    }
+    CudaAttributeUnread { attribute: a, because: b } => match a {
+      CudaDevAttrGpuDirectRdmaSupported => GpuDirectRdmaUnread { because: b }
+      CudaDevAttrConcurrentManagedAccess => GpuDirectRdmaUnread { because: b }
+    }
+  }
+}

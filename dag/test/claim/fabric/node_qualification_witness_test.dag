@@ -1,0 +1,303 @@
+module test.claim.fabric.node_qualification_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count }
+import product.placement_supply { HostIdentity }
+import extdeps.ethernet.link_mode {
+  ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_50gbase_cr2, link_mode_eq, link_mode_aggregate,
+}
+import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.nvidia.cuda_device_attribute {
+  CudaDevAttrGpuDirectRdmaSupported,
+  CudaAttributeRead, CudaAttributeQueryFailed, CudaAttributeUnread,
+  GpuDirectRdmaUnsupported, GpuDirectRdmaQueryFailed, GpuDirectRdmaUnread,
+  gpu_direct_rdma_standing,
+}
+import product.fabric.node_qualification {
+  AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
+  CountRead, CountUnread, ByteSizeRead, ByteSizeUnread,
+  LinkModeRead, LinkModeUnread, PcieLinkRead, PcieLinkUnread,
+  CollectiveCurveRead, CollectiveCurveUnread,
+  EthtoolLinkModes, LspciLnkSta, NcclTestsAllReducePerf,
+  AcceleratorCountAgrees, AcceleratorCountFallsShort, AcceleratorCountUnread,
+  RailLinkModeAgrees, RailLinkModeFallsShort, RailLinkModeUnread,
+  NicPcieFallsShort, NicPcieUnread,
+  CollectiveLatencyUnread, CollectiveBandwidthUnread, RankSymmetryUnread, RankSymmetryFallsShort,
+  GpuDirectRdmaFallsShort, GpuDirectRdmaEvidenceMissing,
+  NodeQualified, NodeNotQualified,
+  qualify_node, admit_qualified_node, qualify_rail_link_mode, qualify_accelerator_count,
+}
+import gunbc.spark.group_b_node_qualification { group_b_qualification_admission }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fx_node: HostIdentity = "fixture-node" as HostIdentity
+
+fn fx_pcie16() -> PcieLink { PcieLink { generation: Gen5, lane_count: 16 } }
+fn fx_pcie4() -> PcieLink { PcieLink { generation: Gen5, lane_count: 4 } }
+
+fn fx_advertised() -> AdvertisedNodeOffer {
+  AdvertisedNodeOffer {
+    accelerator_count: 4,
+    usable_memory: byte_size(count: 1000),
+    rail_link_mode: ieee_100gbase_cr2,
+    nic_pcie: fx_pcie16(),
+    collective_latency_ceiling: nanosecond(count: 1000),
+    collective_bandwidth_floor: bandwidth(count: 100),
+    gpu_direct_rdma_expected: true,
+  }
+}
+
+fn fx_sample() -> CollectiveSample {
+  CollectiveSample {
+    message_bytes: byte_size(count: 8),
+    bus_bandwidth: bandwidth(count: 200),
+    latency: nanosecond(count: 10),
+  }
+}
+
+fn fx_measured_all_agree() -> MeasuredNodeDelivery {
+  MeasuredNodeDelivery {
+    accelerator_count: CountRead { count: 4 },
+    usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
+    rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
+    nic_pcie: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
+    collective: CollectiveCurveRead {
+      samples: [fx_sample()],
+      instrument: NcclTestsAllReducePerf,
+    },
+    ranks: [
+      RankCollectiveReading {
+        rank: "rank-0" as HostIdentity,
+        curve: CollectiveCurveRead { samples: [fx_sample()], instrument: NcclTestsAllReducePerf },
+      },
+      RankCollectiveReading {
+        rank: "rank-1" as HostIdentity,
+        curve: CollectiveCurveRead { samples: [fx_sample()], instrument: NcclTestsAllReducePerf },
+      },
+    ],
+    gpu_direct_rdma: CudaAttributeRead {
+      attribute: CudaDevAttrGpuDirectRdmaSupported,
+      value: 1,
+    },
+  }
+}
+
+test fn a_fully_read_agreeing_node_is_qualified() -> Bool {
+  match admit_qualified_node(
+    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: fx_measured_all_agree()),
+  ) {
+    NodeQualified { receipt: _ } => true
+    NodeNotQualified { receipt: _, refusals: _ } => false
+  }
+}
+
+test fn unread_evidence_is_not_qualification() -> Bool {
+  let unread = MeasuredNodeDelivery {
+    accelerator_count: CountUnread { because: "cudaGetDeviceCount not run" as NonEmptyStr },
+    usable_memory: ByteSizeUnread { because: "memory query not run" as NonEmptyStr },
+    rail_link_mode: LinkModeUnread { because: "ethtool not run" as NonEmptyStr },
+    nic_pcie: PcieLinkUnread { because: "lspci not run" as NonEmptyStr },
+    collective: CollectiveCurveUnread { because: "nccl-tests not run" as NonEmptyStr },
+    ranks: [],
+    gpu_direct_rdma: CudaAttributeUnread {
+      attribute: CudaDevAttrGpuDirectRdmaSupported,
+      because: "cudaDeviceGetAttribute not run" as NonEmptyStr,
+    },
+  }
+  match admit_qualified_node(
+    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: unread),
+  ) {
+    NodeQualified { receipt: _ } => false
+    NodeNotQualified { receipt: r, refusals: refusals } =>
+      refusals.length() > 0
+        && match r.accelerators {
+          AcceleratorCountUnread { advertised: n, because: _ } => n == 4
+          AcceleratorCountAgrees { count: _ } => false
+          AcceleratorCountFallsShort { advertised: _, measured: _ } => false
+        }
+        && match r.rail_link_mode {
+          RailLinkModeUnread { advertised: _, because: _ } => true
+          RailLinkModeAgrees { mode: _, instrument: _ } => false
+          RailLinkModeFallsShort { advertised: _, measured: _, instrument: _ } => false
+        }
+        && match r.collective_latency {
+          CollectiveLatencyUnread { ceiling: _, because: _ } => true
+          CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
+          CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
+        }
+        && match r.rank_symmetry {
+          RankSymmetryUnread { because: _ } => true
+          RankSymmetryAgrees { rank_count: _ } => false
+          RankSymmetryFallsShort { degraded: _ } => false
+        }
+        && match r.gpu_direct_rdma {
+          GpuDirectRdmaEvidenceMissing { standing: _ } => true
+          GpuDirectRdmaAgrees { standing: _ } => false
+          GpuDirectRdmaFallsShort { expected: _, standing: _ } => false
+        }
+  }
+}
+
+test fn equal_aggregate_is_not_equal_link_mode() -> Bool {
+  bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr2))
+    == bandwidth_count(b: link_mode_aggregate(m: ieee_100gbase_cr4))
+    && !link_mode_eq(a: ieee_100gbase_cr2, b: ieee_100gbase_cr4)
+    && match qualify_rail_link_mode(
+      advertised: ieee_100gbase_cr2,
+      reading: LinkModeRead { mode: ieee_100gbase_cr4, instrument: EthtoolLinkModes },
+    ) {
+      RailLinkModeFallsShort { advertised: a, measured: m, instrument: _ } =>
+        link_mode_eq(a: a, b: ieee_100gbase_cr2) && link_mode_eq(a: m, b: ieee_100gbase_cr4)
+      RailLinkModeAgrees { mode: _, instrument: _ } => false
+      RailLinkModeUnread { advertised: _, because: _ } => false
+    }
+}
+
+test fn realized_50g_against_advertised_100g_cr2_falls_short() -> Bool {
+  match qualify_rail_link_mode(
+    advertised: ieee_100gbase_cr2,
+    reading: LinkModeRead { mode: ieee_50gbase_cr2, instrument: EthtoolLinkModes },
+  ) {
+    RailLinkModeFallsShort { advertised: _, measured: m, instrument: _ } =>
+      link_mode_eq(a: m, b: ieee_50gbase_cr2)
+    RailLinkModeAgrees { mode: _, instrument: _ } => false
+    RailLinkModeUnread { advertised: _, because: _ } => false
+  }
+}
+
+test fn a_zero_from_a_succeeding_cuda_query_is_unsupported_not_unread() -> Bool {
+  match gpu_direct_rdma_standing(
+    reading: CudaAttributeRead { attribute: CudaDevAttrGpuDirectRdmaSupported, value: 0 },
+  ) {
+    GpuDirectRdmaUnsupported => true
+    GpuDirectRdmaSupported => false
+    GpuDirectRdmaQueryFailed { error: _ } => false
+    GpuDirectRdmaUnread { because: _ } => false
+  }
+}
+
+test fn a_failed_cuda_query_is_not_a_zero() -> Bool {
+  match gpu_direct_rdma_standing(
+    reading: CudaAttributeQueryFailed {
+      attribute: CudaDevAttrGpuDirectRdmaSupported,
+      error: "cudaErrorNotSupported" as NonEmptyStr,
+    },
+  ) {
+    GpuDirectRdmaQueryFailed { error: _ } => true
+    GpuDirectRdmaUnsupported => false
+    GpuDirectRdmaSupported => false
+    GpuDirectRdmaUnread { because: _ } => false
+  }
+}
+
+test fn gdr_expected_and_unsupported_refuses_admission() -> Bool {
+  let measured = fx_measured_all_agree()
+  let gdr_zero = MeasuredNodeDelivery {
+    accelerator_count: measured.accelerator_count,
+    usable_memory: measured.usable_memory,
+    rail_link_mode: measured.rail_link_mode,
+    nic_pcie: measured.nic_pcie,
+    collective: measured.collective,
+    ranks: measured.ranks,
+    gpu_direct_rdma: CudaAttributeRead {
+      attribute: CudaDevAttrGpuDirectRdmaSupported,
+      value: 0,
+    },
+  }
+  match admit_qualified_node(
+    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: gdr_zero),
+  ) {
+    NodeQualified { receipt: _ } => false
+    NodeNotQualified { receipt: r, refusals: _ } => match r.gpu_direct_rdma {
+      GpuDirectRdmaFallsShort { expected: e, standing: s } => e && match s {
+        GpuDirectRdmaUnsupported => true
+        GpuDirectRdmaSupported => false
+        GpuDirectRdmaQueryFailed { error: _ } => false
+        GpuDirectRdmaUnread { because: _ } => false
+      }
+      GpuDirectRdmaAgrees { standing: _ } => false
+      GpuDirectRdmaEvidenceMissing { standing: _ } => false
+    }
+  }
+}
+
+test fn fewer_accelerators_than_advertised_falls_short() -> Bool {
+  match qualify_accelerator_count(advertised: 4, reading: CountRead { count: 3 }) {
+    AcceleratorCountFallsShort { advertised: a, measured: m } => a == 4 && m == 3
+    AcceleratorCountAgrees { count: _ } => false
+    AcceleratorCountUnread { advertised: _, because: _ } => false
+  }
+}
+
+test fn a_degraded_rank_is_named_not_averaged() -> Bool {
+  let slow = CollectiveSample {
+    message_bytes: byte_size(count: 8),
+    bus_bandwidth: bandwidth(count: 200),
+    latency: nanosecond(count: 5000),
+  }
+  let measured = MeasuredNodeDelivery {
+    accelerator_count: CountRead { count: 4 },
+    usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
+    rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
+    nic_pcie: PcieLinkRead { link: fx_pcie16(), instrument: LspciLnkSta },
+    collective: CollectiveCurveRead {
+      samples: [fx_sample()],
+      instrument: NcclTestsAllReducePerf,
+    },
+    ranks: [
+      RankCollectiveReading {
+        rank: "rank-fast" as HostIdentity,
+        curve: CollectiveCurveRead { samples: [fx_sample()], instrument: NcclTestsAllReducePerf },
+      },
+      RankCollectiveReading {
+        rank: "rank-slow" as HostIdentity,
+        curve: CollectiveCurveRead { samples: [slow], instrument: NcclTestsAllReducePerf },
+      },
+    ],
+    gpu_direct_rdma: CudaAttributeRead {
+      attribute: CudaDevAttrGpuDirectRdmaSupported,
+      value: 1,
+    },
+  }
+  match admit_qualified_node(
+    receipt: qualify_node(node: fx_node, advertised: fx_advertised(), measured: measured),
+  ) {
+    NodeQualified { receipt: _ } => false
+    NodeNotQualified { receipt: r, refusals: _ } => match r.rank_symmetry {
+      RankSymmetryFallsShort { degraded: d } => (d as String) == "rank-slow"
+      RankSymmetryAgrees { rank_count: _ } => false
+      RankSymmetryUnread { because: _ } => false
+    }
+  }
+}
+
+test fn group_b_live_receipt_is_not_qualified() -> Bool {
+  match group_b_qualification_admission() {
+    NodeQualified { receipt: _ } => false
+    NodeNotQualified { receipt: r, refusals: refusals } =>
+      refusals.length() > 0
+        && match r.rail_link_mode {
+          RailLinkModeFallsShort { advertised: a, measured: m, instrument: _ } =>
+            link_mode_eq(a: a, b: ieee_100gbase_cr2) && link_mode_eq(a: m, b: ieee_50gbase_cr2)
+          RailLinkModeAgrees { mode: _, instrument: _ } => false
+          RailLinkModeUnread { advertised: _, because: _ } => false
+        }
+        && match r.nic_pcie {
+          NicPcieFallsShort { advertised: _, measured: m, instrument: _ } => m.lane_count == 4
+          NicPcieAgrees { link: _, instrument: _ } => false
+          NicPcieUnread { advertised: _, because: _ } => false
+        }
+        && match r.gpu_direct_rdma {
+          GpuDirectRdmaFallsShort { expected: e, standing: s } => e && match s {
+            GpuDirectRdmaUnsupported => true
+            GpuDirectRdmaSupported => false
+            GpuDirectRdmaQueryFailed { error: _ } => false
+            GpuDirectRdmaUnread { because: _ } => false
+          }
+          GpuDirectRdmaAgrees { standing: _ } => false
+          GpuDirectRdmaEvidenceMissing { standing: _ } => false
+        }
+  }
+}

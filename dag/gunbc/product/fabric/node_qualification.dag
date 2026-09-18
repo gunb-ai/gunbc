@@ -1,0 +1,526 @@
+module product.fabric.node_qualification
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count, Bandwidth, bandwidth_count, Nanosecond, nanosecond_count }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import product.placement_supply { HostIdentity }
+import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
+import extdeps.storage.types { PcieLink, pcie_link_eq }
+import extdeps.nvidia.cuda_device_attribute {
+  CudaDeviceAttributeReading, GpuDirectRdmaStanding,
+  GpuDirectRdmaSupported, GpuDirectRdmaUnsupported,
+  GpuDirectRdmaQueryFailed, GpuDirectRdmaUnread,
+  gpu_direct_rdma_standing,
+}
+
+// A NODE QUALIFICATION RECEIPT BINDS WHAT THE FABRIC WAS TOLD TO WHAT WAS READ ON THE NODE.
+//
+// product.fabric.selection ranks SupplierOffer on ADVERTISED shape, and product.capacity leases
+// seats against those offers. Neither fold observes delivery. A Spark that advertises four GB10s
+// on a 100GBASE-CR2 rail can sit on a 50GBASE-CR2 breakout leg with a Gen5 x4 NIC attachment and
+// no GPUDirect RDMA; selection still takes it, the collective waits on the slowest rank, and the
+// shortfall is blamed on the model. That is gunbc#11540's serving-arm law one layer down:
+// configuration agreement is not qualification.
+//
+// EACH AXIS IS THREE-VALUED: agrees, falls short with the shortfall named, or unread. Unread is
+// not agreement. There is no Bool that answers false for unread -- that is the fail-open
+// gunbc#11560 had to retract. A node that cannot be qualified is not qualified.
+//
+// MEASUREMENTS ARE SUPPLIED READINGS. This module does not run lspci, ethtool, mstlink,
+// cudaDeviceGetAttribute or nccl-tests. Inferring a reading from a product brief is the
+// failure the type exists to prevent: a catalog PcieLink is not LnkSta, and a CUDA module
+// being present is not GPUDirect RDMA.
+
+// ── INSTRUMENTS. Named so a later reader can tell a live query from a catalog row. ─────────────
+
+type RailLinkInstrument = EthtoolLinkModes | MstlinkStatus
+
+type NicPcieInstrument = LspciLnkSta | SysfsCurrentLinkWidth
+
+type CollectiveInstrument = NcclTestsAllReducePerf | NcclTestsAllGatherPerf
+
+// ── PER-AXIS READINGS. Failure and unread cannot construct a measured value. ───────────────────
+
+type CountReading
+  = CountRead { count: Nat }
+  | CountUnread { because: NonEmptyStr }
+
+type ByteSizeReading
+  = ByteSizeRead { bytes: ByteSize }
+  | ByteSizeUnread { because: NonEmptyStr }
+
+type LinkModeReading
+  = LinkModeRead { mode: LinkMode, instrument: RailLinkInstrument }
+  | LinkModeUnread { because: NonEmptyStr }
+
+type PcieLinkReading
+  = PcieLinkRead { link: PcieLink, instrument: NicPcieInstrument }
+  | PcieLinkUnread { because: NonEmptyStr }
+
+type CollectiveSample {
+  message_bytes: ByteSize
+  bus_bandwidth: Bandwidth
+  latency: Nanosecond
+}
+
+type CollectiveCurveReading
+  = CollectiveCurveRead { samples: List<CollectiveSample>, instrument: CollectiveInstrument }
+  | CollectiveCurveUnread { because: NonEmptyStr }
+
+type RankCollectiveReading {
+  rank: HostIdentity
+  curve: CollectiveCurveReading
+}
+
+// ── ADVERTISED OFFER, THE THING SELECTION ALREADY BELIEVES. ────────────────────────────────────
+
+type AdvertisedNodeOffer {
+  accelerator_count: Nat
+  usable_memory: ByteSize
+  rail_link_mode: LinkMode
+  nic_pcie: PcieLink
+  collective_latency_ceiling: Nanosecond
+  collective_bandwidth_floor: Bandwidth
+  gpu_direct_rdma_expected: Bool
+}
+
+type MeasuredNodeDelivery {
+  accelerator_count: CountReading
+  usable_memory: ByteSizeReading
+  rail_link_mode: LinkModeReading
+  nic_pcie: PcieLinkReading
+  collective: CollectiveCurveReading
+  ranks: List<RankCollectiveReading>
+  gpu_direct_rdma: CudaDeviceAttributeReading
+}
+
+// ── THREE-VALUED STANDINGS. No constructor maps unread onto agreement. ─────────────────────────
+
+type AcceleratorCountStanding
+  = AcceleratorCountAgrees { count: Nat }
+  | AcceleratorCountFallsShort { advertised: Nat, measured: Nat }
+  | AcceleratorCountUnread { advertised: Nat, because: NonEmptyStr }
+
+type UsableMemoryStanding
+  = UsableMemoryAgrees { bytes: ByteSize }
+  | UsableMemoryFallsShort { advertised: ByteSize, measured: ByteSize }
+  | UsableMemoryUnread { advertised: ByteSize, because: NonEmptyStr }
+
+type RailLinkModeStanding
+  = RailLinkModeAgrees { mode: LinkMode, instrument: RailLinkInstrument }
+  | RailLinkModeFallsShort { advertised: LinkMode, measured: LinkMode, instrument: RailLinkInstrument }
+  | RailLinkModeUnread { advertised: LinkMode, because: NonEmptyStr }
+
+type NicPcieStanding
+  = NicPcieAgrees { link: PcieLink, instrument: NicPcieInstrument }
+  | NicPcieFallsShort { advertised: PcieLink, measured: PcieLink, instrument: NicPcieInstrument }
+  | NicPcieUnread { advertised: PcieLink, because: NonEmptyStr }
+
+type CollectiveLatencyStanding
+  = CollectiveLatencyAgrees { ceiling: Nanosecond, measured: Nanosecond }
+  | CollectiveLatencyFallsShort { ceiling: Nanosecond, measured: Nanosecond }
+  | CollectiveLatencyUnread { ceiling: Nanosecond, because: NonEmptyStr }
+
+type CollectiveBandwidthStanding
+  = CollectiveBandwidthAgrees { floor: Bandwidth, measured: Bandwidth }
+  | CollectiveBandwidthFallsShort { floor: Bandwidth, measured: Bandwidth }
+  | CollectiveBandwidthUnread { floor: Bandwidth, because: NonEmptyStr }
+
+type RankSymmetryStanding
+  = RankSymmetryAgrees { rank_count: Int }
+  | RankSymmetryFallsShort { degraded: HostIdentity }
+  | RankSymmetryUnread { because: NonEmptyStr }
+
+type GpuDirectRdmaQualification
+  = GpuDirectRdmaAgrees { standing: GpuDirectRdmaStanding }
+  | GpuDirectRdmaFallsShort { expected: Bool, standing: GpuDirectRdmaStanding }
+  | GpuDirectRdmaEvidenceMissing { standing: GpuDirectRdmaStanding }
+
+type NodeQualificationReceipt {
+  node: HostIdentity
+  advertised: AdvertisedNodeOffer
+  accelerators: AcceleratorCountStanding
+  usable_memory: UsableMemoryStanding
+  rail_link_mode: RailLinkModeStanding
+  nic_pcie: NicPcieStanding
+  collective_latency: CollectiveLatencyStanding
+  collective_bandwidth: CollectiveBandwidthStanding
+  rank_symmetry: RankSymmetryStanding
+  gpu_direct_rdma: GpuDirectRdmaQualification
+}
+
+type QualificationRefusal
+  = AcceleratorCountDidNotHold { standing: AcceleratorCountStanding }
+  | UsableMemoryDidNotHold { standing: UsableMemoryStanding }
+  | RailLinkModeDidNotHold { standing: RailLinkModeStanding }
+  | NicPcieDidNotHold { standing: NicPcieStanding }
+  | CollectiveLatencyDidNotHold { standing: CollectiveLatencyStanding }
+  | CollectiveBandwidthDidNotHold { standing: CollectiveBandwidthStanding }
+  | RankSymmetryDidNotHold { standing: RankSymmetryStanding }
+  | GpuDirectRdmaDidNotHold { standing: GpuDirectRdmaQualification }
+
+type NodeQualificationAdmission
+  = NodeQualified { receipt: NodeQualificationReceipt }
+  | NodeNotQualified { receipt: NodeQualificationReceipt, refusals: List<QualificationRefusal> }
+
+fn qualify_accelerator_count(advertised: Nat, reading: CountReading) -> AcceleratorCountStanding {
+  match reading {
+    CountUnread { because: b } => AcceleratorCountUnread { advertised: advertised, because: b }
+    CountRead { count: n } => if n < advertised {
+      AcceleratorCountFallsShort { advertised: advertised, measured: n }
+    } else {
+      AcceleratorCountAgrees { count: n }
+    }
+  }
+}
+
+fn qualify_usable_memory(advertised: ByteSize, reading: ByteSizeReading) -> UsableMemoryStanding {
+  match reading {
+    ByteSizeUnread { because: b } => UsableMemoryUnread { advertised: advertised, because: b }
+    ByteSizeRead { bytes: m } => if byte_size_count(b: m) == byte_size_count(b: advertised) {
+      UsableMemoryAgrees { bytes: m }
+    } else {
+      if byte_size_count(b: m) < byte_size_count(b: advertised) {
+        UsableMemoryFallsShort { advertised: advertised, measured: m }
+      } else {
+        UsableMemoryAgrees { bytes: m }
+      }
+    }
+  }
+}
+
+fn qualify_rail_link_mode(advertised: LinkMode, reading: LinkModeReading) -> RailLinkModeStanding {
+  match reading {
+    LinkModeUnread { because: b } => RailLinkModeUnread { advertised: advertised, because: b }
+    LinkModeRead { mode: m, instrument: i } => if link_mode_eq(a: advertised, b: m) {
+      RailLinkModeAgrees { mode: m, instrument: i }
+    } else {
+      RailLinkModeFallsShort { advertised: advertised, measured: m, instrument: i }
+    }
+  }
+}
+
+fn qualify_nic_pcie(advertised: PcieLink, reading: PcieLinkReading) -> NicPcieStanding {
+  match reading {
+    PcieLinkUnread { because: b } => NicPcieUnread { advertised: advertised, because: b }
+    PcieLinkRead { link: m, instrument: i } => if pcie_link_eq(a: advertised, b: m) {
+      NicPcieAgrees { link: m, instrument: i }
+    } else {
+      NicPcieFallsShort { advertised: advertised, measured: m, instrument: i }
+    }
+  }
+}
+
+fn first_collective_sample(samples: List<CollectiveSample>) -> CollectiveSample? {
+  samples.first()
+}
+
+fn qualify_collective_latency(
+  ceiling: Nanosecond,
+  reading: CollectiveCurveReading,
+) -> CollectiveLatencyStanding {
+  match reading {
+    CollectiveCurveUnread { because: b } =>
+      CollectiveLatencyUnread { ceiling: ceiling, because: b }
+    CollectiveCurveRead { samples: samples, instrument: _ } =>
+      match first_collective_sample(samples: samples) {
+        Absent => CollectiveLatencyUnread {
+          ceiling: ceiling,
+          because: "nccl-tests returned no samples" as NonEmptyStr,
+        }
+        Present { value: s } => if nanosecond_count(n: s.latency) <= nanosecond_count(n: ceiling) {
+          CollectiveLatencyAgrees { ceiling: ceiling, measured: s.latency }
+        } else {
+          CollectiveLatencyFallsShort { ceiling: ceiling, measured: s.latency }
+        }
+      }
+  }
+}
+
+fn qualify_collective_bandwidth(
+  floor: Bandwidth,
+  reading: CollectiveCurveReading,
+) -> CollectiveBandwidthStanding {
+  match reading {
+    CollectiveCurveUnread { because: b } =>
+      CollectiveBandwidthUnread { floor: floor, because: b }
+    CollectiveCurveRead { samples: samples, instrument: _ } =>
+      match first_collective_sample(samples: samples) {
+        Absent => CollectiveBandwidthUnread {
+          floor: floor,
+          because: "nccl-tests returned no samples" as NonEmptyStr,
+        }
+        Present { value: s } => if bandwidth_count(b: s.bus_bandwidth) >= bandwidth_count(b: floor) {
+          CollectiveBandwidthAgrees { floor: floor, measured: s.bus_bandwidth }
+        } else {
+          CollectiveBandwidthFallsShort { floor: floor, measured: s.bus_bandwidth }
+        }
+      }
+  }
+}
+
+fn rank_curve_unread_reason(curve: CollectiveCurveReading) -> NonEmptyStr? {
+  match curve {
+    CollectiveCurveUnread { because: b } => Present { value: b }
+    CollectiveCurveRead { samples: _, instrument: _ } => none
+  }
+}
+
+fn first_unread_rank(ranks: List<RankCollectiveReading>) -> RankCollectiveReading? {
+  first(filter(ranks, r => match rank_curve_unread_reason(curve: r.curve) {
+    Present { value: _ } => true
+    Absent => false
+  }))
+}
+
+fn rank_first_latency(curve: CollectiveCurveReading) -> Nat? {
+  match curve {
+    CollectiveCurveUnread { because: _ } => none
+    CollectiveCurveRead { samples: samples, instrument: _ } =>
+      match first_collective_sample(samples: samples) {
+        Absent => none
+        Present { value: s } => Present { value: nanosecond_count(n: s.latency) }
+      }
+  }
+}
+
+fn first_degraded_rank(
+  baseline: Nat,
+  ranks: List<RankCollectiveReading>,
+) -> HostIdentity? {
+  match ranks.first() {
+    Absent => none
+    Present { value: r } => match rank_first_latency(curve: r.curve) {
+      Absent => first_degraded_rank(baseline: baseline, ranks: ranks.skip(n: 1))
+      Present { value: lat } => if lat > baseline {
+        Present { value: r.rank }
+      } else {
+        first_degraded_rank(baseline: baseline, ranks: ranks.skip(n: 1))
+      }
+    }
+  }
+}
+
+fn qualify_rank_symmetry(ranks: List<RankCollectiveReading>) -> RankSymmetryStanding {
+  if ranks.length() == 0 {
+    RankSymmetryUnread {
+      because: "no per-rank collective curve was supplied; a missing rank is unread, not symmetric" as NonEmptyStr,
+    }
+  } else {
+    match first_unread_rank(ranks: ranks) {
+      Present { value: r } => match rank_curve_unread_reason(curve: r.curve) {
+        Present { value: b } => RankSymmetryUnread { because: b }
+        Absent => RankSymmetryUnread {
+          because: "rank curve unread without a reason" as NonEmptyStr,
+        }
+      }
+      Absent => match ranks.first() {
+        Absent => RankSymmetryUnread {
+          because: "no per-rank collective curve was supplied" as NonEmptyStr,
+        }
+        Present { value: first_rank } => match rank_first_latency(curve: first_rank.curve) {
+          Absent => RankSymmetryUnread {
+            because: "first rank produced no latency sample" as NonEmptyStr,
+          }
+          Present { value: baseline } => match first_degraded_rank(
+            baseline: baseline,
+            ranks: ranks.skip(n: 1),
+          ) {
+            Present { value: degraded } => RankSymmetryFallsShort { degraded: degraded }
+            Absent => RankSymmetryAgrees { rank_count: ranks.length() }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn qualify_gpu_direct_rdma(
+  expected: Bool,
+  reading: CudaDeviceAttributeReading,
+) -> GpuDirectRdmaQualification {
+  let standing = gpu_direct_rdma_standing(reading: reading)
+  match standing {
+    GpuDirectRdmaUnread { because: _ } => GpuDirectRdmaEvidenceMissing { standing: standing }
+    GpuDirectRdmaQueryFailed { error: _ } => GpuDirectRdmaEvidenceMissing { standing: standing }
+    GpuDirectRdmaSupported => if expected {
+      GpuDirectRdmaAgrees { standing: standing }
+    } else {
+      GpuDirectRdmaFallsShort { expected: expected, standing: standing }
+    }
+    GpuDirectRdmaUnsupported => if expected {
+      GpuDirectRdmaFallsShort { expected: expected, standing: standing }
+    } else {
+      GpuDirectRdmaAgrees { standing: standing }
+    }
+  }
+}
+
+fn qualify_node(
+  node: HostIdentity,
+  advertised: AdvertisedNodeOffer,
+  measured: MeasuredNodeDelivery,
+) -> NodeQualificationReceipt {
+  NodeQualificationReceipt {
+    node: node,
+    advertised: advertised,
+    accelerators: qualify_accelerator_count(
+      advertised: advertised.accelerator_count,
+      reading: measured.accelerator_count,
+    ),
+    usable_memory: qualify_usable_memory(
+      advertised: advertised.usable_memory,
+      reading: measured.usable_memory,
+    ),
+    rail_link_mode: qualify_rail_link_mode(
+      advertised: advertised.rail_link_mode,
+      reading: measured.rail_link_mode,
+    ),
+    nic_pcie: qualify_nic_pcie(
+      advertised: advertised.nic_pcie,
+      reading: measured.nic_pcie,
+    ),
+    collective_latency: qualify_collective_latency(
+      ceiling: advertised.collective_latency_ceiling,
+      reading: measured.collective,
+    ),
+    collective_bandwidth: qualify_collective_bandwidth(
+      floor: advertised.collective_bandwidth_floor,
+      reading: measured.collective,
+    ),
+    rank_symmetry: qualify_rank_symmetry(ranks: measured.ranks),
+    gpu_direct_rdma: qualify_gpu_direct_rdma(
+      expected: advertised.gpu_direct_rdma_expected,
+      reading: measured.gpu_direct_rdma,
+    ),
+  }
+}
+
+fn accelerator_refusal(s: AcceleratorCountStanding) -> List<QualificationRefusal> {
+  match s {
+    AcceleratorCountAgrees { count: _ } => []
+    AcceleratorCountFallsShort { advertised: _, measured: _ } =>
+      [AcceleratorCountDidNotHold { standing: s }]
+    AcceleratorCountUnread { advertised: _, because: _ } =>
+      [AcceleratorCountDidNotHold { standing: s }]
+  }
+}
+
+fn memory_refusal(s: UsableMemoryStanding) -> List<QualificationRefusal> {
+  match s {
+    UsableMemoryAgrees { bytes: _ } => []
+    UsableMemoryFallsShort { advertised: _, measured: _ } =>
+      [UsableMemoryDidNotHold { standing: s }]
+    UsableMemoryUnread { advertised: _, because: _ } =>
+      [UsableMemoryDidNotHold { standing: s }]
+  }
+}
+
+fn rail_refusal(s: RailLinkModeStanding) -> List<QualificationRefusal> {
+  match s {
+    RailLinkModeAgrees { mode: _, instrument: _ } => []
+    RailLinkModeFallsShort { advertised: _, measured: _, instrument: _ } =>
+      [RailLinkModeDidNotHold { standing: s }]
+    RailLinkModeUnread { advertised: _, because: _ } =>
+      [RailLinkModeDidNotHold { standing: s }]
+  }
+}
+
+fn pcie_refusal(s: NicPcieStanding) -> List<QualificationRefusal> {
+  match s {
+    NicPcieAgrees { link: _, instrument: _ } => []
+    NicPcieFallsShort { advertised: _, measured: _, instrument: _ } =>
+      [NicPcieDidNotHold { standing: s }]
+    NicPcieUnread { advertised: _, because: _ } =>
+      [NicPcieDidNotHold { standing: s }]
+  }
+}
+
+fn latency_refusal(s: CollectiveLatencyStanding) -> List<QualificationRefusal> {
+  match s {
+    CollectiveLatencyAgrees { ceiling: _, measured: _ } => []
+    CollectiveLatencyFallsShort { ceiling: _, measured: _ } =>
+      [CollectiveLatencyDidNotHold { standing: s }]
+    CollectiveLatencyUnread { ceiling: _, because: _ } =>
+      [CollectiveLatencyDidNotHold { standing: s }]
+  }
+}
+
+fn bandwidth_refusal(s: CollectiveBandwidthStanding) -> List<QualificationRefusal> {
+  match s {
+    CollectiveBandwidthAgrees { floor: _, measured: _ } => []
+    CollectiveBandwidthFallsShort { floor: _, measured: _ } =>
+      [CollectiveBandwidthDidNotHold { standing: s }]
+    CollectiveBandwidthUnread { floor: _, because: _ } =>
+      [CollectiveBandwidthDidNotHold { standing: s }]
+  }
+}
+
+fn symmetry_refusal(s: RankSymmetryStanding) -> List<QualificationRefusal> {
+  match s {
+    RankSymmetryAgrees { rank_count: _ } => []
+    RankSymmetryFallsShort { degraded: _ } => [RankSymmetryDidNotHold { standing: s }]
+    RankSymmetryUnread { because: _ } => [RankSymmetryDidNotHold { standing: s }]
+  }
+}
+
+fn gpu_direct_refusal(s: GpuDirectRdmaQualification) -> List<QualificationRefusal> {
+  match s {
+    GpuDirectRdmaAgrees { standing: _ } => []
+    GpuDirectRdmaFallsShort { expected: _, standing: _ } =>
+      [GpuDirectRdmaDidNotHold { standing: s }]
+    GpuDirectRdmaEvidenceMissing { standing: _ } =>
+      [GpuDirectRdmaDidNotHold { standing: s }]
+  }
+}
+
+fn qualification_refusals(receipt: NodeQualificationReceipt) -> List<QualificationRefusal> {
+  concat(
+    accelerator_refusal(s: receipt.accelerators),
+    concat(
+      memory_refusal(s: receipt.usable_memory),
+      concat(
+        rail_refusal(s: receipt.rail_link_mode),
+        concat(
+          pcie_refusal(s: receipt.nic_pcie),
+          concat(
+            latency_refusal(s: receipt.collective_latency),
+            concat(
+              bandwidth_refusal(s: receipt.collective_bandwidth),
+              concat(
+                symmetry_refusal(s: receipt.rank_symmetry),
+                gpu_direct_refusal(s: receipt.gpu_direct_rdma),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn admit_qualified_node(receipt: NodeQualificationReceipt) -> NodeQualificationAdmission {
+  let refusals = qualification_refusals(receipt: receipt)
+  if refusals.length() == 0 {
+    NodeQualified { receipt: receipt }
+  } else {
+    NodeNotQualified { receipt: receipt, refusals: refusals }
+  }
+}
+
+// CANDIDATE-FIELD WIRING IS OWED AND NOT LANDED HERE. assemble_candidate_field currently admits
+// on route correspondence, readiness and provider-use only; an unqualified node can still be
+// ranked. Binding a receipt onto FieldRequest would exclude every existing fixture that has no
+// live measurement, which is correct fail-closed AND a cutover of every ranking witness in the
+// same change. That cutover is the consumer this frontier names.
+data candidate_field_qualification_frontier: FrontierRow = frontier_row_decl(
+  ref: decl_ref(
+    module_path: "product.fabric.candidate_field",
+    decl_name: "assemble_candidate_field",
+  ),
+  reason: "Candidate-field assembly still ranks advertised offers with no node-qualification receipt, so unread delivery cannot yet exclude an offer.",
+  dissolution: unbound_dissolution(description: "FieldRequest carries a NodeQualificationReceipt, field_entry excludes NodeNotQualified by name, and a ranking witness whose offer is unread is excluded rather than admitted. A fixture that mints AxisAgrees without a supplied reading is not the dissolution."),
+)
