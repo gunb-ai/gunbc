@@ -9,12 +9,14 @@ import gunbc.fleet_intent_network {
 import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_50gbase_cr2 }
 import extdeps.storage.types { PcieLink, Gen5 }
 import product.fabric.identity { FabricIdentity, OfferKey }
+import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery,
   HostAdvertisedDelivery, HostMeasuredDelivery,
   CollectiveGroupAdvertised, CollectiveGroupMeasured,
   AdvertisedSparkConnectX7PerPort, CollectiveProtocol, CollectiveObservationIdentity, AdvertisedPcie,
   CountUnread, ByteSizeUnread, LinkModeRead, PcieLinkRead,
+  GpuDirectReceiptUnread,
   CollectiveCurveRead, CollectiveSample, NcclTestsAllReducePerf, NcclTestsAllToAllPerf,
   SmallMessageStepThenPlateau, SmallMessageShapeUncharacterized,
   EngineBufferModeUnestablished, PerLayerAllReduceCountUnestablished,
@@ -155,7 +157,8 @@ data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
     accelerator_count: 1,
     usable_memory: gibibyte_to_byte_size(g: gibibyte(count: 121)),
     rail_link_mode: ieee_100gbase_cr2,
-    nic_pcie: advertised_spark_connectx7_per_port,
+    nic_pcie: AdvertisedSparkConnectX7PerPort,
+    gpu_direct_platform: spark_gb10_platform,
   },
   group: CollectiveGroupAdvertised {
     expected_ranks: group_b_expected_ranks,
@@ -185,6 +188,9 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
     nic_pcie: PcieLinkRead {
       link: PcieLink { generation: Gen5, lane_count: 4 },
       instrument: LspciLnkSta,
+    },
+    gpu_direct: GpuDirectReceiptUnread {
+      because: "observe_rank_gpu_direct_capability was not executed for this historical demonstration; a catalog GB10 row is not a RankGpuDirectCapabilityReceipt" as NonEmptyStr,
     },
   },
   group: CollectiveGroupMeasured {

@@ -10,6 +10,13 @@ import product.placement_supply { HostIdentity }
 import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.nvidia.gpu_direct_rdma {
+  GpuDirectRdmaCapability, GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet,
+  GpuDirectRdmaCapabilityUnread,
+}
+import gunbc.spark.serving_rank_observe {
+  RankGpuDirectCapabilityReceipt, rank_gpu_direct_capability,
+}
 
 // A NODE QUALIFICATION RECEIPT BINDS WHAT THE FABRIC WAS TOLD TO WHAT WAS READ ON THE NODE.
 //
@@ -118,9 +125,8 @@ type CollectiveWindowStanding
   | WindowSharedWithDeclaredTraffic
   | WindowStandingUnread { because: NonEmptyStr }
 
-// GPUDirect is owned by #11560 (RankGpuDirectCapabilityReceipt). This PR does not fork that
-// capability type. TRIGGER: rebase onto #11560 and add a host axis that consumes
-// rank_gpu_direct_capability. SUFFICIENT FOR: GB10 unsupported is an incarnation-bound receipt.
+// GPUDirect standing is the GpuDirectRdmaCapability that rank_gpu_direct_capability derives
+// from a RankGpuDirectCapabilityReceipt. This module does not redeclare that capability type.
 
 type RankCurveProducer
   = RankLocalCollectiveCurve
@@ -254,13 +260,19 @@ type HostAdvertisedDelivery {
   usable_memory: ByteSize
   rail_link_mode: LinkMode
   nic_pcie: AdvertisedPcie
+  gpu_direct_platform: NonEmptyStr
 }
+
+type GpuDirectCapabilityReading
+  = GpuDirectReceiptPresent { receipt: RankGpuDirectCapabilityReceipt }
+  | GpuDirectReceiptUnread { because: NonEmptyStr }
 
 type HostMeasuredDelivery {
   accelerator_count: CountReading
   usable_memory: ByteSizeReading
   rail_link_mode: LinkModeReading
   nic_pcie: PcieLinkReading
+  gpu_direct: GpuDirectCapabilityReading
 }
 
 // THE SERVING GROUP / COLLECTIVE SUBJECT. A four-rank curve does not inhabit a HostIdentity.
@@ -319,6 +331,11 @@ type NicPcieStanding
   | NicPcieOfferUngrounded { advertised: AdvertisedPcie, because: NonEmptyStr }
   | NicPcieUnread { advertised: PcieLink, because: NonEmptyStr }
 
+type GpuDirectStanding
+  = GpuDirectDeviceUnsupported { capability: GpuDirectRdmaCapability }
+  | GpuDirectDevicePrerequisiteMet { capability: GpuDirectRdmaCapability }
+  | GpuDirectUnread { because: NonEmptyStr }
+
 type CollectiveLatencyStanding
   = CollectiveLatencyAgrees { ceiling: Nanosecond, measured: Nanosecond }
   | CollectiveLatencyFallsShort { ceiling: Nanosecond, measured: Nanosecond }
@@ -353,6 +370,7 @@ type HostQualificationReceipt {
   usable_memory: UsableMemoryStanding
   rail_link_mode: RailLinkModeStanding
   nic_pcie: NicPcieStanding
+  gpu_direct: GpuDirectStanding
 }
 
 type CollectiveGroupReceipt<P> {
@@ -386,6 +404,7 @@ type QualificationRefusal
   | UsableMemoryDidNotHold { standing: UsableMemoryStanding }
   | RailLinkModeDidNotHold { standing: RailLinkModeStanding }
   | NicPcieDidNotHold { standing: NicPcieStanding }
+  | GpuDirectDidNotHold { standing: GpuDirectStanding }
   | CollectiveLatencyDidNotHold { standing: CollectiveLatencyStanding }
   | CollectiveBandwidthDidNotHold { standing: CollectiveBandwidthStanding }
   | RankSymmetryDidNotHold { standing: RankSymmetryStanding }
@@ -467,6 +486,22 @@ fn qualify_nic_pcie(advertised: AdvertisedPcie, reading: PcieLinkReading) -> Nic
             NicPcieDiffers { advertised: want, measured: m, instrument: i }
           }
         }
+      }
+    }
+  }
+}
+
+fn qualify_gpu_direct(platform: NonEmptyStr, reading: GpuDirectCapabilityReading) -> GpuDirectStanding {
+  match reading {
+    GpuDirectReceiptUnread { because: b } => GpuDirectUnread { because: b }
+    GpuDirectReceiptPresent { receipt: r } => {
+      let cap = rank_gpu_direct_capability(platform: platform, r: r)
+      match cap {
+        GpuDirectRdmaCapabilityUnread { cause: c } => GpuDirectUnread { because: c }
+        GpuDirectRdmaDeviceUnsupported { platform: _, dma_buf: _, capability_receipt: _ } =>
+          GpuDirectDeviceUnsupported { capability: cap }
+        GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } =>
+          GpuDirectDevicePrerequisiteMet { capability: cap }
       }
     }
   }
@@ -872,6 +907,10 @@ fn qualify_host(
       advertised: advertised.nic_pcie,
       reading: measured.nic_pcie,
     ),
+    gpu_direct: qualify_gpu_direct(
+      platform: advertised.gpu_direct_platform,
+      reading: measured.gpu_direct,
+    ),
   }
 }
 
@@ -998,7 +1037,10 @@ fn host_qualification_refusals(receipt: HostQualificationReceipt) -> List<Qualif
       memory_refusal(s: receipt.usable_memory),
         concat(
           rail_refusal(s: receipt.rail_link_mode),
-          pcie_refusal(s: receipt.nic_pcie),
+          concat(
+            pcie_refusal(s: receipt.nic_pcie),
+            gpu_direct_refusal(s: receipt.gpu_direct),
+          ),
         ),
     ),
   )
@@ -1144,6 +1186,14 @@ fn pcie_refusal(s: NicPcieStanding) -> List<QualificationRefusal> {
       [NicPcieDidNotHold { standing: s }]
     NicPcieUnread { advertised: _, because: _ } =>
       [NicPcieDidNotHold { standing: s }]
+  }
+}
+
+fn gpu_direct_refusal(s: GpuDirectStanding) -> List<QualificationRefusal> {
+  match s {
+    GpuDirectDeviceUnsupported { capability: _ } => []
+    GpuDirectDevicePrerequisiteMet { capability: _ } => []
+    GpuDirectUnread { because: _ } => [GpuDirectDidNotHold { standing: s }]
   }
 }
 

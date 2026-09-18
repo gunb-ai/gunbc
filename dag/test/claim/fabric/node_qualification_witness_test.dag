@@ -1,6 +1,7 @@
 module test.claim.fabric.node_qualification_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
 import std.measure { byte_size, bandwidth, nanosecond, bandwidth_count, nanosecond_count, byte_size_count }
 import product.placement_supply { HostIdentity }
 import product.fabric.identity { FabricIdentity, OfferKey }
@@ -8,6 +9,13 @@ import extdeps.ethernet.link_mode {
   ieee_100gbase_cr2, ieee_100gbase_cr4, ieee_50gbase_cr2, link_mode_eq, link_mode_aggregate,
 }
 import extdeps.storage.types { PcieLink, Gen5 }
+import extdeps.nvidia.gpu_direct_rdma {
+  GpuDirectRdmaDeviceUnsupported, GpuDirectRdmaDevicePrerequisiteMet, GpuDirectRdmaCapabilityUnread,
+}
+import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
+import gunbc.spark.serving_rank_observe {
+  RankGpuDirectCapabilityReceipt, ObservedRankIncarnation, container_incarnation_id, ProbeReplied,
+}
 import product.fabric.node_qualification {
   AdvertisedNodeOffer, MeasuredNodeDelivery, CollectiveSample, RankCollectiveReading,
   CollectiveCurveReading, CollectiveProtocol, CollectiveObservationIdentity,
@@ -18,6 +26,9 @@ import product.fabric.node_qualification {
   AdvertisedSparkConnectX7PerPort, AdvertisedDiscreteAdapterSku,
   CountRead, CountUnread, ByteSizeRead, ByteSizeUnread,
   LinkModeRead, LinkModeUnread, PcieLinkRead, PcieLinkUnread,
+  GpuDirectReceiptPresent, GpuDirectReceiptUnread, GpuDirectCapabilityReading,
+  GpuDirectDeviceUnsupported, GpuDirectDevicePrerequisiteMet, GpuDirectUnread,
+  qualify_gpu_direct,
   CollectiveCurveRead, CollectiveCurveUnread,
   EthtoolLinkModes, LspciLnkSta, NcclTestsAllReducePerf, NcclTestsAllToAllPerf,
   SmallMessageShapeUncharacterized, SmallMessageStepThenPlateau,
@@ -75,6 +86,24 @@ fn symmetry_because(s: RankSymmetryStanding, want: NonEmptyStr) -> Bool {
 }
 
 data fx_node: HostIdentity = "fixture-node" as HostIdentity
+
+fn fx_gdr_unread() -> GpuDirectCapabilityReading {
+  GpuDirectReceiptUnread { because: "cudaDeviceGetAttribute GPUDirect probe not run" as NonEmptyStr }
+}
+
+fn fx_gdr_unsupported_reading() -> GpuDirectCapabilityReading {
+  match container_incarnation_id(id: "0f3a9c1d2e4b") {
+    Absent => fx_gdr_unread()
+    Present { value: cid } => GpuDirectReceiptPresent {
+      receipt: RankGpuDirectCapabilityReceipt {
+        from: ObservedRankIncarnation { host: fx_node, container: cid, node_rank: 0 },
+        device_ordinal: 0,
+        device_api: ProbeReplied { stdout: "116 0 0 0 0" },
+        dma_buf: ProbeReplied { stdout: "124 0 0 0 0" },
+      },
+    }
+  }
+}
 
 fn fx_pcie16() -> PcieLink { PcieLink { generation: Gen5, lane_count: 16 } }
 fn fx_pcie4() -> PcieLink { PcieLink { generation: Gen5, lane_count: 4 } }
@@ -152,6 +181,7 @@ fn fx_advertised() -> AdvertisedNodeOffer {
       usable_memory: byte_size(count: 1000),
       rail_link_mode: ieee_100gbase_cr2,
       nic_pcie: AdvertisedSparkConnectX7PerPort,
+      gpu_direct_platform: spark_gb10_platform,
     },
     group: CollectiveGroupAdvertised {
       expected_ranks: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
@@ -229,6 +259,7 @@ fn fx_measured_all_agree() -> MeasuredNodeDelivery {
       usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
       rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
       nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
+      gpu_direct: fx_gdr_unsupported_reading(),
     },
     group: CollectiveGroupMeasured {
       collective: fx_curve(samples: [fx_sample()]),
@@ -294,6 +325,7 @@ fn fx_unqualified_host_measured() -> HostMeasuredDelivery {
     usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
     rail_link_mode: LinkModeRead { mode: ieee_50gbase_cr2, instrument: EthtoolLinkModes },
     nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
+    gpu_direct: fx_gdr_unsupported_reading(),
   }
 }
 
@@ -355,6 +387,7 @@ fn fx_measured_with_ranks(ranks: List<RankCollectiveReading>) -> MeasuredNodeDel
       usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
       rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
       nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
+      gpu_direct: fx_gdr_unsupported_reading(),
     },
     group: CollectiveGroupMeasured {
       collective: fx_curve(samples: [fx_sample()]),
@@ -372,6 +405,7 @@ test fn unread_evidence_is_not_qualification() -> Bool {
       usable_memory: ByteSizeUnread { because: "memory query not run" as NonEmptyStr },
       rail_link_mode: LinkModeUnread { because: "ethtool not run" as NonEmptyStr },
       nic_pcie: PcieLinkUnread { because: "lspci not run" as NonEmptyStr },
+      gpu_direct: fx_gdr_unread(),
     },
     group: CollectiveGroupMeasured {
       collective: CollectiveCurveUnread { because: "nccl-tests not run" as NonEmptyStr },
@@ -876,6 +910,7 @@ test fn a_failing_host_receipt_wrapped_as_host_qualified_is_refused() -> Bool {
       usable_memory: ByteSizeUnread { because: "not run" as NonEmptyStr },
       rail_link_mode: LinkModeUnread { because: "not run" as NonEmptyStr },
       nic_pcie: PcieLinkUnread { because: "not run" as NonEmptyStr },
+      gpu_direct: fx_gdr_unread(),
     },
   )
   host_admission_refusals(a: HostQualified { receipt: unread }).length() > 0
@@ -937,5 +972,42 @@ test fn group_a_samples_relabeled_as_group_b_do_not_agree() -> Bool {
       (b as String) == (supplied_historical_curve_unread as String)
     CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
     CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
+  }
+}
+
+test fn a_gb10_zero_capability_receipt_is_device_unsupported() -> Bool {
+  match qualify_gpu_direct(platform: spark_gb10_platform, reading: fx_gdr_unsupported_reading()) {
+    GpuDirectDeviceUnsupported { capability: c } => match c {
+      GpuDirectRdmaDeviceUnsupported { platform: p, dma_buf: _, capability_receipt: _ } =>
+        (p as String) == (spark_gb10_platform as String)
+      GpuDirectRdmaDevicePrerequisiteMet { dma_buf: _, capability_receipt: _ } => false
+      GpuDirectRdmaCapabilityUnread { cause: _ } => false
+    }
+    GpuDirectDevicePrerequisiteMet { capability: _ } => false
+    GpuDirectUnread { because: _ } => false
+  }
+}
+
+test fn an_unread_gpu_direct_receipt_is_not_host_qualification() -> Bool {
+  match fx_admit_host(
+    m: MeasuredNodeDelivery {
+      host: HostMeasuredDelivery {
+        accelerator_count: CountRead { count: 4 },
+        usable_memory: ByteSizeRead { bytes: byte_size(count: 1000) },
+        rail_link_mode: LinkModeRead { mode: ieee_100gbase_cr2, instrument: EthtoolLinkModes },
+        nic_pcie: PcieLinkRead { link: fx_pcie4(), instrument: LspciLnkSta },
+        gpu_direct: fx_gdr_unread(),
+      },
+      group: fx_measured_all_agree().group,
+    },
+  ) {
+    HostQualified { receipt: _ } => false
+    HostNotQualified { receipt: r, refusals: refusals } =>
+      refusals.length() > 0
+        && match r.gpu_direct {
+          GpuDirectUnread { because: _ } => true
+          GpuDirectDeviceUnsupported { capability: _ } => false
+          GpuDirectDevicePrerequisiteMet { capability: _ } => false
+        }
   }
 }
