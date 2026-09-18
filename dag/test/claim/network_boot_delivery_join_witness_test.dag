@@ -67,9 +67,12 @@ import gunbc.network_boot_delivery {
   SiteBootstrapDiscovery,
   SiteDiscoveryUnobserved,
   SiteNativeDhcp,
+  ManifestJoinChainloaderDigestDisagrees,
+  ManifestJoinWrongSigningKey,
   SitePxeEdge,
   SitePxeEdgeArchitectureRefused,
   SitePxeEdgeEstablished,
+  SitePxeEdgeReceipt,
   SitePxeEdgeStanding,
   SitePxeEdgeUnestablished,
   bootstrap_trust_standing,
@@ -397,7 +400,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
       observed_at: 1788000000000,
     },
   }
-  match join_network_boot_delivery(inputs: inputs) {
+  let wrong_unit = match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongTarget } => true
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -407,7 +410,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
-  let inputs = NetworkBootJoinInputs {
+  let absent_inputs = NetworkBootJoinInputs {
     target: target,
     artifact_digest: artifact,
     fleet: fleet_ok(),
@@ -416,7 +419,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     boot_control: control_ok(),
     manifest: SignedBootManifestAbsent,
   }
-  match join_network_boot_delivery(inputs: inputs) {
+  let absent = match join_network_boot_delivery(inputs: absent_inputs) {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -425,6 +428,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
   }
+  wrong_unit && absent
 }
 
 test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
@@ -605,6 +609,129 @@ test fn neither_trust_input_is_unestablished() -> Bool {
     BootstrapTrustUnestablished => true
     ProductionTrustedBootstrap => false
     ControlledNetworkBootstrap => false
+  }
+}
+
+test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: SitePxeEdgeEstablished {
+      receipt: SitePxeEdgeReceipt {
+        edge: SitePxeEdge {
+          site: "onboarding-segment" as SiteIdentity,
+          admitted_architectures: first_slice_admitted_architectures,
+          discovery: SiteNativeDhcp,
+          bootstrap_transport: ArchitectureChainloader {
+            architecture: Wasm32,
+            filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+            chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+          },
+          global_endpoint_reachability: GlobalHttpsEndpointReachable { observation: obs, observed_at: 1788000000000 },
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+    },
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryArchitectureRefused { architecture: a } => a == Wasm32
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+  }
+}
+
+test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: SitePxeEdgeEstablished {
+      receipt: SitePxeEdgeReceipt {
+        edge: reachable_edge(discovery: SiteNativeDhcp),
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+    },
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        chainloader_digest: content_hash_of_value(value: "ipxe-other-bytes"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryManifestRefused { cause: ManifestJoinChainloaderDigestDisagrees } => true
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+  }
+}
+
+test fn fleet_signing_key_must_match_ticket() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Aarch64,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-other",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryManifestRefused { cause: ManifestJoinWrongSigningKey } => true
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
 }
 
