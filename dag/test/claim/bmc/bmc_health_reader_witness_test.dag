@@ -1,0 +1,72 @@
+module test.claim.bmc_health_reader_witness
+
+import std.types { Bool, String }
+import gunbc.bmc_health_reader {
+  CreateReaderAccount,
+  ReaderAccountAbsent,
+  ReaderAccountConverged,
+  ReaderAccountPresent,
+  ReaderAccountRefused,
+  ReaderAccountUnreadable,
+  ReaderListed,
+  ReaderListingUnreadable,
+  ReaderNotListed,
+  bmc_health_reader_secret_id,
+  plan_reader_account,
+  reader_account_create_body,
+  reader_account_from_json,
+  reader_listed_in_accounts,
+}
+import gunbc.tools.bmc_health_reader_converge { bmc_health_reader_body_path }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Supplied bodies in the shape the DMTF Redfish AccountService schema gives the collection and a
+// ManagerAccount resource. They are this witness's inputs, not observations of any BMC; the live
+// route that reads the real ones is gunbc.tools.bmc_health_reader_converge, which this module also
+// imports so that resolving these claims typechecks it.
+data collection_with_reader: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/gunbc-health\"}],\"Members@odata.count\":2}"
+data collection_without_reader: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/gunbc-health-old\"}]}"
+
+test fn only_an_exact_member_counts_as_the_reader() -> Bool {
+  let listed = match reader_listed_in_accounts(body: collection_with_reader) { ReaderListed => true _ => false }
+  let near_miss = match reader_listed_in_accounts(body: collection_without_reader) { ReaderNotListed => true _ => false }
+  listed && near_miss
+}
+
+// An unreadable collection is not an empty one: absence would authorize a create.
+test fn an_unreadable_collection_never_reads_as_absent() -> Bool {
+  let garbage = match reader_listed_in_accounts(body: "<html>login</html>") { ReaderListingUnreadable { cause: _ } => true _ => false }
+  let no_members = match reader_listed_in_accounts(body: "{\"Name\":\"Accounts\"}") { ReaderListingUnreadable { cause: _ } => true _ => false }
+  let refused = match plan_reader_account(observation: ReaderAccountUnreadable { cause: "x" }) { ReaderAccountRefused { cause: _ } => true _ => false }
+  garbage && no_members && refused
+}
+
+test fn absent_creates_and_an_enabled_read_only_reader_is_converged() -> Bool {
+  let create = match plan_reader_account(observation: ReaderAccountAbsent) { CreateReaderAccount => true _ => false }
+  let converged = match plan_reader_account(observation: reader_account_from_json(body: "{\"UserName\":\"gunbc-health\",\"RoleId\":\"ReadOnly\",\"Enabled\":true}")) {
+    ReaderAccountConverged => true
+    _ => false
+  }
+  create && converged
+}
+
+// An account of that name this flow did not make is refused, never demoted or re-enabled.
+test fn a_wrong_role_or_a_disabled_reader_is_refused_not_corrected() -> Bool {
+  let admin = match plan_reader_account(observation: ReaderAccountPresent { role: "Administrator", enabled: true }) { ReaderAccountRefused { cause: _ } => true _ => false }
+  let disabled = match plan_reader_account(observation: ReaderAccountPresent { role: "ReadOnly", enabled: false }) { ReaderAccountRefused { cause: _ } => true _ => false }
+  let no_role = match reader_account_from_json(body: "{\"UserName\":\"gunbc-health\",\"Enabled\":true}") { ReaderAccountUnreadable { cause: _ } => true _ => false }
+  admin && disabled && no_role
+}
+
+// The body is read back through the same decoder the observation uses, rather than matched as
+// text: the body the flow sends must be one the flow itself would judge converged.
+test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool {
+  let body = reader_account_create_body(password: "p")
+  let judged = match plan_reader_account(observation: reader_account_from_json(body: body)) { ReaderAccountConverged => true _ => false }
+  judged
+    && string_contains(s: body, pattern: "gunbc-health")
+    && bmc_health_reader_secret_id(host: "srv3") == "bmc-srv3-health-reader"
+    && bmc_health_reader_body_path == "/tmp/bmc_health_reader_body.json"
+}
