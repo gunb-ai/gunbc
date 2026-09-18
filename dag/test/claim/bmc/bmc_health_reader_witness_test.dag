@@ -26,8 +26,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ManagerAccount resource. They are this witness's inputs, not observations of any BMC; the live
 // route that reads the real ones is gunbc.tools.bmc_health_reader_converge, which this module also
 // imports so that resolving these claims typechecks it.
-data collection_with_reader: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/gunbc-health\"}],\"Members@odata.count\":2}"
-data collection_without_reader: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/gunbc-health-old\"}]}"
+data collection_with_reader: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/gunbc_health\"}],\"Members@odata.count\":2}"
+data collection_without_reader: String = "{\"Members\":[{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/root\"},{\"@odata.id\":\"/redfish/v1/AccountService/Accounts/gunbc_health_old\"}]}"
 
 test fn only_an_exact_member_counts_as_the_reader() -> Bool {
   let listed = match reader_listed_in_accounts(body: collection_with_reader) { ReaderListed => true _ => false }
@@ -45,7 +45,7 @@ test fn an_unreadable_collection_never_reads_as_absent() -> Bool {
 
 test fn absent_creates_and_an_enabled_read_only_reader_is_converged() -> Bool {
   let create = match plan_reader_account(observation: ReaderAccountAbsent) { CreateReaderAccount => true _ => false }
-  let converged = match plan_reader_account(observation: reader_account_from_json(body: "{\"UserName\":\"gunbc-health\",\"RoleId\":\"ReadOnly\",\"Enabled\":true}")) {
+  let converged = match plan_reader_account(observation: reader_account_from_json(body: "{\"UserName\":\"gunbc_health\",\"RoleId\":\"ReadOnly\",\"Enabled\":true}")) {
     ReaderAccountConverged => true
     _ => false
   }
@@ -56,7 +56,7 @@ test fn absent_creates_and_an_enabled_read_only_reader_is_converged() -> Bool {
 test fn a_wrong_role_or_a_disabled_reader_is_refused_not_corrected() -> Bool {
   let admin = match plan_reader_account(observation: ReaderAccountPresent { role: "Administrator", enabled: true }) { ReaderAccountRefused { cause: _ } => true _ => false }
   let disabled = match plan_reader_account(observation: ReaderAccountPresent { role: "ReadOnly", enabled: false }) { ReaderAccountRefused { cause: _ } => true _ => false }
-  let no_role = match reader_account_from_json(body: "{\"UserName\":\"gunbc-health\",\"Enabled\":true}") { ReaderAccountUnreadable { cause: _ } => true _ => false }
+  let no_role = match reader_account_from_json(body: "{\"UserName\":\"gunbc_health\",\"Enabled\":true}") { ReaderAccountUnreadable { cause: _ } => true _ => false }
   admin && disabled && no_role
 }
 
@@ -66,7 +66,7 @@ test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool 
   let body = reader_account_create_body(password: "p")
   let judged = match plan_reader_account(observation: reader_account_from_json(body: body)) { ReaderAccountConverged => true _ => false }
   judged
-    && string_contains(s: body, pattern: "gunbc-health")
+    && string_contains(s: body, pattern: "gunbc_health")
     && bmc_health_reader_secret_id(host: "srv3") == "bmc-srv3-health-reader"
     && bmc_health_reader_body_path == "/tmp/bmc_health_reader_body.json"
 }

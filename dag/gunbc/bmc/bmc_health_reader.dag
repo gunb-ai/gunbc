@@ -22,8 +22,9 @@ import extdeps.languages.json.parse {
 //
 // ReadOnly is the DMTF Redfish predefined role holding only Login and ConfigureSelf
 // (extdeps.bmc.access redfish_rbac_policy): it can read every resource and change nothing but its
-// own password.
-data bmc_health_reader_username: NonEmptyStr = "gunbc-health"
+// own password. The name is an underscore, not a hyphen, because OpenBMC refuses a hyphen in a
+// UserName (Base.1.16.0.PropertyValueFormatError, observed on srv1 2026-09-18).
+data bmc_health_reader_username: NonEmptyStr = "gunbc_health"
 
 fn bmc_health_reader_secret_id(host: NonEmptyStr) -> NonEmptyStr {
   concat("bmc-", host as String, "-health-reader") as NonEmptyStr
