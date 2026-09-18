@@ -142,7 +142,6 @@ pub fn builtin_callable_candidates(name: String) -> Rc<Vec<Rc<CallableCandidate>
                     formals: Rc::new(vec![]),
                 }),
                 inferred: builtin_return.clone(),
-                is_async: false,
                 output_provenance: Rc::new(vec![]),
                 variant_provenance: v1_rt::rc_empty_map::<
                     String,
@@ -677,7 +676,6 @@ pub fn borrowed_census_callable_candidate(
                     ),
                 }),
                 inferred: return_type.clone(),
-                is_async: false,
                 output_provenance: Rc::new(vec![]),
                 variant_provenance: v1_rt::rc_empty_map::<
                     String,
@@ -846,7 +844,6 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 },
                                             ),
                                             inferred: raw_return.clone(),
-                                            is_async: false,
                                             output_provenance: Rc::new(vec![]),
                                             variant_provenance: v1_rt::rc_empty_map::<
                                                 String,
@@ -883,7 +880,6 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                     },
                                                 ),
                                                 inferred: qualified_return.clone(),
-                                                is_async: false,
                                                 output_provenance: Rc::new(vec![]),
                                                 variant_provenance: v1_rt::rc_empty_map::<
                                                     String,

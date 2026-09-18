@@ -415,20 +415,17 @@ fn json_text_parseable(s: String) -> Bool {
 // the next JSON readback in this corpus re-mint it, which is DESIGN section 2's test for whether an
 // edit reduced redundancy or moved it: net concepts must not grow by re-invention.
 //
-// A MEMBER IS MISSING, PRESENT AND WELL SHAPED, OR PRESENT AND WRONG. Two-valued readers collapse
-// the third into the first, and that collapse is how a readback comes to report agreement about a
-// field it failed to understand -- the defect the docker readback was extended to make detectable,
-// arriving one layer down in the reader built to detect it.
-//
 // JSON `null` READS AS ABSENT AND THAT IS A JUDGEMENT THIS MODULE OWNS, not the caller's: a wire
 // null is the document declining to carry a value, which is what absence means here. A caller for
 // which null and missing differ reads the raw JsonValue through json_object_unique_member and
 // decides for itself, which is the arm that stays available.
+
 // ── THE FIELD READERS, EACH THREE-VALUED ──────────────────────────────────────────────────────
 //
-// A member is MISSING, PRESENT AND WELL SHAPED, or PRESENT AND WRONG. Two-valued readers collapse
-// the third into the first, and that collapse is precisely how a readback reports agreement about a
-// field it failed to understand.
+// A MEMBER IS MISSING, PRESENT AND WELL SHAPED, OR PRESENT AND WRONG. Two-valued readers collapse
+// the third into the first, and that collapse is how a readback comes to report agreement about a
+// field it failed to understand -- the defect the docker readback was extended to make detectable,
+// arriving one layer down in the reader built to detect it.
 type JsonFieldRead<T>
   = FieldAbsent
   | FieldRead { value: T }

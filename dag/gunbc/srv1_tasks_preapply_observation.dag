@@ -14,6 +14,7 @@ import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCapture,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
 import extdeps.systemd { ControlGroup }
@@ -98,6 +99,8 @@ fn observe_unit_tasks(unit: NonEmptyStr) -> Srv1TasksUnitObservation {
                   },
                 }
               }
+            SystemdPropertyBlank =>
+              Srv1TasksUnitObservationRefused { unit: unit, cause: "ControlGroup read returned empty — cannot locate cgroupfs pids files" }
             SystemdPropertyCaptureRefused { reason: why } =>
               Srv1TasksUnitObservationRefused { unit: unit, cause: join(["ControlGroup read refused: ", why], "") }
           }

@@ -36,6 +36,18 @@ import gunbc.fleet_intent_network {
 //   - BOTH second-function netdevs come up from the one leg, with distinct MACs the switch sees on
 //     the same lane. Only one of them may carry the rail address.
 //
+// SUPERSEDED 2026-09-17 -- THE NARRATIVE FROM HERE TO "only then is anything established about the
+// copper" BELOW IS THE PRE-RECODE STATE. The operator re-flashed the QSFP56 host ends to NVIDIA(ETH)
+// on 2026-09-17; on spark-a3ee byte 192 now reads 0x40 (attests 100GBASE-CR2), mstlink reports
+// Supported Cable Speed 100G_2X, and the "Cable speed not enabled" refusal is GONE. So the
+// current-tense claims below -- "COMPLIANCE CODING IS A DEMONSTRATED BLOCKER", "nothing attests
+// 100GBASE-CR2", "refuses 100G_2X", and "the coding does not attest the required mode and the NIC
+// refuses it today" -- are no longer true of the fleet: the coding now attests the mode, and the
+// live blocker has moved to the switch-side QSFP-DD end (docs/plans/fabric-switch-actuation-log.md).
+// The block is kept as the pre-recode reading rather than rewritten, because the fix is to model the
+// recode as an EVENT (gap G12) so this becomes one dated observation superseded by the next, which
+// PR-1 of docs/plans/fabric-switch-convergence-build-plan.md lands. TRIGGER: that event model.
+//
 // THE LEG LINKS AT 50G, NOT 100G, AND THE COMPLIANCE CODING IS A DEMONSTRATED BLOCKER. The legs are
 // QSFP28-coded: extended specification compliance 0x0B ("100GBASE-CR4 or 25GBASE-CR CA-L") at byte
 // 192, with byte 116 read as 00h -- so nothing attests 100GBASE-CR2. The ConnectX-7 firmware
@@ -97,21 +109,31 @@ import gunbc.fleet_intent_network {
 // where it belongs.
 
 // WHAT THE LINK REPORTS, which is a different subject from what the EEPROM says. The negotiated
-// speed and the NIC's advertised set are read from the HOST, per fleet and not per module, so they
-// stay here. The per-module EEPROM bytes are receipts and live in fabric_leg_eeprom_observations,
-// one row per acquisition -- an earlier head carried a `coding` field here as well, which made the
-// same bytes answerable from two places.
+// speed is read from the HOST, per fleet and not per module, so it stays here as linked_speed_gbps.
+// The NIC's advertised MODE SET is also a host-read link fact, but it is NOT carried as a field here:
+// it wants a typed List<LinkMode> with a cited instrument, and until a consumer needs it that is an
+// unread field this module declines to hold (see the deletion note on fabric_leg_cable_observed).
+// The per-module EEPROM bytes are receipts and live in fabric_leg_eeprom_observations, one row per
+// acquisition -- an earlier head carried a `coding` field here as well, which made the same bytes
+// answerable from two places.
 type FabricLegCableObserved {
   vendor: NonEmptyStr
   part_number: NonEmptyStr
-  nic_supported_speeds: NonEmptyStr
   linked_speed_gbps: Nat
 }
 
+// nic_supported_speeds WAS REMOVED HERE, not re-valued. It was a `String` leaf hiding named parts
+// -- a set of link modes this module already imports as extdeps.ethernet.link_mode LinkMode rows
+// (ieee_100gbase_cr2, ieee_50gbase_cr2, ...), plus the reading instrument and the observation date.
+// Spelling those as "100G_2X, 50G_1X, ..." is the nicknaming DESIGN §3 forbids and the anemic leaf
+// §2 forbids, and correcting its stale value only grew what it hid. Nothing read it (only
+// linked_speed_gbps is consumed, by fabric_rail_desired and the witness), so it is deleted rather
+// than enriched into a List<LinkMode> nothing would read. The NIC-supported-mode observation itself
+// -- post-recode 100G_2X, read by mstlink -- lives in the actuation log and lands as a typed set,
+// cited to its instrument (§6), when gap G12's event model gives it a consumer.
 data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
   vendor: "FS" as NonEmptyStr,
   part_number: "QDD-400G-4QPC015" as NonEmptyStr,
-  nic_supported_speeds: "50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028)" as NonEmptyStr,
   linked_speed_gbps: 50,
 }
 
@@ -217,30 +239,61 @@ data srv10_fabric_link_observed: Bool = true
 // cannot say it: editing it moves both legs at once.
 //
 // So one row per acquisition, carrying the identity that makes it a receipt rather than a value: the
-// host it was taken from, the module's own vendor serial, and the date code. The two legs agree
-// today; that agreement is DERIVED by comparing rows, never assumed by storing one.
+// host it was taken from, the module's own vendor serial, and the date code. Whether the two legs
+// agree is DERIVED by comparing rows, never assumed by storing one -- and they now DISAGREE
+// (spark-a3ee re-read post-recode to 0x40, spark-ac79 still at its last pre-recode 0x0B), which is
+// exactly the divergence this per-row shape exists to keep representable.
+//
+// AND A READING'S CURRENT STANDING IS TYPED, NOT ASSUMED FROM THE FACT THAT A ROW EXISTS. A leg that
+// was re-flashed after its last read has a KNOWN-INVALIDATED reading -- the mutation happened, so the
+// stored coding is no longer the leg's current coding, and answering it as a live reading is silent
+// wrongness on the plant path (§5). That is a different state from "never read", and it must not
+// collapse into either "current" or "never looked". So each acquisition carries an
+// EepromAcquisitionStanding: AcquisitionCurrent for a reading taken (or re-taken) after the last
+// mutation, AcquisitionInvalidatedByReflash for a reading a later re-flash invalidated and which was
+// not re-taken. The full append-only acquisition history is still G12; this is the minimum standing
+// the LIVE plant needs so it never promotes an invalidated reading to a current one.
+type EepromAcquisitionStanding
+  = AcquisitionCurrent
+  | AcquisitionInvalidatedByReflash { invalidating_event: NonEmptyStr }
+
 type FabricLegEepromObservation {
   host: NonEmptyStr
   vendor_serial: NonEmptyStr
   date_code: NonEmptyStr
   coding: CableLegObservation
+  acquisition: EepromAcquisitionStanding
 }
 
-// Each row states what ITS dump returned, written out rather than pointing at a shared value. The
-// two agree byte for byte today; that agreement is a DERIVABLE fact about two receipts, and storing
-// it as one row would make the agreement unfalsifiable and the divergence unrepresentable.
+// Each row states what ITS dump returned, written out rather than pointing at a shared value.
+//
+// spark-a3ee carries the POST-RECODE dump (`ethtool -m raw on` after the 2026-09-17 re-flash):
+// byte 192 = 0x40 = 64 (attests 100GBASE-CR2), date_code 260914, acquisition AcquisitionCurrent --
+// re-read after the mutation, so it IS the current coding and the plant reads it as one.
+//
+// spark-ac79 was ALSO re-flashed but NOT re-read. Its last actual dump is byte 192 = 0x0B = 11
+// (date_code 260728), and that reading is now INVALIDATED: the re-flash changed the leg, so 0x0B is
+// no longer ac79's current coding, and its current coding is UNKNOWN. So its acquisition is
+// AcquisitionInvalidatedByReflash, and fabric_leg_reading projects that to LegNeverRead rather than
+// LegReadingTaken(0x0B) -- the plant answers "unknown", not a stale value it would be silent
+// wrongness to present as live (§5). The last observation and the invalidating event are retained on
+// the row (not fabricated away), so a re-read appends the current value under G12 rather than
+// overwriting this record. Re-valuing ac79 to a guessed current coding would fabricate an
+// observation nobody took; leaving it as a live 0x0B reading would answer a known-false present
+// state. The typed standing is the only honest arm.
 data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
   FabricLegEepromObservation {
     host: "spark-a3ee" as NonEmptyStr,
     vendor_serial: "S2630771509-2" as NonEmptyStr,
-    date_code: "260728" as NonEmptyStr,
+    date_code: "260914" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
-      primary_compliance_code: 11,
+      primary_compliance_code: 64,
       secondary_compliance: SecondaryObserved { code: 0 },
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-ac79" as NonEmptyStr,
@@ -253,6 +306,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionInvalidatedByReflash { invalidating_event: "FS BOX V4 re-flash 2026-09-17, leg not re-read" as NonEmptyStr },
   },
 ]
 
@@ -263,10 +317,20 @@ fn fabric_leg_observation_for(o: FabricLaneObserved) -> List<FabricLegEepromObse
 // MEMBERSHIP IS DERIVED FROM THE RECEIPTS, never from a parallel roster of which hosts were dumped.
 // A second list would be a second answer to "was this leg read", and the two would disagree the
 // first time a receipt was added without updating it.
+// A LEG'S PLANT READING IS ITS CURRENT CODING OR NOTHING. An AcquisitionCurrent row is a live
+// reading; an AcquisitionInvalidatedByReflash row is projected to LegNeverRead, because the leg's
+// current coding is unknown after the re-flash and presenting the invalidated value as a live reading
+// is the silent wrongness §5 forbids. The invalidated last-observation is not lost -- it stays on the
+// eeprom row -- it is simply not promoted to the plant.
 fn fabric_leg_reading(o: FabricLaneObserved) -> CableLegReading {
   match fabric_leg_observation_for(o: o).first() {
     Present { value: r } =>
-      LegReadingTaken { endpoint: fabric_lane_interface(o: o), observation: r.coding }
+      match r.acquisition {
+        AcquisitionCurrent =>
+          LegReadingTaken { endpoint: fabric_lane_interface(o: o), observation: r.coding }
+        AcquisitionInvalidatedByReflash { invalidating_event: _ } =>
+          LegNeverRead { endpoint: fabric_lane_interface(o: o) }
+      }
     Absent => LegNeverRead { endpoint: fabric_lane_interface(o: o) }
   }
 }
