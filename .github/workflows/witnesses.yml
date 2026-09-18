@@ -46,7 +46,7 @@ jobs:
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
         if: always()
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ inputs.expected_healed_sha || github.sha }}
@@ -74,7 +74,7 @@ jobs:
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
         with:
           components: rustfmt
           cache: false
@@ -174,7 +174,7 @@ jobs:
           'echo' 'GUNBC_FLOOR_ATTEMPT_RECEIPT class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' path='"$GUNBC_FLOOR_RECEIPT"
         if: always()
       - name: Upload the floor attempt receipt and command log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: gunbc-floor-outcome-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           path: |
@@ -214,7 +214,7 @@ jobs:
           for GUNBC_TOOLCHAIN_FS_PATH in "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains/*/bin "${RUNNER_TEMP:-/path-that-does-not-exist}"/rustup/toolchains "${RUNNER_TEMP:-/path-that-does-not-exist}"/cargo/bin; do if [ -d "$GUNBC_TOOLCHAIN_FS_PATH" ]; then GUNBC_TOOLCHAIN_FS_STAT=$(stat -c 'mtime_epoch=%Y mtime=%y inode=%i' "$GUNBC_TOOLCHAIN_FS_PATH" 2>&1 || echo stat-unavailable); echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=yes $GUNBC_TOOLCHAIN_FS_STAT"; else echo "$GUNBC_TOOLCHAIN_FS_PREFIX kind=directory path=$GUNBC_TOOLCHAIN_FS_PATH exists=no mtime_epoch=unavailable mtime=unavailable inode=unavailable"; fi; done
         if: always()
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ inputs.expected_healed_sha || github.sha }}
@@ -242,7 +242,7 @@ jobs:
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
         with:
           components: rustfmt
           cache: false
@@ -335,7 +335,7 @@ jobs:
           REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
         if: always() && !cancelled()
       - name: "D0-PUBLISH: upload the required CI measurement receipt"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: required-ci-measurement-receipt
           path: required_ci_measurement_receipt.json
@@ -370,7 +370,7 @@ jobs:
           REQUIRED_CI_INSTRUMENT_BUILD_OUTCOME: ${{ steps.build_witness_fold.outcome }}
         if: always() && !cancelled()
       - name: Upload the floor's admission roster
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: required-floor-disposition
           path: required_floor_disposition.tsv
@@ -378,7 +378,7 @@ jobs:
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: Upload the expected-red roster join
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: expected-red-roster-join
           path: expected_red_roster_join.tsv
@@ -386,7 +386,7 @@ jobs:
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: Upload the long-home storage agreement
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: long-home-storage-agreement
           path: long_home_storage_agreement.tsv
@@ -394,7 +394,7 @@ jobs:
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: Upload the floor's per-claim cost receipt
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: required-floor-claim-cost
           path: required_floor_claim_cost.tsv
@@ -402,7 +402,7 @@ jobs:
           retention-days: 14
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
       - name: Upload the floor's cross-claim demand census
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: required-floor-cross-claim-demand
           path: required_floor_cross_claim_demand.tsv
@@ -420,7 +420,7 @@ jobs:
           'echo' 'GUNBC_FLOOR_ATTEMPT_RECEIPT class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' path='"$GUNBC_FLOOR_RECEIPT"
         if: always()
       - name: Upload the floor attempt receipt and command log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: gunbc-floor-outcome-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           path: |
@@ -450,7 +450,7 @@ jobs:
       actions: none
     steps:
       - name: Checkout triggering branch head (heal pushes the regeneration back to this branch)
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
@@ -462,7 +462,7 @@ jobs:
           echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        uses: actions-rust-lang/setup-rust-toolchain@2b1f5e9b395427c92ee4e3331786ca3c37afe2d7
         with:
           components: rustfmt
           cache: false
@@ -605,7 +605,7 @@ jobs:
             exit 1
           fi
       - name: Upload the author-commit-required regeneration
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: heal-author-commit-required
           path: heal-author-commit-required

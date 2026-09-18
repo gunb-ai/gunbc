@@ -109,8 +109,34 @@ fn yaml_line_is_full_comment_at_indent(lines: List<String>, index: Int, indent: 
   }
 }
 
+// OUTSIDE A SCALAR, A BLANK LINE OR A FULL-LINE COMMENT CARRIES NO CONTENT AT ANY INDENTATION
+// (YAML 1.2.2 section 6.6, l-comment). Block-literal bodies never pass through here -- they are
+// collected by yaml_collect_literal_lines_from, where blank and `#` lines ARE content -- so skipping
+// them between structural entries cannot drop scalar text. Before this, a blank line ended the
+// enclosing mapping and a comment indented differently from its siblings was refused, which made
+// every hand-authored workflow in .github/workflows unreadable.
+fn yaml_line_is_ignorable(lines: List<String>, index: Int) -> Bool {
+  if !yaml_has_line_at(lines: lines, index: index) {
+    false
+  } else {
+    let l = yaml_line_at(lines: lines, index: index)
+    let t = yaml_strip_indent(line: l, indent: yaml_indent_of(line: l))
+    t == "" || starts_with(s: t, prefix: "#")
+  }
+}
+
+fn yaml_skip_ignorable_lines(lines: List<String>, index: Int) -> Int {
+  if yaml_line_is_ignorable(lines: lines, index: index) {
+    yaml_skip_ignorable_lines(lines: lines, index: index + 1)
+  } else {
+    index
+  }
+}
+
 fn yaml_skip_full_comments_at_indent(lines: List<String>, index: Int, indent: Int) -> Int {
-  if yaml_line_is_full_comment_at_indent(lines: lines, index: index, indent: indent) {
+  if yaml_line_is_ignorable(lines: lines, index: index) {
+    yaml_skip_ignorable_lines(lines: lines, index: index)
+  } else if yaml_line_is_full_comment_at_indent(lines: lines, index: index, indent: indent) {
     yaml_skip_full_comments_at_indent(lines: lines, index: index + 1, indent: indent)
   } else {
     index
@@ -199,8 +225,9 @@ fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> Yam
     }
   } else if ends_with(s: content, suffix: ":") {
     let key = substring(s: content, start: 0, end: content.length() - 1)
-    if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 2) {
-      match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 2) {
+    let body = yaml_skip_ignorable_lines(lines: lines, index: index + 1)
+    if yaml_has_line_at(lines: lines, index: body) && (yaml_indent_at(lines: lines, index: body) == indent + 2) {
+      match yaml_parse_block(lines: lines, index: body, indent: indent + 2) {
         ParsedYamlBlock { value: nested, next_index: ni } =>
           ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
@@ -230,8 +257,9 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
     }
   } else if ends_with(s: text, suffix: ":") {
     let key = substring(s: text, start: 0, end: text.length() - 1)
-    if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 4) {
-      match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 4) {
+    let body = yaml_skip_ignorable_lines(lines: lines, index: index + 1)
+    if yaml_has_line_at(lines: lines, index: body) && (yaml_indent_at(lines: lines, index: body) == indent + 4) {
+      match yaml_parse_block(lines: lines, index: body, indent: indent + 4) {
         ParsedYamlBlock { value: nested, next_index: ni } =>
           ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }

@@ -2,8 +2,8 @@ module v2.extdeps.languages.gha_workflow_yaml_fold
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import extdeps.languages.yaml.emit { emit_inline_scalar_text }
+import extdeps.github.action_release { ActionRelease, action_release_uses_text }
 import extdeps.github.actions {
-  ActionRef,
   Job,
   RunnerSpec,
   SelfHosted
@@ -268,11 +268,8 @@ fn gha_fold_step_tail_uses_emitted(scalar: Node) -> Node {
   }
 }
 
-fn gha_fold_uses_ref_text(uses: ActionRef) -> String {
-  concat(
-    concat(concat(concat(uses.owner, "/"), uses.repo), "@"),
-    uses.ref
-  )
+fn gha_fold_uses_ref_text(uses: ActionRelease) -> String {
+  action_release_uses_text(action_release: uses)
 }
 
 fn gha_fold_step_head_emitted_from_emit(emit: GhaPilotStepEmit) -> Witness<Node> {
@@ -658,7 +655,7 @@ data gha_fold_pilot_job_emitted: Node = gha_fold_job_emitted(
         )
       ),
       right: gha_fold_step_tail_uses_emitted(
-        scalar: gha_fold_scalar_emitted(text: "actions/checkout@v4")
+        scalar: gha_fold_scalar_emitted(text: "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09")
       )
     )
   )
@@ -913,7 +910,7 @@ data gha_fold_flat_steps_wrong_emitted: Node = Node {
                 )
               ),
               right: gha_fold_flat_step_tail_uses_emitted(
-                scalar: gha_fold_scalar_emitted(text: "actions/checkout@v4")
+                scalar: gha_fold_scalar_emitted(text: "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09")
               )
             )
           }

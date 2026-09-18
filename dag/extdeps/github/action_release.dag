@@ -1,0 +1,88 @@
+module extdeps.github.action_release
+
+import std.types { Bool, Int, List, NonEmptyStr, String, CommitSha }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// THE PRODUCER HALF OF AN ACTION USE: which release of an action is executed, and what execution
+// mechanism that release's own action.yml declares. The other two halves are separate facts with
+// separate owners -- what GitHub does with the declaration is extdeps.github.action_runtime_policy,
+// and whether this repository may depend on that is gunbc.action_use_admission. This module is a
+// generic hub (DESIGN section 3, External upstream decomposition): it defines the shapes and names
+// no product. Each action's releases live in its own module under extdeps.github.action.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/reference/workflows-and-actions/metadata-syntax#runs"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action_release",
+      decl_name: "ActionExecutionMechanism",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// THE IDENTITY IS THE COMMIT, AND THE TAG IS ONLY ITS NAME. A tag such as `v4` is mutable: the
+// producer moves it, so a declaration read "at v4" describes whatever v4 pointed at on the day it
+// was read, not what a runner fetches later. `commit` is what a workflow is emitted against
+// (`owner/repo@<commit>`), and `tag` is carried so a reader can tell which release that commit is.
+type ActionRelease {
+  owner: NonEmptyStr
+  repo: NonEmptyStr
+  tag: NonEmptyStr
+  commit: CommitSha
+}
+
+// `runs.using` in the release's action.yml. A JavaScript action names a Node major; a composite
+// action runs its own steps, so the releases it uses are part of what it declares; a Docker action
+// names its image. A composite step that is NOT pinned to a commit cannot be written as an
+// ActionRelease, so a composite whose nested use floats has no representable declaration here.
+type ActionExecutionMechanism
+  = JavaScriptAction { node_major: Int }
+  | CompositeAction { nested: List<ActionRelease> }
+  | DockerAction { image: NonEmptyStr }
+
+// ONE READING OF ONE PRODUCER MANIFEST. `manifest` is the action.yml blob at `release.commit`: the
+// declaration is read from the producer, never from a release note, a README or a runner warning.
+type ActionManifestReading {
+  action_release: ActionRelease
+  declared: ActionExecutionMechanism
+  manifest: ExternalAuthority
+}
+
+fn action_manifest_at_commit(owner: String, repo: String, commit: String) -> ExternalAuthority {
+  ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: join(["github.com/", owner, "/", repo, "/blob/", commit, "/action.yml"], "")
+    }
+  }
+}
+
+// SAME PRODUCER means same repository at the same commit. The tag is deliberately excluded: two
+// tags on one commit are one producer, and one tag on two commits is two.
+fn action_release_same_producer(a: ActionRelease, b: ActionRelease) -> Bool {
+  a.owner == b.owner && a.repo == b.repo && a.commit == b.commit
+}
+
+// The `uses:` spelling GitHub resolves: repository at an immutable commit.
+fn action_release_uses_text(action_release: ActionRelease) -> String {
+  join([action_release.owner as String, "/", action_release.repo as String, "@", action_release.commit as String], "")
+}
+
+fn action_execution_mechanism_text(m: ActionExecutionMechanism) -> String {
+  match m {
+    JavaScriptAction { node_major: n } => concat("node", to_string(n))
+    CompositeAction { nested: _ } => "composite"
+    DockerAction { image: i } => concat("docker:", i as String)
+  }
+}

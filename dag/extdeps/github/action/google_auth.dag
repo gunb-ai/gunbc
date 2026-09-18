@@ -1,0 +1,54 @@
+module extdeps.github.action.google_auth
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
+  action_manifest_at_commit,
+}
+
+// google-github-actions/auth releases this repository has read.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/google-github-actions/auth"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.google_auth",
+      decl_name: "google_auth_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data google_auth_v2_1_13: ActionRelease = ActionRelease {
+  owner: "google-github-actions", repo: "auth", tag: "v2.1.13", commit: "c200f3691d83b41bf9bbd8638997a462592937ed"
+}
+
+data google_auth_v3_0_0: ActionRelease = ActionRelease {
+  owner: "google-github-actions", repo: "auth", tag: "v3.0.0", commit: "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"
+}
+
+// Each declaration below was read from the action.yml blob at the release's commit (the
+// manifest citation on the row), 2026-09-18.
+data google_auth_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: google_auth_v2_1_13,
+    declared: JavaScriptAction { node_major: 20 },
+    manifest: action_manifest_at_commit(owner: "google-github-actions", repo: "auth", commit: "c200f3691d83b41bf9bbd8638997a462592937ed"),
+  },
+  ActionManifestReading {
+    action_release: google_auth_v3_0_0,
+    declared: JavaScriptAction { node_major: 24 },
+    manifest: action_manifest_at_commit(owner: "google-github-actions", repo: "auth", commit: "7c6bc770dae815cd3e89ee6cdf493a5fab2cc093"),
+  },
+]

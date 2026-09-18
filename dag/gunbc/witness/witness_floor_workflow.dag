@@ -39,8 +39,7 @@ import gunbc.compile_permit_scope {
   fleet_compile_cancellation_standing
 }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep,
-  upload_artifact_action,
+  Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
   PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
@@ -48,11 +47,14 @@ import extdeps.github.actions {
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, ConcurrencyMappingQueueMax,
   CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
-  RunnerSpec,
-  checkout_action, setup_rust_action,
+  RunnerSpec, 
   github_event_name_pull_request,
   github_event_name_merge_group,
   github_event_name_workflow_dispatch
+}
+import gunbc.action_use_admission {
+  checkout_action, setup_rust_action, upload_artifact_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_heal_credential {
@@ -3045,16 +3047,21 @@ fn floor_attempt_production_wraps_are_renderable() -> Bool {
 }
 
 fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
-    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-      WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-    WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
-        WitnessFloorGenerated {
-          content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
-        }
-      } else {
-        WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+  match admit_workflow_action_uses(workflow: witness_floor_workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness_floor_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: witness_floor_workflow) {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+        WorkflowToolchainHomesAdmitted =>
+          if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && heal_generated_artifacts_capability_closure_holds() && required_lanes_gate_is_renderable() && required_ci_measurement_scripts_are_renderable() && floor_attempt_production_wraps_are_renderable() && floor_attempt_receipt_finalize_is_renderable() {
+            WitnessFloorGenerated {
+              content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+            }
+          } else {
+            WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
+          }
       }
   }
 }
