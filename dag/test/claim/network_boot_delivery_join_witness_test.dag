@@ -42,6 +42,11 @@ import gunbc.network_boot_delivery {
   NetworkBootBootSourceOverride,
   NetworkBootClientBootMode,
   NetworkBootDeliveryArchitectureRefused,
+  ClientArchitectureNotAdmitted,
+  ChainloaderMismatch,
+  LoaderNotAdmittedOnSlice,
+  TicketNotAdmittedOnEdge,
+  TicketNotAdmittedOnSlice,
   NetworkBootDeliveryClientModeRefused,
   NetworkBootDeliveryEstablished,
   NetworkBootDeliveryEvidenceRefused,
@@ -72,7 +77,8 @@ import gunbc.network_boot_delivery {
   ManifestJoinChainloaderDigestDisagrees,
   ManifestJoinWrongSigningKey,
   SitePxeEdge,
-  SitePxeEdgeArchitectureRefused,
+  SitePxeEdgeClientArchitectureNotAdmitted,
+  SitePxeEdgeChainloaderMismatch,
   SitePxeEdgeEstablished,
   SitePxeEdgeReceipt,
   SitePxeEdgeStanding,
@@ -221,7 +227,7 @@ test fn four_receipts_join_to_established() -> Bool {
     NetworkBootDeliveryEstablished { evidence: e } => e.artifact_digest == artifact
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -245,7 +251,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootServingInfrastructure)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -270,7 +276,7 @@ test fn missing_site_is_not_missing_fleet_serving() -> Bool {
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -295,7 +301,8 @@ test fn mismatched_chainloader_architecture_does_not_establish() -> Bool {
     observation: obs,
     observed_at: 1788000000000,
   ) {
-    SitePxeEdgeArchitectureRefused { architecture: a } => a == Wasm32
+    SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } => c == Aarch64 && l == Wasm32
+    SitePxeEdgeClientArchitectureNotAdmitted { architecture: _ } => false
     SitePxeEdgeEstablished { receipt: _ } => false
     SitePxeEdgeUnestablished => false
   }
@@ -308,7 +315,8 @@ test fn unknown_architecture_does_not_establish() -> Bool {
     observation: obs,
     observed_at: 1788000000000,
   ) {
-    SitePxeEdgeArchitectureRefused { architecture: a } => a == X86_64
+    SitePxeEdgeClientArchitectureNotAdmitted { architecture: a } => a == X86_64
+    SitePxeEdgeChainloaderMismatch { client: _, chainloader: _ } => false
     SitePxeEdgeEstablished { receipt: _ } => false
     SitePxeEdgeUnestablished => false
   }
@@ -332,7 +340,8 @@ test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
     manifest: manifest_ok(),
   }
   match join_network_boot_delivery(inputs: inputs) {
-    NetworkBootDeliveryArchitectureRefused { architecture: a } => a == X86_64
+    NetworkBootDeliveryArchitectureRefused { cause: ClientArchitectureNotAdmitted { architecture: a } } => a == X86_64
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -363,7 +372,8 @@ test fn unreachable_origin_does_not_establish_site() -> Bool {
   ) {
     SitePxeEdgeUnestablished => true
     SitePxeEdgeEstablished { receipt: _ } => false
-    SitePxeEdgeArchitectureRefused { architecture: _ } => false
+    SitePxeEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SitePxeEdgeChainloaderMismatch { client: _, chainloader: _ } => false
   }
 }
 
@@ -376,7 +386,8 @@ test fn unobserved_discovery_does_not_establish_site() -> Bool {
   ) {
     SitePxeEdgeUnestablished => true
     SitePxeEdgeEstablished { receipt: _ } => false
-    SitePxeEdgeArchitectureRefused { architecture: _ } => false
+    SitePxeEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SitePxeEdgeChainloaderMismatch { client: _, chainloader: _ } => false
   }
 }
 
@@ -402,7 +413,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
@@ -447,7 +458,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
@@ -465,7 +476,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -512,7 +523,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
@@ -542,7 +553,7 @@ test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
@@ -585,7 +596,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
@@ -606,7 +617,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootClientBootMode)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -642,7 +653,7 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
@@ -699,7 +710,108 @@ test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
     manifest: manifest_ok(),
   }
   match join_network_boot_delivery(inputs: inputs) {
-    NetworkBootDeliveryArchitectureRefused { architecture: a } => a == Wasm32
+    NetworkBootDeliveryArchitectureRefused { cause: LoaderNotAdmittedOnSlice { architecture: a } } => a == Wasm32
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
+  }
+}
+
+test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
+    fleet: fleet_ok(),
+    site: SitePxeEdgeEstablished {
+      receipt: SitePxeEdgeReceipt {
+        edge: SitePxeEdge {
+          site: "onboarding-segment" as SiteIdentity,
+          admitted_architectures: [Wasm32],
+          discovery: SiteNativeDhcp,
+          bootstrap_transport: ArchitectureChainloader {
+            architecture: Aarch64,
+            filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+            chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+          },
+          global_endpoint_reachability: GlobalHttpsEndpointReachable { observation: obs, observed_at: 1788000000000 },
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+    },
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: manifest_ok(),
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnEdge { architecture: a } } => a == Aarch64
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliveryTrustUnestablished => false
+  }
+}
+
+test fn ticket_architecture_not_on_slice_is_located() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    trust: ProductionTrustedBootstrap,
+    fleet: fleet_ok(),
+    site: SitePxeEdgeEstablished {
+      receipt: SitePxeEdgeReceipt {
+        edge: SitePxeEdge {
+          site: "onboarding-segment" as SiteIdentity,
+          admitted_architectures: [Wasm32],
+          discovery: SiteNativeDhcp,
+          bootstrap_transport: ArchitectureChainloader {
+            architecture: Aarch64,
+            filename_hint: DhcpFilenameHint { filename: "snponly.efi" },
+            chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+          },
+          global_endpoint_reachability: GlobalHttpsEndpointReachable { observation: obs, observed_at: 1788000000000 },
+        },
+        observation: obs,
+        observed_at: 1788000000000,
+      },
+    },
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerified {
+      identity: SignedBootManifestIdentity {
+        target_unit: unit,
+        attempt_id: attempt,
+        nonce: "nonce-0a",
+        architecture: Wasm32,
+        chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
+        kernel_digest: content_hash_of_value(value: "kernel-fixture"),
+        initrd_digest: content_hash_of_value(value: "initrd-fixture"),
+        root_digest: artifact,
+        kernel_cmdline: "console=ttyAMA0",
+        not_before: 1788000000000,
+        expiry: 1788003600000,
+        signing_key_identity: "boot-manifest-key-0",
+        callback_identity: "intake-callback-0",
+      },
+      observation: obs,
+      observed_at: 1788000000000,
+    },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnSlice { architecture: a } } => a == Wasm32
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
@@ -754,7 +866,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
@@ -797,7 +909,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
   }
@@ -819,7 +931,7 @@ test fn unestablished_trust_does_not_join() -> Bool {
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -842,7 +954,7 @@ test fn controlled_network_trust_can_establish() -> Bool {
     NetworkBootDeliveryEstablished { evidence: e } => e.artifact_digest == artifact
     NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -873,7 +985,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
       axis == NetworkBootClientBootMode && (o.decl_name as String) == "srv4_bmc_netboot_serve_plan"
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
@@ -904,7 +1016,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
       axis == NetworkBootServingInfrastructure && (o.decl_name as String) == "srv4_bmc_netboot_serve_plan"
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryUnestablished { missing: _ } => false
-    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
     NetworkBootDeliveryManifestRefused { cause: _ } => false
