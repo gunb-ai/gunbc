@@ -2,7 +2,7 @@ module test.claim.spark.spark_pair_serving_apply_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { host_identity_eq }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv12 }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.pair_serving_realization { spark_pair_realizations }
 import gunbc.spark.pair_serving_apply {
   SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused, SparkPairHostApplyPlan,
@@ -66,15 +66,14 @@ test fn the_script_is_made_of_the_rendered_argv_and_carries_the_cache_over() -> 
   })
 }
 
-// BOTH PROMOTED GROUPS PLAN, NONE REFUSES, AND THE SECOND PLAN IS GROUP B: srv9's head with three
-// workers including srv12, so one apply carries the whole desired roster.
-test fn every_promoted_group_plans_and_the_second_is_group_b_headed_by_srv9() -> Bool {
+// EVERY CLAIMED GROUP PLANS AND NONE REFUSES: one plan per authority row, so one apply carries
+// the whole claimed roster. The roster is the authority population -- Group A alone since the
+// membership became a projection of gunbc.spark.pair_serving_authority (#11501) -- and this claim
+// reads its expected count from that population rather than from a literal, so an earlier
+// spelling that named a second group headed by srv9 with srv12 was measuring a roster that no
+// longer exists. The head-and-workers shape of the one plan is the claim above.
+test fn every_claimed_group_plans_and_none_refuses() -> Bool {
   let plans = spark_pair_apply_plans_current(current: w_current())
-  length(plans) == 2 && length(spark_pair_apply_plan_refusals(plans: plans)) == 0
-    && any(plans, p => match p {
-         SparkPairApplyRefused { cause: _ } => false
-         SparkPairApplyPlanned { workers: ws, head: h } =>
-           length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv9)
-             && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv12))
-       })
+  length(plans) == length(spark_pair_serving_authorities) && length(plans) >= 1
+    && length(spark_pair_apply_plan_refusals(plans: plans)) == 0
 }
