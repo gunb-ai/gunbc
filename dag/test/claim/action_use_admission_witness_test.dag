@@ -25,6 +25,8 @@ import gunbc.action_use_admission {
   realized_use_is_a_repository_selection,
 }
 import gunbc.fleet_desired_admission_workflow { fleet_desired_admission_workflow }
+import gunbc.generated_artifact { artifact_location }
+import gunbc.generated_workflow_provenance { generated_workflow_artifacts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -244,6 +246,7 @@ data realized_workflow_directory: String = ".github/workflows"
 
 type RealizedCensus {
   files: Int
+  generated_files: Int
   uses: Int
   refused: List<String>
   admitted_texts: List<String>
@@ -253,13 +256,13 @@ fn census_one_file(acc: RealizedCensus, path: String) -> RealizedCensus {
   let read = filesystem_read(path: path)
   match realized_workflow_action_uses(path: path, source: read.content) {
     RealizedWorkflowUnreadable { workflow_path: p, reason: r } =>
-      RealizedCensus { files: acc.files + 1, uses: acc.uses, refused: concat(acc.refused, [join([p, ": unreadable: ", r], "")]), admitted_texts: acc.admitted_texts }
+      RealizedCensus { files: acc.files + 1, generated_files: acc.generated_files, uses: acc.uses, refused: concat(acc.refused, [join([p, ": unreadable: ", r], "")]), admitted_texts: acc.admitted_texts }
     RealizedWorkflowUses { workflow_path: p, uses: us } =>
-      fold(us, init: RealizedCensus { files: acc.files + 1, uses: acc.uses, refused: acc.refused, admitted_texts: acc.admitted_texts }, f: fn(c, u) {
+      fold(us, init: RealizedCensus { files: acc.files + 1, generated_files: acc.generated_files, uses: acc.uses, refused: acc.refused, admitted_texts: acc.admitted_texts }, f: fn(c, u) {
         if action_use_admitted(a: admit_realized_action_use(u: u)) && realized_use_is_a_repository_selection(uses_text: u.uses_text) {
-          RealizedCensus { files: c.files, uses: c.uses + 1, refused: c.refused, admitted_texts: concat(c.admitted_texts, [u.uses_text]) }
+          RealizedCensus { files: c.files, generated_files: c.generated_files, uses: c.uses + 1, refused: c.refused, admitted_texts: concat(c.admitted_texts, [u.uses_text]) }
         } else {
-          RealizedCensus { files: c.files, uses: c.uses + 1, refused: concat(c.refused, [join([p, " job ", u.job_id, ": ", u.uses_text], "")]), admitted_texts: c.admitted_texts }
+          RealizedCensus { files: c.files, generated_files: c.generated_files, uses: c.uses + 1, refused: concat(c.refused, [join([p, " job ", u.job_id, ": ", u.uses_text], "")]), admitted_texts: c.admitted_texts }
         }
       })
   }
@@ -267,17 +270,35 @@ fn census_one_file(acc: RealizedCensus, path: String) -> RealizedCensus {
 
 // GitHub executes the .yml and .yaml files directly inside .github/workflows; subdirectories and
 // other files are not workflows.
+//
+// A FILE A GENERATOR OWNS IS NOT RE-PARSED HERE, BECAUSE ITS USES ARE ALREADY ADMITTED ON ROUTE 1.
+// Each generator in gunbc.generated_artifact runs admit_workflow_action_uses before it emits and
+// refuses on any refused use, and the heal-generated-artifacts job regenerates those files on every
+// pull request -- so the committed bytes converge to an admitted emission. Parsing them again
+// re-executed the generator's subject (about 530,000 of this claim's 590,000 eval steps against a
+// 72,300 budget), which DESIGN section 3's witness rule names as duplicated work. What this census
+// owns is the population no generator sees, identified by joining the listing to the generated
+// artifact registry by location (gunbc.generated_workflow_provenance generated_workflow_artifacts through gunbc.generated_artifact artifact_location). What it gives up is stated in
+// gunbc.recurring_failure_mode.provider_substituted_action_runtime: a hand edit to a generated
+// workflow is overwritten by heal, not refused here.
 fn realized_census() -> RealizedCensus {
   let listed = Filesystem.List(path: realized_workflow_directory, expect: ExpectSuccess)
-  let empty = RealizedCensus { files: 0, uses: 0, refused: [], admitted_texts: [] }
+  let empty = RealizedCensus { files: 0, generated_files: 0, uses: 0, refused: [], admitted_texts: [] }
   if !listed.success {
-    RealizedCensus { files: 0, uses: 0, refused: [concat("listing refused: ", listed.error)], admitted_texts: [] }
+    RealizedCensus { files: 0, generated_files: 0, uses: 0, refused: [concat("listing refused: ", listed.error)], admitted_texts: [] }
   } else {
+    let generated = fold(generated_workflow_artifacts, init: [], f: fn(acc, a) {
+      let l = artifact_location(a: a)
+      if l.directory == realized_workflow_directory { concat(acc, [join([l.directory, "/", l.name], "")]) } else { acc }
+    })
     fold(split(s: listed.entries, delimiter: "\n"), init: empty, f: fn(acc, name) {
-      if name.ends_with(suffix: ".yml") || name.ends_with(suffix: ".yaml") {
-        census_one_file(acc: acc, path: join([realized_workflow_directory, "/", name], ""))
-      } else {
+      let path = join([realized_workflow_directory, "/", name], "")
+      if !(name.ends_with(suffix: ".yml") || name.ends_with(suffix: ".yaml")) {
         acc
+      } else if any(generated, g => g == path) {
+        RealizedCensus { files: acc.files + 1, generated_files: acc.generated_files + 1, uses: acc.uses, refused: acc.refused, admitted_texts: acc.admitted_texts }
+      } else {
+        census_one_file(acc: acc, path: path)
       }
     })
   }
@@ -285,16 +306,16 @@ fn realized_census() -> RealizedCensus {
 
 // ZERO forced substitutions, ZERO unmodeled uses, ZERO unresolved producers, ZERO unreadable
 // workflows, and every use IS a repository selection (gunbc.action_use_admission
-// repository_action_selections) -- so a hand-authored file cannot pin an admitted commit the
-// selection rows do not choose, -- over a population that is not empty, and that demonstrably reached the real
-// artifact step: the selected upload-artifact release is among the admitted uses, so the join ran
-// over witnesses.yml's actual lines and not over nothing.
+// repository_action_selections), so a hand-authored file cannot pin an admitted commit the
+// selection rows do not choose. The population is not empty: the listing found generated files (so
+// the roster join ran) AND at least one hand-authored file, whose real checkout and github-script
+// steps are among the admitted uses -- the join ran over actual lines, not over nothing.
 test fn every_realized_workflow_action_use_is_modeled_and_executed_exactly() -> Bool {
   let c = realized_census()
   (c.refused |> count) == 0
-    && c.files > 0
+    && c.generated_files > 0
+    && c.files > c.generated_files
     && c.uses > 0
-    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_artifact_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: github_script_action))
 }

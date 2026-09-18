@@ -58,9 +58,20 @@ fn yaml_looks_like_int(s: String) -> Bool {
   }
 }
 
+// COUNTED IN CHUNKS, NOT ONE RECURSIVE CALL PER SPACE. Recursing per space copied the remaining line
+// at every leading space and ran several times per line, so indentation dominated the parse -- about
+// 235 eval steps a line, which put a census of one 143-line workflow file past a whole claim's
+// budget (gunb-ai/gunbc#11587). Consuming the largest run of 8, 4, 2 or 1 spaces per call gives the
+// identical count (spaces only; a tab still ends the indentation) in a handful of calls.
 fn yaml_indent_of(line: String) -> Int {
-  if starts_with(s: line, prefix: " ") {
-    1 + yaml_indent_of(line: substring(s: line, start: 1, end: line.length()))
+  if starts_with(s: line, prefix: "        ") {
+    8 + yaml_indent_of(line: substring(s: line, start: 8, end: line.length()))
+  } else if starts_with(s: line, prefix: "    ") {
+    4 + yaml_indent_of(line: substring(s: line, start: 4, end: line.length()))
+  } else if starts_with(s: line, prefix: "  ") {
+    2 + yaml_indent_of(line: substring(s: line, start: 2, end: line.length()))
+  } else if starts_with(s: line, prefix: " ") {
+    1
   } else {
     0
   }
