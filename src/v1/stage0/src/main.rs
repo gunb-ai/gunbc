@@ -1014,18 +1014,6 @@ mod tests {
     }
 
     #[test]
-    fn emitted_non_gunbc_cli_has_no_gunbc_build_environment_dependency() {
-        let rendered = v1_compiler::v1_compiler_emit_rust::emit_cli_struct(
-            std::rc::Rc::new(im::vector![]),
-            "user-program".to_string(),
-            "".to_string(),
-            "".to_string(),
-        );
-        assert!(!rendered.contains("GUNBC_BUILD_IDENTITY"));
-        assert!(!rendered.contains("version ="));
-    }
-
-    #[test]
     fn extract_module_path_none_for_moduleless_parse_fixture() {
         let fixture =
             "data split_brace_sample: SplitBraceSample =\nSplitBraceSample { field: \"x\" }\n";

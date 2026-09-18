@@ -430,8 +430,6 @@ type CompilerDiagnostic
   | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
   | UnlistedVariantValueUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
-  | DataReferenceVisibilityBudgetExceeded { name: String, span: SourceSpan }
-  | ParameterDefaultFormNotAdmitted { parameter: String, admitted: List<String>, span: SourceSpan }
   | AmbiguousAnonymousRecordLiteral { candidates: List<String>, span: SourceSpan }
   | EffectfulSelfRecursionUnrealized { name: String, span: SourceSpan }
   | ModuleFilenameCollision { filename: String, modules: List<String>, span: SourceSpan }
@@ -652,8 +650,6 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
     UnlistedVariantValueUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
-    DataReferenceVisibilityBudgetExceeded { name: _, span: s } => s
-    ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: s } => s
     AmbiguousAnonymousRecordLiteral { candidates: _, span: s } => s
     EffectfulSelfRecursionUnrealized { name: _, span: s } => s
     ModuleFilenameCollision { filename: _, modules: _, span: s } => s
@@ -750,10 +746,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("the provider of '", n, "' is present but its export could not be established: module '", rm, "' references the name, the registry maps it to '", p, "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold")
     UnlistedVariantValueUse { name: n, span: _ } => concat("unlisted variant value use '", n, "' (a coproduct arm referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
-    DataReferenceVisibilityBudgetExceeded { name: n, span: _ } =>
-      concat("visible declarations of '", n, "' could not be enumerated: the import re-export walk exceeded its depth bound, so no verdict is asserted about how many declarations answer to the name")
-    ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, span: _ } =>
-      concat("default value for parameter '", p, "' is not an admitted form (admitted: ", join(forms, separator: ", "), ")")
     AmbiguousAnonymousRecordLiteral { candidates: cs, span: _ } => concat("ambiguous anonymous record literal shape matches ", to_string(value: cs |> count), " structs: ", join(cs, separator: ", "), " — add a nominal type")
     EffectfulSelfRecursionUnrealized { name: n, span: _ } => concat("effectful declaration '", n, "' calls itself: the Rust realization renders an effectful declaration as `async fn`, and rustc refuses recursion in an async fn without boxing (E0733), which no emitter performs. Realize the recursion as a loop, or move the self-call into a pure helper.")
     ModuleFilenameCollision { filename: f, modules: ms, span: _ } => concat("module filename collision: ", to_string(value: ms |> count), " modules render one emitted file name '", f, "': ", join(ms, separator: ", "), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment")
@@ -884,8 +876,6 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     UnlistedVariantValueUse { name: _, span: _ } => DiagnosticDisposition { severity: SeverityNonError, gate: GateAdvisoryTypecheck }
     AmbiguousReference { name: _, candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
-    DataReferenceVisibilityBudgetExceeded { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
-    ParameterDefaultFormNotAdmitted { parameter: _, admitted: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     AmbiguousAnonymousRecordLiteral { candidates: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EffectfulSelfRecursionUnrealized { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ModuleFilenameCollision { filename: _, modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -1116,7 +1106,6 @@ type DeclaredFuncSig {
   name: String
   params: List<Node>
   inferred: Node?
-  is_async: Bool
   output_provenance: List<Map<String, SubValueRelation>>
   variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
 }
