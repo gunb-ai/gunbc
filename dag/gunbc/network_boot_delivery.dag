@@ -9,6 +9,7 @@ import extdeps.provisioning.dhcp_client_arch { UefiArm64, dhcp_processor_archite
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
+import gunbc.network_boot_predecessor_census { observation_cannot_establish_network_boot }
 
 // THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
 // namespace ruling). Its four evidence axes have independent producers — client firmware mode,
@@ -291,6 +292,31 @@ fn boot_artifacts_axis_present(manifest: SignedBootManifestStanding, digest: Con
   }
 }
 
+fn join_observations_are_establishing(
+  boot_source: DeclarationRef,
+  client: DeclarationRef,
+  serving: DeclarationRef,
+  artifacts: DeclarationRef,
+) -> Bool {
+  if observation_cannot_establish_network_boot(obs: boot_source) {
+    false
+  } else {
+    if observation_cannot_establish_network_boot(obs: client) {
+      false
+    } else {
+      if observation_cannot_establish_network_boot(obs: serving) {
+        false
+      } else {
+        if observation_cannot_establish_network_boot(obs: artifacts) {
+          false
+        } else {
+          true
+        }
+      }
+    }
+  }
+}
+
 fn join_evidence(requirement: NetworkBootRequirement, observation: DeclarationRef, observed_at: EpochMs) -> NetworkBootRequirementEvidence {
   NetworkBootRequirementEvidence {
     requirement: requirement,
@@ -333,20 +359,60 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                       match inputs.manifest {
                         SignedBootManifestAbsent => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootArtifacts] }
                         SignedBootManifestIdentified { identity: _, observation: manifest_obs, observed_at: manifest_at } =>
-                          NetworkBootDeliveryEstablished {
-                            evidence: NetworkBootDeliveryEstablishment {
-                              target: inputs.target,
-                              boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
-                              client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
-                              serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
-                              boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
-                              artifact_digest: inputs.artifact_digest,
-                            },
+                          if join_observations_are_establishing(
+                            boot_source: control.observation,
+                            client: client.observation,
+                            serving: fleet.observation,
+                            artifacts: manifest_obs,
+                          ) {
+                            NetworkBootDeliveryEstablished {
+                              evidence: NetworkBootDeliveryEstablishment {
+                                target: inputs.target,
+                                boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
+                                client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
+                                serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
+                                boot_artifacts: join_evidence(requirement: NetworkBootBootArtifacts, observation: manifest_obs, observed_at: manifest_at),
+                                artifact_digest: inputs.artifact_digest,
+                              },
+                            }
+                          } else {
+                            NetworkBootDeliveryUnestablished { missing: [NetworkBootServingInfrastructure] }
                           }
                       }
                   }
               }
           }
+      }
+  }
+}
+
+// 0WET subject is a PARAMETER, not a UnitKey. Operator 2026-09-18: not Mt. Collins until its
+// CD boot lands; no other ARM64 unit was named, so the first candidate is Mt. Jade (arriving,
+// barebones, no drives) and Mt. Collins post-CD is the fallback. Minting a fleet key here
+// would fabricate an identity the operator did not bind.
+type WetAcceptanceCandidate
+  = MtJadeArrivingBarebones
+  | MtCollinsAfterCdBoot
+
+type WetAcceptanceSubjectStanding
+  = WetAcceptanceSubjectUnbound {
+      proposed_first: WetAcceptanceCandidate
+      fallback: WetAcceptanceCandidate
+    }
+
+fn wet_acceptance_subject() -> WetAcceptanceSubjectStanding {
+  WetAcceptanceSubjectUnbound {
+    proposed_first: MtJadeArrivingBarebones,
+    fallback: MtCollinsAfterCdBoot,
+  }
+}
+
+fn wet_acceptance_binds_mt_collins_now(standing: WetAcceptanceSubjectStanding) -> Bool {
+  match standing {
+    WetAcceptanceSubjectUnbound { proposed_first: first, fallback: _ } =>
+      match first {
+        MtCollinsAfterCdBoot => true
+        MtJadeArrivingBarebones => false
       }
   }
 }
