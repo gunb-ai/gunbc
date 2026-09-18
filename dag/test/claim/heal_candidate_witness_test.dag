@@ -18,6 +18,25 @@ import gunbc.generated_artifact { committed_generated_artifact_paths }
 import extdeps.github.effect { RepositoryPath, is_workflow_projection_path }
 import gunbc.heal_candidate { candidate_proposable_paths }
 
+// NO CLAIM HERE TOUCHES THE REAL REGISTRY, AND THE REASON IS MEASURED RATHER THAN ASSUMED.
+// committed_generated_artifact_paths() costs ~43,000 eval steps and ~119ms to produce AT ALL -- the
+// cost is the registry fold itself, not the per-path predicate, so `any` short-circuiting on the
+// first match does not help and neither does any other formulation. The required floor refused a
+// 44,281-step sibling of exactly this shape at the 302ms enrolment margin; shipping a 43,066-step
+// one would repeat it.
+//
+// TWO EARLIER READINGS WERE WRONG AND ARE RECORDED SO THE NEXT AUTHOR DOES NOT REDERIVE THEM. A
+// version of this claim once measured 3,232 steps -- borrowed, not earned: a more expensive sibling
+// had already computed the same fold and cross-claim sharing reused it, so deleting the sibling made
+// the "cheap" claim cost 44,097. And the cost was attributed to is_workflow_projection_path at
+// roughly a thousand steps per path, which the short-circuit experiment falsified.
+//
+// WHAT IS LOST IS LESS THAN IT LOOKS. The claim above establishes what the filter DOES, and
+// gunbc.heal_candidate calls that same function on the real registry. If the registry happened to
+// carry no workflow projection the filter would be a no-op and the property would hold vacuously,
+// which is the harmless direction. The direction that matters -- a workflow path reaching the
+// candidate and refusing the whole publication -- is exactly what the supplied-path claim forbids.
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // `git ls-files -z --stage` prints `<mode> SP <oid> SP <stage>TAB<path>` and terminates each record
@@ -180,22 +199,3 @@ test fn witness_the_filter_drops_workflow_paths_and_keeps_others() -> Bool {
     && any(kept, p => p == "DESIGN.md")
     && any(kept, p => p == "ROADMAP.md")
 }
-
-// NO CLAIM HERE TOUCHES THE REAL REGISTRY, AND THE REASON IS MEASURED RATHER THAN ASSUMED.
-// committed_generated_artifact_paths() costs ~43,000 eval steps and ~119ms to produce AT ALL -- the
-// cost is the registry fold itself, not the per-path predicate, so `any` short-circuiting on the
-// first match does not help and neither does any other formulation. The required floor refused a
-// 44,281-step sibling of exactly this shape at the 302ms enrolment margin; shipping a 43,066-step
-// one would repeat it.
-//
-// TWO EARLIER READINGS WERE WRONG AND ARE RECORDED SO THE NEXT AUTHOR DOES NOT REDERIVE THEM. A
-// version of this claim once measured 3,232 steps -- borrowed, not earned: a more expensive sibling
-// had already computed the same fold and cross-claim sharing reused it, so deleting the sibling made
-// the "cheap" claim cost 44,097. And the cost was attributed to is_workflow_projection_path at
-// roughly a thousand steps per path, which the short-circuit experiment falsified.
-//
-// WHAT IS LOST IS LESS THAN IT LOOKS. The claim above establishes what the filter DOES, and
-// gunbc.heal_candidate calls that same function on the real registry. If the registry happened to
-// carry no workflow projection the filter would be a no-op and the property would hold vacuously,
-// which is the harmless direction. The direction that matters -- a workflow path reaching the
-// candidate and refusing the whole publication -- is exactly what the supplied-path claim forbids.
