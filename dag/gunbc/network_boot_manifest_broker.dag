@@ -6,8 +6,8 @@ import std.decl_ref { DeclarationRef }
 import extdeps.toolchain.types { Architecture }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode }
 import extdeps.provisioning.dhcp_client_arch {
-  dhcp_client_processor_architecture,
   dhcp_processor_architecture_code,
+  uefi_processor_architecture,
 }
 import extdeps.crypto.mac {
   MacKey,
@@ -127,7 +127,7 @@ fn epoch_ms_text(t: EpochMs) -> String {
 
 fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr? {
   let id = c.identity
-  match dhcp_client_processor_architecture(arch: id.architecture, mode: c.boot_mode) {
+  match uefi_processor_architecture(arch: id.architecture) {
     Absent => none
     Present { value: dhcp_arch } =>
       Present {
@@ -266,31 +266,27 @@ fn verify_authenticated_boot_manifest(
   } else if id.architecture != expectation.architecture {
     refused(class: ManifestVerificationWrongArchitecture)
   } else {
-    match dhcp_client_processor_architecture(arch: id.architecture, mode: claims.boot_mode) {
+    match uefi_processor_architecture(arch: id.architecture) {
       Absent => refused(class: ManifestVerificationWrongArchitecture)
-      Present { value: claimed_dhcp } =>
-        match dhcp_client_processor_architecture(arch: expectation.architecture, mode: expectation.boot_mode) {
-          Absent => refused(class: ManifestVerificationWrongArchitecture)
-          Present { value: expected_dhcp } =>
-            if claimed_dhcp != expected_dhcp {
-              refused(class: ManifestVerificationWrongFirmwareClass)
-            } else if expectation.observed_at < id.not_before {
-              refused(class: ManifestVerificationNotYetValid)
-            } else if expectation.observed_at >= id.expiry {
-              refused(class: ManifestVerificationExpired)
-            } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: id.attempt_id, nonce: id.nonce) {
-              refused(class: ManifestVerificationReplay)
-            } else if content_hash_equal(left: id.chainloader_digest, right: expectation.artifacts.chainloader) == false {
-              refused(class: ManifestVerificationDigest)
-            } else if content_hash_equal(left: id.kernel_digest, right: expectation.artifacts.kernel) == false {
-              refused(class: ManifestVerificationDigest)
-            } else if content_hash_equal(left: id.initrd_digest, right: expectation.artifacts.initrd) == false {
-              refused(class: ManifestVerificationDigest)
-            } else if content_hash_equal(left: id.root_digest, right: expectation.artifacts.root) == false {
-              refused(class: ManifestVerificationDigest)
-            } else {
-              BootManifestAuthentic { claims: claims }
-            }
+      Present { value: _ } =>
+        if claims.boot_mode != expectation.boot_mode {
+          refused(class: ManifestVerificationWrongFirmwareClass)
+        } else if expectation.observed_at < id.not_before {
+          refused(class: ManifestVerificationNotYetValid)
+        } else if expectation.observed_at >= id.expiry {
+          refused(class: ManifestVerificationExpired)
+        } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: id.attempt_id, nonce: id.nonce) {
+          refused(class: ManifestVerificationReplay)
+        } else if content_hash_equal(left: id.chainloader_digest, right: expectation.artifacts.chainloader) == false {
+          refused(class: ManifestVerificationDigest)
+        } else if content_hash_equal(left: id.kernel_digest, right: expectation.artifacts.kernel) == false {
+          refused(class: ManifestVerificationDigest)
+        } else if content_hash_equal(left: id.initrd_digest, right: expectation.artifacts.initrd) == false {
+          refused(class: ManifestVerificationDigest)
+        } else if content_hash_equal(left: id.root_digest, right: expectation.artifacts.root) == false {
+          refused(class: ManifestVerificationDigest)
+        } else {
+          BootManifestAuthentic { claims: claims }
         }
     }
   }
