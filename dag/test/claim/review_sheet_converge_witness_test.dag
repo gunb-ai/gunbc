@@ -18,6 +18,8 @@ import gunbc.review_sheet_projection {
   ObservedSheetRow,
   ReviewSheetWritePlan,
   DerivedCellWrite,
+  AppendCellRun,
+  AppendListingRow,
   ReviewSheetConverged,
   ReviewSheetNeedsWrite,
   ReviewSheetConflict,
