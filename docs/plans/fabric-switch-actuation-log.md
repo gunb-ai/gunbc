@@ -4,9 +4,13 @@ Operator-approved workaround (2026-09-17): the switch and host link modes were d
 directly over the RouterOS REST API and the host's `mstlink`, from a session on the LAN,
 ahead of the modeled convergence path (docs/plans/fabric-switch-convergence-build-plan.md).
 
-**This file is the transcription source for that modeled apply, and its dissolution
-trigger.** It records the facts established, the exact commands that were run, and the
-verdict — so PR-3's converge is a transcription of what worked, not a fresh guess. The
+**This file is an INPUT to the modeled apply, and its dissolution trigger** -- it is NOT an
+exact transcription of a successful configuration, because no bilateral 100G configuration
+worked. It records the facts established, the NORMALIZED operation shapes attempted (with
+placeholders like `<iface>`/`<pci>`/`<dev>`, and RouterOS CLI equivalents for REST
+mutations), and the verdict. A future receipt may carry the exact REST method, resource
+identity, request body, real interface/PCI identifiers, timestamps and pre/post
+observations; that is safely deferred. The
 scaffold is retired when that modeled path lands and reproduces this end state. Round-by-
 round exploration (wrong turns, corrected framings) is intentionally NOT preserved here;
 git history carries it, and this file states each conclusion once, at witnessed confidence.
@@ -27,7 +31,7 @@ git history carries it, and this file states each conclusion once, at witnessed 
 - Lane roster (cage:lane -> host): 1:1 srv5, 1:3 srv8, 1:5 srv7, 1:7 srv6, 2:1 srv10,
   2:3 srv12, 2:5 srv9, 2:7 srv11.
 
-## Commands run (the transcription source)
+## Normalized operation shapes attempted (an input to the modeled actuator)
 
 Switch, per lane, over `/rest/interface/ethernet/<iface>` (RouterOS CLI form):
 ```
@@ -57,7 +61,9 @@ locally while the host never trains. On the autoneg path, RouterOS reports
 
 This makes **switch-side QSFP-DD coding/compatibility the leading hypothesis, NOT a proven
 cause**: the current tests do not isolate it from signal integrity, lane grouping,
-firmware, or endpoint interoperability. All 8 legs were restored and verified at 50G.
+firmware, or endpoint interoperability. The tested srv5 leg was the mutated specimen and
+was restored and verified at 50G; all eight legs were verified at their known-good 50G state
+after the experiment.
 
 ## Next step: a substitution control, not more configuration
 

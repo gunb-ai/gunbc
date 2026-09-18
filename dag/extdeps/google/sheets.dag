@@ -400,6 +400,15 @@ type BatchUpdateValuesResponse {
 // renders as "[A1:Q1]", so a List input would have sent one bracketed literal that Sheets would
 // read as a malformed range. A caller needing several ranges needs repeated-parameter support in
 // the transport first, which is the trigger for widening this back.
+//
+// GetSpreadsheetMetadata CARRIES NO RANGE, AND THAT IS THE WHOLE REASON IT IS A SECOND OPERATION
+// BESIDE GetSpreadsheet RATHER THAN A DIFFERENT ARGUMENT TO IT. `ranges` cannot be omitted by
+// passing an empty string -- Sheets answers 400 "Unable to parse range: " -- and a declared query
+// parameter cannot be left out, so a caller that needs sheet METADATA rather than grid data needs
+// an operation that never names a range. It also must not name one: Sheets filters
+// conditionalFormats to the rules INTERSECTING the requested ranges, so any range chosen to bound
+// a grid read silently hides the rules that fall outside it, which is how a readback came to be
+// unable to see its own work (gunbc.recurring_failure_mode readback_scoped_to_exclude_the_effect_it_verifies).
 service sheets.Spreadsheets {
   config {
     endpoint: sheets_api_base
@@ -423,6 +432,31 @@ service sheets.Spreadsheets {
       method: GET,
       path: "/spreadsheets/\{spreadsheet_id\}",
       query: { ranges: range, fields: fields, includeGridData: include_grid_data }
+    }
+    response {
+      200 => SpreadsheetRead
+      400 => SheetsError
+      401 => SheetsError
+      403 => SheetsError
+      404 => SheetsError
+      429 => SheetsError
+      500 => SheetsError
+    }
+  }
+  operation GetSpreadsheetMetadata {
+    input {
+      spreadsheet_id: String
+      fields: String
+    }
+    output {
+      result: SpreadsheetRead
+      outcome: RestOutcome
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/spreadsheets/\{spreadsheet_id\}",
+      query: { fields: fields }
     }
     response {
       200 => SpreadsheetRead

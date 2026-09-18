@@ -3,6 +3,12 @@ module test.claim.runner.runner_slot_retirement_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.types { NonEmptyStr, String }
+import gunbc.systemctl_show_read {
+  systemctl_show_property_value_from_stdout,
+  SystemdPropertyCaptured,
+  SystemdPropertyBlank,
+  SystemdPropertyCaptureRefused,
+}
 import gunbc.host_axis_caps {
   CapRaiseAdmitted,
   CapRaiseBlockedIncompleteEvidence,
@@ -38,6 +44,11 @@ import gunbc.runner_slot_retirement {
   GracefulRetirement,
   InterruptionAuthorization,
   srv4_transition_interruption_authorization,
+  srv1_transition_interruption_authorization,
+  interruption_authorization_for_host,
+  HostInterruptionAuthorizationPresent,
+  HostInterruptionAuthorizationAbsent,
+  interruption_authorization_covers,
   RetirementAttempted,
   RetirementMethodRefused,
   attempt_completes_retirement,
@@ -48,6 +59,10 @@ import gunbc.runner_slot_retirement {
   retirement_observation_from_readings,
   authorized_retirement_actuation,
   cgroup_occupancy_from_reads,
+  control_group_property_means_cgroup_absent,
+  retirement_property_text,
+  RetirementPropertyRead,
+  RetirementPropertyUnreadable,
   transition_interruption_coverage,
   TransitionFullyPermitted,
   TransitionRetireesNotPermitted,
@@ -466,6 +481,66 @@ test fn a_masked_unit_is_inhibited_rather_than_missing() -> Bool {
   o.replacement_inhibited && !o.service_running
 }
 
+// INHIBITED BUT STILL RUNNING IS NOT RETIRED. Replacement inhibition is obligation 1; a live
+// service is the opposite of obligation 3. Completing on the mask alone would authorize teardown
+// and a cap raise while the slot is still serving.
+test fn inhibited_but_service_still_running_is_not_retired() -> Bool {
+  match runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv1-22.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "active",
+      occupancy: CgroupObservedEmpty,
+    ),
+  ) {
+    RetirementPendingDrain { unit: _, cause: c } => string_contains(s: c, pattern: "still running")
+    RetirementComplete { unit: _ } => false
+    RetirementUnobserved { unit: _, cause: _ } => false
+  }
+}
+
+// A SUCCESSFULLY READ EMPTY ControlGroup IS ABSENCE. The live remainder trees on srv1 report a blank
+// path because they have no workload cgroup; treating that as unobserved withheld the inhibitor.
+test fn an_empty_control_group_path_is_cgroup_absent() -> Bool {
+  control_group_property_means_cgroup_absent(value: "")
+    && control_group_property_means_cgroup_absent(value: "   ")
+    && !control_group_property_means_cgroup_absent(value: "/system.slice/actions-runner@srv1-22.service")
+    && match runner_retirement_standing(
+      o: retirement_observation_from_readings(
+        unit: "actions-runner@srv1-22.service" as NonEmptyStr,
+        unit_file_state: "disabled",
+        active_state: "inactive",
+        occupancy: CgroupAbsent,
+      ),
+    ) {
+      RetirementPendingDrain { unit: _, cause: _ } => true
+      RetirementComplete { unit: _ } => false
+      RetirementUnobserved { unit: _, cause: _ } => false
+    }
+}
+
+test fn empty_systemctl_show_stdout_is_a_blank_property_reading() -> Bool {
+  match systemctl_show_property_value_from_stdout(success: true, stdout: "") {
+    SystemdPropertyBlank =>
+      match systemctl_show_property_value_from_stdout(success: true, stdout: "   ") {
+        SystemdPropertyBlank =>
+          match systemctl_show_property_value_from_stdout(success: false, stdout: "") {
+            SystemdPropertyCaptureRefused { reason: _ } =>
+              match retirement_property_text(capture: SystemdPropertyBlank) {
+                RetirementPropertyRead { value: v } => v == ""
+                RetirementPropertyUnreadable { cause: _ } => false
+              }
+            SystemdPropertyCaptured { value: _ } => false
+            SystemdPropertyBlank => false
+          }
+        SystemdPropertyCaptured { value: _ } => false
+        SystemdPropertyCaptureRefused { reason: _ } => false
+      }
+    SystemdPropertyCaptured { value: _ } => false
+    SystemdPropertyCaptureRefused { reason: _ } => false
+  }
+}
+
 // A UNIT MID-STOP IS STILL RUNNING. `deactivating` is the window in which the unit has been asked to
 // stop and its worker has not exited -- exactly when an orphan is most likely and least visible -- so
 // reading only `active` would let that window register as a stopped service.
@@ -696,10 +771,9 @@ test fn a_refused_directory_test_is_unobserved_rather_than_absent() -> Bool {
 // scope gave unauthorized hosts an empty obligation, and unioning scope with the census left an
 // identity required only while the census could still see it.
 
-// srv1 HAS A REAL OBLIGATION AND NO INTERRUPTION PERMISSION, which is the case the permission
-// projection could not express at all. Both halves are asserted: the obligation is non-empty, and the
-// coverage check refuses rather than silently shrinking it.
-test fn srv1_has_a_real_obligation_and_no_permission_to_act_on_it() -> Bool {
+// srv4'S AUTHORIZATION DOES NOT COVER srv1'S OBLIGATION. Permission is host-scoped; borrowing
+// srv4's row must refuse rather than silently shrinking srv1's required set.
+test fn srv4s_authorization_does_not_cover_srv1s_obligation() -> Bool {
   let required = required_retirees_for_host(host: operator_host_srv1)
   list_length(items: required) > 0
     && match transition_interruption_coverage(
@@ -710,6 +784,29 @@ test fn srv1_has_a_real_obligation_and_no_permission_to_act_on_it() -> Bool {
         list_length(items: u) == list_length(items: required) && list_length(items: p) == 0
       TransitionFullyPermitted { units: _ } => false
     }
+}
+
+// srv1'S OWN AUTHORIZATION COVERS ITS OBLIGATION, including the 22..50 remainder a 21-wide prior
+// would have left outside every standing. Without this row the production observer stays absent.
+test fn srv1s_obligation_is_fully_covered_by_its_declared_scope() -> Bool {
+  let required = required_retirees_for_host(host: operator_host_srv1)
+  list_length(items: required) > 0
+    && match interruption_authorization_for_host(host: operator_host_srv1) {
+      HostInterruptionAuthorizationAbsent { host: _, cause: _ } => false
+      HostInterruptionAuthorizationPresent { authorization: auth } =>
+        match transition_interruption_coverage(auth: auth, required: required) {
+          TransitionFullyPermitted { units: p } => list_length(items: p) == list_length(items: required)
+          TransitionRetireesNotPermitted { permitted: _, unpermitted: _ } => false
+        }
+    }
+    && interruption_authorization_covers(
+      auth: srv1_transition_interruption_authorization,
+      unit: "actions-runner@srv1-22.service",
+    )
+    && !interruption_authorization_covers(
+      auth: srv1_transition_interruption_authorization,
+      unit: "actions-runner@srv1-01.service",
+    )
 }
 
 // srv4's OBLIGATION IS COVERED BY THE OPERATOR'S ENUMERATION. This is the positive control for

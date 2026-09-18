@@ -381,6 +381,109 @@ fn review_sheet_ensure_plan(
   }
 }
 
+// THE TYPED AUTHORITY STOPS BEFORE POLICY, AND THAT BOUNDARY IS THE WHOLE POINT. An earlier shape
+// of this split returned EnsureDecided { decision: UpsertDecision<..> } beside a typed refusal sum,
+// which is wrong in a way that is easy to miss: UpsertDecision carries its OWN Refuse arm, whose
+// payload is prose, so a policy refusal -- a NeedsWrite under EnsureObserveOnly, an inaccessible
+// observation, an unavailable plan -- would have travelled back OUTSIDE the typed sum. That is two
+// representations of refusal again, and a typed consumer would still have to know which outer arm
+// might secretly contain another one. So the assessment ends where policy begins: everything here
+// is a fact about the REQUEST and the OBSERVATION, and nothing here has consulted EnsurePolicy.
+//
+// Readback causes are still carried as their rendered reason. Typing them is the next part of this
+// refactor, not an omission: the arm exists so that work changes one constructor rather than this
+// module's shape.
+type ReviewSheetEnsureAssessment
+  = ReviewSheetRequestRejected { cause: SheetRequestCause }
+  | ReviewSheetReadbackRejected { reason: NonEmptyStr }
+  | ReviewSheetProjectionClassified {
+      observed: ObservedSheet
+      tab: NonEmptyStr
+      classification: ReviewSheetClassification
+    }
+
+// THE REQUEST-SHAPE WALLS, TYPED. These two refuse BEFORE anything is read, because an append past
+// unobserved rows or columns is a data-loss risk and not a fact about any projection. They carry
+// the range they refused so a consumer can say which request was rejected without re-deriving it.
+type SheetRequestCause
+  = BoundedRequest { range: SheetA1Range }
+  | ColumnBoundedRequest { range: SheetA1Range }
+
+fn sheet_request_cause_text(cause: SheetRequestCause) -> String {
+  match cause {
+    BoundedRequest { range: r } =>
+      concat("bounded GetValues request; append would write past unobserved rows: ", sheet_a1_range_wire(range: r))
+    ColumnBoundedRequest { range: r } =>
+      concat("column-bounded GetValues request; append would write past unobserved columns: ", sheet_a1_range_wire(range: r))
+  }
+}
+
+fn review_sheet_ensure_assess(
+  requested: SheetA1Range,
+  range: ValueRange,
+  projection: ReviewSheetProjection,
+  erasures: List<DerivedPayloadErasure>,
+) -> ReviewSheetEnsureAssessment {
+  match requested.end {
+    A1EndClosed { cell: _ } =>
+      ReviewSheetRequestRejected { cause: BoundedRequest { range: requested } }
+    A1EndOpen { column: _ } =>
+      ReviewSheetRequestRejected { cause: ColumnBoundedRequest { range: requested } }
+    A1EndWholeTab =>
+      match observed_sheet_from_value_range(range: range) {
+        ReadbackUnreadable { reason: r } => ReviewSheetReadbackRejected { reason: r }
+        ReadbackObserved { observed: observed, tab: tab } =>
+          if (tab as String) != (requested.tab as String) {
+            ReviewSheetReadbackRejected {
+              reason: concat(
+                "readback tab ",
+                concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
+              ) as NonEmptyStr
+            }
+          } else {
+            ReviewSheetProjectionClassified {
+              observed: observed,
+              tab: tab,
+              classification: classify_review_sheet(
+                observed: observed,
+                projection: projection,
+                erasures: erasures,
+              ),
+            }
+          }
+      }
+  }
+}
+
+fn review_sheet_ensure_decide(
+  policy: EnsurePolicy,
+  assessment: ReviewSheetEnsureAssessment,
+) -> UpsertDecision<TabBoundWritePlan> {
+  match assessment {
+    ReviewSheetRequestRejected { cause: c } =>
+      Refuse { reason: sheet_request_cause_text(cause: c) as NonEmptyStr }
+    ReviewSheetReadbackRejected { reason: r } => Refuse { reason: r }
+    ReviewSheetProjectionClassified { observed: observed, tab: tab, classification: classified } =>
+      ensure_decide(
+        policy: policy,
+        observation: EnsureObserved { evidence: observed },
+        observation_satisfies: match classified {
+          ReviewSheetConverged => true
+          ReviewSheetNeedsWrite { plan: _ } => false
+          ReviewSheetConflict { conflict: _ } => false
+          ReviewSheetUnreadable { reason: _ } => false
+        },
+        mismatch_reason: match classified {
+          ReviewSheetConverged => "derived region already equals the projection"
+          ReviewSheetNeedsWrite { plan: _ } => "derived region differs from the projection"
+          ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
+          ReviewSheetUnreadable { reason: r } => r as String
+        },
+        plan: review_sheet_ensure_plan(classified: classified, tab: tab),
+      )
+  }
+}
+
 fn review_sheet_ensure(
   policy: EnsurePolicy,
   requested: SheetA1Range,
@@ -388,58 +491,15 @@ fn review_sheet_ensure(
   projection: ReviewSheetProjection,
   erasures: List<DerivedPayloadErasure>,
 ) -> UpsertDecision<TabBoundWritePlan> {
-  match requested.end {
-    A1EndClosed { cell: _ } =>
-      Refuse {
-        reason: concat(
-          "bounded GetValues request; append would write past unobserved rows: ",
-          sheet_a1_range_wire(range: requested),
-        ) as NonEmptyStr
-      }
-    A1EndOpen { column: _ } =>
-      Refuse {
-        reason: concat(
-          "column-bounded GetValues request; append would write past unobserved columns: ",
-          sheet_a1_range_wire(range: requested),
-        ) as NonEmptyStr
-      }
-    A1EndWholeTab =>
-      match observed_sheet_from_value_range(range: range) {
-        ReadbackUnreadable { reason: r } => Refuse { reason: r }
-        ReadbackObserved { observed: observed, tab: tab } =>
-          if (tab as String) != (requested.tab as String) {
-            Refuse {
-              reason: concat(
-                "readback tab ",
-                concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
-              ) as NonEmptyStr
-            }
-          } else {
-            let classified = classify_review_sheet(
-              observed: observed,
-              projection: projection,
-              erasures: erasures,
-            )
-            ensure_decide(
-              policy: policy,
-              observation: EnsureObserved { evidence: observed },
-              observation_satisfies: match classified {
-                ReviewSheetConverged => true
-                ReviewSheetNeedsWrite { plan: _ } => false
-                ReviewSheetConflict { conflict: _ } => false
-                ReviewSheetUnreadable { reason: _ } => false
-              },
-              mismatch_reason: match classified {
-                ReviewSheetConverged => "derived region already equals the projection"
-                ReviewSheetNeedsWrite { plan: _ } => "derived region differs from the projection"
-                ReviewSheetConflict { conflict: c } => conflict_reason(conflict: c) as String
-                ReviewSheetUnreadable { reason: r } => r as String
-              },
-              plan: review_sheet_ensure_plan(classified: classified, tab: requested.tab),
-            )
-          }
-      }
-  }
+  review_sheet_ensure_decide(
+    policy: policy,
+    assessment: review_sheet_ensure_assess(
+      requested: requested,
+      range: range,
+      projection: projection,
+      erasures: erasures,
+    ),
+  )
 }
 
 // sunny-carp-475 binds a live sheets.Spreadsheets GetValues and BatchUpdateValues adapter onto
