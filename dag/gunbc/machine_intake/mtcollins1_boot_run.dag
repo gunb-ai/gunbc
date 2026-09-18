@@ -49,7 +49,7 @@ import extdeps.clock { Clock }
 import v2.std.optional { Present }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
 import gunbc.fleet_intent_network { operator_host_srv1 }
-import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name, github_runner_temp_variable_name }
 import extdeps.bmc.ipmi
 import gunbc.machine_intake_sol_hold { mtcollins1_sol_hold_shell_emit_dissolution_trigger }
 import std.dissolution { dissolution_description }
