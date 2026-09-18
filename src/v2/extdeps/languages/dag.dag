@@ -2248,17 +2248,13 @@ fn dag_symbol_map_put(m: Map<Symbol, Bool>, sym: Symbol) -> Map<Symbol, Bool> {
   map_insert(m: m, key: sym, value: true)
 }
 
-fn dag_symbol_map_has(m: Map<Symbol, Bool>, sym: Symbol) -> Bool {
-  match map_lookup(m: m, key: sym) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn dag_pointwise_from_symbol_map(m: Map<Symbol, Bool>) -> PointwisePower<Symbol> {
   PointwisePower {
     member: fn(sym) {
-      dag_symbol_map_has(m: m, sym: sym)
+      match map_lookup(m: m, key: sym) {
+        Present { value: _ } => true
+        Absent => false
+      }
     }
   }
 }
@@ -2372,10 +2368,6 @@ fn dag_language_model_surface_empty_prelude() -> LanguageModel {
     canonical_symbols: dag_language_model_empty_canonical_symbol_set(),
     core: bool_model_core()
   }
-}
-
-fn dag_language_model_canonical_symbols(lm: LanguageModel) -> PointwisePower<Symbol> {
-  lm.canonical_symbols
 }
 
 fn dag_lex_token_symbol(sym: Symbol) -> Bool {
