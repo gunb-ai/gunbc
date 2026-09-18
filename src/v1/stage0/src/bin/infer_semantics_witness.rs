@@ -228,6 +228,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
         })]),
         connective: Connective::NoConnective,
@@ -243,6 +244,7 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -279,7 +281,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
+                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, expr_data: Rc::new(ExprData::NoExprData),
             }),
             Rc::new(Node {
                 occurrence_identity: Rc::new(v1_compiler::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -300,7 +302,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
+                module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, expr_data: Rc::new(ExprData::NoExprData),
             }),
         ]),
         connective: Connective::NoConnective,
@@ -315,7 +317,7 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, expr_data: Rc::new(ExprData::NoExprData),
+        module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem, declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked, expr_data: Rc::new(ExprData::NoExprData),
     })
 }
 
@@ -395,6 +397,7 @@ fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -841,6 +844,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
         })]),
         connective: Connective::Conj,
@@ -856,6 +860,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let optional_inner_sum = Rc::new(Node {
@@ -880,6 +885,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_inner_sum);
@@ -963,6 +969,7 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }
@@ -1268,6 +1275,7 @@ fn resolve_node_uses_node_name_for_lookup() {
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let user_intern = v1_compiler::v1_std_core::intern(
@@ -1978,6 +1986,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_decl = Rc::new(Node {
@@ -2002,6 +2011,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_intern = intern(empty_intern_table(), "Box".to_string());

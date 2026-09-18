@@ -95,6 +95,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     FileTransportRealizationGeneratedRsArtifact => Absent
     Fci1BoundedExecutionContextArtifact => Absent
     CouponCadQueryProgramArtifact => Absent
+    WholeCorpusCompileMeasuredRootDemandsArtifact => Absent
     AutoinstallUserDataArtifact { spec: _ } => Absent
     RunnerHostSudoersArtifact { host: _ } => Absent
     PlanArtifact { plan: _ } => Absent

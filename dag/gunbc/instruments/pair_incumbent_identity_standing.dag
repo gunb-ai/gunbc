@@ -1,0 +1,110 @@
+module gunbc.instruments.pair_incumbent_identity_standing
+
+import std.types { String, Bool, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
+import gunbc.fleet_ssh_locus { FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
+import gunbc.serving.serving_enrollment { ServingRouteResolved, ServingRouteUnresolved, serving_route }
+import gunbc.harness.harness_backend { harness_observe_engine_at }
+import gunbc.spark.vllm_endpoint_process_launch { LaunchObserved, LaunchUnobserved }
+import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
+import gunbc.spark.pair_incumbent_identity {
+  PairRealizationAgreement, pair_realization_agreement, pair_realization_is_established, pair_realization_agreement_lines,
+  declared_pair_realization, observe_pair_realization,
+  ObservedPairRealizationRefused, PairRouteUnresolved, PairLaunchUnobserved, PairFleetAccessRefused,
+}
+
+// ── THE INCUMBENT'S IDENTITY, READ AND WRITTEN DOWN ───────────────────────────────────────────
+//
+// THE READ-ONLY CONSUMER of gunbc.spark.pair_incumbent_identity. For every group the pair-serving
+// authority claims, key the declared realization, read the route's answering launch, observe the
+// four ranks over the fleet key session, fold the agreement and write one receipt. It starts
+// nothing, stops nothing and claims nothing; its verdict is an observation, and its first
+// operational consumer is Cut D's D0, which asks this same question INSIDE its fence -- an identity
+// read before the authority transfer can go stale before suspension, so this instrument's receipt
+// is standing, never authorization. It is invoked by name:
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/pair_incumbent_identity_standing.dag --function pair_incumbent_identity_standing
+//
+// THE SUBJECT IS THE AUTHORITY ROSTER, NOT A GROUP LITERAL, so the instrument has exactly the
+// population the authority claims; an empty roster is a missing subject and refuses (the vacuity
+// rule gunbc.instruments.fabric_capacity_standing states), never a passing fleet.
+//
+// EXIT SEMANTICS. Success only when EVERY claimed group's agreement is Established. Drift, a
+// population mismatch, a conflict or an unread observation each exit non-zero with the receipt
+// body as the reason; the receipt lines are the same either way, so a reader gets the located
+// verdict rather than a bare code.
+
+data pair_incumbent_identity_receipt_path: String = "target/pair-incumbent-identity-receipt.txt"
+data pair_incumbent_identity_attempt_raw: String = "pair-incumbent-identity"
+
+type GroupIdentityStanding {
+  group: FabricGroup
+  agreement: PairRealizationAgreement
+}
+
+// The launch the route answers with is read from its metrics the way the harness reads it, so the
+// incarnation this instrument binds is the one a seat would be bound to.
+fn group_identity_standing(group: FabricGroup) -> GroupIdentityStanding
+  uses net: Network
+{
+  let declared = declared_pair_realization(group: group)
+  let observed = match serving_route(group: group) {
+    ServingRouteUnresolved { group: g, obligation: o } =>
+      ObservedPairRealizationRefused { refusal: PairRouteUnresolved { group: g, obligation: o } }
+    ServingRouteResolved { endpoint: endpoint, ceiling: _ } =>
+      match now_epoch_seconds() {
+        Absent => ObservedPairRealizationRefused { refusal: PairLaunchUnobserved { group: group, obligation: "the clock could not be read as epoch seconds, so the launch read has no instant" as NonEmptyStr } }
+        Present { value: now } =>
+          match harness_observe_engine_at(endpoint: endpoint, at: now).launch {
+            LaunchUnobserved { group: g, obligation: o } =>
+              ObservedPairRealizationRefused { refusal: PairLaunchUnobserved { group: g, obligation: o } }
+            LaunchObserved { launch: launch, receipt: _ } =>
+              match prepare_fleet_ssh_agent_context(attempt_raw: pair_incumbent_identity_attempt_raw) {
+                FleetSshContextRefused { cause: c } =>
+                  ObservedPairRealizationRefused { refusal: PairFleetAccessRefused { group: group, cause: c as NonEmptyStr } }
+                FleetSshContextReady { context: context, receipt: _ } =>
+                  observe_pair_realization(context: context, group: group, endpoint: launch)
+              }
+          }
+      }
+  }
+  GroupIdentityStanding { group: group, agreement: pair_realization_agreement(declared: declared, observed: observed) }
+}
+
+fn group_identity_lines(s: GroupIdentityStanding) -> List<String> {
+  concat([join(["group ", fabric_group_wire(g: s.group) as String], "")], pair_realization_agreement_lines(a: s.agreement))
+}
+
+fn pair_incumbent_identity_receipt_body(at: String, standings: List<GroupIdentityStanding>) -> String {
+  join(concat([join(["pair incumbent identity at ", at], "")], flat_map(standings, s => group_identity_lines(s: s))), "\n")
+}
+
+fn pair_incumbent_identity_verdict(standings: List<GroupIdentityStanding>, body: String) -> ProcessExit {
+  if length(standings) == 0 {
+    exit_failure(reason: "pair incumbent identity: no serving group is claimed, so this instrument has no subject -- an empty roster is a missing subject rather than an established fleet")
+  } else if all(standings, s => pair_realization_is_established(a: s.agreement)) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["pair incumbent identity is not established:\n", body], ""))
+  }
+}
+
+fn pair_incumbent_identity_standing() -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  let standings = map(spark_pair_serving_authorities, a => group_identity_standing(group: pair_serving_authority_group(a: a)))
+  let body = pair_incumbent_identity_receipt_body(at: probed_at_word(reading: now) as String, standings: standings)
+  let wr = Filesystem.Write(path: pair_incumbent_identity_receipt_path, content: body)
+  if !wr.success {
+    exit_failure(reason: join(["pair incumbent identity receipt write failed: ", wr.error], ""))
+  } else {
+    pair_incumbent_identity_verdict(standings: standings, body: body)
+  }
+}

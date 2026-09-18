@@ -131,9 +131,20 @@ fn semantic_decl_emission_bundle_malformed_diagnostic(bundle: Node) -> Diagnosti
   }
 }
 
+// THE FREE-MONOID ENCODING READS CODE POINTS, SO THE STRING IS VIEWED AS ONE HERE.
+//
+// The parameter is an ordinary string and its callers are right to pass one -- `semantic_decl_emit`
+// hands it a `text` and a `spelling`. What the BODY needs is the char-list view, because it folds
+// each element through `from_code_point`. `chars` is the conversion between the two, and it is the
+// same one `v2.std.compilers.lexing` already uses when it builds a `LiteralPattern`.
+//
+// WITHOUT IT THE FOLD HAS NO ELEMENT TYPE TO INFER: `String` renders as the target's native string,
+// `fold_list` is generic over `FreeMonoid<T>`, and rustc answers E0282 rather than naming the
+// missing view. That diagnostic is what sent this to the `String`-fork program on first reading; it
+// is a missing conversion at one site.
 fn semantic_decl_string_to_bundle_node(s: String) -> Node {
   fold_list(
-    xs: s,
+    xs: chars(s: s),
     empty: target_model_type_atom_node(identity: ^free_monoid_variant_empty),
     cons: fn(tail, c) {
       target_model_type_conj_node(
@@ -284,7 +295,7 @@ fn decode_semantic_decl_lex_rule_row(row: Node) -> Outcome<LexRule> {
                     outcome_accepted(
                       value: TokenRule {
                         token_class: token_class,
-                        pattern: LiteralPattern { text: text }
+                        pattern: LiteralPattern { text: chars(s: text) }
                       }
                     )
                   }

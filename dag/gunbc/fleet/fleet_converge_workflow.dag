@@ -44,6 +44,7 @@ import gunbc.fleet_workflow_steps {
   ci_fleet_key_agent_step,
   ci_fleet_key_agent_cleanup_step,
   gunbc_ci_aux_step_timeout_minutes,
+  gunbc_ci_fleet_converge_plan_step_timeout_minutes,
   gunbc_ci_runner_guest_image_step_timeout_minutes,
   gunbc_ci_runner_host_file_step_timeout_minutes,
   gunbc_ci_spark_serving_step_timeout_minutes,
@@ -117,7 +118,7 @@ import gunbc.host_reset_subject_roster { reset_observer_peer_roster, reset_subje
 import gunbc.host_reset_return { ResetObserverPairing }
 import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
 import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
-import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly }
+import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir, FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, LiveDeploy }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
@@ -240,19 +241,16 @@ data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostP
 // WHAT `none` DOES AND DOES NOT SAY, stated because the distinction is NOT in the return type.
 // Optional carries one absence, and two different facts land on it here: a mode that is inherently
 // outside fleet convergence (the spark, micro-VM and guest-image modes select other subjects
-// entirely), and a mode that belongs in this projection but whose observation contract is not built
-// yet. That second case is DashboardDeploy alone. The distinction is DECLARED in this annotation and
-// is not encoded in the result; a carrier that separated them would be a different return type, and
-// widening one here to record a gap would be minting vocabulary ahead of the consumer that needs it.
+// entirely), and a mode that belongs in this projection but whose production dispatch does not yet
+// call this function. DashboardDeploy is the second case: this cut maps it to LiveDeploy so C4
+// can route when that job's dispatch surface moves. Until C4 consumes this function, the only
+// executing reader is workflow_dispatch_input_witness_test — a declared frontier, not a silent
+// residue. Deleting it here would remove the carrier C4 needs.
 //
-// WHY DashboardDeploy IS STILL none. Making it a FleetConvergeScope member obliges a
-// FleetConvergeRequest variant, and that obligation is real rather than ceremonial: nine match sites
-// derive a plan's baseline text, axis lines and refusal counters per request, and those modules are
-// explicit that an absent row is itself a claim about the host. A deployment request carrying only a
-// host would render a baseline of scope-and-host that apply re-observes and compares against
-// nothing -- a gate that cannot fail, which is worse than an absent one because it would be cited as
-// the admission the deployment gained. The baseline has to be the candidate-bound total member
-// decision population, and building that is its own change.
+// THIS FUNCTION HAS NO PRODUCTION CALLER TODAY. Production dashboard_deploy reaches
+// live_deploy_apply_srv1_transaction_wet, not this mapping and not observe_fleet_converge_request_wet.
+// The request coproduct arm that would carry DesiredDeployment waits on C2. A host-only LiveDeploy
+// request has no spelling.
 fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeScope? {
   match mode {
     FullHostPlan => Present { value: FullHost }
@@ -269,7 +267,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkBootstrap => none
     SparkServingApply => none
     SparkRuntimeImageProbe => none
-    DashboardDeploy => none
+    DashboardDeploy => Present { value: LiveDeploy }
     RlmLaunchDeploymentReceipt => none
     HostResetReturn => none
     RunnerHostFileObserve => none
@@ -764,7 +762,7 @@ fn fleet_converge_plan_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_plan_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
   }
 }
 

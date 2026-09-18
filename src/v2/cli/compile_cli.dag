@@ -1,0 +1,348 @@
+module v2.cli.compile_cli
+
+import std.compiler_entry { CompilerEntryDriver, NativeCliDriver }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.self_host.compiler_closure_emit {
+  emit_compiler_import_closure_from_ingest
+}
+import v2.compiler.source_authority { SourceRootIngest }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.algebra { fold_list, length, list_reverse }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_module }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+
+// THE V2-NATIVE CLI. THIS IS THE COMPILER'S OWN FRONT DOOR, WRITTEN IN THE COMPILER'S OWN LANGUAGE.
+//
+// WHAT IT IS FOR, stated as the position it closes rather than as a feature. `gunbc` is the SEED's
+// CLI: it is `RetainedHostCliKernel`, a clap surface dispatching into hand-authored host Rust
+// (`v1_compiler.cli_run`), and a self-emitted compiler does not contain that module. So the seed's
+// verbs are unreachable from a v2 binary BY CONSTRUCTION, not by omission, and the self-host step
+// stops exactly there: `gunbc test //gunbc/instruments:self-host` emits v2's closure and builds it,
+// and the built binary cannot emit that closure again because `v2.compiler.compile` declares
+// `SourceRootEvalDriver`, whose rendered main answers `census` and `adjudicate` and has no compile
+// mode. The second generation is the v2 -> v2 boundary, and this module is the door it goes through.
+//
+// WHY IT IS A SECOND ENTRY MODULE RATHER THAN A MODE ON THE FIRST. The emitter admits EXACTLY ONE
+// `compiler_pipeline_entry` declaration per closure (`v1.compiler.emit_rust`
+// `compiler_pipeline_entry_decl` answers `none` for both zero and two, and
+// `compiler_pipeline_entry_is_ambiguous` refuses the emission by name), because one emitted crate
+// has one entry point. Adding a compile mode to the eval driver's main would therefore have meant
+// growing the ~500 lines of Rust that driver is already declared seed debt for, for a mode that
+// wants none of its universe derivation, receipt admission or cost partition. This module's import
+// closure does not reach `v2.compiler.compile` at all, so the two entries never appear in one
+// closure and the emitter's exactly-one rule is satisfied by construction rather than by a flag
+// that selects between them.
+//
+// THE TWO CLOSURES ARE DIFFERENT, NOT NESTED, AND THAT IS THE FACT WORTH CARRYING -- not their
+// relative size, which is close enough to be no argument at all. This closure reaches modules the
+// compiler entry's does not, `v2.extdeps.languages.rust` among them, because this door emits FOR a
+// target while `v2.compiler.compile` reaches its own target model by a different route. So a green
+// on one instrument is not evidence about the other in either direction, and widening the proven
+// population is something this entry does rather than a side effect of being bigger.
+//
+// WHERE THE HOST BOUNDARY IS -- AND THE FIRST VERSION OF THIS PARAGRAPH PUT IT IN THE WRONG PLACE,
+// WHICH IS CORRECTED HERE RATHER THAN SOFTENED. It read "a `.dag` fold cannot read a file", and
+// gunbc#11526 retracts that from the design document's Two CLIs rule. What is measured stays: a
+// resource METHOD on an ordinary `fn` is a located compiler refusal -- `Filesystem.Read` off a plain
+// function answers "receiver type 'Primitive(Filesystem)' establishes no method surface". What was
+// false is the conclusion drawn from it -- and the MECHANISM this paragraph offered for it was
+// false too, which gunbc#11528 settled hours after the paragraph landed. It read "resource
+// operations resolve only inside a workflow function". There is no workflow function: `workflow`
+// was never a semantic kind, only the emitter predicate `v1.compiler.emit_rust` `is_workflow_item`,
+// and that predicate is DELETED. Admissibility is the `uses` clause binding the resource into body
+// scope -- a fact about a function's declared effect requirement, not about any function kind. The
+// census is #11528's and the ruling is D12 in `gunbc.plans.demand_engine_program`, which also keeps
+// `uses` at its one meaning as an effect requirement. The FREE primitive `filesystem_read`
+// is a different route with no interpreter in it: typed by `v1.compiler.infer_method`
+// `builtin_function_registry`, bridged by `extdeps.languages.rust.emit` `rt_function_registry`, and
+// realized by `v1.compiler.runtime_rust` `rt_filesystem` as `std::fs::read_to_string`. An emitted
+// binary reads files. The seed carries the receipt in one block: `rt_filesystem` emits
+// `unrealized_host_seam` and `filesystem_read` two declarations apart, so the paragraph denying the
+// reader was landed beside the reader.
+//
+// SO WHAT ACTUALLY KEEPS THE WALK IN THE RENDERED MAIN IS TWO GAPS, NOT A WALL, and the difference
+// decides where the repair goes. `filesystem_read` PANICS on a missing file rather than returning a
+// typed outcome, which is the refusal arm DESIGN section 5 requires of a door whose whole job is to
+// refuse precisely; and the emitted surface carries no directory listing, which a source-root walk
+// needs before it can be a fold at all. Both close in EMISSION -- a bridged primitive gaining an
+// outcome type and a listing row -- and neither closes by growing the interpreter, so neither is a
+// reason to call this boundary permanent.
+//
+// What is unchanged by the correction is the DECISION split, which was never the file-reading claim:
+// EVERY decision -- which verb, which refusal, what to emit, what status to exit with -- is decided
+// in this module, and that split is the capability `gunbc.source_root_eval_driver_seed_growth` names
+// as the trigger that retires ITS row: "the rendered main becomes one call into that fold". This
+// driver's main is written to that shape from the start, so it adds a door without adding the debt.
+// Closing the two gaps above moves the walk itself into this fold, which is what the second
+// generation needs.
+//
+// THE PROTOCOL IS TWO CALLS AND A WRITE, and the shape is forced by the boundary above. The host
+// cannot know which roots to walk until the argv has been parsed, and this module cannot parse argv
+// and then read the roots itself, so the plan must come back to the host as a VALUE it can act on:
+// `v2_cli_parse` returns a plan, `v2_cli_plan_source_roots` says what to walk, and `v2_cli_run`
+// receives the resulting ingest and answers. A single call would have forced either the parse or
+// the read to the wrong side.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
+
+// THE VERB SET IS CLOSED AND STARTS AT ONE. `emit` is the verb the self-host frontier needs and the
+// only one whose realization exists today; a second verb is an arm here, which is a refusal that
+// stops compiling if a consumer forgets it. Opening this with a catch-all would make an unknown
+// verb indistinguishable from an unimplemented one.
+type CliVerb
+  = CliEmitClosure { entry: String, source_roots: FreeMonoid<String> }
+
+// A PLAN IS PARSED OR IT IS REFUSED, and the refusal carries its own reason symbol rather than a
+// rendered sentence, so the host renders it once and a witness can discriminate on the CAUSE. A
+// plan that "parsed with no roots" is not an arm: it is the `cli_no_source_root` refusal, because a
+// verb with an empty root list would walk nothing and emit an empty program, which is the
+// empty-observation narrow DESIGN section 5 forbids.
+type CliPlan
+  = CliPlanParsed { verb: CliVerb }
+  | CliPlanRefused { reason: Symbol, detail: String }
+
+// THE PARSER'S STATE, WALKED ONE ARGUMENT AT A TIME. `SeekVerb` is the start, `SeekOption` is
+// between options, and `SeekRootValue` is the position after `--source-root` where the NEXT
+// argument is its value -- which is what makes a trailing `--source-root` a located refusal rather
+// than a silently ignored option. `Failed` absorbs: once the parse has refused, later arguments
+// cannot un-refuse it, so the FIRST cause is the one reported.
+type CliParseState
+  = CliParseSeekVerb
+  | CliParseSeekOption { entry: String, roots: FreeMonoid<String> }
+  | CliParseSeekRootValue { entry: String, roots: FreeMonoid<String> }
+  | CliParseSeekEntryValue { entry: String, roots: FreeMonoid<String> }
+  | CliParseFailed { reason: Symbol, detail: String }
+
+data cli_option_source_root: String = "--source-root"
+
+data cli_option_entry: String = "--entry"
+
+data cli_verb_emit: String = "emit"
+
+data cli_usage: String = "usage: <binary> emit --entry <module.path> --source-root <dir> [--source-root <dir>]..."
+
+fn cli_parse_step(state: CliParseState, arg: String) -> CliParseState {
+  match state {
+    CliParseFailed { reason: reason, detail: detail } =>
+      CliParseFailed { reason: reason, detail: detail }
+    CliParseSeekVerb =>
+      if arg == cli_verb_emit {
+        CliParseSeekOption { entry: "", roots: Empty }
+      } else {
+        CliParseFailed {
+          reason: ^cli_unknown_verb,
+          detail: concat(concat("unknown verb ", arg), concat(" -- ", cli_usage))
+        }
+      }
+    CliParseSeekRootValue { entry: entry, roots: roots } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_source_root_missing_value,
+          detail: concat(cli_option_source_root, " takes a directory, and an option followed it")
+        }
+      } else {
+        CliParseSeekOption { entry: entry, roots: Cons { head: arg, tail: roots } }
+      }
+    CliParseSeekEntryValue { entry: _, roots: roots } =>
+      if cli_arg_is_option(arg: arg) {
+        CliParseFailed {
+          reason: ^cli_entry_missing_value,
+          detail: concat(cli_option_entry, " takes a module path, and an option followed it")
+        }
+      } else {
+        CliParseSeekOption { entry: arg, roots: roots }
+      }
+    CliParseSeekOption { entry: entry, roots: roots } =>
+      if arg == cli_option_source_root {
+        CliParseSeekRootValue { entry: entry, roots: roots }
+      } else {
+        if arg == cli_option_entry {
+          CliParseSeekEntryValue { entry: entry, roots: roots }
+        } else {
+          CliParseFailed {
+            reason: ^cli_unknown_option,
+            detail: concat(concat("unknown option ", arg), concat(" -- ", cli_usage))
+          }
+        }
+      }
+  }
+}
+
+// AN OPTION IN A VALUE POSITION IS THE DEFECT, NOT THE PARTICULAR OPTION THAT LANDED THERE. Testing
+// only for the option whose value is being sought would accept `--source-root --entry v2.cli` as a
+// source root literally named `--entry`, and the walk would then refuse on a directory nobody meant
+// to name. So both value positions ask this one predicate and agree by construction.
+//
+// IT IS THE CLOSED OPTION SET RATHER THAN A `--` PREFIX TEST, deliberately. A prefix test is a guess
+// about spelling that would also have to decide what a lone `--` means and what a negative number
+// means; this list is the vocabulary this CLI actually has, so adding an option is a row here and
+// forgetting to add it is a value position that silently accepts the new option as a value. That
+// failure is bounded and visible where a mis-specified prefix rule is neither.
+fn cli_arg_is_option(arg: String) -> Bool {
+  (arg == cli_option_source_root) || (arg == cli_option_entry)
+}
+
+// THE END STATE IS WHERE THE INCOMPLETE FORMS BECOME REFUSALS. Running out of arguments while
+// seeking the verb, while seeking a `--source-root` value, or having accepted the verb and no root
+// at all are three DIFFERENT defects with three different fixes, so they are three reasons rather
+// than one "bad usage".
+fn cli_parse_finish(state: CliParseState) -> CliPlan {
+  match state {
+    CliParseFailed { reason: reason, detail: detail } =>
+      CliPlanRefused { reason: reason, detail: detail }
+    CliParseSeekVerb =>
+      CliPlanRefused { reason: ^cli_no_verb, detail: concat("no verb given -- ", cli_usage) }
+    CliParseSeekRootValue { entry: _, roots: _ } =>
+      CliPlanRefused {
+        reason: ^cli_source_root_missing_value,
+        detail: concat(cli_option_source_root, " takes a directory, and none followed it")
+      }
+    CliParseSeekEntryValue { entry: _, roots: _ } =>
+      CliPlanRefused {
+        reason: ^cli_entry_missing_value,
+        detail: concat(cli_option_entry, " takes a module path, and none followed it")
+      }
+    CliParseSeekOption { entry: entry, roots: roots } =>
+      if length(xs: roots) == 0 {
+        CliPlanRefused {
+          reason: ^cli_no_source_root,
+          detail: concat("emit needs at least one source root -- ", cli_usage)
+        }
+      } else {
+        if entry == "" {
+          CliPlanRefused {
+            reason: ^cli_no_entry,
+            detail: concat("emit needs the module to resolve as its subject -- ", cli_usage)
+          }
+        } else {
+          CliPlanParsed {
+            verb: CliEmitClosure { entry: entry, source_roots: list_reverse(xs: roots) }
+          }
+        }
+      }
+  }
+}
+
+fn v2_cli_parse(argv: FreeMonoid<String>) -> CliPlan {
+  cli_parse_finish(
+    state: fold_list(xs: argv, empty: CliParseSeekVerb, cons: cli_parse_step)
+  )
+}
+
+// WHAT THE HOST MUST WALK, ANSWERED BY THE PLAN AND BY NOTHING ELSE. The host does not re-read argv
+// to find the roots; if it did, the roots the walk used and the roots the verb carries would be two
+// representations of one fact, free to disagree, and a run could quietly build a different closure
+// than the one it reports. A refused plan walks nothing.
+fn v2_cli_plan_source_roots(plan: CliPlan) -> FreeMonoid<String> {
+  match plan {
+    CliPlanRefused { reason: _, detail: _ } => Empty
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliEmitClosure { entry: _, source_roots: roots } => roots
+      }
+  }
+}
+
+type CliRunOutcome
+  = CliEmitted { text: String, closure_size: Int, layer_count: Int, ready_size: Int }
+  | CliRunRefused { reason: Symbol, detail: String }
+
+// THE REFUSAL PRINTS ITS CAUSE, AND FOR ONE GENERATION IT DID NOT. The rejected arm already
+// CARRIED `d.head.reason`, and the detail beside it said "the located cause is this refusal's
+// reason" -- true of the value and false of the artifact, because the rendered main prints only the
+// `ProcessExit` reason string that `detail` becomes. So generation two refused with a sentence
+// pointing at a symbol nobody could read, which is DESIGN section 5's located-where-the-author-can-
+// act failure in its quietest form: the cause was computed, carried, and then dropped at the last
+// boundary. Measured on the built binary at gunbc#11507's head -- three different entries
+// (`v2.std.text`, this module, `v2.compiler.compile`) all refused with the same nine words.
+//
+// THE LOCUS PROJECTION IS BORROWED RATHER THAN RECOPIED. `v2.std.lens_verdict`
+// `lens_verdict_diagnostic_locus_module` is already the Locus -> module-name fold over all four
+// arms; its name says lens because that is where it was first needed, not because the projection is
+// lens-specific, and authoring a second `match d.at` here would be the fork (DESIGN section 3)
+// rather than the reuse.
+// THE EMPTY INGEST IS A REFUSAL AND NOT AN EMPTY PROGRAM, and this arm is the whole reason
+// `v2_cli_run` does not call the emitter first and ask questions after.
+// `emit_compiler_import_closure_from_ingest` is TOTAL over whatever ingest it is handed -- its
+// driver's own docstring records that an EMPTY ingest emits an empty program and reports Accepted --
+// so a source root that exists and holds no `.dag` file, or a walk the host performed against a
+// typo, would otherwise print an empty emission and exit 0. That is bottom-as-answer conflated with
+// bottom-as-ignorance, and it is the exact shape the closure-emit driver was written to close; this
+// door owes the same refusal at its own boundary.
+fn v2_cli_run(plan: CliPlan, ingest: SourceRootIngest) -> CliRunOutcome {
+  match plan {
+    CliPlanRefused { reason: reason, detail: detail } =>
+      CliRunRefused { reason: reason, detail: detail }
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliEmitClosure { entry: entry, source_roots: _ } =>
+          if length(xs: ingest) == 0 {
+            CliRunRefused {
+              reason: ^cli_empty_ingest,
+              detail: "the source roots walked to zero .dag files; an empty closure is not an empty program"
+            }
+          } else {
+            match emit_compiler_import_closure_from_ingest(
+              ingest: ingest,
+              admission: v2_cli_closure_admission(entry: entry),
+              target: rust_target_model()
+            ) {
+              Accepted { value: receipt, diagnostics: _ } =>
+                CliEmitted {
+                  text: receipt.source.carried,
+                  closure_size: receipt.closure_size,
+                  layer_count: receipt.layer_count,
+                  ready_size: receipt.ready_size
+                }
+              Rejected { diagnostics: d } =>
+                CliRunRefused {
+                  reason: d.head.reason,
+                  detail: concat(
+                    concat("the closure did not emit: ", symbol_lexeme(sym: d.head.reason)),
+                    concat(" at ", lens_verdict_diagnostic_locus_module(d: d.head))
+                  )
+                }
+            }
+          }
+      }
+  }
+}
+
+// THE SUBJECT IS THE MODULE THE OPERATOR NAMED, AND IT CANNOT BE A CONSTANT. `assemble_program_from_ingest`
+// resolves `admission.subject.name` against the VALIDATED ROOTS the ingest produced, so a fixed
+// synthetic symbol names no module in any real corpus and the emit rejects for every input -- which
+// is exactly what this declaration did before the inhabitance witness ran it. `imports: Empty` is
+// not a gap beside it: it is the production spelling, the same one `v2.compiler.compile`
+// `native_test_resolve_module` uses, because the subject's imports are read from its own parsed
+// root rather than supplied here.
+fn v2_cli_closure_admission(entry: String) -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: entry) },
+    imports: Empty
+  }
+}
+
+// THE PROCESS STATUS IS DECIDED HERE, NOT BY THE SHIM. `std.process` `ProcessExit` is the carrier
+// for an exit this program declares for ITSELF (as distinct from `std.process_termination`, which
+// is an exit another process was OBSERVED to take), so the shim maps an arm to a number and decides
+// nothing. A shim that chose the status from whether stdout was empty would be a second
+// representation of the verdict, free to disagree with the outcome it was derived from.
+fn v2_cli_exit(outcome: CliRunOutcome) -> ProcessExit {
+  match outcome {
+    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => ExitSuccess
+    CliRunRefused { reason: _, detail: detail } => exit_failure(reason: detail)
+  }
+}
+
+fn v2_cli_outcome_text(outcome: CliRunOutcome) -> String {
+  match outcome {
+    CliEmitted { text: text, closure_size: _, layer_count: _, ready_size: _ } => text
+    CliRunRefused { reason: _, detail: _ } => ""
+  }
+}

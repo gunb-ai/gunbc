@@ -75,9 +75,3 @@ test fn cli_argument_arm_leaks_key_into_argv_red_control() -> Bool {
       token: "--api-key",
     )
 }
-
-test fn cursor_sdk_argv_projection_witness_keystone_holds() -> Bool {
-  environment_materialization_binds_env_not_argv()
-    && argv_api_key_projection_refuses()
-    && cli_argument_arm_leaks_key_into_argv_red_control()
-}

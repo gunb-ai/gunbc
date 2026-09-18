@@ -1206,7 +1206,7 @@ fn cpp_target_model_for_profile(target_profile: Node) -> TargetModel {
 }
 
 fn cpp_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
 }
 
 fn cpp_lex_rules() -> List<LexRule> {

@@ -154,7 +154,7 @@ jobs:
   fleet-converge:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
-    timeout-minutes: 105
+    timeout-minutes: 115
     permissions:
       contents: read
       actions: read
@@ -229,7 +229,7 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'plan'
-        timeout-minutes: 5
+        timeout-minutes: 15
       - name: Fleet converge plan — scope:launch-environment (legacy fleet-converge timer retirement)
         id: launch_environment_plan
         run: |
@@ -669,7 +669,7 @@ jobs:
   host-reset-return:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.reset_observer)) }}
     needs: [build]
-    timeout-minutes: 105
+    timeout-minutes: 115
     if: github.event.inputs.mode == 'host_reset_return'
     concurrency:
       group: "gunbc-host-mutation-${{ fromJSON('{\"srv1\": \"mtcollins1\", \"srv2\": \"mtcollins1\", \"srv3\": \"mtcollins1\", \"srv4\": \"mtcollins1\"}')[github.event.inputs.reset_observer] }}"
@@ -767,7 +767,7 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_transaction_wet
-          cat "$ROOT/target/live-deploy-srv1-receipt/live_deploy_receipt.json"
+          cat "$ROOT/target/live-deploy-srv1-live-receipt/live_deploy_receipt.json"
         env:
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
           RLM_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
@@ -778,8 +778,8 @@ jobs:
         id: dashboard_receipt_upload
         uses: actions/upload-artifact@v4
         with:
-          name: live-deploy-srv1-receipt
-          path: target/live-deploy-srv1-receipt
+          name: live-deploy-srv1-live-receipt
+          path: target/live-deploy-srv1-live-receipt
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
@@ -877,8 +877,8 @@ jobs:
         id: rlm_dashboard_download
         uses: actions/download-artifact@v4
         with:
-          name: live-deploy-srv1-receipt
-          path: target/live-deploy-srv1-receipt
+          name: live-deploy-srv1-live-receipt
+          path: target/live-deploy-srv1-live-receipt
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.inputs.dashboard_workflow_run_id }}
         timeout-minutes: 10

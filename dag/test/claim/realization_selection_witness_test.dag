@@ -1,7 +1,6 @@
 module test.claim.realization_selection_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval, closed_interval, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
@@ -741,48 +740,6 @@ test fn two_unevidenced_candidates_accumulate_every_gap() -> Bool {
   ) {
     SelectionNeedsEvidence { needs: ns } => (ns |> count) == 2
     _ => false
-  }
-}
-
-fn realization_selection_witness_main() -> ProcessExit {
-  if !hard_power_constraint_excludes_before_pareto() {
-    ExitFailure { code: 1, reason: "1 hard-power-constraint" as NonEmptyStr }
-  } else if !missing_power_reading_needs_evidence_never_zero_watts() {
-    ExitFailure { code: 1, reason: "2 missing-power-reading" as NonEmptyStr }
-  } else if !two_survivors_without_policy_need_policy_not_first_element() {
-    ExitFailure { code: 1, reason: "3 two-survivors-need-policy" as NonEmptyStr }
-  } else if !reversing_candidate_and_axis_order_preserves_answer() {
-    ExitFailure { code: 1, reason: "4 reverse-order" as NonEmptyStr }
-  } else if !policy_cannot_choose_dominated_infeasible_or_absent() {
-    ExitFailure { code: 1, reason: "5 policy-cannot-choose-infeasible" as NonEmptyStr }
-  } else if !changing_only_policy_may_choose_a_different_survivor() {
-    ExitFailure { code: 1, reason: "6 policy-changes-survivor" as NonEmptyStr }
-  } else if !changing_evidence_or_field_identity_invalidates_receipt() {
-    ExitFailure { code: 1, reason: "7 receipt-identity" as NonEmptyStr }
-  } else if !different_funded_axes_are_a_different_receipt() {
-    ExitFailure { code: 1, reason: "7b funded-axes-identity" as NonEmptyStr }
-  } else if !selection_refuses_before_any_convergence() {
-    ExitFailure { code: 1, reason: "8 converge-unresolved" as NonEmptyStr }
-  } else if !selected_within_feeds_the_goal_assessment_root() {
-    ExitFailure { code: 1, reason: "9 selected-feeds-converge" as NonEmptyStr }
-  } else if !incomplete_subject_cannot_mint_selected_within() {
-    ExitFailure { code: 1, reason: "9b incomplete-subject-no-selected-within" as NonEmptyStr }
-  } else if !generated_section_3d_and_reviewer_execute() {
-    ExitFailure { code: 1, reason: "10 design-section-reviewer" as NonEmptyStr }
-  } else if !fleet_operating_point_names_throughput_and_ac_power_gaps() {
-    ExitFailure { code: 1, reason: "11 fleet-gaps" as NonEmptyStr }
-  } else if !fleet_operating_point_refuses_under_modeled_subject() {
-    ExitFailure { code: 1, reason: "11b fleet-refused-subject" as NonEmptyStr }
-  } else if !deferred_subject_merges_into_field_evidence_needs() {
-    ExitFailure { code: 1, reason: "11c deferred-merges-needs" as NonEmptyStr }
-  } else if !unfunded_constraint_axis_refuses_not_needs_evidence() {
-    ExitFailure { code: 1, reason: "11d unfunded-constraint-axis" as NonEmptyStr }
-  } else if !undecided_constraint_does_not_gap_decided_constraints() {
-    ExitFailure { code: 1, reason: "11e undecided-does-not-widen" as NonEmptyStr }
-  } else if !two_unevidenced_candidates_accumulate_every_gap() {
-    ExitFailure { code: 1, reason: "12 accumulate-every-gap" as NonEmptyStr }
-  } else {
-    ExitSuccess
   }
 }
 

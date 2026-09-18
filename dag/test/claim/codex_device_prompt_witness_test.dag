@@ -106,9 +106,3 @@ test fn escape_carrying_rendering_would_yield_an_unpasteable_code() -> Bool {
       && !string_contains(s: plain.content, pattern: "[94m")
   }
 }
-
-test fn codex_device_prompt_keystone_holds() -> Bool {
-  tmux_captured_prompt_parses_to_a_pasteable_code()
-    && escape_retaining_capture_refuses_to_render()
-    && escape_carrying_rendering_would_yield_an_unpasteable_code()
-}

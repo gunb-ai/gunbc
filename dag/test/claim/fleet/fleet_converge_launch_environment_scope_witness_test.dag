@@ -14,6 +14,7 @@ import gunbc.fleet_converge_plan {
   LaunchEnvironment,
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
+  LiveDeploy,
   FleetConvergeApplyTerminal,
   FullyApplied,
   PartiallyApplied,
@@ -46,7 +47,8 @@ import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_i
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_allocation { committed_slot_identities }
 import gunbc.runner_unit { runner_slot_unit_name, runner_unit_template_name, runner_unit_prefix }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_owned_steps_retract_order }
+import gunbc.live_deploy.spec { deployment_owned_steps_retract_order }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.host_axis_caps { CapMember }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import std.content_hash { serialize_content_hash }
@@ -113,6 +115,7 @@ fn scope_is_launch_environment(s: FleetConvergeScope) -> Bool {
     FullHost => false
     FabricExecutionCellsOnly => false
     FabricAllocationStoreOnly => false
+    LiveDeploy => false
   }
 }
 
@@ -443,13 +446,14 @@ test fn the_launch_environment_wire_round_trips_through_the_decode() -> Bool {
 
 // SCOPE EQUALITY IS NOW ASKED OF THE WIRE FOLD, so the property the old pairwise match had for
 // free must be stated: two scopes sharing a wire spelling would compare equal, and the decode's
-// inverse would be ambiguous too. This pins the four wires pairwise distinct.
+// inverse would be ambiguous too. This pins every FleetConvergeScope wire pairwise distinct.
 test fn every_scope_wire_is_distinct() -> Bool {
   let wires = [
     fleet_converge_scope_wire(scope: FullHost),
     fleet_converge_scope_wire(scope: LaunchEnvironment),
     fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
     fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+    fleet_converge_scope_wire(scope: LiveDeploy),
   ]
   all(wires, w => list_length(items: filter(wires, x => x == w)) == 1)
 }

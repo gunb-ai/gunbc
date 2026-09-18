@@ -3,6 +3,10 @@ module gunbc.spark.pair_serving_realization
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Port }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
+import extdeps.tools.sha256sum
+import gunbc.output_policy { OutcomeIsData }
 import std.measure { token_count_value, millisecond_count }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import extdeps.network.ipv4 { render_ipv4_address }
@@ -376,11 +380,125 @@ fn spark_pair_lifecycle_pre_directives(spec: DockerCreateSpec) -> List<SystemdSe
   }
 }
 
+// THE DECLARED DIGEST IS DERIVED FROM THE RENDER, NOT STORED BESIDE IT. The fact the route needs is
+// "does the unit digest observed on the answering launch equal the digest of the unit bytes the
+// CURRENT declaration renders?" -- one demand, in one placement transaction. An apply-written
+// receipt would answer a DIFFERENT question ("did an earlier apply publish what it rendered?"),
+// which has no consumer here, and would add write/read/parse/currency-check plus its own integrity
+// obligation to the dependency graph. DESIGN §2: minimize the demand graph before materializing its
+// answers; materialization comes only after unavoidable recurrence with a justified provider,
+// identity, scope and lifetime. The least common ancestor of the single demand is
+// gunbc.harness.harness_seat harness_bind_seat, which computes this ONCE per bind and carries the
+// standing across every round and candidate -- so there is no recurrence to materialize.
+//
+// DigestStdin is the SHA-256 of those exact rendered bytes (FIPS 180-4), the same family as the host
+// probe's unit_sha. A structural fingerprint of the Dag value is a different family and must not
+// stand as the declared digest: compared with the observed unit digest it would be incomparable,
+// never agreement.
+//
+// TWO PROPOSITIONS, DELIBERATELY SEPARATED. They were fused in an earlier revision of this change
+// and the fusion silently bypassed the seal, which is the whole reason the split is here:
+//
+//   (1) THESE BYTES HASH TO THIS DIGEST -- a fact about arbitrary rendered bytes. Freely available:
+//       any caller may render whatever it likes and ask for the SHA-256. The answer is UNSEALED
+//       (RenderedUnitDigestStanding) because there is nothing to protect -- the caller supplied the
+//       bytes and already knows what they are.
+//
+//   (2) THE CURRENT GROUP A DECLARATION RENDERS TO THIS DIGEST -- a fact about OUR declaration.
+//       This is what the route compares an answering launch against, and it is worth sealing,
+//       because a caller that could choose it could make any launch look declared.
+//
+// THE BUG THE SPLIT FIXES (gunbc.recurring_failure_mode
+// admitted_call_edge_with_unrestricted_value_egress). A previous spelling exported one mint
+// `spark_pair_declared_unit_digest(render: SparkPairUnitRender)` returning the SEALED standing.
+// SparkPairUnitRendered is an ordinary constructible variant, so ANY module could hand it
+// caller-authored bytes and receive DeclaredUnitDigested over a digest it chose. The seal was intact
+// on the record and irrelevant in practice: the recognition rule is not who may call the mint but
+// WHAT MAY LEAVE, and an exported function returning the confined value without REQUIRING one as
+// input is an alternate mint. Sealing the payload while letting the caller aim it is not a wall.
+//
+// EGRESS CLOSURE, BY ENUMERATION. Every exported declaration whose return type contains
+// DeclaredUnitDigestEvidence, and what it accepts:
+//   - spark_pair_declared_head_digest(group: FabricGroup)         -- a MODELED GROUP, nothing else
+//   - gunbc.harness.harness_seat harness_declared_unit_digest(group: FabricGroup)   -- likewise
+//   - gunbc.harness.harness_seat harness_declared_unit_roster()   -- nullary
+//   - gunbc.harness.harness_seat harness_declared_unit_from_roster(roster, group)   -- REQUIRES the
+//     carrier as input, so it propagates and never mints
+// None accepts SparkPairUnitRender, String or ContentHash. The caller therefore selects WHICH
+// DECLARED GROUP to ask about; it cannot supply bytes, a digest, or a render. The safe path is
+// spark_pair_declared_head_digest(FabricGroupA) -> production declaration -> production renderer ->
+// DigestStdin -> sealed evidence, and there is no other way in.
+// WHAT ENFORCES THE ABOVE, at two different strengths, stated separately because they are not equal.
+// FOR EVERY IN-CORPUS MODULE it is ordinary compilation, on every floor run: the byte-level fold
+// returns the UNSEALED RenderedUnitDigestStanding, so bytes cannot become a sealed standing without
+// a typecheck refusal, and sole_constructor refuses a forge at the literal's own position.
+// FOR FOREIGN SOURCE TEXT the probes in test.claim.spark.spark_declared_unit_digest_seal_probe_test
+// ask the same question of a fixture module, and they EXECUTED AND PASSED: required-floor run
+// 35162345507 reports standing=planned-and-passed for all three, a cross-module forge refused at the
+// literal's own position and the sanctioned group route tripping no violation. What that does NOT
+// establish is a standing gate -- a ReadsLiveTree claim is planned when its file CHANGES, so nothing
+// re-runs those arms once this file settles. That file's header carries the receipt and the trigger.
+//
+// RUNG HONESTY (DESIGN §4b). Structurally guaranteed on the source-to-.dag acceptance path; NOT
+// structural on the emitted-Rust path, where a sole_constructor type's emitted mirror is a public
+// struct with public fields (extdeps.filesystem.filesystem_io records the same boundary). Next-rung
+// trigger: the emitted mirror carrying the construction confinement.
+//
+// KNOWN HAZARD OF THE ONE-FIELD SHAPE: gunbc.recurring_failure_mode
+// sole_constructor_wrapper_satisfies_a_typecheck_declared_for_its_payload records that a
+// single-field sole-constructor carrier is ACCEPTED where its payload type is declared and then
+// fails at evaluation, so `evidence` is never passed where a ContentHash is wanted; consumers read
+// `evidence.digest` explicitly.
+
+// THE RENDER ITSELF: a unit name with its exact bytes, or a typed refusal carrying the cause. This
+// is ordinary and freely constructible -- it is the INPUT to the byte-level digest below, and
+// sealing it would wall nothing, since the bytes are the caller's either way.
 type SparkPairUnitRender
   = SparkPairUnitRendered { unit_name: NonEmptyStr, text: String }
   | SparkPairUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
 
-fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesired, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
+type RenderedUnitDigestStanding
+  = RenderedUnitDigested { unit_name: NonEmptyStr, digest: ContentHash }
+  | RenderedUnitDigestUnavailable { obligation: NonEmptyStr }
+
+// PROPOSITION (1). Unsealed on purpose: the caller supplied the bytes.
+fn spark_pair_rendered_unit_digest(render: SparkPairUnitRender) -> RenderedUnitDigestStanding {
+  match render {
+    SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
+      RenderedUnitDigestUnavailable { obligation: c }
+    SparkPairUnitRendered { unit_name: n, text: t } =>
+      if (t as String) == "" {
+        RenderedUnitDigestUnavailable { obligation: "rendered unit text is empty" as NonEmptyStr }
+      } else {
+        let observed = sha256sum.Sha256.DigestStdin(content: t, expect: OutcomeIsData)
+        if observed.success == false {
+          RenderedUnitDigestUnavailable { obligation: "sha256sum could not digest the rendered unit bytes" as NonEmptyStr }
+        } else {
+          match sha256sum_line_digest(line: observed.line) {
+            Absent =>
+              RenderedUnitDigestUnavailable { obligation: "sha256sum printed no digest field for the rendered unit bytes" as NonEmptyStr }
+            Present { value: d } =>
+              match sha256_digest_content_hash(digest: d) {
+                Absent =>
+                  RenderedUnitDigestUnavailable { obligation: "the sha256sum hex for the rendered unit bytes did not inhabit Sha256Digest" as NonEmptyStr }
+                Present { value: h } =>
+                  RenderedUnitDigested { unit_name: n, digest: h }
+              }
+          }
+        }
+      }
+  }
+}
+
+type DeclaredUnitDigestEvidence sole_constructor {
+  digest: ContentHash
+}
+
+type DeclaredUnitDigestStanding
+  = DeclaredUnitDigested { evidence: DeclaredUnitDigestEvidence }
+  | DeclaredUnitDigestUnavailable { obligation: NonEmptyStr }
+
+fn spark_pair_head_unit_unsigned(args: VllmEngineArgs, snapshot: ModelSnapshotDesired, head: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
   let start = spark_pair_lifecycle_pre_directives(spec: spec)
   let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
   let start_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_head_argv(head: head)))
@@ -427,7 +545,7 @@ fn spark_pair_head_unit_file(args: VllmEngineArgs, snapshot: ModelSnapshotDesire
   }
 }
 
-fn spark_pair_worker_unit_file(head: FabricLaneObserved, self: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
+fn spark_pair_worker_unit_unsigned(head: FabricLaneObserved, self: FabricLaneObserved, spec: DockerCreateSpec) -> SparkPairUnitRender {
   let start = spark_pair_lifecycle_pre_directives(spec: spec)
   let stop_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_stop_argv()))
   let join_ray = exec_line(cmd: docker_exec_command(name: spark_pair_container_name, env: [], argv: spark_pair_ray_worker_argv(head: head, self: self)))
@@ -488,7 +606,7 @@ fn spark_pair_host_realization(host: HostIdentity, lane: FabricLaneObserved, uni
 
 fn spark_pair_worker_realizations(head: FabricLaneObserved, workers: List<SparkPairServingParticipant>) -> List<SparkPairHostRealization>? {
   let realized = flat_map(workers, w =>
-    match spark_pair_host_realization(host: w.host, lane: w.lane, unit: fn(spec) { spark_pair_worker_unit_file(head: head, self: w.lane, spec: spec) }) {
+    match spark_pair_host_realization(host: w.host, lane: w.lane, unit: fn(spec) { spark_pair_worker_unit_unsigned(head: head, self: w.lane, spec: spec) }) {
       Present { value: r } => [r]
       Absent => [] as List<SparkPairHostRealization>
     })
@@ -502,7 +620,7 @@ fn spark_pair_realization(unit: SparkPairServingUnit) -> SparkPairRealization {
       match e {
         OllamaServing { profile: _ } => SparkPairRealizationRefused { group: g, cause: "a group unit carries an Ollama engine, which has no group realization" as NonEmptyStr }
         VllmServing { args: args } =>
-          match spark_pair_host_realization(host: h.host, lane: h.lane, unit: fn(spec) { spark_pair_head_unit_file(args: args, snapshot: spark_pair_desired_snapshot, head: h.lane, spec: spec) }) {
+          match spark_pair_host_realization(host: h.host, lane: h.lane, unit: fn(spec) { spark_pair_head_unit_unsigned(args: args, snapshot: spark_pair_desired_snapshot, head: h.lane, spec: spec) }) {
             Absent => SparkPairRealizationRefused { group: g, cause: "the head's container environment does not cover every interface name the image bakes" as NonEmptyStr }
             Present { value: head_real } =>
               match spark_pair_worker_realizations(head: h.lane, workers: ws) {
@@ -516,6 +634,43 @@ fn spark_pair_realization(unit: SparkPairServingUnit) -> SparkPairRealization {
 
 fn spark_pair_realizations() -> List<SparkPairRealization> {
   map(spark_pair_serving_desired, u => spark_pair_realization(unit: u))
+}
+
+data spark_pair_no_realization_names_group_obligation: NonEmptyStr = "no pair realization names this fabric group, so there are no rendered head-unit bytes to digest" as NonEmptyStr
+
+// THE GROUP-LEVEL PRODUCER: render the head unit for this group once, digest it once. Callers hold
+// the resulting standing for the lifetime of their transaction rather than calling this again --
+// harness_bind_seat is the least common ancestor of every consumer and calls it once per bind.
+fn spark_pair_head_unit_render_for_group(group: FabricGroup) -> SparkPairUnitRender {
+  match first(filter(spark_pair_realizations(), r =>
+    match r {
+      SparkPairRealizationRefused { group: g, cause: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
+      SparkPairRealized { group: g, head: _, workers: _ } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: group) as String)
+    })) {
+    Absent =>
+      SparkPairUnitRenderRefused {
+        unit_name: spark_pair_head_unit_name,
+        cause: spark_pair_no_realization_names_group_obligation,
+      }
+    Present { value: r } =>
+      match r {
+        SparkPairRealizationRefused { group: _, cause: c } =>
+          SparkPairUnitRenderRefused { unit_name: spark_pair_head_unit_name, cause: c }
+        SparkPairRealized { group: _, head: h, workers: _ } => h.unit
+      }
+  }
+}
+
+// PROPOSITION (2), AND THE ONLY CONSTRUCTOR OF DeclaredUnitDigestEvidence IN THE CORPUS. It takes a
+// modeled FabricGroup, obtains the render from the PRODUCTION declaration, and seals what that
+// render hashes to. A caller chooses a group; it cannot reach past this to choose bytes.
+fn spark_pair_declared_head_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
+  match spark_pair_rendered_unit_digest(render: spark_pair_head_unit_render_for_group(group: group)) {
+    RenderedUnitDigestUnavailable { obligation: o } =>
+      DeclaredUnitDigestUnavailable { obligation: o }
+    RenderedUnitDigested { unit_name: _, digest: d } =>
+      DeclaredUnitDigested { evidence: DeclaredUnitDigestEvidence { digest: d } }
+  }
 }
 
 // Which unit a host carries, from the realized pairs: the head unit on a head, the worker unit on a

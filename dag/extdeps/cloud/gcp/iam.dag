@@ -8,7 +8,7 @@ import extdeps.transports.rest { RestOutcome }
 import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import v2.std.algebra { filter, fold_list }
 import v2.std.network { GET, POST }
-import v2.std.optional { Present }
+import v2.std.optional { Absent, Present }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -64,6 +64,23 @@ type GcpPolicy {
   bindings: List<GcpBinding>
   etag: String
   version: Int
+}
+
+// THE WIRE POLICY IS A PROTO3 MESSAGE, so google.iam.v1.Policy omits every field at its default:
+// a resource nobody has bound yet comes back as `{"etag": ...}` with NO bindings key and NO
+// version key. Both absences are cited upstream facts, not gaps: a repeated field with no
+// elements is the empty list, and Google documents that a policy without conditional bindings
+// "may specify any valid value or leave the field unset" for version -- the unset reading is
+// version 1. Declaring the operation outputs non-optional made a fresh secret's first policy read
+// a runtime TypeError instead of an empty policy, which is the one state a first grant always
+// starts from. This is the only place the wire optionality is folded into the GcpPolicy value the
+// reconciler consumes; every consumer of a policy read or write routes through it.
+fn gcp_policy_from_wire(bindings: List<GcpBinding>?, etag: String, version: Int?) -> GcpPolicy {
+  GcpPolicy {
+    bindings: match bindings { Present { value: bs } => bs  Absent => [] },
+    etag: etag,
+    version: match version { Present { value: v } => v  Absent => 1 }
+  }
 }
 
 // A GcpBinding is the WIRE shape: one role carrying a LIST of members. It is the

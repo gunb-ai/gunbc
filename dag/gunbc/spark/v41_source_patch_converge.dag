@@ -1,0 +1,474 @@
+module gunbc.spark.v41_source_patch_converge
+
+import std.algebra { trim }
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.resources { Network }
+import std.content_hash { Sha256Digest, sha256_hex_digest }
+import std.artifact_store { ArtifactRealizationInput }
+import v2.std.optional { Present, Absent }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import std.realization_reconcile {
+  ReconciledEffect, Application, Applied, NotApplied,
+  ReadObserved, Grounding, Grounds, DoesNotGround,
+  reconcile_effect, classify_reconciled, EffectConverged, EffectNotConverged,
+}
+import extdeps.vllm.server { VllmSourceRevision }
+import extdeps.vllm.source_build { VllmContainerBuildRecipe }
+import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_stdin_digest_via_shell }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.git {
+  git_apply_check_command, git_apply_reverse_check_command, git_apply_command, git_diff_binary_head_command,
+  git_status_porcelain_command,
+}
+import extdeps.tools.mkdir { mkdir_parents_command_at, mkdir_path_resolved_program }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  typed_remote_file_write_seal, TypedRemoteFileWriteAdmitted, TypedRemoteFileWriteAdmissionRefused,
+  converge_typed_remote_file, TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
+  RemoteFileModeOwnerReadWrite, RemoteFileAsSessionPrincipal,
+}
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.spark.v41_runtime_candidate { V41EnginePatch, v41_patch_applicability_defects, v41_input }
+import gunbc.spark.vllm_runtime_image_build {
+  VllmSourceState, VllmSourceAtRevision, VllmSourceRefused, VllmImageBuild, VllmImageBuildRefused,
+  ImageLegRan, ImageLegFailed, ImageUncheckedRan, ImageUncheckedFailed,
+  VllmWorkingTreeMayBeDirty,
+  vllm_source_dir, vllm_build_root, vllm_source_head, vllm_source_is_clean,
+  vllm_image_leg, vllm_image_leg_unchecked, vllm_image_build_key_with_observed_tree, converge_vllm_image_keyed,
+  converge_vllm_source_to_revision,
+}
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext }
+
+// SOURCE CONVERGE'S SECOND DESIRED COMPONENT. converge_vllm_source already converges a checkout
+// onto revision R. This is that desired state grown by caller-supplied ordered population P — not
+// a second decision algebra. std.upsert_decision already has Noop | Apply | Refuse;
+// std.realization_reconcile consumes it. Selection of which patches stays in the candidate model;
+// this fold never chooses P.
+
+type V41SourcePatchPlan sole_constructor {
+  patches: List<V41EnginePatch>
+}
+
+fn v41_source_patch_plan(patches: List<V41EnginePatch>) -> V41SourcePatchPlan {
+  V41SourcePatchPlan { patches: patches }
+}
+
+type V41ObservedSourceIdentity sole_constructor {
+  revision_head: NonEmptyStr
+  worktree_diff_sha256: Sha256Digest
+}
+
+fn v41_observed_source_identity_of(revision_head: NonEmptyStr, worktree_diff_sha256: Sha256Digest) -> V41ObservedSourceIdentity {
+  V41ObservedSourceIdentity { revision_head: revision_head, worktree_diff_sha256: worktree_diff_sha256 }
+}
+
+type V41PatchMemberRead sole_constructor {
+  path: NonEmptyStr
+  observed_sha256: Sha256Digest
+  reverse_applicable: Bool
+  forward_applicable: Bool
+}
+
+fn v41_patch_member_read(path: NonEmptyStr, observed_sha256: Sha256Digest, reverse_applicable: Bool, forward_applicable: Bool) -> V41PatchMemberRead {
+  V41PatchMemberRead { path: path, observed_sha256: observed_sha256, reverse_applicable: reverse_applicable, forward_applicable: forward_applicable }
+}
+
+type V41SourceTreeRead sole_constructor {
+  head: NonEmptyStr
+  porcelain: String
+  worktree_diff_sha256: Sha256Digest
+  members: List<V41PatchMemberRead>
+}
+
+fn v41_source_tree_read(head: NonEmptyStr, porcelain: String, worktree_diff_sha256: Sha256Digest, members: List<V41PatchMemberRead>) -> V41SourceTreeRead {
+  V41SourceTreeRead { head: head, porcelain: porcelain, worktree_diff_sha256: worktree_diff_sha256, members: members }
+}
+
+fn v41_sha256_hex_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
+  (a.hex as String) == (b.hex as String)
+}
+
+fn v41_member_named(members: List<V41PatchMemberRead>, path: NonEmptyStr) -> V41PatchMemberRead? {
+  match filter(members, m => (m.path as String) == (path as String)).first() {
+    Absent => none
+    Present { value: m } => Present { value: m }
+  }
+}
+
+fn v41_porcelain_has_untracked(porcelain: String) -> Bool {
+  any(split(s: porcelain, delimiter: "\n"), line => {
+    let t = trim(s: line)
+    t.starts_with(prefix: "??") || t.starts_with(prefix: "!!")
+  })
+}
+
+fn v41_sha256_of_bytes(content: String) -> Sha256Digest? {
+  match sha256sum_stdin_digest_via_shell(content: content) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+    Sha256FileDigest { digest: d } => sha256_hex_digest(hex: d.hex as String)
+  }
+}
+
+fn v41_observed_source_identity(read: V41SourceTreeRead) -> V41ObservedSourceIdentity {
+  V41ObservedSourceIdentity { revision_head: read.head, worktree_diff_sha256: read.worktree_diff_sha256 }
+}
+
+fn v41_source_patch_decision(
+  desired_revision: VllmSourceRevision,
+  desired_patches: List<V41EnginePatch>,
+  read: V41SourceTreeRead,
+) -> UpsertDecision<V41SourcePatchPlan> {
+  if (read.head as String) != (desired_revision.full_revision as String) {
+    Refuse { reason: join(["wrong revision: HEAD reads ", read.head as String, " and desired is ", desired_revision.full_revision as String], "") as NonEmptyStr }
+  } else {
+    let applicability = v41_patch_applicability_defects(patches: desired_patches, source: desired_revision)
+    if length(applicability) != 0 {
+      Refuse { reason: join(map(applicability, d => d as String), "; ") as NonEmptyStr }
+    } else {
+      let missing = filter(desired_patches, p => match v41_member_named(members: read.members, path: p.path) {
+        Absent => true
+        Present { value: _ } => false
+      })
+      if length(missing) != 0 {
+        Refuse { reason: join(["digest observation missing for ", join(map(missing, p => p.path as String), ", ")], "") as NonEmptyStr }
+      } else {
+        let digest_mismatches = filter(desired_patches, p => match v41_member_named(members: read.members, path: p.path) {
+          Absent => true
+          Present { value: m } => !v41_sha256_hex_eq(a: m.observed_sha256, b: p.sha256)
+        })
+        if length(digest_mismatches) != 0 {
+          Refuse { reason: join(["digest mismatch: ", join(map(digest_mismatches, p => p.path as String), ", ")], "") as NonEmptyStr }
+        } else if v41_porcelain_has_untracked(porcelain: read.porcelain) {
+          Refuse { reason: "untracked paths are not in git diff --binary HEAD, so a tree identity hashed from that diff would omit them" as NonEmptyStr }
+        } else if length(desired_patches) == 0 {
+          if vllm_source_is_clean(stdout: read.porcelain) {
+            Noop
+          } else {
+            Refuse { reason: "vanilla desired state requires a clean tree at the revision; a dirty tree is not an unpatched checkout" as NonEmptyStr }
+          }
+        } else {
+          let reverse_ok = filter(desired_patches, p => match v41_member_named(members: read.members, path: p.path) {
+            Absent => false
+            Present { value: m } => m.reverse_applicable
+          })
+          let forward_ok = filter(desired_patches, p => match v41_member_named(members: read.members, path: p.path) {
+            Absent => false
+            Present { value: m } => m.forward_applicable
+          })
+          let n = length(desired_patches)
+          if length(reverse_ok) == n {
+            if length(forward_ok) == 0 {
+              Noop
+            } else {
+              Refuse { reason: "partial application: every patch reverses but at least one still applies forward, so the tree is not a completed P and not a clean R" as NonEmptyStr }
+            }
+          } else if length(forward_ok) == n && vllm_source_is_clean(stdout: read.porcelain) {
+            Apply { plan: V41SourcePatchPlan { patches: desired_patches } }
+          } else if length(reverse_ok) != 0 || length(forward_ok) != 0 {
+            Refuse { reason: "partial application: some patches in P are present and some are not" as NonEmptyStr }
+          } else {
+            Refuse { reason: "patches are neither applicable to a clean tree nor already present in reverse order" as NonEmptyStr }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn v41_source_patch_after_grounds(
+  desired_revision: VllmSourceRevision,
+  desired_patches: List<V41EnginePatch>,
+  after: V41SourceTreeRead,
+) -> Grounding<V41ObservedSourceIdentity> {
+  match v41_source_patch_decision(desired_revision: desired_revision, desired_patches: desired_patches, read: after) {
+    Noop => Grounds { evidence: v41_observed_source_identity(read: after) }
+    Apply { plan: _ } => DoesNotGround { reason: "after-read still wants Apply; the tree does not yet carry P" }
+    Refuse { reason: why } => DoesNotGround { reason: why as String }
+  }
+}
+
+fn v41_source_patch_reconcile(
+  decision: UpsertDecision<V41SourcePatchPlan>,
+  application: Application,
+  desired_revision: VllmSourceRevision,
+  desired_patches: List<V41EnginePatch>,
+  after: V41SourceTreeRead,
+) -> ReconciledEffect<V41SourcePatchPlan, V41ObservedSourceIdentity> {
+  reconcile_effect(
+    decision: decision,
+    application: application,
+    show_read: ReadObserved { value: after },
+    grounding: v41_source_patch_after_grounds(desired_revision: desired_revision, desired_patches: desired_patches, after: after),
+  )
+}
+
+fn v41_patch_basename(path: NonEmptyStr) -> String {
+  let parts = split(s: path as String, delimiter: "/")
+  match get(xs: parts, index: length(parts) - 1) {
+    Absent => path as String
+    Present { value: leaf } => leaf
+  }
+}
+
+fn v41_remote_declared_patch_path(path: NonEmptyStr) -> NonEmptyStr {
+  join([vllm_build_root() as String, "/declared-patches/", v41_patch_basename(path: path)], "") as NonEmptyStr
+}
+
+fn v41_place_declared_patch(target: SshTarget, context: FleetSshExecutionContext, patch: V41EnginePatch) -> String?
+  uses net: Network
+{
+  let local = Filesystem.Read(path: patch.path as String)
+  match filesystem_read_outcome(content: local.content, success: local.success, error: local.error) {
+    FilesystemReadRefused { error: why } => Present { value: join(["could not read declared patch ", patch.path as String, ": ", why], "") }
+    FilesystemReadSucceeded { content: bytes } => {
+      let admission = typed_remote_file_write_seal(
+        path: v41_remote_declared_patch_path(path: patch.path) as FilePath,
+        content: bytes,
+        allowed_scope: FileTreeScope { root_path: vllm_build_root() },
+      )
+      match admission {
+        TypedRemoteFileWriteAdmissionRefused { cause: why } => Present { value: why as String }
+        TypedRemoteFileWriteAdmitted { write: _ } =>
+          match converge_typed_remote_file(
+            target: target,
+            context: context,
+            admission: admission,
+            mode: RemoteFileModeOwnerReadWrite,
+            privilege: RemoteFileAsSessionPrincipal,
+          ) {
+            TypedRemoteFileConvergenceRefused { step: st, reason: why } => Present { value: join(["placing ", patch.path as String, " failed at ", st, ": ", why], "") }
+            TypedRemoteFileConverged { converged: _ } => none
+          }
+      }
+    }
+  }
+}
+
+fn v41_check_applicable(target: SshTarget, context: FleetSshExecutionContext, reverse: Bool, patch: V41EnginePatch) -> Bool?
+  uses net: Network
+{
+  let remote = v41_remote_declared_patch_path(path: patch.path) as String
+  let cmd = if reverse {
+    git_apply_reverse_check_command(repository_dir: vllm_source_dir() as String, patch_path: remote)
+  } else {
+    git_apply_check_command(repository_dir: vllm_source_dir() as String, patch_path: remote)
+  }
+  let step = (if reverse { "patch-reverse-check" } else { "patch-forward-check" }) as NonEmptyStr
+  match vllm_image_leg_unchecked(target: target, context: context, step: step, command: cmd) {
+    ImageUncheckedFailed { step: _, cause: _ } => none
+    ImageUncheckedRan { exit_code: code, stdout: _, stderr: _ } =>
+      if code == 0 {
+        Present { value: true }
+      } else if code == 1 {
+        Present { value: false }
+      } else {
+        none
+      }
+  }
+}
+
+fn v41_observe_member(target: SshTarget, context: FleetSshExecutionContext, patch: V41EnginePatch) -> V41PatchMemberRead?
+  uses net: Network
+{
+  match v41_place_declared_patch(target: target, context: context, patch: patch) {
+    Present { value: _ } => none
+    Absent =>
+      match vllm_image_leg(
+        target: target,
+        context: context,
+        step: "declared-patch-digest" as NonEmptyStr,
+        command: sha256sum_file_command(path: v41_remote_declared_patch_path(path: patch.path) as String),
+      ) {
+        ImageLegFailed { step: _, cause: _ } => none
+        ImageLegRan { stdout: line } =>
+          match sha256sum_line_digest(line: line) {
+            Absent => none
+            Present { value: d } =>
+              match sha256_hex_digest(hex: d.hex as String) {
+                Absent => none
+                Present { value: observed } =>
+                  match v41_check_applicable(target: target, context: context, reverse: true, patch: patch) {
+                    Absent => none
+                    Present { value: rev } =>
+                      match v41_check_applicable(target: target, context: context, reverse: false, patch: patch) {
+                        Absent => none
+                        Present { value: fwd } => Present { value: V41PatchMemberRead {
+                          path: patch.path,
+                          observed_sha256: observed,
+                          reverse_applicable: rev,
+                          forward_applicable: fwd,
+                        } }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn v41_observe_members(target: SshTarget, context: FleetSshExecutionContext, patches: List<V41EnginePatch>) -> List<V41PatchMemberRead>?
+  uses net: Network
+{
+  let rows = map(patches, p => v41_observe_member(target: target, context: context, patch: p))
+  if any(rows, r => match r { Absent => true Present { value: _ } => false }) {
+    none
+  } else {
+    Present { value: flat_map(rows, r => match r { Absent => [] as List<V41PatchMemberRead> Present { value: m } => [m] }) }
+  }
+}
+
+fn v41_observe_tree(target: SshTarget, context: FleetSshExecutionContext, desired_patches: List<V41EnginePatch>) -> V41SourceTreeRead?
+  uses net: Network
+{
+  match vllm_source_head(target: target, context: context) {
+    Absent => none
+    Present { value: head } =>
+      match vllm_image_leg(target: target, context: context, step: "source-porcelain" as NonEmptyStr, command: git_status_porcelain_command(repository_dir: vllm_source_dir() as String)) {
+        ImageLegFailed { step: _, cause: _ } => none
+        ImageLegRan { stdout: porcelain } =>
+          match vllm_image_leg(target: target, context: context, step: "source-diff" as NonEmptyStr, command: git_diff_binary_head_command(repository_dir: vllm_source_dir() as String)) {
+            ImageLegFailed { step: _, cause: _ } => none
+            ImageLegRan { stdout: diff } =>
+              match v41_sha256_of_bytes(content: diff) {
+                Absent => none
+                Present { value: diff_sha } =>
+                  match v41_observe_members(target: target, context: context, patches: desired_patches) {
+                    Absent => none
+                    Present { value: members } => Present { value: V41SourceTreeRead {
+                      head: head as NonEmptyStr,
+                      porcelain: porcelain,
+                      worktree_diff_sha256: diff_sha,
+                      members: members,
+                    } }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn v41_apply_plan(target: SshTarget, context: FleetSshExecutionContext, plan: V41SourcePatchPlan) -> String?
+  uses net: Network
+{
+  fold(plan.patches, init: none, f: (acc, p) => match acc {
+    Present { value: _ } => acc
+    Absent =>
+      match vllm_image_leg(
+        target: target,
+        context: context,
+        step: "patch-apply" as NonEmptyStr,
+        command: git_apply_command(repository_dir: vllm_source_dir() as String, patch_path: v41_remote_declared_patch_path(path: p.path) as String),
+      ) {
+        ImageLegRan { stdout: _ } => none
+        ImageLegFailed { step: _, cause: why } => Present { value: join(["git apply refused for ", p.path as String, ": ", why], "") }
+      }
+  })
+}
+
+type V41PatchedSourceConverge
+  = V41PatchedSourceConverged { patches_already_on_tree: Bool, observed: V41ObservedSourceIdentity }
+  | V41PatchedSourceRefused { step: NonEmptyStr, cause: String }
+
+fn v41_patched_source_receipt_line(c: V41PatchedSourceConverge) -> String {
+  match c {
+    V41PatchedSourceConverged { patches_already_on_tree: p, observed: obs } =>
+      join([
+        "patched source revision=", obs.revision_head as String,
+        " patches_already_on_tree=", if p { "true" } else { "false" },
+        " worktree_diff_sha256=", obs.worktree_diff_sha256.hex as String,
+        "\n",
+      ], "")
+    V41PatchedSourceRefused { step: st, cause: why } =>
+      join(["patched source REFUSED step=", st as String, " cause=", why, "\n"], "")
+  }
+}
+
+fn v41_patched_source_converged(c: V41PatchedSourceConverge) -> Bool {
+  match c {
+    V41PatchedSourceConverged { patches_already_on_tree: _, observed: _ } => true
+    V41PatchedSourceRefused { step: _, cause: _ } => false
+  }
+}
+
+fn converge_vllm_source_with_patches(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  r: VllmContainerBuildRecipe,
+  patches: List<V41EnginePatch>,
+) -> V41PatchedSourceConverge
+  uses net: Network
+{
+  match converge_vllm_source_to_revision(target: target, context: context, r: r, working_tree: VllmWorkingTreeMayBeDirty) {
+    VllmSourceRefused { step: st, cause: why } => V41PatchedSourceRefused { step: st, cause: why }
+    VllmSourceAtRevision { revision: _, already_present: _ } =>
+      match vllm_image_leg(target: target, context: context, step: "declared-patches-dir" as NonEmptyStr, command: mkdir_parents_command_at(mkdir_binary: mkdir_path_resolved_program, path: join([vllm_build_root() as String, "/declared-patches"], ""))) {
+        ImageLegFailed { step: st, cause: why } => V41PatchedSourceRefused { step: st, cause: why }
+        ImageLegRan { stdout: _ } =>
+          match v41_observe_tree(target: target, context: context, desired_patches: patches) {
+            Absent => V41PatchedSourceRefused { step: "patch-observe" as NonEmptyStr, cause: "the tree or declared patch files could not be read back" }
+            Present { value: before } => {
+              let decision = v41_source_patch_decision(desired_revision: r.source, desired_patches: patches, read: before)
+              match decision {
+                Refuse { reason: why } => V41PatchedSourceRefused { step: "patch-decision" as NonEmptyStr, cause: why as String }
+                Noop =>
+                  match classify_reconciled(r: v41_source_patch_reconcile(
+                    decision: decision, application: NotApplied, desired_revision: r.source, desired_patches: patches, after: before,
+                  )) {
+                    EffectNotConverged { reason: why, attempt: _ } => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: why }
+                    EffectConverged { converged: c } => V41PatchedSourceConverged { patches_already_on_tree: true, observed: c.evidence }
+                  }
+                Apply { plan: plan } =>
+                  match v41_apply_plan(target: target, context: context, plan: plan) {
+                    Present { value: why } => V41PatchedSourceRefused { step: "patch-apply" as NonEmptyStr, cause: why }
+                    Absent =>
+                      match v41_observe_tree(target: target, context: context, desired_patches: patches) {
+                        Absent => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: "apply reported success and the tree could not be read back" }
+                        Present { value: after } =>
+                          match classify_reconciled(r: v41_source_patch_reconcile(
+                            decision: decision, application: Applied, desired_revision: r.source, desired_patches: patches, after: after,
+                          )) {
+                            EffectNotConverged { reason: why, attempt: _ } => V41PatchedSourceRefused { step: "patch-readback" as NonEmptyStr, cause: why }
+                            EffectConverged { converged: c } => V41PatchedSourceConverged { patches_already_on_tree: false, observed: c.evidence }
+                          }
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+// §3c DECLARED FRONTIER, not a silent extra path. This change's executing consumer is
+// v41_patched_source_acquire_wet → converge_vllm_source_with_patches. The keyed image from the
+// observed patched tree is the next desired component, and its consumer is a patched sibling of
+// vllm_runtime_image_build_ci_wet: that vanilla entry still calls converge_vllm_runtime_image
+// (clean checkout, recipe key) and must not grow P. TRIGGER: that sibling entry exists and is the
+// only production call of this fold (fleet-converge / administrator credential, same transport
+// dissolve-on as vllm_runtime_image_build_ci_wet). SUFFICIENT FOR: an image whose key includes
+// source_head and worktree_diff_sha256 is minted only through this fold, never by treating the
+// intended patch list as identity. This cut does not add that entry — a hours-long docker build
+// behind the source-acquire door would smuggle Cut-D cost into Cuts B+C.
+fn converge_vllm_runtime_image_with_patches(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  ctx: SparkMaterializeContext,
+  r: VllmContainerBuildRecipe,
+  patches: List<V41EnginePatch>,
+) -> VllmImageBuild
+  uses net: Network
+{
+  match converge_vllm_source_with_patches(target: target, context: context, r: r, patches: patches) {
+    V41PatchedSourceRefused { step: st, cause: why } => VllmImageBuildRefused { step: st, cause: why }
+    V41PatchedSourceConverged { patches_already_on_tree: _, observed: obs } =>
+      converge_vllm_image_keyed(
+        ctx: ctx,
+        r: r,
+        key: vllm_image_build_key_with_observed_tree(r: r, extras: [
+          v41_input(identity: "source_head", value: obs.revision_head as String),
+          v41_input(identity: "worktree_diff_sha256", value: obs.worktree_diff_sha256.hex as String),
+        ]),
+      )
+  }
+}

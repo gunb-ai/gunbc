@@ -3,7 +3,7 @@ module test.claim.shell_exec_run_argv_embed_witness
 import std.types { Bool, String }
 import std.measure { byte_size_count }
 import gunbc.live_deploy.emit { deploy_shell_strict_options_command }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 import test.claim.live_deploy.apply_emission_projection { apply_emitted_steps_text }
 import extdeps.filesystem.filesystem_io

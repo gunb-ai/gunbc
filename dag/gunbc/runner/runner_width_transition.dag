@@ -46,10 +46,13 @@ type RunnerWidthTransition sole_constructor {
 
 // THE OPEN TRANSITION, ENUMERATED PER HOST.
 //
-// srv1, srv3 and srv4 were each admitted 21 slots under the 15 GiB ceiling. The 26/25 GiB sizing
-// makes every one of them CPU-bound at 12, so each carries a nine-slot obligation. srv2 is absent
-// deliberately: its admission REFUSED rather than narrowed, so it has no transition to be in, and
-// `gunbc.fleet_converge_plan` routes it around membership reconciliation entirely.
+// srv3 and srv4 were each admitted 21 slots under the 15 GiB ceiling. The 26/25 GiB sizing makes
+// every one of them CPU-bound at 12, so each carries a nine-slot obligation (13..21). srv1 also
+// commits 12 now, but its live tree population was 50 (the capacity-incident remainder): setting
+// its prior to 21 would leave 22..50 as census surplus outside the obligation, so they could never
+// enter retirement standings and the cap raise would stay withheld after those trees left. srv2 is
+// absent deliberately: its admission REFUSED rather than narrowed, so it has no transition to be in,
+// and `gunbc.fleet_converge_plan` routes it around membership reconciliation entirely.
 //
 // A ROW IS SUPERSEDED ONLY WHEN ITS OWN TRANSITION COMPLETES. Editing `prior_width` to match a later
 // observation would destroy the durability the declaration exists for -- the set would track the
@@ -58,7 +61,7 @@ data slot_width_transition_26_25: List<RunnerWidthTransition> = [
   RunnerWidthTransition {
     transition_id: "runner-slot-26-25-gib" as NonEmptyStr,
     host: operator_host_srv1,
-    prior_width: 21,
+    prior_width: 50,
   },
   RunnerWidthTransition {
     transition_id: "runner-slot-26-25-gib" as NonEmptyStr,

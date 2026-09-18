@@ -1,0 +1,301 @@
+module v2.test.cli.v2_native_cli
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import std.process { ExitFailure, ExitSuccess }
+import v2.cli.compile_cli {
+  CliEmitClosure,
+  CliEmitted,
+  CliPlan,
+  CliPlanParsed,
+  CliPlanRefused,
+  CliRunOutcome,
+  CliRunRefused,
+  v2_cli_exit,
+  v2_cli_parse,
+  v2_cli_plan_source_roots,
+  v2_cli_run
+}
+import v2.std.algebra { length, list_head, HeadAbsent, HeadFound }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS THE V2-NATIVE CLI'S OWN DECISIONS, SUPPLIED AT ITS OWN BOUNDARY. Every argv below
+// is constructed here rather than derived by running a process, because the interface under test is
+// `argv -> plan` and `plan x ingest -> outcome`: deriving the inputs would re-execute a walk, a
+// spawn and a filesystem this claim is not about, once per claim (DESIGN section 3, a witness
+// discriminates at ONE interface).
+//
+// AND THE PAIRING OBLIGATION IS DISCHARGED BY THE LAST ROW, which is the reason the supplied inputs
+// above are readings rather than a fast green set. `the_emit_verb_reaches_the_real_closure_emitter`
+// hands a real one-module ingest through the real fold and asserts it reaches `CliEmitted` -- so
+// deleting the emitter call from `v2_cli_run` turns that row red while every parse row stays green,
+// which is exactly the discrimination a shape-only inhabitance claim would not have.
+
+fn argv_of(items: FreeMonoid<String>) -> FreeMonoid<String> { items }
+
+fn plan_refusal_reason(plan: CliPlan) -> Symbol {
+  match plan {
+    CliPlanRefused { reason: reason, detail: _ } => reason
+    CliPlanParsed { verb: _ } => ^cli_plan_was_not_refused
+  }
+}
+
+fn plan_first_root(plan: CliPlan) -> String {
+  match plan {
+    CliPlanRefused { reason: _, detail: _ } => ""
+    CliPlanParsed { verb: verb } =>
+      match verb {
+        CliEmitClosure { entry: _, source_roots: roots } =>
+          match list_head(xs: roots) {
+            HeadAbsent => ""
+            HeadFound { value: first } => first
+          }
+      }
+  }
+}
+
+fn outcome_refusal_reason(outcome: CliRunOutcome) -> Symbol {
+  match outcome {
+    CliRunRefused { reason: reason, detail: _ } => reason
+    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } =>
+      ^cli_outcome_was_not_refused
+  }
+}
+
+fn outcome_emitted(outcome: CliRunOutcome) -> Bool {
+  match outcome {
+    CliRunRefused { reason: _, detail: _ } => false
+    CliEmitted { text: _, closure_size: _, layer_count: _, ready_size: _ } => true
+  }
+}
+
+data argv_emit_one_root: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons {
+      head: "cli_probe",
+      tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
+    }
+  }
+}
+
+data argv_emit_two_roots: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons {
+      head: "cli_probe",
+      tail: Cons {
+        head: "--source-root",
+        tail: Cons {
+          head: "dag",
+          tail: Cons {
+            head: "--source-root",
+            tail: Cons { head: "src/v2", tail: Empty }
+          }
+        }
+      }
+    }
+  }
+}
+
+data argv_empty: FreeMonoid<String> = Empty
+
+data argv_emit_no_root: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons { head: "--entry", tail: Cons { head: "cli_probe", tail: Empty } }
+}
+
+data argv_emit_dangling_option: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons { head: "--source-root", tail: Empty }
+}
+
+data argv_unknown_verb: FreeMonoid<String> = Cons {
+  head: "compile",
+  tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
+}
+
+data argv_unknown_option: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons { head: "--target", tail: Cons { head: "rust", tail: Empty } }
+}
+
+test fn the_emit_verb_with_one_root_parses_holds() -> Bool {
+  let plan = v2_cli_parse(argv: argv_of(items: argv_emit_one_root))
+  (length(xs: v2_cli_plan_source_roots(plan: plan)) == 1)
+    && (plan_first_root(plan: plan) == "dag")
+}
+
+// THE ROOTS COME BACK IN THE ORDER THEY WERE GIVEN, which is not free: the parser accumulates onto
+// the head of a list and reverses once at the end, so a dropped reverse would still parse, still
+// name the right COUNT, and hand the host a walk in the wrong order. Order is observable in the
+// emitted closure, so this is a correctness row rather than a cosmetic one.
+test fn the_source_roots_keep_their_given_order_holds() -> Bool {
+  let plan = v2_cli_parse(argv: argv_of(items: argv_emit_two_roots))
+  (length(xs: v2_cli_plan_source_roots(plan: plan)) == 2)
+    && (plan_first_root(plan: plan) == "dag")
+}
+
+test fn no_verb_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_empty))) == ^cli_no_verb
+}
+
+test fn the_emit_verb_without_a_source_root_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_no_root)))
+    == ^cli_no_source_root
+}
+
+// A TRAILING OPTION IS ITS OWN CAUSE AND NOT "no source root". The two are different defects with
+// different fixes -- one forgot the verb's argument, the other forgot the option's -- and
+// collapsing them would hand an operator who typed `--source-root` and stopped a message telling
+// them to add the option they already typed.
+test fn a_dangling_source_root_option_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_dangling_option)))
+    == ^cli_source_root_missing_value
+}
+
+data argv_emit_no_entry: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
+}
+
+data argv_emit_dangling_entry: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons { head: "--entry", tail: Empty }
+}
+
+data argv_emit_entry_eats_an_option: FreeMonoid<String> = Cons {
+  head: "emit",
+  tail: Cons {
+    head: "--entry",
+    tail: Cons { head: "--source-root", tail: Cons { head: "dag", tail: Empty } }
+  }
+}
+
+// THE ENTRY IS REQUIRED, AND THE REASON IS THE RESOLVER RATHER THAN TASTE. `assemble_program_from_ingest`
+// resolves the admission's subject against the roots the ingest produced, so an emit with no named
+// subject has nothing to resolve. This row is the reason `v2_cli_closure_admission` cannot go back
+// to a constant: a synthetic subject would make this refusal unnecessary and every emit reject.
+test fn the_emit_verb_without_an_entry_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_no_entry)))
+    == ^cli_no_entry
+}
+
+test fn a_dangling_entry_option_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_dangling_entry)))
+    == ^cli_entry_missing_value
+}
+
+// AN OPTION IN A VALUE POSITION IS REFUSED RATHER THAN SWALLOWED, and this row is the discriminating
+// one for that: `--entry --source-root dag` parses cleanly under a parser that takes whatever
+// follows, binding the entry to the literal `--source-root` and then refusing much later for a
+// module nobody named. Here it refuses at the position where the operator can still see what they
+// typed.
+test fn an_option_in_the_entry_value_position_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_emit_entry_eats_an_option)))
+    == ^cli_entry_missing_value
+}
+
+test fn an_unknown_verb_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_unknown_verb)))
+    == ^cli_unknown_verb
+}
+
+test fn an_unknown_option_refuses_holds() -> Bool {
+  plan_refusal_reason(plan: v2_cli_parse(argv: argv_of(items: argv_unknown_option)))
+    == ^cli_unknown_option
+}
+
+// A REFUSED PLAN NAMES NO ROOTS, so the host walks nothing. This is the row that keeps the shim
+// honest: the rendered main asks the PLAN what to walk, and if a refused plan answered with the
+// roots it had collected before refusing, a run that the CLI rejected would still pay a full
+// filesystem walk -- and, worse, would have read a corpus while reporting a refusal.
+test fn a_refused_plan_names_no_source_roots_holds() -> Bool {
+  length(xs: v2_cli_plan_source_roots(plan: v2_cli_parse(argv: argv_of(items: argv_unknown_verb)))) == 0
+}
+
+// THE ENTRY STRING MUST BECOME THE NAME THE RESOLVER WILL MATCH, and this row is the boundary
+// between the two halves of this CLI. Everything above is argv handling, which answers in its own
+// vocabulary; everything below hands a QualifiedName to `assemble_program_from_ingest`, which
+// resolves it against the modules the ingest produced. The conversion between them is the one step
+// neither half owns, so it gets its own claim rather than being inferred from the emit succeeding:
+// if this is wrong the emit rejects with a resolution failure that names the subject, and reading
+// that backwards to "the string did not convert" is a diagnosis nobody should have to make twice.
+test fn a_dotted_entry_converts_to_the_subject_the_resolver_matches_holds() -> Bool {
+  qualified_name_from_dotted_string(dotted: "cli_probe") == Cons { head: ^cli_probe, tail: Empty }
+}
+
+// A MULTI-SEGMENT ENTRY IS THE REAL SHAPE, so the single-segment row above is not the whole claim:
+// every module this CLI will actually be pointed at is dotted, and a converter that happened to
+// work only when there was nothing to split would pass that row and fail every real invocation.
+test fn a_multi_segment_entry_converts_segment_by_segment_holds() -> Bool {
+  qualified_name_from_dotted_string(dotted: "v2.cli.compile_cli")
+    == Cons { head: ^v2, tail: Cons { head: ^cli, tail: Cons { head: ^compile_cli, tail: Empty } } }
+}
+
+// THE EMPTY INGEST IS THE STANDING RED, AND IT DOES NOT RETIRE. The emitter this CLI calls is TOTAL
+// over its ingest -- an empty one emits an empty program and reports Accepted -- so without this
+// refusal a source root that walked to zero files would print nothing and exit 0, which is
+// bottom-as-ignorance rendered as bottom-as-answer. Deleting the `cli_empty_ingest` arm from
+// `v2_cli_run` turns this row red and leaves every other row in this file green.
+test fn a_plan_over_an_empty_ingest_refuses_holds() -> Bool {
+  outcome_refusal_reason(
+    outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_emit_one_root)), ingest: Empty)
+  ) == ^cli_empty_ingest
+}
+
+// A REFUSED PLAN CARRIES ITS OWN CAUSE THROUGH THE RUN, rather than being re-diagnosed against the
+// ingest it never asked for. The plan below refused for an unknown verb and the ingest is empty, so
+// a run that judged the ingest first would report `cli_empty_ingest` and bury the real defect.
+test fn a_refused_plan_keeps_its_cause_through_the_run_holds() -> Bool {
+  outcome_refusal_reason(
+    outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_unknown_verb)), ingest: Empty)
+  ) == ^cli_unknown_verb
+}
+
+// THE EMIT ARM HAS NO GREEN INHABITANCE CLAIM TODAY, AND THIS IS A DECLARED FRONTIER RATHER THAN
+// AN OMISSION (DESIGN section 3c). The rows above supply argv at this CLI's own boundary, which
+// owes one claim that the real producer runs -- and the claim was written, ran, and went RED for a
+// reason that is not this CLI's.
+//
+// WHAT WAS MEASURED, 2026-09-16, and it is the reason the claim is not simply left red here. A row
+// asserting `v2_cli_run` reaches `CliEmitted` over a one-module ingest failed; so did the SAME
+// ingest and admission handed to `emit_compiler_import_closure_from_ingest` DIRECTLY, with this CLI
+// entirely out of the path -- which localises the refusal to the fold rather than to the routing.
+// And the pre-existing claim for that fold, `v2.test.long.self_host_module_emit_derisk`
+// `self_host_frontier_emit_ownership_miss_accepts`, is RED ON THIS TREE unchanged: it asserts
+// Accepted for the identical module shape and does not get it. So the emitter does not accept a
+// standalone-module ingest at this head, and a claim asserting that it does would be red for a
+// defect it does not own.
+//
+// WHY THAT RED WAS NOT ALREADY KNOWN: that file lives under `test/claim/long/`, which CI discovery
+// EXCLUDES at directory grain, and its last commit is a repository-wide DESIGN edit. The exclusion
+// note in `gunbc.ci_layer_roots` already carries the retraction that relocating a witness there is
+// precisely what stops it running; this is that retraction's next receipt.
+//
+// THE TRIGGER, NAMED AS A CAPABILITY (DESIGN section 4b(3)): `emit_compiler_import_closure_from_ingest`
+// accepts a single-module ingest whose admission names that module -- evidenced by
+// `self_host_frontier_emit_ownership_miss_accepts` going green. At that point the inhabitance claim
+// for this CLI is a one-module ingest and three lines over it, and it lands HERE with the fixture
+// it needs -- which is why no fixture is parked here now: a probe ingest with no claim executing
+// it is the dangling declaration section 3c calls red, and "ready for later" is that section's
+// own tell.
+// THE EXECUTING CONSUMER IN THE MEANTIME is `gunbc test //gunbc/instruments:v2-native-cli`, which
+// emits and compiles this module's whole closure -- that is compilation of the emit arm and not
+// execution of it, and the difference is exactly what this frontier records.
+
+test fn a_refused_outcome_exits_failure_holds() -> Bool {
+  match v2_cli_exit(
+    outcome: v2_cli_run(plan: v2_cli_parse(argv: argv_of(items: argv_empty)), ingest: Empty)
+  ) {
+    ExitSuccess => false
+    ExitFailure { code: code, reason: _ } => code != 0
+  }
+}

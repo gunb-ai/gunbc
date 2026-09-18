@@ -10,7 +10,7 @@ import gunbc.roadmap_serve {
   InstrumentTunerAssetHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
   SandboxAssetHandler, SandboxEchoHandler,
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
-  BeltPublishHandler,
+  BeltPublishHandler, ApprovalSubmitHandler, ApprovalStatusHandler,
   RoadmapServeRouteSpec,
   RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
   roadmap_serve_route_table_build,
@@ -109,6 +109,8 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
+    && selects(method: POST, path: "/approvals", want: ApprovalSubmitHandler)
+    && selects(method: GET, path: "/approvals/esc-1", want: ApprovalStatusHandler)
 }
 
 test fn witness_asset_route_serves_modeled_js() -> Bool {
@@ -324,17 +326,6 @@ test fn witness_known_methods_parse() -> Bool {
   }
 }
 
-test fn roadmap_serve_instance_keystone_holds() -> Bool {
-  witness_serve_table_selection()
-    && witness_asset_route_serves_modeled_js()
-    && witness_dispatch_status_total()
-    && witness_preview_dispatch_refuses_before_effects()
-    && witness_instance_route_names_posture_and_paths()
-    && witness_live_table_builds_ready_routes()
-    && witness_malformed_route_literal_refuses_table()
-    && witness_unknown_method_folds_501_response()
-}
-
 // ── The approval routes: opening the link is not deciding ────────────────────────────────────
 // THE PAIR EXISTS SO THESE TWO ARE DISTINGUISHABLE. A GET at the approval URL must render and
 // stop; everything that fetches a URL without a person behind it -- link previews, mail scanners,
@@ -352,11 +343,17 @@ test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
   r.status == 200
     && string_contains(s: r.body, pattern: "does not decide anything")
     && string_contains(s: r.body, pattern: "abc123")
+    && string_contains(s: r.body, pattern: "method=\"post\"")
+    && string_contains(s: r.body, pattern: "action=\"/approve/abc123\"")
 }
 
-// THE POST IS A DIFFERENT ROUTE, and it must not answer 200 while the broker is undeployed: a
-// route that reported success here would tell the operator they had approved something no store
-// recorded. It refuses with 501 until the keyring, decision store and publisher exist.
+// THE POST IS A DIFFERENT ROUTE, and the hermetic frame can reach it only up to the first host
+// read: once approval_identity_trust is established (it is derived from the instance bind, and
+// opens with the loopback row), a well-formed segment goes on to Clock.Now, the keyring and the
+// store, none of which has a hermetic arm. So this witness posts a segment that is not <escalation>.<decision>.<hex> and
+// pins that the refusal is 400 BEFORE any of those reads -- the ordering that also protects the
+// live route from spending effects on the way to a refusal. Redemption of a real segment is
+// covered by the store witness (redeem_over_store) and the live probe.
 test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() -> Bool {
   let r = roadmap_serve_respond(
     method_label: "POST",
@@ -365,8 +362,24 @@ test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() ->
     tailscale_identity: "briansrls@github",
     release_revision: deploy_witness_release_revision,
   )
-  r.status == 501
+  r.status == 400
+    && string_contains(s: r.body, pattern: "capability segment is not")
     && !string_contains(s: r.body, pattern: "does not decide anything")
+}
+
+// THE FILING ROUTE PARSES BEFORE IT READS ANYTHING OFF THE HOST: an unreadable envelope is a 400
+// with the store, the keys and the publisher untouched -- which is also why this witness can reach
+// the route in the hermetic frame, where those reads have no arm.
+test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
+  let r = roadmap_serve_respond(
+    method_label: "POST",
+    path: "/approvals",
+    body: "not an envelope",
+    tailscale_identity: "",
+    release_revision: deploy_witness_release_revision,
+  )
+  r.status == 400 && string_contains(s: r.body, pattern: "submission unreadable")
+    && !string_contains(s: r.body, pattern: "http")
 }
 
 // THE IDENTITY REACHES THE HANDLER. This is the end-to-end assertion for the whole identity

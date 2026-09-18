@@ -1,6 +1,7 @@
 module extdeps.numeric.base16
 
 import std.types { Int, String, List, Bool }
+import std.integer { UInt8 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -77,4 +78,43 @@ fn int_to_upper_hex_inner(n: Int, acc: String) -> String {
 fn int_to_upper_hex(n: Int) -> String {
   if n == 0 { "0" }
   else { int_to_upper_hex_inner(n: n, acc: "") }
+}
+
+// OCTETS <-> LOWERCASE HEX, the RFC 4648 §3 codec over whole byte strings. Decoding accepts ONLY
+// the lowercase alphabet this module emits, so every octet string has exactly one hex spelling here:
+// a decoder admitting "AB" beside "ab" would give one value two representations, which is the
+// ambiguity extdeps.crypto.mac chose hex to avoid. An odd length or any other character is absent,
+// never a best-effort partial decode.
+fn base16_encode_lower(octets: List<UInt8>) -> String {
+  map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
+}
+
+fn base16_lower_digit_value(c: String) -> Int? {
+  fold(base16_digit_rows, init: none, f: (acc, row) =>
+    if row.lower == c { Present { value: row.value } } else { acc })
+}
+
+fn base16_decode_lower_from(hex: String, i: Int, len: Int, acc: List<UInt8>) -> List<UInt8>? {
+  if i >= len {
+    Present { value: acc }
+  } else {
+    match base16_lower_digit_value(c: char_at(hex, i)) {
+      Absent => none
+      Present { value: high } =>
+        match base16_lower_digit_value(c: char_at(hex, i + 1)) {
+          Absent => none
+          Present { value: low } =>
+            base16_decode_lower_from(hex: hex, i: i + 2, len: len, acc: acc |> list_push(high * 16 + low))
+        }
+    }
+  }
+}
+
+fn base16_decode_lower(hex: String) -> List<UInt8>? {
+  let len = string_length(hex)
+  if len % 2 != 0 {
+    none
+  } else {
+    base16_decode_lower_from(hex: hex, i: 0, len: len, acc: [])
+  }
 }

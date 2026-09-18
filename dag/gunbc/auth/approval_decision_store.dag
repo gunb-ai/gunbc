@@ -1,0 +1,762 @@
+module gunbc.auth.approval_decision_store
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, HttpMethod, Secret }
+import std.content_hash { ContentHash, serialize_content_hash }
+import std.scoped_authorization {
+  AttemptIdentity,
+  AuthorizationRequest,
+  AuthorizationClaimState,
+  OperatorGrant,
+  ScopedAuthorization,
+  AuthorizationGranted,
+  AuthorizationDenied,
+  Unclaimed,
+}
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
+import extdeps.tailscale.identity { TailnetIdentity }
+import extdeps.network.address { IpV4, ip_address_is_loopback }
+import extdeps.network.ipv4 { parse_ipv4_address, Ipv4Parsed, Ipv4ParseFailed }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import extdeps.crypto.mac { MacKey, MacKeyId, MacSuite, HmacSha256, MacVerification, mac_verify, mac_key_material_hex_length }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_json, json_object, json_kv, json_string, json_bool }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
+import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
+import gunbc.fleet_posix_accounts { fleet_operator_email }
+import gunbc.durable_cas_file_store {
+  OwnerOnlyCreateOnly,
+  admit_cas_attempt_for_derived_payload,
+  DerivedPayloadAdmitted,
+  DerivedPayloadKeyNotSlotAddressable,
+  file_compare_and_set,
+  observe_cas_slot_state,
+}
+import std.durable_compare_and_set {
+  cas_unreadable_slot_detail,
+  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasReadableSlot, CasReadableAbsent, CasReadablePresent,
+  ExpectSlotAbsent, ExpectSlotGeneration, cas_generation_first, cas_generation_count,
+}
+import gunbc.auth.approval_capability {
+  ApprovalCapability,
+  ApprovalCapabilityClaims,
+  CapabilityExpectation,
+  ProposedDecision,
+  ProposeApprove,
+  ProposeDeny,
+  approval_capability_signing_input,
+  proposed_decision_name,
+}
+import gunbc.auth.approval_broker {
+  BrokerDecision, IdentityAttribution, HeaderAttributedToProxy, HeaderUnattributed,
+  BrokerApproved,
+  BrokerDenied,
+  ExecutionObligation,
+  Redemption,
+  RedemptionAdmitted,
+  RedemptionRefused,
+  RedemptionRefusal,
+  redeem_capability,
+  redemption_refusal_reason,
+}
+
+// THE DURABLE HALF OF THE APPROVAL LOOP: WHERE A REQUEST WAITS, WHERE A DECISION LANDS, AND THE
+// KEY THAT MAKES A TAPPED LINK MEAN SOMETHING. gunbc.auth.approval_broker owns the lifecycle and
+// gunbc.auth.approval_capability owns the signed link; neither can answer "what did the operator
+// decide about escalation E" after the process that asked has exited, and the roadmap server's
+// POST /approve/{capability} answered 501 for exactly that reason -- "the keyring, the decision
+// store and the notification publisher are not deployed". This module is the keyring and the
+// store. The publisher is gunbc.auth.approval_notification over the deployed ntfy server.
+//
+// THE LINK CARRIES A REFERENCE, NOT THE CLAIMS. The path segment is
+// `<escalation_id>.<approve|deny>.<tag_hex>`: the server loads the claims it stored when the request
+// was filed, re-derives approval_capability_signing_input over THOSE bytes, and verifies the tag
+// against them. The tag still authenticates the whole claim set -- issuer, audience, authority,
+// revision, decision, attempt, issued/expires, key id -- because it was computed over it; a forged
+// id or a flipped decision fails the MAC. What this buys is that no URL-safe claims encoding is
+// needed and the store is the one authority for what was asked, which the broker's one-commit law
+// (approval_and_obligation_commit_together_note) already wants. verify_capability's join is
+// unchanged: VerifiedMessage.message must equal the server's own signing input, byte for byte.
+//
+// WHAT THE STORE HOLDS PER ESCALATION IS ONE CAS SLOT, TWO GENERATIONS. Generation 1 is the filed
+// request (the claims-grade facts and who asked); generation 2 is the decision WITH its execution
+// obligation, in one commit. Approve and deny race for generation 2 and the CAS lets exactly one
+// win; a second tap of either link finds generation 2 present and reports what was decided
+// rather than deciding again. The subject and the scopes are NOT stored: they live with the
+// workflow's own AuthorizationRequest<Subject> row in source, and the grant is derived by JOINING
+// the stored decision to that row on escalation id and revision (the intent hash's wire form), so
+// a decision can never be presented as consent for a different intent.
+
+// ── the keyring ────────────────────────────────────────────────────────────────────────────────
+
+// THE MAC KEY IS A SECRET MANAGER SECRET, MINTED 2026-09-16 UNDER OPERATOR AUTHORIZATION
+// ("yes you can mint it"): 32 random bytes rendered as 64 lowercase hex, version 1 ENABLED, with
+// roles/secretmanager.secretAccessor granted to fleet-cloud-convergence@gunbai-secrets only. The
+// value never touched this repository or a session transcript; its sha256 prefix 113a3274bd95 is
+// how a materialized copy is checked without printing it. Version is PINNED because a keyring that
+// followed `latest` would let a rotation invalidate every link in flight (approval_capability:
+// "key_id -- which key to check, so rotation does not invalidate what is in flight").
+data approval_mac_key_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "approval-capability-mac-key"),
+  version: "1",
+)
+
+data approval_mac_key_id: MacKeyId = "approval-capability-mac-key/1" as MacKeyId
+
+data approval_mac_key_suite: MacSuite = HmacSha256
+
+// WHERE THE KEY LIVES ON THE HOST THAT SERVES /approve: a file under the roadmap server's config
+// directory, the same shape as /etc/gunbc-ntfy/publisher-token, materialized from the SecretRef
+// above by the converge step approval_keyring_materialization_frontier names, readable by the
+// unit's user only. The server reads the PATH from this row and the material into a Secret;
+// nothing renders it.
+data approval_mac_key_path: NonEmptyStr = "/etc/gunbc-roadmap/approval-mac-key"
+
+// ABSENT AND UNREADABLE ARE TWO REFUSALS WITH TWO REMEDIES (review 66990;
+// extdeps.filesystem.filesystem_io filesystem_absence_establishment_adoption_standing): an absent
+// key means the materialization frontier has not run; an unreadable one means it ran and the unit
+// cannot read what it wrote -- a permission on the file, not a missing step. Reading `content`
+// alone and calling "" absent would report the second as the first, which fails toward good news.
+// THE FAILURES ARE THEIR OWN COPRODUCT so a refusal downstream can carry exactly a failure and
+// never the loaded key (review 67005: a refusal arm that could hold the success state validates
+// instead of constructing).
+type ApprovalKeyringRefusal
+  = ApprovalKeyFileAbsent { path: NonEmptyStr }
+  | ApprovalKeyFileUnreadable { path: NonEmptyStr, error: String }
+  | ApprovalKeyMalformed { path: NonEmptyStr, length: Int }
+
+type ApprovalKeyringRead
+  = ApprovalKeyLoaded { key: MacKey }
+  | ApprovalKeyringRefused { cause: ApprovalKeyringRefusal }
+
+// Code points: '0'..'9' are 48..57, 'a'..'f' are 97..102.
+fn is_lower_hex_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57) || (cp >= 97 && cp <= 102)
+}
+
+fn is_lower_hex(s: String) -> Bool {
+  all(s.chars(), cp => is_lower_hex_code_point(cp: cp))
+}
+
+// THE MATERIAL IS 64 LOWERCASE HEX DIGITS AND NOTHING ELSE; a trailing newline from an editor is
+// refused rather than trimmed, because a key that verifies with one reader and not another is
+// worse than one that refuses everywhere. An empty file is malformed, not absent: absence is the
+// filesystem's answer, established by the exact read below, never inferred from empty content.
+fn approval_keyring_from_content(path: NonEmptyStr, key_id: MacKeyId, content: String) -> ApprovalKeyringRead {
+  if content.length() != mac_key_material_hex_length(s: approval_mac_key_suite) || !is_lower_hex(s: content) {
+    ApprovalKeyringRefused { cause: ApprovalKeyMalformed { path: path, length: content.length() } }
+  } else {
+    ApprovalKeyLoaded { key: MacKey { id: key_id, suite: approval_mac_key_suite, material: content as Secret } }
+  }
+}
+
+// ONE READER FOR EVERY MAC KEY FILE THE APPROVAL LOOP HOLDS. The capability key and the submission
+// key (gunbc.auth.approval_request_submission) differ only in path and key id, so those are
+// parameters; the 64-lower-hex rule and the absent/unreadable/malformed partition are stated once.
+// A second copy of this fold drifted (it dropped the hex check) within a day of being written, and
+// the drift reported a malformed server key to the filer as its own 403.
+fn approval_keyring_from_exact_read(path: NonEmptyStr, key_id: MacKeyId, exact: FilesystemExactRead) -> ApprovalKeyringRead {
+  match exact {
+    FilesystemExactPathRead { path: _, content: c } => approval_keyring_from_content(path: path, key_id: key_id, content: c)
+    FilesystemExactPathAbsent { path: _ } => ApprovalKeyringRefused { cause: ApprovalKeyFileAbsent { path: path } }
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: path, error: e } }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => ApprovalKeyringRefused { cause: ApprovalKeyFileUnreadable { path: path, error: concat(o, concat(": ", e)) } }
+  }
+}
+
+fn read_mac_keyring(path: NonEmptyStr, key_id: MacKeyId) -> ApprovalKeyringRead {
+  let read = Filesystem.Read(path: path as String)
+  approval_keyring_from_exact_read(path: path, key_id: key_id, exact: filesystem_exact_read(path: path as String, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind))
+}
+
+fn read_approval_keyring() -> ApprovalKeyringRead {
+  read_mac_keyring(path: approval_mac_key_path, key_id: approval_mac_key_id)
+}
+
+// ── what the verifier accepts ──────────────────────────────────────────────────────────────────
+
+// THE EXPECTATION IS CONFIGURATION, NEVER READ FROM THE LINK (approval_capability
+// CapabilityExpectation). Issuer is the process that mints links, audience is the broker that
+// redeems them, authority is the one this store brokers for: operator consent to a fleet
+// convergence step. A capability minted for another authority fails here on audience or
+// authority before any decision is read.
+data approval_capability_issuer: NonEmptyStr = "gunbc.roadmap_serve"
+data approval_capability_audience: NonEmptyStr = "gunbc.auth.approval_broker"
+data approval_capability_authority: NonEmptyStr = "gunbc.auth.scoped_authorization"
+
+data approval_capability_expectation: CapabilityExpectation = CapabilityExpectation {
+  issuer: approval_capability_issuer,
+  audience: approval_capability_audience,
+  authority: approval_capability_authority,
+  suite: HmacSha256,
+}
+
+// THE OPERATOR IS ONE TAILNET LOGIN, and it is the row the fleet already owns:
+// gunbc.fleet_posix_accounts fleet_operator_email, which the tailscale ACL consumes too. The
+// live tailnet (`tailscale status` on srv1, 2026-09-16) reports the same login. A second literal
+// here would be a second authority on who a tap may be (review 66990).
+data approval_operator_login: NonEmptyStr = fleet_operator_email
+
+// AND THE IDENTITY HEADER IS ONLY EVIDENCE WHEN THE BACKEND IS REACHABLE THROUGH TAILSCALE SERVE
+// ALONE (extdeps.tailscale.identity identity_header_trust_is_a_deployment_property_note). Until
+// the deployment is loopback-only behind `tailscale serve`, a request that reaches the socket
+// directly can present any login, and a redemption that trusted it would report the operator's
+// consent for something they never saw. So the store refuses to redeem unless the deployment
+// property is established, and the standing is derived from the instance row the unit is emitted
+// from (approval_identity_trust_for) -- not a flag a handler defaults and not a second row.
+type IdentityTrustStanding
+  = IdentityHeaderTrustEstablished { evidence: NonEmptyStr }
+  | IdentityHeaderUnattributed { residual: NonEmptyStr }
+  | IdentityHeaderTrustNotEstablished { blocker: NonEmptyStr }
+
+// THE TRUST STANDING IS DERIVED FROM THE ROW THE UNIT IS EMITTED FROM, never asserted beside it
+// (review 67264), AND A LOOPBACK BIND ATTRIBUTES NOTHING (reviews 67306, 67348):
+// gunbc.roadmap_dashboard_instance srv1_live_dashboard_instance.listen_host is the one fact
+// live_deploy turns into the unit's --host, so the standing reads that field. Any bind other than
+// loopback keeps the gate closed: the header is self-assertable by whoever reaches the port. A
+// loopback bind rules out off-host callers only; an on-host process under another POSIX user can
+// still present any header, and nothing at the serve boundary attributes the peer yet. So the
+// loopback arm is IdentityHeaderUnattributed: redemption is admitted on the CAPABILITY alone (the
+// bearer authority the server minted and ntfy delivered to the operator's phone), and the consent
+// record names the bearer, never a login (approval_broker HeaderUnattributed). A forged header on
+// that deployment therefore changes nothing the record says. IdentityHeaderTrustEstablished is
+// minted by nothing until peer attribution lands (approval_identity_attribution_frontier). A later
+// edit of the row back to 0.0.0.0 closes the gate in the same commit, with no second row to forget.
+fn approval_identity_trust_for(listen_host: NonEmptyStr) -> IdentityTrustStanding {
+  match parse_ipv4_address(text: listen_host as String) {
+    Ipv4Parsed { address: a } =>
+      if ip_address_is_loopback(addr: IpV4 { v4: a }) {
+        IdentityHeaderUnattributed {
+          residual: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host) behind tailscale serve https://srv1.tailecbe08.ts.net/, so off-host callers cannot reach it; an on-host process under another POSIX user still can, so the header is not attributed and the record names the capability's bearer"], "") as NonEmptyStr,
+        }
+      } else {
+        IdentityHeaderTrustNotEstablished {
+          blocker: join(["gunbc-roadmap.service binds --host ", listen_host as String, " (srv1_live_dashboard_instance.listen_host), so a Tailscale-User-Login header can be set by anyone who reaches the port; the gate opens when the row binds loopback"], "") as NonEmptyStr,
+        }
+      }
+    Ipv4ParseFailed { error: _ } =>
+      IdentityHeaderTrustNotEstablished {
+        blocker: join(["srv1_live_dashboard_instance.listen_host '", listen_host as String, "' is not an IPv4 address, so the bind cannot be classified as loopback"], "") as NonEmptyStr,
+      }
+  }
+}
+
+data approval_identity_trust: IdentityTrustStanding = approval_identity_trust_for(listen_host: srv1_live_dashboard_instance().listen_host)
+
+// ── the store ──────────────────────────────────────────────────────────────────────────────────
+
+// CONSENT RECORDS ARE AUTHORIZATION STATE, so every generation is published OWNER-ONLY
+// (OwnerOnlyCreateOnly -> Filesystem.WriteOwnerOnly, 0600): the rule gunbc.durable_cas_file_store
+// states for a bare path with no directory-mode authority (review 66990). A record names who asked,
+// for what, whether it is destructive and who decided; none of that is for other users of the host.
+data approval_decision_store_root: NonEmptyStr = "/var/lib/gunbc/approvals"
+
+// THE CLAIMS-GRADE FACTS OF A FILED REQUEST. Everything approval_capability_signing_input reads is
+// here except the decision, which is what the two links differ in; requester, purpose and
+// destructive are what the operator READS on the confirmation page and what admission checked
+// before the notification went out.
+type StoredApprovalRequest {
+  escalation_id: NonEmptyStr
+  request_revision: NonEmptyStr
+  attempt: AttemptIdentity
+  requester: NonEmptyStr
+  purpose: NonEmptyStr
+  destructive: Bool
+  issued_at: Timestamp
+  expires_at: Timestamp
+  key_id: MacKeyId
+}
+
+fn stored_request_json(r: StoredApprovalRequest) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "kind", value: json_string(s: "request")),
+    json_kv(key: "escalation_id", value: json_string(s: r.escalation_id as String)),
+    json_kv(key: "request_revision", value: json_string(s: r.request_revision as String)),
+    json_kv(key: "attempt", value: json_string(s: r.attempt as String)),
+    json_kv(key: "requester", value: json_string(s: r.requester as String)),
+    json_kv(key: "purpose", value: json_string(s: r.purpose as String)),
+    json_kv(key: "destructive", value: json_bool(b: r.destructive)),
+    json_kv(key: "issued_at", value: json_string(s: r.issued_at)),
+    json_kv(key: "expires_at", value: json_string(s: r.expires_at)),
+    json_kv(key: "key_id", value: json_string(s: r.key_id as String)),
+  ]))
+}
+
+fn stored_decision_json(d: BrokerDecision) -> String {
+  match d {
+    BrokerApproved { escalation_id: e, revision: r, decided_by: by, decided_at: at, obligation: o } =>
+      serialize_json(v: json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "approved")),
+        json_kv(key: "escalation_id", value: json_string(s: e as String)),
+        json_kv(key: "revision", value: json_string(s: r as String)),
+        json_kv(key: "decided_by", value: json_string(s: by as String)),
+        json_kv(key: "decided_at", value: json_string(s: at)),
+        json_kv(key: "obligation_authority", value: json_string(s: o.authority as String)),
+        json_kv(key: "obligation_intent_revision", value: json_string(s: o.intent_revision as String)),
+        json_kv(key: "obligation_execute_by", value: json_string(s: o.execute_by)),
+      ]))
+    BrokerDenied { escalation_id: e, revision: r, decided_by: by, decided_at: at, reason: why } =>
+      serialize_json(v: json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "denied")),
+        json_kv(key: "escalation_id", value: json_string(s: e as String)),
+        json_kv(key: "revision", value: json_string(s: r as String)),
+        json_kv(key: "decided_by", value: json_string(s: by as String)),
+        json_kv(key: "decided_at", value: json_string(s: at)),
+        json_kv(key: "reason", value: json_string(s: why as String)),
+      ]))
+  }
+}
+
+// ── reading a record back ──────────────────────────────────────────────────────────────────────
+
+type JsonFieldRead
+  = FieldString { value: String }
+  | FieldBool { value: Bool }
+  | FieldMissing { key: String }
+
+fn json_field(v: JsonValue, key: String) -> JsonFieldRead {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => FieldString { value: s }
+    JsonMemberFound { value: JsonBool { value: b } } => FieldBool { value: b }
+    JsonMemberFound { value: _ } => FieldMissing { key: key }
+    JsonMemberAbsent => FieldMissing { key: key }
+    JsonMemberDuplicated { count: _ } => FieldMissing { key: key }
+    JsonMemberNotAnObject => FieldMissing { key: key }
+  }
+}
+
+fn json_field_string(v: JsonValue, key: String) -> String? {
+  match json_field(v: v, key: key) {
+    FieldString { value: s } => if s == "" { none } else { Present { value: s } }
+    _ => none
+  }
+}
+
+fn json_field_bool(v: JsonValue, key: String) -> Bool? {
+  match json_field(v: v, key: key) {
+    FieldBool { value: b } => Present { value: b }
+    _ => none
+  }
+}
+
+type StoredRecordParse
+  = StoredRequestParsed { request: StoredApprovalRequest }
+  | StoredDecisionParsed { decision: BrokerDecision }
+  | StoredRecordUnreadable { detail: NonEmptyStr }
+
+fn parse_stored_request(v: JsonValue) -> StoredRecordParse {
+  match json_field_string(v: v, key: "escalation_id") {
+    Absent => StoredRecordUnreadable { detail: "stored request lacks escalation_id" }
+    Present { value: e } => match json_field_string(v: v, key: "request_revision") {
+      Absent => StoredRecordUnreadable { detail: "stored request lacks request_revision" }
+      Present { value: rev } => match json_field_string(v: v, key: "attempt") {
+        Absent => StoredRecordUnreadable { detail: "stored request lacks attempt" }
+        Present { value: att } => match json_field_string(v: v, key: "requester") {
+          Absent => StoredRecordUnreadable { detail: "stored request lacks requester" }
+          Present { value: req } => match json_field_string(v: v, key: "purpose") {
+            Absent => StoredRecordUnreadable { detail: "stored request lacks purpose" }
+            Present { value: purpose } => match json_field_bool(v: v, key: "destructive") {
+              Absent => StoredRecordUnreadable { detail: "stored request lacks destructive" }
+              Present { value: destructive } => match json_field_string(v: v, key: "issued_at") {
+                Absent => StoredRecordUnreadable { detail: "stored request lacks issued_at" }
+                Present { value: issued } => match json_field_string(v: v, key: "expires_at") {
+                  Absent => StoredRecordUnreadable { detail: "stored request lacks expires_at" }
+                  Present { value: expires } => match json_field_string(v: v, key: "key_id") {
+                    Absent => StoredRecordUnreadable { detail: "stored request lacks key_id" }
+                    Present { value: kid } => StoredRequestParsed { request: StoredApprovalRequest {
+                      escalation_id: e as NonEmptyStr,
+                      request_revision: rev as NonEmptyStr,
+                      attempt: att as AttemptIdentity,
+                      requester: req as NonEmptyStr,
+                      purpose: purpose as NonEmptyStr,
+                      destructive: destructive,
+                      issued_at: issued,
+                      expires_at: expires,
+                      key_id: kid as MacKeyId,
+                    } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn parse_stored_decision(v: JsonValue, kind: String) -> StoredRecordParse {
+  match json_field_string(v: v, key: "escalation_id") {
+    Absent => StoredRecordUnreadable { detail: "stored decision lacks escalation_id" }
+    Present { value: e } => match json_field_string(v: v, key: "revision") {
+      Absent => StoredRecordUnreadable { detail: "stored decision lacks revision" }
+      Present { value: rev } => match json_field_string(v: v, key: "decided_by") {
+        Absent => StoredRecordUnreadable { detail: "stored decision lacks decided_by" }
+        Present { value: by } => match json_field_string(v: v, key: "decided_at") {
+          Absent => StoredRecordUnreadable { detail: "stored decision lacks decided_at" }
+          Present { value: at } =>
+            if kind == "approved" {
+              match json_field_string(v: v, key: "obligation_authority") {
+                Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_authority" }
+                Present { value: oa } => match json_field_string(v: v, key: "obligation_intent_revision") {
+                  Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_intent_revision" }
+                  Present { value: oi } => match json_field_string(v: v, key: "obligation_execute_by") {
+                    Absent => StoredRecordUnreadable { detail: "stored approval lacks obligation_execute_by" }
+                    Present { value: ob } => StoredDecisionParsed { decision: BrokerApproved {
+                      escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at,
+                      obligation: ExecutionObligation { authority: oa as NonEmptyStr, intent_revision: oi as NonEmptyStr, execute_by: ob },
+                    } }
+                  }
+                }
+              }
+            } else {
+              match json_field_string(v: v, key: "reason") {
+                Absent => StoredRecordUnreadable { detail: "stored denial lacks reason" }
+                Present { value: why } => StoredDecisionParsed { decision: BrokerDenied {
+                  escalation_id: e as NonEmptyStr, revision: rev as NonEmptyStr, decided_by: by as NonEmptyStr, decided_at: at, reason: why as NonEmptyStr,
+                } }
+              }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn parse_stored_record(text: String) -> StoredRecordParse {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => StoredRecordUnreadable { detail: "stored record is not a JSON document" }
+    JsonDocumentParsed { value: v } => match json_field_string(v: v, key: "kind") {
+      Absent => StoredRecordUnreadable { detail: "stored record lacks kind" }
+      Present { value: kind } =>
+        if kind == "request" { parse_stored_request(v: v) }
+        else if kind == "approved" || kind == "denied" { parse_stored_decision(v: v, kind: kind) }
+        else { StoredRecordUnreadable { detail: concat("stored record kind is not request, approved or denied: ", kind) as NonEmptyStr } }
+    }
+  }
+}
+
+// THE SLOT AS THE BROKER SEES IT: nothing filed, a request waiting at generation 1, a decision at
+// generation 2, or a store that could not be read -- four states, none collapsed into another.
+type EscalationSlot
+  = EscalationNotFiled
+  | EscalationPending { request: StoredApprovalRequest }
+  | EscalationDecided { decision: BrokerDecision }
+  | EscalationUnreadable { detail: NonEmptyStr }
+
+fn observe_escalation(root: NonEmptyStr, escalation_id: NonEmptyStr) -> EscalationSlot {
+  match observe_cas_slot_state(root: root, key: escalation_id) {
+    CasObservedUnreadable { cause: c } => EscalationUnreadable { detail: concat("approval store slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
+    CasObservedReadable { readable: r } => match r {
+      CasReadableAbsent => EscalationNotFiled
+      CasReadablePresent { version: v } => match parse_stored_record(text: v.value as String) {
+        StoredRecordUnreadable { detail: d } => EscalationUnreadable { detail: d }
+        StoredRequestParsed { request: req } =>
+          if cas_generation_count(g: v.generation) == 1 { EscalationPending { request: req } }
+          else { EscalationUnreadable { detail: "a request record sits above generation 1" } }
+        StoredDecisionParsed { decision: d } =>
+          if cas_generation_count(g: v.generation) == 2 { EscalationDecided { decision: d } }
+          else { EscalationUnreadable { detail: "a decision record sits at a generation other than 2" } }
+      }
+    }
+  }
+}
+
+// ── filing and deciding ────────────────────────────────────────────────────────────────────────
+
+type StoreWrite
+  = StoreWritten
+  | StoreSlotOccupied
+  | StoreRefused { detail: NonEmptyStr }
+
+fn store_write_from_cas(outcome: CasOutcome<NonEmptyStr>) -> StoreWrite {
+  match outcome {
+    CasCommitted { committed: _ } => StoreWritten
+    CasPreconditionFailed { expected: _, observed: _ } => StoreSlotOccupied
+    CasStoreRefused { cause: _ } => StoreRefused { detail: "approval store refused the publication" }
+  }
+}
+
+// GENERATION 1: THE REQUEST. ExpectSlotAbsent, so a second filing under the same escalation id
+// reports occupied rather than overwriting what the operator may already have been shown.
+fn file_approval_request(root: NonEmptyStr, request: StoredApprovalRequest) -> StoreWrite {
+  let payload = stored_request_json(r: request) as NonEmptyStr
+  match admit_cas_attempt_for_derived_payload(key: request.escalation_id, expected: ExpectSlotAbsent, proposed: payload) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => StoreRefused { detail: "escalation id is not slot-addressable" }
+    DerivedPayloadAdmitted { verified: v } =>
+      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v))
+  }
+}
+
+// GENERATION 2: THE DECISION AND ITS OBLIGATION, ONE COMMIT, expecting generation 1 -- so approve
+// and deny cannot both win, and a decision cannot land on an escalation nobody filed.
+fn commit_broker_decision(root: NonEmptyStr, decision: BrokerDecision) -> StoreWrite {
+  let escalation_id = match decision {
+    BrokerApproved { escalation_id: e, revision: _, decided_by: _, decided_at: _, obligation: _ } => e
+    BrokerDenied { escalation_id: e, revision: _, decided_by: _, decided_at: _, reason: _ } => e
+  }
+  let payload = stored_decision_json(d: decision) as NonEmptyStr
+  match admit_cas_attempt_for_derived_payload(key: escalation_id, expected: ExpectSlotGeneration { generation: cas_generation_first() }, proposed: payload) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => StoreRefused { detail: "escalation id is not slot-addressable" }
+    DerivedPayloadAdmitted { verified: v } =>
+      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v))
+  }
+}
+
+// ── the link ───────────────────────────────────────────────────────────────────────────────────
+
+// THE CLAIMS A STORED REQUEST STANDS FOR, under one proposed decision. The two links a request
+// gets differ only in this field, so they carry different tags.
+fn claims_for(request: StoredApprovalRequest, decision: ProposedDecision) -> ApprovalCapabilityClaims {
+  ApprovalCapabilityClaims {
+    protocol: "gunbc.approval-capability.v1",
+    issuer: approval_capability_issuer,
+    audience: approval_capability_audience,
+    authority: approval_capability_authority,
+    escalation_id: request.escalation_id,
+    request_revision: request.request_revision,
+    decision: decision,
+    attempt: request.attempt,
+    issued_at: request.issued_at,
+    expires_at: request.expires_at,
+    key_id: request.key_id,
+  }
+}
+
+data capability_segment_separator: String = "."
+
+fn capability_path_segment(escalation_id: NonEmptyStr, decision: ProposedDecision, tag_hex: NonEmptyStr) -> NonEmptyStr {
+  join([escalation_id as String, proposed_decision_name(d: decision) as String, tag_hex as String], capability_segment_separator) as NonEmptyStr
+}
+
+type CapabilitySegmentParse
+  = CapabilitySegmentParsed { escalation_id: NonEmptyStr, decision: ProposedDecision, tag_hex: NonEmptyStr }
+  | CapabilitySegmentMalformed { detail: NonEmptyStr }
+
+// THE ESCALATION ID MAY NOT CONTAIN THE SEPARATOR; that is the price of a three-part segment and
+// it is checked at filing time by cas_key_is_slot_addressable's caller, and again here on the way
+// in so a crafted id cannot shift the decision word.
+fn parse_capability_segment(segment: String) -> CapabilitySegmentParse {
+  let parts = segment.split(sep: capability_segment_separator)
+  if count(parts) != 3 {
+    CapabilitySegmentMalformed { detail: "capability segment is not <escalation_id>.<decision>.<tag_hex>" }
+  } else {
+    let e = match parts.first() { Present { value: v } => v Absent => "" }
+    let d = match parts.skip(n: 1).first() { Present { value: v } => v Absent => "" }
+    let t = match parts.skip(n: 2).first() { Present { value: v } => v Absent => "" }
+    if e == "" || t == "" {
+      CapabilitySegmentMalformed { detail: "capability segment has an empty escalation id or tag" }
+    } else if d == (proposed_decision_name(d: ProposeApprove) as String) {
+      CapabilitySegmentParsed { escalation_id: e as NonEmptyStr, decision: ProposeApprove, tag_hex: t as NonEmptyStr }
+    } else if d == (proposed_decision_name(d: ProposeDeny) as String) {
+      CapabilitySegmentParsed { escalation_id: e as NonEmptyStr, decision: ProposeDeny, tag_hex: t as NonEmptyStr }
+    } else {
+      CapabilitySegmentMalformed { detail: concat("capability segment decision word is not approve or deny: ", d) as NonEmptyStr }
+    }
+  }
+}
+
+// ── redemption over the store ──────────────────────────────────────────────────────────────────
+
+// EVERY WAY A TAP CAN END, each located. RedeemedApproved and RedeemedDenied are the two facts a
+// tap can establish; AlreadyDecided is what a second tap sees; everything else is a refusal with
+// the layer that refused named in the arm.
+type StoreRedemption
+  = RedeemedApproved { decision: BrokerDecision }
+  | RedeemedDenied { decision: BrokerDecision }
+  | AlreadyDecided { decision: BrokerDecision }
+  | RedemptionSegmentMalformed { detail: NonEmptyStr }
+  | RedemptionEscalationNotFiled { escalation_id: NonEmptyStr }
+  | RedemptionStoreUnreadable { detail: NonEmptyStr }
+  | RedemptionKeyringUnavailable { cause: ApprovalKeyringRefusal }
+  | RedemptionIdentityUntrusted { blocker: NonEmptyStr }
+  | RedemptionBrokerRefused { cause: RedemptionRefusal }
+  | RedemptionLostTheRace
+  | RedemptionCommitRefused { detail: NonEmptyStr }
+
+fn store_redemption_reason(r: StoreRedemption) -> String {
+  match r {
+    RedeemedApproved { decision: _ } => "approved and recorded"
+    RedeemedDenied { decision: _ } => "denied and recorded"
+    AlreadyDecided { decision: _ } => "this escalation was already decided; nothing changed"
+    RedemptionSegmentMalformed { detail: d } => d as String
+    RedemptionEscalationNotFiled { escalation_id: e } => concat("no request is filed under escalation ", e as String)
+    RedemptionStoreUnreadable { detail: d } => concat("approval store unreadable: ", d as String)
+    RedemptionKeyringUnavailable { cause: k } => match k {
+      ApprovalKeyFileAbsent { path: p } => concat("approval MAC key file is absent: ", p as String)
+      ApprovalKeyFileUnreadable { path: p, error: e } => concat("approval MAC key file is unreadable: ", concat(p as String, concat(" -- ", e)))
+      ApprovalKeyMalformed { path: p, length: n } => concat("approval MAC key file is malformed (", concat(to_string(n), concat(" chars): ", p as String)))
+    }
+    RedemptionIdentityUntrusted { blocker: b } => concat("the identity header cannot be trusted on this deployment: ", b as String)
+    RedemptionBrokerRefused { cause: c } => redemption_refusal_reason(r: c)
+    RedemptionLostTheRace => "another decision landed first; this tap changed nothing"
+    RedemptionCommitRefused { detail: d } => concat("decision could not be committed: ", d as String)
+  }
+}
+
+// THE ONE FOLD BEHIND POST /approve/{capability}. Order: the deployment must vouch for the
+// identity header at all; the segment must parse; the escalation must be filed and pending; the
+// keyring must load; then the broker decides (MAC over the STORED claims first, then policy, then
+// identity); and only an admitted redemption is committed, with the obligation, at generation 2.
+// A second tap lands on AlreadyDecided before the MAC is even checked -- there is nothing left to
+// decide and no oracle in saying so, since the store's own state is not a secret. The obligation's
+// execute_by is the filed request's own lifetime: the operator approved THAT window, and a
+// separate deadline supplied at tap time would be a second authority on how long consent lasts.
+fn redeem_over_store(
+  root: NonEmptyStr,
+  trust: IdentityTrustStanding,
+  keyring: ApprovalKeyringRead,
+  method: HttpMethod,
+  segment: String,
+  presented_identity: TailnetIdentity,
+  observed_at: Timestamp,
+) -> StoreRedemption {
+  match trust {
+    IdentityHeaderTrustNotEstablished { blocker: b } => RedemptionIdentityUntrusted { blocker: b }
+    IdentityHeaderUnattributed { residual: r } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, attribution: HeaderUnattributed { residual: r }, observed_at: observed_at)
+    IdentityHeaderTrustEstablished { evidence: _ } => redeem_trusted_over_store(root: root, keyring: keyring, method: method, segment: segment, attribution: HeaderAttributedToProxy { presented: presented_identity }, observed_at: observed_at)
+  }
+}
+
+// THE REDEMPTION PAST THE TRUST GATE, one fold for both admitting arms.
+fn redeem_trusted_over_store(
+  root: NonEmptyStr,
+  keyring: ApprovalKeyringRead,
+  method: HttpMethod,
+  segment: String,
+  attribution: IdentityAttribution,
+  observed_at: Timestamp,
+) -> StoreRedemption {
+  match parse_capability_segment(segment: segment) {
+    CapabilitySegmentMalformed { detail: d } => RedemptionSegmentMalformed { detail: d }
+    CapabilitySegmentParsed { escalation_id: e, decision: proposed, tag_hex: tag } =>
+      match observe_escalation(root: root, escalation_id: e) {
+        EscalationNotFiled => RedemptionEscalationNotFiled { escalation_id: e }
+        EscalationUnreadable { detail: d } => RedemptionStoreUnreadable { detail: d }
+        EscalationDecided { decision: d } => AlreadyDecided { decision: d }
+        EscalationPending { request: req } =>
+          match keyring {
+            ApprovalKeyLoaded { key: key } => {
+              let claims = claims_for(request: req, decision: proposed)
+              let mac_result: MacVerification = mac_verify(key: key, message: approval_capability_signing_input(c: claims), tag_hex: tag)
+              match redeem_capability(
+                method: method,
+                capability: ApprovalCapability { claims: claims, tag_b64url: tag },
+                expectation: approval_capability_expectation,
+                mac_result: mac_result,
+                attribution: attribution,
+                expected_operator: approval_operator_login,
+                observed_at: observed_at,
+              ) {
+                RedemptionRefused { cause: c } => RedemptionBrokerRefused { cause: c }
+                RedemptionAdmitted { claims: cl, decided_by: by } => {
+                  let decision = match cl.decision {
+                    ProposeApprove => BrokerApproved {
+                      escalation_id: cl.escalation_id, revision: cl.request_revision, decided_by: by, decided_at: observed_at,
+                      obligation: ExecutionObligation { authority: cl.authority, intent_revision: cl.request_revision, execute_by: req.expires_at },
+                    }
+                    ProposeDeny => BrokerDenied {
+                      escalation_id: cl.escalation_id, revision: cl.request_revision, decided_by: by, decided_at: observed_at,
+                      reason: "denied by the operator through the approval link",
+                    }
+                  }
+                  match commit_broker_decision(root: root, decision: decision) {
+                    StoreWritten => match decision {
+                      BrokerApproved { escalation_id: _, revision: _, decided_by: _, decided_at: _, obligation: _ } => RedeemedApproved { decision: decision }
+                      BrokerDenied { escalation_id: _, revision: _, decided_by: _, decided_at: _, reason: _ } => RedeemedDenied { decision: decision }
+                    }
+                    StoreSlotOccupied => RedemptionLostTheRace
+                    StoreRefused { detail: d } => RedemptionCommitRefused { detail: d }
+                  }
+                }
+              }
+            }
+            ApprovalKeyringRefused { cause: c } => RedemptionKeyringUnavailable { cause: c }
+          }
+      }
+  }
+}
+
+// ── the grant a workflow receives ──────────────────────────────────────────────────────────────
+
+// THE JOIN THAT TURNS A STORED DECISION INTO CONSENT FOR ONE INTENT. The workflow supplies its
+// own AuthorizationRequest<Subject> (subject, scopes, intent hash) from source; the store supplies
+// the decision. They agree only when escalation id AND revision -- the intent hash's wire form --
+// match; otherwise the decision is somebody else's and the grant is refused. A pending or absent
+// slot yields the request's own AuthorizationPending, so a workflow polling the store sees the
+// same value it would have declared by hand, and the srv3 source-declared grant
+// (gunbc.srv3_os_install_actuate_workflow srv3_boot_once_cd_source_declared_grant_dissolve_on)
+// dissolves into this fold.
+type GrantDerivation<Subject>
+  = GrantDerived { authorization: ScopedAuthorization<Subject> }
+  | GrantStillPending { escalation_id: NonEmptyStr }
+  | GrantEscalationNotFiled { escalation_id: NonEmptyStr }
+  | GrantForAnotherIntent { requested_revision: NonEmptyStr, decided_revision: NonEmptyStr }
+  | GrantStoreUnreadable { detail: NonEmptyStr }
+
+fn request_revision_of<Subject>(request: AuthorizationRequest<Subject>) -> NonEmptyStr {
+  serialize_content_hash(hash: request.intent_hash)
+}
+
+fn grant_from_store<Subject>(root: NonEmptyStr, request: AuthorizationRequest<Subject>) -> GrantDerivation<Subject> {
+  let revision = request_revision_of(request: request)
+  match observe_escalation(root: root, escalation_id: request.escalation_id) {
+    EscalationNotFiled => GrantEscalationNotFiled { escalation_id: request.escalation_id }
+    EscalationUnreadable { detail: d } => GrantStoreUnreadable { detail: d }
+    EscalationPending { request: _ } => GrantStillPending { escalation_id: request.escalation_id }
+    EscalationDecided { decision: d } => match d {
+      BrokerApproved { escalation_id: e, revision: r, decided_by: by, decided_at: at, obligation: o } =>
+        if e != request.escalation_id || r != revision {
+          GrantForAnotherIntent { requested_revision: revision, decided_revision: r }
+        } else {
+          GrantDerived { authorization: AuthorizationGranted {
+            grant: OperatorGrant {
+              escalation_id: request.escalation_id,
+              scopes: request.scopes,
+              subject: request.subject,
+              purpose: request.purpose,
+              attempt: request.attempt,
+              intent_hash: request.intent_hash,
+              granted_by: by,
+              granted_at: at,
+              expires_at: o.execute_by,
+            },
+            claim: Unclaimed,
+          } }
+        }
+      BrokerDenied { escalation_id: e, revision: r, decided_by: by, decided_at: at, reason: why } =>
+        if e != request.escalation_id || r != revision {
+          GrantForAnotherIntent { requested_revision: revision, decided_revision: r }
+        } else {
+          GrantDerived { authorization: AuthorizationDenied { escalation_id: e, denied_by: by, denied_at: at, reason: why } }
+        }
+    }
+  }
+}
+
+// ATTRIBUTION: the consent record names a login only when the serve boundary can attribute the
+// header to the tailscale proxy; on the loopback bind it names the capability's bearer. The
+// capability that restores the login is peer attribution -- the loopback client's socket owner
+// (the kernel's /proc/net/tcp uid for the peer port) joined at the serve boundary and required to
+// be tailscaled's -- at which point approval_identity_trust_for answers
+// IdentityHeaderTrustEstablished from that attribution and the Unattributed arm is deleted.
+data approval_identity_attribution_frontier: DissolutionCondition = unbound_dissolution(
+  description: "the serve runtime exposes the connecting peer's address and the approve handler joins it to the socket owner's uid, refusing every peer that is not the tailscale proxy -- SUFFICIENT FOR the Tailscale-User-Login header to be evidence of the tailnet login on every request the route admits, so decided_by can name the login rather than the bearer",
+)
+
+// ── the frontiers ──────────────────────────────────────────────────────────────────────────────
+
+// THE KEYS ON THE HOST: a converge step materializes approval_mac_key_secret_ref into
+// approval_mac_key_path AND gunbc.auth.approval_request_submission
+// approval_submission_mac_key_secret_ref into its approval_submission_mac_key_path, 0640, owned by
+// root and readable by the roadmap unit's user, the same shape as /etc/gunbc-ntfy/publisher-token.
+// Until that step lands the keyrings read absent and every redemption refuses
+// RedemptionKeyringUnavailable and every filing SubmissionKeyUnavailable -- loud, never a
+// fabricated key. The step is gunbc.auth.approval_keyring_converge in #11484 (fleet-converge mode
+// approval_keyring_converge, writing over the fleet SSH edge as the administrator); its first live
+// receipt is fleet-converge run 35181154197 on srv1 (2026-09-17), from an integration tree.
+data approval_keyring_materialization_frontier: DissolutionCondition = unbound_dissolution(
+  description: "a fleet-converge step that reads approval_mac_key_secret_ref and approval_submission_mac_key_secret_ref through the WIF-backed convergence account and writes approval_mac_key_path and approval_submission_mac_key_path (0640 root:<roadmap unit user>) on the host that serves /approve and /approvals, over the fleet SSH administrator edge rather than a job-user sudo -- SUFFICIENT FOR both keyrings to read ApprovalKeyLoaded on that host; lands as gunbc.auth.approval_keyring_converge (#11484)",
+)
+

@@ -11,7 +11,7 @@ import v2.std.algebra {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, symbol_eq }
 import v2.std.optional {
   Absent,
   Optional,
@@ -72,10 +72,6 @@ fn provenance_qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   a == b
 }
 
-fn provenance_symbol_eq(a: Symbol, b: Symbol) -> Bool {
-  a == b
-}
-
 fn module_roster_from_roots(roots: FreeMonoid<Node>) -> FreeMonoid<QualifiedName> {
   fold_list(
     xs: roots,
@@ -106,7 +102,7 @@ fn provenance_owner_of_target(
     xs: roster,
     empty: optional_absent(),
     cons: fn(best, candidate) {
-      if is_prefix_of(prefix: candidate, xs: target, eq: provenance_symbol_eq) {
+      if is_prefix_of(prefix: candidate, xs: target, eq: symbol_eq) {
         match best {
           Absent => optional_present(value: candidate)
           Present { value: current } =>

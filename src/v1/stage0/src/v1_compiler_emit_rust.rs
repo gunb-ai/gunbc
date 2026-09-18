@@ -3,13 +3,9 @@
 
 use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
-use self::ConstantFold::*;
-use self::DataRefResolution::*;
-use self::DataReferenceUnresolvableCause::*;
 use self::IterOwnedReceiverCloneDisposition::*;
-use self::ParamDefaultResolution::*;
-use self::ReferenceDerivedCandidateDisposition::*;
 use self::WitnessCtorPathVerdict::*;
+pub use crate::extdeps_cargo::CargoFeature;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
@@ -39,6 +35,14 @@ pub use crate::gunbc_cli_dispatch_surface::{
 pub use crate::gunbc_cli_dispatch_surface::{
     CliArmRealization, CliBootstrapDagOperationBinding, CliBootstrapExecutionClass, CliOperandRow,
     CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
+};
+use crate::gunbc_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{
+    CandidateExportProofFailed, CandidateLeafAmbiguous, CandidateOwnModule,
+    CandidateRegistryAbsent, CandidateSurvived, CandidateVariantDelegatedToParent,
+    CandidateVariantParentUnresolved,
+};
+pub use crate::gunbc_reference_derived_candidate::{
+    ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow,
 };
 pub use crate::gunbc_rust_decl_type_overlay::rust_decl_type_container_overlay_is_admitted;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
@@ -163,12 +167,12 @@ pub use crate::v1_compiler_emit::{
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
-    capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
-    has_mock_prefix, is_leaf_type_item, is_type_alias_item, is_type_alias_return_node,
-    is_type_decl_item, is_type_def_item, is_upper, language_spec, make_indent,
-    module_filename_collision_diagnostics, module_to_filename, sanitize_service_name,
-    service_var_name, test_function_name, to_lower_char, to_pascal, to_screaming_snake, to_snake,
-    to_string, to_string_helper, to_upper_char, unique_strings,
+    capitalize_first, emitted_symbol_collision_diagnostics, escape_json_string,
+    escape_string_literal_body, extract_test_projections, has_mock_prefix, is_leaf_type_item,
+    is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
+    language_spec, make_indent, module_filename_collision_diagnostics, module_to_filename,
+    sanitize_service_name, service_var_name, test_function_name, to_lower_char, to_pascal,
+    to_screaming_snake, to_snake, to_string, to_string_helper, to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
@@ -234,7 +238,7 @@ pub use crate::v1_compiler_ownership::{
     collect_callable_refs,
 };
 pub use crate::v1_compiler_resolve::get_exported_names;
-pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
+pub use crate::v1_compiler_runtime_rust::{rust_runtime_cargo_features, rust_runtime_source};
 pub use crate::v1_compiler_trait_bound_witness::{
     v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name,
     v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names,
@@ -260,12 +264,12 @@ use crate::v1_std_core::CallTargetIdentity::{
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    AmbiguousAnonymousRecordLiteral, AmbiguousReference, DataReferenceVisibilityBudgetExceeded,
-    EffectfulSelfRecursionUnrealized, EmissionConstructUnprojectable, InternalError,
-    ParameterDefaultFormNotAdmitted, ReferenceDerivedImportExportUnproven,
+    AmbiguousAnonymousRecordLiteral, AmbiguousReference, EffectfulSelfRecursionUnrealized,
+    EmissionConstructUnprojectable, InternalError, ReferenceDerivedImportExportUnproven,
     ReferenceDerivedImportProviderUnknown, UnlistedImportUse,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::Unmarked;
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
     ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
@@ -319,10 +323,10 @@ pub use crate::v1_std_core::{
 };
 pub use crate::v1_std_core::{
     CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective,
-    DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, LeafOwner, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    ParsedModuleItemKind, ResolvedCallFormal, StringPart, TextFile, UnaryOpKind,
-    UnprojectableConstruct, VarBindingKind,
+    DeclarationMarker, DeclaredCallableIdentity, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, LeafOwner, MatchPattern, MethodSemantics,
+    NewlineIndex, Node, ParsedModuleItemKind, ResolvedCallFormal, StringPart, TextFile,
+    UnaryOpKind, UnprojectableConstruct, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3691,6 +3695,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -6527,8 +6532,6 @@ pub struct EmitRustContext {
     pub emit_info: Rc<EmitGraphInfo>,
     pub registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub data_items: Rc<HashMap<String, Rc<Node>>>,
-    pub workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-    pub workflow_default_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub anonymous_record_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub effectful_recursion_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub svc_module_map: Rc<HashMap<String, String>>,
@@ -6603,12 +6606,6 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             expected_type: std::option::Option::None,
         });
         let registry = typed.item_registry.clone();
-        let workflow_funcs = collect_workflow_funcs(
-            typed.modules.clone(),
-            registry.clone(),
-            emit_info.read_only_params_index.clone(),
-        );
-        let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
         let anonymous_record_diags = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
@@ -6692,8 +6689,6 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             emit_info: emit_info.clone(),
             registry: registry.clone(),
             data_items: data_items.clone(),
-            workflow_funcs: workflow_funcs.clone(),
-            workflow_default_diags: workflow_default_diags.clone(),
             anonymous_record_diags: anonymous_record_diags.clone(),
             effectful_recursion_diags: effectful_recursion_diags.clone(),
             svc_module_map: svc_module_map.clone(),
@@ -6755,14 +6750,6 @@ pub fn emit_rust_selected(
         let module_index = ctx.module_index.clone();
         let unlisted_type_names_by_module = ctx.unlisted_type_names_by_module.clone();
         let shared_types = emit_info.shared_types.clone();
-        let workflow_funcs = ctx.workflow_funcs.clone();
-        let workflow_default_diags = ctx.workflow_default_diags.clone();
-        if ((workflow_default_diags.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
-                diagnostics: workflow_default_diags.clone(),
-            });
-        }
         let anonymous_record_diags = ctx.anonymous_record_diags.clone();
         if ((anonymous_record_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
@@ -6785,6 +6772,16 @@ pub fn emit_rust_selected(
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
                 diagnostics: filename_collisions.clone(),
+            });
+        }
+        let symbol_collisions =
+            crate::v1_compiler_emit_core_support::emitted_symbol_collision_diagnostics(
+                typed.clone(),
+            );
+        if ((symbol_collisions.clone().len() as i64) > 0) {
+            return Rc::new(EmitResult {
+                files: Rc::new(vec![]),
+                diagnostics: symbol_collisions.clone(),
             });
         }
         let test_projections = ctx.test_projections.clone();
@@ -7000,17 +6997,14 @@ pub fn emit_rust_selected(
         let cargo = emit_cargo_toml(
             crate_name.clone(),
             EmittedCrateDependencyDemand {
-                renders_clap_cli: (has_pipeline.clone()
-                    || ((workflow_funcs.clone().len() as i64) > 0)),
+                renders_clap_cli: has_pipeline.clone(),
                 renders_async_services: has_services.clone(),
             },
         );
         let main_file = emit_main_rs(
-            workflow_funcs.clone(),
             typed.modules.clone(),
             has_services.clone(),
             crate_name.clone(),
-            svc_module_map.clone(),
         );
         let cli_dispatch_file = if has_pipeline.clone() {
             Rc::new(vec![emit_gunbc_cli_dispatch_generated(crate_name.clone())])
@@ -9609,25 +9603,6 @@ pub fn local_coproduct_variant_names(
         }
         __result
     })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ReferenceDerivedCandidateDisposition {
-    CandidateSurvived { provider_module: String },
-    CandidateOwnModule,
-    CandidateVariantDelegatedToParent { parent_enum: String },
-    CandidateVariantParentUnresolved,
-    CandidateRegistryAbsent,
-    CandidateLeafAmbiguous,
-    CandidateExportProofFailed { provider_module: String },
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ReferenceDerivedCandidateRow {
-    pub module_name: String,
-    pub name: String,
-    pub disposition: Rc<ReferenceDerivedCandidateDisposition>,
 }
 
 pub fn reference_derived_candidate_disposition(
@@ -18917,6 +18892,120 @@ pub fn v1_call_site_clone_forwarded_param_names(
     }
 }
 
+pub fn v1_call_forwarding_static_bound_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    body: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((generic_param_names.clone().len() as i64) == 0) {
+            return Rc::new(vec![]);
+        }
+        let here = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => v1_call_site_static_forwarded_param_names(
+                body.clone(),
+                generic_param_names.clone(),
+                fn_decl_items.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+                visited.clone(),
+            ),
+            _ => Rc::new(vec![]),
+        };
+        body.children.clone().iter().cloned().fold(
+            here.clone(),
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
+                crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                    acc,
+                    v1_call_forwarding_static_bound_param_names(
+                        generic_param_names.clone(),
+                        child.clone(),
+                        fn_decl_items.clone(),
+                        emit_info.clone(),
+                        source_indices.clone(),
+                        visited.clone(),
+                    ),
+                )
+            },
+        )
+    })
+}
+
+pub fn v1_call_site_static_forwarded_param_names(
+    call: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    visited: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
+        if {
+            let mut __found = false;
+            for v in visited.iter().cloned() {
+                if (v.clone() == callee_name.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            return Rc::new(vec![]);
+        }
+        match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(callee_item) => {
+                match callee_item.body.clone() {
+                    std::option::Option::None => Rc::new(vec![]),
+                    Some(callee_body) => {
+                        let callee_type_params = function_type_params(callee_item.params.clone());
+                        if ((callee_type_params.clone().len() as i64) == 0) {
+                            Rc::new(vec![])
+                        } else {
+                            {
+                                let callee_generic_param_names = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for p in callee_type_params.iter().cloned() {
+                                        __result.push(crate::v1_std_core::generic_param_name_at(
+                                            p.clone(),
+                                            si.clone(),
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let callee_own_static = if type_has_fn_fields(
+                                    rust_fn_sig_leaf_name(
+                                        si.clone(),
+                                        crate::v1_compiler_infer_types::resolved_type(
+                                            callee_item.clone(),
+                                        ),
+                                    ),
+                                    emit_info.clone(),
+                                ) {
+                                    callee_generic_param_names.clone()
+                                } else {
+                                    Rc::new(vec![])
+                                };
+                                let callee_static = crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(callee_own_static.clone(), v1_call_forwarding_static_bound_param_names(callee_generic_param_names.clone(), callee_body.clone(), fn_decl_items.clone(), emit_info.clone(), si.clone(), v1_rt::concat(visited.clone(), Rc::new(vec![callee_name.clone()]))));
+                                if ((callee_static.clone().len() as i64) > 0) {
+                                    generic_param_names
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn v1_call_forwarding_equality_bound_param_names(
     generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
@@ -19165,10 +19254,18 @@ pub fn emit_fn_def(
         );
         let returns_arrow_or_fn_field_record =
             (((inferred.params.clone().len() as i64) > 0) || returns_fn_field_record.clone());
+        let call_forwarded_static_param_names = v1_call_forwarding_static_bound_param_names(
+            generic_param_names.clone(),
+            body.clone(),
+            emit_info.fn_decl_items.clone(),
+            emit_info.clone(),
+            si.clone(),
+            Rc::new(vec![]),
+        );
         let static_param_names = if returns_fn_field_record.clone() {
             generic_param_names.clone()
         } else {
-            Rc::new(vec![])
+            call_forwarded_static_param_names.clone()
         };
         let bounds_by_param = v1_fn_bounds_by_param(
             clone_param_names.clone(),
@@ -19197,7 +19294,8 @@ pub fn emit_fn_def(
             emit_info.read_only_params.clone(),
             emit_info.variant_to_enum.clone(),
             scope.type_env.clone(),
-            returns_arrow_or_fn_field_record.clone(),
+            (returns_arrow_or_fn_field_record.clone()
+                || ((call_forwarded_static_param_names.clone().len() as i64) > 0)),
         );
         let ret_str = emit_inferred(
             inferred.clone(),
@@ -20236,7 +20334,7 @@ pub fn emit_params(
     read_only_params: Rc<BTreeSet<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-    enclosing_returns_arrow: bool,
+    fn_param_needs_static: bool,
 ) -> String {
     {
         let strs = Rc::new({
@@ -20250,7 +20348,7 @@ pub fn emit_params(
                     read_only_params.clone(),
                     variant_to_enum.clone(),
                     env.clone(),
-                    enclosing_returns_arrow.clone(),
+                    fn_param_needs_static.clone(),
                 ));
             }
             __result
@@ -20287,7 +20385,7 @@ pub fn emit_rust_param_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-    enclosing_returns_arrow: bool,
+    fn_param_needs_static: bool,
 ) -> String {
     if ((n.params.clone().len() as i64) > 0) {
         {
@@ -20317,7 +20415,7 @@ pub fn emit_rust_param_type(
                 ),
                 _ => "()".to_string(),
             };
-            let static_bound = if enclosing_returns_arrow.clone() {
+            let static_bound = if fn_param_needs_static.clone() {
                 " + 'static".to_string()
             } else {
                 "".to_string()
@@ -20356,7 +20454,7 @@ pub fn emit_param(
     read_only_params: Rc<BTreeSet<String>>,
     variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-    enclosing_returns_arrow: bool,
+    fn_param_needs_static: bool,
 ) -> String {
     {
         let pname = crate::v1_std_core::param_node_name_at(param.clone(), source_indices.clone());
@@ -20369,7 +20467,7 @@ pub fn emit_param(
                 source_indices.clone(),
                 variant_to_enum.clone(),
                 env.clone(),
-                enclosing_returns_arrow.clone(),
+                fn_param_needs_static.clone(),
             )
         } else {
             render_rust_param_sig_type(
@@ -23705,6 +23803,29 @@ pub fn call_target_is_runtime_primitive(target: Rc<CallTargetIdentity>) -> bool 
     (call_target_runtime_primitive_name(target.clone()) != std::option::Option::None)
 }
 
+pub fn call_target_unrealized_primitive_name(target: Rc<CallTargetIdentity>) -> String {
+    match call_target_runtime_primitive_name(target.clone()) {
+        Some(primitive_name) => primitive_name.clone(),
+        std::option::Option::None => "".to_string(),
+    }
+}
+
+pub fn call_target_is_unrealized_primitive(target: Rc<CallTargetIdentity>) -> bool {
+    match call_target_runtime_primitive_name(target.clone()) {
+        std::option::Option::None => false,
+        Some(primitive_name) => {
+            if rust_runtime_primitive_has_bridge(primitive_name.clone()) {
+                false
+            } else {
+                match call_target_projected_declaration(target.clone()) {
+                    Some(_) => false,
+                    std::option::Option::None => true,
+                }
+            }
+        }
+    }
+}
+
 pub fn call_target_projected_declaration(
     target: Rc<CallTargetIdentity>,
 ) -> Option<Rc<DeclaredCallableIdentity>> {
@@ -24769,6 +24890,7 @@ pub fn emit_typed_call_expr(
                 emit_typed_call(
                     func.clone(),
                     args.clone(),
+                    inferred.clone(),
                     call_semantics.clone(),
                     callee_is_function_value.clone(),
                     call_target.clone(),
@@ -25003,6 +25125,7 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
 pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
+    inferred: Option<Rc<InferredNode>>,
     call_semantics: Option<Rc<CallSemantics>>,
     callee_is_function_value: bool,
     call_target: Rc<CallTargetIdentity>,
@@ -25448,6 +25571,11 @@ pub fn emit_typed_call(
                 __found
             }
         };
+        let unrealized_primitive_call = if is_rt.clone() {
+            false
+        } else {
+            call_target_is_unrealized_primitive(call_target.clone())
+        };
         let func_ident = if is_rt.clone() {
             v1_rt::concat(
                 "v1_rt::".to_string(),
@@ -25521,18 +25649,33 @@ pub fn emit_typed_call(
         } else {
             func_ident.clone()
         };
-        let call_str = if ((is_rt.clone() && (func.clone() == "concat".to_string()))
-            && ((all_args.clone().len() as i64) > 2))
-        {
-            emit_nested_rt_concat(all_args.clone(), "".to_string(), shared_types.clone())
+        let call_str = if unrealized_primitive_call.clone() {
+            {
+                let seam_type = match inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: ret_type, .. }) => render_rust_type(
+                        ret_type.clone(),
+                        shared_types.clone(),
+                        si.clone(),
+                        emit_info.clone(),
+                    ),
+                    _ => "_".to_string(),
+                };
+                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("v1_rt::unrealized_host_seam::<".to_string(), seam_type.clone()), ">(\"".to_string()), crate::v1_compiler_emit_core_support::escape_string_literal_body(v1_rt::concat(v1_rt::concat("primitive ".to_string(), call_target_unrealized_primitive_name(call_target.clone())), " has no v1_rt realization and no declaration to emit: give it a row in extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers".to_string()))), "\")".to_string())
+            }
         } else {
-            v1_rt::concat(
+            if ((is_rt.clone() && (func.clone() == "concat".to_string()))
+                && ((all_args.clone().len() as i64) > 2))
+            {
+                emit_nested_rt_concat(all_args.clone(), "".to_string(), shared_types.clone())
+            } else {
                 v1_rt::concat(
-                    v1_rt::concat(func_name.clone(), "(".to_string()),
-                    args_str.clone(),
-                ),
-                ")".to_string(),
-            )
+                    v1_rt::concat(
+                        v1_rt::concat(func_name.clone(), "(".to_string()),
+                        args_str.clone(),
+                    ),
+                    ")".to_string(),
+                )
+            }
         };
         match callee.clone() {
             Some(info) => {
@@ -32865,6 +33008,7 @@ pub fn emit_rust_tco_non_self_call(
             let call_str = emit_typed_call(
                 f.clone(),
                 frame.expr.clone().children.clone(),
+                frame.expr.clone().inferred.clone(),
                 cs.clone(),
                 call_semantics_is_function_value(cs.clone()),
                 crate::v1_std_core::call_semantics_target(cs.clone()),
@@ -38017,11 +38161,17 @@ pub fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand)
         );
         let workspace = "\n[workspace]\n".to_string();
         let all_deps = emitted_crate_dependency_lines(demand.clone());
+        let features = emit_cargo_features_section(
+            crate::v1_compiler_runtime_rust::rust_runtime_cargo_features(),
+        );
         Rc::new(TextFile {
             path: "Cargo.toml".to_string(),
             content: v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(header.clone(), workspace.clone()),
+                    v1_rt::concat(
+                        v1_rt::concat(header.clone(), workspace.clone()),
+                        features.clone(),
+                    ),
                     "\n[dependencies]\n".to_string(),
                 ),
                 all_deps.clone().join(&"".to_string()),
@@ -38030,871 +38180,48 @@ pub fn emit_cargo_toml(crate_name: String, demand: EmittedCrateDependencyDemand)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WorkflowFunc {
-    pub name: String,
-    pub module_name: String,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Rc<Node>,
-    pub uses: Rc<Vec<Rc<Node>>>,
-    pub service_names: Rc<Vec<String>>,
-    pub resolved_defaults: Rc<HashMap<String, String>>,
-    pub unresolvable_default_data_references: Rc<HashMap<String, Rc<UnresolvableDataReference>>>,
-    pub read_only_params: Rc<BTreeSet<String>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-}
-
-pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
-    match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
-            LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
-            LiteralValue::LitInt { value: i, .. } => {
-                Some(crate::v1_compiler_emit_core_support::to_string(i.clone()))
-            }
-            LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
-            LiteralValue::LitBool { value: b, .. } => Some(if b.clone() {
-                "true".to_string()
-            } else {
-                "false".to_string()
-            }),
-            _ => std::option::Option::None,
-        },
-        _ => std::option::Option::None,
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DataImportEdge {
-    pub module_path: String,
-    pub is_all: bool,
-    pub specific_names: Rc<Vec<String>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DataDeclIndex {
-    pub by_module: Rc<HashMap<String, Rc<HashMap<String, Rc<Node>>>>>,
-    pub imports_by_module: Rc<HashMap<String, Rc<Vec<Rc<DataImportEdge>>>>>,
-    pub source_indices_by_module: Rc<HashMap<String, Rc<HashMap<String, Rc<NewlineIndex>>>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum DataRefResolution {
-    DataRefResolved { module_path: String, body: Rc<Node> },
-    DataRefAmbiguous { modules: Rc<Vec<String>> },
-    DataRefVisibilityBudgetExhausted,
-    DataRefAbsent,
-}
-
-pub fn empty_data_decl_index() -> Rc<DataDeclIndex> {
-    Rc::new(DataDeclIndex {
-        by_module: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<Node>>>>(),
-        imports_by_module: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<DataImportEdge>>>>(),
-        source_indices_by_module: v1_rt::rc_empty_map::<
-            String,
-            Rc<HashMap<String, Rc<NewlineIndex>>>,
-        >(),
-    })
-}
-
-pub fn data_import_edges(
-    module: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<DataImportEdge>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for imp in crate::v1_std_core::module_imports(module.clone())
-            .iter()
-            .cloned()
-        {
-            __result.push(Rc::new(DataImportEdge {
-                module_path: crate::v1_std_core::authored_name_at(
-                    source_indices.clone(),
-                    imp.clone(),
-                ),
-                is_all: crate::v1_std_core::import_is_all(imp.clone()),
-                specific_names: crate::v1_std_core::import_specific_names_at(
-                    imp.clone(),
-                    source_indices.clone(),
-                ),
-            }));
-        }
-        __result
-    })
-}
-
-pub fn record_data_decl(
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-    name: String,
-    body: Rc<Node>,
-) -> Rc<DataDeclIndex> {
-    {
-        let bucket = match v1_rt::map_get(&index.by_module.clone(), module_path.clone()) {
-            Some(m) => m.clone(),
-            std::option::Option::None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        };
-        Rc::new(DataDeclIndex {
-            by_module: v1_rt::rc_map_insert(
-                index.by_module.clone(),
-                module_path.clone(),
-                v1_rt::rc_map_insert(bucket.clone(), name.clone(), body.clone()),
-            ),
-            imports_by_module: index.imports_by_module.clone(),
-            source_indices_by_module: index.source_indices_by_module.clone(),
-        })
-    }
-}
-
-pub fn build_data_decl_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<DataDeclIndex> {
-    modules.iter().cloned().fold(
-        empty_data_decl_index(),
-        |acc: Rc<DataDeclIndex>, tm: Rc<TypedModule>| {
-            let si = tm.type_env.clone().source_indices.clone();
-            let module_path = crate::v1_std_core::authored_name_at(si.clone(), tm.module.clone());
-            let seeded = Rc::new(DataDeclIndex {
-                by_module: acc.by_module.clone(),
-                imports_by_module: v1_rt::rc_map_insert(
-                    acc.imports_by_module.clone(),
-                    module_path.clone(),
-                    data_import_edges(tm.module.clone(), si.clone()),
-                ),
-                source_indices_by_module: v1_rt::rc_map_insert(
-                    acc.source_indices_by_module.clone(),
-                    module_path.clone(),
-                    si.clone(),
-                ),
-            });
-            tm.items.clone().iter().cloned().fold(
-                seeded.clone(),
-                |inner: Rc<DataDeclIndex>, i: Rc<Node>| {
-                    if (crate::v1_compiler_infer_items::item_kind(i.clone()) != ItemKind::DataItem)
-                    {
-                        inner.clone()
-                    } else {
-                        match i.body.clone() {
-                            Some(b) => record_data_decl(
-                                inner.clone(),
-                                module_path.clone(),
-                                crate::v1_std_core::authored_name_at(si.clone(), i.clone()),
-                                b.clone(),
-                            ),
-                            std::option::Option::None => inner.clone(),
-                        }
-                    }
-                },
-            )
-        },
-    )
-}
-
-pub fn data_decl_in_module(
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-    name: String,
-) -> Option<Rc<Node>> {
-    match v1_rt::map_get(&index.by_module.clone(), module_path.clone()) {
-        Some(m) => v1_rt::map_get(&m, name.clone()),
-        std::option::Option::None => std::option::Option::None,
-    }
-}
-
-pub fn data_decl_module_edges(
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-) -> Rc<Vec<Rc<DataImportEdge>>> {
-    match v1_rt::map_get(&index.imports_by_module.clone(), module_path.clone()) {
-        Some(e) => e.clone(),
-        std::option::Option::None => Rc::new(vec![]),
-    }
-}
-
-pub fn data_import_admits_name(edge: Rc<DataImportEdge>, name: String) -> bool {
-    (edge.is_all.clone() || {
-        let mut __found = false;
-        for n in edge.specific_names.clone().iter().cloned() {
-            if (n.clone() == name.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    })
-}
-
-pub fn data_import_reexports_name(edge: Rc<DataImportEdge>, name: String) -> bool {
-    if edge.is_all.clone() {
-        false
+pub fn emit_cargo_feature(feature: Rc<CargoFeature>) -> String {
+    if ((feature.dependencies.clone().len() as i64) == 0) {
+        v1_rt::concat(feature.name.clone(), " = []\n".to_string())
     } else {
-        data_import_admits_name(edge.clone(), name.clone())
-    }
-}
-
-pub fn data_reference_visibility_depth_limit() -> i64 {
-    16
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DataDeclReach {
-    pub modules: Rc<Vec<String>>,
-    pub budget_exhausted: bool,
-}
-
-pub fn empty_data_decl_reach() -> Rc<DataDeclReach> {
-    Rc::new(DataDeclReach {
-        modules: Rc::new(vec![]),
-        budget_exhausted: false,
-    })
-}
-
-pub fn merge_data_decl_reach(
-    left: Rc<DataDeclReach>,
-    right: Rc<DataDeclReach>,
-) -> Rc<DataDeclReach> {
-    Rc::new(DataDeclReach {
-        modules: v1_rt::concat(left.modules.clone(), right.modules.clone()),
-        budget_exhausted: (left.budget_exhausted.clone() || right.budget_exhausted.clone()),
-    })
-}
-
-pub fn data_decl_reexporting_modules(
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-    name: String,
-    depth: i64,
-) -> Rc<DataDeclReach> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (depth.clone() > data_reference_visibility_depth_limit()) {
-            Rc::new(DataDeclReach {
-                modules: Rc::new(vec![]),
-                budget_exhausted: true,
-            })
-        } else {
-            match data_decl_in_module(index.clone(), module_path.clone(), name.clone()) {
-                Some(_) => Rc::new(DataDeclReach {
-                    modules: Rc::new(vec![module_path.clone()]),
-                    budget_exhausted: false,
-                }),
-                std::option::Option::None => Rc::new({
-                    let mut __result = Vec::new();
-                    for e in data_decl_module_edges(index.clone(), module_path.clone())
-                        .iter()
-                        .cloned()
-                    {
-                        if data_import_reexports_name(e.clone(), name.clone()) {
-                            __result.push(e);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                .fold(
-                    empty_data_decl_reach(),
-                    |acc: Rc<DataDeclReach>, e: Rc<DataImportEdge>| {
-                        merge_data_decl_reach(
-                            acc,
-                            data_decl_reexporting_modules(
-                                index.clone(),
-                                e.module_path.clone(),
-                                name.clone(),
-                                (depth.clone() + 1),
-                            ),
-                        )
-                    },
-                ),
-            }
-        }
-    })
-}
-
-pub fn data_decl_visible_modules(
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-    name: String,
-) -> Rc<DataDeclReach> {
-    match data_decl_in_module(index.clone(), module_path.clone(), name.clone()) {
-        Some(_) => Rc::new(DataDeclReach {
-            modules: Rc::new(vec![module_path.clone()]),
-            budget_exhausted: false,
-        }),
-        std::option::Option::None => {
-            let reached = Rc::new({
+        {
+            let dep_names = Rc::new({
                 let mut __result = Vec::new();
-                for e in data_decl_module_edges(index.clone(), module_path.clone())
-                    .iter()
-                    .cloned()
-                {
-                    if data_import_admits_name(e.clone(), name.clone()) {
-                        __result.push(e);
-                    }
+                for d in feature.dependencies.clone().iter().cloned() {
+                    __result.push(v1_rt::concat(
+                        v1_rt::concat("\"".to_string(), d.clone()),
+                        "\"".to_string(),
+                    ));
                 }
                 __result
             })
-            .iter()
-            .cloned()
-            .fold(
-                empty_data_decl_reach(),
-                |acc: Rc<DataDeclReach>, e: Rc<DataImportEdge>| {
-                    merge_data_decl_reach(
-                        acc,
-                        data_decl_reexporting_modules(
-                            index.clone(),
-                            e.module_path.clone(),
-                            name.clone(),
-                            1,
-                        ),
-                    )
-                },
-            );
-            Rc::new(DataDeclReach {
-                modules: crate::v1_compiler_emit_core_support::unique_strings(
-                    reached.modules.clone(),
+            .join(&", ".to_string());
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(feature.name.clone(), " = [".to_string()),
+                    dep_names.clone(),
                 ),
-                budget_exhausted: reached.budget_exhausted.clone(),
-            })
+                "]\n".to_string(),
+            )
         }
     }
 }
 
-pub fn resolve_data_reference(
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-    name: String,
-) -> Rc<DataRefResolution> {
-    {
-        let reach = data_decl_visible_modules(index.clone(), module_path.clone(), name.clone());
-        if reach.budget_exhausted.clone() {
-            Rc::new(DataRefResolution::DataRefVisibilityBudgetExhausted)
-        } else {
-            if ((reach.modules.clone().len() as i64) > 1) {
-                Rc::new(DataRefResolution::DataRefAmbiguous {
-                    modules: reach.modules.clone(),
-                })
-            } else {
-                match reach.modules.clone().first().cloned() {
-                    Some(mp) => {
-                        match data_decl_in_module(index.clone(), mp.clone(), name.clone()) {
-                            Some(b) => Rc::new(DataRefResolution::DataRefResolved {
-                                module_path: mp.clone(),
-                                body: b.clone(),
-                            }),
-                            std::option::Option::None => Rc::new(DataRefResolution::DataRefAbsent),
-                        }
-                    }
-                    std::option::Option::None => Rc::new(DataRefResolution::DataRefAbsent),
-                }
-            }
-        }
-    }
-}
-
-pub fn data_decl_source_indices(
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-    fallback: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
-    match v1_rt::map_get(&index.source_indices_by_module.clone(), module_path.clone()) {
-        Some(si) => si.clone(),
-        std::option::Option::None => fallback,
-    }
-}
-
-pub fn workflow_default_fold_depth_limit() -> i64 {
-    8
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ConstantFold {
-    ConstantFolded {
-        module_path: String,
-        expr: Rc<Node>,
-    },
-    ConstantFoldAmbiguousDataReference {
-        name: String,
-        modules: Rc<Vec<String>>,
-    },
-    ConstantFoldVisibilityBudgetExhausted {
-        name: String,
-    },
-    ConstantFoldUnresolved,
-}
-
-pub fn fold_constant_default_expr(
-    expr: Rc<Node>,
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    depth: i64,
-) -> Rc<ConstantFold> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (depth.clone() > workflow_default_fold_depth_limit()) {
-            Rc::new(ConstantFold::ConstantFoldUnresolved)
-        } else {
-            match (*expr.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    let var_name =
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), expr.clone());
-                    match (*resolve_data_reference(
-                        index.clone(),
-                        module_path.clone(),
-                        var_name.clone(),
-                    ))
-                    .clone()
-                    {
-                        DataRefResolution::DataRefResolved {
-                            module_path: decl_module,
-                            body,
-                            ..
-                        } => fold_constant_default_expr(
-                            body.clone(),
-                            index.clone(),
-                            decl_module.clone(),
-                            data_decl_source_indices(
-                                index.clone(),
-                                decl_module.clone(),
-                                source_indices.clone(),
-                            ),
-                            (depth.clone() + 1),
-                        ),
-                        DataRefResolution::DataRefAmbiguous { modules: mods, .. } => {
-                            Rc::new(ConstantFold::ConstantFoldAmbiguousDataReference {
-                                name: var_name.clone(),
-                                modules: mods.clone(),
-                            })
-                        }
-                        DataRefResolution::DataRefVisibilityBudgetExhausted => {
-                            Rc::new(ConstantFold::ConstantFoldVisibilityBudgetExhausted {
-                                name: var_name.clone(),
-                            })
-                        }
-                        DataRefResolution::DataRefAbsent => {
-                            Rc::new(ConstantFold::ConstantFoldUnresolved)
-                        }
-                    }
-                }
-                ExprData::ExprFieldAccess { summary: _, .. } => match (*fold_constant_default_expr(
-                    crate::v1_std_core::field_access_base(expr.clone()),
-                    index.clone(),
-                    module_path.clone(),
-                    source_indices.clone(),
-                    (depth.clone() + 1),
-                ))
-                .clone()
-                {
-                    ConstantFold::ConstantFolded {
-                        module_path: base_module,
-                        expr: base,
-                        ..
-                    } => {
-                        let base_indices = data_decl_source_indices(
-                            index.clone(),
-                            base_module.clone(),
-                            source_indices.clone(),
-                        );
-                        match crate::v1_std_core::record_lit_named_field_value_optional(
-                            base.clone(),
-                            crate::v1_std_core::field_access_field_at(
-                                expr.clone(),
-                                source_indices.clone(),
-                            ),
-                            base_indices.clone(),
-                        ) {
-                            Some(field_value) => fold_constant_default_expr(
-                                field_value.clone(),
-                                index.clone(),
-                                base_module.clone(),
-                                base_indices.clone(),
-                                (depth.clone() + 1),
-                            ),
-                            std::option::Option::None => {
-                                Rc::new(ConstantFold::ConstantFoldUnresolved)
-                            }
-                        }
-                    }
-                    ConstantFold::ConstantFoldAmbiguousDataReference {
-                        name: n,
-                        modules: mods,
-                        ..
-                    } => Rc::new(ConstantFold::ConstantFoldAmbiguousDataReference {
-                        name: n.clone(),
-                        modules: mods.clone(),
-                    }),
-                    ConstantFold::ConstantFoldVisibilityBudgetExhausted { name: n, .. } => {
-                        Rc::new(ConstantFold::ConstantFoldVisibilityBudgetExhausted {
-                            name: n.clone(),
-                        })
-                    }
-                    ConstantFold::ConstantFoldUnresolved => {
-                        Rc::new(ConstantFold::ConstantFoldUnresolved)
-                    }
-                },
-                _ => Rc::new(ConstantFold::ConstantFolded {
-                    module_path: module_path.clone(),
-                    expr: expr.clone(),
-                }),
-            }
-        }
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum DataReferenceUnresolvableCause {
-    DataReferenceAmbiguous { modules: Rc<Vec<String>> },
-    DataReferenceVisibilityBudgetExhausted,
-}
-impl DataReferenceUnresolvableCause {
-    pub fn modules(&self) -> Rc<Vec<String>> {
-        match self {
-            DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: __val, .. } => {
-                __val.clone()
-            }
-            DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted => {
-                panic!("no modules on unit variant")
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct UnresolvableDataReference {
-    pub name: String,
-    pub cause: Rc<DataReferenceUnresolvableCause>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WorkflowParamDefaults {
-    pub resolved: Rc<HashMap<String, String>>,
-    pub ambiguous: Rc<HashMap<String, Rc<UnresolvableDataReference>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum ParamDefaultResolution {
-    ParamDefaultLiteral {
-        value: String,
-    },
-    ParamDefaultAmbiguousDataReference {
-        name: String,
-        modules: Rc<Vec<String>>,
-    },
-    ParamDefaultVisibilityBudgetExhausted {
-        name: String,
-    },
-    ParamDefaultUnresolved,
-}
-
-pub fn resolve_param_default(
-    param: Rc<Node>,
-    index: Rc<DataDeclIndex>,
-    module_path: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ParamDefaultResolution> {
-    match crate::v1_std_core::param_node_default_value(param.clone()) {
-        Some(dv) => match (*fold_constant_default_expr(
-            dv.clone(),
-            index.clone(),
-            module_path.clone(),
-            source_indices.clone(),
-            0,
-        ))
-        .clone()
-        {
-            ConstantFold::ConstantFolded { expr: folded, .. } => {
-                match extract_literal_string(folded.clone()) {
-                    Some(lit) => {
-                        Rc::new(ParamDefaultResolution::ParamDefaultLiteral { value: lit.clone() })
-                    }
-                    std::option::Option::None => {
-                        Rc::new(ParamDefaultResolution::ParamDefaultUnresolved)
-                    }
-                }
-            }
-            ConstantFold::ConstantFoldAmbiguousDataReference {
-                name: n,
-                modules: mods,
-                ..
-            } => Rc::new(ParamDefaultResolution::ParamDefaultAmbiguousDataReference {
-                name: n.clone(),
-                modules: mods.clone(),
-            }),
-            ConstantFold::ConstantFoldVisibilityBudgetExhausted { name: n, .. } => Rc::new(
-                ParamDefaultResolution::ParamDefaultVisibilityBudgetExhausted { name: n.clone() },
-            ),
-            ConstantFold::ConstantFoldUnresolved => {
-                Rc::new(ParamDefaultResolution::ParamDefaultUnresolved)
-            }
-        },
-        std::option::Option::None => Rc::new(ParamDefaultResolution::ParamDefaultUnresolved),
-    }
-}
-
-pub fn to_workflow_func(
-    item: Rc<Node>,
-    module_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    index: Rc<DataDeclIndex>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-) -> Rc<WorkflowFunc> {
-    {
-        let item_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-        let svc_names = match crate::v1_compiler_emit::lookup_item_by_identity(
-            registry.clone(),
-            Rc::new(DeclaredCallableIdentity {
-                owner_module_path: module_name.clone(),
-                decl_name: item_name.clone(),
-            }),
-        ) {
-            Some(info) => info.service_names.clone(),
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        let param_defaults = item.params.clone().iter().cloned().fold(Rc::new(WorkflowParamDefaults {
-    resolved: v1_rt::rc_empty_map::<String, String>(),
-    ambiguous: v1_rt::rc_empty_map::<String, Rc<UnresolvableDataReference>>(),
-}), |acc: Rc<WorkflowParamDefaults>, p: Rc<Node>| {
-            let param_name = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
-match (*resolve_param_default(p.clone(), index.clone(), module_name.clone(), source_indices.clone())).clone() {
-    ParamDefaultResolution::ParamDefaultLiteral { value: lit, .. } => Rc::new(WorkflowParamDefaults {
-    resolved: v1_rt::rc_map_insert(acc.resolved.clone(), param_name.clone(), lit.clone()),
-    ambiguous: acc.ambiguous.clone(),
-}),
-    ParamDefaultResolution::ParamDefaultAmbiguousDataReference { name: n, modules: mods, .. } => Rc::new(WorkflowParamDefaults {
-    resolved: acc.resolved.clone(),
-    ambiguous: v1_rt::rc_map_insert(acc.ambiguous.clone(), param_name.clone(), Rc::new(UnresolvableDataReference {
-    name: n.clone(),
-    cause: Rc::new(DataReferenceUnresolvableCause::DataReferenceAmbiguous {
-    modules: mods.clone(),
-}),
-})),
-}),
-    ParamDefaultResolution::ParamDefaultVisibilityBudgetExhausted { name: n, .. } => Rc::new(WorkflowParamDefaults {
-    resolved: acc.resolved.clone(),
-    ambiguous: v1_rt::rc_map_insert(acc.ambiguous.clone(), param_name.clone(), Rc::new(UnresolvableDataReference {
-    name: n.clone(),
-    cause: Rc::new(DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted),
-})),
-}),
-    ParamDefaultResolution::ParamDefaultUnresolved => acc.clone(),
-}
-});
-        let defaults = param_defaults.resolved.clone();
-        let ambiguous = param_defaults.ambiguous.clone();
-        let qualified = v1_rt::concat(
-            v1_rt::concat(module_name.clone(), ".".to_string()),
-            item_name.clone(),
-        );
-        let ro_params = match v1_rt::map_get(&read_only_params_index, qualified.clone()) {
-            Some(m) => m.clone(),
-            std::option::Option::None => v1_rt::rc_empty_set::<String>(),
-        };
-        Rc::new(WorkflowFunc {
-            name: item_name.clone(),
-            module_name: module_name.clone(),
-            params: item.params.clone(),
-            inferred: crate::v1_compiler_infer_types::resolved_type(item.clone()),
-            uses: item.uses.clone(),
-            service_names: svc_names.clone(),
-            resolved_defaults: defaults.clone(),
-            unresolvable_default_data_references: ambiguous.clone(),
-            read_only_params: ro_params.clone(),
-            source_indices: source_indices.clone(),
-        })
-    }
-}
-
-pub fn is_workflow_item(
-    item: Rc<Node>,
-    module_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    if (item.body.clone() == std::option::Option::None) {
-        false
+pub fn emit_cargo_features_section(features: Rc<Vec<Rc<CargoFeature>>>) -> String {
+    if ((features.clone().len() as i64) == 0) {
+        "".to_string()
     } else {
-        if ((item.uses.clone().len() as i64) > 0) {
-            true
-        } else {
-            match crate::v1_compiler_emit::lookup_item_by_identity(
-                registry.clone(),
-                Rc::new(DeclaredCallableIdentity {
-                    owner_module_path: module_name.clone(),
-                    decl_name: crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        item.clone(),
-                    ),
-                }),
-            ) {
-                Some(info) => {
-                    (((info.service_names.clone().len() as i64) > 0)
-                        || ((info.resource_names.clone().len() as i64) > 0))
-                }
-                std::option::Option::None => true,
-            }
-        }
-    }
-}
-
-pub fn collect_workflow_funcs(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-) -> Rc<Vec<Rc<WorkflowFunc>>> {
-    {
-        let index = build_data_decl_index(modules.clone());
-        Rc::new({
-            let mut __result = Vec::new();
-            for tm in modules.iter().cloned() {
-                __result.extend(
-                    (*Rc::new({
-                        let mut __result = Vec::new();
-                        for item in Rc::new({
-                            let mut __result = Vec::new();
-                            for item in tm.items.clone().iter().cloned() {
-                                if is_workflow_item(
-                                    item.clone(),
-                                    crate::v1_std_core::authored_name_at(
-                                        tm.type_env.clone().source_indices.clone(),
-                                        tm.module.clone(),
-                                    ),
-                                    registry.clone(),
-                                    tm.type_env.clone().source_indices.clone(),
-                                ) {
-                                    __result.push(item);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.push(to_workflow_func(
-                                item.clone(),
-                                crate::v1_std_core::authored_name_at(
-                                    tm.type_env.clone().source_indices.clone(),
-                                    tm.module.clone(),
-                                ),
-                                registry.clone(),
-                                index.clone(),
-                                tm.type_env.clone().source_indices.clone(),
-                                read_only_params_index.clone(),
-                            ));
-                        }
-                        __result
-                    }))
+        v1_rt::concat(
+            v1_rt::concat("\n[features]\n".to_string(), "default = []\n".to_string()),
+            Rc::new(
+                features
                     .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        })
-    }
-}
-
-pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
-    match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
-            LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
-            LiteralValue::LitInt { value: i, .. } => {
-                Some(crate::v1_compiler_emit_core_support::to_string(i.clone()))
-            }
-            LiteralValue::LitFloat { value: f, .. } => Some(f.clone()),
-            LiteralValue::LitBool { value: b, .. } => Some(if b.clone() {
-                crate::v1_compiler_emit::emit_keyword("true".to_string(), RenderTarget::Rust)
-            } else {
-                crate::v1_compiler_emit::emit_keyword("false".to_string(), RenderTarget::Rust)
-            }),
-            LiteralValue::LitNull => std::option::Option::None,
-            LiteralValue::LitSymbol { value: s, .. } => Some(s.clone()),
-        },
-        _ => std::option::Option::None,
-    }
-}
-
-pub fn validate_workflow_param_defaults(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for wf in workflow_funcs.iter().cloned() {
-            __result.extend((*Rc::new({ let mut __result = Vec::new(); for param in wf.params.clone().iter().cloned() { __result.extend((*match crate::v1_std_core::param_node_default_value(param.clone()) {
-    Some(dv) => {
-        let param_name = crate::v1_std_core::authored_name_at(wf.source_indices.clone(), param.clone());
-let resolved = match v1_rt::map_get(&wf.resolved_defaults.clone(), param_name.clone()) {
-    Some(_) => true,
-    std::option::Option::None => match cli_default_literal_value(dv.clone()) {
-    Some(_) => true,
-    std::option::Option::None => false,
-},
-};
-if resolved.clone() {
-            Rc::new(vec![])
-        } else {
-            match v1_rt::map_get(&wf.unresolvable_default_data_references.clone(), param_name.clone()) {
-    Some(unresolvable) => match (*unresolvable.cause.clone()).clone() {
-    DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: mods, .. } => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AmbiguousReference {
-    name: unresolvable.name.clone(),
-    candidates: mods.clone(),
-    span: param.span.clone(),
-}), wf.module_name.clone())]),
-    DataReferenceUnresolvableCause::DataReferenceVisibilityBudgetExhausted => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded {
-    name: unresolvable.name.clone(),
-    span: param.span.clone(),
-}), wf.module_name.clone())]),
-},
-    std::option::Option::None => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::ParameterDefaultFormNotAdmitted {
-    parameter: param_name.clone(),
-    admitted: Rc::new(vec!["string literal".to_string(), "int literal".to_string(), "float literal".to_string(), "bool literal".to_string(), "data reference".to_string()]),
-    span: param.span.clone(),
-}), wf.module_name.clone())]),
-}
-        }
-},
-    std::option::Option::None => Rc::new(vec![]),
-}).iter().cloned()); } __result })).iter().cloned());
-        }
-        __result
-    })
-}
-
-pub fn find_resource_module(resource_name: String, modules: Rc<Vec<Rc<TypedModule>>>) -> String {
-    {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for m in modules.iter().cloned() {
-                if {
-                    let mut __found = false;
-                    for item in m.items.clone().iter().cloned() {
-                        if (crate::v1_std_core::authored_name_at(
-                            m.type_env.clone().source_indices.clone(),
-                            item.clone(),
-                        ) == resource_name.clone())
-                        {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
-                    __result.push(m);
-                }
-            }
-            __result
-        });
-        let result = match matching.clone().first().cloned() {
-            Some(tm) => crate::v1_compiler_emit_core_support::module_to_filename(
-                crate::v1_std_core::authored_name_at(
-                    tm.type_env.clone().source_indices.clone(),
-                    tm.module.clone(),
-                ),
-            ),
-            std::option::Option::None => "".to_string(),
-        };
-        result
+                    .cloned()
+                    .map(emit_cargo_feature)
+                    .collect::<Vec<_>>(),
+            )
+            .join(&"".to_string()),
+        )
     }
 }
 
@@ -39002,7 +38329,7 @@ pub fn emit_candidate_cli_host_method(sub: Rc<CliSubcommandRow>, method: String)
 }
 
 pub fn emit_candidate_compile_host_method(params: String) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    fn retained_host_kernel(&self, ".to_string(), params.clone()), ") -> ! {\n".to_string()), "        let render_targets = parse_render_targets(&target);\n".to_string()), "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "        let subject = match (&entry, &source_roots.is_empty()) {\n".to_string()), "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n".to_string()), "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n".to_string()), "            (None, true) => None,\n".to_string()), "        };\n".to_string()), "        if subject.is_none() {\n".to_string()), "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n".to_string()), "            subject: subject.unwrap(),\n".to_string()), "            source_roots: source_roots.iter().cloned().collect(),\n".to_string()), "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n".to_string()), "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n".to_string()), "        });\n".to_string()), "        match &run.disposition {\n".to_string()), "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n".to_string()), "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Refused { phase, cause } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n".to_string()), "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Completed { emitted_count } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                let multi_target = run.emissions.len() > 1;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for emission in &run.emissions {\n".to_string()), "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n".to_string()), "                    if let Err(refusal) = write_output_files(&target_dir, &emission.result) { refusal.exit(); }\n".to_string()), "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n".to_string()), "                    render_diagnostics(&emission.result);\n".to_string()), "                    total_diagnostics += emission.result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n".to_string()), "                std::process::exit(0);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    fn retained_host_kernel(&self, ".to_string(), params.clone()), ") -> ! {\n".to_string()), "        let render_targets = parse_render_targets(&target);\n".to_string()), "        let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "        let subject = match (&entry, &source_roots.is_empty()) {\n".to_string()), "            (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),\n".to_string()), "            (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(source_roots[0].clone())),\n".to_string()), "            (None, true) => None,\n".to_string()), "        };\n".to_string()), "        if subject.is_none() {\n".to_string()), "            eprintln!(\"REFUSED: emitted compiler requires --source-root; --source-dir remains a seed-retained host boundary\");\n".to_string()), "            std::process::exit(2);\n".to_string()), "        }\n".to_string()), "        let run = cli_run::compile_emission(&cli_run::CompileRequest {\n".to_string()), "            subject: subject.unwrap(),\n".to_string()), "            root_demand: cli_run::RootDemandDeclaration { repository: repository.clone(), measured_root_demands: measured_root_demands.clone() },\n".to_string()), "            source_roots: source_roots.iter().cloned().collect(),\n".to_string()), "            primary_precedence: matches!(pool_index, DependencyPoolIndex::PrimaryPrecedence),\n".to_string()), "            render_targets: render_targets.iter().map(|(_, target)| target.clone()).collect(),\n".to_string()), "        });\n".to_string()), "        match &run.disposition {\n".to_string()), "            cli_run::CompileDisposition::NotExecuted { earlier_phase, cause } => {\n".to_string()), "                eprintln!(\"gunbc compile: {}: {}\", earlier_phase, cause);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Refused { phase, cause } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                eprintln!(\"gunbc compile: refused at {}: {}\", phase, cause);\n".to_string()), "                for emission in &run.emissions { render_diagnostics(&emission.result); }\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "            cli_run::CompileDisposition::Completed { emitted_count } => {\n".to_string()), "                eprintln!(\"resolved {} sources ({}), {} indexed modules in the name census only\", run.closure_modules, run.subject.scope_receipt().render(), run.census_modules);\n".to_string()), "                let multi_target = run.emissions.len() > 1;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for emission in &run.emissions {\n".to_string()), "                    let target_dir = if multi_target { format!(\"{}/{}\", output_dir, emission.target_name) } else { output_dir.clone() };\n".to_string()), "                    if let Err(refusal) = write_output_files(&target_dir, &emission.result) { refusal.exit(); }\n".to_string()), "                    if multi_target { eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", emission.target_name, emission.result.files.len(), emission.result.diagnostics.len()); }\n".to_string()), "                    render_diagnostics(&emission.result);\n".to_string()), "                    total_diagnostics += emission.result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", emitted_count, total_diagnostics);\n".to_string()), "                std::process::exit(0);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string())
 }
 
 pub fn emit_candidate_cli_host(crate_name: String) -> String {
@@ -39193,6 +38520,15 @@ pub fn compiler_entry_direct_ingest_driver() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn compiler_entry_native_cli_driver() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "NativeCliDriver".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilerPipelineEntryDecl {
     pub module_name: String,
@@ -39314,11 +38650,26 @@ pub fn compiler_pipeline_entry_is_source_root_eval(modules: Rc<Vec<Rc<TypedModul
 pub fn compiler_pipeline_entry_driver_is_known(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
     match compiler_pipeline_entry_decl(modules.clone()) {
         Some(d) => {
-            (((d.driver.clone() == compiler_entry_retained_host_driver())
+            ((((d.driver.clone() == compiler_entry_retained_host_driver())
                 || (d.driver.clone() == compiler_entry_source_root_eval_driver()))
                 || (d.driver.clone() == compiler_entry_direct_ingest_driver()))
+                || (d.driver.clone() == compiler_entry_native_cli_driver()))
         }
         std::option::Option::None => true,
+    }
+}
+
+pub fn compiler_pipeline_entry_is_native_cli(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(d) => (d.driver.clone() == compiler_entry_native_cli_driver()),
+        std::option::Option::None => false,
+    }
+}
+
+pub fn compiler_pipeline_entry_is_direct_ingest(modules: Rc<Vec<Rc<TypedModule>>>) -> bool {
+    match compiler_pipeline_entry_decl(modules.clone()) {
+        Some(d) => (d.driver.clone() == compiler_entry_direct_ingest_driver()),
+        std::option::Option::None => false,
     }
 }
 
@@ -39372,120 +38723,55 @@ pub fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> Rc<TextFile> {
 }
 
 pub fn emit_main_rs(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     modules: Rc<Vec<Rc<TypedModule>>>,
     has_services: bool,
     crate_name: String,
-    svc_module_map: Rc<HashMap<String, String>>,
 ) -> Rc<TextFile> {
     {
         let retained_host_pipeline = compiler_pipeline_entry_is_retained_host(modules.clone());
         let pipeline_module = compiler_pipeline_entry_module_name(modules.clone());
-        let resource_type_names = Rc::new({
-            let mut __result = Vec::new();
-            for wf in workflow_funcs.iter().cloned() {
-                __result.extend(
-                    (*Rc::new({
-                        let mut __result = Vec::new();
-                        for u in wf.uses.clone().iter().cloned() {
-                            __result.push(crate::v1_std_core::authored_name_at(
-                                wf.source_indices.clone(),
-                                crate::v1_std_core::resource_use_resource(u.clone()),
-                            ));
-                        }
-                        __result
-                    }))
-                    .iter()
-                    .cloned(),
+        if compiler_pipeline_entry_is_ambiguous(modules.clone()) {
+            return emit_ambiguous_compiler_pipeline_main_rs(compiler_pipeline_entry_module_names(
+                modules.clone(),
+            ));
+        }
+        if (compiler_pipeline_entry_driver_is_known(modules.clone()) == false) {
+            return emit_unknown_compiler_pipeline_driver_main_rs(
+                compiler_pipeline_entry_module_name(modules.clone()),
+                compiler_pipeline_entry_driver_reading(modules.clone()),
+            );
+        }
+        if (corpus_has_compiler_pipeline(modules.clone())
+            && (retained_host_pipeline.clone() == false))
+        {
+            {
+                if compiler_pipeline_entry_is_source_root_eval(modules.clone()) {
+                    return emit_source_root_eval_driver_main_rs(
+                        crate_name.clone(),
+                        pipeline_module.clone(),
+                    );
+                }
+                if compiler_pipeline_entry_is_native_cli(modules.clone()) {
+                    return emit_native_cli_driver_main_rs(
+                        crate_name.clone(),
+                        pipeline_module.clone(),
+                    );
+                }
+                if compiler_pipeline_entry_is_direct_ingest(modules.clone()) {
+                    return emit_direct_ingest_driver_main_rs(
+                        crate_name.clone(),
+                        pipeline_module.clone(),
+                    );
+                }
+                return emit_unknown_compiler_pipeline_driver_main_rs(
+                    pipeline_module.clone(),
+                    compiler_pipeline_entry_driver_reading(modules.clone()),
                 );
             }
-            __result
-        });
-        let unique_resource_types =
-            crate::v1_compiler_emit_core_support::unique_strings(resource_type_names.clone());
-        let resource_imports = Rc::new({
-            let mut __result = Vec::new();
-            for rname in unique_resource_types.iter().cloned() {
-                __result.extend(
-                    (*{
-                        let mod_name = find_resource_module(rname.clone(), modules.clone());
-                        if (mod_name.clone() != "".to_string()) {
-                            Rc::new(vec![v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "use ".to_string(),
-                                                    crate_name.clone(),
-                                                ),
-                                                "::".to_string(),
-                                            ),
-                                            mod_name.clone(),
-                                        ),
-                                        "::".to_string(),
-                                    ),
-                                    rname.clone(),
-                                ),
-                                ";".to_string(),
-                            )])
-                        } else {
-                            Rc::new(vec![])
-                        }
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        let resource_imports_str = resource_imports.clone().join(&"\n".to_string());
-        let all_svc_names = Rc::new({
-            let mut __result = Vec::new();
-            for wf in workflow_funcs.iter().cloned() {
-                __result.extend((*wf.service_names.clone()).iter().cloned());
-            }
-            __result
-        });
-        let unique_svc_names =
-            crate::v1_compiler_emit_core_support::unique_strings(all_svc_names.clone());
-        let svc_imports = Rc::new({
-            let mut __result = Vec::new();
-            for sn in unique_svc_names.iter().cloned() {
-                __result.extend(
-                    (*{
-                        let struct_name =
-                            crate::v1_compiler_emit_core_support::sanitize_service_name(sn.clone());
-                        match v1_rt::map_get(&svc_module_map, sn.clone()) {
-                            Some(mod_name) => Rc::new(vec![v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    "use ".to_string(),
-                                                    crate_name.clone(),
-                                                ),
-                                                "::".to_string(),
-                                            ),
-                                            mod_name.clone(),
-                                        ),
-                                        "::".to_string(),
-                                    ),
-                                    struct_name.clone(),
-                                ),
-                                ";".to_string(),
-                            )]),
-                            std::option::Option::None => Rc::new(vec![]),
-                        }
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        let svc_imports_str = svc_imports.clone().join(&"\n".to_string());
+        }
+        if (retained_host_pipeline.clone() == false) {
+            return emit_entry_point_absent_main_rs(crate_name.clone());
+        }
         let header = v1_rt::concat(
             v1_rt::concat(
                 "// Generated by v1 compiler -- do not edit.\n\n".to_string(),
@@ -39510,172 +38796,7 @@ pub fn emit_main_rs(
         } else {
             "".to_string()
         };
-        let resource_use = if (resource_imports_str.clone() != "".to_string()) {
-            v1_rt::concat(resource_imports_str.clone(), "\n".to_string())
-        } else {
-            "".to_string()
-        };
-        let svc_use = if (svc_imports_str.clone() != "".to_string()) {
-            v1_rt::concat(svc_imports_str.clone(), "\n".to_string())
-        } else {
-            "".to_string()
-        };
-        if compiler_pipeline_entry_is_ambiguous(modules.clone()) {
-            return emit_ambiguous_compiler_pipeline_main_rs(compiler_pipeline_entry_module_names(
-                modules.clone(),
-            ));
-        }
-        if (compiler_pipeline_entry_driver_is_known(modules.clone()) == false) {
-            return emit_unknown_compiler_pipeline_driver_main_rs(
-                compiler_pipeline_entry_module_name(modules.clone()),
-                compiler_pipeline_entry_driver_reading(modules.clone()),
-            );
-        }
-        if (corpus_has_compiler_pipeline(modules.clone())
-            && (retained_host_pipeline.clone() == false))
-        {
-            {
-                if compiler_pipeline_entry_is_source_root_eval(modules.clone()) {
-                    return emit_source_root_eval_driver_main_rs(
-                        crate_name.clone(),
-                        pipeline_module.clone(),
-                    );
-                }
-                return emit_direct_ingest_driver_main_rs(
-                    crate_name.clone(),
-                    pipeline_module.clone(),
-                );
-            }
-        }
-        if (((workflow_funcs.clone().len() as i64) == 0)
-            && (retained_host_pipeline.clone() == false))
-        {
-            return emit_entry_point_absent_main_rs(crate_name.clone());
-        }
-        let mod_uses = emit_main_mod_uses(
-            workflow_funcs.clone(),
-            retained_host_pipeline.clone(),
-            crate_name.clone(),
-            pipeline_module.clone(),
-        );
-        let binary_name = if retained_host_pipeline.clone() {
-            "gunbc".to_string()
-        } else {
-            crate_name.clone()
-        };
-        let cli_about = if retained_host_pipeline.clone() {
-            "A causal compiler: write .dag, get Rust/Python/Go.".to_string()
-        } else {
-            "".to_string()
-        };
-        let cli_version_attr = if retained_host_pipeline.clone() {
-            ", version = env!(\"GUNBC_BUILD_IDENTITY\")".to_string()
-        } else {
-            "".to_string()
-        };
-        let cli_struct = if retained_host_pipeline.clone() {
-            "".to_string()
-        } else {
-            emit_cli_struct(
-                workflow_funcs.clone(),
-                binary_name.clone(),
-                cli_about.clone(),
-                cli_version_attr.clone(),
-            )
-        };
-        let subcommand_enum = if retained_host_pipeline.clone() {
-            "".to_string()
-        } else {
-            emit_subcommand_enum(workflow_funcs.clone(), retained_host_pipeline.clone())
-        };
-        let pipeline_fns = if retained_host_pipeline.clone() {
-            v1_rt::concat(
-                emit_main_pipeline_fns(crate_name.clone(), pipeline_module.clone()),
-                emit_candidate_cli_host(crate_name.clone()),
-            )
-        } else {
-            "".to_string()
-        };
-        let main_fn = if retained_host_pipeline.clone() {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "fn main() {\n".to_string(),
-                                            "    let cli = ".to_string(),
-                                        ),
-                                        crate_name.clone(),
-                                    ),
-                                    "::gunbc_cli_dispatch_generated::Cli::parse();\n".to_string(),
-                                ),
-                                "    let host = CandidateCliHost;\n".to_string(),
-                            ),
-                            "    ".to_string(),
-                        ),
-                        crate_name.clone(),
-                    ),
-                    "::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)\n"
-                        .to_string(),
-                ),
-                "}\n".to_string(),
-            )
-        } else {
-            emit_main_fn(
-                workflow_funcs.clone(),
-                has_services.clone(),
-                retained_host_pipeline.clone(),
-                crate_name.clone(),
-            )
-        };
-        let diagnostic_fns = if retained_host_pipeline.clone() {
-            emit_main_diagnostic_fns(crate_name.clone())
-        } else {
-            "".to_string()
-        };
-        let content = v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        v1_rt::concat(
-                                                            header.clone(),
-                                                            crate_use.clone(),
-                                                        ),
-                                                        resource_use.clone(),
-                                                    ),
-                                                    svc_use.clone(),
-                                                ),
-                                                mod_uses.clone(),
-                                            ),
-                                            "\n".to_string(),
-                                        ),
-                                        cli_struct.clone(),
-                                    ),
-                                    "\n\n".to_string(),
-                                ),
-                                subcommand_enum.clone(),
-                            ),
-                            "\n\n".to_string(),
-                        ),
-                        pipeline_fns.clone(),
-                    ),
-                    main_fn.clone(),
-                ),
-                "\n".to_string(),
-            ),
-            diagnostic_fns.clone(),
-        );
+        let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(header.clone(), crate_use.clone()), emit_retained_host_main_mod_uses(crate_name.clone(), pipeline_module.clone())), "\n".to_string()), "\n\n".to_string()), "\n\n".to_string()), v1_rt::concat(emit_main_pipeline_fns(crate_name.clone(), pipeline_module.clone()), emit_candidate_cli_host(crate_name.clone()))), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn main() {\n".to_string(), "    let cli = ".to_string()), crate_name.clone()), "::gunbc_cli_dispatch_generated::Cli::parse();\n".to_string()), "    let host = CandidateCliHost;\n".to_string()), "    ".to_string()), crate_name.clone()), "::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)\n".to_string()), "}\n".to_string())), "\n".to_string()), emit_main_diagnostic_fns(crate_name.clone()));
         Rc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(rust_source_root(), "main".to_string()),
@@ -39683,6 +38804,16 @@ pub fn emit_main_rs(
             ),
             content: content.clone(),
         })
+    }
+}
+
+pub fn emit_retained_host_main_mod_uses(crate_name: String, pipeline_module: String) -> String {
+    {
+        let pipeline_mod =
+            crate::v1_compiler_emit_core_support::module_to_filename(pipeline_module.clone());
+        let core_mod =
+            crate::v1_compiler_emit_core_support::module_to_filename("v1.std.core".to_string());
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nuse im::HashMap;\n".to_string(), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
     }
 }
 
@@ -39700,6 +38831,21 @@ pub fn emit_direct_ingest_driver_main_rs(
     }
 }
 
+pub fn emit_host_source_root_read_rs() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {".to_string(), "\n".to_string()), "    let entries = match std::fs::read_dir(dir) {".to_string()), "\n".to_string()), "        Ok(entries) => entries,".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"could not walk source root {}: {cause}\", dir.display())),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    for entry in entries {".to_string()), "\n".to_string()), "        let entry = match entry {".to_string()), "\n".to_string()), "            Ok(entry) => entry,".to_string()), "\n".to_string()), "            Err(cause) => return Err(format!(\"could not read entry under {}: {cause}\", dir.display())),".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        let path = entry.path();".to_string()), "\n".to_string()), "        if path.is_dir() {".to_string()), "\n".to_string()), "            collect_dag_paths(&path, out)?;".to_string()), "\n".to_string()), "        } else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) {".to_string()), "\n".to_string()), "            out.push(path.to_string_lossy().into_owned());".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    Ok(())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {".to_string()), "\n".to_string()), "    let mut paths: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for root in source_roots {".to_string()), "\n".to_string()), "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {cause}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    paths.sort();".to_string()), "\n".to_string()), "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();".to_string()), "\n".to_string()), "    for path in &paths {".to_string()), "\n".to_string()), "        let text = match std::fs::read_to_string(path) {".to_string()), "\n".to_string()), "            Ok(text) => text,".to_string()), "\n".to_string()), "            Err(cause) => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: could not read {path}: {cause}\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        reads.push(Rc::new(DagSourceReadWitness {".to_string()), "\n".to_string()), "            source: Rc::new(Medium {".to_string()), "\n".to_string()), "                carried: text,".to_string()), "\n".to_string()), "                fidelity: DecodeFidelity::Lossless,".to_string()), "\n".to_string()), "                _phantom: std::marker::PhantomData,".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "            artifact: Rc::new(Artifact {".to_string()), "\n".to_string()), "                kind: ArtifactKind::SourceFile,".to_string()), "\n".to_string()), "                id: path.clone(),".to_string()), "\n".to_string()), "                file_path: path.clone(),".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "            compilation_unit: path.clone(),".to_string()), "\n".to_string()), "            source_root: source_root_for_storage_path(path.clone()),".to_string()), "\n".to_string()), "        }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    reads".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string())
+}
+
+pub fn emit_native_cli_driver_main_rs(crate_name: String, pipeline_module: String) -> Rc<TextFile> {
+    {
+        let pipeline_mod =
+            crate::v1_compiler_emit_core_support::module_to_filename(pipeline_module.clone());
+        Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_communication_medium::{DecodeFidelity, Medium};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_artifact::{Artifact, ArtifactKind};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    v2_cli_exit, v2_cli_outcome_text, v2_cli_parse, v2_cli_plan_source_roots, v2_cli_run,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "\n".to_string()), emit_host_source_root_read_rs()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let plan = v2_cli_parse(Rc::new(argv.into()));".to_string()), "\n".to_string()), "    let roots: Vec<String> = v2_cli_plan_source_roots(plan.clone()).iter().cloned().collect();".to_string()), "\n".to_string()), "    let reads = read_ingest(&roots);".to_string()), "\n".to_string()), "    let outcome = v2_cli_run(plan, Rc::new(reads.into()));".to_string()), "\n".to_string()), "    let text = v2_cli_outcome_text(outcome.clone());".to_string()), "\n".to_string()), "    match &*v2_cli_exit(outcome) {".to_string()), "\n".to_string()), "        ProcessExit::ExitSuccess => {".to_string()), "\n".to_string()), "            print!(\"{text}\");".to_string()), "\n".to_string()), "            std::process::exit(0);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        ProcessExit::ExitFailure { code, reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(*code as i32);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+})
+    }
+}
+
 pub fn emit_source_root_eval_driver_main_rs(
     crate_name: String,
     pipeline_module: String,
@@ -39709,7 +38855,7 @@ pub fn emit_source_root_eval_driver_main_rs(
             crate::v1_compiler_emit_core_support::module_to_filename(pipeline_module.clone());
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "use std::time::Instant;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_communication_medium::{DecodeFidelity, Medium};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_witness_v2_native_route::{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    native_lane_controls, native_lane_file_refusal_index, native_lane_identity_row,".to_string()), "\n".to_string()), "    native_lane_module_inference,".to_string()), "\n".to_string()), "    native_lane_module_resolution,".to_string()), "\n".to_string()), "    native_lane_closure_ingest, native_lane_closure_modules, native_lane_closure_round_budget,".to_string()), "\n".to_string()), "    native_lane_ingest_matches_closure, native_lane_ingest_receipt, native_lane_receipt,".to_string()), "\n".to_string()), "    native_lane_source_facts, native_lane_universe, native_test_context_from_ingest,".to_string()), "\n".to_string()), "    NativeLaneHostFacts, NativeLaneModulePreparation, NativeLaneModuleResolution,".to_string()), "\n".to_string()), "    NativeRouteMemberRow,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_witness_v2_native_route::{".to_string()), "\n".to_string()), "    native_route_admission, native_route_admission_summary, native_route_admitted,".to_string()), "\n".to_string()), "    native_route_file_refusal_tally,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_artifact::{Artifact, ArtifactKind};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::{".to_string()), "\n".to_string()), "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,".to_string()), "\n".to_string()), "    native_driver_exclusive_sum, NativeDriverCostAccounting,".to_string()), "\n".to_string()), "    native_driver_exclusive_rows, native_driver_exclusive_row_name,".to_string()), "\n".to_string()), "    NativeDriverExclusiveRowKey,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{nanosecond, nanosecond_count};".to_string()), "\n".to_string()), "\n".to_string()), "fn collect_dag_paths(dir: &std::path::Path, out: &mut Vec<String>) -> Result<(), String> {".to_string()), "\n".to_string()), "    let entries = match std::fs::read_dir(dir) {".to_string()), "\n".to_string()), "        Ok(entries) => entries,".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"could not walk source root {}: {cause}\", dir.display())),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    for entry in entries {".to_string()), "\n".to_string()), "        let entry = match entry {".to_string()), "\n".to_string()), "            Ok(entry) => entry,".to_string()), "\n".to_string()), "            Err(cause) => return Err(format!(\"could not read entry under {}: {cause}\", dir.display())),".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        let path = entry.path();".to_string()), "\n".to_string()), "        if path.is_dir() {".to_string()), "\n".to_string()), "            collect_dag_paths(&path, out)?;".to_string()), "\n".to_string()), "        } else if path.extension().map(|ext| ext == \"dag\").unwrap_or(false) {".to_string()), "\n".to_string()), "            out.push(path.to_string_lossy().into_owned());".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    Ok(())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_ingest(source_roots: &[String]) -> Vec<Rc<DagSourceReadWitness>> {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let mut paths: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for root in source_roots {".to_string()), "\n".to_string()), "        if let Err(cause) = collect_dag_paths(std::path::Path::new(root), &mut paths) {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: {cause}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    paths.sort();".to_string()), "\n".to_string()), "    let mut reads: Vec<Rc<DagSourceReadWitness>> = Vec::new();".to_string()), "\n".to_string()), "    for path in &paths {".to_string()), "\n".to_string()), "        let text = match std::fs::read_to_string(path) {".to_string()), "\n".to_string()), "            Ok(text) => text,".to_string()), "\n".to_string()), "            Err(cause) => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: could not read {path}: {cause}\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        reads.push(Rc::new(DagSourceReadWitness {".to_string()), "\n".to_string()), "            source: Rc::new(Medium {".to_string()), "\n".to_string()), "                carried: text,".to_string()), "\n".to_string()), "                fidelity: DecodeFidelity::Lossless,".to_string()), "\n".to_string()), "                _phantom: std::marker::PhantomData,".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "            artifact: Rc::new(Artifact {".to_string()), "\n".to_string()), "                kind: ArtifactKind::SourceFile,".to_string()), "\n".to_string()), "                id: path.clone(),".to_string()), "\n".to_string()), "                file_path: path.clone(),".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "            compilation_unit: path.clone(),".to_string()), "\n".to_string()), "            source_root: source_root_for_storage_path(path.clone()),".to_string()), "\n".to_string()), "        }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    reads".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String {".to_string()), "\n".to_string()), "    match facts.get(key) {".to_string()), "\n".to_string()), "        Some(value) => value.clone(),".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: host facts file carries no {key} row\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn host_fact_int(facts: &std::collections::HashMap<String, String>, key: &str) -> i64 {".to_string()), "\n".to_string()), "    let value = host_fact(facts, key);".to_string()), "\n".to_string()), "    match value.parse::<i64>() {".to_string()), "\n".to_string()), "        Ok(parsed) => parsed,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: host fact {key} is not an integer: {value:?} ({cause})\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_host_facts(path: &str) -> NativeLaneHostFacts {".to_string()), "\n".to_string()), "    let text = match std::fs::read_to_string(path) {".to_string()), "\n".to_string()), "        Ok(text) => text,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: could not read host facts file {path}: {cause}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut facts: std::collections::HashMap<String, String> = std::collections::HashMap::new();".to_string()), "\n".to_string()), "    for line in text.lines() {".to_string()), "\n".to_string()), "        if line.is_empty() {".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match line.split_once('\\t') {".to_string()), "\n".to_string()), "            Some((key, value)) if !key.is_empty() => {".to_string()), "\n".to_string()), "                if facts.insert(key.to_string(), value.to_string()).is_some() {".to_string()), "\n".to_string()), "                    eprintln!(\"REFUSED: duplicate host fact row: {key}\");".to_string()), "\n".to_string()), "                    std::process::exit(2);".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            _ => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: malformed host fact line (expected key<TAB>value): {line}\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let malformed_path = host_fact(&facts, \"malformed_control_path\");".to_string()), "\n".to_string()), "    let malformed_reason = host_fact(&facts, \"malformed_control_reason\");".to_string()), "\n".to_string()), "    let malformed_control = if malformed_path.is_empty() {".to_string()), "\n".to_string()), "        NativeRouteMalformedControl::MalformedSpecimenAccepted".to_string()), "\n".to_string()), "    } else {".to_string()), "\n".to_string()), "        NativeRouteMalformedControl::MalformedSpecimenRefused {".to_string()), "\n".to_string()), "            path: malformed_path,".to_string()), "\n".to_string()), "            reason: malformed_reason,".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let old_route_disposition = host_fact(&facts, \"old_route_disposition\");".to_string()), "\n".to_string()), "    let old_route_executable = host_fact(&facts, \"old_route_executable\");".to_string()), "\n".to_string()), "    let old_route_control = match old_route_disposition.as_str() {".to_string()), "\n".to_string()), "        \"withdrawn\" => NativeRouteOldRouteControl::OldRouteWithdrawn {".to_string()), "\n".to_string()), "            withdrawn_executable: old_route_executable,".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        \"not_present_at_window\" => NativeRouteOldRouteControl::OldRouteNotPresentAtWindow {".to_string()), "\n".to_string()), "            expected_executable: old_route_executable,".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        other => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: old_route_disposition names no control this route can record: {other} -- expected withdrawn or not_present_at_window\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // The emitted build is the host's observation of the cargo spawn this binary is the".to_string()), "\n".to_string()), "    // product of: six rows, the argv as one row per word under a length row. A count that".to_string()), "\n".to_string()), "    // does not parse, or an index row it promises that is missing, refuses like any other".to_string()), "\n".to_string()), "    // missing fact; nothing is defaulted.".to_string()), "\n".to_string()), "    let cargo_argv_len = host_fact_int(&facts, \"cargo_argv_len\");".to_string()), "\n".to_string()), "    let mut cargo_argv: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for index in 0..cargo_argv_len {".to_string()), "\n".to_string()), "        cargo_argv.push(host_fact(&facts, &format!(\"cargo_argv_{index}\")));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let emitted_build = NativeRouteEmittedBuild {".to_string()), "\n".to_string()), "        cargo_argv: Rc::new(cargo_argv.into()),".to_string()), "\n".to_string()), "        rustflags: host_fact(&facts, \"rustflags\"),".to_string()), "\n".to_string()), "        compiler_path: host_fact(&facts, \"compiler_path\"),".to_string()), "\n".to_string()), "        rustc_identity: host_fact(&facts, \"rustc_identity\"),".to_string()), "\n".to_string()), "        exit_status: host_fact_int(&facts, \"exit_status\"),".to_string()), "\n".to_string()), "        warning_count: host_fact_int(&facts, \"warning_count\"),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    NativeLaneHostFacts {".to_string()), "\n".to_string()), "        tested_tree: host_fact(&facts, \"tested_tree\"),".to_string()), "\n".to_string()), "        preparation_seed_identity: host_fact(&facts, \"preparation_seed_identity\"),".to_string()), "\n".to_string()), "        emitted_closure_identity: host_fact(&facts, \"emitted_closure_identity\"),".to_string()), "\n".to_string()), "        executable_path: host_fact(&facts, \"executable_path\"),".to_string()), "\n".to_string()), "        executable_identity: host_fact(&facts, \"executable_identity\"),".to_string()), "\n".to_string()), "        old_route_control: Rc::new(old_route_control),".to_string()), "\n".to_string()), "        malformed_control: Rc::new(malformed_control),".to_string()), "\n".to_string()), "        emitted_build: Rc::new(emitted_build),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn run_census(source_roots: &[String]) {".to_string()), "\n".to_string()), "    let reads = read_ingest(source_roots);".to_string()), "\n".to_string()), "    let context = match &*native_test_context_from_ingest(Rc::new(reads.into())) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    for refusal in context.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"_terminal\": \"complete\", \"mode\": \"census\", \"file_refusals\": context.file_refusals.len() }));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 {".to_string()), "\n".to_string()), "    if sorted.is_empty() { return 0; }".to_string()), "\n".to_string()), "    let idx = (sorted.len() - 1) * numer / denom;".to_string()), "\n".to_string()), "    sorted[idx]".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A SPAN IS READ ONCE, THROUGH A READER THAT REFUSES A CLOCK THAT WENT BACKWARDS.".to_string()), "\n".to_string()), "// Instant::elapsed is Instant::now().duration_since(earlier), and duration_since SATURATES:".to_string()), "\n".to_string()), "// a monotonic clock that is not actually monotonic -- which happens on some virtualised and".to_string()), "\n".to_string()), "// migrated hosts -- yields Duration::ZERO rather than an error. That is the fabricated zero".to_string()), "\n".to_string()), "// this receipt forbids, arriving by a quieter route than the saturating_sub it replaced: a".to_string()), "\n".to_string()), "// phase would report as having taken no time and the partition would balance for the wrong".to_string()), "\n".to_string()), "// reason. checked_duration_since returns None instead, so the impossible reading is".to_string()), "\n".to_string()), "// REPRESENTABLE and can be refused.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// AN EARLIER REVISION OF THIS FILE CLAIMED THE CLASS WAS STRUCTURALLY IMPOSSIBLE ONCE THE".to_string()), "\n".to_string()), "// subtraction was gone. That was wrong and is corrected rather than softened: deleting the".to_string()), "\n".to_string()), "// explicit subtraction removed the visible clamp, not the saturation underneath it. The".to_string()), "\n".to_string()), "// honest rung is MITIGATED BY A TYPED REFUSAL at a declared boundary -- the host clock is".to_string()), "\n".to_string()), "// external reality, which DESIGN section 4b keeps off the ladder rather than on its top rung.".to_string()), "\n".to_string()), "fn span_nanos(started: Instant) -> u128 {".to_string()), "\n".to_string()), "    match Instant::now().checked_duration_since(started) {".to_string()), "\n".to_string()), "        Some(d) => d.as_nanos(),".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: the monotonic clock went backwards between two reads, so no span is measurable\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A SPAN THAT DOES NOT FIT REFUSES RATHER THAN SATURATING (review 64474 control). This was".to_string()), "\n".to_string()), "// i64::try_from(n).unwrap_or(i64::MAX), which turns a failed conversion into a FIGURE -- and a".to_string()), "\n".to_string()), "// fabricated figure on a receipt is the state DESIGN section 5 forbids outright, whether the".to_string()), "\n".to_string()), "// invented number is a zero that reports a phase as instant or a maximum that reports it as".to_string()), "\n".to_string()), "// three centuries. The saturating arm also chose the direction that hides best: i64::MAX would".to_string()), "\n".to_string()), "// push the exclusive sum past the parent and surface as NativeDriverCostOverAttributed, a cost".to_string()), "\n".to_string()), "// verdict naming the wrong cause.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// ON REACHABILITY, STATED RATHER THAN LEFT AS AN IMPLIED CLAIM: i64 nanoseconds is about 292".to_string()), "\n".to_string()), "// years, so no span this driver measures reaches it, and the refusal below is not expected to".to_string()), "\n".to_string()), "// fire. It is written because the alternative is not silence but a LIE -- the arm has to answer".to_string()), "\n".to_string()), "// something, and the only honest answers are a real number or a refusal.".to_string()), "\n".to_string()), "fn native_cost_i64(n: u128) -> i64 {".to_string()), "\n".to_string()), "    match i64::try_from(n) {".to_string()), "\n".to_string()), "        Ok(v) => v,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: a measured span does not fit the cost carrier, so no partition can be reported: {n} ({cause})\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// AN UNREADABLE /proc IS ABSENT, NOT ZERO (review 64181). A zero here was printed as".to_string()), "\n".to_string()), "// peak_rss_bytes / rss_bytes and read as a measurement: a run on a host without /proc, or with".to_string()), "\n".to_string()), "// the key renamed, reported a process using no memory. Absence is carried as None and rendered".to_string()), "\n".to_string()), "// as JSON null, so the receipt says it does not know instead of inventing a figure. This is".to_string()), "\n".to_string()), "// telemetry on no receipt field, so it is the one place an Absent is carried rather than".to_string()), "\n".to_string()), "// refused: the run is still a valid observation of everything else.".to_string()), "\n".to_string()), "fn proc_status_kib(key: &str) -> Option<u64> {".to_string()), "\n".to_string()), "    let text = std::fs::read_to_string(\"/proc/self/status\").ok()?;".to_string()), "\n".to_string()), "    for line in text.lines() {".to_string()), "\n".to_string()), "        if let Some(rest) = line.strip_prefix(key) {".to_string()), "\n".to_string()), "            return rest".to_string()), "\n".to_string()), "                .trim_start_matches(':')".to_string()), "\n".to_string()), "                .trim()".to_string()), "\n".to_string()), "                .split_whitespace()".to_string()), "\n".to_string()), "                .next()".to_string()), "\n".to_string()), "                .and_then(|n| n.parse::<u64>().ok());".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    None".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// ONE CLOCK, AND IT IS THE MONOTONIC ONE (review 64474). Every exclusive phase span and the".to_string()), "\n".to_string()), "// parent span are read from Instant, so the partition compares readings from a single source.".to_string()), "\n".to_string()), "// They were split before this: the parent came from Instant while the phase spans came from".to_string()), "\n".to_string()), "// SystemTime, which is the wall clock and is free to step backwards under NTP or an operator".to_string()), "\n".to_string()), "// adjustment. A step between two phase reads could then push the exclusive sum past a parent".to_string()), "\n".to_string()), "// span that never moved, and the driver would refuse with NativeDriverCostOverAttributed --".to_string()), "\n".to_string()), "// a cost refusal whose real cause was the clock. That is a fabricated attribution: the numbers".to_string()), "\n".to_string()), "// would be wrong while the receipt read as a measurement.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// THE SUBTRACTION IS GONE RATHER THAN GUARDED, which is the point. A span used to be an".to_string()), "\n".to_string()), "// explicit saturating_sub of two readings, so a backwards step clamped the difference to zero".to_string()), "\n".to_string()), "// and reported a phase as having taken NO TIME -- the exact state the annotation beside it".to_string()), "\n".to_string()), "// forbade, reached by the arm meant to prevent it. Instant::elapsed cannot return a negative".to_string()), "\n".to_string()), "// duration, so there is no difference to clamp and no clamp to review: DESIGN section 5".to_string()), "\n".to_string()), "// construction over validation, and the class climbs from mitigated to structurally".to_string()), "\n".to_string()), "// impossible. The pre-epoch refusal that guarded the old wall-clock read is DELETED with it,".to_string()), "\n".to_string()), "// because the hazard it named cannot arise on this clock -- production handling dissolves on".to_string()), "\n".to_string()), "// the climb (DESIGN section 4b(4)); no evidence is retired here, since that arm had none.".to_string()), "\n".to_string()), "fn run_adjudication(facts_path: &str, source_roots: &[String]) {".to_string()), "\n".to_string()), "    let driver_start = Instant::now();".to_string()), "\n".to_string()), "    // A MISSING GITHUB_SHA IS ABSENT, NOT \"local\" (review 64181). The receipt line carries this".to_string()), "\n".to_string()), "    // as the tree the measurement describes; the literal \"local\" is a plausible identity that".to_string()), "\n".to_string()), "    // no reader can distinguish from a tree actually named local.".to_string()), "\n".to_string()), "    let head: Option<String> = std::env::var(\"GITHUB_SHA\").ok();".to_string()), "\n".to_string()), "    let facts = read_host_facts(facts_path);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the load row: reading the declared roots off disk. Its own exclusive row rather than a".to_string()), "\n".to_string()), "    // field on another phase, so the IO is never mixed into a fold's number.".to_string()), "\n".to_string()), "    let load_started = Instant::now();".to_string()), "\n".to_string()), "    let reads = read_ingest(source_roots);".to_string()), "\n".to_string()), "    let corpus_reads = reads.len();".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let load_nanos = span_nanos(load_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // universe_derivation: the floor's own per-file discovery fold plus the module-header and".to_string()), "\n".to_string()), "    // import scans, over EVERY read -- discovery is a corpus-wide question -- and then the".to_string()), "\n".to_string()), "    // import closure of the universe's modules, which is all the front end is given.".to_string()), "\n".to_string()), "    let universe_started = Instant::now();".to_string()), "\n".to_string()), "    let source_facts = native_lane_source_facts(ingest.clone());".to_string()), "\n".to_string()), "    let universe = match &*native_lane_universe(ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"DERIVATION-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // The walk's budget exhausting is a refusal of the whole derivation, never a truncated".to_string()), "\n".to_string()), "    // closure: a narrowed ingest would surface only as unexplained resolve refusals later.".to_string()), "\n".to_string()), "    let closure = match &*native_lane_closure_modules(".to_string()), "\n".to_string()), "        source_facts.clone(),".to_string()), "\n".to_string()), "        universe.clone(),".to_string()), "\n".to_string()), "        native_lane_closure_round_budget(),".to_string()), "\n".to_string()), "    ) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CLOSURE-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let closure_ingest = native_lane_closure_ingest(ingest.clone(), source_facts.clone(), closure.clone());".to_string()), "\n".to_string()), "    let closure_reads = closure_ingest.len();".to_string()), "\n".to_string()), "    // The ingest receipt's identity join, asked by the route: every ingested source declares a".to_string()), "\n".to_string()), "    // closure module and every closure module some source declares was ingested. A miss is the".to_string()), "\n".to_string()), "    // hidden prepass (or a hidden narrowing) this receipt exists to refuse.".to_string()), "\n".to_string()), "    let ingest_receipt = native_lane_ingest_receipt(source_facts.clone(), closure.clone(), closure_ingest.clone());".to_string()), "\n".to_string()), "    // The join answers a typed refusal naming the offending identity, so the counts below are".to_string()), "\n".to_string()), "    // context for it rather than the whole diagnostic: a reader gets the module and the path,".to_string()), "\n".to_string()), "    // not a pair of totals to re-derive the offender from.".to_string()), "\n".to_string()), "    match &*native_lane_ingest_matches_closure(source_facts.clone(), ingest_receipt.clone(), closure_ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { .. } => {}".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"INGEST-CLOSURE-REFUSED: {:#?} (scanned={} ingested={} closure_modules={})\",".to_string()), "\n".to_string()), "                diagnostics,".to_string()), "\n".to_string()), "                ingest_receipt.scanned_paths.len(),".to_string()), "\n".to_string()), "                ingest_receipt.ingested_paths.len(),".to_string()), "\n".to_string()), "                ingest_receipt.closure_modules.len(),".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let universe_nanos = span_nanos(universe_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the context row: the front-end fold -- tokenize, parse, normalize -- over the CLOSURE only.".to_string()), "\n".to_string()), "    let context_started = Instant::now();".to_string()), "\n".to_string()), "    let context = match &*native_test_context_from_ingest(closure_ingest) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let context_nanos = span_nanos(context_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the prepare and eval rows, entered separately per module so the number the profile".to_string()), "\n".to_string()), "    // lane prices -- the eval row -- is the sum of native_lane_identity_row".to_string()), "\n".to_string()), "    // and nothing else: not ingest, not resolve, not infer.".to_string()), "\n".to_string()), "    let mut population: Vec<Rc<NativeRouteMemberRow>> = Vec::new();".to_string()), "\n".to_string()), "    let mut prepare_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut evaluate_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut prepare_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    let mut eval_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    let mut prepare_ok: u64 = 0;".to_string()), "\n".to_string()), "    let mut prepare_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut module_release_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut relay_emit_nanos: u128 = 0;".to_string()), "\n".to_string()), "    // The per-path refusal index is built ONCE here rather than per module: this loop is the".to_string()), "\n".to_string()), "    // only place that knows a loop is about to happen, and the join it feeds was O(modules x".to_string()), "\n".to_string()), "    // refusals) when each module scanned the refusal list for itself.".to_string()), "\n".to_string()), "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());".to_string()), "\n".to_string()), "    for entry in universe.modules.iter() {".to_string()), "\n".to_string()), "        let prepare_started = Instant::now();".to_string()), "\n".to_string()), "        let mut identities: usize = 0;".to_string()), "\n".to_string()), "        let mut module_evaluate_nanos: u128 = 0;".to_string()), "\n".to_string()), "        let mut module_infer_nanos: u128 = 0;".to_string()), "\n".to_string()), "        // THE PREPARATION SPAN CLOSES WHEN THE PREPARATION OUTCOME IS ESTABLISHED, BEFORE ANY".to_string()), "\n".to_string()), "        // DECLARATION IS EVALUATED. prepare and eval are exclusive rows of one partition, so a".to_string()), "\n".to_string()), "        // prepare interval that contained its module's eval intervals would count that work".to_string()), "\n".to_string()), "        // twice and inflate the sum against the parent.".to_string()), "\n".to_string()), "        //".to_string()), "\n".to_string()), "        // THE CLOSE IS THE ARM'S VALUE, NOT AN ASSIGNMENT INSIDE IT. Assigning an outer binding".to_string()), "\n".to_string()), "        // from each arm left its initialiser dead, and a dead store is an ERROR in the emitted".to_string()), "\n".to_string()), "        // crate (RUSTFLAGS=\"-D warnings\"); silencing it with an allow would be the escape hatch".to_string()), "\n".to_string()), "        // DESIGN section 5 forbids. Each arm yields its own span instead, so there is one binding".to_string()), "\n".to_string()), "        // site, nothing to overwrite, and the order control has a single spelling to assert on.".to_string()), "\n".to_string()), "        let resolve_started = Instant::now();".to_string()), "\n".to_string()), "        let resolution = native_lane_module_resolution(context.clone(), refusal_index.clone(), entry.clone());".to_string()), "\n".to_string()), "        let module_resolve_nanos = span_nanos(resolve_started);".to_string()), "\n".to_string()), "        let (outcome_label, module_prepare_nanos) = match &*resolution {".to_string()), "\n".to_string()), "            NativeLaneModuleResolution::NativeLaneModuleContextRowsDecided { rows } => {".to_string()), "\n".to_string()), "                let this_prepare = span_nanos(prepare_started);".to_string()), "\n".to_string()), "                prepare_refused += 1;".to_string()), "\n".to_string()), "                for row in rows.iter() {".to_string()), "\n".to_string()), "                    population.push(row.clone());".to_string()), "\n".to_string()), "                    identities += 1;".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                (\"context_refused\", this_prepare)".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeLaneModuleResolution::NativeLaneModuleResolveRowsDecided { rows } => {".to_string()), "\n".to_string()), "                let this_prepare = span_nanos(prepare_started);".to_string()), "\n".to_string()), "                prepare_refused += 1;".to_string()), "\n".to_string()), "                for row in rows.iter() {".to_string()), "\n".to_string()), "                    population.push(row.clone());".to_string()), "\n".to_string()), "                    identities += 1;".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                (\"resolve_refused\", this_prepare)".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeLaneModuleResolution::NativeLaneModuleResolved { resolved } => {".to_string()), "\n".to_string()), "                let infer_started = Instant::now();".to_string()), "\n".to_string()), "                let preparation = native_lane_module_inference(entry.clone(), resolved.clone());".to_string()), "\n".to_string()), "                module_infer_nanos = span_nanos(infer_started);".to_string()), "\n".to_string()), "                let this_prepare = span_nanos(prepare_started);".to_string()), "\n".to_string()), "                match &*preparation {".to_string()), "\n".to_string()), "                    NativeLaneModulePreparation::NativeLaneModuleRowsDecided { rows } => {".to_string()), "\n".to_string()), "                        prepare_refused += 1;".to_string()), "\n".to_string()), "                        for row in rows.iter() {".to_string()), "\n".to_string()), "                            population.push(row.clone());".to_string()), "\n".to_string()), "                            identities += 1;".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        (\"infer_refused\", this_prepare)".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                    NativeLaneModulePreparation::NativeLaneModulePrepared { prepared } => {".to_string()), "\n".to_string()), "                        prepare_ok += 1;".to_string()), "\n".to_string()), "                        for declaration in entry.declarations.iter() {".to_string()), "\n".to_string()), "                            let evaluate_started = Instant::now();".to_string()), "\n".to_string()), "                            let row = native_lane_identity_row(".to_string()), "\n".to_string()), "                                prepared.clone(),".to_string()), "\n".to_string()), "                                entry.module.clone(),".to_string()), "\n".to_string()), "                                declaration.clone(),".to_string()), "\n".to_string()), "                            );".to_string()), "\n".to_string()), "                            let this_eval = span_nanos(evaluate_started);".to_string()), "\n".to_string()), "                            module_evaluate_nanos += this_eval;".to_string()), "\n".to_string()), "                            eval_samples.push(this_eval);".to_string()), "\n".to_string()), "                            population.push(row);".to_string()), "\n".to_string()), "                            identities += 1;".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        (\"accepted\", this_prepare)".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        prepare_total_nanos += module_prepare_nanos;".to_string()), "\n".to_string()), "        evaluate_total_nanos += module_evaluate_nanos;".to_string()), "\n".to_string()), "        prepare_samples.push(module_prepare_nanos);".to_string()), "\n".to_string()), "        // RELEASE IS MEASURED, NOT LEFT TO SCOPE EXIT. The resolved tree this module built is".to_string()), "\n".to_string()), "        // dropped HERE, inside a span, because dropping it at the end of the iteration paid real".to_string()), "\n".to_string()), "        // time that no exclusive row covered. An explicit drop makes the cost nameable; scope".to_string()), "\n".to_string()), "        // exit hides it. What that cost turned out to BE -- and whether it explains anything --".to_string()), "\n".to_string()), "        // is a fact of std.compiler_entry NativeDriverExclusiveRows, not of this template.".to_string()), "\n".to_string()), "        let release_started = Instant::now();".to_string()), "\n".to_string()), "        drop(resolution);".to_string()), "\n".to_string()), "        module_release_nanos += span_nanos(release_started);".to_string()), "\n".to_string()), "        // One stderr write per unique module, to a pipe the host runner drains. It is spanned".to_string()), "\n".to_string()), "        // because it was paid inside parent_span with no exclusive row over it. What the span".to_string()), "\n".to_string()), "        // has since MEASURED, and what the residual is, are facts of std.compiler_entry".to_string()), "\n".to_string()), "        // NativeDriverExclusiveRows and are deliberately not restated here: a number copied".to_string()), "\n".to_string()), "        // into a generated template rots in a place no fold can reach to correct it.".to_string()), "\n".to_string()), "        let relay_started = Instant::now();".to_string()), "\n".to_string()), "        eprintln!(\"[native-prepare-split] module={} resolve_nanos={module_resolve_nanos} infer_nanos={module_infer_nanos} prepare_nanos={module_prepare_nanos} decls={} outcome={outcome_label}\", entry.module, identities);".to_string()), "\n".to_string()), "        relay_emit_nanos += span_nanos(relay_started);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // receipt_admission: minting the receipt and evaluating the authority's admission and summary".to_string()), "\n".to_string()), "    // over it. The controls are executed here because they are receipt inputs, not universe members.".to_string()), "\n".to_string()), "    let admission_started = Instant::now();".to_string()), "\n".to_string()), "    let receipt = native_lane_receipt(".to_string()), "\n".to_string()), "        context.clone(),".to_string()), "\n".to_string()), "        universe.clone(),".to_string()), "\n".to_string()), "        Rc::new(population.clone().into()),".to_string()), "\n".to_string()), "        native_lane_controls(context.clone()),".to_string()), "\n".to_string()), "        Rc::new(facts),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    let admission = native_route_admission(receipt.clone());".to_string()), "\n".to_string()), "    let summary = native_route_admission_summary(admission.clone());".to_string()), "\n".to_string()), "    let file_refusal_tally: Vec<serde_json::Value> = native_route_file_refusal_tally(receipt.clone())".to_string()), "\n".to_string()), "        .iter()".to_string()), "\n".to_string()), "        .map(|row| serde_json::json!(row))".to_string()), "\n".to_string()), "        .collect();".to_string()), "\n".to_string()), "    let admitted = native_route_admitted(admission.clone());".to_string()), "\n".to_string()), "    let admission_nanos = span_nanos(admission_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // row_serialization: SERIALIZING THE OBSERVATIONS AND WRITING THEM, MEASURED (review".to_string()), "\n".to_string()), "    // 64181 named this span; #11105 made leaving it unattributed fatal). Every row the".to_string()), "\n".to_string()), "    // population carries is turned into JSON here and written to stdout, which is real work".to_string()), "\n".to_string()), "    // no other row covers -- eval is the identity fold and nothing else. It is TIMED, never".to_string()), "\n".to_string()), "    // derived as parent minus the others: a row defined as the remainder would force the".to_string()), "\n".to_string()), "    // residual to zero and make the tolerance arm unfireable by construction.".to_string()), "\n".to_string()), "    let serialization_started = Instant::now();".to_string()), "\n".to_string()), "    for refusal in receipt.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for row in population.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::to_string(row).unwrap());".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let row_serialization_nanos = span_nanos(serialization_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // THE PARTITION, THROUGH THE ONE LAW. The rows are the row set std.compiler_entry owns and".to_string()), "\n".to_string()), "    // verdict is native_driver_cost_account over them -- not a second reconcile. The two rows".to_string()), "\n".to_string()), "    // this route pays that a driver handed a universe file does not (universe_derivation,".to_string()), "\n".to_string()), "    // receipt_admission) are members of the same exclusive sum, so an over-attribution through".to_string()), "\n".to_string()), "    // either is caught here rather than by a check of its own.".to_string()), "\n".to_string()), "    prepare_samples.sort_unstable();".to_string()), "\n".to_string()), "    eval_samples.sort_unstable();".to_string()), "\n".to_string()), "    let parent_span_nanos = span_nanos(driver_start);".to_string()), "\n".to_string()), "    // THE DRIVER IS EXHAUSTIVE OVER THE KEY WITH NO WILDCARD, deliberately: a row added to".to_string()), "\n".to_string()), "    // std.compiler_entry makes THIS match refuse to compile until the driver says what".to_string()), "\n".to_string()), "    // measures it. A wildcard here would answer zero for a span nobody wired up, which is".to_string()), "\n".to_string()), "    // the absorbing arm DESIGN section 5 forbids -- and it is what the old record literal".to_string()), "\n".to_string()), "    // did silently, three folds running.".to_string()), "\n".to_string()), "    let exclusive = native_driver_exclusive_rows(move |k| match k {".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(native_cost_i64(load_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveUniverseDerivation => nanosecond(native_cost_i64(universe_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveContext => nanosecond(native_cost_i64(context_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusivePrepare => nanosecond(native_cost_i64(prepare_total_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveEval => nanosecond(native_cost_i64(evaluate_total_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(native_cost_i64(admission_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(native_cost_i64(row_serialization_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(native_cost_i64(module_release_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(native_cost_i64(relay_emit_nanos)),".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;".to_string()), "\n".to_string()), "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;".to_string()), "\n".to_string()), "    let accounting = native_driver_cost_account(".to_string()), "\n".to_string()), "        nanosecond(native_cost_i64(parent_span_nanos)),".to_string()), "\n".to_string()), "        exclusive.clone(),".to_string()), "\n".to_string()), "        native_driver_cost_remainder_tolerance_nanos(),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    // The remainder is the residual the accounting itself returns, never parent minus sum: on".to_string()), "\n".to_string()), "    // over-attributed arm there IS no remainder, and a clamped zero there would be a".to_string()), "\n".to_string()), "    // plausible number standing where the measurement is incoherent.".to_string()), "\n".to_string()), "    let (verdict, remainder_nanos) = match accounting.as_ref() {".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostOverAttributed\"#, serde_json::Value::Null),".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostRemainderExceedsTolerance\"#, serde_json::json!(nanosecond_count(residual.clone()))),".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { residual, .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostReconciled\"#, serde_json::json!(nanosecond_count(residual.clone()))),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let identities = universe.identities.len() as u64;".to_string()), "\n".to_string()), "    let eval_mean = if eval_samples.is_empty() { 0 } else { evaluate_total_nanos / eval_samples.len() as u128 };".to_string()), "\n".to_string()), "    let prepare_mean = if prepare_samples.is_empty() { 0 } else { prepare_total_nanos / prepare_samples.len() as u128 };".to_string()), "\n".to_string()), "    // THE ROWS ARE PROJECTED FROM THE VALUE, NOT RE-LISTED (review 64181). The field names".to_string()), "\n".to_string()), "    // were written once to build NativeDriverExclusiveRows and again to render it, which is the".to_string()), "\n".to_string()), "    // second spelling this file warns about for prose, applied to the emitted object: a driver".to_string()), "\n".to_string()), "    // gaining a phase would have updated the struct and left the receipt short. Serializing the".to_string()), "\n".to_string()), "    // value carries the row set from the type, so the JSON cannot disagree with the fold. The".to_string()), "\n".to_string()), "    // rows therefore render as std.measure Nanosecond objects rather than bare integers -- the".to_string()), "\n".to_string()), "    // unit travels with the number, which is the point of the type.".to_string()), "\n".to_string()), "    // A NON-RECONCILED ARM IS A PROCESS REFUSAL (#11105, review 63891). The receipt is".to_string()), "\n".to_string()), "    // printed first so the numbers that caused the refusal are on the wire, and THEN the".to_string()), "\n".to_string()), "    // line stops: a verdict string with exit 0 is the inert lens DESIGN section 6 names.".to_string()), "\n".to_string()), "    // The full-N run of this route refused here on 158600186 ns against a 50000000 ns".to_string()), "\n".to_string()), "    // tolerance before row_serialization was a measured row, which is what put that row on".to_string()), "\n".to_string()), "    // the type rather than a wider tolerance on this arm.".to_string()), "\n".to_string()), "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!({".to_string()), "\n".to_string()), "        \"basis\": \"native_driver_wall\",".to_string()), "\n".to_string()), "        \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\",".to_string()), "\n".to_string()), "        \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "        \"head\": head,".to_string()), "\n".to_string()), "        \"mode\": \"adjudicate\",".to_string()), "\n".to_string()), "        \"verdict\": verdict,".to_string()), "\n".to_string()), "        \"tolerance_nanos\": tolerance_nanos,".to_string()), "\n".to_string()), "        \"parent_span_nanos\": parent_span_nanos,".to_string()), "\n".to_string()), "        \"exclusive\": exclusive.rows.iter().map(|r| (".to_string()), "\n".to_string()), "            native_driver_exclusive_row_name(r.key.clone()),".to_string()), "\n".to_string()), "            serde_json::json!(r.nanos),".to_string()), "\n".to_string()), "        )).collect::<serde_json::Map<String, serde_json::Value>>(),".to_string()), "\n".to_string()), "        \"sum_exclusive_nanos\": exclusive_sum,".to_string()), "\n".to_string()), "        \"remainder_nanos\": remainder_nanos,".to_string()), "\n".to_string()), "        \"corpus_reads\": corpus_reads,".to_string()), "\n".to_string()), "        \"closure_reads\": closure_reads,".to_string()), "\n".to_string()), "        \"scanned_paths\": ingest_receipt.scanned_paths.len(),".to_string()), "\n".to_string()), "        \"ingested_paths\": ingest_receipt.ingested_paths.len(),".to_string()), "\n".to_string()), "        \"closure_modules\": closure.len(),".to_string()), "\n".to_string()), "        \"identities\": identities,".to_string()), "\n".to_string()), "        \"unique_modules\": universe.modules.len(),".to_string()), "\n".to_string()), "        \"file_refusals\": receipt.file_refusals.len(),".to_string()), "\n".to_string()), "        \"prepare_ok\": prepare_ok,".to_string()), "\n".to_string()), "        \"prepare_refused\": prepare_refused,".to_string()), "\n".to_string()), "        \"prepare_mean_nanos\": prepare_mean,".to_string()), "\n".to_string()), "        \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2),".to_string()), "\n".to_string()), "        \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20),".to_string()), "\n".to_string()), "        \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        \"eval_mean_nanos\": eval_mean,".to_string()), "\n".to_string()), "        \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2),".to_string()), "\n".to_string()), "        \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20),".to_string()), "\n".to_string()), "        \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "        \"rss_bytes\": proc_status_kib(\"VmRSS\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "    }));".to_string()), "\n".to_string()), "    match accounting.as_ref() {".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => {}".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { sum_exclusive, parent_span } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"REFUSED: native driver cost OverAttributed {{ sum_exclusive_nanos: {}, parent_span_nanos: {} }}\",".to_string()), "\n".to_string()), "                nanosecond_count(sum_exclusive.clone()) as u128,".to_string()), "\n".to_string()), "                nanosecond_count(parent_span.clone()) as u128".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, tolerance } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"REFUSED: native driver cost RemainderExceedsTolerance {{ residual_nanos: {}, tolerance_nanos: {} }} -- unattributed driver work; name the span, do not widen the tolerance\",".to_string()), "\n".to_string()), "                nanosecond_count(residual.clone()) as u128,".to_string()), "\n".to_string()), "                nanosecond_count(tolerance.clone()) as u128".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    println!(".to_string()), "\n".to_string()), "        \"{}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "            \"mode\": \"adjudicate\",".to_string()), "\n".to_string()), "            \"rows\": population.len(),".to_string()), "\n".to_string()), "            \"universe\": universe.identities.len(),".to_string()), "\n".to_string()), "            \"file_refusals\": receipt.file_refusals.len(),".to_string()), "\n".to_string()), "            \"file_refusal_tally\": file_refusal_tally,".to_string()), "\n".to_string()), "            \"admitted\": admitted,".to_string()), "\n".to_string()), "            \"summary\": summary,".to_string()), "\n".to_string()), "        })".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    if admitted {".to_string()), "\n".to_string()), "        std::process::exit(0);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    std::process::exit(1);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let mut args = std::env::args().skip(1);".to_string()), "\n".to_string()), "    let mode = match args.next() {".to_string()), "\n".to_string()), "        Some(mode) => mode,".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: no mode given -- usage: ".to_string()), crate_name.clone()), " adjudicate <host-facts.tsv> <source-root>... | ".to_string()), crate_name.clone()), " census <source-root>...\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    if mode == \"census\" {".to_string()), "\n".to_string()), "        let source_roots: Vec<String> = args.collect();".to_string()), "\n".to_string()), "        run_census(&source_roots);".to_string()), "\n".to_string()), "        return;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if mode == \"adjudicate\" {".to_string()), "\n".to_string()), "        let facts_path = match args.next() {".to_string()), "\n".to_string()), "            Some(path) => path,".to_string()), "\n".to_string()), "            None => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: adjudicate takes a host facts file before the source roots\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        let source_roots: Vec<String> = args.collect();".to_string()), "\n".to_string()), "        run_adjudication(&facts_path, &source_roots);".to_string()), "\n".to_string()), "        return;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    eprintln!(\"REFUSED: unknown mode {mode} -- expected adjudicate or census\");".to_string()), "\n".to_string()), "    std::process::exit(2);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "use std::time::Instant;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_communication_medium::{DecodeFidelity, Medium};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_witness_v2_native_route::{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    native_lane_controls, native_lane_file_refusal_index, native_lane_identity_row,".to_string()), "\n".to_string()), "    native_lane_module_inference,".to_string()), "\n".to_string()), "    native_lane_module_resolution,".to_string()), "\n".to_string()), "    native_lane_closure_ingest, native_lane_closure_modules, native_lane_closure_round_budget,".to_string()), "\n".to_string()), "    native_lane_ingest_matches_closure, native_lane_ingest_receipt, native_lane_receipt,".to_string()), "\n".to_string()), "    native_lane_source_facts, native_lane_universe, native_test_context_absorb,".to_string()), "\n".to_string()), "    native_test_context_finish, native_test_context_from_ingest, native_test_context_state_empty,".to_string()), "\n".to_string()), "    native_test_front_end_prepare,".to_string()), "\n".to_string()), "    NativeLaneHostFacts, NativeLaneModulePreparation, NativeLaneModuleResolution,".to_string()), "\n".to_string()), "    NativeRouteMemberRow,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_program_assembly::{".to_string()), "\n".to_string()), "    program_assembly_measured_outcome, program_assembly_memo_hits,".to_string()), "\n".to_string()), "    program_assembly_memo_lookup_calls, program_assembly_memo_misses,".to_string()), "\n".to_string()), "    program_assembly_phase_normalize, program_assembly_phase_parse_measured,".to_string()), "\n".to_string()), "    program_assembly_phase_token_count, program_assembly_phase_tokenize,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_witness_v2_native_route::{".to_string()), "\n".to_string()), "    native_route_admission, native_route_admission_summary, native_route_admitted,".to_string()), "\n".to_string()), "    native_route_file_refusal_tally,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::{source_root_for_storage_path, DagSourceReadWitness};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_artifact::{Artifact, ArtifactKind};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::{".to_string()), "\n".to_string()), "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,".to_string()), "\n".to_string()), "    native_driver_exclusive_sum, NativeDriverCostAccounting,".to_string()), "\n".to_string()), "    native_driver_exclusive_rows, native_driver_exclusive_row_name,".to_string()), "\n".to_string()), "    NativeDriverExclusiveRowKey,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{nanosecond, nanosecond_count};".to_string()), "\n".to_string()), "\n".to_string()), emit_host_source_root_read_rs()), "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String {".to_string()), "\n".to_string()), "    match facts.get(key) {".to_string()), "\n".to_string()), "        Some(value) => value.clone(),".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: host facts file carries no {key} row\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn host_fact_int(facts: &std::collections::HashMap<String, String>, key: &str) -> i64 {".to_string()), "\n".to_string()), "    let value = host_fact(facts, key);".to_string()), "\n".to_string()), "    match value.parse::<i64>() {".to_string()), "\n".to_string()), "        Ok(parsed) => parsed,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: host fact {key} is not an integer: {value:?} ({cause})\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_host_facts(path: &str) -> NativeLaneHostFacts {".to_string()), "\n".to_string()), "    let text = match std::fs::read_to_string(path) {".to_string()), "\n".to_string()), "        Ok(text) => text,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: could not read host facts file {path}: {cause}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut facts: std::collections::HashMap<String, String> = std::collections::HashMap::new();".to_string()), "\n".to_string()), "    for line in text.lines() {".to_string()), "\n".to_string()), "        if line.is_empty() {".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match line.split_once('\\t') {".to_string()), "\n".to_string()), "            Some((key, value)) if !key.is_empty() => {".to_string()), "\n".to_string()), "                if facts.insert(key.to_string(), value.to_string()).is_some() {".to_string()), "\n".to_string()), "                    eprintln!(\"REFUSED: duplicate host fact row: {key}\");".to_string()), "\n".to_string()), "                    std::process::exit(2);".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            _ => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: malformed host fact line (expected key<TAB>value): {line}\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let malformed_path = host_fact(&facts, \"malformed_control_path\");".to_string()), "\n".to_string()), "    let malformed_reason = host_fact(&facts, \"malformed_control_reason\");".to_string()), "\n".to_string()), "    let malformed_control = if malformed_path.is_empty() {".to_string()), "\n".to_string()), "        NativeRouteMalformedControl::MalformedSpecimenAccepted".to_string()), "\n".to_string()), "    } else {".to_string()), "\n".to_string()), "        NativeRouteMalformedControl::MalformedSpecimenRefused {".to_string()), "\n".to_string()), "            path: malformed_path,".to_string()), "\n".to_string()), "            reason: malformed_reason,".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let old_route_disposition = host_fact(&facts, \"old_route_disposition\");".to_string()), "\n".to_string()), "    let old_route_executable = host_fact(&facts, \"old_route_executable\");".to_string()), "\n".to_string()), "    let old_route_control = match old_route_disposition.as_str() {".to_string()), "\n".to_string()), "        \"withdrawn\" => NativeRouteOldRouteControl::OldRouteWithdrawn {".to_string()), "\n".to_string()), "            withdrawn_executable: old_route_executable,".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        \"not_present_at_window\" => NativeRouteOldRouteControl::OldRouteNotPresentAtWindow {".to_string()), "\n".to_string()), "            expected_executable: old_route_executable,".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        other => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: old_route_disposition names no control this route can record: {other} -- expected withdrawn or not_present_at_window\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // The emitted build is the host's observation of the cargo spawn this binary is the".to_string()), "\n".to_string()), "    // product of: six rows, the argv as one row per word under a length row. A count that".to_string()), "\n".to_string()), "    // does not parse, or an index row it promises that is missing, refuses like any other".to_string()), "\n".to_string()), "    // missing fact; nothing is defaulted.".to_string()), "\n".to_string()), "    let cargo_argv_len = host_fact_int(&facts, \"cargo_argv_len\");".to_string()), "\n".to_string()), "    let mut cargo_argv: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for index in 0..cargo_argv_len {".to_string()), "\n".to_string()), "        cargo_argv.push(host_fact(&facts, &format!(\"cargo_argv_{index}\")));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let emitted_build = NativeRouteEmittedBuild {".to_string()), "\n".to_string()), "        cargo_argv: Rc::new(cargo_argv.into()),".to_string()), "\n".to_string()), "        rustflags: host_fact(&facts, \"rustflags\"),".to_string()), "\n".to_string()), "        compiler_path: host_fact(&facts, \"compiler_path\"),".to_string()), "\n".to_string()), "        rustc_identity: host_fact(&facts, \"rustc_identity\"),".to_string()), "\n".to_string()), "        exit_status: host_fact_int(&facts, \"exit_status\"),".to_string()), "\n".to_string()), "        warning_count: host_fact_int(&facts, \"warning_count\"),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    NativeLaneHostFacts {".to_string()), "\n".to_string()), "        tested_tree: host_fact(&facts, \"tested_tree\"),".to_string()), "\n".to_string()), "        preparation_seed_identity: host_fact(&facts, \"preparation_seed_identity\"),".to_string()), "\n".to_string()), "        emitted_closure_identity: host_fact(&facts, \"emitted_closure_identity\"),".to_string()), "\n".to_string()), "        executable_path: host_fact(&facts, \"executable_path\"),".to_string()), "\n".to_string()), "        executable_identity: host_fact(&facts, \"executable_identity\"),".to_string()), "\n".to_string()), "        old_route_control: Rc::new(old_route_control),".to_string()), "\n".to_string()), "        malformed_control: Rc::new(malformed_control),".to_string()), "\n".to_string()), "        emitted_build: Rc::new(emitted_build),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn run_census(source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let reads = read_ingest(source_roots);".to_string()), "\n".to_string()), "    let context = match &*native_test_context_from_ingest(Rc::new(reads.into())) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    for refusal in context.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"_terminal\": \"complete\", \"mode\": \"census\", \"file_refusals\": context.file_refusals.len() }));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 {".to_string()), "\n".to_string()), "    if sorted.is_empty() { return 0; }".to_string()), "\n".to_string()), "    let idx = (sorted.len() - 1) * numer / denom;".to_string()), "\n".to_string()), "    sorted[idx]".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A SPAN IS READ ONCE, THROUGH A READER THAT REFUSES A CLOCK THAT WENT BACKWARDS.".to_string()), "\n".to_string()), "// Instant::elapsed is Instant::now().duration_since(earlier), and duration_since SATURATES:".to_string()), "\n".to_string()), "// a monotonic clock that is not actually monotonic -- which happens on some virtualised and".to_string()), "\n".to_string()), "// migrated hosts -- yields Duration::ZERO rather than an error. That is the fabricated zero".to_string()), "\n".to_string()), "// this receipt forbids, arriving by a quieter route than the saturating_sub it replaced: a".to_string()), "\n".to_string()), "// phase would report as having taken no time and the partition would balance for the wrong".to_string()), "\n".to_string()), "// reason. checked_duration_since returns None instead, so the impossible reading is".to_string()), "\n".to_string()), "// REPRESENTABLE and can be refused.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// AN EARLIER REVISION OF THIS FILE CLAIMED THE CLASS WAS STRUCTURALLY IMPOSSIBLE ONCE THE".to_string()), "\n".to_string()), "// subtraction was gone. That was wrong and is corrected rather than softened: deleting the".to_string()), "\n".to_string()), "// explicit subtraction removed the visible clamp, not the saturation underneath it. The".to_string()), "\n".to_string()), "// honest rung is MITIGATED BY A TYPED REFUSAL at a declared boundary -- the host clock is".to_string()), "\n".to_string()), "// external reality, which DESIGN section 4b keeps off the ladder rather than on its top rung.".to_string()), "\n".to_string()), "fn span_nanos(started: Instant) -> u128 {".to_string()), "\n".to_string()), "    match Instant::now().checked_duration_since(started) {".to_string()), "\n".to_string()), "        Some(d) => d.as_nanos(),".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: the monotonic clock went backwards between two reads, so no span is measurable\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A SPAN THAT DOES NOT FIT REFUSES RATHER THAN SATURATING (review 64474 control). This was".to_string()), "\n".to_string()), "// i64::try_from(n).unwrap_or(i64::MAX), which turns a failed conversion into a FIGURE -- and a".to_string()), "\n".to_string()), "// fabricated figure on a receipt is the state DESIGN section 5 forbids outright, whether the".to_string()), "\n".to_string()), "// invented number is a zero that reports a phase as instant or a maximum that reports it as".to_string()), "\n".to_string()), "// three centuries. The saturating arm also chose the direction that hides best: i64::MAX would".to_string()), "\n".to_string()), "// push the exclusive sum past the parent and surface as NativeDriverCostOverAttributed, a cost".to_string()), "\n".to_string()), "// verdict naming the wrong cause.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// ON REACHABILITY, STATED RATHER THAN LEFT AS AN IMPLIED CLAIM: i64 nanoseconds is about 292".to_string()), "\n".to_string()), "// years, so no span this driver measures reaches it, and the refusal below is not expected to".to_string()), "\n".to_string()), "// fire. It is written because the alternative is not silence but a LIE -- the arm has to answer".to_string()), "\n".to_string()), "// something, and the only honest answers are a real number or a refusal.".to_string()), "\n".to_string()), "fn native_cost_i64(n: u128) -> i64 {".to_string()), "\n".to_string()), "    match i64::try_from(n) {".to_string()), "\n".to_string()), "        Ok(v) => v,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: a measured span does not fit the cost carrier, so no partition can be reported: {n} ({cause})\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// AN UNREADABLE /proc IS ABSENT, NOT ZERO (review 64181). A zero here was printed as".to_string()), "\n".to_string()), "// peak_rss_bytes / rss_bytes and read as a measurement: a run on a host without /proc, or with".to_string()), "\n".to_string()), "// the key renamed, reported a process using no memory. Absence is carried as None and rendered".to_string()), "\n".to_string()), "// as JSON null, so the receipt says it does not know instead of inventing a figure. This is".to_string()), "\n".to_string()), "// telemetry on no receipt field, so it is the one place an Absent is carried rather than".to_string()), "\n".to_string()), "// refused: the run is still a valid observation of everything else.".to_string()), "\n".to_string()), "fn proc_status_kib(key: &str) -> Option<u64> {".to_string()), "\n".to_string()), "    let text = std::fs::read_to_string(\"/proc/self/status\").ok()?;".to_string()), "\n".to_string()), "    for line in text.lines() {".to_string()), "\n".to_string()), "        if let Some(rest) = line.strip_prefix(key) {".to_string()), "\n".to_string()), "            return rest".to_string()), "\n".to_string()), "                .trim_start_matches(':')".to_string()), "\n".to_string()), "                .trim()".to_string()), "\n".to_string()), "                .split_whitespace()".to_string()), "\n".to_string()), "                .next()".to_string()), "\n".to_string()), "                .and_then(|n| n.parse::<u64>().ok());".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    None".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// ONE CLOCK, AND IT IS THE MONOTONIC ONE (review 64474). Every exclusive phase span and the".to_string()), "\n".to_string()), "// parent span are read from Instant, so the partition compares readings from a single source.".to_string()), "\n".to_string()), "// They were split before this: the parent came from Instant while the phase spans came from".to_string()), "\n".to_string()), "// SystemTime, which is the wall clock and is free to step backwards under NTP or an operator".to_string()), "\n".to_string()), "// adjustment. A step between two phase reads could then push the exclusive sum past a parent".to_string()), "\n".to_string()), "// span that never moved, and the driver would refuse with NativeDriverCostOverAttributed --".to_string()), "\n".to_string()), "// a cost refusal whose real cause was the clock. That is a fabricated attribution: the numbers".to_string()), "\n".to_string()), "// would be wrong while the receipt read as a measurement.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// THE SUBTRACTION IS GONE RATHER THAN GUARDED, which is the point. A span used to be an".to_string()), "\n".to_string()), "// explicit saturating_sub of two readings, so a backwards step clamped the difference to zero".to_string()), "\n".to_string()), "// and reported a phase as having taken NO TIME -- the exact state the annotation beside it".to_string()), "\n".to_string()), "// forbade, reached by the arm meant to prevent it. Instant::elapsed cannot return a negative".to_string()), "\n".to_string()), "// duration, so there is no difference to clamp and no clamp to review: DESIGN section 5".to_string()), "\n".to_string()), "// construction over validation, and the class climbs from mitigated to structurally".to_string()), "\n".to_string()), "// impossible. The pre-epoch refusal that guarded the old wall-clock read is DELETED with it,".to_string()), "\n".to_string()), "// because the hazard it named cannot arise on this clock -- production handling dissolves on".to_string()), "\n".to_string()), "// the climb (DESIGN section 4b(4)); no evidence is retired here, since that arm had none.".to_string()), "\n".to_string()), "fn run_adjudication(facts_path: &str, source_roots: &[String]) {".to_string()), "\n".to_string()), "    let driver_start = Instant::now();".to_string()), "\n".to_string()), "    // A MISSING GITHUB_SHA IS ABSENT, NOT \"local\" (review 64181). The receipt line carries this".to_string()), "\n".to_string()), "    // as the tree the measurement describes; the literal \"local\" is a plausible identity that".to_string()), "\n".to_string()), "    // no reader can distinguish from a tree actually named local.".to_string()), "\n".to_string()), "    let head: Option<String> = std::env::var(\"GITHUB_SHA\").ok();".to_string()), "\n".to_string()), "    let facts = read_host_facts(facts_path);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the load row: reading the declared roots off disk. Its own exclusive row rather than a".to_string()), "\n".to_string()), "    // field on another phase, so the IO is never mixed into a fold's number.".to_string()), "\n".to_string()), "    let load_started = Instant::now();".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let reads = read_ingest(source_roots);".to_string()), "\n".to_string()), "    let corpus_reads = reads.len();".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let load_nanos = span_nanos(load_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // universe_derivation: the floor's own per-file discovery fold plus the module-header and".to_string()), "\n".to_string()), "    // import scans, over EVERY read -- discovery is a corpus-wide question -- and then the".to_string()), "\n".to_string()), "    // import closure of the universe's modules, which is all the front end is given.".to_string()), "\n".to_string()), "    let universe_started = Instant::now();".to_string()), "\n".to_string()), "    let source_facts = native_lane_source_facts(ingest.clone());".to_string()), "\n".to_string()), "    let universe = match &*native_lane_universe(ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"DERIVATION-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // The walk's budget exhausting is a refusal of the whole derivation, never a truncated".to_string()), "\n".to_string()), "    // closure: a narrowed ingest would surface only as unexplained resolve refusals later.".to_string()), "\n".to_string()), "    let closure = match &*native_lane_closure_modules(".to_string()), "\n".to_string()), "        source_facts.clone(),".to_string()), "\n".to_string()), "        universe.clone(),".to_string()), "\n".to_string()), "        native_lane_closure_round_budget(),".to_string()), "\n".to_string()), "    ) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CLOSURE-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let closure_ingest = native_lane_closure_ingest(ingest.clone(), source_facts.clone(), closure.clone());".to_string()), "\n".to_string()), "    let closure_reads = closure_ingest.len();".to_string()), "\n".to_string()), "    // The ingest receipt's identity join, asked by the route: every ingested source declares a".to_string()), "\n".to_string()), "    // closure module and every closure module some source declares was ingested. A miss is the".to_string()), "\n".to_string()), "    // hidden prepass (or a hidden narrowing) this receipt exists to refuse.".to_string()), "\n".to_string()), "    let ingest_receipt = native_lane_ingest_receipt(source_facts.clone(), closure.clone(), closure_ingest.clone());".to_string()), "\n".to_string()), "    // The join answers a typed refusal naming the offending identity, so the counts below are".to_string()), "\n".to_string()), "    // context for it rather than the whole diagnostic: a reader gets the module and the path,".to_string()), "\n".to_string()), "    // not a pair of totals to re-derive the offender from.".to_string()), "\n".to_string()), "    match &*native_lane_ingest_matches_closure(source_facts.clone(), ingest_receipt.clone(), closure_ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { .. } => {}".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"INGEST-CLOSURE-REFUSED: {:#?} (scanned={} ingested={} closure_modules={})\",".to_string()), "\n".to_string()), "                diagnostics,".to_string()), "\n".to_string()), "                ingest_receipt.scanned_paths.len(),".to_string()), "\n".to_string()), "                ingest_receipt.ingested_paths.len(),".to_string()), "\n".to_string()), "                ingest_receipt.closure_modules.len(),".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let universe_nanos = span_nanos(universe_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the context row: the front-end fold over the CLOSURE only, entered ONE PHASE AT A TIME.".to_string()), "\n".to_string()), "    // The driver owns the clock, so it is the only place a phase span can be read; the phases".to_string()), "\n".to_string()), "    // themselves are v2.compiler.program_assembly declarations and each binds the previous".to_string()), "\n".to_string()), "    // phase's Outcome, so each phase BODY is single-authored and only the ORDER and the".to_string()), "\n".to_string()), "    // inter-phase diagnostic merge exist twice -- here and in the modeled composition".to_string()), "\n".to_string()), "    // program_assembly_read_to_normalized_root_prepared.".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // THAT SECOND SPELLING IS ADMITTED DEBT AND IS FILED, NOT ASSERTED AWAY (review 65068):".to_string()), "\n".to_string()), "    // gunbc.recurring_failure_mode.realization_respells_a_modeled_folds_sequencing_to_instrument_it.".to_string()), "\n".to_string()), "    // An earlier revision of this comment claimed the two are the same computation. Nothing".to_string()), "\n".to_string()), "    // executes that claim, and a .dag witness comparing the composition against its own phases".to_string()), "\n".to_string()), "    // CANNOT go red -- the composition is defined as the phase chain -- so the honest answer is".to_string()), "\n".to_string()), "    // the row and its trigger (a realization seam that yields per-phase spans FROM a modeled".to_string()), "\n".to_string()), "    // fold), not a green check. Reordering these calls or dropping the merge that".to_string()), "\n".to_string()), "    // program_assembly_phase_parse_measured performs would change the context with nothing red.".to_string()), "\n".to_string()), "    let context_started = Instant::now();".to_string()), "\n".to_string()), "    // THE ONCE-PER-FOLD INVARIANT IS PAID ONCE, HERE, AND CARRIED INTO EVERY FILE. A second".to_string()), "\n".to_string()), "    // dag_language_model() or prepare_grammar() call inside the loop would re-introduce at the".to_string()), "\n".to_string()), "    // realization layer exactly the per-file recompute the fold hoisted out.".to_string()), "\n".to_string()), "    let front_end = match &*native_test_front_end_prepare() {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let front_end_nanos = span_nanos(context_started);".to_string()), "\n".to_string()), "    let mut context_state = native_test_context_state_empty();".to_string()), "\n".to_string()), "    let mut tokenize_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut parse_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut normalize_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut absorb_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut phase_calls: u64 = 0;".to_string()), "\n".to_string()), "    let mut token_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut memo_hits_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut memo_misses_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut memo_lookups_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut byte_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut context_file_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    for read in closure_ingest.iter() {".to_string()), "\n".to_string()), "        let file_started = Instant::now();".to_string()), "\n".to_string()), "        let tokenize_started = Instant::now();".to_string()), "\n".to_string()), "        let tokens = program_assembly_phase_tokenize(read.clone(), front_end.lm.clone());".to_string()), "\n".to_string()), "        let file_tokenize_nanos = span_nanos(tokenize_started);".to_string()), "\n".to_string()), "        // The COUNT the time is read against: a span alone cannot separate a large file from a".to_string()), "\n".to_string()), "        // per-file constant. Counted outside every phase span so it prices none of them.".to_string()), "\n".to_string()), "        let file_tokens = program_assembly_phase_token_count(tokens.clone());".to_string()), "\n".to_string()), "        let parse_started = Instant::now();".to_string()), "\n".to_string()), "        let measured = program_assembly_phase_parse_measured(".to_string()), "\n".to_string()), "            tokens.clone(),".to_string()), "\n".to_string()), "            front_end.prepared.clone(),".to_string()), "\n".to_string()), "            // The residue field is an Optional whose inner type rides a recursion cycle, so the".to_string()), "\n".to_string()), "            // emitted record BOXES it while the phase takes the option by value. Deref the box".to_string()), "\n".to_string()), "            // rather than clone it; the sibling fields above are Rc and clone correctly.".to_string()), "\n".to_string()), "            (*front_end.residue).clone(),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "        let file_parse_nanos = span_nanos(parse_started);".to_string()), "\n".to_string()), "        // The memo accounting rides BESIDE the outcome, so it reports on a refusal too --".to_string()), "\n".to_string()), "        // which is the expensive case this instrument exists to read. Counted outside every".to_string()), "\n".to_string()), "        // phase span so it prices none of them.".to_string()), "\n".to_string()), "        let file_memo_hits = program_assembly_memo_hits(measured.clone());".to_string()), "\n".to_string()), "        let file_memo_misses = program_assembly_memo_misses(measured.clone());".to_string()), "\n".to_string()), "        let file_memo_lookups = program_assembly_memo_lookup_calls(measured.clone());".to_string()), "\n".to_string()), "        let parsed = program_assembly_measured_outcome(measured);".to_string()), "\n".to_string()), "        let normalize_started = Instant::now();".to_string()), "\n".to_string()), "        let root = program_assembly_phase_normalize(parsed.clone());".to_string()), "\n".to_string()), "        let file_normalize_nanos = span_nanos(normalize_started);".to_string()), "\n".to_string()), "        // qualified-name read plus source-root index insertion: the half of the per-file step".to_string()), "\n".to_string()), "        // that is not the front end, timed separately because a quadratic accumulator would".to_string()), "\n".to_string()), "        // live here and nowhere else in this loop.".to_string()), "\n".to_string()), "        let absorb_started = Instant::now();".to_string()), "\n".to_string()), "        context_state = native_test_context_absorb(context_state.clone(), read.clone(), root.clone());".to_string()), "\n".to_string()), "        let file_absorb_nanos = span_nanos(absorb_started);".to_string()), "\n".to_string()), "        let file_nanos = span_nanos(file_started);".to_string()), "\n".to_string()), "        tokenize_nanos += file_tokenize_nanos;".to_string()), "\n".to_string()), "        parse_nanos += file_parse_nanos;".to_string()), "\n".to_string()), "        normalize_nanos += file_normalize_nanos;".to_string()), "\n".to_string()), "        absorb_nanos += file_absorb_nanos;".to_string()), "\n".to_string()), "        phase_calls += 1;".to_string()), "\n".to_string()), "        token_total += file_tokens.max(0) as u64;".to_string()), "\n".to_string()), "        memo_hits_total += file_memo_hits.max(0) as u64;".to_string()), "\n".to_string()), "        memo_misses_total += file_memo_misses.max(0) as u64;".to_string()), "\n".to_string()), "        memo_lookups_total += file_memo_lookups.max(0) as u64;".to_string()), "\n".to_string()), "        let file_bytes = read.source.carried.len() as u64;".to_string()), "\n".to_string()), "        byte_total += file_bytes;".to_string()), "\n".to_string()), "        context_file_samples.push(file_nanos);".to_string()), "\n".to_string()), "        eprintln!(".to_string()), "\n".to_string()), "            \"[native-context-split] {}\",".to_string()), "\n".to_string()), "            serde_json::json!({".to_string()), "\n".to_string()), "                \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "                \"path\": read.compilation_unit.clone(),".to_string()), "\n".to_string()), "                \"bytes\": file_bytes,".to_string()), "\n".to_string()), "                \"tokens\": file_tokens,".to_string()), "\n".to_string()), "                \"tokenize_nanos\": file_tokenize_nanos,".to_string()), "\n".to_string()), "                \"parse_nanos\": file_parse_nanos,".to_string()), "\n".to_string()), "                \"normalize_nanos\": file_normalize_nanos,".to_string()), "\n".to_string()), "                \"absorb_nanos\": file_absorb_nanos,".to_string()), "\n".to_string()), "                \"file_nanos\": file_nanos,".to_string()), "\n".to_string()), "                \"memo_hits\": file_memo_hits,".to_string()), "\n".to_string()), "                \"memo_misses\": file_memo_misses,".to_string()), "\n".to_string()), "                \"memo_lookup_calls\": file_memo_lookups,".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let context = native_test_context_finish(context_state, front_end.clone(), closure_ingest.clone());".to_string()), "\n".to_string()), "    let context_nanos = span_nanos(context_started);".to_string()), "\n".to_string()), "    context_file_samples.sort_unstable();".to_string()), "\n".to_string()), "    let context_phase_sum = front_end_nanos + tokenize_nanos + parse_nanos + normalize_nanos + absorb_nanos;".to_string()), "\n".to_string()), "    eprintln!(".to_string()), "\n".to_string()), "        \"[native-context-partition] {}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "            \"basis\": \"context_span\",".to_string()), "\n".to_string()), "            \"basis_note\": \"exclusive phase rows partition context_nanos; residual is loop overhead and the eprintln per file\",".to_string()), "\n".to_string()), "            \"context_nanos\": context_nanos,".to_string()), "\n".to_string()), "            \"front_end_prepare_nanos\": front_end_nanos,".to_string()), "\n".to_string()), "            \"tokenize_nanos\": tokenize_nanos,".to_string()), "\n".to_string()), "            \"parse_nanos\": parse_nanos,".to_string()), "\n".to_string()), "            \"normalize_nanos\": normalize_nanos,".to_string()), "\n".to_string()), "            \"absorb_nanos\": absorb_nanos,".to_string()), "\n".to_string()), "            \"sum_phase_nanos\": context_phase_sum,".to_string()), "\n".to_string()), "            \"residual_nanos\": context_nanos.saturating_sub(context_phase_sum),".to_string()), "\n".to_string()), "            \"files\": phase_calls,".to_string()), "\n".to_string()), "            \"tokenize_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"parse_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"normalize_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"absorb_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"front_end_prepare_calls\": 1,".to_string()), "\n".to_string()), "            \"tokens\": token_total,".to_string()), "\n".to_string()), "            \"memo_hits\": memo_hits_total,".to_string()), "\n".to_string()), "            \"memo_misses\": memo_misses_total,".to_string()), "\n".to_string()), "            \"memo_lookup_calls\": memo_lookups_total,".to_string()), "\n".to_string()), "            \"bytes\": byte_total,".to_string()), "\n".to_string()), "            \"file_refusals\": context.file_refusals.len(),".to_string()), "\n".to_string()), "            \"file_p50_nanos\": native_cost_quantile_nanos(&context_file_samples, 1, 2),".to_string()), "\n".to_string()), "            \"file_p95_nanos\": native_cost_quantile_nanos(&context_file_samples, 19, 20),".to_string()), "\n".to_string()), "            \"file_max_nanos\": context_file_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        }),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the prepare and eval rows, entered separately per module so the number the profile".to_string()), "\n".to_string()), "    // lane prices -- the eval row -- is the sum of native_lane_identity_row".to_string()), "\n".to_string()), "    // and nothing else: not ingest, not resolve, not infer.".to_string()), "\n".to_string()), "    let mut population: Vec<Rc<NativeRouteMemberRow>> = Vec::new();".to_string()), "\n".to_string()), "    let mut prepare_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut evaluate_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut prepare_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    let mut eval_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    let mut prepare_ok: u64 = 0;".to_string()), "\n".to_string()), "    let mut prepare_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut module_release_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut relay_emit_nanos: u128 = 0;".to_string()), "\n".to_string()), "    // The per-path refusal index is built ONCE here rather than per module: this loop is the".to_string()), "\n".to_string()), "    // only place that knows a loop is about to happen, and the join it feeds was O(modules x".to_string()), "\n".to_string()), "    // refusals) when each module scanned the refusal list for itself.".to_string()), "\n".to_string()), "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());".to_string()), "\n".to_string()), "    for entry in universe.modules.iter() {".to_string()), "\n".to_string()), "        let prepare_started = Instant::now();".to_string()), "\n".to_string()), "        let mut identities: usize = 0;".to_string()), "\n".to_string()), "        let mut module_evaluate_nanos: u128 = 0;".to_string()), "\n".to_string()), "        let mut module_infer_nanos: u128 = 0;".to_string()), "\n".to_string()), "        // THE PREPARATION SPAN CLOSES WHEN THE PREPARATION OUTCOME IS ESTABLISHED, BEFORE ANY".to_string()), "\n".to_string()), "        // DECLARATION IS EVALUATED. prepare and eval are exclusive rows of one partition, so a".to_string()), "\n".to_string()), "        // prepare interval that contained its module's eval intervals would count that work".to_string()), "\n".to_string()), "        // twice and inflate the sum against the parent.".to_string()), "\n".to_string()), "        //".to_string()), "\n".to_string()), "        // THE CLOSE IS THE ARM'S VALUE, NOT AN ASSIGNMENT INSIDE IT. Assigning an outer binding".to_string()), "\n".to_string()), "        // from each arm left its initialiser dead, and a dead store is an ERROR in the emitted".to_string()), "\n".to_string()), "        // crate (RUSTFLAGS=\"-D warnings\"); silencing it with an allow would be the escape hatch".to_string()), "\n".to_string()), "        // DESIGN section 5 forbids. Each arm yields its own span instead, so there is one binding".to_string()), "\n".to_string()), "        // site, nothing to overwrite, and the order control has a single spelling to assert on.".to_string()), "\n".to_string()), "        let resolve_started = Instant::now();".to_string()), "\n".to_string()), "        let resolution = native_lane_module_resolution(context.clone(), refusal_index.clone(), entry.clone());".to_string()), "\n".to_string()), "        let module_resolve_nanos = span_nanos(resolve_started);".to_string()), "\n".to_string()), "        let (outcome_label, module_prepare_nanos) = match &*resolution {".to_string()), "\n".to_string()), "            NativeLaneModuleResolution::NativeLaneModuleContextRowsDecided { rows } => {".to_string()), "\n".to_string()), "                let this_prepare = span_nanos(prepare_started);".to_string()), "\n".to_string()), "                prepare_refused += 1;".to_string()), "\n".to_string()), "                for row in rows.iter() {".to_string()), "\n".to_string()), "                    population.push(row.clone());".to_string()), "\n".to_string()), "                    identities += 1;".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                (\"context_refused\", this_prepare)".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeLaneModuleResolution::NativeLaneModuleResolveRowsDecided { rows } => {".to_string()), "\n".to_string()), "                let this_prepare = span_nanos(prepare_started);".to_string()), "\n".to_string()), "                prepare_refused += 1;".to_string()), "\n".to_string()), "                for row in rows.iter() {".to_string()), "\n".to_string()), "                    population.push(row.clone());".to_string()), "\n".to_string()), "                    identities += 1;".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                (\"resolve_refused\", this_prepare)".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeLaneModuleResolution::NativeLaneModuleResolved { resolved } => {".to_string()), "\n".to_string()), "                let infer_started = Instant::now();".to_string()), "\n".to_string()), "                let preparation = native_lane_module_inference(entry.clone(), resolved.clone());".to_string()), "\n".to_string()), "                module_infer_nanos = span_nanos(infer_started);".to_string()), "\n".to_string()), "                let this_prepare = span_nanos(prepare_started);".to_string()), "\n".to_string()), "                match &*preparation {".to_string()), "\n".to_string()), "                    NativeLaneModulePreparation::NativeLaneModuleRowsDecided { rows } => {".to_string()), "\n".to_string()), "                        prepare_refused += 1;".to_string()), "\n".to_string()), "                        for row in rows.iter() {".to_string()), "\n".to_string()), "                            population.push(row.clone());".to_string()), "\n".to_string()), "                            identities += 1;".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        (\"infer_refused\", this_prepare)".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                    NativeLaneModulePreparation::NativeLaneModulePrepared { prepared } => {".to_string()), "\n".to_string()), "                        prepare_ok += 1;".to_string()), "\n".to_string()), "                        for declaration in entry.declarations.iter() {".to_string()), "\n".to_string()), "                            let evaluate_started = Instant::now();".to_string()), "\n".to_string()), "                            let row = native_lane_identity_row(".to_string()), "\n".to_string()), "                                prepared.clone(),".to_string()), "\n".to_string()), "                                entry.module.clone(),".to_string()), "\n".to_string()), "                                declaration.clone(),".to_string()), "\n".to_string()), "                            );".to_string()), "\n".to_string()), "                            let this_eval = span_nanos(evaluate_started);".to_string()), "\n".to_string()), "                            module_evaluate_nanos += this_eval;".to_string()), "\n".to_string()), "                            eval_samples.push(this_eval);".to_string()), "\n".to_string()), "                            population.push(row);".to_string()), "\n".to_string()), "                            identities += 1;".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        (\"accepted\", this_prepare)".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        prepare_total_nanos += module_prepare_nanos;".to_string()), "\n".to_string()), "        evaluate_total_nanos += module_evaluate_nanos;".to_string()), "\n".to_string()), "        prepare_samples.push(module_prepare_nanos);".to_string()), "\n".to_string()), "        // RELEASE IS MEASURED, NOT LEFT TO SCOPE EXIT. The resolved tree this module built is".to_string()), "\n".to_string()), "        // dropped HERE, inside a span, because dropping it at the end of the iteration paid real".to_string()), "\n".to_string()), "        // time that no exclusive row covered. An explicit drop makes the cost nameable; scope".to_string()), "\n".to_string()), "        // exit hides it. What that cost turned out to BE -- and whether it explains anything --".to_string()), "\n".to_string()), "        // is a fact of std.compiler_entry NativeDriverExclusiveRows, not of this template.".to_string()), "\n".to_string()), "        let release_started = Instant::now();".to_string()), "\n".to_string()), "        drop(resolution);".to_string()), "\n".to_string()), "        module_release_nanos += span_nanos(release_started);".to_string()), "\n".to_string()), "        // One stderr write per unique module, to a pipe the host runner drains. It is spanned".to_string()), "\n".to_string()), "        // because it was paid inside parent_span with no exclusive row over it. What the span".to_string()), "\n".to_string()), "        // has since MEASURED, and what the residual is, are facts of std.compiler_entry".to_string()), "\n".to_string()), "        // NativeDriverExclusiveRows and are deliberately not restated here: a number copied".to_string()), "\n".to_string()), "        // into a generated template rots in a place no fold can reach to correct it.".to_string()), "\n".to_string()), "        let relay_started = Instant::now();".to_string()), "\n".to_string()), "        eprintln!(\"[native-prepare-split] module={} resolve_nanos={module_resolve_nanos} infer_nanos={module_infer_nanos} prepare_nanos={module_prepare_nanos} decls={} outcome={outcome_label}\", entry.module, identities);".to_string()), "\n".to_string()), "        relay_emit_nanos += span_nanos(relay_started);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // receipt_admission: minting the receipt and evaluating the authority's admission and summary".to_string()), "\n".to_string()), "    // over it. The controls are executed here because they are receipt inputs, not universe members.".to_string()), "\n".to_string()), "    let admission_started = Instant::now();".to_string()), "\n".to_string()), "    let receipt = native_lane_receipt(".to_string()), "\n".to_string()), "        context.clone(),".to_string()), "\n".to_string()), "        universe.clone(),".to_string()), "\n".to_string()), "        Rc::new(population.clone().into()),".to_string()), "\n".to_string()), "        native_lane_controls(context.clone()),".to_string()), "\n".to_string()), "        Rc::new(facts),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    let admission = native_route_admission(receipt.clone());".to_string()), "\n".to_string()), "    let summary = native_route_admission_summary(admission.clone());".to_string()), "\n".to_string()), "    let file_refusal_tally: Vec<serde_json::Value> = native_route_file_refusal_tally(receipt.clone())".to_string()), "\n".to_string()), "        .iter()".to_string()), "\n".to_string()), "        .map(|row| serde_json::json!(row))".to_string()), "\n".to_string()), "        .collect();".to_string()), "\n".to_string()), "    let admitted = native_route_admitted(admission.clone());".to_string()), "\n".to_string()), "    let admission_nanos = span_nanos(admission_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // row_serialization: SERIALIZING THE OBSERVATIONS AND WRITING THEM, MEASURED (review".to_string()), "\n".to_string()), "    // 64181 named this span; #11105 made leaving it unattributed fatal). Every row the".to_string()), "\n".to_string()), "    // population carries is turned into JSON here and written to stdout, which is real work".to_string()), "\n".to_string()), "    // no other row covers -- eval is the identity fold and nothing else. It is TIMED, never".to_string()), "\n".to_string()), "    // derived as parent minus the others: a row defined as the remainder would force the".to_string()), "\n".to_string()), "    // residual to zero and make the tolerance arm unfireable by construction.".to_string()), "\n".to_string()), "    let serialization_started = Instant::now();".to_string()), "\n".to_string()), "    for refusal in receipt.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for row in population.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::to_string(row).unwrap());".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let row_serialization_nanos = span_nanos(serialization_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // THE PARTITION, THROUGH THE ONE LAW. The rows are the row set std.compiler_entry owns and".to_string()), "\n".to_string()), "    // verdict is native_driver_cost_account over them -- not a second reconcile. The two rows".to_string()), "\n".to_string()), "    // this route pays that a driver handed a universe file does not (universe_derivation,".to_string()), "\n".to_string()), "    // receipt_admission) are members of the same exclusive sum, so an over-attribution through".to_string()), "\n".to_string()), "    // either is caught here rather than by a check of its own.".to_string()), "\n".to_string()), "    prepare_samples.sort_unstable();".to_string()), "\n".to_string()), "    eval_samples.sort_unstable();".to_string()), "\n".to_string()), "    let parent_span_nanos = span_nanos(driver_start);".to_string()), "\n".to_string()), "    // THE DRIVER IS EXHAUSTIVE OVER THE KEY WITH NO WILDCARD, deliberately: a row added to".to_string()), "\n".to_string()), "    // std.compiler_entry makes THIS match refuse to compile until the driver says what".to_string()), "\n".to_string()), "    // measures it. A wildcard here would answer zero for a span nobody wired up, which is".to_string()), "\n".to_string()), "    // the absorbing arm DESIGN section 5 forbids -- and it is what the old record literal".to_string()), "\n".to_string()), "    // did silently, three folds running.".to_string()), "\n".to_string()), "    let exclusive = native_driver_exclusive_rows(move |k| match k {".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(native_cost_i64(load_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveUniverseDerivation => nanosecond(native_cost_i64(universe_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveContext => nanosecond(native_cost_i64(context_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusivePrepare => nanosecond(native_cost_i64(prepare_total_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveEval => nanosecond(native_cost_i64(evaluate_total_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(native_cost_i64(admission_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(native_cost_i64(row_serialization_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(native_cost_i64(module_release_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(native_cost_i64(relay_emit_nanos)),".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;".to_string()), "\n".to_string()), "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;".to_string()), "\n".to_string()), "    let accounting = native_driver_cost_account(".to_string()), "\n".to_string()), "        nanosecond(native_cost_i64(parent_span_nanos)),".to_string()), "\n".to_string()), "        exclusive.clone(),".to_string()), "\n".to_string()), "        native_driver_cost_remainder_tolerance_nanos(),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    // The remainder is the residual the accounting itself returns, never parent minus sum: on".to_string()), "\n".to_string()), "    // over-attributed arm there IS no remainder, and a clamped zero there would be a".to_string()), "\n".to_string()), "    // plausible number standing where the measurement is incoherent.".to_string()), "\n".to_string()), "    let (verdict, remainder_nanos) = match accounting.as_ref() {".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostOverAttributed\"#, serde_json::Value::Null),".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostRemainderExceedsTolerance\"#, serde_json::json!(nanosecond_count(residual.clone()))),".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { residual, .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostReconciled\"#, serde_json::json!(nanosecond_count(residual.clone()))),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let identities = universe.identities.len() as u64;".to_string()), "\n".to_string()), "    let eval_mean = if eval_samples.is_empty() { 0 } else { evaluate_total_nanos / eval_samples.len() as u128 };".to_string()), "\n".to_string()), "    let prepare_mean = if prepare_samples.is_empty() { 0 } else { prepare_total_nanos / prepare_samples.len() as u128 };".to_string()), "\n".to_string()), "    // THE ROWS ARE PROJECTED FROM THE VALUE, NOT RE-LISTED (review 64181). The field names".to_string()), "\n".to_string()), "    // were written once to build NativeDriverExclusiveRows and again to render it, which is the".to_string()), "\n".to_string()), "    // second spelling this file warns about for prose, applied to the emitted object: a driver".to_string()), "\n".to_string()), "    // gaining a phase would have updated the struct and left the receipt short. Serializing the".to_string()), "\n".to_string()), "    // value carries the row set from the type, so the JSON cannot disagree with the fold. The".to_string()), "\n".to_string()), "    // rows therefore render as std.measure Nanosecond objects rather than bare integers -- the".to_string()), "\n".to_string()), "    // unit travels with the number, which is the point of the type.".to_string()), "\n".to_string()), "    // A NON-RECONCILED ARM IS A PROCESS REFUSAL (#11105, review 63891). The receipt is".to_string()), "\n".to_string()), "    // printed first so the numbers that caused the refusal are on the wire, and THEN the".to_string()), "\n".to_string()), "    // line stops: a verdict string with exit 0 is the inert lens DESIGN section 6 names.".to_string()), "\n".to_string()), "    // The full-N run of this route refused here on 158600186 ns against a 50000000 ns".to_string()), "\n".to_string()), "    // tolerance before row_serialization was a measured row, which is what put that row on".to_string()), "\n".to_string()), "    // the type rather than a wider tolerance on this arm.".to_string()), "\n".to_string()), "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!({".to_string()), "\n".to_string()), "        \"basis\": \"native_driver_wall\",".to_string()), "\n".to_string()), "        \"basis_note\": \"single-threaded SourceRootEvalDriver wall; exclusive rows partition parent_span_nanos\",".to_string()), "\n".to_string()), "        \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "        \"head\": head,".to_string()), "\n".to_string()), "        \"mode\": \"adjudicate\",".to_string()), "\n".to_string()), "        \"verdict\": verdict,".to_string()), "\n".to_string()), "        \"tolerance_nanos\": tolerance_nanos,".to_string()), "\n".to_string()), "        \"parent_span_nanos\": parent_span_nanos,".to_string()), "\n".to_string()), "        \"exclusive\": exclusive.rows.iter().map(|r| (".to_string()), "\n".to_string()), "            native_driver_exclusive_row_name(r.key.clone()),".to_string()), "\n".to_string()), "            serde_json::json!(r.nanos),".to_string()), "\n".to_string()), "        )).collect::<serde_json::Map<String, serde_json::Value>>(),".to_string()), "\n".to_string()), "        \"sum_exclusive_nanos\": exclusive_sum,".to_string()), "\n".to_string()), "        \"remainder_nanos\": remainder_nanos,".to_string()), "\n".to_string()), "        \"corpus_reads\": corpus_reads,".to_string()), "\n".to_string()), "        \"closure_reads\": closure_reads,".to_string()), "\n".to_string()), "        \"scanned_paths\": ingest_receipt.scanned_paths.len(),".to_string()), "\n".to_string()), "        \"ingested_paths\": ingest_receipt.ingested_paths.len(),".to_string()), "\n".to_string()), "        \"closure_modules\": closure.len(),".to_string()), "\n".to_string()), "        \"identities\": identities,".to_string()), "\n".to_string()), "        \"unique_modules\": universe.modules.len(),".to_string()), "\n".to_string()), "        \"file_refusals\": receipt.file_refusals.len(),".to_string()), "\n".to_string()), "        \"prepare_ok\": prepare_ok,".to_string()), "\n".to_string()), "        \"prepare_refused\": prepare_refused,".to_string()), "\n".to_string()), "        \"prepare_mean_nanos\": prepare_mean,".to_string()), "\n".to_string()), "        \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2),".to_string()), "\n".to_string()), "        \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20),".to_string()), "\n".to_string()), "        \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        \"eval_mean_nanos\": eval_mean,".to_string()), "\n".to_string()), "        \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2),".to_string()), "\n".to_string()), "        \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20),".to_string()), "\n".to_string()), "        \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "        \"rss_bytes\": proc_status_kib(\"VmRSS\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "    }));".to_string()), "\n".to_string()), "    match accounting.as_ref() {".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => {}".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { sum_exclusive, parent_span } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"REFUSED: native driver cost OverAttributed {{ sum_exclusive_nanos: {}, parent_span_nanos: {} }}\",".to_string()), "\n".to_string()), "                nanosecond_count(sum_exclusive.clone()) as u128,".to_string()), "\n".to_string()), "                nanosecond_count(parent_span.clone()) as u128".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, tolerance } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"REFUSED: native driver cost RemainderExceedsTolerance {{ residual_nanos: {}, tolerance_nanos: {} }} -- unattributed driver work; name the span, do not widen the tolerance\",".to_string()), "\n".to_string()), "                nanosecond_count(residual.clone()) as u128,".to_string()), "\n".to_string()), "                nanosecond_count(tolerance.clone()) as u128".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    println!(".to_string()), "\n".to_string()), "        \"{}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "            \"mode\": \"adjudicate\",".to_string()), "\n".to_string()), "            \"rows\": population.len(),".to_string()), "\n".to_string()), "            \"universe\": universe.identities.len(),".to_string()), "\n".to_string()), "            \"file_refusals\": receipt.file_refusals.len(),".to_string()), "\n".to_string()), "            \"file_refusal_tally\": file_refusal_tally,".to_string()), "\n".to_string()), "            \"admitted\": admitted,".to_string()), "\n".to_string()), "            \"summary\": summary,".to_string()), "\n".to_string()), "        })".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    if admitted {".to_string()), "\n".to_string()), "        std::process::exit(0);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    std::process::exit(1);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let mut args = std::env::args().skip(1);".to_string()), "\n".to_string()), "    let mode = match args.next() {".to_string()), "\n".to_string()), "        Some(mode) => mode,".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: no mode given -- usage: ".to_string()), crate_name.clone()), " adjudicate <host-facts.tsv> <source-root>... | ".to_string()), crate_name.clone()), " census <source-root>...\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    if mode == \"census\" {".to_string()), "\n".to_string()), "        let source_roots: Vec<String> = args.collect();".to_string()), "\n".to_string()), "        run_census(&source_roots);".to_string()), "\n".to_string()), "        return;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if mode == \"adjudicate\" {".to_string()), "\n".to_string()), "        let facts_path = match args.next() {".to_string()), "\n".to_string()), "            Some(path) => path,".to_string()), "\n".to_string()), "            None => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: adjudicate takes a host facts file before the source roots\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        let source_roots: Vec<String> = args.collect();".to_string()), "\n".to_string()), "        run_adjudication(&facts_path, &source_roots);".to_string()), "\n".to_string()), "        return;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    eprintln!(\"REFUSED: unknown mode {mode} -- expected adjudicate or census\");".to_string()), "\n".to_string()), "    std::process::exit(2);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()),
 })
     }
 }
@@ -39726,57 +38872,7 @@ pub fn entry_point_absent_refusal_marker() -> String {
 }
 
 pub fn entry_point_absent_refusal_text(crate_name: String) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(entry_point_absent_refusal_marker(), " -- crate ".to_string()), crate_name.clone()), " was emitted from a corpus with no workflow function and no compiler pipeline module, so it is a library and there is nothing to run".to_string())
-}
-
-pub fn emit_main_mod_uses(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-    has_pipeline: bool,
-    crate_name: String,
-    pipeline_module: String,
-) -> String {
-    {
-        let mod_names = Rc::new({
-            let mut __result = Vec::new();
-            for wf in workflow_funcs.iter().cloned() {
-                __result.push(crate::v1_compiler_emit_core_support::module_to_filename(
-                    wf.module_name.clone(),
-                ));
-            }
-            __result
-        });
-        let unique_mods = crate::v1_compiler_emit_core_support::unique_strings(mod_names.clone());
-        let use_lines = Rc::new({
-            let mut __result = Vec::new();
-            for m in unique_mods.iter().cloned() {
-                __result.push(v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("use ".to_string(), crate_name.clone()),
-                            "::".to_string(),
-                        ),
-                        m.clone(),
-                    ),
-                    ";".to_string(),
-                ));
-            }
-            __result
-        });
-        let base = use_lines.clone().join(&"\n".to_string());
-        if has_pipeline.clone() {
-            {
-                let pipeline_mod = crate::v1_compiler_emit_core_support::module_to_filename(
-                    pipeline_module.clone(),
-                );
-                let core_mod = crate::v1_compiler_emit_core_support::module_to_filename(
-                    "v1.std.core".to_string(),
-                );
-                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "\nuse im::HashMap;\n".to_string()), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
-            }
-        } else {
-            base.clone()
-        }
-    }
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(entry_point_absent_refusal_marker(), " -- crate ".to_string()), crate_name.clone()), " was emitted from a corpus that declares no compiler_pipeline_entry, so it is a library and there is nothing to run".to_string())
 }
 
 pub fn emit_cli_root_struct(
@@ -39800,66 +38896,6 @@ pub fn emit_cli_root_struct(
             "".to_string()
         };
         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"".to_string()), binary_name.clone()), "\"".to_string()), about_attr.clone()), version_attr.clone()), ")]\n".to_string()), visibility.clone()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    ".to_string()), visibility.clone()), "command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    ".to_string()), visibility.clone()), "dry_run: bool,\n".to_string()), "}".to_string())
-    }
-}
-
-pub fn emit_cli_struct(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-    binary_name: String,
-    about: String,
-    version_attr: String,
-) -> String {
-    emit_cli_root_struct(
-        binary_name.clone(),
-        about.clone(),
-        version_attr.clone(),
-        false,
-    )
-}
-
-pub fn emit_subcommand_enum(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-    has_pipeline: bool,
-) -> String {
-    {
-        let depth = 0;
-        let variants = Rc::new({
-            let mut __result = Vec::new();
-            for wf in workflow_funcs.iter().cloned() {
-                __result.push(emit_subcommand_variant(wf.clone(), (depth.clone() + 1)));
-            }
-            __result
-        });
-        let modeled_rows = if has_pipeline.clone() {
-            crate::gunbc_cli_dispatch_surface::gunbc_cli_generated_dispatch_subcommands()
-        } else {
-            Rc::new(vec![])
-        };
-        let modeled = Rc::new({
-            let mut __result = Vec::new();
-            for sub in modeled_rows.iter().cloned() {
-                __result.push(emit_modeled_subcommand_variant(sub.clone(), depth.clone()));
-            }
-            __result
-        });
-        let all_variants = v1_rt::concat(variants.clone(), modeled.clone());
-        let variants_str = all_variants.clone().join(&"\n".to_string());
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            "#[derive(Subcommand)]\n".to_string(),
-                            "enum Commands {\n".to_string(),
-                        ),
-                        crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
-                    ),
-                    variants_str.clone(),
-                ),
-                "\n".to_string(),
-            ),
-            "}".to_string(),
-        )
     }
 }
 
@@ -40099,243 +39135,6 @@ pub fn cli_option_rust_type(opt: Rc<CliOptionRow>) -> String {
     }
 }
 
-pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
-    {
-        let variant_name = crate::v1_compiler_emit_core_support::to_pascal(wf.name.clone());
-        let doc_line = v1_rt::concat(
-            v1_rt::concat("/// Run the ".to_string(), wf.name.clone()),
-            " workflow".to_string(),
-        );
-        if ((wf.params.clone().len() as i64) == 0) {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(doc_line.clone(), "\n".to_string()),
-                    variant_name.clone(),
-                ),
-                ",".to_string(),
-            )
-        } else {
-            {
-                let fields = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in wf.params.clone().iter().cloned() {
-                        __result.push(emit_subcommand_field(
-                            p.clone(),
-                            wf.source_indices.clone(),
-                            wf.resolved_defaults.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let fields_str = fields.clone().join(&"\n".to_string());
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(doc_line.clone(), "\n".to_string()),
-                                        variant_name.clone(),
-                                    ),
-                                    " {\n".to_string(),
-                                ),
-                                crate::v1_compiler_emit_core_support::make_indent(
-                                    (depth.clone() + 1),
-                                ),
-                            ),
-                            fields_str.clone(),
-                        ),
-                        "\n".to_string(),
-                    ),
-                    "},".to_string(),
-                )
-            }
-        }
-    }
-}
-
-pub fn emit_subcommand_field(
-    param: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    resolved_defaults: Rc<HashMap<String, String>>,
-) -> String {
-    {
-        let field_name = crate::v1_compiler_emit::emit_ident(
-            crate::v1_std_core::param_node_name_at(param.clone(), source_indices.clone()),
-            RenderTarget::Rust,
-        );
-        let param_name =
-            crate::v1_std_core::param_node_name_at(param.clone(), source_indices.clone());
-        let field_type = emit_cli_param_type_node(
-            crate::v1_std_core::param_node_type_expr(param.clone()),
-            source_indices.clone(),
-        );
-        let default_attr = match v1_rt::map_get(&resolved_defaults, param_name.clone()) {
-            Some(resolved) => v1_rt::concat(
-                v1_rt::concat(
-                    "#[arg(long, default_value = \"".to_string(),
-                    resolved.clone(),
-                ),
-                "\")]\n".to_string(),
-            ),
-            std::option::Option::None => {
-                match crate::v1_std_core::param_node_default_value(param.clone()) {
-                    Some(dv) => match cli_default_literal_value(dv.clone()) {
-                        Some(default_value) => v1_rt::concat(
-                            v1_rt::concat(
-                                "#[arg(long, default_value = \"".to_string(),
-                                default_value.clone(),
-                            ),
-                            "\")]\n".to_string(),
-                        ),
-                        std::option::Option::None => "#[arg(long)]\n".to_string(),
-                    },
-                    std::option::Option::None => "#[arg(long)]\n".to_string(),
-                }
-            }
-        };
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(default_attr.clone(), field_name.clone()),
-                    ": ".to_string(),
-                ),
-                field_type.clone(),
-            ),
-            ",".to_string(),
-        )
-    }
-}
-
-pub fn emit_cli_param_type_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        let has_structure = (n.connective.clone() != Connective::NoConnective);
-        if is_optional.clone() {
-            v1_rt::concat(
-                v1_rt::concat(
-                    "Option<".to_string(),
-                    emit_cli_param_type_node(
-                        crate::v1_std_core::with_required_cardinality(n.clone()),
-                        source_indices.clone(),
-                    ),
-                ),
-                ">".to_string(),
-            )
-        } else {
-            if has_structure.clone() {
-                "String".to_string()
-            } else {
-                if ((n.children.clone().len() as i64) == 0) {
-                    {
-                        let nname =
-                            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-                        if (nname.clone() == "String".to_string()) {
-                            "String".to_string()
-                        } else {
-                            {
-                                let mapped = crate::v1_compiler_coercion::coerce_primitive_type(
-                                    crate::v1_compiler_coercion::type_reference_realization(
-                                        n.clone(),
-                                        nname.clone(),
-                                        RenderTarget::Rust,
-                                    ),
-                                    nname.clone(),
-                                );
-                                if (mapped.clone() != nname.clone()) {
-                                    mapped.clone()
-                                } else {
-                                    "String".to_string()
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    "String".to_string()
-                }
-            }
-        }
-    })
-}
-
-pub fn emit_main_fn(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-    has_services: bool,
-    has_pipeline: bool,
-    crate_name: String,
-) -> String {
-    {
-        let depth = 0;
-        let async_attr = if has_services.clone() {
-            "#[tokio::main]\nasync fn main() ".to_string()
-        } else {
-            "fn main() ".to_string()
-        };
-        let parse_line = "let cli = Cli::parse();".to_string();
-        let dry_run_line = if has_services.clone() {
-            "let dry_run = DryRunMode(cli.dry_run);".to_string()
-        } else {
-            "".to_string()
-        };
-        let match_arms = Rc::new({
-            let mut __result = Vec::new();
-            for wf in workflow_funcs.iter().cloned() {
-                __result.push(emit_main_match_arm(wf.clone(), has_services.clone()));
-            }
-            __result
-        });
-        let arms_str = match_arms.clone().join(&"\n".to_string());
-        let match_block = v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    "match cli.command {\n".to_string(),
-                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 2)),
-                ),
-                arms_str.clone(),
-            ),
-            "\n    }".to_string(),
-        );
-        let result_handling = if has_services.clone() {
-            match_block.clone()
-        } else {
-            v1_rt::concat(
-                v1_rt::concat("let _result = ".to_string(), match_block.clone()),
-                ";".to_string(),
-            )
-        };
-        let body_lines = if (dry_run_line.clone() == "".to_string()) {
-            v1_rt::concat(
-                v1_rt::concat(parse_line.clone(), "\n".to_string()),
-                result_handling.clone(),
-            )
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(parse_line.clone(), "\n".to_string()),
-                        dry_run_line.clone(),
-                    ),
-                    "\n".to_string(),
-                ),
-                result_handling.clone(),
-            )
-        };
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(async_attr.clone(), "{\n".to_string()),
-                    crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
-                ),
-                body_lines.clone(),
-            ),
-            "\n}".to_string(),
-        )
-    }
-}
-
 pub fn emit_bootstrap_dag_operation_match_arm(
     sub: Rc<CliSubcommandRow>,
     binding: Rc<CliBootstrapDagOperationBinding>,
@@ -40466,182 +39265,6 @@ pub fn emit_main_diagnostic_fns(crate_name: String) -> String {
         let core_mod =
             crate::v1_compiler_emit_core_support::module_to_filename("v1.std.core".to_string());
         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nfn render_diagnostics(result: &PipelineResult) {\n".to_string(), "    if result.diagnostics.is_empty() {\n".to_string()), "        return;\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let index_map: HashMap<String, Rc<NewlineIndex>> = result\n".to_string()), "        .newline_indices\n".to_string()), "        .iter()\n".to_string()), "        .map(|idx| (idx.file.clone(), idx.clone()))\n".to_string()), "        .collect();\n".to_string()), "\n".to_string()), "    for d in result.diagnostics.iter() {\n".to_string()), "        render_one_diagnostic(d, &index_map, \"\");\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    eprintln!(\"\\n{} error(s)\", result.diagnostics.len());\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn render_one_diagnostic(\n".to_string()), "    d: &".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::ErrorNode,\n".to_string()), "    index_map: &HashMap<String, Rc<NewlineIndex>>,\n".to_string()), "    indent: &str,\n".to_string()), ") {\n".to_string()), "    let severity = \"error\";\n".to_string()), "    let message = diagnostic_to_message(d.diagnostic.clone());\n".to_string()), "    let span = diagnostic_to_span(d.diagnostic.clone());\n".to_string()), "\n".to_string()), "    let location = if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n".to_string()), "        } else {\n".to_string()), "            span.file.clone()\n".to_string()), "        }\n".to_string()), "    } else if !d.module_name.is_empty() {\n".to_string()), "        d.module_name.clone()\n".to_string()), "    } else {\n".to_string()), "        String::new()\n".to_string()), "    };\n".to_string()), "\n".to_string()), "    if location.is_empty() {\n".to_string()), "        eprintln!(\"{}{}: {}\", indent, severity, message);\n".to_string()), "    } else {\n".to_string()), "        eprintln!(\"{}{}[{}]: {}\", indent, severity, location, message);\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            let line_text = source_line_at(idx.clone(), lc.line);\n".to_string()), "            let line_num = format!(\"{}\", lc.line);\n".to_string()), "            let gutter_width = line_num.len();\n".to_string()), "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n".to_string()), "            eprintln!(\"{} {} | {}\", indent, line_num, line_text);\n".to_string()), "\n".to_string()), "            let span_len = std::cmp::max(1, (span.end - span.start) as usize);\n".to_string()), "            let col_offset = (lc.col - 1) as usize;\n".to_string()), "            eprintln!(\n".to_string()), "                \"{} {} | {}{}\",\n".to_string()), "                indent,\n".to_string()), "                \" \".repeat(gutter_width),\n".to_string()), "                \" \".repeat(col_offset),\n".to_string()), "                \"^\".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))\n".to_string()), "            );\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
-    }
-}
-
-pub fn emit_main_match_arm(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
-    {
-        let variant_name = crate::v1_compiler_emit_core_support::to_pascal(wf.name.clone());
-        let mod_name =
-            crate::v1_compiler_emit_core_support::module_to_filename(wf.module_name.clone());
-        let fn_name = crate::v1_compiler_emit::emit_ident(wf.name.clone(), RenderTarget::Rust);
-        let await_suffix = if has_services.clone() {
-            ".await".to_string()
-        } else {
-            "".to_string()
-        };
-        let call_expr = if ((wf.params.clone().len() as i64) == 0) {
-            {
-                let service_args = emit_main_service_args(wf.clone(), has_services.clone());
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(mod_name.clone(), "::".to_string()),
-                                    fn_name.clone(),
-                                ),
-                                "(".to_string(),
-                            ),
-                            service_args.clone(),
-                        ),
-                        ")".to_string(),
-                    ),
-                    await_suffix.clone(),
-                )
-            }
-        } else {
-            {
-                let call_args = emit_main_call_args(wf.clone(), has_services.clone());
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(mod_name.clone(), "::".to_string()),
-                                    fn_name.clone(),
-                                ),
-                                "(".to_string(),
-                            ),
-                            call_args.clone(),
-                        ),
-                        ")".to_string(),
-                    ),
-                    await_suffix.clone(),
-                )
-            }
-        };
-        let pattern = if ((wf.params.clone().len() as i64) == 0) {
-            v1_rt::concat("Commands::".to_string(), variant_name.clone())
-        } else {
-            {
-                let field_binds = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in wf.params.clone().iter().cloned() {
-                        __result.push(crate::v1_compiler_emit::emit_ident(
-                            crate::v1_std_core::param_node_name_at(
-                                p.clone(),
-                                wf.source_indices.clone(),
-                            ),
-                            RenderTarget::Rust,
-                        ));
-                    }
-                    __result
-                });
-                let binds_str = field_binds.clone().join(&", ".to_string());
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("Commands::".to_string(), variant_name.clone()),
-                            " { ".to_string(),
-                        ),
-                        binds_str.clone(),
-                    ),
-                    " }".to_string(),
-                )
-            }
-        };
-        if has_services.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(pattern.clone(), " => {\n".to_string()), "            match ".to_string()), call_expr.clone()), " {\n".to_string()), "                Ok(value) => {\n".to_string()), "                    let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| format!(\"{:?}\", value));\n".to_string()), "                    println!(\"{}\", json);\n".to_string()), "                }\n".to_string()), "                Err(e) => {\n".to_string()), "                    eprintln!(\"Error: {}\", e);\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "        }".to_string())
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(pattern.clone(), " => ".to_string()),
-                    call_expr.clone(),
-                ),
-                ",".to_string(),
-            )
-        }
-    }
-}
-
-pub fn emit_main_call_args(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
-    {
-        let param_args = Rc::new({
-            let mut __result = Vec::new();
-            for p in wf.params.clone().iter().cloned() {
-                __result.push({
-                    let pname = crate::v1_std_core::param_node_name_at(
-                        p.clone(),
-                        wf.source_indices.clone(),
-                    );
-                    crate::v1_compiler_emit::emit_ident(pname.clone(), RenderTarget::Rust)
-                });
-            }
-            __result
-        });
-        let service_args = emit_main_service_arg_list(wf.clone(), has_services.clone());
-        let all_args = v1_rt::concat(param_args.clone(), service_args.clone());
-        all_args.clone().join(&", ".to_string())
-    }
-}
-
-pub fn emit_main_service_args(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
-    {
-        let service_args = emit_main_service_arg_list(wf.clone(), has_services.clone());
-        service_args.clone().join(&", ".to_string())
-    }
-}
-
-pub fn emit_main_service_arg_list(wf: Rc<WorkflowFunc>, has_services: bool) -> Rc<Vec<String>> {
-    {
-        let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
-            .sharing
-            .clone();
-        let resource_args = Rc::new({
-            let mut __result = Vec::new();
-            for u in wf.uses.clone().iter().cloned() {
-                __result.push(v1_rt::concat(
-                    "&".to_string(),
-                    crate::v1_std_core::authored_name_at(
-                        wf.source_indices.clone(),
-                        crate::v1_std_core::resource_use_resource(u.clone()),
-                    ),
-                ));
-            }
-            __result
-        });
-        let svc_args = Rc::new({
-            let mut __result = Vec::new();
-            for sn in wf.service_names.clone().iter().cloned() {
-                __result.push({
-                    let struct_name =
-                        crate::v1_compiler_emit_core_support::sanitize_service_name(sn.clone());
-                    if has_services.clone() {
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat("&".to_string(), struct_name.clone()),
-                                    "::new(".to_string(),
-                                ),
-                                crate::v1_compiler_emit_core_support::apply_type_template1(
-                                    sharing.clone_value.clone(),
-                                    "dry_run".to_string(),
-                                ),
-                            ),
-                            ")".to_string(),
-                        )
-                    } else {
-                        v1_rt::concat(
-                            v1_rt::concat("&".to_string(), struct_name.clone()),
-                            "::new()".to_string(),
-                        )
-                    }
-                });
-            }
-            __result
-        });
-        v1_rt::concat(resource_args.clone(), svc_args.clone())
     }
 }
 

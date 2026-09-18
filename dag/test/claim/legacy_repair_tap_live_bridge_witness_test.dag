@@ -1,0 +1,128 @@
+module test.claim.legacy_repair_tap_live_bridge_witness
+
+import std.types { String, Bool, List, list_length }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.content_hash { structural_content_hash }
+import std.decl_ref { decl_ref }
+import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
+import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
+import extdeps.git.object_store { git_sha1_object_id }
+import v2.workflow.legacy_binding_observation {
+  LegacyBindingObservationSubject,
+  ImportScopedPolicy
+}
+import v2.workflow.legacy_baseline_capture {
+  materialization_receipt,
+  tree_derived_subject
+}
+import v2.workflow.legacy_baseline_persisted_observation {
+  PersistAdmitted,
+  PersistRefusedNotCaptured
+}
+import v2.workflow.legacy_repair_tap {
+  Xl1PrimaryRootTap,
+  Xl1PrimaryRootObserved,
+  Xl1PrimaryRootRefused,
+  xl1_live_repair_tap_census,
+  xl1_live_repair_tap_census_of,
+  Xl1LiveRepairTapRows,
+  Xl1LiveRepairTapUnavailable,
+  persist_named_base_from_primary_root_tap
+}
+
+// Discriminating RED for the PrimaryRoot tap (review 64801): empty source_roots must refuse
+// inside the seed arm, not mint an Observed encoding. Executes emit_rust_reference_derived_rows_bridge.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE OBSERVED ARM'S POSITIVE CONTROL, ON THE REQUIRED FLOOR. The tap asks the same per-root
+// admission as the compile transaction (gunbc.whole_corpus_compile_admission, #11265), and the
+// XL-4 fixture root with dag/std as its pool is a MEASURED root
+// (whole_corpus_compile_xl1_fixture_root_demand, authored from its measurement receipt), so
+// the admission that refused every earlier control (gunbc#11461 runs 35074340220,
+// 35079253040 - a whole-corpus constant sized for the largest root) now admits this subject on
+// its own row. The tap over that root is a nullary PREPARED EFFECT INPUT
+// (v2.workflow.floor_pure_producer_share floor_cross_claim_prepared_effect_inputs): the floor
+// acquires it once at preparation, so no claim pays the compile, and the Observed encoding it
+// stores is what the two claims below read. Deleting the Observed arm of
+// compile_xl1_primary_root_tap in src/v1/stage0/src/cli_run/emit_host.rs turns them red;
+// deleting the fixture root's measured row turns them red at admission (review 67146).
+fn xl1_fixture_root_tap() -> Xl1PrimaryRootTap {
+  emit_rust_reference_derived_rows_bridge(
+    ["dag/test/fixture/reference_derived_graph", "dag/std"],
+    whole_corpus_compile_repository as String,
+    whole_corpus_compile_demand_projection_path()
+  )
+}
+
+test fn a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings() -> Bool {
+  match xl1_fixture_root_tap() {
+    Xl1PrimaryRootRefused { cause: _ } => false
+    Xl1PrimaryRootObserved {
+      primary_root: root,
+      repair_rows: rows,
+      occurrence_transport: _,
+      binding_rows: bindings
+    } =>
+      list_length(items: rows) > 0
+        && list_length(items: bindings) > 0
+        && root == "dag/test/fixture/reference_derived_graph"
+  }
+}
+
+test fn the_live_census_over_the_measured_fixture_root_counts_its_rows() -> Bool {
+  match xl1_live_repair_tap_census_of(tap: xl1_fixture_root_tap()) {
+    Xl1LiveRepairTapUnavailable { cause: _ } => false
+    Xl1LiveRepairTapRows { count: n } => n > 0
+  }
+}
+
+test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool {
+  match emit_rust_reference_derived_rows_bridge([], whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path()) {
+    Xl1PrimaryRootRefused { cause: c } => string_contains(s: c, pattern: "empty")
+    Xl1PrimaryRootObserved {
+      primary_root: _,
+      repair_rows: _,
+      occurrence_transport: _,
+      binding_rows: _
+    } => false
+  }
+}
+
+test fn empty_source_roots_do_not_tally_as_zero_rows() -> Bool {
+  match xl1_live_repair_tap_census([]) {
+    Xl1LiveRepairTapUnavailable { cause: c } => string_contains(s: c, pattern: "empty")
+    Xl1LiveRepairTapRows { count: _ } => false
+  }
+}
+
+fn lrt_live_subject() -> LegacyBindingObservationSubject {
+  LegacyBindingObservationSubject {
+    semantic_source_digest: structural_content_hash(digest: "1111111111111111"),
+    source_set_digest: structural_content_hash(digest: "2222222222222222"),
+    compiler_artifact_digest: structural_content_hash(digest: "3333333333333333"),
+    resolver_identity: decl_ref(module_path: "v1.compiler.infer_env", decl_name: "lookup_binding_by_name"),
+    resolver_policy: ImportScopedPolicy,
+    occurrence_transport_digest: structural_content_hash(digest: "4444444444444444"),
+    declaration_index_digest: structural_content_hash(digest: "5555555555555555")
+  }
+}
+
+test fn empty_source_roots_refuse_named_base_persist_through_the_tap() -> Bool {
+  match git_sha1_object_id(hex: "1007efb256a20749f77c3b1295eed144fddeb9fd") {
+    Absent => false
+    Present { value: a } => match git_sha1_object_id(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+      Absent => false
+      Present { value: t } =>
+        match persist_named_base_from_primary_root_tap(
+          materialization: materialization_receipt(
+            requested: a, observed_head: a, observed_tree: t, commit_tree: t
+          ),
+          tree_subject: tree_derived_subject(tree: t, subject: lrt_live_subject()),
+          source_roots: []
+        ) {
+          PersistRefusedNotCaptured => true
+          PersistAdmitted { persisted: _ } => false
+        }
+    }
+  }
+}

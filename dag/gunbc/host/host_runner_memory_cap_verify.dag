@@ -24,6 +24,7 @@ import extdeps.systemd { MemoryMax, MemorySwapMax, MemoryHigh }
 import gunbc.systemctl_show_read {
   systemctl_show_property_read,
   SystemdPropertyCaptured,
+  SystemdPropertyBlank,
   SystemdPropertyCaptureRefused,
 }
 import gunbc.runner_unit_live_read {
@@ -167,10 +168,13 @@ fn runner_memory_cap_live_read(host: HostIdentity) -> RunnerUnitMemoryLiveRead? 
                       }
                     )
                   }
+                SystemdPropertyBlank => none
                 SystemdPropertyCaptureRefused { reason: _ } => none
               }
+            SystemdPropertyBlank => none
             SystemdPropertyCaptureRefused { reason: _ } => none
           }
+        SystemdPropertyBlank => none
         SystemdPropertyCaptureRefused { reason: _ } => none
       }
     Absent => none

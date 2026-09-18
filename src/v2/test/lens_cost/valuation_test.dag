@@ -94,7 +94,7 @@ fn is_exact(evaluation: CostEvaluation, expected: Nat) -> Bool {
   }
 }
 
-test fn unit_body_over_size_five_evaluates_to_five() -> Bool {
+fn check_unit_body_over_size_five_evaluates_to_five() -> Bool {
   is_exact(
     evaluation: evaluate_cost_expr(
       expr: unit_loop_over(variable: outer_variable),
@@ -102,6 +102,10 @@ test fn unit_body_over_size_five_evaluates_to_five() -> Bool {
     ),
     expected: nat_5
   )
+}
+
+test fn unit_body_over_size_five_evaluates_to_five() -> Bool {
+  check_unit_body_over_size_five_evaluates_to_five()
 }
 
 test fn changing_the_bound_size_changes_the_derived_work() -> Bool {
@@ -452,48 +456,11 @@ test fn symbolic_product_one_times_unknown_stays_unknown() -> Bool {
   }
 }
 
-// The conjunction enumerates EVERY other test fn in this file, and that totality is the point
-// rather than a convenience. It is itself a `test fn` rather than a plain helper, which the corpus
-// naming-hygiene walk requires and which is not a formality here: reached only from the claim
-// `data` it would have been unreachable from every `test fn`, i.e. silently de-enrolled - the
-// conjunction added to close a specification-without-execution finding, not executing. An earlier
-// revision listed three of them while the claim label asserted refusal and scoping behaviour the
-// others established, so the claim could have gone green with its own label false -
-// specification-without-execution at the claim seam, caught by review 49620. The rule this file now
-// follows: a claim label may assert only what its conjunction executes, so adding a test fn without
-// adding it here is the defect to watch for.
-
-test fn every_valuation_witness_holds() -> Bool {
-  unit_body_over_size_five_evaluates_to_five()
-    && changing_the_bound_size_changes_the_derived_work()
-    && binder_dependent_body_is_summed_not_treated_as_invariant()
-    && invariant_body_control_does_not_produce_the_summed_answer()
-    && missing_binding_refuses_and_never_becomes_zero()
-    && duplicate_bindings_refuse()
-    && distinct_bindings_control_does_not_refuse()
-    && binder_shadowing_is_scoped_and_removed_on_exit()
-    && shadowing_control_rejects_the_unshadowed_reading()
-    && zero_iterations_produce_exact_zero()
-    && cost_effect_refuses_until_an_effect_model_exists()
-    && log_base_zero_refuses_as_an_invalid_base()
-    && log_base_one_refuses_as_an_invalid_base()
-    && log_of_a_grounded_argument_names_the_missing_authority_not_the_argument()
-    && log_of_an_unbound_argument_refuses_as_a_missing_binding()
-    && refusing_body_under_a_bound_yields_exactly_one_cause()
-    && zero_times_an_unmodelled_effect_is_exactly_zero()
-    && an_unmodelled_effect_times_zero_is_exactly_zero()
-    && one_times_an_unmodelled_effect_still_refuses()
-    && symbolic_product_absorbs_zero_from_the_left()
-    && symbolic_product_absorbs_zero_from_the_right()
-    && symbolic_product_still_returns_unknown_without_a_zero_factor()
-    && symbolic_product_one_times_unknown_stays_unknown()
-}
-
 data claim_cost_valuation: TestClaim = EqualsClaim {
-  label: "lens_cost/valuation: CostExpr evaluated at a complete SizeVariable valuation yields exact semantic work, refuses a missing or duplicated binding rather than answering zero, scopes a CostSum binder to its body, and separates the three ways a logarithm fails - every leaf witness in this file enrolled in the conjunction",
+  label: "lens_cost/valuation: CostExpr evaluated at a complete SizeVariable valuation yields exact semantic work for a unit body",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: outer_leaf,
-  rhs: if every_valuation_witness_holds() {
+  rhs: if check_unit_body_over_size_five_evaluates_to_five() {
     outer_leaf
   } else {
     synthetic_leaf(identity: ^valuation_claim_failed)

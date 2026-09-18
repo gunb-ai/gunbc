@@ -1187,7 +1187,7 @@ fn c_binding_spellings_with_dag_fixture() -> Map<Symbol, String> {
 }
 
 fn c_lex_rule(token_class: Symbol, text: String) -> LexRule {
-  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: chars(s: text) } }
 }
 
 fn c_lex_rules() -> List<LexRule> {
