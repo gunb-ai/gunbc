@@ -1,6 +1,6 @@
 module std.list
 
-import std.types { List, Bool }
+import std.types { List, Bool, String, Map }
 // Temporary realization: the seed intercepts algebra.contains and discards eq.
 // Tracking: gunbc.list_membership_operation_gap. Retire list_member and rewire
 // list_cover when the declared contains route executes caller equality, with the
@@ -12,4 +12,46 @@ fn list_member<T>(xs: List<T>, x: T, eq: fn(T, T) -> Bool) -> Bool {
 fn list_cover<T>(held: List<T>, expected: List<T>, eq: fn(T, T) -> Bool) -> Bool {
   expected.all(e => list_member(xs: held, x: e, eq: eq))
     && held.all(h => list_member(xs: expected, x: h, eq: eq))
+}
+
+// FIRST DUPLICATE, ONCE, AND IN LINEAR TIME. "Which element repeats" was hand-rolled at least seven
+// times in this corpus as a NESTED FOLD -- an outer scan whose every step runs an inner occurrence
+// count -- in extdeps.github.app (three copies inside one file), gunbc.product.fan_tach_health,
+// gunbc.fleet.fleet_fan_tach_expectation, gunbc.fleet.fleet_fan_wiring and
+// v2.compiler.00_compile. DESIGN 2's test names that exactly: net concepts must not grow by
+// re-invention, and the prevalence of a shape is evidence of the debt rather than precedent for
+// another copy. DESIGN 6 rules the cost half unconditionally -- a quadratic fold is always fixed,
+// regardless of the realized n, because "n is small here" is not a time-stable fact.
+//
+// IT TAKES A KEY PROJECTION RATHER THAN AN EQUALITY FUNCTION, and that is the whole reason it can be
+// linear. An arbitrary fn(T, T) -> Bool admits no index, so every realization of it is O(n^2); a key
+// the caller can name is one a Map can hold, so the scan is one pass with one lookup per element.
+// Every site listed above already had such a key -- a wire name, a header, a declaration ref -- and
+// was comparing through it.
+//
+// ITS RELATION TO std.keyed_roster, STATED SO THIS IS A DECLARED DIVERGENCE AND NOT A SILENT SECOND
+// AUTHORITY (DESIGN 3b). keyed_roster_build answers a DIFFERENT question: it constructs a validated
+// roster carrier whose success arm proves one value per key, and it declares itself O(n^2) in its own
+// note. This answers only "which element repeats", returns the element, and builds nothing. A caller
+// that needs the carrier still goes there. The honest end state is that keyed_roster's duplicate
+// detection consumes this kernel rather than carrying its own nested fold, which is a rewire of that
+// module and not of this one.
+type FirstDuplicateScan<T>
+  = FirstDuplicateNotFound { seen: Map<String, Bool> }
+  | FirstDuplicateFound { value: T }
+
+fn first_duplicate_by_key<T>(xs: List<T>, key: fn(T) -> String) -> T? {
+  match fold(xs, init: FirstDuplicateNotFound { seen: empty_map() }, f: fn(acc, x) {
+    match acc {
+      FirstDuplicateFound { value: v } => FirstDuplicateFound { value: v }
+      FirstDuplicateNotFound { seen: seen } =>
+        match map_get(seen, key(x)) {
+          Present { value: _ } => FirstDuplicateFound { value: x }
+          Absent => FirstDuplicateNotFound { seen: map_insert(seen, key(x), true) }
+        }
+    }
+  }) {
+    FirstDuplicateFound { value: v } => Present { value: v }
+    FirstDuplicateNotFound { seen: _ } => none
+  }
 }
