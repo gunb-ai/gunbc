@@ -455,9 +455,13 @@ data live_deploy_slice_memory_high: ByteSize = byte_size(16106127360)
 // /approvals stalls that refused a live deploy and two approval-gated boot transactions (GH runs
 // 35377916920 and 35380154698, both fail-closed on a poll that returned no bytes in 5 s). The
 // instrument is /proc/<serve pid>/status VmSwap beside the unit's journal gap; re-derive there, not
-// from this sentence. Zero rather than a bound: any admitted swap is admitted latency, and the
-// memory bound above already refuses growth past the envelope with a typed cgroup limit instead of
-// a silent page-out.
+// from this sentence. Zero rather than a bound: any admitted swap is admitted latency. Growth stays
+// bounded by MemoryHigh and MemoryMax above -- a hard kernel boundary (throttling, allocation
+// failure, or the cgroup's own OOM kill), not an application refusal value -- so the deployment
+// fails or restarts inside its declared envelope rather than becoming a silently swapped control
+// plane. Lowering swap.max below existing usage does NOT drain what is already paged out: the live
+// closure is a new service incarnation whose MainPID reads VmSwap 0 kB and answers /healthz and
+// one status GET inside the client bound.
 data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 
 fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
