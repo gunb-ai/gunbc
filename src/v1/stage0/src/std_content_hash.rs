@@ -332,7 +332,14 @@ pub fn parse_content_hash_candidate(wire: String) -> Option<Rc<ContentHash>> {
                 },
             }
         } else {
-            content_hash_from_structural_digest(wire.clone())
+            if content_hash_validate_lower_hex_length(wire.clone(), 40) {
+                match sha1_hex_digest(wire.clone()) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(d) => Some(as_content_hash_sha1(d.clone())),
+                }
+            } else {
+                content_hash_from_structural_digest(wire.clone())
+            }
         }
     }
 }
