@@ -638,22 +638,6 @@ pub enum CompilerDiagnostic {
         observed: i64,
         span: Rc<SourceSpan>,
     },
-    TestCodeReferenced {
-        referrer: String,
-        target: String,
-        span: Rc<SourceSpan>,
-    },
-    TestCodeReferenceAdmitted {
-        referrer: String,
-        target: String,
-        span: Rc<SourceSpan>,
-    },
-    TestCodeReferenceBudgetMismatch {
-        referrer: String,
-        declared: i64,
-        observed: i64,
-        span: Rc<SourceSpan>,
-    },
     MissingField {
         field: String,
         type_name: String,
@@ -775,15 +759,6 @@ pub enum CompilerDiagnostic {
     AmbiguousReference {
         name: String,
         candidates: Rc<Vec<String>>,
-        span: Rc<SourceSpan>,
-    },
-    DataReferenceVisibilityBudgetExceeded {
-        name: String,
-        span: Rc<SourceSpan>,
-    },
-    ParameterDefaultFormNotAdmitted {
-        parameter: String,
-        admitted: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     AmbiguousAnonymousRecordLiteral {
@@ -987,9 +962,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
         CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
-        CompilerDiagnostic::TestCodeReferenced { span: s, .. } => s.clone(),
-        CompilerDiagnostic::TestCodeReferenceAdmitted { span: s, .. } => s.clone(),
-        CompilerDiagnostic::TestCodeReferenceBudgetMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
@@ -1017,8 +989,6 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ReferenceDerivedImportExportUnproven { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedVariantValueUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
-        CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { span: s, .. } => s.clone(),
-        CompilerDiagnostic::ParameterDefaultFormNotAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
         CompilerDiagnostic::EffectfulSelfRecursionUnrealized { span: s, .. } => s.clone(),
         CompilerDiagnostic::ModuleFilenameCollision { span: s, .. } => s.clone(),
@@ -1062,9 +1032,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AlgebraApplicationEvidenceUnavailable { receiver_type: t, argument_index: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("algebra receiver application evidence unavailable for '".to_string(), t.clone()), "' at argument ".to_string()), (i.clone()).to_string()), ": structural members are not type arguments".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("the declared frontier row for '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' no longer matches what this module contains: its declared occurrence count and the count observed here differ, and both numbers are carried on this diagnostic. If MORE were observed, a new unresolved call has appeared and the receiver's type should be established rather than the count raised. If FEWER were observed, the deficit has partly dissolved and the row must be lowered or deleted so the ratchet keeps its new ground. The count is an equality, not a ceiling, in both directions.".to_string()),
-    CompilerDiagnostic::TestCodeReferenced { referrer: r, target: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), r.clone()), "' references test code '".to_string()), t.clone()), "': a `test` declaration is entered only by the witness runner, and serving code may not depend on a module that declares tests. Move shared logic into an ordinary fn, or delete a test that only re-asserts other tests".to_string()),
-    CompilerDiagnostic::TestCodeReferenceAdmitted { referrer: r, target: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), r.clone()), "' references test code '".to_string()), t.clone()), "'; admitted by the declared test-reference debt ledger (v1.compiler.compile test_reference_debt), which may only shrink".to_string()),
-    CompilerDiagnostic::TestCodeReferenceBudgetMismatch { referrer: r, declared: d, observed: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the test-reference debt row for '".to_string(), r.clone()), "' declares ".to_string()), (d.clone()).to_string()), " reference(s) but ".to_string()), (o.clone()).to_string()), " were observed. The count is an equality in both directions: more means new test-code references appeared and must be removed; fewer means debt was paid and the row must be lowered or deleted".to_string()),
     CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
     CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat("non-exhaustive match: missing variant(s) ".to_string(), ms.clone().join(&", ".to_string())),
     CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat("circular dependency detected: ".to_string(), ms.clone().join(&" -> ".to_string())),
@@ -1090,8 +1057,6 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the provider of '".to_string(), n.clone()), "' is present but its export could not be established: module '".to_string()), rm.clone()), "' references the name, the registry maps it to '".to_string()), p.clone()), "', and that module's transitive export surface does not establish it. The remedy is NOT an import -- the provider is already in the closure -- it is that the emitter cannot prove an export the provider may well hold".to_string()),
     CompilerDiagnostic::UnlistedVariantValueUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted variant value use '".to_string(), n.clone()), "' (a coproduct arm referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
-    CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { name: n, .. } => v1_rt::concat(v1_rt::concat("visible declarations of '".to_string(), n.clone()), "' could not be enumerated: the import re-export walk exceeded its depth bound, so no verdict is asserted about how many declarations answer to the name".to_string()),
-    CompilerDiagnostic::ParameterDefaultFormNotAdmitted { parameter: p, admitted: forms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("default value for parameter '".to_string(), p.clone()), "' is not an admitted form (admitted: ".to_string()), forms.clone().join(&", ".to_string())), ")".to_string()),
     CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
     CompilerDiagnostic::EffectfulSelfRecursionUnrealized { name: n, .. } => v1_rt::concat(v1_rt::concat("effectful declaration '".to_string(), n.clone()), "' calls itself: the Rust realization renders an effectful declaration as `async fn`, and rustc refuses recursion in an async fn without boxing (E0733), which no emitter performs. Realize the recursion as a loop, or move the self-call into a pure helper.".to_string()),
     CompilerDiagnostic::ModuleFilenameCollision { filename: f, modules: ms, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("module filename collision: ".to_string(), ((ms.clone().len() as i64)).to_string()), " modules render one emitted file name '".to_string()), f.clone()), "': ".to_string()), ms.clone().join(&", ".to_string())), " — module_to_filename maps '.' to '_', so these names are indistinguishable at the emitted path; rename one module segment".to_string()),
@@ -1212,18 +1177,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
-    CompilerDiagnostic::TestCodeReferenced { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::TestCodeReferenceAdmitted { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityNonError,
-    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
-}),
-    CompilerDiagnostic::TestCodeReferenceBudgetMismatch { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
     CompilerDiagnostic::MissingField { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
@@ -1330,14 +1283,6 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::AmbiguousReference { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::DataReferenceVisibilityBudgetExceeded { .. } => Rc::new(DiagnosticDisposition {
-    severity: DiagnosticSeverity::SeverityError,
-    gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
-}),
-    CompilerDiagnostic::ParameterDefaultFormNotAdmitted { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
 }),
@@ -1468,7 +1413,6 @@ pub struct DeclaredFuncSig {
     pub name: String,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Option<Rc<Node>>,
-    pub is_async: bool,
     pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     pub variant_provenance:
         Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,

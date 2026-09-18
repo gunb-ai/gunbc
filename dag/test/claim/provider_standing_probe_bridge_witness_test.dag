@@ -265,35 +265,6 @@ test fn witness_bridge_standing_is_from_fact_not_inventory_unobserved() -> Bool 
   }
 }
 
-test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
-  witness_bridge_codex_successful_probes_map_authenticated_not_entitled()
-    && witness_bridge_codex_auth_failure_is_credentials_absent_not_authenticated()
-    && witness_bridge_honest_limit_unobserved_blocks_even_when_authenticated()
-    && witness_bridge_claude_control_probe_honest_installation_and_tool_unobserved()
-    && witness_bridge_profile_present_token_absent_refuses_through_mapper()
-    && witness_bridge_profile_present_token_absent_not_authenticated_arm()
-    && witness_bridge_standing_is_from_fact_not_inventory_unobserved()
-    && witness_codex_bucket_projects_to_native_bucket_never_account_scope()
-    && witness_exhausted_codex_allows_a_sibling_bucket_draw()
-    && witness_capacity_unknown_is_not_capacity()
-    && witness_no_buckets_is_a_located_unobserved_not_an_empty_list()
-    && witness_undecoded_bucket_does_not_refuse_a_measured_sibling()
-    && witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws()
-    && witness_credential_identity_tracks_the_observed_codex_home()
-    && witness_pro_subscription_is_the_only_arm_that_entitles()
-    && witness_upstream_unknown_plan_is_not_a_yes()
-    && witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected()
-    && witness_absent_and_malformed_accounts_never_entitle()
-    && witness_realm_decodes_from_the_captured_account_read_shape()
-    && witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed()
-    && witness_reported_cause_and_reset_survive_the_projection()
-    && witness_unreported_cause_is_not_the_bucket_id()
-    && witness_deployed_profile_admits_exactly_the_observed_plan()
-    && witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected()
-    && witness_plans_added_after_the_pinned_runtime_read_as_stale_pin()
-    && witness_credential_liveness_splits_from_realm()
-}
-
 // The sibling-bucket case is the whole point: an exhausted `codex` bucket and an available
 // `codex_bengalfox` bucket must produce DIFFERENT verdicts under draws that name them. A projection
 // that routed either through ProviderAccountLimit would collapse both to one account verdict and

@@ -1,0 +1,73 @@
+module test.claim.entry_authority_witness_test
+
+// EXECUTING evidence that an emitted crate's entry point has ONE authority: its
+// `compiler_pipeline_entry` declaration. v1.compiler.emit_rust emit_main_rs used to have a second
+// way to acquire an entry -- one clap subcommand per function that carried `uses` or reached a
+// service, derived by the deleted `is_workflow_item` -- which renamed the effect axis an entry
+// role. That derivation is deleted, and these arms are the walls that keep it deleted.
+//
+// THE REGRESSION CONTROL IS THE PAIR OF EFFECTFUL LIBRARIES. Each fixture below differs from the
+// pure library by exactly one effect -- a `uses` requirement, or a call to a service operation --
+// and each must still emit the SAME entry-point-absent refusal main with no clap subcommand.
+// Reintroducing `uses` > 0, a service name, or a registry miss as entry identity turns the
+// corresponding arm RED, because the emitted main would then carry a `Subcommand` and not the
+// refusal. The pure library alone could not catch that: it has no effect to misread.
+//
+// THE ENTRY ARMS ARE THE POSITIVE AND NEGATIVE CONTROLS OF THE AUTHORITY ITSELF. One declared entry
+// yields exactly that driver's main even with effects beside it (effects do not add a second
+// root); two declarations and an unmodeled driver each yield their own typed refusal main rather
+// than a guess. The entry declarations are recognized by the `CompilerEntryDriver` type name and
+// the authored driver spelling (v1.compiler.emit_rust module_compiler_pipeline_entry_decls), so
+// the fixtures declare that type locally and import nothing -- a two-module closure per arm, not
+// the corpus.
+//
+// COVERAGE BOUND. These arms read the emitted `src/main.rs` TEXT; none invokes rustc. That the
+// real rooted closures still emit and build under this rule is the job of
+// `//gunbc/instruments:self-host` (SourceRootEvalDriver) and `//gunbc/instruments:v2-native-cli`
+// (NativeCliDriver), which execute it.
+
+data ea_pure_library_source: String = "module ea_pure_library\n\nfn ea_value(x: Int) -> Int \{\n  x\n}\n"
+
+data ea_uses_library_source: String = "module ea_uses_library\n\ntype EaNet \{\n  id: Int\n}\n\nfn ea_value(x: Int) -> Int \{\n  x\n}\n\nfn ea_effect() -> Int\n  uses net: EaNet\n\{\n  net.id\n}\n"
+
+data ea_service_library_source: String = "module ea_service_library\n\nservice EaSvc \{\n  operation Ping \{\n    input \{ arg: String \}\n    output \{ exit_code: Int from \"exit_code\" \}\n    readonly\n    transport shell \{ argv: [\"true\", arg] \}\n    exit \{ 0 => Unit  nonzero => Unit }\n    mock_response \{ 0 => \{ exit_code: 0 } \"hermetic\" }\n  }\n}\n\nfn ea_value(x: Int) -> Int \{\n  x\n}\n\nfn ea_call() -> Int \{\n  EaSvc.Ping(arg: \"x\").exit_code\n}\n"
+
+data ea_one_entry_source: String = "module ea_one_entry\n\ntype CompilerEntryDriver = DirectIngestDriver | NativeCliDriver\n\ntype EaNet \{\n  id: Int\n}\n\ndata compiler_pipeline_entry: CompilerEntryDriver = DirectIngestDriver\n\nfn ea_effect() -> Int\n  uses net: EaNet\n\{\n  net.id\n}\n"
+
+data ea_two_entries_source: String = "module ea_two_entries\n\ntype CompilerEntryDriver = DirectIngestDriver | NativeCliDriver\n\ndata compiler_pipeline_entry: CompilerEntryDriver = DirectIngestDriver\n\ndata second_pipeline_entry: CompilerEntryDriver = NativeCliDriver\n"
+
+data ea_unknown_driver_source: String = "module ea_unknown_driver\n\ntype CompilerEntryDriver = UnmodeledEntryDriver | NativeCliDriver\n\ndata compiler_pipeline_entry: CompilerEntryDriver = UnmodeledEntryDriver\n"
+
+data ea_absent_entry_marker: String = "REFUSED: emitted crate declares no entry point"
+
+// THE SEED'S OWN BUILD IDENTITY IS NOT A PROPERTY OF AN EMITTED PROGRAM. `GUNBC_BUILD_IDENTITY` is
+// an environment variable of the gunbc build, and the retained-host arm is the only main that may
+// name it. A rust unit test in `src/v1/stage0/src/main.rs` used to establish this by rendering the
+// derived CLI struct for a non-gunbc program and asserting the absence; that struct is deleted, and
+// the fact is now structural -- a library emits no CLI at all -- so the case is carried here as an
+// exclusion on every library arm rather than retired with the function it was written against.
+data ea_seed_build_identity_marker: String = "GUNBC_BUILD_IDENTITY"
+
+test fn a_pure_library_emits_the_entry_point_absent_refusal() -> Bool {
+  compile_dag_rust_emit_check(ea_pure_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
+}
+
+test fn a_uses_requirement_does_not_create_an_entry() -> Bool {
+  compile_dag_rust_emit_check(ea_uses_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
+}
+
+test fn a_service_call_does_not_create_an_entry() -> Bool {
+  compile_dag_rust_emit_check(ea_service_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
+}
+
+test fn one_declared_entry_is_the_sole_root_beside_an_effect() -> Bool {
+  compile_dag_rust_emit_check(ea_one_entry_source, "src/main.rs", ["compile_dag_source_to_target_text"], [ea_absent_entry_marker, "Subcommand"])
+}
+
+test fn two_declared_entries_refuse_as_ambiguous() -> Bool {
+  compile_dag_rust_emit_check(ea_two_entries_source, "src/main.rs", ["REFUSED: the corpus declares more than one compiler pipeline entry"], ["compile_dag_source_to_target_text"])
+}
+
+test fn an_unmodeled_entry_driver_refuses() -> Bool {
+  compile_dag_rust_emit_check(ea_unknown_driver_source, "src/main.rs", ["REFUSED: the compiler pipeline entry in"], ["compile_dag_source_to_target_text"])
+}

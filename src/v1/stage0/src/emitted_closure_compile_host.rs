@@ -77,9 +77,9 @@ use crate::extdeps_cargo::{
 };
 use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind;
+use crate::v1_compiler_emit_rust::emit_cargo_features_section;
 use crate::v1_compiler_stage0_crates::{
-    render_stage0_crate_dep, render_stage0_crate_features_section, stage0_features_for_crate_kind,
-    stage0_foundation_runtime_dependencies,
+    render_stage0_crate_dep, stage0_features_for_crate_kind, stage0_foundation_runtime_dependencies,
 };
 
 const REQUIRED_EMIT_COMPILE_ENTRIES_DATA_NAME: &str = "required_emit_compile_entries";
@@ -609,7 +609,7 @@ fn probe_manifest(entry: &str) -> String {
     // function reading only `row.kind`. That row ASSERTED this probe is a generated partition
     // crate; it is a per-entry crate outside the repository sharing only the foundation kind's
     // feature set, because the emitted `v1_rt.rs` gates on it.
-    let features = render_stage0_crate_features_section(stage0_features_for_crate_kind(
+    let features = emit_cargo_features_section(stage0_features_for_crate_kind(
         GeneratedPartitionCrateKind::GeneratedFoundationCrate,
     ));
     // `v1_compiled` is the emitter's own literal (`emit_rust_selected`), mirrored here the way

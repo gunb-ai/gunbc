@@ -123,11 +123,3 @@ test fn terminal_evidence_accepts_only_terminal_outcomes() -> Bool {
     && terminal_outcome_evidence_label(
       evidence: TerminalOutcomeObserved { outcome: failed_outcome }) == "observed"
 }
-
-test fn provider_lifecycle_keystone_holds() -> Bool {
-  claude_lifecycle_consumes_cli_authority()
-    && recorded_credentials_do_not_imply_refreshable_authentication()
-    && model_access_and_sandbox_readiness_are_independent()
-    && session_presence_cannot_promote_setup_to_execution()
-    && terminal_evidence_accepts_only_terminal_outcomes()
-}

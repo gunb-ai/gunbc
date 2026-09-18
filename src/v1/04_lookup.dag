@@ -133,7 +133,6 @@ fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
           params: [],
           resolved_formals: KernelGroundedFormals { formals: [] },
           inferred: builtin_return,
-          is_async: false,
           output_provenance: [],
           variant_provenance: empty_map()
         }
@@ -647,7 +646,6 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
       params: node.params,
       resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: candidate.module_path, node: node) },
       inferred: return_type,
-      is_async: false,
       output_provenance: [],
       variant_provenance: empty_map()
     }
@@ -749,7 +747,6 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             params: node.params,
             resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: bd.owner_module_path, node: node) },
             inferred: raw_return,
-            is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
           }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
@@ -760,7 +757,6 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             params: node.params,
             resolved_formals: DeclarationBoundFormals { formals: census_declaration_bound_formals(type_env: type_env, owner_module_path: bd.owner_module_path, node: node) },
             inferred: qualified_return,
-            is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
           }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
