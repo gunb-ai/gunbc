@@ -293,6 +293,22 @@ type CandidateBinding<P>
 // observations, and checks the ONE thing the capacity cannot know - that the dispatch inputs describe
 // the same offer.
 //
+// WHAT THIS SEAM DROPS, AND WHY IT IS NOT YET CLOSED (review 67832). CandidateOffer has no requirements
+// field, so the ExecutionRequirements capacity_admission proved fungibility against are left behind
+// here, and price_candidate screens fungibility AGAIN against select_supply's own requirements
+// parameter - two independently supplied values that nothing joins. It is REDUNDANT, not unsound:
+// fungibility is the only admission screen that depends on requirements (the permit and readiness
+// are per route, work and demand), and price_candidate re-runs it against the requirements actually
+// being priced, so a mismatch surfaces as a typed OfferNotFungible or prices correctly for the
+// requirements asked - never as capacity sold for a shape it was not checked against. What it costs
+// is the second screen, and the loss of any signal that the two values disagreed. The repair is for
+// select_supply to read requirements from the candidates rather than take its own, and that is
+// blocked by the frontier below: select_supply's production callers include the serving-seat spine,
+// whose candidates come from bind_candidate and carry no proved requirements to read. TRIGGER: the
+// same one as below - once first-party serving seats bind from an admitted carrier, CandidateOffer
+// carries the proved requirements, select_supply drops its parameter, and the second screen is
+// deleted.
+//
 // bind_candidate below IS STILL A SECOND WAY TO MINT A CandidateOffer, AND ONE PRODUCTION CALLER USES
 // IT - named here because an earlier revision of this note said only fixtures did, and a later author
 // deleting bind_candidate on the strength of that would break the serving spine (review 67583).
