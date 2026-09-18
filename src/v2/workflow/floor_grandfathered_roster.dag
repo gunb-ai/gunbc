@@ -180,6 +180,10 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
     identity: "test.claim.bare_name_fork_lens_witness_test.two_declarations_of_one_name_inside_the_subject_are_not_a_fork_with_itself" as NonEmptyStr,
     deleted_in: "gunbc#11286: the declaration-grained lens it exercised (gunbc.bare_name_fork_lens) is deleted with its check instrument, after the floor's bare-name invariant was repointed at the read-grained detector (claim_scope_for, AmbiguousBareNameRead); the coverage this row carried -- a fork of one bare name across two declarers -- is not the defect, and the defect's own red is test.claim.bare_name_ambiguity_wall_witness_test" as NonEmptyStr,
   },
+  WitnessDeleted {
+    identity: "v2.test.claim_pipeline.translate.spine_translate_accepts_rust_add_inferred_tree" as NonEmptyStr,
+    deleted_in: "gunbc#11591: after the lower_stage witness was repointed at the supplied rust_emit_small_add_translate_target, this claim made the identical translate call on the identical inputs and asserted strictly less (Accepted, without well_formed) -- DESIGN section 3, two claims making the same call on the same input where one assertion implies the other. Its subject survives whole in v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green; the production-model inhabitance stays with v2.test.claim.translate_underived_refusal translate_accepts_derived_corpus_module_holds" as NonEmptyStr,
+  },
 ]
 
 fn floor_grandfathered_chunk_000() -> List<String> {
