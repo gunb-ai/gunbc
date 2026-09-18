@@ -119,7 +119,7 @@ in a way a measurement could cite.
 
 ## Corrections after review (2026-09-17)
 
-**The census searched the wrong closure.** It read the 76 modules under `dag/gunbc/runner/` and drew a
+**The census searched the wrong closure.** It read the modules under `dag/gunbc/runner/` and drew a
 conclusion about CI, while the measurement substrate lives largely outside that subtree:
 `extdeps.github.workflow_runs::WorkflowJobRun` (exact run attempt, status, conclusion, observed runner
 labels, three timestamps, with exact-attempt and latest-attempt listings),
