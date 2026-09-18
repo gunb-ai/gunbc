@@ -1,8 +1,9 @@
 module gunbc.spark.serving_load_probe
 
-import std.types { Bool, String, NonEmptyStr, List, EpochSecs }
+import std.types { Bool, String, NonEmptyStr, List, EpochSecs, Int }
 import std.nat { Nat }
 import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import v2.std.algebra { length, filter, list_map }
 import v2.std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
@@ -191,6 +192,17 @@ type HistogramDelta
   | HistogramDeltaUnread { cause: NonEmptyStr }
   | HistogramCounterReset { cause: NonEmptyStr }
 
+fn nat_from_nonneg_int(n: Int) -> Nat? {
+  if n < 0 {
+    none
+  } else {
+    match checked_int_magnitude(a: n) {
+      CheckedNatOverflow { cause: _ } => none
+      CheckedNatReady { value: v } => Present { value: v }
+    }
+  }
+}
+
 fn milli_from_exact(d: ExactDecimal) -> Nat? {
   let c = canonical_exact_decimal(d: d)
   if c.units < 0 {
@@ -199,7 +211,7 @@ fn milli_from_exact(d: ExactDecimal) -> Nat? {
     none
   } else {
     let scaled = c.units * decimal_pow10(exponent: 3 - c.fraction_digits)
-    if scaled < 0 { none } else { Present { value: scaled as Nat } }
+    nat_from_nonneg_int(n: scaled)
   }
 }
 
@@ -318,7 +330,7 @@ fn scrape_interval_millis(before_at: EpochSecs, after_at: EpochSecs) -> Nat? {
   if after_at <= before_at {
     none
   } else {
-    Present { value: ((after_at - before_at) * 1000) as Nat }
+    nat_from_nonneg_int(n: (after_at - before_at) * 1000)
   }
 }
 
