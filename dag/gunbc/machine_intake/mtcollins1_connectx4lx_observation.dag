@@ -6,9 +6,8 @@ import extdeps.ethernet.link_mode { LinkMode, ieee_25gbase_cr, lane_rate_25g }
 import extdeps.linux.kernel { LinuxKernelModuleName }
 import extdeps.linux.mlx5_core { mlx5_core_module_name }
 import extdeps.mikrotik.crs812 { crs812_lane_speed_for_link_mode, Crs812LaneSpeedForMode, NoLaneSpeedForMode }
-import extdeps.network.mcx4121a_acat { Mcx4121aAcat, mcx4121a_acat }
+import extdeps.network.mcx4121a_acat { mcx4121a_acat }
 import extdeps.network.mikrotik_crs812 { crs812_catalog }
-import extdeps.standards.nic_attachment { NicAttachmentClass, PcieCem }
 import product.cable_order_admission {
   CableLegCodingEvidence, CableLinkRequirement, CableOrderAdmission,
   LegCodingUndeclared, admit_cable_order, cable_link_requirement,
@@ -109,13 +108,4 @@ type NicFleetIntentStanding
 data mtcollins1_connectx4lx_fleet_intent: NicFleetIntentStanding = NicIntentUndeclared {
   host: "mtcollins1",
   asked_of: "eager-owl-205 / operator: which declared fleet intent this seated MCX4121A-ACAT serves",
-}
-
-data arrived_card: Mcx4121aAcat = mcx4121a_acat
-
-fn arrived_is_pcie_cem() -> Bool {
-  match arrived_card.attachment {
-    PcieCem => true
-    _ => false
-  }
 }

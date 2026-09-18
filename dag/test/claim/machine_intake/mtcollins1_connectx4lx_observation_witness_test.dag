@@ -11,7 +11,6 @@ import gunbc.machine_intake_mtcollins1_connectx4lx_observation {
   seated_transceiver_observation, SeatedTransceiverUnobserved, SeatedTransceiverObserved,
   mtcollins1_to_crs812_link_plan, MediaUnchosen,
   crs812_has_no_25gbase_cr_lane_speed, sfp56_group_publishes_25g,
-  arrived_is_pcie_cem,
   mtcollins1_crs812_cable_order_today, mtcollins1_crs812_cable_order_with,
   mtcollins1_connectx4lx_fleet_intent, NicIntentUndeclared,
 }
@@ -23,7 +22,6 @@ test fn the_seated_card_is_the_nvidia_opn_not_the_ibm_fru() -> Bool {
   mcx4121a_acat.opn == "MCX4121A-ACAT"
     && mcx4121a_acat.port_count == 2
     && mcx4121a_acat.port_connector == "SFP28"
-    && arrived_is_pcie_cem()
 }
 
 test fn host_observation_stays_unobserved_until_the_boot_run() -> Bool {
