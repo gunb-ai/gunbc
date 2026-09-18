@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data type_decl_field_decl_block_not_named_at_graft: RecurringFailureMode = RecurringFailureMode {
+  identity: "type_decl_field_decl_block_not_named_at_graft" as NonEmptyStr,
+
+  receipts: [
+    "**a type_decl whose parse tree still carries dag_surface_field_decl_block is not rehomed onto a Named graft edge** (INVALID STATE: namespace_graft_type_decl_named_edge returns Absent whenever parse_subtree_locate_production finds that production under the unit. The skip is that production, not the record spelling. dag_grammar_type_variant_expr puts an optional field_decl_block on every variant, and graft runs after sugar, so the same arm covers `type Rec { n: Int }`, `type Foo = Bar {}`, and `type Box = Leaf | Cell { n: Int }`. Nullary coproducts without a field block (`type Flag = On | Off`) and type_decl units that locate no field_decl_block are Named. Narrowing the skip by type_alias_rhs / `=` is not available: those discriminators rehome records.)",
+
+    "HARM: a fielded type_decl name is not a first-class module member. Residual reconstruct keeps the unit beside a sibling Named graft so the shell is not silently deleted; that is mitigation of drop, not Named rehome. Record assemble refuses today. Fielded-variant assemble is in the skipped population and is not enrolled as a Named-green path.",
+
+    "DISCRIMINATOR: RED while the skip remains `locate field_decl_block → Absent`. GREEN when body_lower_type_decl rehomes every field_decl_block type_decl onto Named containment and the skip is deleted. Nullary-coproduct Named is a different, already-green population and does not stand for this class.",
+
+    "EVIDENCE ENROLLED: v2.test.claim.declaration_graft_assemble declaration_graft_record_type_only_does_not_accept_today and declaration_graft_record_construct_does_not_accept_today (`!assemble_accepts`) cover the record spelling of the skip. declaration_graft_coproduct_beside_record_does_not_erase_rec refuses to treat Rejected as Rec survival. No enrolled witness asserts Named for a fielded variant. They flip to a permanent regression control when that spelling accepts, they do not retire.",
+
+    "RUNG FOUND AT: 1, mitigatable -- residual reconstruct contains the drop; the invalid Named-absence is still writable. CEILING: 3 once body_lower_type_decl is the Named home for field_decl_block type_decl, so graft need not skip.",
+
+    "NEXT-RUNG TRIGGER: body_lower_type_decl rehomes a field_decl_block type_decl onto a Named containment edge (the capability tracked as gunbc#11582), and namespace_graft_type_decl_named_edge no longer returns Absent on that production. Nothing smaller retires this row: landing 11582 without that rehome, or deleting the skip without the lowering, is not the climb. Closing only the record spelling while fielded variants still skip is not the climb.",
+  ],
+
+  evidence: [],
+}

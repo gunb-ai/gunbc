@@ -182,7 +182,8 @@ test fn declaration_graft_coproduct_beside_record_does_not_erase_rec() -> Bool {
   }
 }
 
-// Record assemble standing RED: gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft.
+// Record assemble standing RED (one spelling of the field_decl_block skip):
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
 // Not asserted via !named_reachable: that is true on every Rejected.
 test fn declaration_graft_record_type_only_does_not_accept_today() -> Bool {
   !declaration_graft_assemble_accepts(src: src_g_type_only)

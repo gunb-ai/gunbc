@@ -114,13 +114,14 @@ test fn control_a_parameter_type_name_is_an_atom_in_the_tree_holds() -> Bool {
 }
 
 // CONTROL: a type declaration name is an edge label, not an atom.
-// Record skip: gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft.
+// field_decl_block skip (record spelling):
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
 test fn the_record_type_declaration_is_absent_from_the_tree_today() -> Bool {
   !present_anywhere(lexeme: "Xl0Wrapper")
 }
 
 // Fixture: type Xl0Wrapper { fld: Xl0FieldOnly }. Class
-// gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft.
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
 test fn the_bare_field_type_is_absent_from_the_tree_today() -> Bool {
   !present_anywhere(lexeme: "Xl0FieldOnly")
 }

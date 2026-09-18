@@ -323,8 +323,11 @@ fn namespace_graft_unit_captured(unit: Node) -> Node? {
   parse_production_captured_child_optional(node: unit)
 }
 
-// Record field_decl_block units are residual, not Named; class
-// gunbc.recurring_failure_mode.record_type_decl_field_block_not_named_at_graft.
+// Any type_decl that still locates dag_surface_field_decl_block is residual,
+// not Named: records and fielded variants (optional field_decl_block on
+// dag_grammar_type_variant_expr; sugar leaves those blocks in the tree).
+// Narrowing by type_alias_rhs / `=` rehomes records. Class
+// gunbc.recurring_failure_mode.type_decl_field_decl_block_not_named_at_graft.
 fn namespace_graft_type_decl_named_edge(unit: Node) -> Edge? {
   match parse_subtree_locate_production(root: unit, emitted: ^dag_surface_field_decl_block) {
     Present { value: _ } => optional_absent()
@@ -405,8 +408,9 @@ fn namespace_graft_residual_decl_units(units: List<Node>) -> List<Node> {
 }
 
 // Flatten keeps Named members that are not parse machinery. A Conj that still
-// carries field_decl_block is the record form (residual reconstruct), not a
-// flatten member. Atom targets stay: the graft-shape fixture is two Named atoms.
+// carries field_decl_block is the same skip as type_decl_named_edge (record or
+// fielded variant), not a flatten member. Atom targets stay: the graft-shape
+// fixture is two Named atoms.
 fn namespace_graft_keep_flattened_member_edge(
   productions: List<GrammarProduction>,
   edge: Edge
