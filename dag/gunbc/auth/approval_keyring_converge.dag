@@ -5,6 +5,7 @@ import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import gunbc.auth.approval_decision_store { approval_mac_key_path, approval_decision_store_root }
+import gunbc.durable_cas_file_store { authorization_claim_store_root }
 import gunbc.auth.approval_request_submission {
   approval_submission_mac_key_path,
 }
@@ -20,7 +21,7 @@ import gunbc.auth.approval_keyring_pins {
   approval_submission_mac_key_payload_sha256_prefix,
 }
 import gunbc.runner_host_grants { executor_bootstrap_principal }
-import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_usermod_binary_path }
+import gunbc.fleet_posix_accounts { fleet_posix_root_user, fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_usermod_binary_path }
 import gunbc.auth.approval_ntfy_deployment { approval_ntfy_principal_name }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import extdeps.systemd.systemctl { systemctl_restart_argv }
@@ -128,6 +129,20 @@ fn store_root_mkdir_argv() -> List<String> {
   ]
 }
 
+fn claim_store_root_mkdir_argv() -> List<String> {
+  [
+    "install",
+    "-d",
+    "-m",
+    "0700",
+    "-o",
+    fleet_posix_ci_runner_user.name as String,
+    "-g",
+    fleet_posix_ci_runner_user.name as String,
+    authorization_claim_store_root as String,
+  ]
+}
+
 fn keyring_chown_argv(path: NonEmptyStr) -> List<String> {
   ["chown", concat(fleet_posix_root_user.name as String, concat(":", fleet_posix_operator_user.name as String)), path as String]
 }
@@ -180,7 +195,11 @@ fn keyring_ensure_dirs(
 {
   match keyring_elevated_exec(target: target, context: context, command: keyring_mkdir_argv(), step: "mkdir") {
     ExitSuccess =>
-      keyring_elevated_exec(target: target, context: context, command: store_root_mkdir_argv(), step: "store-root-mkdir")
+      match keyring_elevated_exec(target: target, context: context, command: store_root_mkdir_argv(), step: "store-root-mkdir") {
+        ExitSuccess =>
+          keyring_elevated_exec(target: target, context: context, command: claim_store_root_mkdir_argv(), step: "claim-store-root-mkdir")
+        other => other
+      }
     other => other
   }
 }
