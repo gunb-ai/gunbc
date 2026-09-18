@@ -1460,6 +1460,17 @@ pub fn compile_dag_primitive_call_edges(
                     }
                 }
                 entries_resolved.push(entry);
+                // RELEASE THE ENTRY GRAPH. `resolve_entry_with_index` memoizes every
+                // assembled ResolvedGraph by closure subject, and a graph strong-pins
+                // every module of its closure; over a whole-corpus walk that memo alone
+                // held 25 GiB (measured 2026-09-18) before the first receipt. The walk
+                // reads each entry once, so the memo buys nothing here; the typed-module
+                // cache (capped) is what makes the next entry cheap.
+                index.resolved_graph_memo.borrow_mut().clear();
+                index
+                    .resolved_graph_memo_cross_process_subjects
+                    .borrow_mut()
+                    .clear();
             }
             Err(cause) => entries_refused.push(PrimitiveCallEntryRefusal { entry, cause }),
         }

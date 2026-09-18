@@ -378,7 +378,7 @@ type PrimitiveCensus {
 fn primitive_census(inputs: CensusInputs) -> PrimitiveCensus {
   let joined = inputs.surface_facts |> map(f => join_surface_fact(fact: f))
   let identities = distinct_identities(joined: joined)
-  let on_surface = fn(id) { identities |> any(x => primitive_identity_eq(left: x, right: id)) }
+  let on_surface = fn(id) { identity_listed(identities: identities, id: id) }
   let consumers = consumer_fold(edges: inputs.edges, on_surface: on_surface)
   PrimitiveCensus {
     standings: identities |> map(id => identity_standing(
@@ -387,7 +387,7 @@ fn primitive_census(inputs: CensusInputs) -> PrimitiveCensus {
     )),
     consumer_fold: consumers,
     entries_refused: inputs.entries_refused,
-    dispositions_naming_no_identity: inputs.dispositions |> filter(fn(r) { !on_surface(r.identity) }),
+    dispositions_naming_no_identity: inputs.dispositions |> filter(fn(r) { !identity_listed(identities: identities, id: r.identity) }),
   }
 }
 
@@ -521,4 +521,8 @@ fn census_standing(c: PrimitiveCensus) -> CensusStanding {
   } else {
     CensusHeld
   }
+}
+
+fn identity_listed(identities: List<PrimitiveIdentity>, id: PrimitiveIdentity) -> Bool {
+  identities |> any(x => primitive_identity_eq(left: x, right: id))
 }
