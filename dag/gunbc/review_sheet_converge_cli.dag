@@ -15,8 +15,6 @@ import gunbc.review_sheet_drive_converge {
   DeclaredNoLegacySheet,
   DeclaredLegacySheetId,
   DeclarationUnreadable,
-  review_sheet_legacy_sheet_id_declaration_path,
-  review_sheet_no_legacy_sheet_declaration_path,
 }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
@@ -474,29 +472,28 @@ data review_sheet_whole_estate_consumer_frontier_rows: List<FrontierRow> = [
 
 
 // THE EXECUTING CONSUMER OF THE DECLARATION READER, and it exists because a CLAIM CANNOT DISCHARGE
-// THIS PAIRING. Review 67779 is right that the witnesses construct SupersededMarkerDeclaration
-// directly and never call read_superseded_declaration -- but claims in this corpus are pure, so no
-// claim can call a function that performs a filesystem read. The honest discharge is an entry point
-// that runs it, which is the same shape gunbc.instruments.github_app_acquire uses for its own custody
-// reads rather than asserting them in prose.
+// THIS PAIRING. The witnesses construct SupersededMarkerDeclaration directly; claims in this corpus
+// are pure, so none of them can call a function that performs a filesystem read. The honest
+// discharge is an entry point that runs it, which is the shape gunbc.instruments.github_app_acquire
+// uses for its own custody reads rather than asserting them in prose.
 //
-// IT IS ARGV-FREE AND READ-ONLY. It performs the two reads the converge performs and reports what
-// they said; it takes no parameter, touches no network, and writes nothing -- so an operator can run
-// it before a converge to see which declaration is in force, and deleting the reader reds it.
-fn declaration_text(d: SupersededMarkerDeclaration) -> String {
-  match d {
-    NoDeclaration =>
-      join(["no declaration: neither ", review_sheet_legacy_sheet_id_declaration_path, " nor ", review_sheet_no_legacy_sheet_declaration_path, " is present"], "")
-    DeclaredNoLegacySheet { basis: b } => join(["declared: this drive holds no superseded-marked sheet (", b as String, ")"], "")
-    DeclaredLegacySheetId { file_id: f, basis: b } => join(["declared: adopt ", f as String, " (", b as String, ")"], "")
-    DeclarationUnreadable { path: p, cause: c } => join(["REFUSING: the declaration at ", p, " could not be read: ", c as String], "")
-  }
-}
-
+// WHAT IT REPORTS IS ONE THING, NOT FOUR, AND AN EARLIER NOTE HERE CLAIMED OTHERWISE. It said an
+// operator could run it "to see which declaration is in force" -- but std.process ExitSuccess has NO
+// reason channel, so the three non-refusing arms exit zero and say nothing, and the only text that
+// reaches a human is the refusal. That is the same defect as the annotation this PR already fixed
+// one commit earlier: a note asserting a behaviour the declaration does not have. The precedent it
+// cites is honest about exactly this -- census_app_registration_instruction_receipt says outright
+// that an already-acquired App "exits zero and produces no registration URL at all".
+//
+// SO THIS IS A PRE-FLIGHT REFUSAL AND NOTHING MORE: run it before a converge and it fails loudly
+// when a declaration exists and cannot be read, which is the state that would otherwise be
+// discovered mid-converge. Exit zero means only that nothing here blocks. Reporting which
+// declaration is in force needs a channel ExitSuccess does not have, and inventing one by returning
+// ExitFailure for an informational path would conflate "nothing is wrong" with "this failed".
 fn review_sheet_declaration_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
-  let d = read_superseded_declaration()
-  match d {
-    DeclarationUnreadable { path: _, cause: _ } => exit_failure(reason: declaration_text(d: d))
+  match read_superseded_declaration() {
+    DeclarationUnreadable { path: p, cause: c } =>
+      exit_failure(reason: join(["the declaration at ", p, " could not be read: ", c as String], ""))
     NoDeclaration => ExitSuccess
     DeclaredNoLegacySheet { basis: _ } => ExitSuccess
     DeclaredLegacySheetId { file_id: _, basis: _ } => ExitSuccess
