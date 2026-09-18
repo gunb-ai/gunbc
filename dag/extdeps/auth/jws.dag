@@ -1,0 +1,42 @@
+module extdeps.auth.jws
+
+import std.types { String, NonEmptyStr }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.encoding { base64_encode, UrlSafe }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.json.emit { JsonValue, serialize_json }
+import extdeps.auth.jwt { JwtCompactSerialization }
+
+// JSON Web Signature, RFC 7515: the compact serialization a JWT (extdeps.auth.jwt, RFC 7519) is
+// carried in. Its own module because it is its own specification: JWT names the claims, JWS names
+// how a signed object is spelled on the wire.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc7515"
+  }
+}
+
+// RFC 7515 §2 "Base64url Encoding": RFC 4648 §5 base64url with every trailing '=' omitted. std.encoding
+// owns the alphabet and the grouping; this is only the omission JWS specifies on top of it.
+fn jws_strip_padding(s: String) -> String {
+  if s.ends_with("=") { jws_strip_padding(s: s.substring(start: 0, end: string_length(s) - 1)) } else { s }
+}
+
+fn jws_base64url(octets_of: String) -> String {
+  jws_strip_padding(s: base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: octets_of)), variant: UrlSafe))
+}
+
+// §5.1 steps 2-6: BASE64URL(UTF8(protected header)) || '.' || BASE64URL(payload). The header and the
+// payload arrive as JSON values and are serialized by extdeps.languages.json.emit, so no member order
+// or escaping is re-decided here.
+fn jws_signing_input(protected_header: JsonValue, payload: JsonValue) -> NonEmptyStr {
+  concat(concat(jws_base64url(octets_of: serialize_json(v: protected_header)), "."), jws_base64url(octets_of: serialize_json(v: payload))) as NonEmptyStr
+}
+
+// §7.1: the signing input, '.', and BASE64URL(JWS Signature). The signature arrives already in its
+// base64url spelling -- extdeps.crypto.signature SignatureBytes.b64url is exactly that.
+fn jws_compact(signing_input: NonEmptyStr, signature_b64url: NonEmptyStr) -> JwtCompactSerialization {
+  concat(concat(signing_input as String, "."), signature_b64url as String) as JwtCompactSerialization
+}

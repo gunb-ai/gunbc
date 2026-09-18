@@ -23,6 +23,8 @@ pub enum EvalBuiltinArm {
     FreeCallReverse,
     FreeCallHmacSha256VerifyHex,
     FreeCallHmacSha256Hex,
+    FreeCallP256EcdsaVerifyB64url,
+    FreeCallP256EcdsaSignB64url,
     FreeCallStringLength,
     FreeCallSubstring,
     FreeCallCharAt,
@@ -166,6 +168,8 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "reverse" => Some(EvalBuiltinArm::FreeCallReverse),
         "hmac_sha256_verify_hex" => Some(EvalBuiltinArm::FreeCallHmacSha256VerifyHex),
         "hmac_sha256_hex" => Some(EvalBuiltinArm::FreeCallHmacSha256Hex),
+        "p256_ecdsa_verify_b64url" => Some(EvalBuiltinArm::FreeCallP256EcdsaVerifyB64url),
+        "p256_ecdsa_sign_b64url" => Some(EvalBuiltinArm::FreeCallP256EcdsaSignB64url),
         "string_length" => Some(EvalBuiltinArm::FreeCallStringLength),
         "substring" => Some(EvalBuiltinArm::FreeCallSubstring),
         "char_at" => Some(EvalBuiltinArm::FreeCallCharAt),
@@ -313,6 +317,8 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.reverse") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallReverse };
     ("free_call.hmac_sha256_verify_hex") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHmacSha256VerifyHex };
     ("free_call.hmac_sha256_hex") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallHmacSha256Hex };
+    ("free_call.p256_ecdsa_verify_b64url") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallP256EcdsaVerifyB64url };
+    ("free_call.p256_ecdsa_sign_b64url") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallP256EcdsaSignB64url };
     ("free_call.string_length") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallStringLength };
     ("free_call.substring") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallSubstring };
     ("free_call.char_at") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCharAt };

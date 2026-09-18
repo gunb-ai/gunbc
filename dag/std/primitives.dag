@@ -53,6 +53,28 @@ data hmac_sha256_hex_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
+// ECDSA P-256 / SHA-256 verification: work linear in the message (SHA-256 over it, then one
+// fixed-size curve verification), output one bit or absent. The asymmetric twin of
+// hmac_sha256_verify_hex_contract, bound by extdeps.crypto.signature p256_ecdsa_verify.
+data p256_ecdsa_verify_b64url_contract: PrimitiveContract = {
+  name: "p256_ecdsa_verify_b64url",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
+// ECDSA P-256 / SHA-256 signing, the key holder's twin of p256_ecdsa_verify_b64url_contract: work
+// linear in the message, output the 86-character base64url of the 64-octet r || s. Bound by
+// extdeps.crypto.signature p256_ecdsa_sign.
+data p256_ecdsa_sign_b64url_contract: PrimitiveContract = {
+  name: "p256_ecdsa_sign_b64url",
+  work: "n",
+  output_size: "86",
+  certainty: Proven,
+  carrier_cost: CarrierInsensitive
+}
+
 data substring_contract: PrimitiveContract = {
   name: "substring",
   work: "end",
@@ -559,6 +581,8 @@ fn builtin_registry_surface_names() -> List<String> {
   [
     "hmac_sha256_verify_hex",
     "hmac_sha256_hex",
+    "p256_ecdsa_verify_b64url",
+    "p256_ecdsa_sign_b64url",
     "count",
     "string_length",
     "code_point",
@@ -698,6 +722,8 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     string_length_contract,
     hmac_sha256_verify_hex_contract,
     hmac_sha256_hex_contract,
+    p256_ecdsa_verify_b64url_contract,
+    p256_ecdsa_sign_b64url_contract,
     substring_contract,
     string_contains_contract,
     starts_with_contract,

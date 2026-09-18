@@ -36,7 +36,8 @@ import gunbc.generated_artifact {
   AutoinstallUserDataArtifact,
   RunnerHostSudoersArtifact,
   PlanArtifact,
-  CouponCadQueryProgramArtifact
+  CouponCadQueryProgramArtifact,
+  ApprovalDeviceVectorsArtifact
 }
 import v2.std.optional { Optional, Absent, Present }
 import tools.docs_projection_agreement { docs_projection_bytes_agree }
@@ -97,6 +98,7 @@ fn docs_projection_producer(a: GeneratedArtifact) -> Optional<String> {
     Fci1BoundedExecutionContextArtifact => Absent
     CouponCadQueryProgramArtifact => Absent
     WholeCorpusCompileMeasuredRootDemandsArtifact => Absent
+    ApprovalDeviceVectorsArtifact => Absent
     AutoinstallUserDataArtifact { spec: _ } => Absent
     RunnerHostSudoersArtifact { host: _ } => Absent
     PlanArtifact { plan: _ } => Absent
