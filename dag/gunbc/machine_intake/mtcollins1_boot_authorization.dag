@@ -231,9 +231,3 @@ fn mtcollins1_boot_gate_from_poll(
   }
 }
 
-fn mtcollins1_boot_controller_may_be_written(gate: MtCollins1BootGate) -> Bool {
-  match gate {
-    BootGateAdmitted { authorization: _ } => true
-    _ => false
-  }
-}

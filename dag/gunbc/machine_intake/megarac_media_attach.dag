@@ -77,9 +77,13 @@ import extdeps.languages.json.parse {
 // controller's session table is finite — this lane exhausted one service's sessions by opening one
 // per probe and closing none — so the release has to be observable rather than assumed.
 //
-// SessionReleaseUncertain EXISTS BECAUSE A LOST RESPONSE IS NOT A KNOWN STATE. A DELETE whose reply
-// never arrived may have released the session or may not; treating that as released would
-// under-count leaks exactly when the transport is already misbehaving, which is when leaks matter.
+// A LOST OR UNCLASSIFIED GET IS NOT A RELEASED SESSION. CloseSession's own exit is discarded on
+// purpose (this firmware has answered HTTP 401 on DELETE while an independent probe showed the
+// session gone). The standing is the GET that follows. GetSession uses curl --fail-with-body plus
+// a trailing `%{http_code}` write-out, so a timeout (`000`), a drop, and an HTTP 401 are different
+// stdout. Only 401 is evidence the cookie no longer authenticates; every other failed GET stays
+// SessionReleaseRefused. Treating "curl failed" as released is the absorbing fallback DESIGN §5
+// forbids (review 67606).
 type SessionRelease
   = SessionReleased
   | SessionReleaseRefused { detail: String }
@@ -189,8 +193,10 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
 fn megarac_session_release_by_reobservation(get_succeeded: Bool, get_body: String) -> SessionRelease {
   if get_succeeded {
     SessionReleaseRefused { detail: concat("GET /api/session still succeeded after CloseSession: ", get_body) }
-  } else {
+  } else if string_contains(s: get_body, pattern: "\n401") {
     SessionReleased
+  } else {
+    SessionReleaseRefused { detail: concat("GET /api/session after CloseSession was unreadable; refusing to treat the session as released: ", get_body) }
   }
 }
 
