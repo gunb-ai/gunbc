@@ -1,0 +1,123 @@
+module extdeps.nvidia.gpu_direct_rdma
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import extdeps.nvidia.cuda_driver {
+  CudaDeviceAttribute, GpuDirectRdmaSupportedAttribute, DmaBufSupportedAttribute,
+  CudaQueryOutcome, CudaQuerySucceeded, CudaQueryFailed, CudaQueryUnparsed,
+  cuda_device_attribute_name,
+}
+
+// ── WHETHER A PLATFORM CAN REGISTER GPU MEMORY WITH A NIC, AS A CAPABILITY READ ────────────────
+//
+// WHY THIS IS NOT A FACT ABOUT KERNEL MODULES, which is the inference this module exists to retire.
+// `nvidia_peermem` loading, `/dev/gdrdrv` existing and `libmlx5` exporting `mlx5dv_reg_dmabuf_mr`
+// are IMPLEMENTATION-PRESENCE reads: each says one mechanism is installed, and none says the
+// platform can do the thing. Reading their absence as the cause of a disabled GPUDirect path is how
+// three distinct mechanisms -- GDRCopy, peer-memory registration and DMA-BUF registration -- get
+// treated as one missing dependency, and it is what happened on Group B on 2026-09-18: a module that
+// cannot attach to this RDMA stack and an image rebuild for a userspace symbol were both proposed as
+// repairs for a platform that answers `0` to both capability attributes.
+//
+// THE DEVICE ANSWERS THIS AND NOTHING ELSE DOES. The readings come from
+// `extdeps.nvidia.cuda_driver`, which owns the ordinals, the query and the CUresult-versus-value
+// distinction; this module consumes them and derives one capability. It deliberately declares no
+// reading type of its own, because a second shape for "what the device said" would be the fork this
+// whole file is an argument against.
+type GpuDirectRegistrationMechanism
+  = PeerMemoryRegistration
+  | DmaBufRegistration
+
+type GpuDirectRdmaCapability
+  = GpuDirectRdmaSupported {
+      mechanism: GpuDirectRegistrationMechanism
+      capability_receipt: NonEmptyStr
+    }
+  | GpuDirectRdmaUnsupported {
+      platform: NonEmptyStr
+      capability_receipt: NonEmptyStr
+    }
+  | GpuDirectRdmaCapabilityUnread {
+      cause: NonEmptyStr
+    }
+
+// A SUCCEEDING QUERY THAT ANSWERS ZERO AND A QUERY THAT NEVER RAN ARE OPPOSITE FACTS, and this fold
+// is where that is enforced: either mechanism answering supported makes the platform capable; BOTH
+// answering unsupported makes it incapable; and any query that failed or could not be parsed leaves
+// the capability UNREAD, because a zero from one attribute must never stand in for an answer the
+// other one never gave.
+fn gpu_direct_rdma_capability(
+  platform: NonEmptyStr,
+  peer_memory: CudaQueryOutcome,
+  dma_buf: CudaQueryOutcome,
+) -> GpuDirectRdmaCapability {
+  match unread_cause(a: GpuDirectRdmaSupportedAttribute, o: peer_memory) {
+    Present { value: c } => GpuDirectRdmaCapabilityUnread { cause: c }
+    Absent =>
+      match unread_cause(a: DmaBufSupportedAttribute, o: dma_buf) {
+        Present { value: c } => GpuDirectRdmaCapabilityUnread { cause: c }
+        Absent =>
+          if outcome_is_supported(o: peer_memory) {
+            GpuDirectRdmaSupported {
+              mechanism: PeerMemoryRegistration,
+              capability_receipt: outcome_receipt(a: GpuDirectRdmaSupportedAttribute, o: peer_memory),
+            }
+          } else {
+            if outcome_is_supported(o: dma_buf) {
+              GpuDirectRdmaSupported {
+                mechanism: DmaBufRegistration,
+                capability_receipt: outcome_receipt(a: DmaBufSupportedAttribute, o: dma_buf),
+              }
+            } else {
+              GpuDirectRdmaUnsupported {
+                platform: platform,
+                capability_receipt: join([
+                  outcome_receipt(a: GpuDirectRdmaSupportedAttribute, o: peer_memory) as String, "; ",
+                  outcome_receipt(a: DmaBufSupportedAttribute, o: dma_buf) as String,
+                ], "") as NonEmptyStr,
+              }
+            }
+          }
+      }
+  }
+}
+
+fn unread_cause(a: CudaDeviceAttribute, o: CudaQueryOutcome) -> NonEmptyStr? {
+  match o {
+    CudaQuerySucceeded { value: _ } => none
+    CudaQueryFailed { result_code: rc } =>
+      Present { value: join([cuda_device_attribute_name(a: a) as String, " query returned CUresult ", to_string(rc), ", so the device gave no answer to interpret"], "") as NonEmptyStr }
+    CudaQueryUnparsed { cause: c } =>
+      Present { value: join([cuda_device_attribute_name(a: a) as String, " reply could not be read: ", c as String], "") as NonEmptyStr }
+  }
+}
+
+fn outcome_is_supported(o: CudaQueryOutcome) -> Bool {
+  match o {
+    CudaQuerySucceeded { value: v } => v > 0
+    CudaQueryFailed { result_code: _ } => false
+    CudaQueryUnparsed { cause: _ } => false
+  }
+}
+
+fn outcome_receipt(a: CudaDeviceAttribute, o: CudaQueryOutcome) -> NonEmptyStr {
+  match o {
+    CudaQuerySucceeded { value: v } =>
+      join([cuda_device_attribute_name(a: a) as String, "=", to_string(v)], "") as NonEmptyStr
+    CudaQueryFailed { result_code: rc } =>
+      join([cuda_device_attribute_name(a: a) as String, " CUresult=", to_string(rc)], "") as NonEmptyStr
+    CudaQueryUnparsed { cause: c } => c
+  }
+}
+
+fn gpu_direct_rdma_capability_wire(c: GpuDirectRdmaCapability) -> NonEmptyStr {
+  match c {
+    GpuDirectRdmaSupported { mechanism: m, capability_receipt: _ } =>
+      match m {
+        PeerMemoryRegistration => "supported-peer-memory" as NonEmptyStr
+        DmaBufRegistration => "supported-dma-buf" as NonEmptyStr
+      }
+    GpuDirectRdmaUnsupported { platform: _, capability_receipt: _ } => "unsupported" as NonEmptyStr
+    GpuDirectRdmaCapabilityUnread { cause: _ } => "unread" as NonEmptyStr
+  }
+}

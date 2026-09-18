@@ -1,0 +1,115 @@
+module gunbc.spark.collective_memory_path_standing
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.nvidia.nccl {
+  NcclGpuMemoryPath, NcclGpuDirectRegistered, NcclHostStagedTransfer, NcclGpuMemoryPathUnread,
+  nccl_gpu_memory_path_wire,
+}
+import extdeps.nvidia.gpu_direct_rdma {
+  GpuDirectRdmaCapability, GpuDirectRdmaSupported, GpuDirectRdmaUnsupported, GpuDirectRdmaCapabilityUnread,
+  GpuDirectRegistrationMechanism, PeerMemoryRegistration, DmaBufRegistration,
+  gpu_direct_rdma_capability_wire,
+}
+
+// ── A DISABLED GPUDIRECT PATH IS A DEFECT OR A SUPPORTED STATE, AND ONLY THE JOIN KNOWS WHICH ──
+//
+// THE OBSERVATION ALONE CANNOT DECIDE IT. `GPU Direct RDMA Disabled` is the same sentence on a
+// platform that cannot do it and on a platform that can and was misconfigured, and the difference is
+// the whole question a reader is asking. This fold is the join, and it exists because the absence of
+// it cost a real investigation: an arm correctly serving over RoCE on a platform whose device
+// reports no GPUDirect and no DMA-BUF support was diagnosed as an incomplete deployment, and two
+// repairs were proposed -- a kernel module that cannot attach to this RDMA stack, and an image
+// rebuild for a userspace symbol -- neither of which could have changed the outcome.
+//
+// THE UNREAD ARMS ARE NOT COURTESY. A missing capability read and a missing observation lead to
+// opposite mistakes: without the capability, a supported state reads as a defect; without the
+// observation, a defect reads as nothing at all. Neither collapses into the other, and neither
+// collapses into the answer.
+type CollectiveMemoryPathStanding
+  = MemoryPathDirectAsCapable {
+      mechanism: GpuDirectRegistrationMechanism
+    }
+  | MemoryPathStagedAsPlatformRequires {
+      platform: NonEmptyStr
+      capability_receipt: NonEmptyStr
+      observed_from: NonEmptyStr
+    }
+  | MemoryPathBelowCapability {
+      mechanism: GpuDirectRegistrationMechanism
+      capability_receipt: NonEmptyStr
+      observed_from: NonEmptyStr
+    }
+  | MemoryPathStandingUnread {
+      cause: NonEmptyStr
+    }
+
+// THE ONLY ARM THAT NAMES A DEFECT IS MemoryPathBelowCapability: the device says it can register GPU
+// memory and the run staged through the host anyway. Everything else is either correct, or honestly
+// unknown.
+fn collective_memory_path_standing(
+  capability: GpuDirectRdmaCapability,
+  observed: NcclGpuMemoryPath,
+) -> CollectiveMemoryPathStanding {
+  match capability {
+    GpuDirectRdmaCapabilityUnread { cause: c } =>
+      MemoryPathStandingUnread { cause: join(["the platform capability is unread, so a staged path cannot be told from a supported one: ", c as String], "") as NonEmptyStr }
+    GpuDirectRdmaUnsupported { platform: p, capability_receipt: r } =>
+      match observed {
+        NcclGpuMemoryPathUnread { cause: oc } =>
+          MemoryPathStandingUnread { cause: join(["the platform cannot register GPU memory, and the run's own path was not read either: ", oc as String], "") as NonEmptyStr }
+        NcclHostStagedTransfer { read_from: l } =>
+          MemoryPathStagedAsPlatformRequires { platform: p, capability_receipt: r, observed_from: l }
+        NcclGpuDirectRegistered { read_from: l } =>
+          MemoryPathStandingUnread { cause: join([
+            "the device reports no GPUDirect and no DMA-BUF support and the run announced a registered path anyway, which is a contradiction between two producers rather than a standing: ",
+            l as String, " against ", r as String,
+          ], "") as NonEmptyStr }
+      }
+    GpuDirectRdmaSupported { mechanism: m, capability_receipt: r } =>
+      match observed {
+        NcclGpuMemoryPathUnread { cause: oc } =>
+          MemoryPathStandingUnread { cause: join(["the platform supports registration and the run's own path was not read: ", oc as String], "") as NonEmptyStr }
+        NcclGpuDirectRegistered { read_from: _ } => MemoryPathDirectAsCapable { mechanism: m }
+        NcclHostStagedTransfer { read_from: l } =>
+          MemoryPathBelowCapability { mechanism: m, capability_receipt: r, observed_from: l }
+      }
+  }
+}
+
+// WHETHER A READER SHOULD ACT. A supported-state staged path is not an action item, and saying so is
+// the point of the type: the sentence a reader gets for Group B is that the platform requires this,
+// not that something is missing.
+fn memory_path_standing_is_defect(s: CollectiveMemoryPathStanding) -> Bool {
+  match s {
+    MemoryPathBelowCapability { mechanism: _, capability_receipt: _, observed_from: _ } => true
+    MemoryPathDirectAsCapable { mechanism: _ } => false
+    MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => false
+    MemoryPathStandingUnread { cause: _ } => false
+  }
+}
+
+fn mechanism_wire(m: GpuDirectRegistrationMechanism) -> NonEmptyStr {
+  match m {
+    PeerMemoryRegistration => "peer-memory registration" as NonEmptyStr
+    DmaBufRegistration => "DMA-BUF registration" as NonEmptyStr
+  }
+}
+
+fn memory_path_standing_text(s: CollectiveMemoryPathStanding) -> NonEmptyStr {
+  match s {
+    MemoryPathDirectAsCapable { mechanism: m } =>
+      join(["GPU memory is registered with the NIC through ", mechanism_wire(m: m) as String], "") as NonEmptyStr
+    MemoryPathStagedAsPlatformRequires { platform: p, capability_receipt: r, observed_from: l } =>
+      join([
+        "collective buffers stage through host memory because ", p as String,
+        " does not support GPUDirect registration, which is the platform's supported state and not a deployment defect. Capability read: ", r as String,
+        ". Observed: ", l as String,
+      ], "") as NonEmptyStr
+    MemoryPathBelowCapability { mechanism: _, capability_receipt: r, observed_from: l } =>
+      join([
+        "the device can register GPU memory and this run staged through host memory anyway, so a registration prerequisite is missing on this host or in this image. Capability read: ", r as String,
+        ". Observed: ", l as String,
+      ], "") as NonEmptyStr
+    MemoryPathStandingUnread { cause: c } => c
+  }
+}

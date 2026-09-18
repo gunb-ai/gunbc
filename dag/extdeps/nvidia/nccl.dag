@@ -638,3 +638,74 @@ fn nccl_transport_refusal_text(c: NcclTransportRefusal) -> NonEmptyStr {
       ], "") as NonEmptyStr
   }
 }
+
+// ── WHICH NETWORK IS NOT WHICH MEMORY PATH, AND CONFLATING THEM MISREADS A CORRECT DEPLOYMENT ──
+//
+// `NcclRealizedTransport` answers ONE question: which network the communicator built. It does not
+// answer how the NIC reaches the buffers, and those are different facts with different causes. A
+// communicator can build IB verbs and still stage every message through host memory, because
+// GPUDirect RDMA registration is a property of the GPU, the NIC userspace and the kernel's RDMA
+// stack rather than of the network NCCL selected.
+//
+// THIS DISTINCTION WAS PAID FOR. Group B was read on 2026-09-18 announcing `Using network IB` with
+// every channel `via NET/IB/0`, and simultaneously printing `GPU Direct RDMA Disabled for HCA 0`.
+// Because this module modelled only the network, the reading had no place to put the second fact,
+// and it was diagnosed as an incompletely configured deployment: a missing `nvidia_peermem`, then a
+// `libmlx5` too old to export `mlx5dv_reg_dmabuf_mr`, then an image rebuild to repair it. The device
+// itself then answered `GPU_DIRECT_RDMA_SUPPORTED=0` and `DMA_BUF_SUPPORTED=0`, so no module and no
+// image could have enabled it. A two-valued transport axis is what made a SUPPORTED STATE look like
+// a defect, and the repair is a second axis rather than a richer first one.
+// WHAT THIS AXIS STILL DOES NOT SPLIT, declared rather than left for the next reader to discover.
+// `NcclRealizedTransport` answering `IbVerbs` continues to collapse the LINK RATE, the rail and HCA
+// identity, and the collective algorithm and protocol into one state -- so two runs reading
+// `IbVerbs` can differ by a factor and compare as equal. The same log line this module already
+// parses carries `speed=50000`, `rail=-1 plane=-1` and the device name, so the facts are in reach.
+// TRIGGER: the first comparison whose two sides differ on link rate or rail count, which the Group B
+// breakout reprogramming (50G to 100G) will produce. SUFFICIENT FOR: a subject that refuses to join
+// a 50G reading to a 100G one instead of averaging them.
+type NcclGpuMemoryPath
+  = NcclGpuDirectRegistered { read_from: NonEmptyStr }
+  | NcclHostStagedTransfer { read_from: NonEmptyStr }
+  | NcclGpuMemoryPathUnread { cause: NonEmptyStr }
+
+// NCCL PUBLISHES THIS ITSELF TOO, once per HCA, and the line carries the verdict in the same shape
+// as the network announcement: a marker followed by the state. It is read rather than inferred from
+// the presence of a kernel module, which is the inference this axis exists to retire -- module
+// presence is an implementation-presence read and never a capability read.
+data nccl_gdr_marker: String = "GPU Direct RDMA "
+data nccl_gdr_state_disabled: String = "Disabled"
+data nccl_gdr_state_enabled: String = "Enabled"
+
+fn nccl_gpu_memory_path_of_line(line: NcclLogLine) -> NcclGpuMemoryPath {
+  let body = line.body as String
+  let halves = split(s: body, delimiter: nccl_gdr_marker)
+  if count(halves) < 2 {
+    NcclGpuMemoryPathUnread { cause: join(["the line carries no ", nccl_gdr_marker, " marker: ", line.raw as String], "") as NonEmptyStr }
+  } else {
+    match halves.last() {
+      Absent => NcclGpuMemoryPathUnread { cause: join(["the ", nccl_gdr_marker, " marker is present with nothing after it: ", line.raw as String], "") as NonEmptyStr }
+      Present { value: rest } =>
+        if starts_with(s: rest, prefix: nccl_gdr_state_disabled) {
+          NcclHostStagedTransfer { read_from: line.raw }
+        } else {
+          if starts_with(s: rest, prefix: nccl_gdr_state_enabled) {
+            NcclGpuDirectRegistered { read_from: line.raw }
+          } else {
+            NcclGpuMemoryPathUnread { cause: join([
+              "the ", nccl_gdr_marker, " marker is followed by neither ", nccl_gdr_state_enabled,
+              " nor ", nccl_gdr_state_disabled, ", so the memory path stays unread rather than assumed: ",
+              line.raw as String,
+            ], "") as NonEmptyStr }
+          }
+        }
+    }
+  }
+}
+
+fn nccl_gpu_memory_path_wire(p: NcclGpuMemoryPath) -> NonEmptyStr {
+  match p {
+    NcclGpuDirectRegistered { read_from: _ } => "gpu-direct-registered" as NonEmptyStr
+    NcclHostStagedTransfer { read_from: _ } => "host-staged" as NonEmptyStr
+    NcclGpuMemoryPathUnread { cause: _ } => "unread" as NonEmptyStr
+  }
+}
