@@ -1,0 +1,5 @@
+module test.fixture.evaluation_store_address_alias.qualified
+
+fn qualified_call() -> Int {
+  test.fixture.evaluation_store_address_alias.home.evaluation_store_address()
+}

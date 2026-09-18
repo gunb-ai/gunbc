@@ -7,7 +7,7 @@ import v2.std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam {
   GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
-  reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in, gcp_policy_of
+  reconcile_gcp_policy, gcp_policy_cells, gcp_cell_in, gcp_policy_from_wire
 }
 import extdeps.cloud.gcp.iam_admin
 import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
@@ -87,7 +87,7 @@ fn bind_publisher_impersonation(token: Secret) -> ProcessExit
   if !rest_ok(o: observed.outcome) {
     exit_failure(reason: concat("heal publisher provision: the service account's policy could not be read: ", rest_refusal_text(o: observed.outcome)))
   } else {
-    let observed_policy = gcp_policy_of(bindings: observed.bindings, etag: observed.etag, version: observed.version)
+    let observed_policy = gcp_policy_from_wire(bindings: observed.bindings, etag: observed.etag, version: observed.version)
     match reconcile_gcp_policy(
       observed: observed_policy,
       desired_owned: [heal_publisher_impersonation_cell()],
@@ -110,7 +110,7 @@ fn bind_publisher_impersonation(token: Secret) -> ProcessExit
         )
         if !rest_ok(o: written.outcome) {
           exit_failure(reason: concat("heal publisher provision: the service account's policy could not be written: ", rest_refusal_text(o: written.outcome)))
-        } else if impersonation_binding_present(policy: gcp_policy_of(bindings: written.bindings, etag: written.etag, version: written.version)) {
+        } else if impersonation_binding_present(policy: gcp_policy_from_wire(bindings: written.bindings, etag: written.etag, version: written.version)) {
           ExitSuccess
         } else {
           exit_failure(reason: "heal publisher provision: setIamPolicy returned 200 but the policy it returned does not carry the impersonation cell")

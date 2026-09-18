@@ -357,21 +357,3 @@ test fn observed_presence_does_not_imply_required_shape() -> Bool {
     && !profile_marks_present(claim: "jti")
     && !profile_marks_present(claim: "nonce")
 }
-
-test fn jwt_oidc_claims_keystone_holds() -> Bool {
-  registered_claims_are_all_optional()
-    && bare_string_without_colon_is_admitted()
-    && urn_scheme_is_admitted_and_decoded()
-    && colon_value_that_is_not_a_uri_is_refused()
-    && string_or_uri_round_trips_to_its_wire_form()
-    && audience_keeps_its_wire_encoding()
-    && whole_second_lifetime_is_exact()
-    && fractional_date_refuses_rather_than_rounding()
-    && expiry_before_issuance_refuses_rather_than_clamping()
-    && observed_amr_values_decode_by_shape()
-    && unregistered_short_name_is_not_forced_into_the_uri_arm()
-    && malformed_colon_amr_refuses()
-    && minimal_conforming_id_token_is_representable()
-    && id_token_projects_onto_registered_claims()
-    && observed_presence_does_not_imply_required_shape()
-}

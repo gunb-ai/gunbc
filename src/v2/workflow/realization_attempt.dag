@@ -146,8 +146,8 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
 // STAGED SCAFFOLD (escalation msg_628838a5; dissolve-on: GrammarExpr contextual-keyword terminal
 // lands and dag fn_decl/data_decl productions carry the test marker structurally): the v2 dag
 // grammar cannot yet parse the authored test marker ('test' is a module-path segment, so it cannot
-// be a lex keyword; v1's v1_compiler_parse.rs drop_leading_test_marker DISCARDS the marker
-// pre-parse and re-derives test-ness by text scan — cited as the prior art this capture SUPERSEDES,
+// be a lex keyword; v1 once DISCARDED the marker pre-parse and re-derived test-ness by text scan,
+// and now carries it as v1.std.core DeclarationMarker TestMarked — cited as the prior art this capture SUPERSEDES,
 // not imitates: this seam captures and counts, that seam discarded, and the distinction is the
 // point (ruling msg_64870b7f)). The realization ATTEMPT captures the marker at its own seam —
 // line-leading 'test fn '/'test data ' rewritten to the unmarked form, capture COUNTED on the

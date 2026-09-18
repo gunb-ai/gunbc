@@ -33,6 +33,13 @@ import std.measure { second, millisecond, Minute, minute, minute_count }
 import std.nat { Nat }
 
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
+import gunbc.roadmap_dashboard_instance { srv1_dashboard_live_id }
+import gunbc.live_deploy.apply_receipt {
+  live_deploy_apply_receipt_dir_for,
+  live_deploy_apply_receipt_artifact_path_for,
+  live_deploy_apply_receipt_artifact_name_for,
+}
+
 import gunbc.ci_release_bins {
   ci_floor_required_artifact_names
 }
@@ -1043,8 +1050,8 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
   )
 }
 
-data gunbc_live_deploy_receipt_artifact_name: String = "live-deploy-srv1-receipt"
-data gunbc_live_deploy_receipt_artifact_dir: String = "target/live-deploy-srv1-receipt"
+data gunbc_live_deploy_receipt_artifact_name: String = live_deploy_apply_receipt_artifact_name_for(instance_id: srv1_dashboard_live_id as String)
+data gunbc_live_deploy_receipt_artifact_dir: String = live_deploy_apply_receipt_dir_for(instance_id: srv1_dashboard_live_id as String)
 data gunbc_fleet_converge_apply_receipt_artifact_name: String = "fleet-converge-apply-receipt"
 data gunbc_fleet_converge_apply_receipt_artifact_dir: String = "/tmp/fleet-converge-apply"
 data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
@@ -1056,7 +1063,7 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> String {
     entry: gunbc_ci_live_deploy_transaction_target.entry,
     function: gunbc_ci_live_deploy_transaction_target.function,
     claim_run: false,
-    receipt_rel: "target/live-deploy-srv1-receipt/live_deploy_receipt.json"
+    receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: srv1_dashboard_live_id as String)
   )
 }
 

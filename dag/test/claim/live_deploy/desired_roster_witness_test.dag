@@ -1,0 +1,219 @@
+module test.claim.live_deploy.desired_roster
+
+import std.types { Bool, String, Int, List }
+import std.dissolution {
+  dissolution_status,
+  dissolution_description,
+  DissolutionPending,
+  DissolutionFired,
+  DissolutionUnbound,
+}
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  DesiredRosterAdmitted,
+  DesiredRosterRefused,
+  DesiredRosterSameHostCollision,
+  DesiredRosterDuplicateInstanceId,
+  desired_deployment_roster,
+  desired_deployment_for_instance_id,
+  DesiredDeploymentFound,
+  DesiredDeploymentUnknownInstanceId,
+  DesiredDeploymentRosterRefused,
+  desired_roster_standing,
+  instance_id_text,
+  selected_deployment_spec,
+  srv1_production_desired_deployment,
+  srv1_lab_desired_deployment,
+  srv2_deploy_desired_deployment,
+  spec_owned_identities,
+  srv1_production_wrapper_dissolution,
+  srv1_production_wrapper_frontier,
+  apply_script_only_path_discrimination_unproven,
+  apply_script_only_path_discrimination_unproven_dissolution,
+}
+import gunbc.live_deploy.apply_receipt { live_deploy_apply_receipt_artifact_path_for }
+import gunbc.live_deploy.spec {
+  deployment_plan_host_identity,
+  deployment_plan_listen_port,
+  deployment_systemd_unit_path,
+  deployment_slice_unit_name,
+}
+import gunbc.live_deploy.emit {
+  live_deploy_systemd_unit_for,
+  RevisionBoundAtEmission,
+}
+import gunbc.roadmap_dashboard_instance { dashboard_instance_dispatch_worktree_root }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import v2.std.collection { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn desired_deployment_for_instance_id_returns_the_matching_row() -> Bool {
+  let live = srv1_production_desired_deployment()
+  let live_id = live.instance.instance_id as String
+  match desired_deployment_for_instance_id(instance_id: live_id) {
+    DesiredDeploymentFound { row } => row.instance.instance_id == live.instance.instance_id
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } => false
+    DesiredDeploymentRosterRefused { refusal: _ } => false
+  }
+}
+
+test fn desired_deployment_for_instance_id_is_absent_for_an_unknown_id() -> Bool {
+  match desired_deployment_for_instance_id(instance_id: "not-a-desired-deployment") {
+    DesiredDeploymentUnknownInstanceId { instance_id } => instance_id == "not-a-desired-deployment"
+    DesiredDeploymentFound { row: _ } => false
+    DesiredDeploymentRosterRefused { refusal: _ } => false
+  }
+}
+
+test fn the_desired_roster_admits_three_disjoint_deployments() -> Bool {
+  let rows = desired_deployment_roster()
+  count(rows) == 3
+    && match desired_roster_standing(rows: rows) {
+      DesiredRosterAdmitted { keyed: _ } => true
+      DesiredRosterRefused { refusal: _ } => false
+    }
+}
+
+fn witness_colliding_same_host_roster() -> List<DesiredDeployment> {
+  let live = srv1_production_desired_deployment()
+  let lab = srv1_lab_desired_deployment()
+  [
+    live,
+    DesiredDeployment {
+      instance: lab.instance,
+      target: lab.target,
+      names: live.names,
+    },
+  ]
+}
+
+test fn a_same_host_roster_that_shares_production_names_is_a_collision_on_srv1() -> Bool {
+  match desired_roster_standing(rows: witness_colliding_same_host_roster()) {
+    DesiredRosterRefused { refusal } =>
+      match refusal {
+        DesiredRosterSameHostCollision { host } => host == "srv1"
+        DesiredRosterDuplicateInstanceId { instance_id: _ } => false
+      }
+    DesiredRosterAdmitted { keyed: _ } => false
+  }
+}
+
+test fn a_roster_with_a_repeated_instance_id_is_not_admitted() -> Bool {
+  let live = srv1_production_desired_deployment()
+  match desired_roster_standing(rows: [live, live]) {
+    DesiredRosterRefused { refusal } =>
+      match refusal {
+        DesiredRosterDuplicateInstanceId { instance_id } =>
+          instance_id == instance_id_text(id: live.instance.instance_id)
+        DesiredRosterSameHostCollision { host: _ } => false
+      }
+    DesiredRosterAdmitted { keyed: _ } => false
+  }
+}
+
+test fn owned_identities_are_host_qualified_and_pairwise_disjoint() -> Bool {
+  let idents = flat_map(
+    map(desired_deployment_roster(), r => selected_deployment_spec(row: r)),
+    s => spec_owned_identities(spec: s),
+  )
+  count(idents) > 0
+    && fold(
+      idents,
+      init: true,
+      f: (ok, ident) =>
+        ok && fold(
+          idents,
+          init: 0,
+          f: (n, other) => if other == ident { n + 1 } else { n },
+        ) == 1,
+    )
+}
+
+test fn same_host_production_and_lab_do_not_share_port_unit_or_handler() -> Bool {
+  let live = selected_deployment_spec(row: srv1_production_desired_deployment())
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  deployment_plan_host_identity(spec: live) == deployment_plan_host_identity(spec: lab)
+    && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: lab))
+    && !(live.service.unit_name == lab.service.unit_name)
+    && !(live.service.serve_function == lab.service.serve_function)
+    && !(live.service.repo_root == lab.service.repo_root)
+}
+
+// UNIT BYTES. Every path the serve unit names is discriminated here, including
+// WorkingDirectory, slice, systemd unit path, and the negative that the lab unit
+// does not name production's dispatch-worktree root. Residual apply-script-only
+// paths live on apply_script_only_path_discrimination_unproven, not in this claim.
+test fn selecting_lab_changes_emitted_unit_bytes() -> Bool {
+  let live_row = srv1_production_desired_deployment()
+  let lab_row = srv1_lab_desired_deployment()
+  let live = selected_deployment_spec(row: live_row)
+  let lab = selected_deployment_spec(row: lab_row)
+  let rev = RevisionBoundAtEmission { revision: deploy_witness_release_revision }
+  let live_unit = live_deploy_systemd_unit_for(spec: live, revision: rev)
+  let lab_unit = live_deploy_systemd_unit_for(spec: lab, revision: rev)
+  let live_unit_path = deployment_systemd_unit_path(names: live.names) as String
+  let live_slice = deployment_slice_unit_name(names: live.names) as String
+  let lab_slice = deployment_slice_unit_name(names: lab.names) as String
+  let live_repo = live.service.repo_root as String
+  let lab_repo = lab.service.repo_root as String
+  let live_root = dashboard_instance_dispatch_worktree_root(instance: live_row.instance) as String
+  !(live_unit == lab_unit)
+    && string_contains(s: live_unit, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: lab_unit, pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && !string_contains(s: lab_unit, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: live_unit, pattern: live_repo)
+    && string_contains(s: lab_unit, pattern: lab_repo)
+    && !string_contains(s: lab_unit, pattern: live_repo)
+    && string_contains(s: live_unit, pattern: live_slice)
+    && string_contains(s: lab_unit, pattern: lab_slice)
+    && !string_contains(s: lab_unit, pattern: live_slice)
+    && !string_contains(s: lab_unit, pattern: live_unit_path)
+    && !string_contains(s: lab_unit, pattern: live_root)
+}
+
+test fn srv2_deploy_is_not_the_srv1_host() -> Bool {
+  let srv2 = selected_deployment_spec(row: srv2_deploy_desired_deployment())
+  deployment_plan_host_identity(spec: srv2) == "srv2"
+    && !(deployment_plan_host_identity(spec: selected_deployment_spec(row: srv1_production_desired_deployment())) == "srv2")
+}
+
+test fn srv1_production_wrapper_dissolution_stays_unbound_until_the_wrapper_population_has_no_caller() -> Bool {
+  let desc = dissolution_description(condition: srv1_production_wrapper_dissolution)
+  match dissolution_status(condition: srv1_production_wrapper_dissolution, present_decls: []) {
+    DissolutionUnbound => true
+    DissolutionPending => false
+    DissolutionFired => false
+  }
+    && !(srv1_production_wrapper_frontier.reason as String == "")
+    && string_contains(s: desc, pattern: "SUFFICIENT FOR")
+    && string_contains(s: desc, pattern: "no remaining production caller")
+}
+
+test fn apply_script_only_path_discrimination_stays_unbound_until_a_disjoint_script_receipt() -> Bool {
+  let desc = dissolution_description(condition: apply_script_only_path_discrimination_unproven_dissolution)
+  match dissolution_status(condition: apply_script_only_path_discrimination_unproven_dissolution, present_decls: []) {
+    DissolutionUnbound => true
+    DissolutionPending => false
+    DissolutionFired => false
+  }
+    && !(apply_script_only_path_discrimination_unproven.reason as String == "")
+    && string_contains(s: desc, pattern: "SUFFICIENT FOR")
+    && string_contains(s: desc, pattern: "apply-script paths as disjoint")
+}
+
+test fn production_and_lab_receipt_paths_and_instance_ids_differ() -> Bool {
+  let live = selected_deployment_spec(row: srv1_production_desired_deployment())
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let live_id = live.instance_id as String
+  let lab_id = lab.instance_id as String
+  live.instance_id != lab.instance_id
+    && live_deploy_apply_receipt_artifact_path_for(instance_id: live_id)
+      != live_deploy_apply_receipt_artifact_path_for(instance_id: lab_id)
+}
+
+test fn srv2_target_states_empty_ensured_directories() -> Bool {
+  srv2_deploy_desired_deployment().target.ensured_directories == []
+    && count(srv1_production_desired_deployment().target.ensured_directories) > 0
+}

@@ -57,6 +57,7 @@ pub use crate::v1_std_core::make_file_span;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
+use crate::v1_std_core::DeclarationMarker::{TestMarked, Unmarked};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprFieldAccess, ExprForEach, ExprIf, ExprIndex,
     ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit,
@@ -98,9 +99,10 @@ pub use crate::v1_std_core::{
     variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
-    OperationModifier, ParsedModuleItemKind, StringPart, Token, TokenShape, UnaryOpKind,
+    Cardinality, CompilerDiagnostic, Connective, DeclarationMarker, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern,
+    NewlineIndex, Node, OperationModifier, ParsedModuleItemKind, StringPart, Token, TokenShape,
+    UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -339,6 +341,7 @@ pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: node.match_pattern.clone(),
         module_item_kind: node.module_item_kind.clone(),
+        declaration_marker: node.declaration_marker.clone(),
         expr_data: node.expr_data.clone(),
     })
 }
@@ -1656,14 +1659,103 @@ pub fn drop_leading_type_modifier(tokens: Rc<TokenStream>, modifier: String) -> 
     }
 }
 
-pub fn drop_leading_test_marker(tokens: Rc<TokenStream>) -> Rc<TokenStream> {
-    if (tok_is_ident_text(token_stream_first(tokens.clone()), "test".to_string())
+pub fn leads_with_test_marker(tokens: Rc<TokenStream>) -> bool {
+    (tok_is_ident_text(token_stream_first(tokens.clone()), "test".to_string())
         && (tok_keyword_text(token_stream_first(token_stream_advance(tokens.clone(), 1)))
             != "".to_string()))
+}
+
+pub fn test_marker_admits_form(form: Option<Rc<ItemForm>>) -> bool {
+    match form.clone() {
+        Some(f) => match f.body_kind.clone() {
+            BodyKind::ExprBody => true,
+            BodyKind::ValueBody => true,
+            BodyKind::BlockBody => false,
+            BodyKind::TypeBody => false,
+            BodyKind::NoBody => false,
+            BodyKind::ServiceBody => false,
+            BodyKind::ResourceBody => false,
+            BodyKind::AliasBody => false,
+        },
+        std::option::Option::None => false,
+    }
+}
+
+pub fn test_marked_item_result(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
-        token_stream_advance(tokens.clone(), 1)
-    } else {
-        tokens.clone()
+        let form = find_item_form(
+            ctx.env.clone().syntax_spec.clone().item_forms.clone(),
+            tok_keyword_text(token_stream_first(tokens.clone())),
+        );
+        if !test_marker_admits_form(form.clone()) {
+            {
+                let span = token_span(token_stream_first(tokens.clone()));
+                return Rc::new(ItemResult {
+                    item: Rc::new(Node {
+                        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                        name: "<unknown>".to_string(),
+                        span: span.clone(),
+                        ident_span: Some(span.clone()),
+                        children: Rc::new(vec![]),
+                        params: Rc::new(vec![]),
+                        inferred: std::option::Option::None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: std::option::Option::None,
+                        connective: Connective::NoConnective,
+                        transport: std::option::Option::None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: std::option::Option::None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::ModuleItemUnrecognized,
+                        declaration_marker: DeclarationMarker::Unmarked,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    }),
+                    tokens: tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: Some(parse_error(
+                        "the `test` marker applies only to a fn or data item".to_string(),
+                        span.clone(),
+                    )),
+                });
+            }
+        }
+        let r = parse_unmarked_item(tokens.clone(), ctx.clone());
+        if has_err(r.err.clone()) {
+            return r;
+        }
+        let n = r.item.clone();
+        Rc::new(ItemResult {
+            item: Rc::new(Node {
+                occurrence_identity: n.occurrence_identity.clone(),
+                name: n.name.clone(),
+                ident: n.ident.clone(),
+                span: n.span.clone(),
+                ident_span: n.ident_span.clone(),
+                children: n.children.clone(),
+                connective: n.connective.clone(),
+                params: n.params.clone(),
+                inferred: n.inferred.clone(),
+                return_cardinality: n.return_cardinality.clone(),
+                uses: n.uses.clone(),
+                body: n.body.clone(),
+                transport: n.transport.clone(),
+                properties: n.properties.clone(),
+                type_annotation: n.type_annotation.clone(),
+                is_self_recursive: n.is_self_recursive.clone(),
+                has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+                match_pattern: n.match_pattern.clone(),
+                module_item_kind: n.module_item_kind.clone(),
+                declaration_marker: DeclarationMarker::TestMarked,
+                expr_data: n.expr_data.clone(),
+            }),
+            tokens: r.tokens.clone(),
+            ctx: r.ctx.clone(),
+            err: std::option::Option::None,
+        })
     }
 }
 
@@ -2448,6 +2540,7 @@ pub fn leaf_type_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2477,6 +2570,7 @@ pub fn literal_width_nat_type_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::ExprLiteral {
             value: Rc::new(LiteralValue::LitInt {
                 value: value.clone(),
@@ -3732,6 +3826,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4217,7 +4312,15 @@ pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<R
 pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let tokens = skip_newlines(tokens.clone());
-        let tokens = drop_leading_test_marker(tokens.clone());
+        if leads_with_test_marker(tokens.clone()) {
+            return test_marked_item_result(token_stream_advance(tokens.clone(), 1), ctx.clone());
+        }
+        parse_unmarked_item(tokens.clone(), ctx.clone())
+    }
+}
+
+pub fn parse_unmarked_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+    {
         let tok = token_stream_first(tokens.clone());
         let kw = tok_keyword_text(tok.clone());
         let span = token_span(tok.clone());
@@ -4247,6 +4350,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     has_non_tail_self_call: false,
     match_pattern: std::option::Option::None,
     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+    declaration_marker: DeclarationMarker::Unmarked,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -4432,6 +4536,7 @@ pub fn parse_item_by_form(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4542,6 +4647,7 @@ pub fn field_to_child_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4584,6 +4690,7 @@ pub fn variant_to_child_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4622,6 +4729,7 @@ pub fn outputs_to_inferred(
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -4685,6 +4793,7 @@ pub fn make_operation_node(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4732,6 +4841,7 @@ pub fn make_capability_node(
         has_non_tail_self_call: false,
         match_pattern: std::option::Option::None,
         module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4759,6 +4869,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4805,6 +4916,7 @@ pub fn parse_type_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4851,6 +4963,7 @@ pub fn parse_type_after_kw(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4905,6 +5018,7 @@ pub fn parse_type_after_kw(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4957,6 +5071,7 @@ pub fn parse_type_after_kw(
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                            declaration_marker: DeclarationMarker::Unmarked,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -5001,6 +5116,7 @@ pub fn parse_type_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -5064,6 +5180,7 @@ pub fn parse_type_body_from_prefix(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5116,6 +5233,7 @@ pub fn parse_type_body_from_prefix(
                             has_non_tail_self_call: false,
                             match_pattern: std::option::Option::None,
                             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                            declaration_marker: DeclarationMarker::Unmarked,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -5167,6 +5285,7 @@ pub fn type_item_from_alias_rhs(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -5190,6 +5309,7 @@ pub fn type_item_from_alias_rhs(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -5225,6 +5345,7 @@ pub fn parse_type_body_after_eq(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -5297,6 +5418,7 @@ pub fn parse_type_body_after_eq(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5387,6 +5509,7 @@ pub fn parse_type_body_after_eq(
                                     match_pattern: std::option::Option::None,
                                     module_item_kind:
                                         ParsedModuleItemKind::ModuleItemTypeDeclaration,
+                                    declaration_marker: DeclarationMarker::Unmarked,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
@@ -5543,6 +5666,7 @@ pub fn try_where_clause(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5565,6 +5689,7 @@ pub fn try_where_clause(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6424,6 +6549,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6584,6 +6710,7 @@ pub fn parse_callable_type_expr(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -6722,6 +6849,7 @@ pub fn finish_type_expr_from_name(
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6919,6 +7047,7 @@ pub fn maybe_optional(
                 has_non_tail_self_call: te.has_non_tail_self_call.clone(),
                 match_pattern: te.match_pattern.clone(),
                 module_item_kind: te.module_item_kind.clone(),
+                declaration_marker: te.declaration_marker.clone(),
                 expr_data: te.expr_data.clone(),
                 ident: None,
             });
@@ -7297,6 +7426,7 @@ pub fn parse_fn_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7385,6 +7515,7 @@ pub fn parse_fn_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7427,6 +7558,7 @@ pub fn parse_block_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7460,6 +7592,7 @@ pub fn parse_block_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemFunction,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7497,6 +7630,7 @@ pub fn parse_no_body_from_prefix(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemUnrecognized,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7672,6 +7806,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     has_non_tail_self_call: r3.type_expr.clone().has_non_tail_self_call.clone(),
                     match_pattern: r3.type_expr.clone().match_pattern.clone(),
                     module_item_kind: r3.type_expr.clone().module_item_kind.clone(),
+                    declaration_marker: r3.type_expr.clone().declaration_marker.clone(),
                     expr_data: r3.type_expr.clone().expr_data.clone(),
                     ident: None,
                 });
@@ -7857,6 +7992,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7903,6 +8039,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7943,6 +8080,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -8024,6 +8162,7 @@ pub fn parse_service_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemService,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11033,6 +11172,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11079,6 +11219,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11112,6 +11253,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11170,6 +11312,7 @@ pub fn parse_resource_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemResource,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11795,6 +11938,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11841,6 +11985,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11874,6 +12019,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11935,6 +12081,7 @@ pub fn parse_alias_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemTypeDeclaration,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11972,6 +12119,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12005,6 +12153,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12070,6 +12219,7 @@ pub fn parse_data_after_kw(
             has_non_tail_self_call: false,
             match_pattern: std::option::Option::None,
             module_item_kind: ParsedModuleItemKind::ModuleItemDataValue,
+            declaration_marker: DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -12844,6 +12994,7 @@ pub fn parse_constrained_assignment(
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -12932,6 +13083,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -12996,6 +13148,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                 has_non_tail_self_call: false,
                 match_pattern: std::option::Option::None,
                 module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -16212,6 +16365,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     has_non_tail_self_call: false,
                     match_pattern: std::option::Option::None,
                     module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
                     expr_data: Rc::new(ExprData::ExprLet),
                     ident: None,
                 });

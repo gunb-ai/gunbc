@@ -252,8 +252,17 @@ fn pair_serving_authority_for(group: FabricGroup) -> PairServingGroupAuthority? 
     (fabric_group_wire(g: pair_serving_authority_group(a: a)) as String) == (fabric_group_wire(g: group) as String)))
 }
 
-// THE OBLIGATION THIS ROW CARRIES IS A REAL BLOCKER FOR CUT D, not a formality. Until the incumbent
-// has a content-addressed identity, a transaction cannot prove that what it suspended is what it
-// intended to suspend, and it cannot prove afterwards that the thing now serving is the successor
-// rather than the incumbent reconverged -- both readings are `active on Group A`.
-data pair_realization_key_obligation: NonEmptyStr = "the live V4 pair realization has no content-addressed identity: gunbc.spark.first_party_serving spark_realization_identity compares a readback path against the declared one and yields no key. SUFFICIENT FOR: PairServingActive can name the incumbent exactly, so a successor transition is discriminated by realization rather than by a serving subject V4 and V4.1 deliberately share" as NonEmptyStr
+// THE OBLIGATION THIS ROW CARRIES IS NOW A D0 OBLIGATION, NOT A MISSING PRODUCER. The producer that
+// was missing has landed: gunbc.spark.pair_incumbent_identity keys the DECLARED pair realization
+// from every rank's rendered unit bytes, observes the LIVE four-rank incarnation, and folds the two
+// into a PairRealizationAgreement. What this row may not do is copy that key in here as if the
+// declaration alone established what is live: the key is EXPECTED identity, the agreement is the
+// reading, and a reading taken before the authority transfer can go stale before suspension. So
+// the Keyed arm is minted by D0 -- inside its fence, from an Established agreement -- and by
+// nothing else. TRIGGER: the Cut D D0 transfer fold lands, reads pair_realization_agreement under
+// its held claim, and writes PairRealizationKeyed { key } on the suspended authority's
+// exact_realization from the Established arm (a Drifted reading records the drift and does not
+// become a restoration target; Unread and Conflict fence). SUFFICIENT FOR: PairServingActive can
+// name the incumbent exactly, so a successor transition is discriminated by realization rather
+// than by a serving subject V4 and V4.1 deliberately share.
+data pair_realization_key_obligation: NonEmptyStr = "the live V4 pair realization is keyed by gunbc.spark.pair_incumbent_identity declared_pair_realization and read by pair_realization_agreement, but no transaction has yet taken that reading inside a held claim; the Keyed arm is minted by Cut D D0 from an Established agreement and by nothing else. SUFFICIENT FOR: PairServingActive can name the incumbent exactly, so a successor transition is discriminated by realization rather than by a serving subject V4 and V4.1 deliberately share" as NonEmptyStr

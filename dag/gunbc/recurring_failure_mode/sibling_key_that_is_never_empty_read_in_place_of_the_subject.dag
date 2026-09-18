@@ -1,0 +1,34 @@
+module gunbc.recurring_failure_mode.sibling_key_that_is_never_empty_read_in_place_of_the_subject
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data sibling_key_that_is_never_empty_read_in_place_of_the_subject: RecurringFailureMode = RecurringFailureMode {
+  identity: "sibling_key_that_is_never_empty_read_in_place_of_the_subject" as NonEmptyStr,
+
+  receipts: [
+    "**a sibling key that is never empty, read in place of the subject** (a reader keys on a NEIGHBOURING member of the same object -- one whose population is not a variable of the question -- so it answers affirmatively for every input and has no failing case of its own to be found by).",
+
+    "INVALID STATE: a predicate whose evidence is a field that is never absent, reporting the presence of a thing that is absent, with nothing in its own behaviour distinguishing it from a correct reader.",
+
+    "WHY IT SURVIVES REVIEW, and why it is worse than an ordinary wrong-field bug: the wrong field is ADJACENT, similarly named, and structurally similar -- so a reviewer's eye slides over it -- and the answer it produces is the AFFIRMATIVE one, which is the answer nobody investigates. A reader that wrongly said 'no device' would be found the first time someone looked for a device. A reader that wrongly says 'device present' is found when the collective silently runs on the wrong transport, days later.",
+
+    "SPECIMEN (gunbc PR #11482, extdeps.docker.container_inspect). A container's verbs capability is read from `HostConfig.Devices`. `HostConfig.DeviceRequests` sits beside it and carries exactly one entry on every container in this fleet -- the GPU request every serving container is created with -- so it is NEVER empty for any input the reader will see. A one-word slip from Devices to DeviceRequests makes every container answer 'device mapped', including the four that were found running every collective over TCP with `Devices=[]`. The misread has no observable failing case: there is no container on this fleet whose DeviceRequests is empty, so nothing the reader is ever handed would contradict it.",
+
+    "THE DISCRIMINATOR THAT BOUNDS IT, and it is mechanical: ask which keys NEIGHBOURING the subject are never empty across the inputs this reader will actually see. Where every sibling varies with the question, a misread produces a wrong answer on some real input and ordinary testing finds it; the class needs a sibling whose population is constant. The tell is a field that is structurally present on every specimen -- a request, a capability set, a default -- sitting next to the one that carries the actual variation.",
+
+    "NOT THE BOTH-ARMS MARKER CLASS, and the two are separated because their tells and their remedies differ. There the marker appears in BOTH arms of the distinction it is supposed to decide, and it is found by reading the negative arm's output. Here the subject's own arms are fine and a NEIGHBOUR is being read, which reading the negative arm's output does not reveal -- because the neighbour says yes there too. What they share is the shape 'the reader looks right because its input always says yes'; how you find them is not the same question.",
+
+    "RUNG: found BELOW the ladder. The reader returns the affirmative arm for a subject in the negative state, with no diagnostic anywhere.",
+
+    "CEILING 2, mechanically preventable, and the ceiling is where it is for a reason worth stating rather than assumed: whether a neighbouring key is ever empty is a fact about the UPSTREAM's data, not about this corpus, so no construction here can make the misread unwritable. What construction CAN do is require a negative specimen -- an input for which the correct answer is NO -- beside every affirmative one.",
+
+    "NEXT-RUNG TRIGGER: the capability of requiring, per predicate over an external document, a captured specimen for which the predicate must answer NO, refusing enrolment when only affirmative specimens exist. SUFFICIENT FOR: a predicate keyed on a never-empty sibling cannot be landed green, because the negative specimen contradicts it. The affordable intermediate, and the one this specimen used, is a witness pair over real captures whose two halves must reach OPPOSITE answers -- the negative half is not symmetry, it is the entire wall for this direction, and it is the half an author under cost pressure deletes first because it looks like the redundant one.",
+
+    "HOW IT WAS FOUND, recorded because the method generalises and review did not produce it: not by reading the diff, but by asking what would have to break for an UNWALLED path to LIE -- enumerating the break modes of a decoder whose accept path had no control, finding that three were fail-closed and one was not, and then checking whether anything catches that specific break. The three fail-closed modes are the ones an argument about the path's safety reaches first, and they are not the ones that matter.",
+
+    "REVIEW TELL: a predicate over an external document that is only ever exercised on inputs for which it answers yes. Ask for the input where it must answer no, and check that the field it reads is the one that varies between them.",
+  ],
+
+  evidence: [],
+}

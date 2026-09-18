@@ -633,6 +633,609 @@ fn project_resolved_rust_fn_signatures(
     rows
 }
 
+fn resolved_call_edges_from_graph(
+    graph: &v1_compiler_compile::ResolvedGraph,
+) -> Vec<crate::cli_run::ResolvedCallEdgeRow> {
+    use crate::cli_run::ResolvedCallEdgeRow;
+    use crate::v1_compiler_infer_service::{build_module_callees, CalleeEdge};
+    let mut edges = Vec::new();
+    for callees in build_module_callees(graph.modules.clone()).iter() {
+        for item in callees.items.iter() {
+            for edge in item.called.iter() {
+                if let CalleeEdge::ResolvedCallee { identity } = &**edge {
+                    edges.push(ResolvedCallEdgeRow {
+                        caller_module: item.item_identity.owner_module_path.clone(),
+                        caller_decl: item.item_identity.decl_name.clone(),
+                        callee_module: identity.owner_module_path.clone(),
+                        callee_decl: identity.decl_name.clone(),
+                    });
+                }
+            }
+        }
+    }
+    edges
+}
+
+pub fn compile_dag_importer_resolved_call_edges(
+    import_modules: &[String],
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    target_leaves: &[String],
+) -> crate::cli_run::ResolvedCallEdgeCensus {
+    compile_dag_candidate_resolved_call_edges(
+        import_modules,
+        exclude_substrings,
+        pool_roots,
+        target_leaves,
+        false,
+    )
+}
+
+pub fn compile_dag_callsite_resolved_call_edges(
+    import_modules: &[String],
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    target_leaves: &[String],
+) -> crate::cli_run::ResolvedCallEdgeCensus {
+    compile_dag_candidate_resolved_call_edges(
+        import_modules,
+        exclude_substrings,
+        pool_roots,
+        target_leaves,
+        true,
+    )
+}
+
+fn token_is_trivia(token: &crate::v1_std_core::Token) -> bool {
+    matches!(
+        token.shape,
+        crate::v1_std_core::TokenShape::ShNewline | crate::v1_std_core::TokenShape::ShEof
+    )
+}
+
+fn dag_ident_continue(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_'
+}
+
+/// Broad raw prefilter only: exact target-leaf bytes at an identifier boundary.
+/// Not a call-form detector. `//` annotations sit between a leaf and `(` in source
+/// bytes while the tokenizer elides them and treats newline as trivia, so a `(`
+/// proximity test here is a false-negative class. `first_call_form_leaf` remains
+/// the sole call-form authority after this filter admits a file to tokenize.
+fn content_has_target_leaf_at_ident_boundary(content: &str, leaves: &HashSet<String>) -> bool {
+    let bytes = content.as_bytes();
+    for leaf in leaves {
+        let needle = leaf.as_bytes();
+        if needle.is_empty() {
+            continue;
+        }
+        let mut i = 0;
+        while i + needle.len() <= bytes.len() {
+            if &bytes[i..i + needle.len()] != needle {
+                i += 1;
+                continue;
+            }
+            let before_ok = i == 0 || !dag_ident_continue(bytes[i - 1]);
+            let after = i + needle.len();
+            let after_ok = after == bytes.len() || !dag_ident_continue(bytes[after]);
+            if before_ok && after_ok {
+                return true;
+            }
+            i += 1;
+        }
+    }
+    false
+}
+
+/// Production horizon roots are witness-layer names (`dag`, `src/v2`): callers may import
+/// across the admitted universe, so resolve uses `default_source_roots()`. A fixture pool
+/// is not a layer root; resolving it through the live-tree universe rebuilds a corpus
+/// index for a closed handful of files.
+fn resolve_roots_for_call_edge_pool(pool_roots: &[String]) -> Vec<String> {
+    if pool_roots.is_empty() {
+        return default_source_roots();
+    }
+    let layers = crate::cli_run::witness_layer_roots();
+    let horizon = pool_roots
+        .iter()
+        .all(|root| layers.iter().any(|layer| layer == root));
+    if horizon {
+        default_source_roots()
+    } else {
+        pool_roots_abs(pool_roots)
+    }
+}
+
+fn first_call_form_leaf(
+    content: &str,
+    rel: &str,
+    leaves: &HashSet<String>,
+) -> Result<Option<String>, String> {
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        content.to_string(),
+        rel.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    if tokens
+        .iter()
+        .any(|token| token.shape == crate::v1_std_core::TokenShape::ShUnknown)
+    {
+        return Err(format!(
+            "call-form leaf guard: {rel}: tokenizer produced an unknown token"
+        ));
+    }
+    let tokens: Vec<Rc<crate::v1_std_core::Token>> = tokens.iter().cloned().collect();
+    let mut i = 0;
+    while i < tokens.len() {
+        if token_is_trivia(&tokens[i]) {
+            i += 1;
+            continue;
+        }
+        if let Some(ident) = token_ident(&tokens[i]) {
+            if leaves.contains(ident) {
+                let mut j = i + 1;
+                while j < tokens.len() && token_is_trivia(&tokens[j]) {
+                    j += 1;
+                }
+                if tokens
+                    .get(j)
+                    .map(|token| token.shape == crate::v1_std_core::TokenShape::ShLParen)
+                    .unwrap_or(false)
+                {
+                    return Ok(Some(ident.to_string()));
+                }
+            }
+        }
+        i += 1;
+    }
+    Ok(None)
+}
+
+/// Fail-closed call-form candidate guard over a declared pool. Tokenizes every admitted `.dag`
+/// under `pool_roots`; a leaf identifier followed by `(` after trivia is a candidate. Does not
+/// resolve. Empty candidate set is `ProductionCoverageQualified`; a hit is
+/// `CandidateOutsideExactResolution`; unreadable or untokenizable input is `ProductionCoverageRefused`.
+pub fn compile_dag_call_form_leaf_guard(
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    target_leaves: &[String],
+    exact_resolved_roots: &[String],
+) -> crate::cli_run::EvaluationStoreAddressProductionCoverage {
+    use crate::cli_run::EvaluationStoreAddressProductionCoverage;
+    if pool_roots.iter().any(|r| r.trim().is_empty()) || pool_roots.is_empty() {
+        return EvaluationStoreAddressProductionCoverage::Refused {
+            root: pool_roots.first().cloned().unwrap_or_default(),
+            path: String::new(),
+            cause: "call-form leaf guard: every scan root must be nonempty".to_string(),
+        };
+    }
+    if target_leaves.iter().any(|l| l.trim().is_empty()) || target_leaves.is_empty() {
+        return EvaluationStoreAddressProductionCoverage::Refused {
+            root: pool_roots[0].clone(),
+            path: String::new(),
+            cause: "call-form leaf guard: every target leaf must be nonempty".to_string(),
+        };
+    }
+    let leaves: HashSet<String> = target_leaves.iter().cloned().collect();
+    let abs_roots = pool_roots_abs(pool_roots);
+    let mut files = Vec::new();
+    for (authored, abs) in pool_roots.iter().zip(abs_roots.iter()) {
+        let root_path = Path::new(abs);
+        if !root_path.is_dir() {
+            return EvaluationStoreAddressProductionCoverage::Refused {
+                root: authored.clone(),
+                path: authored.clone(),
+                cause: format!(
+                    "call-form leaf guard: declared root '{authored}' is not an inspectable directory"
+                ),
+            };
+        }
+        if let Err(cause) = collect_dag_files_complete(root_path, &mut files) {
+            return EvaluationStoreAddressProductionCoverage::Refused {
+                root: authored.clone(),
+                path: authored.clone(),
+                cause,
+            };
+        }
+    }
+    files.sort();
+    for file in files {
+        let rel = rel_path_for_layer_import(&file);
+        if is_excluded_import_path(&rel, exclude_substrings) {
+            continue;
+        }
+        let owning_root = pool_roots
+            .iter()
+            .zip(abs_roots.iter())
+            .find(|(_, abs)| file.starts_with(abs))
+            .map(|(authored, _)| authored.clone())
+            .unwrap_or_else(|| pool_roots[0].clone());
+        let content = match std::fs::read_to_string(&file) {
+            Ok(content) => content,
+            Err(e) => {
+                return EvaluationStoreAddressProductionCoverage::Refused {
+                    root: owning_root,
+                    path: rel,
+                    cause: format!("call-form leaf guard: cannot read: {e}"),
+                };
+            }
+        };
+        if !content_has_target_leaf_at_ident_boundary(&content, &leaves) {
+            continue;
+        }
+        match first_call_form_leaf(&content, &rel, &leaves) {
+            Ok(Some(target_leaf)) => {
+                return EvaluationStoreAddressProductionCoverage::CandidateOutsideExactResolution {
+                    root: owning_root,
+                    path: rel,
+                    target_leaf,
+                };
+            }
+            Ok(None) => {}
+            Err(cause) => {
+                return EvaluationStoreAddressProductionCoverage::Refused {
+                    root: owning_root,
+                    path: rel,
+                    cause,
+                };
+            }
+        }
+    }
+    EvaluationStoreAddressProductionCoverage::Qualified {
+        exact_resolved_roots: exact_resolved_roots.to_vec(),
+        zero_candidate_roots: pool_roots.to_vec(),
+    }
+}
+
+fn compile_dag_candidate_resolved_call_edges(
+    import_modules: &[String],
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    target_leaves: &[String],
+    include_reference_forms: bool,
+) -> crate::cli_run::ResolvedCallEdgeCensus {
+    use crate::cli_run::ResolvedCallEdgeCensus;
+    if import_modules.iter().any(|m| m.trim().is_empty()) {
+        return ResolvedCallEdgeCensus::Refused {
+            cause: "candidate resolved call edges: every home module must be nonempty".to_string(),
+        };
+    }
+    compile_dag_candidate_resolved_call_edges_uncached(
+        import_modules,
+        exclude_substrings,
+        pool_roots,
+        target_leaves,
+        include_reference_forms,
+    )
+}
+
+fn collect_dag_files_complete(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| {
+        format!(
+            "candidate resolved call edges: cannot inspect directory {}: {e}",
+            dir.display()
+        )
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            format!(
+                "candidate resolved call edges: cannot read directory entry under {}: {e}",
+                dir.display()
+            )
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
+            collect_dag_files_complete(&path, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn significant_token_shapes(
+    tokens: &[Rc<crate::v1_std_core::Token>],
+) -> Vec<Rc<crate::v1_std_core::Token>> {
+    tokens
+        .iter()
+        .filter(|token| {
+            !matches!(
+                token.shape,
+                crate::v1_std_core::TokenShape::ShNewline | crate::v1_std_core::TokenShape::ShEof
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+fn token_keyword(token: &crate::v1_std_core::Token, keyword: &str) -> bool {
+    token.shape == crate::v1_std_core::TokenShape::ShKeyword && token.text == keyword
+}
+
+fn token_ident(token: &crate::v1_std_core::Token) -> Option<&str> {
+    match token.shape {
+        crate::v1_std_core::TokenShape::ShIdent => Some(token.text.as_str()),
+        _ => None,
+    }
+}
+
+fn dotted_path_from(
+    tokens: &[Rc<crate::v1_std_core::Token>],
+    start: usize,
+) -> Option<(String, usize)> {
+    let first = token_ident(tokens.get(start)?)?;
+    let mut path = first.to_string();
+    let mut i = start + 1;
+    while i + 1 < tokens.len()
+        && tokens[i].shape == crate::v1_std_core::TokenShape::ShDot
+        && token_ident(&tokens[i + 1]).is_some()
+    {
+        path.push('.');
+        path.push_str(token_ident(&tokens[i + 1]).unwrap());
+        i += 2;
+    }
+    Some((path, i))
+}
+
+struct ReferenceFormFile {
+    rel: String,
+    module_path: String,
+    imports: Vec<String>,
+    called_leaves: HashSet<String>,
+    declared_names: HashSet<String>,
+}
+
+fn parse_reference_form_file(rel: &str, content: &str) -> Result<ReferenceFormFile, String> {
+    let Some(module_path) = extract_module_path(content) else {
+        return Err(format!(
+            "candidate resolved call edges: {rel}: no module declaration"
+        ));
+    };
+    let tokens = crate::v1_compiler_tokenize::tokenize(
+        content.to_string(),
+        rel.to_string(),
+        crate::extdeps_languages_dag_syntax::dag_parse_environment(),
+    );
+    if tokens
+        .iter()
+        .any(|token| token.shape == crate::v1_std_core::TokenShape::ShUnknown)
+    {
+        return Err(format!(
+            "candidate resolved call edges: {rel}: tokenizer produced an unknown token"
+        ));
+    }
+    let tokens = significant_token_shapes(&tokens.iter().cloned().collect::<Vec<_>>());
+    let mut imports = Vec::new();
+    let mut called_leaves = HashSet::new();
+    let mut declared_names = HashSet::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        if token_keyword(&tokens[i], "import") {
+            if let Some((path, next)) = dotted_path_from(&tokens, i + 1) {
+                imports.push(path);
+                i = next;
+                continue;
+            }
+        }
+        if token_keyword(&tokens[i], "fn")
+            || token_keyword(&tokens[i], "data")
+            || token_keyword(&tokens[i], "type")
+        {
+            if let Some(name) = tokens.get(i + 1).and_then(|t| token_ident(t)) {
+                declared_names.insert(name.to_string());
+            }
+        }
+        if let Some(ident) = token_ident(&tokens[i]) {
+            if tokens.get(i + 1).map(|t| t.shape) == Some(crate::v1_std_core::TokenShape::ShLParen)
+            {
+                called_leaves.insert(ident.to_string());
+            }
+        }
+        i += 1;
+    }
+    Ok(ReferenceFormFile {
+        rel: rel.to_string(),
+        module_path,
+        imports,
+        called_leaves,
+        declared_names,
+    })
+}
+
+fn load_reference_form_pool(
+    pool_roots: &[String],
+    exclude_substrings: &[String],
+    leaf_needles: &[String],
+    require_leaf_bytes: bool,
+) -> Result<Vec<ReferenceFormFile>, String> {
+    let scan_roots = if pool_roots.is_empty() {
+        default_source_roots()
+    } else {
+        pool_roots.to_vec()
+    };
+    let abs_roots = pool_roots_abs(&scan_roots);
+    let mut files = Vec::new();
+    for (authored, abs) in scan_roots.iter().zip(abs_roots.iter()) {
+        let root_path = Path::new(abs);
+        if !root_path.is_dir() {
+            return Err(format!(
+                "candidate resolved call edges: declared root '{authored}' is not an inspectable directory"
+            ));
+        }
+        collect_dag_files_complete(root_path, &mut files)?;
+    }
+    files.sort();
+    let call_form_leaves: HashSet<String> = if require_leaf_bytes {
+        leaf_needles.iter().cloned().collect()
+    } else {
+        HashSet::new()
+    };
+    let mut loaded = Vec::new();
+    for file in files {
+        let rel = rel_path_for_layer_import(&file);
+        if is_excluded_import_path(&rel, exclude_substrings) {
+            continue;
+        }
+        let content = std::fs::read_to_string(&file).map_err(|e| {
+            format!(
+                "candidate resolved call edges: cannot read {}: {e}",
+                file.display()
+            )
+        })?;
+        if require_leaf_bytes
+            && !call_form_leaves.is_empty()
+            && !content_has_target_leaf_at_ident_boundary(&content, &call_form_leaves)
+        {
+            continue;
+        }
+        loaded.push(parse_reference_form_file(&rel, &content)?);
+    }
+    Ok(loaded)
+}
+
+fn compile_dag_candidate_resolved_call_edges_uncached(
+    import_modules: &[String],
+    exclude_substrings: &[String],
+    pool_roots: &[String],
+    target_leaves: &[String],
+    include_reference_forms: bool,
+) -> crate::cli_run::ResolvedCallEdgeCensus {
+    use crate::cli_run::ResolvedCallEdgeCensus;
+    let homes: HashSet<String> = import_modules.iter().cloned().collect();
+    let requested_leaves: HashSet<String> = target_leaves
+        .iter()
+        .filter(|leaf| !leaf.is_empty())
+        .cloned()
+        .collect();
+    let files = match load_reference_form_pool(
+        pool_roots,
+        exclude_substrings,
+        target_leaves,
+        include_reference_forms && !requested_leaves.is_empty(),
+    ) {
+        Ok(files) => files,
+        Err(cause) => return ResolvedCallEdgeCensus::Refused { cause },
+    };
+    let home_leaves: HashSet<String> = if requested_leaves.is_empty() {
+        files
+            .iter()
+            .filter(|file| homes.contains(&file.module_path))
+            .flat_map(|file| file.declared_names.iter().cloned())
+            .collect()
+    } else {
+        requested_leaves
+    };
+    let mut entries: HashSet<String> = HashSet::new();
+    for file in &files {
+        let import_hit = file.imports.iter().any(|import| homes.contains(import));
+        let home_hit = homes.contains(&file.module_path);
+        let call_hit = include_reference_forms
+            && file
+                .called_leaves
+                .intersection(&home_leaves)
+                .next()
+                .is_some();
+        let selected = if include_reference_forms {
+            call_hit
+        } else {
+            import_hit || home_hit
+        };
+        if selected {
+            entries.insert(file.rel.clone());
+        }
+    }
+    if entries.is_empty() {
+        return ResolvedCallEdgeCensus::Refused {
+            cause: "candidate resolved call edges: no importer, home, or reference-form path"
+                .to_string(),
+        };
+    }
+    // Caller horizon (`pool_roots`) selects candidate files only. When that horizon is a
+    // witness-layer root, resolution runs against the admitted live-tree universe
+    // (`witness_layer_roots` → dag ∪ src/v2) through the process-shared index. Using the
+    // horizon `dag` as resolve_roots under-resolved std.materialization_provider (it
+    // imports v2.compiler.self_host.generation). A fixture pool is not a layer root:
+    // resolve against a PRIVATE index of that subtree only. Routing fixtures through
+    // process_shared_index either rebuilds a whole-corpus slot (two-slot TLS replace) or
+    // typechecks the live-tree universe — the cost that made the alias census an
+    // enrolment_bound_without_ceiling measurement rather than a bounded inhabitance.
+    let dependency_universe = resolve_roots_for_call_edge_pool(pool_roots);
+    let layers = crate::cli_run::witness_layer_roots();
+    let live_tree_horizon = pool_roots.is_empty()
+        || pool_roots
+            .iter()
+            .all(|root| layers.iter().any(|layer| layer == root));
+    let mut entries: Vec<String> = entries.into_iter().collect();
+    entries.sort();
+    let mut edges = Vec::new();
+    let mut seen: HashSet<(String, String, String, String)> = HashSet::new();
+    let take_graph = |resolved: Result<(Rc<v1_compiler_compile::ResolvedGraph>, _), String>,
+                      entry: &str|
+     -> Result<
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        crate::cli_run::ResolvedCallEdgeCensus,
+    > {
+        match resolved {
+            Ok((graph, _)) => {
+                let blocking = crate::v1_compiler_compile::interpreter_blocking_diagnostic_messages(
+                    graph.diagnostics.clone(),
+                );
+                if !blocking.is_empty() {
+                    let detail = blocking.iter().cloned().collect::<Vec<_>>().join("; ");
+                    return Err(ResolvedCallEdgeCensus::Refused {
+                        cause: format!(
+                            "candidate resolved call edges: {entry}: blocking acquisition/import/resolution/type diagnostics: {detail}"
+                        ),
+                    });
+                }
+                Ok(graph)
+            }
+            Err(cause) => Err(ResolvedCallEdgeCensus::Refused {
+                cause: format!("candidate resolved call edges: {entry}: {cause}"),
+            }),
+        }
+    };
+    let mut push_edges = |graph: &v1_compiler_compile::ResolvedGraph| {
+        for edge in resolved_call_edges_from_graph(graph) {
+            let key = (
+                edge.caller_module.clone(),
+                edge.caller_decl.clone(),
+                edge.callee_module.clone(),
+                edge.callee_decl.clone(),
+            );
+            if seen.insert(key) {
+                edges.push(edge);
+            }
+        }
+    };
+    if live_tree_horizon {
+        for entry in entries {
+            match take_graph(
+                resolve_entry_graph_shared(&dependency_universe, &entry),
+                &entry,
+            ) {
+                Ok(graph) => push_edges(&graph),
+                Err(refused) => return refused,
+            }
+        }
+    } else {
+        let index = crate::cli_run::build_multi_entry_index(&dependency_universe);
+        for entry in entries {
+            match take_graph(
+                crate::cli_run::resolve_entry_with_index(&index, &entry),
+                &entry,
+            ) {
+                Ok(graph) => push_edges(&graph),
+                Err(refused) => return refused,
+            }
+        }
+    }
+    ResolvedCallEdgeCensus::Observed { edges }
+}
+
 /// Reference-occurrence-grain binding observation over exactly one supplied source vector.
 /// Occurrence discovery and resolution remain separate products in the returned carrier: callers
 /// anti-join them and must not use the resolver's emissions as their own denominator.
@@ -641,6 +1244,7 @@ pub fn compile_dag_reference_occurrence_binding_census(
     contents: &[String],
     entry: &str,
 ) -> ReferenceOccurrenceBindingCensus {
+    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
     if paths.len() != contents.len() || paths.is_empty() {
         return ReferenceOccurrenceBindingCensus::Refused {
             cause: "reference binding census: manifest is empty or ragged".to_string(),
@@ -670,7 +1274,6 @@ pub fn compile_dag_reference_occurrence_binding_census(
         };
     }
     let source_digest = multi_module_fixture_source_digest(&sources, entry);
-    let compiler_digest = crate::resolved_graph_cache::transform_content_digest();
     let files: Vec<Rc<v1_compiler_compile::SourceFile>> = sources
         .iter()
         .map(|source| {

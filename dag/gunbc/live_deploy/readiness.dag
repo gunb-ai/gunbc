@@ -48,9 +48,9 @@ import gunbc.running_release_identity {
 import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead, HealthzBodyRead, HealthzProbeRefused }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  deployment_spec_srv1,
   deployment_plan_listen_port,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.ci_deploy_access {
   DeployAccess,
   ci_deploy_srv1_access,

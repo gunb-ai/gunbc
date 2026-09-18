@@ -8,6 +8,7 @@ import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding }
 import std.types { Int, List, Map, NonEmptyStr, Secret, String }
 import extdeps.transports.rest { RestOutcome }
 import v2.std.network { POST }
+import extdeps.transports.rest { RestOutcome }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -49,7 +50,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // BOTH POLICY OPERATIONS declare bindings and version OPTIONAL because an empty policy omits them:
 // an account created seconds earlier answers 200 with an etag alone. Declaring them required made
 // that ordinary state undecodable. They are optional because the WIRE is; what an absent array MEANS
-// is answered once by extdeps.cloud.gcp.iam gcp_policy_of, which every reader of a policy response
+// is answered once by extdeps.cloud.gcp.iam gcp_policy_from_wire, which every reader of a policy response
 // goes through. The WRITE carries the same optionality for the same reason and one nobody had hit:
 // setIamPolicy returns the policy it stored, so revoking the LAST binding answers with an etag alone.
 // Rostered as gunbc.recurring_failure_mode required_output_field_absent_for_an_empty_upstream_resource.
@@ -106,6 +107,16 @@ service gcp.IamAdmin {
     }
     response {
       200 => GcpPolicy
+  operation GetServiceAccount {
+    input { access_token: Secret, project_id: GcpProjectId, sa_email: ServiceAccountEmail }
+    output { email: ServiceAccountEmail, sa_name: String from "name", outcome: RestOutcome }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/v1/projects/\{project_id\}/serviceAccounts/\{sa_email\}"
+    }
+    response {
+      200 => GcpServiceAccount
       401 => GcpErrorShape
       403 => GcpErrorShape
       404 => GcpErrorShape

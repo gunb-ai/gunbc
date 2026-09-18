@@ -431,7 +431,7 @@ fn machine_code_lex(token_class: Symbol, spelling: String) -> LexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        machine_code_lex_token(token_class: token_class, pattern: LiteralPattern { text: spelling })
+        machine_code_lex_token(token_class: token_class, pattern: LiteralPattern { text: chars(s: spelling) })
       ]
     }
   }

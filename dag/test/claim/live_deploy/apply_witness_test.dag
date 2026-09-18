@@ -32,7 +32,7 @@ import gunbc.host_effect {
   HostEffectEvidence,
   ShellEffectApplied,
 }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.fleet_intent { srv1_host }
 import std.realization_reconcile {
   Reconciliation,
