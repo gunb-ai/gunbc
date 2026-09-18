@@ -19,7 +19,7 @@ import gunbc.machine_intake_subject {
 import extdeps.ampere.mt_jade_getting_started_guide.chassis {
   GsgUnstated,
   NamedOnRearPanel,
-  gsg_rear_management_ethernet_names,
+  mt_jade_gsg_bmc_ethernet_port,
   mt_jade_gsg_rail_kit_part_number,
 }
 import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
@@ -32,11 +32,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // its own prose, which is the fork this claim exists to refuse. No conjunct compares a topic to a
 // literal copied from the row it reads (review 67911).
 test fn w_mtjade1_bmc_ethernet_is_rear_panel_and_rail_kit_row_is_the_gsg_row() -> Bool {
-  gsg_rear_management_ethernet_names(port: mtjade1_bmc_ethernet, expected: "Table 6 / Figure 1")
-    && gsg_rear_management_ethernet_names(
-      port: NamedOnRearPanel { figure_or_table: "fixture: not Table 6" },
-      expected: "Table 6 / Figure 1",
-    ) == false
+  mtjade1_bmc_ethernet == mt_jade_gsg_bmc_ethernet_port
+    && (NamedOnRearPanel { figure_or_table: "fixture: not Table 6" } == mt_jade_gsg_bmc_ethernet_port) == false
     && mtjade1_rail_kit_part_number == mt_jade_gsg_rail_kit_part_number
     && (GsgUnstated { topic: "fixture: a part number" } == mt_jade_gsg_rail_kit_part_number) == false
 }

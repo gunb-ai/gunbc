@@ -22,29 +22,31 @@ import gunbc.machine_intake_mtjade1_fan_standing {
   MegaRacFanProfileUnexecuted,
   OpenBmcPidControlRows,
   OperatorResidence,
-  failsafe_window_closes_by_chassis_power_off,
+  UnboundedFailsafeFullDutyNotTolerated,
   jade_current_fan_policy_convergence,
   jade_fan_policy_convergence,
   mtjade1_failsafe_window_close,
   mtjade1_first_post_fan_capture,
   mtjade1_host_thermal_before_next_power_on,
   mtjade1_residence_acoustic_intent,
-  residence_refuses_unbounded_failsafe,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// BOTH COPRODUCTS CARRY A TOLERATING ARM, so these matches have an authorable RED: the claim goes
+// red if either standing row is re-bound to FailsafeFullDutyAdmitted or FailsafeWindowUnbounded.
+// The arm names ARE the assertion, so the witness matches them directly rather than through a
+// Bool predicate that would restate them (DESIGN §3c).
 test fn w_mtjade1_residence_refuses_indefinite_full_failsafe() -> Bool {
-  residence_refuses_unbounded_failsafe(intent: mtjade1_residence_acoustic_intent)
-    && residence_refuses_unbounded_failsafe(
-      intent: FailsafeFullDutyAdmitted {
-        site: OperatorResidence,
-        cited_act: "fixture: a site that admits unbounded failsafe full duty",
-      },
-    ) == false
-    && failsafe_window_closes_by_chassis_power_off(close: mtjade1_failsafe_window_close)
-    && failsafe_window_closes_by_chassis_power_off(close: ChassisHostPowerOff)
-    && failsafe_window_closes_by_chassis_power_off(close: FailsafeWindowUnbounded) == false
+  match mtjade1_residence_acoustic_intent {
+    UnboundedFailsafeFullDutyNotTolerated { site: OperatorResidence, cited_act: _ } => true
+    UnboundedFailsafeFullDutyNotTolerated { site: _, cited_act: _ } => false
+    FailsafeFullDutyAdmitted { site: _, cited_act: _ } => false
+  }
+    && match mtjade1_failsafe_window_close {
+      ChassisHostPowerOff => true
+      FailsafeWindowUnbounded => false
+    }
 }
 
 test fn w_mtjade1_first_post_fan_finding_includes_stay_at_failsafe() -> Bool {

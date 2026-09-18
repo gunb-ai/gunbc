@@ -7,6 +7,7 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   DimmSlot0,
   OneDimmPerChannel,
   TwoDimmsPerChannel,
+  dimms_per_channel_count,
 }
 import extdeps.memory.types { DualDiePackage, MonolithicDie, ThreeDimensionalStacked }
 import extdeps.ocp.mt_jade.platform { MasterSocket, SlaveSocket }
@@ -25,20 +26,18 @@ import gunbc.machine_intake_mtjade1_first_dpc_population_plan {
   jade_first_dpc_empty_slot_labels,
   jade_first_dpc_preferred_class,
   jade_first_dpc_printed_slot_labels,
-  jade_first_dpc_same_channel_mixing_is_engaged,
   jade_first_dpc_silk_standing,
   jade_first_dpc_slot,
   jade_first_dpc_slots,
   jade_first_dpc_topology,
-  jade_first_dpc_topology_is_one_dimm_per_channel,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_jade_first_dpc_is_sixteen_slot0_positions() -> Bool {
   jade_first_dpc_topology == OneDimmPerChannel
-    && jade_first_dpc_topology_is_one_dimm_per_channel(topology: jade_first_dpc_topology)
-    && jade_first_dpc_topology_is_one_dimm_per_channel(topology: TwoDimmsPerChannel) == false
+    && dimms_per_channel_count(topology: jade_first_dpc_topology) == 1
+    && dimms_per_channel_count(topology: TwoDimmsPerChannel) == 2
     && jade_first_dpc_dimm_count() == 16
     && list_length(jade_first_dpc_slots) == 16
     && jade_first_dpc_slot() == DimmSlot0
@@ -65,8 +64,8 @@ test fn w_jade_first_dpc_names_master_and_slave_channel_ends() -> Bool {
 }
 
 test fn w_jade_first_dpc_does_not_engage_same_channel_mixing_and_refuses_1r_2r_tbd() -> Bool {
-  jade_first_dpc_same_channel_mixing_is_engaged(topology: jade_first_dpc_topology) == false
-    && jade_first_dpc_same_channel_mixing_is_engaged(topology: TwoDimmsPerChannel)
+  dimms_per_channel_count(topology: jade_first_dpc_topology) == 1
+    && dimms_per_channel_count(topology: TwoDimmsPerChannel) > 1
     && match jade_first_dpc_cross_channel_1r_2r() {
       CrossChannel1r2rUndetermined => true
       CrossChannel1r2rSettled { support: _ } => false

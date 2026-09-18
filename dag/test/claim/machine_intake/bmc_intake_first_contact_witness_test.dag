@@ -8,31 +8,43 @@ import gunbc.tools.bmc_intake_first_contact {
   RedfishHttpSurface,
   WriteOutUnreadable,
   classify_intake_probe,
+  intake_probe_host_unreachable_cause,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_intake_probe_404_is_a_captured_surface_not_a_failed_login() -> Bool {
   (curl_http_code_after_newline_write_out_format as String) == "\n%\{http_code\}"
-    && match classify_intake_probe(reached_host: true, blob: "{}\n404") {
+    && match classify_intake_probe(reached_host: true, blob: "{}\n404", transport_stderr: "") {
       RedfishHttpSurface { status: s, blob: b } => s == 404 && b == "{}\n404"
-      HostUnreachable { diagnostic: _ } => false
+      HostUnreachable { cause: _, transport_stderr: _ } => false
       WriteOutUnreadable { blob: _, cause: _ } => false
     }
 }
 
+// BOTH FIXTURES ARE THE SHAPES THE TRANSPORT REALLY PRODUCES ON AN UNREACHABLE HOST: stdout is
+// the write-out alone ("\n000", because -sS sends curl's message to stderr) and stderr carries
+// the connect text. The earlier form of this claim supplied curl's prose as the STDOUT blob — a
+// shape the operation never emits — so it stayed green while the production refusal printed
+// "\n000". The discriminating REDs are both conjuncts: refusing with the stdout blob again makes
+// the first false, and dropping the stderr binding makes the second false.
 test fn w_intake_probe_unreachable_host_is_not_a_surface() -> Bool {
-  match classify_intake_probe(reached_host: false, blob: "curl: (7) Failed to connect") {
-    HostUnreachable { diagnostic: d } => string_contains(s: d, pattern: "Failed to connect")
+  match classify_intake_probe(
+    reached_host: false,
+    blob: "\n000",
+    transport_stderr: "curl: (7) Failed to connect to 10.0.0.9 port 443 after 3 ms: Could not connect to server",
+  ) {
+    HostUnreachable { cause: c, transport_stderr: e } =>
+      c == intake_probe_host_unreachable_cause && string_contains(s: e, pattern: "Failed to connect")
     RedfishHttpSurface { status: _, blob: _ } => false
     WriteOutUnreadable { blob: _, cause: _ } => false
   }
 }
 
 test fn w_intake_probe_success_without_write_out_line_is_unreadable() -> Bool {
-  match classify_intake_probe(reached_host: true, blob: "{\"RedfishVersion\":\"1.0.0\"}") {
+  match classify_intake_probe(reached_host: true, blob: "{\"RedfishVersion\":\"1.0.0\"}", transport_stderr: "") {
     WriteOutUnreadable { blob: b, cause: _ } => string_contains(s: b, pattern: "RedfishVersion")
     RedfishHttpSurface { status: _, blob: _ } => false
-    HostUnreachable { diagnostic: _ } => false
+    HostUnreachable { cause: _, transport_stderr: _ } => false
   }
 }

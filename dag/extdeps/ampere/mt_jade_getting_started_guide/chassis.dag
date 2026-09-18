@@ -1,6 +1,6 @@
 module extdeps.ampere.mt_jade_getting_started_guide.chassis
 
-import std.types { Bool, NonEmptyStr }
+import std.types { NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Percent, percent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
@@ -31,6 +31,14 @@ data mt_jade_gsg_chassis_fan_count: Nat = 6
 
 data mt_jade_gsg_minimum_bmc_firmware_family: BmcFirmwareFamily = AmiMegaRac
 
+// EVERY GsgUnstated ROW BELOW IS A DECLARED COVERAGE FRONTIER, NOT A FACT WITH A FOLD.
+// The row records that THIS document does not state the topic, so the only thing a claim could
+// assert about it is its own prose — a change detector, not a reading (DESIGN §3c). The named
+// later consumer is the Mt. Jade / SV328R physical class-facts lane (#11529), which binds inlet
+// face, cord and chassis mass from a cited datasheet; the trigger that retires each row is that
+// cited read landing, at which point the topic becomes a stated measure and the row is replaced
+// rather than asserted. mt_jade_gsg_rail_kit_part_number is the exception: the observation module
+// carries it BY IDENTITY, so it has a consumer and a red today.
 data mt_jade_gsg_inlet_connector_face: GsgUnstated = GsgUnstated {
   topic: "IEC inlet / cord face (C13, C14, or other). Table 5 and Table 12 name Power cable quantity 2 and do not name the connector.",
 }
@@ -52,12 +60,6 @@ data mt_jade_gsg_bmc_ethernet_port: GsgRearManagementEthernet = NamedOnRearPanel
 
 data mt_jade_gsg_bmc_ethernet_phy: GsgUnstated = GsgUnstated {
   topic: "PHY and controller SKU. Table 6 names BMC Ethernet Port / Management Ethernet and does not name the PHY.",
-}
-
-fn gsg_rear_management_ethernet_names(port: GsgRearManagementEthernet, expected: NonEmptyStr) -> Bool {
-  match port {
-    NamedOnRearPanel { figure_or_table: t } => t == expected
-  }
 }
 
 // Appendix E, 2S1P / 2S2P-as-forced-1P without the 1P BMC image: "Fan will run at 100% speed".

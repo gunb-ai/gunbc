@@ -17,7 +17,6 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   DimmSlotPosition,
   DimmsPerChannelTopology,
   OneDimmPerChannel,
-  dimms_per_channel_count,
   one_dimm_per_channel_populated_slot,
 }
 import extdeps.memory.types {
@@ -65,10 +64,6 @@ type JadeFirstDpcModuleClass
   | MixedModuleClassRefused { cause: NonEmptyStr }
 
 data jade_first_dpc_topology: DimmsPerChannelTopology = OneDimmPerChannel
-
-fn jade_first_dpc_topology_is_one_dimm_per_channel(topology: DimmsPerChannelTopology) -> Bool {
-  dimms_per_channel_count(topology: topology) == 1
-}
 
 fn jade_first_dpc_slot() -> DimmSlotPosition {
   one_dimm_per_channel_populated_slot()
@@ -124,10 +119,6 @@ data jade_first_dpc_empty_slot_labels: List<Nat> = mt_jade_gsg_one_dpc_empty_slo
 // Same-channel Table 3 cells are not engaged at 1DPC. Cross-channel 1R+2R is MixingUndetermined
 // (TBD). First fill therefore uses sixteen identical modules: one rank, one width, one density,
 // one speed, one vendor, one die-stacking class.
-fn jade_first_dpc_same_channel_mixing_is_engaged(topology: DimmsPerChannelTopology) -> Bool {
-  dimms_per_channel_count(topology: topology) > 1
-}
-
 type JadeCrossChannel1r2rStanding
   = CrossChannel1r2rUndetermined
   | CrossChannel1r2rSettled { support: MtJadeMixedDimmSupport }

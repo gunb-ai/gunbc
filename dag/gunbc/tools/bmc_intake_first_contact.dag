@@ -21,14 +21,24 @@ import gunbc.tools.bmc_first_contact { bmc_first_contact_host }
 // Run: BMC_HOST=<addr> gunbc run --source-root dag --source-root src/v2 \
 //   --entry dag/gunbc/tools/bmc_intake_first_contact.dag --function bmc_intake_first_contact
 
+// CURL'S CONNECT FAILURE GOES TO STDERR, SO ProbeServiceRoot's stdout CARRIES ONLY THE WRITE-OUT
+// ("\n000" when no response was received). Refusing with that blob refuses with "\n000" — typed,
+// and locating nothing (DESIGN §5). So the unreachable arm carries two facts and neither
+// substitutes for the other: `cause` is this module's own located statement of what failed, and
+// `transport_stderr` is curl's own text, read from the stream the operation now binds.
 type IntakeRedfishSurface
-  = HostUnreachable { diagnostic: String }
+  = HostUnreachable { cause: NonEmptyStr, transport_stderr: String }
   | RedfishHttpSurface { status: HttpStatus, blob: String }
   | WriteOutUnreadable { blob: String, cause: NonEmptyStr }
 
-fn classify_intake_probe(reached_host: Bool, blob: String) -> IntakeRedfishSurface {
+data intake_probe_host_unreachable_cause: NonEmptyStr = "BMC_HOST did not answer the unauthenticated Redfish service-root probe; curl did not reach the host"
+
+fn classify_intake_probe(reached_host: Bool, blob: String, transport_stderr: String) -> IntakeRedfishSurface {
   match reached_host {
-    false => HostUnreachable { diagnostic: blob }
+    false => HostUnreachable {
+      cause: intake_probe_host_unreachable_cause,
+      transport_stderr: transport_stderr,
+    }
     true => match classify_curl_http_code_after_newline(stdout: blob) {
       CurlWroteHttpStatus { status: status } => RedfishHttpSurface { status: status, blob: blob }
       CurlWroteNoHttpStatus { cause: cause } => WriteOutUnreadable { blob: blob, cause: cause }
@@ -42,9 +52,16 @@ fn bmc_intake_first_contact() -> CliWireResponse
   host = shell.Env.Get(name: "BMC_HOST")
   let bmc = bmc_first_contact_host(value: host.value)
   resp = redfish.Http.ProbeServiceRoot(bmc_host: bmc, write_out: curl_http_code_after_newline_write_out_format)
-  match classify_intake_probe(reached_host: resp.success, blob: resp.body) {
-    HostUnreachable { diagnostic: d } =>
-      CliWirePrintable { bytes: d, exit: exit_failure(reason: d) }
+  match classify_intake_probe(
+    reached_host: resp.success,
+    blob: resp.body,
+    transport_stderr: resp.transport_stderr,
+  ) {
+    HostUnreachable { cause: c, transport_stderr: e } =>
+      CliWirePrintable {
+        bytes: join([c as String, ": ", e], ""),
+        exit: exit_failure(reason: join([c as String, ": ", e], "")),
+      }
     RedfishHttpSurface { status: _, blob: b } =>
       CliWirePrintable { bytes: b, exit: ExitSuccess }
     WriteOutUnreadable { blob: b, cause: c } =>
