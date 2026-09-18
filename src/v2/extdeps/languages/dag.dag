@@ -4602,10 +4602,9 @@ fn parse_subtree_locate_production_under_children(root: Node, emitted: Symbol) -
 fn parse_subtree_locate_production(root: Node, emitted: Symbol) -> Node? {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
-      if id == emitted {
-        optional_present(value: root)
-      } else {
-        parse_subtree_locate_production_under_children(root: root, emitted: emitted)
+      match id == emitted {
+        true => Present { value: root }
+        false => parse_subtree_locate_production_under_children(root: root, emitted: emitted)
       }
     Absent => parse_subtree_locate_production_under_children(root: root, emitted: emitted)
   }
