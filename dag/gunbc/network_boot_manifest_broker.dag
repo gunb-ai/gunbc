@@ -144,24 +144,13 @@ type BootManifestExpectation {
   spent_attempt_nonces: List<SpentAttemptNonce>
 }
 
-type BootManifestRefusal
-  = ManifestMacRefused { verification: MacVerification }
-  | ManifestEvidenceForAnotherMessage { verified_message: NonEmptyStr, presented_message: NonEmptyStr }
-  | ManifestWrongTarget { claimed: UnitKey, expected: UnitKey }
-  | ManifestWrongArchitecture { claimed: Architecture, expected: Architecture }
-  | ManifestWrongFirmwareClass { claimed: BootFirmwareClass, expected: BootFirmwareClass }
-  | ManifestExpired { expiry: EpochMs, observed_at: EpochMs }
-  | ManifestNotYetValid { not_before: EpochMs, observed_at: EpochMs }
-  | ManifestAttemptReplayed { attempt_id: IntakeAttemptId, nonce: NonEmptyStr }
-  | ManifestDigestDisagrees { field: NonEmptyStr }
-  | ManifestSigningKeyDisagrees { claimed: NonEmptyStr, pinned: MacKeyId }
-  | ManifestVerifiedKeyDisagrees { verified: MacKeyId, pinned: MacKeyId }
-  | ManifestSuiteUnexpected { expected: MacSuite, verified_under: MacSuite }
-  | ManifestTrustUnestablished
-
 type BootManifestVerification
   = BootManifestAuthentic { claims: SignedBootManifestClaims }
-  | BootManifestRefused { cause: BootManifestRefusal }
+  | BootManifestRefused { class: NetworkBootManifestVerificationClass }
+
+fn refused(class: NetworkBootManifestVerificationClass) -> BootManifestVerification {
+  BootManifestRefused { class: class }
+}
 
 fn epoch_ms_text(t: EpochMs) -> String {
   to_string(t)
@@ -250,7 +239,7 @@ fn verify_signed_boot_manifest(
   mac_result: MacVerification,
 ) -> BootManifestVerification {
   match expectation.trust.standing {
-    BootstrapTrustUnestablished => BootManifestRefused { cause: ManifestTrustUnestablished }
+    BootstrapTrustUnestablished => refused(class: ManifestVerificationTrust)
     ProductionTrustedBootstrap => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
     ControlledNetworkBootstrap => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
   }
@@ -265,16 +254,11 @@ fn verify_signed_boot_manifest_under_trust(
   match mac_result {
     MacVerified { verified: v } =>
       if v.message != presented {
-        BootManifestRefused {
-          cause: ManifestEvidenceForAnotherMessage {
-            verified_message: v.message,
-            presented_message: presented,
-          },
-        }
+        refused(class: ManifestVerificationWrongMessage)
       } else {
         join_verified_mac(ticket: ticket, expectation: expectation, verified: v)
       }
-    _ => BootManifestRefused { cause: ManifestMacRefused { verification: mac_result } }
+    _ => refused(class: ManifestVerificationMac)
   }
 }
 
@@ -284,19 +268,9 @@ fn join_verified_mac(
   verified: VerifiedMessage,
 ) -> BootManifestVerification {
   if verified.suite != boot_manifest_mac_suite {
-    BootManifestRefused {
-      cause: ManifestSuiteUnexpected {
-        expected: boot_manifest_mac_suite,
-        verified_under: verified.suite,
-      },
-    }
+    refused(class: ManifestVerificationSuite)
   } else if verified.key_id != expectation.trust.signing_key_id {
-    BootManifestRefused {
-      cause: ManifestVerifiedKeyDisagrees {
-        verified: verified.key_id,
-        pinned: expectation.trust.signing_key_id,
-      },
-    }
+    refused(class: ManifestVerificationVerifiedKey)
   } else {
     verify_authenticated_boot_manifest(claims: ticket.claims, expectation: expectation)
   }
@@ -309,36 +283,31 @@ fn verify_authenticated_boot_manifest(
   let id = claims.identity
   let pinned_key = expectation.trust.signing_key_id as NonEmptyStr
   if id.signing_key_identity != pinned_key {
-    BootManifestRefused {
-      cause: ManifestSigningKeyDisagrees {
-        claimed: id.signing_key_identity,
-        pinned: expectation.trust.signing_key_id,
-      },
-    }
+    refused(class: ManifestVerificationSigningKey)
   } else if id.target_unit != expectation.target_unit {
-    BootManifestRefused { cause: ManifestWrongTarget { claimed: id.target_unit, expected: expectation.target_unit } }
+    refused(class: ManifestVerificationWrongTarget)
   } else if id.architecture != expectation.architecture {
-    BootManifestRefused { cause: ManifestWrongArchitecture { claimed: id.architecture, expected: expectation.architecture } }
+    refused(class: ManifestVerificationWrongArchitecture)
   } else if firmware_class_name(c: claims.firmware_class) != firmware_class_name(c: expectation.firmware_class) {
-    BootManifestRefused { cause: ManifestWrongFirmwareClass { claimed: claims.firmware_class, expected: expectation.firmware_class } }
+    refused(class: ManifestVerificationWrongFirmwareClass)
   } else if expectation.observed_at < id.not_before {
-    BootManifestRefused { cause: ManifestNotYetValid { not_before: id.not_before, observed_at: expectation.observed_at } }
+    refused(class: ManifestVerificationNotYetValid)
   } else if expectation.observed_at >= id.expiry {
-    BootManifestRefused { cause: ManifestExpired { expiry: id.expiry, observed_at: expectation.observed_at } }
+    refused(class: ManifestVerificationExpired)
   } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: id.attempt_id, nonce: id.nonce) {
-    BootManifestRefused { cause: ManifestAttemptReplayed { attempt_id: id.attempt_id, nonce: id.nonce } }
+    refused(class: ManifestVerificationReplay)
   } else {
     match digest_field_disagrees(left: id.chainloader_digest, right: expectation.artifacts.chainloader, field: "chainloader" as NonEmptyStr) {
-      Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
+      Present { value: _ } => refused(class: ManifestVerificationDigest)
       Absent =>
         match digest_field_disagrees(left: id.kernel_digest, right: expectation.artifacts.kernel, field: "kernel" as NonEmptyStr) {
-          Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
+          Present { value: _ } => refused(class: ManifestVerificationDigest)
           Absent =>
             match digest_field_disagrees(left: id.initrd_digest, right: expectation.artifacts.initrd, field: "initrd" as NonEmptyStr) {
-              Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
+              Present { value: _ } => refused(class: ManifestVerificationDigest)
               Absent =>
                 match digest_field_disagrees(left: id.root_digest, right: expectation.artifacts.root, field: "root" as NonEmptyStr) {
-                  Present { value: f } => BootManifestRefused { cause: ManifestDigestDisagrees { field: f } }
+                  Present { value: _ } => refused(class: ManifestVerificationDigest)
                   Absent => BootManifestAuthentic { claims: claims }
                 }
             }
@@ -355,24 +324,6 @@ fn redeem_signed_boot_manifest(ticket: SignedBootManifestTicket, key: MacKey, ex
   )
 }
 
-fn boot_manifest_refusal_class(cause: BootManifestRefusal) -> NetworkBootManifestVerificationClass {
-  match cause {
-    ManifestMacRefused { verification: _ } => ManifestVerificationMac
-    ManifestEvidenceForAnotherMessage { verified_message: _, presented_message: _ } => ManifestVerificationWrongMessage
-    ManifestWrongTarget { claimed: _, expected: _ } => ManifestVerificationWrongTarget
-    ManifestWrongArchitecture { claimed: _, expected: _ } => ManifestVerificationWrongArchitecture
-    ManifestWrongFirmwareClass { claimed: _, expected: _ } => ManifestVerificationWrongFirmwareClass
-    ManifestExpired { expiry: _, observed_at: _ } => ManifestVerificationExpired
-    ManifestNotYetValid { not_before: _, observed_at: _ } => ManifestVerificationNotYetValid
-    ManifestAttemptReplayed { attempt_id: _, nonce: _ } => ManifestVerificationReplay
-    ManifestDigestDisagrees { field: _ } => ManifestVerificationDigest
-    ManifestSigningKeyDisagrees { claimed: _, pinned: _ } => ManifestVerificationSigningKey
-    ManifestVerifiedKeyDisagrees { verified: _, pinned: _ } => ManifestVerificationVerifiedKey
-    ManifestSuiteUnexpected { expected: _, verified_under: _ } => ManifestVerificationSuite
-    ManifestTrustUnestablished => ManifestVerificationTrust
-  }
-}
-
 fn signed_boot_manifest_standing(
   verification: BootManifestVerification,
   observation: DeclarationRef,
@@ -385,11 +336,11 @@ fn signed_boot_manifest_standing(
         observation: observation,
         observed_at: observed_at,
       }
-    BootManifestRefused { cause: c } =>
+    BootManifestRefused { class: c } =>
       SignedBootManifestVerificationRefused {
         observation: observation,
         observed_at: observed_at,
-        class: boot_manifest_refusal_class(cause: c),
+        class: c,
       }
   }
 }
