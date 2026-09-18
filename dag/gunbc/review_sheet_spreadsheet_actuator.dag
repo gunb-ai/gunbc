@@ -1,7 +1,9 @@
 module gunbc.review_sheet_spreadsheet_actuator
 
 import std.types { NonEmptyStr, String, Bool }
-import std.resources { Network, Filesystem }
+import std.resources { Network }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.transports.rest {
@@ -292,7 +294,7 @@ fn perform_marker_migration(
 // id file wins over the absence file: supplying an id is the more specific statement, and an
 // operator who wrote both has told us a sheet exists, so honouring the weaker one would create
 // beside it.
-fn read_superseded_declaration() -> SupersededMarkerDeclaration uses fs: Filesystem {
+fn read_superseded_declaration() -> SupersededMarkerDeclaration uses fs: std.resources.Filesystem {
   let id_read = Filesystem.Read(path: review_sheet_legacy_sheet_id_declaration_path)
   if id_read.success && trim(id_read.content) != "" {
     DeclaredLegacySheetId {
@@ -339,7 +341,7 @@ fn converge_review_spreadsheet(
   sheet_name: NonEmptyStr,
   marker_value: NonEmptyStr,
   policy: EnsurePolicy,
-) -> SpreadsheetConvergeOutcome uses net: Network, fs: Filesystem {
+) -> SpreadsheetConvergeOutcome uses net: Network, fs: std.resources.Filesystem {
   let observed = read_spreadsheet(
     drive_id: drive_id,
     query: review_sheet_search_query(marker_value: marker_value),
