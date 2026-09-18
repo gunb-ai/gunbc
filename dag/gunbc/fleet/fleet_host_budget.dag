@@ -49,18 +49,22 @@ import gunbc.fleet_container {
   gha_runner_container,
 }
 import gunbc.ci_floor_measurement {
-  HostUsableRam,
-  HostUsableRamMeasured,
-  HostUsableRamConservativeLowerBound,
-  HostUsableRamUnmeasured,
-  gunbc_ci_host_usable_ram_for,
-  host_usable_ram_ceiling_bytes,
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
+}
+import gunbc.host_memory_observation {
+  oomd_actuation_floor,
+  gunbc_fleet_oomd_floor_basis,
+  HostUsableRam,
+  HostUsableRamMeasured,
+  HostUsableRamConservativeLowerBound,
+  HostUsableRamUnmeasured,
+  gunbc_ci_host_usable_ram_for,
+  host_usable_ram_ceiling_bytes,
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slot_desired,
@@ -103,11 +107,6 @@ type HeadroomPolicy
 
 data gunbc_fleet_headroom_policy: HeadroomPolicy = HeadroomUnset
 
-data gunbc_fleet_oomd_floor_basis: String = "oomd_actuation_floor is a DERIVED lower bound on free host memory: systemd-oomd needs free headroom to evict a runaway cgroup BEFORE the kernel OOM-killer/livelock fires (the srv2-reboot vector). Basis: a fixed fraction of host RAM (1/16 = ~6.25%) as the minimum free-memory swing oomd needs to actuate; on a 125GiB host this is ~7.8GiB. This is the floor BELOW which a HeadroomSet policy is unsound (it leaves oomd no room to act). Derived, not a literal: scales with host. dissolve-on a measured oomd MemoryPressureLimit + swap-free actuation window once systemd-oomd is live (operator fix-manifest item 8)."
-
-fn oomd_actuation_floor(host: ByteSize) -> ByteSize {
-  measure_scale_fraction_floor(m: host, num: 1, den: 16)
-}
 
 type HeadroomResolution
   = HeadroomResolved { bytes: ByteSize }

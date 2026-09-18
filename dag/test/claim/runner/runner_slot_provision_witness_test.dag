@@ -410,16 +410,26 @@ test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
 }
 
 // THE POSITIVE CONTROL AND THE ARITHMETIC, without which the row above is satisfied by a desired set
-// that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
+// that is simply too small. srv3 and srv4 each give up exactly two slots to the fabric; srv1 carries
 // no fabric member and loses nothing.
-test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
+//
+// THE COUNTS ARE AUTHORED POLICY AND THE WIDTHS ARE DERIVED, which is why the two appear
+// differently. `gunbc_runner_slots_per_host` is called rather than transcribed -- a width literal
+// here would go stale the next time an axis moves, as the prose in the authority did across the
+// 2026-08-22 DIMM upgrade -- while the per-host fabric count IS a declared decision (operator,
+// 2026-09-18: two execution slots on each of srv3 and srv4) and is therefore written as the literal
+// it is. Widening the population without editing this row leaves the subtraction disagreeing with
+// the authority, which is the discrimination this control exists to provide.
+test fn only_the_fabric_hosts_lose_provisioning_targets() -> Bool {
   list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy()))
-    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
-    && host_fabric_slot_count(host: operator_host_srv3) == 1
+    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 2
+    && host_fabric_slot_count(host: operator_host_srv3) == 2
     && list_length(items: desired_runner_slot_members(deploy: wt_srv4_deploy()))
-         == gunbc_runner_slots_per_host(host: operator_host_srv4)
+         == gunbc_runner_slots_per_host(host: operator_host_srv4) - 2
+    && host_fabric_slot_count(host: operator_host_srv4) == 2
     && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy()))
          == gunbc_runner_slots_per_host(host: operator_host_srv1)
+    && host_fabric_slot_count(host: operator_host_srv1) == 0
 }
 
 

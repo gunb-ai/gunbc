@@ -56,6 +56,16 @@ import extdeps.jobserver {
 }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
+  SessionOperatingPoint,
+  SessionOperatingPointSet,
+  SessionOperatingPointUnset,
+  SessionReservationMode,
+  Regime1WorstCase,
+  SessionReservationModeUnset,
+  gunbc_ci_per_session_peak_samples,
+  gunbc_ci_runner_cgroup_memory_cap,
+}
+import gunbc.host_memory_observation {
   HostUsableRam,
   HostUsableRamMeasured,
   HostUsableRamConservativeLowerBound,
@@ -65,15 +75,7 @@ import gunbc.ci_floor_measurement {
   HostFixedOverheadMeasured,
   HostFixedOverheadAllowance,
   HostFixedOverheadUnmeasured,
-  SessionOperatingPoint,
-  SessionOperatingPointSet,
-  SessionOperatingPointUnset,
-  SessionReservationMode,
-  Regime1WorstCase,
-  SessionReservationModeUnset,
   gunbc_ci_host_fixed_overhead_for,
-  gunbc_ci_per_session_peak_samples,
-  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
 
@@ -305,7 +307,7 @@ fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOve
     HostFixedOverheadAllowance { bytes: b, reason: _ } => HostOverheadResolved { bytes: b }
     HostFixedOverheadUnmeasured =>
       HostOverheadUnresolved {
-        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.ci_floor_measurement gunbc_ci_host_fixed_overhead_for. Host: ", host)
+        reason: concat("host fixed overhead is unmeasured and carries no operator allowance, so the share of RAM this host spends on residents the budget does not model is unknown: refuse to derive a runner width rather than charge zero (which would silently hand the host its whole RAM) or borrow another host's number. Classify it in gunbc.host_memory_observation gunbc_ci_host_fixed_overhead_for. Host: ", host)
       }
   }
 }
@@ -450,7 +452,7 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
 // NOW CLOSED ON ALL FOUR HOSTS AND THIS PARAGRAPH'S PREVIOUS REVISION WAS STALE RATHER THAN
 // WRONG-AT-THE-TIME. It read that srv1 and srv2 had taken no such read and that their rows remained
 // conservative lower bounds; both took ordinary /proc/meminfo reads over SSH on 2026-08-23, so
-// gunbc.ci_floor_measurement now carries HostUsableRamMeasured for every host and
+// gunbc.host_memory_observation now carries HostUsableRamMeasured for every host and
 // gunbc_ci_conservative_lower_bound_retired_note records the borrowed bound's deletion. The
 // correction matters beyond tidiness: a reader sizing srv1 against the retired 125 GiB figure would
 // under-admit a host with about four times that much, and a reader who believed the bound was still
@@ -463,7 +465,7 @@ fn host_session_slice_resolution(host: HostIdentity) -> HostSessionSliceResoluti
 // WHAT THE PER-HOST GRAIN RESTS ON is therefore still not this trigger, and the heterogeneity does
 // not retroactively justify the grain. It is that this wall folded over per-host offers and then
 // read RAM from a synthetic machine outside that fold, and that an unclassified host borrowed
-// rather than refused -- see gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_kind_note. A
+// rather than refused -- see gunbc.host_memory_observation gunbc_ci_host_usable_ram_kind_note. A
 // per-host fact belonged at per-host grain when the hosts were identical; it merely became visible
 // when they stopped being.
 
@@ -486,7 +488,7 @@ fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsabl
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
     HostUsableRamUnmeasured =>
       HostUsableRamUnresolved {
-        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_for. Host: ", host)
+        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.host_memory_observation gunbc_ci_host_usable_ram_for. Host: ", host)
       }
   }
 }

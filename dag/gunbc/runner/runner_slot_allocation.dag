@@ -3,6 +3,7 @@ module gunbc.runner_slot_allocation
 import std.types { Int, String, List, Bool }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.realization_width { byte_size_saturating_sub }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
@@ -14,6 +15,17 @@ import gunbc.session_reservation_policy {
   SessionReservationBytesResolution,
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
   session_reservation_bytes,
+}
+import gunbc.host_memory_observation {
+  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
+  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
+  gunbc_ci_host_usable_ram_for,
+  gunbc_ci_host_fixed_overhead_for,
+  oomd_actuation_floor,
+}
+import gunbc.fabric_control_plane_charge {
+  HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured,
+  host_fabric_control_plane_claim,
 }
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
@@ -143,7 +155,7 @@ data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RE
 //
 // THIS IS A DECLARED HAZARD IN THIS DIFF, NOT A RESOLVED ONE. The per-slot row is FLEET-UNIFORM, so
 // raising it raises srv2 too -- and srv2's five HELD slots at 26 GiB demand 130 GiB against a
-// measured 125.09 GiB of usable RAM (`gunbc.ci_floor_measurement` `gunbc_ci_srv2_memtotal_measured`,
+// measured 125.09 GiB of usable RAM (`gunbc.host_memory_observation` `gunbc_ci_srv2_memtotal_measured`,
 // 134314512384 bytes), BEFORE any overhead or session charge. At 16 GiB the same five demanded
 // 80 GiB and fit with room; the hazard is created by this row, not inherited.
 //
@@ -292,7 +304,7 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 //
 // THESE ARE NOT BACK-COMPUTED FROM THE WIDTHS THEY REPLACE in the sense that would make them
 // unfalsifiable: each is checkable against the measured host RAM in
-// `gunbc.ci_floor_measurement` `gunbc_ci_host_usable_ram_for` less the session reservation this
+// `gunbc.host_memory_observation` `gunbc_ci_host_usable_ram_for` less the session reservation this
 // module already imports. srv1: MemTotal 539281129472 (502.24 GiB, /proc/meminfo, read 2026-08-23)
 // less the 55834574848 (52 GiB) session allowance leaves 450.24 GiB, against a 400 GiB envelope --
 // the 50.24 GiB residue being fixed overhead, the oomd actuation floor and the control-plane
@@ -303,15 +315,103 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
 // a cycle -- today they sit in `gunbc.ci_floor_measurement` and `gunbc.ci_runner_placement`, both
 // of which import this one -- at which point the envelope is computed from them and this authored
 // row deletes rather than being kept beside a derivation of the same number.
+// THE ENVELOPE IS DERIVED FROM THE HOST, AND AN UNESTABLISHED INPUT REFUSES RATHER THAN RETURNING
+// ZERO (operator direction 2026-09-18: "we can't assume a uniform fleet, i would just derive as
+// much as possible from the actual state of the machines here"). What stood here was one authored
+// literal per host and an `else` arm of 0, which is the conflation DESIGN 5 forbids at its most
+// consequential: a host measured to have no runner memory and a host nobody wrote a row for
+// produced the same Int, so every consumer downstream read "this machine has no capacity" for what
+// was actually "nobody answered". srv2 was the live instance of that second reading.
+//
+// FIVE TERMS, EACH FROM ITS OWN AUTHORITY, AND NONE OF THEM AUTHORED HERE. Usable RAM and fixed
+// overhead come from gunbc.host_memory_observation -- per-host /proc/meminfo reads and the operator
+// allowance -- the session slice from gunbc.session_reservation_policy, the oomd actuation headroom
+// from oomd_actuation_floor as a fraction of THIS host's RAM, and the control-plane charge from
+// gunbc.fabric_control_plane_charge. The first two were unreachable from this module until the
+// extraction that accompanies this change; that cycle is what forced the literals, and its removal
+// is what retires them.
+//
+// EVERY ARM THAT CANNOT ANSWER REFUSES BY NAME, WHICH IS WHY THIS IS A CHAIN AND NOT A SUM. None of
+// the five inputs has a total projection to bytes, and that is deliberate at each authority --
+// gunbc.fabric_control_plane_charge says so outright, that a total function from its claim to
+// ByteSize cannot exist honestly because one arm has no bytes to return. So the derivation matches
+// each in turn and carries the refusing input's own cause outward; there is no spelling of "derive
+// the envelope" that skips a refusal, rather than one a reviewer has to notice.
+type RunnerMemoryEnvelope
+  = RunnerMemoryEnvelopeDerived { bytes: ByteSize }
+  | RunnerMemoryEnvelopeUnestablished { cause: String }
+
+fn host_runner_memory_envelope_resolution(host: HostIdentity) -> RunnerMemoryEnvelope {
+  match gunbc_ci_host_fixed_overhead_for(host: host) {
+    HostFixedOverheadUnmeasured =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: "host fixed overhead is unmeasured: the envelope cannot be derived without knowing what the host owes its own residents"
+      }
+    HostFixedOverheadMeasured { bytes: overhead, provenance: _ } =>
+      envelope_after_overhead(host: host, overhead: overhead)
+    HostFixedOverheadAllowance { bytes: overhead, reason: _ } =>
+      envelope_after_overhead(host: host, overhead: overhead)
+  }
+}
+
+fn envelope_after_overhead(host: HostIdentity, overhead: ByteSize) -> RunnerMemoryEnvelope {
+  match gunbc_ci_host_usable_ram_for(host: host) {
+    HostUsableRamUnmeasured =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: "host usable RAM is unmeasured: no /proc/meminfo MemTotal read exists for this host"
+      }
+    HostUsableRamMeasured { bytes: usable, provenance: _ } =>
+      envelope_after_usable(host: host, usable: usable, overhead: overhead)
+    HostUsableRamConservativeLowerBound { bytes: usable, basis: _ } =>
+      envelope_after_usable(host: host, usable: usable, overhead: overhead)
+  }
+}
+
+fn envelope_after_usable(host: HostIdentity, usable: ByteSize, overhead: ByteSize) -> RunnerMemoryEnvelope {
+  match session_reservation_bytes(host: host) {
+    ReservationBytesUnestablished { cause: why } =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: concat("host session reservation is unestablished, so the subtraction cannot be performed: ", why)
+      }
+    ReservationBytesNotApplicable =>
+      envelope_after_session(host: host, usable: usable, overhead: overhead, session: byte_size(0))
+    ReservationBytes { bytes: session } =>
+      envelope_after_session(host: host, usable: usable, overhead: overhead, session: session)
+  }
+}
+
+fn envelope_after_session(host: HostIdentity, usable: ByteSize, overhead: ByteSize, session: ByteSize) -> RunnerMemoryEnvelope {
+  match host_fabric_control_plane_claim(host: host) {
+    ControlPlaneClaimUnmeasured { cause: why } =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: concat("fabric control-plane resident is placed on this host with an unmeasured envelope: ", why)
+      }
+    ControlPlaneNotPlaced =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
+    ControlPlaneClaimResolved { memory: m } =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: m)
+  }
+}
+
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+  RunnerMemoryEnvelopeDerived {
+    bytes: byte_size_saturating_sub(
+      total: byte_size_saturating_sub(
+        total: byte_size_saturating_sub(
+          total: byte_size_saturating_sub(total: usable, reserved: overhead),
+          reserved: session
+        ),
+        reserved: control_plane
+      ),
+      reserved: oomd_actuation_floor(host: usable)
+    )
+  }
+}
+
 fn host_runner_memory_envelope_bytes(host: HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv1 as String) {
-    429496729600
-  } else if (host as String) == (operator_host_srv3 as String) {
-    498216206336
-  } else if (host as String) == (operator_host_srv4 as String) {
-    498216206336
-  } else {
-    0
+  match host_runner_memory_envelope_resolution(host: host) {
+    RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
+    RunnerMemoryEnvelopeUnestablished { cause: _ } => 0
   }
 }
 
@@ -1384,17 +1484,58 @@ type RunnerSlotMembership
 // So the fabric member is AUTHORED as an identity and the counts are PROJECTIONS over it. srv3-06
 // stays srv3-06 when the width moves, and if the width ever falls below 6 the slot leaves the
 // committed population and says so, rather than the fabric role sliding onto srv3-05.
-data srv3_fabric_canary_slot_index: Nat = 6
+data fabric_first_slot_index: Nat = 6
 
-fn srv3_fabric_canary_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: srv3_fabric_canary_slot_index }
+fn srv3_fabric_first_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: fabric_first_slot_index }
 }
 
-// srv3 CARRIES THE ONE FABRIC EXECUTION SLOT AND srv1 DELIBERATELY DOES NOT (operator, 2026-08-21).
-// The control plane is taking a temporary srv1 slice, so the executor is placed on a DIFFERENT host:
-// a control plane and the capacity it schedules failing together is the common-mode failure the
-// placement exists to avoid. srv3 over srv4 because both admit 6 at memory and srv4 additionally
-// carries the apply-time disk preflight, so srv3 has fewer axes able to refuse it.
+// THE SECOND MEMBER ON EACH EXECUTION HOST, AUTHORED AS AN IDENTITY FOR THE SAME REASON THE FIRST
+// WAS. Index 7 sits beside 6 rather than at the top of the committed width, because an index near
+// the width is an index that MOVES when the width moves: the width is a derived three-axis minimum
+// and it has already changed once under this module (the 2026-08-22 DIMM upgrade), so pinning a
+// member to "the top two" would re-create the sliding-role defect in a slower form.
+data fabric_second_slot_index: Nat = 7
+
+fn srv3_fabric_second_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: fabric_second_slot_index }
+}
+
+fn srv4_fabric_first_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv4, slot_index: fabric_first_slot_index }
+}
+
+fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv4, slot_index: fabric_second_slot_index }
+}
+
+// srv3 AND srv4 CARRY TWO FABRIC EXECUTION SLOTS EACH AND srv1 DELIBERATELY DOES NOT (operator,
+// 2026-08-21, widened 2026-09-18). The canary population was one slot on one host, which made
+// placement a selection with a single admissible candidate -- a front standing as a winner, not a
+// placement. Two hosts is the smallest population in which a failure domain can be chosen.
+//
+// WHY srv1 STAYS OUT, RE-DERIVED RATHER THAN INHERITED, because the 2026-08-21 reason no longer
+// describes the tree: that ruling excluded srv1 because the control plane was taking a temporary
+// srv1 slice, and `gunbc.fabric_control_plane_charge` `fabric_control_plane_placement` is
+// ControlPlaneUnplaced -- the control plane is on no host at all. The constraint that survives is a
+// RELATION between two placements, neither of which is pinned: the control plane must not share a
+// host with the capacity it schedules. Filling every host with execution slots would settle that
+// relation by omission, so srv1 is held free as the host the control plane can still land on. If
+// the control plane is later pinned elsewhere, srv1 becomes admissible and this note is the reason
+// to revisit rather than a standing prohibition.
+//
+// srv2 IS ABSENT AND THAT IS A REFUSAL IT AUTHORED, NOT AN OMISSION HERE. Its committed width is
+// zero because `host_runner_memory_envelope_bytes` has no arm for it, which is the deliberate state
+// recorded at that function: a host whose session charge is unestablished has an envelope of zero.
+// Any index on srv2 would therefore land in SlotOutsideCommittedPopulation, and restoring a
+// special-case arm to make it fit is exactly the bypass that function removed twice. srv2 enters
+// this list when its session charge is measured, and by no other route.
+//
+// NO WIDTH FIGURE IS QUOTED HERE ON PURPOSE. An earlier revision of this note said srv3 and srv4
+// "both admit 6 at memory"; the derived widths are 12, memory admits 17 on srv3 and CPU is the
+// binding axis, and the note had been wrong since the 2026-08-22 DIMM upgrade with nothing able to
+// notice. The widths are a derived three-axis minimum -- read them from
+// gunbc_runner_slots_per_host, never from prose.
 //
 // THIS IS THE EXECUTION MEMBER ONLY. The srv1 control-plane slice is NOT a member of this list and
 // must not become one: an allocatable executor and a statically pinned bootstrap have opposite
@@ -1403,7 +1544,12 @@ fn srv3_fabric_canary_slot() -> RunnerSlotIdentity {
 // start. Overloading one variant across both would erase exactly that distinction, which is why
 // the variant is named SlotServesFabricExecution rather than SlotServesComputeFabric.
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
-  [srv3_fabric_canary_slot()]
+  [
+    srv3_fabric_first_slot(),
+    srv3_fabric_second_slot(),
+    srv4_fabric_first_slot(),
+    srv4_fabric_second_slot(),
+  ]
 }
 
 fn identity_is_fabric_execution_member(identity: RunnerSlotIdentity) -> Bool {
