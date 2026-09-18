@@ -384,24 +384,58 @@ fn namespace_graft_collect_user_atom_idents(node: Node) -> List<Symbol> {
   }
 }
 
-fn namespace_graft_field_edges_from_syms(syms: List<Symbol>) -> List<Edge> {
-  match list_head(xs: syms) {
+fn namespace_graft_is_type_expr_node(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_type_expr
+    Absent => false
+  }
+}
+
+fn namespace_graft_collect_type_expr_nodes(node: Node) -> List<Node> {
+  if namespace_graft_is_type_expr_node(node: node) {
+    [node]
+  } else {
+    fold(node.children, init: [], f: fn(acc, e) {
+      concat(acc, namespace_graft_collect_type_expr_nodes(node: e.target))
+    })
+  }
+}
+
+fn namespace_graft_collect_field_names(node: Node) -> List<Symbol> {
+  if namespace_graft_is_type_expr_node(node: node) {
+    []
+  } else {
+    match namespace_graft_user_atom_ident(node: node) {
+      Present { value: id } => [id]
+      Absent =>
+        fold(node.children, init: [], f: fn(acc, e) {
+          concat(acc, namespace_graft_collect_field_names(node: e.target))
+        })
+    }
+  }
+}
+
+fn namespace_graft_zip_field_edges(names: List<Symbol>, types: List<Node>) -> List<Edge> {
+  match list_head(xs: names) {
     HeadAbsent => []
     HeadFound { value: field_name } =>
-      match list_tail(xs: syms) {
-        TailAbsent => []
-        TailFound { tail: after_name } =>
-          match list_head(xs: after_name) {
-            HeadAbsent => []
-            HeadFound { value: type_sym } =>
-              let edge = Edge {
-                label: Named { name: field_name },
-                target: namespace_graft_atom_node(id: type_sym)
-              }
-              match list_tail(xs: after_name) {
+      match list_head(xs: types) {
+        HeadAbsent => []
+        HeadFound { value: type_node } =>
+          let edge = Edge {
+            label: Named { name: field_name },
+            target: type_node
+          }
+          match list_tail(xs: names) {
+            TailAbsent => [edge]
+            TailFound { tail: rest_names } =>
+              match list_tail(xs: types) {
                 TailAbsent => [edge]
-                TailFound { tail: more } =>
-                  concat([edge], namespace_graft_field_edges_from_syms(syms: more))
+                TailFound { tail: rest_types } =>
+                  concat(
+                    [edge],
+                    namespace_graft_zip_field_edges(names: rest_names, types: rest_types)
+                  )
               }
           }
       }
@@ -409,8 +443,9 @@ fn namespace_graft_field_edges_from_syms(syms: List<Symbol>) -> List<Edge> {
 }
 
 fn namespace_graft_collect_field_edges(node: Node) -> List<Edge> {
-  namespace_graft_field_edges_from_syms(
-    syms: namespace_graft_collect_user_atom_idents(node: node)
+  namespace_graft_zip_field_edges(
+    names: namespace_graft_collect_field_names(node: node),
+    types: namespace_graft_collect_type_expr_nodes(node: node)
   )
 }
 
@@ -428,10 +463,10 @@ fn namespace_graft_type_decl_target(captured: Node) -> Node {
           match list_tail(xs: namespace_graft_collect_user_atom_idents(node: captured)) {
             TailAbsent =>
               node_synthetic(kind: TypeNode { connective: Cardinality }, children: [])
-            TailFound { tail: field_syms } =>
+            TailFound { tail: _ } =>
               node_synthetic(
                 kind: TypeNode { connective: Cardinality },
-                children: namespace_graft_field_edges_from_syms(syms: field_syms)
+                children: namespace_graft_collect_field_edges(node: captured)
               )
           }
       }
