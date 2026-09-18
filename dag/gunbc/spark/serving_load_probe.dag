@@ -17,7 +17,7 @@ import extdeps.vllm.metrics {
   vllm_metric_exports_histogram_statistics,
 }
 import extdeps.vllm.bench_serve {
-  VllmBenchServeRequest, PoissonProcess,
+  VllmBenchServeRequest, PoissonProcess, SendAllImmediately,
   RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_uses_poisson_idle_gaps,
 }
 import gunbc.harness.harness_backend {
@@ -89,9 +89,13 @@ fn drain_from_queue(q: ServingQueueReading) -> DrainReceipt {
   }
 }
 
-// A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT. It is not exclusion: gunbc.harness.harness_cli
-// harness_probe_cli can bind a seat and POST a turn after the read, on purpose beside other load.
-// Without an exclusion receipt the standing cannot be WindowIsolated.
+type ArmServiceStanding
+  = ArmInService { because: NonEmptyStr }
+  | ArmOutOfService { how: NonEmptyStr }
+
+// A ZERO RUNNING GAUGE IS A DRAIN SNAPSHOT. It is not exclusion and it is not out-of-service:
+// the operator serves interactive work on this arm, harness_probe_cli can POST a turn, and
+// nccl-tests can allocate GPU buffers. WindowSharedWithDeclaredTraffic is the DEFAULT standing.
 fn window_from_drain(drain: DrainReceipt, traffic_receipt: NonEmptyStr) -> ProbeWindowStanding {
   match drain {
     DrainUnread { cause: c } => WindowIsolationUnread { cause: c, drain: drain }
@@ -102,18 +106,23 @@ fn window_from_drain(drain: DrainReceipt, traffic_receipt: NonEmptyStr) -> Probe
   }
 }
 
-fn isolated_window(grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt) -> ProbeWindowStanding {
-  match exclusion {
-    ExclusionNotEstablished { cause: c } =>
+fn isolated_window(grant: LeaseGrant, deadline: EpochSecs, drain: DrainReceipt, exclusion: ExclusionReceipt, service: ArmServiceStanding) -> ProbeWindowStanding {
+  match service {
+    ArmInService { because: c } =>
       WindowIsolationUnread { cause: c, drain: drain }
-    ExclusionEstablished { how: _ } =>
-      match drain {
-        DrainObservedIdle =>
-          WindowIsolated { grant: grant, deadline: deadline, drain: drain, exclusion: exclusion }
-        DrainNotIdle { running: _ } =>
-          WindowIsolationUnread { cause: "exclusion was named but the drain snapshot was not idle" as NonEmptyStr, drain: drain }
-        DrainUnread { cause: c } =>
+    ArmOutOfService { how: _ } =>
+      match exclusion {
+        ExclusionNotEstablished { cause: c } =>
           WindowIsolationUnread { cause: c, drain: drain }
+        ExclusionEstablished { how: _ } =>
+          match drain {
+            DrainObservedIdle =>
+              WindowIsolated { grant: grant, deadline: deadline, drain: drain, exclusion: exclusion }
+            DrainNotIdle { running: _ } =>
+              WindowIsolationUnread { cause: "exclusion was named but the drain snapshot was not idle" as NonEmptyStr, drain: drain }
+            DrainUnread { cause: c } =>
+              WindowIsolationUnread { cause: c, drain: drain }
+          }
       }
   }
 }
@@ -481,6 +490,17 @@ fn decode_corroboration_for_protocol(req: VllmBenchServeRequest) -> DecodeCorrob
   }
 }
 
+type ClientBenchLatency
+  = ClientBenchLatencyUnread { cause: NonEmptyStr }
+  | ClientBenchLatencyReported {
+      output_throughput_milli_tok_per_s: Nat
+      tpot_milli: Nat
+      itl_milli: Nat
+      ttft_milli: Nat
+      contended: Bool
+      standing: CitedFigureStanding
+    }
+
 type ProbeProvenance
   = SamePrincipal { principal: NonEmptyStr }
   | DriverObserverSplit { driver: NonEmptyStr, observer: NonEmptyStr }
@@ -502,6 +522,7 @@ type ServingLoadObservation {
   admission: AdmissionCost
   corroboration: DecodeCorroboration
   provenance: ProbeProvenance
+  client_latency: ClientBenchLatency
   rate: DerivedRate
   raw_before: NonEmptyStr
   raw_after: NonEmptyStr
@@ -520,6 +541,7 @@ fn serving_load_observation(
   before_body: String,
   after_body: String,
   ledger: OperationLedger,
+  client_latency: ClientBenchLatency,
 ) -> ServingLoadObservation {
   let before_p = preemption_count(body: before_body)
   let after_p = preemption_count(body: after_body)
@@ -542,6 +564,7 @@ fn serving_load_observation(
     admission: glm_native_workload_admission,
     corroboration: decode_corroboration_for_protocol(req: protocol),
     provenance: glm_native_live_probe_provenance,
+    client_latency: client_latency,
     rate: derive_rate_honest(
       ledger: ledger,
       continuity: continuity,
@@ -577,9 +600,24 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "admission: ", admission_text(a: o.admission), "\n",
     "corroboration: ", corroboration_text(c: o.corroboration), "\n",
     "provenance: ", provenance_text(p: o.provenance), "\n",
+    "client latency: ", client_latency_text(c: o.client_latency), "\n",
     "rate: ", rate_text(r: o.rate), "\n",
     "saturation decided from this run: ", if saturation_from_one_run(obs: o) { "yes" } else { "no" }, "\n",
   ], "")
+}
+
+fn client_latency_text(c: ClientBenchLatency) -> String {
+  match c {
+    ClientBenchLatencyUnread { cause: x } => join(["unread ", x as String], "")
+    ClientBenchLatencyReported { output_throughput_milli_tok_per_s: th, tpot_milli: tpot, itl_milli: itl, ttft_milli: ttft, contended: k, standing: _ } =>
+      join([
+        "bench-serve throughput_milli_tok_s=", to_string(th),
+        " tpot_ms=", to_string(tpot),
+        " itl_ms=", to_string(itl),
+        " ttft_ms=", to_string(ttft),
+        " contended=", if k { "yes" } else { "no" },
+      ], "")
+  }
 }
 
 fn provenance_text(p: ProbeProvenance) -> String {
@@ -726,6 +764,27 @@ data glm_native_engine_tokenizer_path: NonEmptyStr = snapshot_install_path(
   revision: glm53_native_fp8_row.revision,
 )
 
+// WIRING IS PROVEN AT A FEW HUNDRED TOKENS. A 100k-prefix protocol is not a smoke test: it is the
+// heaviest prefill this arm can construct and it starves operator interactive traffic. SendAllImmediately
+// is the validated wiring argv; it is not a comparable rate protocol (arrival skew).
+data glm_native_smoke_dataset: RandomDatasetSpec = RandomDatasetSpec {
+  input_len: token_count(count: 256),
+  output_len: token_count(count: 64),
+  prefix_len: token_count(count: 0),
+}
+
+data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
+  backend: OpenaiChat,
+  base_url: "http://127.0.0.1:30000" as NonEmptyStr,
+  model: glm_native_concurrent_profile.served_alias,
+  tokenizer: glm_native_engine_tokenizer_path,
+  dataset: glm_native_smoke_dataset,
+  num_prompts: 4,
+  arrival: SendAllImmediately,
+  max_concurrency: Present { value: 2 },
+  ignore_eos: true,
+)
+
 data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
   backend: OpenaiChat,
   base_url: "http://127.0.0.1:30000" as NonEmptyStr,
@@ -743,7 +802,24 @@ data glm_native_live_probe_provenance: ProbeProvenance = DriverObserverSplit {
   observer: "deep-otter-201 HTTP scrape of 192.168.1.236:30000/metrics" as NonEmptyStr,
 }
 
-data glm_native_declared_shared_traffic: NonEmptyStr = "gunbc.harness.harness_cli harness_probe_cli may POST a turn, and proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers on these ranks; drain snapshot is not exclusion" as NonEmptyStr
+data glm_native_declared_shared_traffic: NonEmptyStr = "operator interactive sessions share Group B; gunbc.harness.harness_cli harness_probe_cli may POST a turn; proud-boar-181 nccl-tests all_reduce_perf may allocate GPU buffers; a drain snapshot is not exclusion and is not out-of-service" as NonEmptyStr
+
+data glm_native_arm_service: ArmServiceStanding = ArmInService {
+  because: "the operator serves interactive work on this arm; WindowIsolated requires an out-of-service receipt that has not been issued" as NonEmptyStr
+}
+
+// Client TTFT/TPOT/ITL from vllm bench serve stdout, transcribed from the 2026-09-18 smoke
+// (256/64, inf rate, c=2, 4/4 ok). Contended: operator session was in flight. Not a /metrics fold.
+data glm_native_smoke_client_latency: ClientBenchLatency = ClientBenchLatencyReported {
+  output_throughput_milli_tok_per_s: 17390
+  tpot_milli: 82
+  itl_milli: 82
+  ttft_milli: 2185
+  contended: true
+  standing: TranscribedUncited {
+    read_obligation: "re-read vllm bench serve stdout for this smoke argv; the 17.39 tok/s / 82.1 ms TPOT / 81.8 ms ITL / 2185 ms TTFT figures were transcribed from calm-bat-65's docker-exec receipt" as NonEmptyStr
+  }
+}
 
 // TRANSCRIBED BOUND, NOT A READING. Parent derived ~10.7 GB active weights / ~9-11 ms memory-bandwidth
 // floor from the checkpoint config (45 layers, hidden 4096, 288 routed experts, top-8 + 1 shared, fp8)

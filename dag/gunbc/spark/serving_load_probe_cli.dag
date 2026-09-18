@@ -19,14 +19,15 @@ import gunbc.spark.serving_arm { glm_native_concurrent_profile }
 import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_from_body }
 import gunbc.spark.fabric_switch_observed { FabricGroupB }
 import gunbc.spark.serving_load_probe {
-  glm_native_holistic_protocol, glm_native_live_subject_standing,
-  glm_native_declared_shared_traffic,
+  glm_native_live_subject_standing,
+  glm_native_declared_shared_traffic, glm_native_smoke_protocol,
   serving_load_observation, serving_load_observation_text,
   drain_from_queue, window_from_drain, counter_continuity,
   DrainObservedIdle, DrainNotIdle, DrainUnread, ArrivalSkewUnread,
   OperationLedger, LedgerClosed, LedgerIncomplete,
   OccupancyUnsampled,
   ClientOutputTokensUnread,
+  ClientBenchLatencyUnread,
   RateFromGenerationTokens, RateUndenominable, RateUnreadable,
 }
 
@@ -55,7 +56,7 @@ fn bench_exec_argv() -> List<String> {
   argv_words(command: docker_exec_command(
     name: glm_native_container_name,
     env: [],
-    argv: concat(["vllm"], vllm_bench_serve_arguments(req: glm_native_holistic_protocol)),
+    argv: concat(["vllm"], vllm_bench_serve_arguments(req: glm_native_smoke_protocol)),
   ))
 }
 
@@ -122,7 +123,7 @@ fn glm_native_serving_load_wet() -> ProcessExit
             let occ = OccupancyUnsampled { cause: "the wet fold scrapes metrics only before and after the blocking bench process; mid-run occupancy is not sampled" as NonEmptyStr }
             let obs = serving_load_observation(
               subject: glm_native_live_subject_standing(),
-              protocol: glm_native_holistic_protocol,
+              protocol: glm_native_smoke_protocol,
               window: window,
               continuity: counter_continuity(before: before_launch, after: after_launch),
               arrival: ArrivalSkewUnread { cause: "vllm bench serve stdout is not yet parsed for per-request start skew" as NonEmptyStr },
@@ -133,6 +134,7 @@ fn glm_native_serving_load_wet() -> ProcessExit
               before_body: before,
               after_body: after,
               ledger: ledger_from_bench(exit_ok: bench_ok, offered: 4),
+              client_latency: ClientBenchLatencyUnread { cause: "vllm bench serve stdout is not yet parsed for TTFT/TPOT/ITL" as NonEmptyStr },
             )
             let body = join([
               "glm native serving-load wet at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n",

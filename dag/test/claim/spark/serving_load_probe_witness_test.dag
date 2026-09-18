@@ -21,9 +21,10 @@ import extdeps.vllm.kv_layout { AdmissionCostUnestablished, AdmissionCostBlocks 
 import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 import gunbc.spark.serving_load_probe {
   DrainObservedIdle,
-  ExclusionNotEstablished,
+  ExclusionNotEstablished, ExclusionEstablished,
   WindowIsolated, WindowSharedWithDeclaredTraffic, WindowIsolationUnread,
   window_from_drain, isolated_window, drain_from_queue,
+  ArmInService, ArmOutOfService,
   OperationLedger, LedgerClosed, ledger_admits_token_denomination,
   RateFromGenerationTokens, RateUndenominable, RateUnreadable,
   ArrivalSkewObserved, ArrivalSkewUnread, arrival_admits_rate_comparison,
@@ -34,12 +35,15 @@ import gunbc.spark.serving_load_probe {
   glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
   OccupancySampled, OccupancyUnsampled, OccupancySample,
   ClientOutputTokensUnread, ClientOutputTokensObserved,
+  ClientBenchLatencyUnread, ClientBenchLatencyReported,
   glm_native_workload_admission,
   glm_native_declared_shared_traffic,
   glm_native_single_stream_decode_bound_millis,
   glm_native_single_stream_decode_bound_standing,
   glm_native_engine_tokenizer_path,
   glm_native_live_probe_provenance, DriverObserverSplit, SamePrincipal,
+  glm_native_smoke_protocol, glm_native_smoke_client_latency,
+  glm_native_arm_service,
   decode_corroboration_for_protocol, CorroborationNotApplicable, CorroborationUnread,
 }
 
@@ -98,6 +102,28 @@ test fn a_quiet_drain_is_not_an_isolated_window() -> Bool {
 test fn declared_shared_traffic_names_the_harness_probe_and_nccl_tests() -> Bool {
   string_contains(s: glm_native_declared_shared_traffic as String, pattern: "harness_probe_cli")
     && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "nccl-tests")
+    && string_contains(s: glm_native_declared_shared_traffic as String, pattern: "operator")
+}
+
+test fn isolated_window_refuses_while_the_arm_is_in_service() -> Bool {
+  let grant = lease_grant(
+    reference: "probe" as NonEmptyStr,
+    fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
+    granted_at: 1,
+    policy: LeasePolicy { maximum_duration_seconds: 60, release_law: FencedResource },
+  )
+  match isolated_window(
+    grant: grant,
+    deadline: 61,
+    drain: DrainObservedIdle,
+    exclusion: ExclusionEstablished { how: "named" as NonEmptyStr },
+    service: glm_native_arm_service,
+  ) {
+    WindowIsolationUnread { cause: _, drain: DrainObservedIdle } => true
+    WindowIsolationUnread { cause: _, drain: _ } => false
+    WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
+    WindowSharedWithDeclaredTraffic { traffic_receipt: _, drain: _ } => false
+  }
 }
 
 test fn isolated_window_refuses_without_exclusion() -> Bool {
@@ -107,7 +133,7 @@ test fn isolated_window_refuses_without_exclusion() -> Bool {
     granted_at: 1,
     policy: LeasePolicy { maximum_duration_seconds: 60, release_law: FencedResource },
   )
-  match isolated_window(grant: grant, deadline: 61, drain: DrainObservedIdle, exclusion: ExclusionNotEstablished { cause: "route was not withdrawn" as NonEmptyStr }) {
+  match isolated_window(grant: grant, deadline: 61, drain: DrainObservedIdle, exclusion: ExclusionNotEstablished { cause: "route was not withdrawn" as NonEmptyStr }, service: ArmInService { because: "operator interactive" as NonEmptyStr }) {
     WindowIsolationUnread { cause: _, drain: DrainObservedIdle } => true
     WindowIsolationUnread { cause: _, drain: _ } => false
     WindowIsolated { grant: _, deadline: _, drain: _, exclusion: _ } => false
@@ -174,6 +200,7 @@ fn fx_obs(ledger: OperationLedger) -> ServingLoadObservation {
     before_body: fx_idle,
     after_body: fx_after,
     ledger: ledger,
+    client_latency: ClientBenchLatencyUnread { cause: "fixture has no bench stdout" as NonEmptyStr },
   )
 }
 
@@ -296,6 +323,16 @@ test fn the_holistic_protocol_does_not_corroborate_the_single_stream_bound() -> 
         }
     CorroborationUnread { because: _ } => false
   }
+}
+
+test fn the_smoke_protocol_is_not_the_holistic_envelope() -> Bool {
+  !holistic_protocol_is_session_shaped(req: glm_native_smoke_protocol)
+    && !vllm_bench_serve_uses_poisson_idle_gaps(req: glm_native_smoke_protocol)
+    && match glm_native_smoke_client_latency {
+      ClientBenchLatencyReported { output_throughput_milli_tok_per_s: _, tpot_milli: tpot, itl_milli: _, ttft_milli: _, contended: k, standing: _ } =>
+        k && tpot == 82
+      ClientBenchLatencyUnread { cause: _ } => false
+    }
 }
 
 test fn the_holistic_protocol_is_poisson_with_session_context_and_prefix() -> Bool {
