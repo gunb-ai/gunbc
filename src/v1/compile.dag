@@ -274,7 +274,14 @@ fn test_reference_row(module_name: String, referrer: String, target: String, occ
 }
 
 fn test_reference_debt() -> List<TestReferenceDebtRow> {
-  [
+  [    // THE WALL'S OWN CONTROL ROW, NOT DEBT. Every other row names a corpus module, so a fixture that
+    // reproduces one collides with the loaded corpus and the census refuses instead of answering.
+    // This row names a module that exists only in the wall's fixture source, so the paid-down arm of
+    // the equality budget has an executing red that cannot be paid down out from under it
+    // (dag/test/claim/test_reference_wall_witness_test.dag a_paid_down_ledger_row_is_refused, review
+    // 67402). It is inert against the corpus: a row whose module is not compiled is skipped.
+    test_reference_row(module_name: "wall.fixture.paid_down", referrer: "reader", target: "wall.fixture.paid_down.leaf", occurrences: 1),
+
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_admission_witness", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_admission_witness.w_a_coherent_fixture_is_admitted", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness", occurrences: 1),
