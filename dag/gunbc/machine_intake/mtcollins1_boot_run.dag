@@ -32,7 +32,8 @@ import gunbc.auth.approval_status_wire {
 import gunbc.auth.approval_request_submission { submission_envelope_json }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff }
+import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_handoff, mtcollins1_bmc_username }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.auth.approval_capability { utc_instant_is_canonical }
@@ -40,7 +41,8 @@ import extdeps.clock { Clock }
 import v2.std.optional { Present }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
 import gunbc.fleet_intent_network { operator_host_srv1 }
-import extdeps.github.actions_environment { github_run_id_variable_name }
+import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
+import extdeps.bmc.ipmi
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.http.client
@@ -196,12 +198,118 @@ fn mtcollins1_boot_sol_is_held(pid_path: String) -> Bool {
   }
 }
 
+type SolLeaseObserve
+  = SolLeaseIdle
+  | SolLeaseOursStale
+  | SolLeaseForeignLive { detail: NonEmptyStr }
+  | SolLeaseUnreadable { detail: NonEmptyStr }
+
+data mtcollins1_sol_foreign_live_marker: NonEmptyStr = "already active"
+
+fn mtcollins1_sol_lease_from_info(info_ok: Bool, info: String, collector_held: Bool) -> SolLeaseObserve {
+  if !info_ok {
+    SolLeaseUnreadable { detail: "sol info did not succeed" as NonEmptyStr }
+  } else if string_contains(s: info, pattern: mtcollins1_sol_foreign_live_marker as String) && !collector_held {
+    SolLeaseForeignLive { detail: "another SOL session is live on the controller" as NonEmptyStr }
+  } else if collector_held {
+    SolLeaseIdle
+  } else if string_contains(s: info, pattern: "SOL") {
+    SolLeaseOursStale
+  } else {
+    SolLeaseIdle
+  }
+}
+
+fn mtcollins1_sol_release(
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+) -> Bool
+  uses net: std.resources.Network
+{
+  dropped = diagnostic.ipmi.Tool.SolDeactivate(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+  )
+  dropped.success
+}
+
+fn mtcollins1_sol_acquire_after_grant(
+  password_file: NonEmptyStr,
+  pid_path: String,
+  capture_path: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match mtcollins1_bmc_username {
+    Absent =>
+      exit_failure(reason: "mtcollins1 boot: BMC is not BmcSecured; refusing SOL acquire")
+    Present { value: username } => {
+      info = diagnostic.ipmi.Tool.SolInfo(
+        bmc_host: mtcollins1_endpoint.host,
+        username: username,
+        password_file: password_file,
+      )
+      let held = mtcollins1_boot_sol_is_held(pid_path: pid_path)
+      match mtcollins1_sol_lease_from_info(info_ok: info.success, info: info.stdout, collector_held: held) {
+        SolLeaseForeignLive { detail: d } =>
+          exit_failure(reason: concat("mtcollins1 boot: refusing live foreign SOL: ", d as String))
+        SolLeaseUnreadable { detail: d } =>
+          exit_failure(reason: concat("mtcollins1 boot: SOL lease unreadable: ", d as String))
+        SolLeaseOursStale => {
+          let _cleared = mtcollins1_sol_release(username: username, password_file: password_file)
+          mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+        }
+        SolLeaseIdle =>
+          if held {
+            ExitSuccess
+          } else {
+            mtcollins1_sol_activate_held(username: username, password_file: password_file, pid_path: pid_path, capture_path: capture_path)
+          }
+      }
+    }
+  }
+}
+
+fn mtcollins1_sol_activate_held(
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  pid_path: String,
+  capture_path: String,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  if pid_path == "" {
+    return exit_failure(reason: "mtcollins1 boot: SOL pid path unset; refusing acquire")
+  }
+  if capture_path == "" {
+    return exit_failure(reason: "mtcollins1 boot: SOL capture path unset; refusing acquire")
+  }
+  spawned = diagnostic.ipmi.Tool.SolActivateHeld(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    capture_path: capture_path as NonEmptyStr,
+    pid_path: pid_path as NonEmptyStr,
+  )
+  if !spawned.success {
+    return exit_failure(reason: concat("mtcollins1 boot: SOL activate held refused: ", spawned.stdout))
+  }
+  let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_sol_settle)
+  if mtcollins1_boot_sol_is_held(pid_path: pid_path) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "mtcollins1 boot: SOL collector process is not held after acquire")
+  }
+}
+
 fn mtcollins1_boot_after_gate(
   gate: MtCollins1BootGate,
   request: AuthorizationRequest<MtCollins1BootSubject>,
-  password_raw: String,
   password_file: String,
   attempt: String,
+  sol_pid_path: String,
+  sol_capture_path: String,
 ) -> ProcessExit
   uses net: std.resources.Network
 {
@@ -224,16 +332,42 @@ fn mtcollins1_boot_after_gate(
                 ClaimUndecided { reason: why } =>
                   exit_failure(reason: concat("mtcollins1 boot: ", why as String))
                 ClaimHeld { state: _, generation: held_at } =>
-                  mtcollins1_settle_boot_claim(
-                    outcome: match mtcollins1_attach_diskless_image(authorization: auth, password_raw: password_raw, attempt: attempt) {
-                      ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
-                      other => other
-                    },
-                    escalation_id: g.escalation_id,
-                    attempt: g.attempt,
-                    held_at: held_at,
-                    at: at,
-                  )
+                  match mtcollins1_sol_acquire_after_grant(password_file: password_file as NonEmptyStr, pid_path: sol_pid_path, capture_path: sol_capture_path) {
+                    ExitFailure { code: _, reason: r } =>
+                      mtcollins1_settle_boot_claim(
+                        outcome: exit_failure(reason: r),
+                        escalation_id: g.escalation_id,
+                        attempt: g.attempt,
+                        held_at: held_at,
+                        at: at,
+                      )
+                    ExitSuccess => {
+                      let actuated = match mtcollins1_attach_diskless_image(authorization: auth, password_file: password_file, attempt: attempt) {
+                        ExitSuccess => mtcollins1_cdrom_handoff(password_file_raw: password_file)
+                        other => other
+                      }
+                      match mtcollins1_bmc_username {
+                        Present { value: user } => {
+                          let _released = mtcollins1_sol_release(username: user, password_file: password_file as NonEmptyStr)
+                          mtcollins1_settle_boot_claim(
+                            outcome: actuated,
+                            escalation_id: g.escalation_id,
+                            attempt: g.attempt,
+                            held_at: held_at,
+                            at: at,
+                          )
+                        }
+                        Absent =>
+                          mtcollins1_settle_boot_claim(
+                            outcome: actuated,
+                            escalation_id: g.escalation_id,
+                            attempt: g.attempt,
+                            held_at: held_at,
+                            at: at,
+                          )
+                      }
+                    }
+                  }
               }
           }
         _ => mtcollins1_boot_refusal(gate: gate)
@@ -388,9 +522,7 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
     return exit_failure(reason: concat("mtcollins1 boot: ", concat(approval_submission_mac_key_path_env as String, " is unset; controller untouched")))
   }
   let sol_pid_path = actions_variable_trimmed(name: mtcollins1_boot_sol_pid_path_env)
-  if !mtcollins1_boot_sol_is_held(pid_path: sol_pid_path) {
-    return exit_failure(reason: "mtcollins1 boot: SOL collector process is not held; ipmitool sol activate must still be live before any controller write")
-  }
+  let sol_capture_path = actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env)
   let run_id = match actions_variable_read(name: github_run_id_variable_name) {
     ActionsVariablePresent { value: v } => v
     ActionsVariableAbsent { variable: _, detail: _ } => ""
@@ -398,10 +530,18 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
   if run_id == "" {
     return exit_failure(reason: "mtcollins1 boot: GITHUB_RUN_ID is unset; refusing rather than reusing a standing escalation id")
   }
+  let sha = match actions_variable_read(name: github_sha_variable_name) {
+    ActionsVariablePresent { value: v } => v
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+  if sha == "" {
+    return exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset; the signed subject binds the execution revision")
+  }
   let escalation = concat("mtcollins1-boot-", run_id) as NonEmptyStr
   let request = mtcollins1_boot_authorization_request(
     escalation_id: escalation,
     attempt: concat("mtcollins1-boot-", run_id) as AttemptIdentity,
+    execution_revision: sha as NonEmptyStr,
   )
   match mtcollins1_boot_instant_from_probe(reading: clock_now_probed_at()) {
     Absent =>
@@ -451,15 +591,13 @@ fn mtcollins1_boot_wet_on_srv1() -> ProcessExit
           if !pw_read.success {
             return exit_failure(reason: concat("mtcollins1 boot: BMC credential unreadable after approval: ", pw_read.error))
           }
-          if !mtcollins1_boot_sol_is_held(pid_path: sol_pid_path) {
-            return exit_failure(reason: "mtcollins1 boot: SOL collector process is not held after the approval window; ipmitool sol activate must still be live before any controller write")
-          }
           let actuated = mtcollins1_boot_after_gate(
             gate: gate,
             request: request,
-            password_raw: pw_read.content,
             password_file: cred,
             attempt: run_id,
+            sol_pid_path: sol_pid_path,
+            sol_capture_path: sol_capture_path,
           )
           let exit_word = match actuated { ExitSuccess => "ok"  _ => "refused" }
           let receipt_body = concat("escalation_id=", concat(escalation as String, concat("\nexit=", exit_word)))

@@ -16,6 +16,7 @@ import extdeps.bmc.megarac {
   MegaRacIpmiSelPayloadPreserved,
   MegaRacWebEventLogOemEmptySelData,
   RedirectionConnecting,
+  RedirectionKnownRefused,
   RedirectionKnownStopped,
   RedirectionPresentationUnknown,
   RedirectionPresenting,
@@ -115,10 +116,10 @@ test fn uncatalogued_wire_cannot_confirm_attachment() -> Bool {
     ) == RedirectionKnownStopped
     && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 2),
-    ) == RedirectionPresentationUnknown
+    ) == RedirectionKnownRefused { wire: 2 }
     && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 5),
-    ) == RedirectionPresentationUnknown
+    ) == RedirectionKnownRefused { wire: 5 }
     && megarac_redirection_presentation_standing(
       lookup: megarac_redirection_status_of_wire(firmware: megarac_firmware_0_32, wire: 7),
     ) == RedirectionPresentationUnknown

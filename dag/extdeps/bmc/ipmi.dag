@@ -102,6 +102,47 @@ service diagnostic.ipmi.Tool {
     }
   }
 
+  operation ChassisBootDevWithOptions {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr, options: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}", "options={options}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool chassis bootdev with options failed"
+    }
+  }
+
+  operation SolInfo {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sol", "info"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sol info failed"
+    }
+  }
+
+  operation SolDeactivate {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sol", "deactivate"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sol deactivate failed"
+    }
+  }
+
+  operation SolActivateHeld {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, capture_path: NonEmptyStr, pid_path: NonEmptyStr }
+    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    transport shell { argv: ["bash", "-c", "ipmitool -H {bmc_host} -I lanplus -U {username} -f {password_file} sol activate >> {capture_path} 2>&1 < /dev/zero & echo $! > {pid_path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool sol activate held failed"
+    }
+  }
+
   operation ChassisBootParamGet {
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }

@@ -481,10 +481,8 @@ jobs:
           export GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE="$SUB_FILE"
           mkdir -p "$GITHUB_WORKSPACE/artifacts"
           : > "$SOL_OUT"
-          ipmitool -I lanplus -H 192.168.1.228 -U gunbc -f "$HOLD_BMC" sol deactivate >/dev/null 2>&1 || true; ipmitool -I lanplus -H 192.168.1.228 -U gunbc -f "$HOLD_BMC" sol activate >> "$SOL_OUT" 2>&1 < /dev/zero & echo $! > "$SOL_PID_FILE"
           export GUNBC_MTCOLLINS1_SOL_CAPTURE="$SOL_OUT"
           export GUNBC_MTCOLLINS1_SOL_PID_FILE="$SOL_PID_FILE"
-          sleep 2
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/mtcollins1_boot_run.dag --function mtcollins1_boot_wet
         env:

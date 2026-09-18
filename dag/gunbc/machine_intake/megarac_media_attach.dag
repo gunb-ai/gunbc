@@ -186,10 +186,37 @@ fn start_media_body(image_name: NonEmptyStr, image_index: String) -> NonEmptyStr
 // by the upstream contract; the cookie is the bearer, so the header is supplied as a sentinel
 // rather than inventing a second CloseSession shape. A refused or uncertain close remains
 // SessionReleaseRefused, never NotAttempted.
+fn megarac_session_release_by_reobservation(get_succeeded: Bool, get_body: String) -> SessionRelease {
+  if get_succeeded {
+    SessionReleaseRefused { detail: concat("GET /api/session still succeeded after CloseSession: ", get_body) }
+  } else {
+    SessionReleased
+  }
+}
+
+fn megarac_close_and_reobserve(
+  bmc_host: NonEmptyStr,
+  cookie_jar: NonEmptyStr,
+  csrf_token: NonEmptyStr,
+) -> SessionRelease
+  uses net: std.resources.Network
+{
+  let _closed = megarac.Media.CloseSession(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  observed = megarac.Media.GetSession(
+    bmc_host: bmc_host,
+    cookie_jar: cookie_jar,
+    csrf_token: csrf_token,
+  )
+  return megarac_session_release_by_reobservation(get_succeeded: observed.success, get_body: observed.body)
+}
 fn megarac_attach_remote_image(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
-  password: NonEmptyStr,
+  password_file: NonEmptyStr,
   cookie_jar: NonEmptyStr,
   image_name: NonEmptyStr,
   firmware: BmcFirmwareReleaseIdentity,
@@ -199,7 +226,7 @@ fn megarac_attach_remote_image(
   session = megarac.Media.OpenSession(
     bmc_host: bmc_host,
     username: username,
-    password: password,
+    password_file: password_file,
     cookie_jar: cookie_jar,
   )
   if session.success == false {
@@ -243,14 +270,13 @@ fn megarac_release_unreadable_session(
 ) -> MegaRacAttachResult
   uses net: std.resources.Network
 {
-  closed = megarac.Media.CloseSession(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: "unreadable" as NonEmptyStr,
-  )
   return MegaRacAttachResult {
     outcome: MegaRacSessionTokenUnreadable { detail: session_body },
-    session_release: if closed.success { SessionReleased } else { SessionReleaseRefused { detail: closed.body } },
+    session_release: megarac_close_and_reobserve(
+      bmc_host: bmc_host,
+      cookie_jar: cookie_jar,
+      csrf_token: "unreadable" as NonEmptyStr,
+    ),
   }
 }
 
@@ -274,15 +300,13 @@ fn megarac_attach_then_release(
     firmware: firmware,
   )
 
-  closed = megarac.Media.CloseSession(
-    bmc_host: bmc_host,
-    cookie_jar: cookie_jar,
-    csrf_token: csrf_token,
-  )
-
   return MegaRacAttachResult {
     outcome: outcome,
-    session_release: if closed.success { SessionReleased } else { SessionReleaseRefused { detail: closed.body } },
+    session_release: megarac_close_and_reobserve(
+      bmc_host: bmc_host,
+      cookie_jar: cookie_jar,
+      csrf_token: csrf_token,
+    ),
   }
 }
 
@@ -413,6 +437,10 @@ fn configuration_row_standing(
                       ) {
                         RedirectionPresenting => ConfigurationRowPresenting
                         RedirectionKnownStopped => ConfigurationRowNotThisPresentation
+                        RedirectionKnownRefused { wire: w } =>
+                          ConfigurationRowUnreadable {
+                            detail: concat("redirection_status ", to_string(w), " is a named media refusal, not presenting"),
+                          }
                         RedirectionPresentationUnknown =>
                           ConfigurationRowUnreadable {
                             detail: "redirection_status is uncatalogued for this firmware or wire",

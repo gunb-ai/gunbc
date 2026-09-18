@@ -195,6 +195,10 @@ type MegaRacRedirectionStatus
   = RedirectionStopped
   | RedirectionStartedConnectionAccepted
   | RedirectionConnecting
+  | RedirectionRefusedWire2
+  | RedirectionRefusedWire3
+  | RedirectionRefusedWire4
+  | RedirectionRefusedWire5
   | RedirectionWireUncatalogued { wire: Int }
 
 type MegaRacRedirectionStatusLookup
@@ -212,6 +216,14 @@ fn megarac_redirection_status_of_wire(
       RedirectionStartedConnectionAccepted
     } else if wire == 100 {
       RedirectionConnecting
+    } else if wire == 2 {
+      RedirectionRefusedWire2
+    } else if wire == 3 {
+      RedirectionRefusedWire3
+    } else if wire == 4 {
+      RedirectionRefusedWire4
+    } else if wire == 5 {
+      RedirectionRefusedWire5
     } else {
       RedirectionWireUncatalogued { wire: wire }
     }
@@ -227,6 +239,7 @@ fn megarac_redirection_status_of_wire(
 type MegaRacRedirectionPresentationStanding
   = RedirectionPresenting
   | RedirectionKnownStopped
+  | RedirectionKnownRefused { wire: Int }
   | RedirectionPresentationUnknown
 
 fn megarac_redirection_presentation_standing(
@@ -239,6 +252,10 @@ fn megarac_redirection_presentation_standing(
         RedirectionStartedConnectionAccepted => RedirectionPresenting
         RedirectionConnecting => RedirectionPresenting
         RedirectionStopped => RedirectionKnownStopped
+        RedirectionRefusedWire2 => RedirectionKnownRefused { wire: 2 }
+        RedirectionRefusedWire3 => RedirectionKnownRefused { wire: 3 }
+        RedirectionRefusedWire4 => RedirectionKnownRefused { wire: 4 }
+        RedirectionRefusedWire5 => RedirectionKnownRefused { wire: 5 }
         RedirectionWireUncatalogued { wire: _ } => RedirectionPresentationUnknown
       }
   }
@@ -405,14 +422,8 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 // per probe and closing none. Every operation sequence that opens a session owes a close on every
 // exit, including refusals — an operation that failed still allocated the session that carried it.
 //
-// THE CREDENTIAL IS FORM-ENCODED IN THE SESSION CALL AND NOWHERE ELSE. It reaches argv there, which
-// is a real weakness and is stated rather than hidden: curl offers no netrc equivalent for a
-// form-encoded POST body, and the alternative spellings (--data @file) put the credential in a file
-// whose lifetime this operation does not control. Every operation AFTER the session carries no
-// credential at all — the cookie is the bearer — so the exposure is one call, not the whole flow.
-// The next-rung repair is a transport that reads a form body from a file the caller materializes
-// and removes, which is the same missing mechanism the removed ipmi UserSetPassword operation
-// needs.
+// THE CREDENTIAL IS READ FROM A CALLER FILE ON OpenSession AND NOWHERE ELSE. curl --data-urlencode
+// password@FILE keeps the secret out of argv; every later call carries only the cookie.
 //
 // StartMedia's json_body MUST CARRY image_redirection AND ITS ABSENCE IS OPAQUE. The contract note
 // on the operation row above records that omitting it makes the firmware refuse with codes
@@ -423,14 +434,27 @@ data megarac_ipmi_sel_layout: MegaRacEventLogLayout = MegaRacIpmiSelPayloadPrese
 service megarac.Media {
 
   operation OpenSession {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr, cookie_jar: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cookie_jar: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-c", "{cookie_jar}", "-X", "POST", "-d", "username={username}", "-d", "password={password}", "https://{bmc_host}/api/session"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-c", "{cookie_jar}", "-X", "POST", "--data-urlencode", "username={username}", "--data-urlencode", "password@{password_file}", "https://{bmc_host}/api/session"]
     }
     exit {
       0 => Unit
       nonzero => String "megarac session POST failed"
+    }
+  }
+
+  operation GetSession {
+    input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "https://{bmc_host}/api/session"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "megarac session GET failed"
     }
   }
 

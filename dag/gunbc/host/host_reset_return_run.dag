@@ -73,12 +73,18 @@ import gunbc.host_reset_return {
   subject_for_observer,
 }
 import gunbc.host_reset_subject_roster { ResetSubjectCandidate, reset_observer_peer_roster, reset_subject_candidate_for, reset_subject_roster }
+import gunbc.machine_intake_mtcollins1_actuate {
+  mtcollins1_cdrom_boot_options,
+  mtcollins1_cdrom_param5_expected,
+}
 import gunbc.machine_intake_oob_boot_handoff {
   oob_boot_handoff,
-  BootHandoffCompleted,
+  BootControlIssued,
   BootHandoffNotAdmitted,
   BootSelectionFlagInvalid,
   BootSelectionNotApplied,
+  BootSelectionNotEfi,
+  BootSelectionNotOneShot,
   BootSelectionRefused,
   BootSelectionUnverifiable,
   OobBootHandoffOutcome,
@@ -307,9 +313,9 @@ fn subject_baseline(host: NonEmptyStr) -> HostReturnObservation?
 // keeps them apart in the first place.
 fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs) -> ResetCommandAcknowledgement {
   match outcome {
-    BootHandoffCompleted { selected: d } =>
+    BootControlIssued { selected: d } =>
       ResetAccepted {
-        controller_response: join(["boot source override verified for '", d as String, "' and the power action was accepted"], "") as NonEmptyStr,
+        controller_response: join(["boot source override verified for '", d as String, "' and the power action was accepted; this is BootControlIssued, not proof the artifact booted"], "") as NonEmptyStr,
         issued_at: issued_at,
       }
     BootSelectionRefused =>
@@ -321,6 +327,14 @@ fn acknowledgement_of_handoff(outcome: OobBootHandoffOutcome, issued_at: EpochMs
     BootSelectionFlagInvalid { requested: d, readback: r } =>
       ResetRefusedByController {
         diagnostic: join(["the override for '", d as String, "' was reported alongside an INVALID boot flag, so it will not be honoured; read back: ", r], "") as NonEmptyStr,
+      }
+    BootSelectionNotOneShot { requested: d, readback: r } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' is not one-shot next-boot; read back: ", r], "") as NonEmptyStr,
+      }
+    BootSelectionNotEfi { requested: d, readback: r } =>
+      ResetRefusedByController {
+        diagnostic: join(["the override for '", d as String, "' is not EFI; read back: ", r], "") as NonEmptyStr,
       }
     BootSelectionUnverifiable { requested: d, readback: r } =>
       ResetRefusedByController {
@@ -453,7 +467,8 @@ fn host_reset_return_issue_and_watch(
     username: candidate.username,
     password_file: password_file,
     device: candidate.boot_device,
-    expected_rendering: candidate.boot_readback_rendering,
+    boot_options: mtcollins1_cdrom_boot_options as String,
+    expected: mtcollins1_cdrom_param5_expected,
     power_action: candidate.power_action,
   )
   let ack = acknowledgement_of_handoff(outcome: outcome, issued_at: issued_at)

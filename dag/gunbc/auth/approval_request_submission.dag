@@ -257,9 +257,9 @@ fn submission_outcome_admits_poll(o: SubmissionOutcome) -> Bool {
     SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => true
     SubmissionFiledNotNotified { escalation_id: _, publish: _ } => true
     SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => true
-    SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => true
+    SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => false
     SubmissionAlreadyFiled { escalation_id: _ } => true
-    SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => true
+    SubmissionFiledCapabilityKeyUnavailable { escalation_id: _, cause: _ } => false
     SubmissionStoreRefused { detail: _ } => false
     SubmissionRefused { refusal: _ } => false
   }
