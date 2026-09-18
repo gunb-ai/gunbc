@@ -147,7 +147,6 @@ fn demand(key: WorkKey) -> CommittedDemand<NonEmptyStr> {
   CommittedDemand {
     demand: FabricIdentity { principal: "gunbc", key: "fsa-demand" },
     work: FabricIdentity { principal: "gunbc", key: key },
-    receipt: r(name: "fsa_demand_receipt"),
     grants: 15,
     margin: 5,
   }
@@ -158,13 +157,11 @@ fn other_customer_demand(key: WorkKey) -> CommittedDemand<NonEmptyStr> {
   CommittedDemand {
     demand: FabricIdentity { principal: "gunbc", key: "fsa-other-demand" },
     work: FabricIdentity { principal: "gunbc", key: key },
-    receipt: r(name: "fsa_demand_receipt"),
     grants: 15,
     margin: 5,
   }
 }
 
-data fsa_demand_receipt: NonEmptyStr = "fsa-demand-receipt"
 
 
 fn scenario(name: String, lost: List<DeclarationRef>) -> FailureScenario<NonEmptyStr> {
@@ -575,10 +572,22 @@ fn covered_grants(a: FailureScenarioAdmission<NonEmptyStr>) -> List<Int> {
   }
 }
 
+// The exercise each covered capacity reports is the one that made ITS OWN route ready: the two owned
+// nodes name the owned route's provider and the cloud names cloud X's. A carrier that attached the
+// wrong exercise - or the first exercise in the list - would report the owned provider three times.
+fn covered_exercise_providers(a: FailureScenarioAdmission<NonEmptyStr>) -> List<String> {
+  match a {
+    FailureScenariosSurvived { scenarios: _, demands: _, covered: cs } =>
+      map(cs, c => (c.exercise.route.provider.decl_name as String))
+    FailureScenariosRefused { refusals: _ } => []
+  }
+}
+
 test fn w_a_survival_reports_the_subject_its_capacity_was_proved_for() -> Bool {
   let a = admit(offers: offers(), domains: domains(), exercises: exercises(), demands: one_demand(), scenarios: absorbed_scenarios())
   covered_capabilities(a: a) == ["gunbc.capabilities.linux-rust-toolchain", "gunbc.capabilities.linux-rust-toolchain", "gunbc.capabilities.linux-rust-toolchain"]
     && covered_grants(a: a) == [10, 10, 20]
+    && covered_exercise_providers(a: a) == ["fsa_owned_provider", "fsa_owned_provider", "fsa_cloud_x_provider"]
 }
 
 // review 67526's specimen, exactly: the same offer admitted once for another demand and TWICE for

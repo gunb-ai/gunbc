@@ -54,16 +54,22 @@ type FailureScenario<P> {
   lost_offers: List<FabricIdentity<P, OfferKey>>
 }
 
-// A COMMITTED DEMAND IS COMMITTED BY CONSTRUCTION, NOT BY A FIELD THAT COULD SAY OTHERWISE.
+// WHAT THIS TYPE ESTABLISHES ABOUT COMMITMENT, AND WHAT IT DOES NOT.
 //
-// An earlier revision gave this type a DemandStanding field with a DemandPlanned arm, so
-// `CommittedDemand { standing: DemandPlanned { .. } }` was writable and a runtime refusal caught it.
-// That is validation standing where construction was available, and it is also a meaning fork: one
-// name covering both a commitment and a planning figure, with the difference carried in a field
-// (DESIGN sections 3 and 5; review 67483). The name now means what it says - the receipt is what a
-// caller must have to build one, and a demand assembled from planning figures cannot inhabit this
-// type at all. Whoever wants the counterfactual answers it in a planning carrier of their own that
-// names the assumptions it made, which is what gunbc-private#141 does.
+// An earlier revision gave this type a DemandStanding field with a DemandPlanned arm, so a planning
+// figure could inhabit the committed name and a runtime refusal caught it - validation standing where
+// construction was available, and a meaning fork: one name for a commitment and a planning figure,
+// the difference carried in a field (DESIGN sections 3 and 5; review 67483). Deleting that field is
+// what removed the planned SPELLING from this type.
+//
+// It does NOT establish that a caller's demand really is committed. A later revision also carried a
+// receipt: DeclarationRef and described it as what a caller must have to build one; nothing read it
+// and the type is not sole_constructor, so it proved nothing, and the claim overstated the carrier
+// (review 67782). It is deleted rather than kept as decoration. That a demand handed to this fold is
+// a commitment is a boundary obligation on the caller - the planning counterfactual belongs in a
+// carrier of its own that names its assumptions, which is what gunbc-private#141 does - and the day a
+// commitment has an authority whose sole constructor can mint it, this type should hold that carrier
+// instead of an identity.
 //
 // grants is committed concurrent grants of this work's requirements; margin is the operational
 // headroom required above it. Both are in the unit of SupplierOffer.quantity_bound.
@@ -75,7 +81,6 @@ type FailureScenario<P> {
 type CommittedDemand<P> {
   demand: FabricIdentity<P, DemandKey>
   work: FabricIdentity<P, WorkKey>
-  receipt: DeclarationRef
   grants: Int
   margin: Int
 }
