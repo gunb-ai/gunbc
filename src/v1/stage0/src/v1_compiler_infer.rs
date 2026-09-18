@@ -1308,15 +1308,38 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
             parent_enum: parent_enum.clone(),
         }),
         std::option::Option::None => match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
-            Some(_) => {
+            Some(binding) => {
                 if v1_rt::map_has(&scope.match_bound_names.clone(), name.clone()) {
                     Rc::new(VarBindingKind::MatchBoundBinding)
                 } else {
-                    Rc::new(VarBindingKind::LocalValueBinding)
+                    if local_is_service_root_binding(scope.clone(), name.clone(), binding.clone()) {
+                        Rc::new(VarBindingKind::ServiceValueBinding)
+                    } else {
+                        Rc::new(VarBindingKind::LocalValueBinding)
+                    }
                 }
             }
-            std::option::Option::None => Rc::new(VarBindingKind::FunctionValueBinding),
+            std::option::Option::None => {
+                match v1_rt::map_get(&scope.service_registry.clone(), name.clone()) {
+                    Some(_) => Rc::new(VarBindingKind::ServiceValueBinding),
+                    std::option::Option::None => Rc::new(VarBindingKind::FunctionValueBinding),
+                }
+            }
         },
+    }
+}
+
+pub fn local_is_service_root_binding(
+    scope: Rc<InferScope>,
+    name: String,
+    binding: Rc<TypeBinding>,
+) -> bool {
+    match v1_rt::map_get(&scope.service_registry.clone(), name.clone()) {
+        Some(_) => {
+            (binding.resolved.clone()
+                == crate::v1_compiler_infer_types::nominal_type_ref(name.clone()))
+        }
+        std::option::Option::None => false,
     }
 }
 

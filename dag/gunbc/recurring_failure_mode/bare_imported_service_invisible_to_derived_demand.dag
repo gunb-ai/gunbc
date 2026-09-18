@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.bare_imported_service_invisible_to_derived_demand
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data bare_imported_service_invisible_to_derived_demand: RecurringFailureMode = RecurringFailureMode {
+  identity: "bare_imported_service_invisible_to_derived_demand" as NonEmptyStr,
+
+  receipts: [
+    "**a service imported by bare name is invisible to derived service demand** (INVALID STATE: a function calls an operation through a service it imported by name -- `import extdeps.filesystem.filesystem_io { Filesystem }`, then `Filesystem.Read(...)` -- and the compiler's DERIVED service demand for that function is empty, so the carrier that decides whether a function is effectful reports it pure.",
+
+    "MECHANISM: `ServiceValueBinding` was minted by ONE producer, `v1.compiler.infer` `service_spine_projection`, and only on the FIELD-ACCESS path, which resolves a dotted occurrence such as `shell.Exec`. A bare name never takes that path, and it does not arrive unbound either: `merge_scope_from_imports` registers every service's namespace ROOT as a local binding, and for a service declared with a bare name that root is the service's own name. So `Filesystem` reached `infer_var_binding_kind` as a LOCAL and was classified `LocalValueBinding`; `collect_typed_service_calls` never saw it as a service and the transitive merge in `v1.compiler.infer_service` had nothing to propagate. Services declared with a dotted name were unaffected, which confined the hole to the few declared bare: `Filesystem`, `Clock` and `Urandom` among them.",
+
+    "HARM: SILENT, because an authored `uses` row masked it. `is_effectful` in `v1.compiler.emit_rust` reads derived service demand OR the authored resource names, so a function that also declared `uses` stayed effectful and nothing looked wrong. The hole becomes a wrong answer exactly when the authored half goes away -- which D13 (`gunbc.plans.demand_engine_program`) schedules: its migration deletes restatement `uses` rows on the premise that derived demand already carries the requirement. Had those rows been deleted first, every function reaching Filesystem only through a bare-imported service would have been emitted as a pure `fn`, and a Filesystem call written in a function with no `uses` row was ALREADY judged pure. The interpreter did not show it, because its memo is guarded by the observed effect dispatch count rather than by `uses`.",
+
+    "DISTINGUISHING FACTS: in a typed registry census over every module carrying a `uses` header, `Filesystem` appears in NO function's derived service demand, while every namespace-qualified service (`shell.Exec`, `http.Client`, `gcp.SecretManager`) does. The functions whose authored requirement had no derived counterpart all reached Filesystem, directly or transitively. A parse-grain classification could not see this: it reads the spelling, and the spelling of a bare-imported call looks like any other service call.",
+
+    "HOW IT WAS FOUND, and the lesson worth keeping: the D13 migration was about to disposition a parse-grain `Unresolved` population. Re-measuring that population against the REAL derived carrier instead dissolved most of it and left a residue with one root. Dispositioning the approximation would have ruled on the wrong instrument (DESIGN 6b), and deleting before re-measuring would have converted a masked hole into silent wrong output.",
+
+    "RUNG FOUND AT: below the ladder on the emission path -- the carrier answered wrongly with no diagnostic, and only a coincidental authored row kept the output right. CEILING: 3, structurally guaranteed. Whether a bare name resolves to a service is decidable from the registry and the scope; no spelling heuristic is involved.",
+
+    "REPAIR: `infer_var_binding_kind` recognizes the service-root local for what it structurally is -- a local whose resolved type is exactly the nominal reference the scope fold inserted for a registered service of that name (`local_is_service_root_binding`) -- and classifies it `ServiceValueBinding`. A parameter or `let` sharing the spelling carries its own declared type and stays a local, and a variant or match binding still wins first. The first repair attempted here consulted the registry only for UNBOUND names and changed nothing, because the name was never unbound; the failed prediction is what located the real root. There is no second recognizer: two producers of one stamp over one registry, and the `ServiceValueBinding` note in `v1.std.core` says so.",
+
+    "NEXT-RUNG TRIGGER, as the capability: derived service demand is complete for every service reference resolution establishes, qualified or bare -- sufficient that deleting an authored `uses` row can never change whether a function is effectful. The enrolled discriminating pair is the executing evidence: a bare-imported service call is IN derived demand, and a local of the same spelling is NOT.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "infer_var_binding_kind", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "local_is_service_root_binding", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "merge_scope_from_imports", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "service_spine_projection", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_service", decl_name: "collect_typed_service_calls", field: WholeDeclaration },
+  ],
+}
