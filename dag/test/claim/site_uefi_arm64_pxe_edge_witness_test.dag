@@ -6,10 +6,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import product.placement_supply { SiteIdentity }
+import extdeps.provisioning.network_boot { ProxyDhcp }
 import gunbc.network_boot_delivery {
   SitePxeEdgeEstablished,
   SiteBootstrapDiscovery,
-  SiteProxyDhcp,
+  SiteAnsweredDhcp,
   SiteDhcpRelay,
   ArchitectureChainloader,
   DhcpFilenameHint,
@@ -51,6 +52,8 @@ import gunbc.site_uefi_arm64_pxe_edge {
   site_edge_client_admission,
   site_edge_proxy_dhcp_config
 }
+
+data proxy_dhcp: SiteBootstrapDiscovery = SiteAnsweredDhcp { direction: ProxyDhcp }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -98,7 +101,7 @@ fn roster(macs: List<NonEmptyStr>, offer: SiteDhcpOfferObservation, reachability
 }
 
 fn healthy_roster() -> SiteEdgeRoster {
-  roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
+  roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
 }
 
 fn arm64_request(mac: NonEmptyStr) -> EdgeClientRequest {
@@ -119,7 +122,7 @@ fn not_established_with(admission: SiteEdgeClientAdmission, expected: List<BootN
 
 test fn known_arm64_client_on_observed_proxy_edge_is_admitted() -> Bool {
   match site_edge_client_admission(roster: healthy_roster(), request: arm64_request(mac: known_mac)) {
-    SiteEdgeClientAdmitted { standing: SitePxeEdgeEstablished { receipt: r } } => r.edge.discovery == SiteProxyDhcp
+    SiteEdgeClientAdmitted { standing: SitePxeEdgeEstablished { receipt: r } } => r.edge.discovery == proxy_dhcp
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
@@ -169,22 +172,22 @@ test fn unknown_architecture_gets_no_boot_even_when_known() -> Bool {
 }
 
 test fn dns_failure_alone_unestablishes_the_edge() -> Bool {
-  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: failed(), route: ok(), https: ok()))
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: failed(), route: ok(), https: ok()))
   not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisProbeFailed { axis: BootNetworkDns, observation: obs, observed_at: 1788000000000 }])
 }
 
 test fn missing_default_route_alone_unestablishes_the_edge() -> Bool {
-  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: BootNetworkProbeUnobserved, https: ok()))
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: BootNetworkProbeUnobserved, https: ok()))
   not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisUnobserved { axis: BootNetworkDefaultRoute }])
 }
 
 test fn failed_https_fetch_alone_unestablishes_the_edge() -> Bool {
-  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: failed()))
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: failed()))
   not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisProbeFailed { axis: BootNetworkGlobalHttps, observation: obs, observed_at: 1788000000000 }])
 }
 
 test fn offer_with_other_filename_is_refused_with_the_offered_name() -> Bool {
-  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: "ipxe.efi"), reachability: reach(dns: ok(), route: ok(), https: ok()))
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: "ipxe.efi"), reachability: reach(dns: ok(), route: ok(), https: ok()))
   match site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)) {
     SiteEdgeDiscoveryRefused { refusal: OfferedFilenameMismatch { offered: f, observation: _, observed_at: _ } } => f as String == "ipxe.efi"
     SiteEdgeDiscoveryRefused { refusal: _ } => false
@@ -233,7 +236,7 @@ test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
 // THE EDGE'S OWN ARCHITECTURE REFUSAL STAYS LOCATED: a known ARM64 client on an edge whose chainloader
 // is not aarch64 is refused by architecture, not reported as a non-establishment with no axis.
 test fn a_non_arm64_chainloader_is_refused_by_architecture() -> Bool {
-  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
   let x86 = SiteEdgeRoster {
     site: r.site,
     admitted_architectures: r.admitted_architectures,
@@ -262,7 +265,7 @@ test fn a_non_arm64_chainloader_is_refused_by_architecture() -> Bool {
 // THE OTHER ARCHITECTURE REFUSAL, located on its own subject: an edge that admits no aarch64 client
 // refuses the client's architecture, not the chainloader's.
 test fn an_edge_admitting_no_arm64_refuses_the_client_architecture() -> Bool {
-  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
   let closed = SiteEdgeRoster {
     site: r.site,
     admitted_architectures: [X86_64],
@@ -286,6 +289,6 @@ test fn an_edge_admitting_no_arm64_refuses_the_client_architecture() -> Bool {
 
 // A PROBE THAT FAILED AND A PROBE NOBODY RAN ARE DIFFERENT DEFICITS on the same axis.
 test fn an_unprobed_dns_axis_is_unobserved_not_failed() -> Bool {
-  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: BootNetworkProbeUnobserved, route: ok(), https: ok()))
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: BootNetworkProbeUnobserved, route: ok(), https: ok()))
   not_established_with(admission: site_edge_client_admission(roster: r, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisUnobserved { axis: BootNetworkDns }])
 }
