@@ -903,10 +903,12 @@ data glm53_nope_derived_row: ServingRuntimeRow = ServingRuntimeRow {
 // asked two names and reported a count of 378, it did not print the roster, so the two answers live
 // as ArchitectureAsked rows in gunbc.spark.runtime_architecture_registry_reading and a consumer asks
 // architecture_asked_answer; serving_arm_admits will refuse this row until a dump is taken inside
-// the digest, which is one execution of vllm_registry_instrument. (2) hub_cli_path is the NoPE row's
-// value, UNREAD in this image -- a read obligation on the head (`which hf` inside the container),
-// carried here because the field is required and a wrong path is loud at container start rather
-// than silent. (3) reasoning_projection is Absent: nothing here has read a completion from this
+// the digest. The roster WAS read on 2026-09-18 -- 378 names, sha256 of the sorted names joined by
+// newline 2e43451e12bd3e096af99b5c4658c428c5eadf857c644cfa67fdadb7b67802e1 -- but only its digest
+// travelled, and registry_reading_contains needs names; the dump is the remaining read. (2)
+// hub_cli_path was READ inside this image on 2026-09-18: /usr/local/bin/hf (huggingface-cli beside it
+// at /usr/local/bin/huggingface-cli), the same path the NoPE row carries, now measured rather than
+// inherited. (3) reasoning_projection is Absent: nothing here has read a completion from this
 // image, although the harness lanes serving through it have. (4) The base image's own build commit
 // is self-declared unknown (VLLM_BUILD_COMMIT=unknown, VLLM_BUILD_PIPELINE=local in its labels), so
 // source_revision below is the version string's commit and not a label the base carries.
@@ -922,10 +924,10 @@ data glm53_derived_row: ServingRuntimeRow = ServingRuntimeRow {
     ],
     provenance: "docker history on the Group B head (192.168.1.236), read by the GLM performance lane 2026-09-18, top layers first: RUN python3 -m pip install --no-deps --force-reinstall /tmp/gunbc-wheels/<the three flashinfer 0.7.0.dev20260910 wheels>; COPY of those wheels into /tmp/gunbc-wheels/; ENTRYPOINT [vllm, serve]; base labels org.opencontainers.image.version=local/vllm-openai:dev, VLLM_BUILD_COMMIT=unknown, VLLM_BUILD_PIPELINE=local. So the derived layer is the wheel set force-reinstalled over a locally built vLLM base whose own build commit is recorded as unknown -- a gap in the chain, stated. Image Id sha256:c7d63d15..., Created 2026-09-17T14:55:06-04:00, RepoDigests empty; the four running Group B containers report this Id as .Image" as NonEmptyStr,
   ),
-  hub_cli_path: glm53_nope_derived_row.hub_cli_path,
+  hub_cli_path: "/usr/local/bin/hf" as NonEmptyStr,
   vllm_version: glm53_nope_derived_vllm_version,
   registry_reading: none,
   reasoning_projection: none,
-  provenance: "read inside this exact image on the Group B head 2026-09-18 by the GLM performance lane: vllm 0.1.dev1+g8d09804c8; flashinfer-python, flashinfer-cubin 0.7.0.dev20260910 and flashinfer-jit-cache 0.7.0.dev20260910+cu130; torch 2.13.0+cu130; Glm5NextForConditionalGeneration registered True (what Group B serves) and GlmMoeDsaForCausalLM registered True, 378 architectures in total; a modelopt.py quantization module present in the package. NOT established: any kernel execution, any checkpoint load, the FP4 W4A4 path on SM121, the hf path, or the reasoning projection -- each is named as a read obligation above rather than inherited from the NoPE row" as NonEmptyStr,
+  provenance: "read inside this exact image on the Group B head 2026-09-18 by the GLM performance lane: vllm 0.1.dev1+g8d09804c8; flashinfer-python, flashinfer-cubin 0.7.0.dev20260910 and flashinfer-jit-cache 0.7.0.dev20260910+cu130; torch 2.13.0+cu130; Glm5NextForConditionalGeneration registered True (what Group B serves) and GlmMoeDsaForCausalLM registered True, 378 architectures in total (sorted-roster sha256 2e43451e...); a modelopt.py quantization module present in the package; hf at /usr/local/bin/hf. NOT established: any kernel execution, any checkpoint load, the reasoning projection, or the FP4 W4A4 path on SM121 -- the FP4 probe's own discriminator is absent from this build's op namespace, recorded as KernelProbeSymbolUngrounded in gunbc.spark.serving_runtime_capability_probe glm53_derived_probe_rows" as NonEmptyStr,
   claimed_defaults_revision: Present { value: Vllm8d09804 },
 }

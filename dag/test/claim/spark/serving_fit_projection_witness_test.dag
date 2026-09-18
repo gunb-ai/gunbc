@@ -170,10 +170,10 @@ test fn w_tp4_refuses_on_fit_before_anything_else() -> Bool {
   }
 }
 
-// TP8 REFUSES TODAY ON EXACTLY ONE NAMED ABSENCE: the serving image's runtime row is now modelled and
-// the report is keyed by its pin, so the architecture and the modelopt module are Established; what no
-// reading has established is the FP4 kernel path on this device, and module presence never answers
-// for it. The refusal names the probe that would.
+// TP8 REFUSES TODAY ON EXACTLY ONE NAMED ABSENCE: the serving image's runtime row is modelled and the
+// report is keyed by its pin, so the architecture and the modelopt module are Established; what no
+// reading has established is the FP4 kernel path on this device, because the probe's discriminator is
+// absent from the build -- the refusal carries that defect, and an ungrounded symbol is not a negative.
 test fn w_tp8_refuses_on_the_fp4_device_probe_alone() -> Bool {
   let p = radixark_nvfp4_tp8()
   match p.verdict {
@@ -182,7 +182,8 @@ test fn w_tp8_refuses_on_the_fp4_device_probe_alone() -> Bool {
       established(p: p, q: ArchitectureRegisteredInRuntime)
         && established(p: p, q: QuantizationMethodShippedByRuntime)
         && !established(p: p, q: Fp4WeightsSupportedOnDevice)
-        && string_contains(s: c as String, pattern: "fp4-weight-kernels-supported-here")
+        && string_contains(s: c as String, pattern: "cutlass_scaled_mm_supports_fp4")
+        && !string_contains(s: c as String, pattern: "MEASURED NEGATIVE")
   }
 }
 

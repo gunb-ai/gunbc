@@ -283,10 +283,13 @@ fn quantization_answer(rrow: ServingRuntimeRow, report: RuntimeImageReport, requ
 }
 
 // THE FP4-ON-DEVICE QUESTION IS ASKED OF THE CAPABILITY PROBE ROSTER, keyed by the arm's own digest
-// and this fleet's observed compute capability. That roster has a Present answer for a DIFFERENT
-// image (the V4.1 published arm64 build, srv9, 2026-09-11) and no row for the GLM derived image, so
-// today this answers NotEstablished -- which is the honest state: cutlass_scaled_mm_supports_fp4 has
-// been called on a GB10 inside some image, not inside this one.
+// and this fleet's observed compute capability. For the serving image the roster's answer is
+// KernelProbeSymbolUngrounded: the probe ran inside it on 2026-09-18 and its discriminator,
+// torch.ops._C.cutlass_scaled_mm_supports_fp4, is not in that build's op namespace. So this answers
+// NotEstablished with the DEFECT as the missing fact -- not "run the probe", but "find the op this
+// build exposes for FP4 support and re-ground the probe" -- which is a better refusal than the one
+// it replaced (no row), because it names a missing capability in the instrument rather than a
+// missing row in the corpus. An ungrounded symbol is never read as a negative verdict.
 fn fp4_device_answer(rrow: ServingRuntimeRow, device: GpuComputeCapability) -> StaticCompatibilityAnswer {
   let pin = runtime_artifact_wire(a: rrow.artifact)
   match capability_outcome(rows: v41_sm121_capability_probe_rows(), image_reference: pin, capability: Fp4WeightSupportedHere, device: device) {
