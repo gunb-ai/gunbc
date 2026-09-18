@@ -1,0 +1,204 @@
+module gunbc.review_sheet_header_init
+
+import std.types { NonEmptyStr, String, Int, List, Bool }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.google.sheets { ValueRange }
+import gunbc.review_sheet_projection {
+  ReviewSheetSchema,
+  ReviewSheetProjection,
+  ObservedSheet,
+  ObservedSheetRow,
+  A1Cell,
+  A1RowSpan,
+  a1_cell,
+  a1_origin_cell,
+  review_sheet_header_names,
+}
+import gunbc.review_sheet_sheets {
+  SheetA1Range,
+  SheetRequestCause,
+  ReviewSheetEnsureAssessment,
+  ReviewSheetRequestRejected,
+  ReviewSheetReadbackRejected,
+  ReviewSheetProjectionClassified,
+  review_sheet_ensure_assess,
+  sheet_qualified_span,
+}
+
+// A TAB FRESHLY CREATED BY DRIVE CONVERGE IS BLANK, AND THE ORDINARY ENSURE PATH CANNOT START
+// THERE. classify_review_sheet refuses an observed sheet whose header row is missing the schema's
+// headers, so create -> whole-tab read -> review_sheet_ensure never reaches a first write. This
+// module decides -- purely, with no effect -- whether the observed tab is PROVABLY EMPTY and, if it
+// is, what the header row to write is. The caller performs the write under its own mutex and does
+// the independent readback; nothing here writes, and nothing here routes through
+// gunbc.review_sheet_values_actuator converge_sheet_values, whose whole-range write would erase
+// operator columns.
+//
+// SINGLE AUTHORITY FOR EVERYTHING THAT IS NOT EMPTINESS. The request-shape walls (a bounded or
+// column-bounded GetValues request), the readback parse, and the tab-identity check are already
+// typed facts owned by gunbc.review_sheet_sheets review_sheet_ensure_assess. This module calls that
+// fold FIRST and carries its two rejection arms through unchanged rather than re-deriving any of
+// them; a second bounded-range or tab check here would be a second authority for a fact that has
+// one. review_sheet_ensure_assess takes a ReviewSheetProjection because it also classifies, so it
+// is supplied one built from the caller's schema with NO rows: this module needs the assessment's
+// observation and tab, never its classification, and a row-free projection is the value that asks
+// for exactly that. The classification it computes is deliberately discarded -- validating header
+// correctness is classify_review_sheet's job on the ensure pass, not this module's.
+
+// WHAT MAKES A TAB NOT EMPTY, LOCATED. headers == [] does NOT mean empty: a sheet with a blank row
+// 1 and data below yields the same empty header list with non-empty rows, and a planner that tested
+// only the header row would stamp a header on top of somebody's data. Empty means EVERY cell of the
+// header row and of every data row is exactly "" -- whitespace is content, so a single " " is
+// occupancy and refuses. The first cell that is not "" is carried with its location and its raw
+// text, so a consumer can say which cell stopped the initialization without re-reading the sheet.
+type SheetCellLocation
+  = HeaderRowCell { column_index: Int }
+  | DataRowCell { data_index: Int, column_index: Int }
+
+type SheetOccupancy {
+  location: SheetCellLocation
+  raw: String
+}
+
+// The header row to write: the schema's names in schema order, at row 1 of the observed tab, as a
+// TAB-QUALIFIED A1 span. Unqualified would hit the first tab of the spreadsheet rather than this
+// one, which is why the range is built through sheet_qualified_span and carries its tab.
+type SheetHeaderRowWrite {
+  tab: NonEmptyStr
+  range: String
+  cells: List<String>
+}
+
+// THE FOUR ANSWERS, AND WHICH ONE MEANS "CARRY ON". The two rejection arms are
+// review_sheet_ensure_assess's own, carried through so a consumer reads one typed refusal rather
+// than a flattened reason. HeaderInitWriteHeaderRow is the ONLY arm that authorizes a write, and it
+// is reachable only from a provably empty tab. HeaderInitTabOccupied is not a refusal: it means the
+// tab already holds something, so the ordinary review_sheet_ensure path takes over and validates
+// the headers itself. HeaderInitHeaderRowUnaddressable is the fail-closed arm for a schema wider
+// than the enrolled A1 column letters -- a header row that cannot be addressed is never written.
+type ReviewSheetHeaderInitDecision
+  = HeaderInitRequestRejected { cause: SheetRequestCause }
+  | HeaderInitReadbackRejected { reason: NonEmptyStr }
+  | HeaderInitWriteHeaderRow { write: SheetHeaderRowWrite }
+  | HeaderInitTabOccupied { tab: NonEmptyStr, occupancy: SheetOccupancy }
+  | HeaderInitHeaderRowUnaddressable { tab: NonEmptyStr, column_count: Int }
+
+fn first_occupied_header_cell(headers: List<String>) -> SheetOccupancy? {
+  headers
+    |> enumerate
+    |> filter(p => p.second != "")
+    |> map(p => SheetOccupancy {
+      location: HeaderRowCell { column_index: p.first },
+      raw: p.second,
+    })
+    |> first
+}
+
+fn first_occupied_cell_in_row(row: ObservedSheetRow) -> SheetOccupancy? {
+  row.cells
+    |> enumerate
+    |> filter(p => p.second != "")
+    |> map(p => SheetOccupancy {
+      location: DataRowCell { data_index: row.data_index, column_index: p.first },
+      raw: p.second,
+    })
+    |> first
+}
+
+fn first_occupied_data_cell(rows: List<ObservedSheetRow>) -> SheetOccupancy? {
+  fold(rows, init: none, f: fn(acc, row) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => first_occupied_cell_in_row(row: row)
+    }
+  })
+}
+
+fn first_occupied_cell(observed: ObservedSheet) -> SheetOccupancy? {
+  match first_occupied_header_cell(headers: observed.headers) {
+    Present { value: found } => Present { value: found }
+    Absent => first_occupied_data_cell(rows: observed.rows)
+  }
+}
+
+fn header_row_span(column_count: Int) -> A1RowSpan? {
+  match a1_cell(column_index: column_count - 1, sheet_row: 1) {
+    Absent => none
+    Present { value: end } => Present { value: A1RowSpan { start: a1_origin_cell(), end: end } }
+  }
+}
+
+fn header_row_write(tab: NonEmptyStr, schema: ReviewSheetSchema) -> ReviewSheetHeaderInitDecision {
+  let names = review_sheet_header_names(schema: schema)
+  let cells = map(names, name => name as String)
+  let column_count = (names |> count)
+  match header_row_span(column_count: column_count) {
+    Absent =>
+      HeaderInitHeaderRowUnaddressable { tab: tab, column_count: column_count }
+    Present { value: span } =>
+      HeaderInitWriteHeaderRow {
+        write: SheetHeaderRowWrite {
+          tab: tab,
+          range: sheet_qualified_span(tab: tab, span: span),
+          cells: cells,
+        }
+      }
+  }
+}
+
+fn review_sheet_header_init_decide(
+  assessment: ReviewSheetEnsureAssessment,
+  schema: ReviewSheetSchema,
+) -> ReviewSheetHeaderInitDecision {
+  match assessment {
+    ReviewSheetRequestRejected { cause: c } => HeaderInitRequestRejected { cause: c }
+    ReviewSheetReadbackRejected { reason: r } => HeaderInitReadbackRejected { reason: r }
+    ReviewSheetProjectionClassified { observed: observed, tab: tab, classification: _ } =>
+      match first_occupied_cell(observed: observed) {
+        Present { value: occupancy } =>
+          HeaderInitTabOccupied { tab: tab, occupancy: occupancy }
+        Absent => header_row_write(tab: tab, schema: schema)
+      }
+  }
+}
+
+fn review_sheet_header_init(
+  requested: SheetA1Range,
+  range: ValueRange,
+  schema: ReviewSheetSchema,
+) -> ReviewSheetHeaderInitDecision {
+  review_sheet_header_init_decide(
+    assessment: review_sheet_ensure_assess(
+      requested: requested,
+      range: range,
+      projection: ReviewSheetProjection { schema: schema, rows: [] },
+      erasures: [],
+    ),
+    schema: schema,
+  )
+}
+
+// NO EXECUTING CONSUMER TODAY, AND THE REASON IS NOT ENGINEERING. The live buyer-sheet transaction
+// that calls this planner is blocked on the operator's own authority: gunbc-private
+// strategy.owner_action steps ebay-exemption-applicability and ebay-retention-permitted rule that
+// nothing read from the eBay API may be persisted until they answer, and a refreshable buyer sheet
+// IS persistence. So this lands unconsumed, declared rather than disguised.
+//
+// The obvious existing candidate was checked and is not one. gunbc.review_sheet_converge_cli
+// creates the CI-prospect spreadsheet through converge_review_spreadsheet and STOPS there: it never
+// reads or writes cell values, review_sheet_ensure has no production caller at all (its own
+// live_sheets_transport_frontier records that), and converge_sheet_values has none either. There is
+// therefore no production path today that writes a header row by any means, so wiring this in would
+// mean building the read-decide-write-readback effect route itself -- which is the blocked
+// transaction, not a small correct edit.
+data review_sheet_header_init_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_header_init", decl_name: "review_sheet_header_init"),
+    reason: "no production entry point calls this planner: the live buyer-sheet transaction that would is blocked on an unanswered compliance gate (gunbc-private strategy.owner_action steps ebay-exemption-applicability and ebay-retention-permitted, which forbid persisting anything read from the eBay API until they answer), and no existing route writes a review-sheet header row by any means -- gunbc.review_sheet_converge_cli creates the spreadsheet and never touches its cells",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a production entry point calls review_sheet_header_init inside the locked review-sheet transaction, against a whole-tab GetValues of a real Drive-created spreadsheet, and performs the HeaderInitWriteHeaderRow write under that mutex with an independent readback; a witness supplying a ValueRange does not fire this, and neither does a caller that only matches the decision without performing the write"
+    ),
+  ),
+]
