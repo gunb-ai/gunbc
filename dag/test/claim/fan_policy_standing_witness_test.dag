@@ -1,7 +1,7 @@
 module test.claim.fan_policy_standing_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { percent, percent_count, rpm, rpm_count, second, second_count }
+import std.measure { RevolutionsPerMinute, percent, percent_count, rpm, rpm_count, second, second_count }
 import extdeps.units.iec_61672 { dba_difference_tenths, tenths_dba }
 import extdeps.fans.dynatron { dynatron_df126025bu_pwmh_catalog }
 import extdeps.bmc.endpoint { Ipmi }
@@ -65,10 +65,14 @@ import product.fan_policy_standing {
   FanPolicySample,
   FanPolicyStanding,
   FanPolicyUnderdetermined,
+  BelowCatalogMaximum,
+  NearCatalogMaximum,
+  RpmWithoutDutyTelemetry,
   HostPostState,
   HostPosted,
   HostPoweredOff,
   HostPoweredOnPrePost,
+  HostPostStateUnobserved,
   PostPostTransition,
   SteadyCurve,
   FanPolicyCeilingUnderdetermined,
@@ -240,10 +244,15 @@ test fn witness_chassis_power_parses_and_absence_is_not_off() -> Bool {
 // ── the observation round, projected onto product-layer samples ────────────────────────────────
 
 fn witness_round(index: Int, power_on: Bool, thermal: Bool) -> FanObservationRound {
+  witness_round_read(index: index, power_on: power_on, thermal: thermal, thermal_readable: true)
+}
+
+fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readable: Bool) -> FanObservationRound {
   FanObservationRound {
     observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
     round_index: index,
     power_on: power_on,
+    thermal_readable: thermal_readable,
     host_thermal_published: thermal,
     fan_lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
     fan_undecoded_line_count: 0,
@@ -262,6 +271,41 @@ test fn witness_post_state_separates_powered_on_from_posted() -> Bool {
   } && match post_state_of_round(round: witness_round(index: 2, power_on: true, thermal: true)) {
     HostPosted => true
     _ => false
+  }
+}
+
+// AN UNREADABLE READ IS NOT AN OBSERVED ABSENCE, AND THIS IS THE DISCRIMINATING RED FOR THE DEFECT
+// THAT PRODUCED IT. The first revision recorded a failed SDR temperature read as "publishes no
+// thermals", which became HostPoweredOnPrePost and then FailsafeBeforeHostTelemetry - so a transport
+// failure silently disabled the one finding this lane exists to report. Both unreadable arms - the
+// chassis read and the thermal read - must reach HostPostStateUnobserved, and the standing derived
+// from such a sample must refuse rather than land on the benign arm.
+test fn witness_unreadable_read_is_not_an_observed_absence() -> Bool {
+  match post_state_of_round(round: witness_round_read(index: 0, power_on: true, thermal: false, thermal_readable: false)) {
+    HostPostStateUnobserved => true
+    _ => false
+  } && match post_state_of_round(round: witness_unreadable_chassis_round()) {
+    HostPostStateUnobserved => true
+    _ => false
+  } && (fan_policy_standing_label(standing: fan_policy_standing_of_sample(
+    host: witness_host, authority: witness_authority,
+    sample: witness_sample(duty_count: 100, post: HostPostStateUnobserved),
+    failsafe_duty: percent(100), catalog_maximum: Absent, at_maximum_tolerance: percent(95),
+    elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
+  )) as String) == "FanPolicyUnderdetermined"
+}
+
+fn witness_unreadable_chassis_round() -> FanObservationRound {
+  FanObservationRound {
+    observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
+    round_index: 0,
+    power_on: false,
+    thermal_readable: true,
+    host_thermal_published: false,
+    fan_lines: [],
+    fan_undecoded_line_count: 0,
+    temperature_undecoded_line_count: 0,
+    chassis_readable: false,
   }
 }
 
@@ -351,11 +395,11 @@ test fn witness_posted_below_fixed_output_is_steady_curve() -> Bool {
   (witness_standing_label(sample: witness_sample(duty_count: 40, post: HostPosted), elapsed: 90) as String) == "SteadyCurve"
 }
 
-// A TACH-ONLY READING WITH NO CATALOGUED MAXIMUM REFUSES. This is the arm Mt. Collins actually lands
-// on today, because its controller publishes fans in RPM and no fan part is modeled for it - so the
-// series can say what the fans are doing and cannot say whether that is failsafe.
-test fn witness_tach_without_a_maximum_is_underdetermined() -> Bool {
-  (witness_standing_label(sample: witness_tach_sample(post: HostPosted), elapsed: 90) as String) == "FanPolicyUnderdetermined"
+// A POSTED TACH-ONLY READING IS AN OBSERVATION AND NEVER A FAILSAFE VERDICT. This is the arm Mt.
+// Collins lands on: its controller publishes fans in RPM, so the series can say what the fans are
+// doing and cannot say what the controller is commanding.
+test fn witness_posted_tach_is_an_observation_not_a_verdict() -> Bool {
+  (witness_standing_label(sample: witness_tach_sample(post: HostPosted), elapsed: 90) as String) == "RpmWithoutDutyTelemetry"
 }
 
 // A POSTED HOST AT FIXED OUTPUT WHOSE POST TRANSITION WAS NEVER OBSERVED REFUSES RATHER THAN
@@ -377,20 +421,50 @@ test fn witness_posted_without_an_observed_transition_refuses() -> Bool {
   }
 }
 
-// A TACH READING WITH A CATALOGUED MAXIMUM DOES REACH A VERDICT, WHICH IS WHAT MAKES THE REFUSAL
-// ABOVE A GAP RATHER THAN A CEILING. 8600 of 8800 is within five percent of maximum and reads as the
-// fixed output; 4000 of 8800 does not.
-test fn witness_tach_with_a_maximum_discriminates() -> Bool {
-  (fan_policy_standing_label(standing: fan_policy_standing_of_sample(
+// A CATALOGUED MAXIMUM SHARPENS THE OBSERVATION AND STILL DOES NOT MINT A VERDICT, which is the
+// whole content of the 2026-09-18 ruling. 8600 of 8800 is near the ceiling and 4000 of 20000 is not,
+// and BOTH are RpmWithoutDutyTelemetry - because the speed a fan reaches at a given PWM depends on
+// supply voltage, part tolerance, static pressure and chassis impedance, so no tolerance converts
+// RPM into a commanded duty even with an exact catalogue figure.
+//
+// THIS CLAIM IS WRITTEN AS A NEGATIVE ON PURPOSE. An earlier revision returned FailsafeHeldAfterPost
+// from the first case and SteadyCurve from the second, and a witness asserting those passed - the
+// model was wrong where the test agreed with it. So the assertion below pins what the arms are AND
+// pins that neither failsafe verdict is reachable from a tach reading.
+test fn witness_catalog_maximum_sharpens_but_never_mints_a_verdict() -> Bool {
+  match witness_tach_standing(maximum: rpm(8800)) {
+    RpmWithoutDutyTelemetry { host: _, authority: _, speed: s, catalog_relation: rel } =>
+      rpm_count(r: s) == 8600 && match rel {
+        NearCatalogMaximum { catalog_maximum: m } => rpm_count(r: m) == 8800
+        _ => false
+      }
+    _ => false
+  } && match witness_tach_standing(maximum: rpm(20000)) {
+    RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: rel } => match rel {
+      BelowCatalogMaximum { catalog_maximum: m } => rpm_count(r: m) == 20000
+      _ => false
+    }
+    _ => false
+  }
+}
+
+fn witness_tach_standing(maximum: RevolutionsPerMinute) -> FanPolicyStanding {
+  fan_policy_standing_of_sample(
     host: witness_host, authority: witness_authority, sample: witness_tach_sample(post: HostPosted),
-    failsafe_duty: percent(100), catalog_maximum: Present { value: rpm(8800) }, at_maximum_tolerance: percent(95),
+    failsafe_duty: percent(100), catalog_maximum: Present { value: maximum }, at_maximum_tolerance: percent(95),
     elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
-  )) as String) == "FailsafeHeldAfterPost"
-    && (fan_policy_standing_label(standing: fan_policy_standing_of_sample(
-      host: witness_host, authority: witness_authority, sample: witness_tach_sample(post: HostPosted),
-      failsafe_duty: percent(100), catalog_maximum: Present { value: rpm(20000) }, at_maximum_tolerance: percent(95),
-      elapsed_since_post: Present { value: second(count: 90) }, transition_window: second(count: 60),
-    )) as String) == "SteadyCurve"
+  )
+}
+
+// THE DISCRIMINATING RED FOR THE RULING: neither failsafe verdict may be reachable from ANY tach
+// reading, at any tolerance, with or without a catalogued maximum. If this ever greens against
+// FailsafeHeldAfterPost, the tach arm has been rewired back into the duty arm.
+test fn witness_no_tach_reading_reaches_a_failsafe_verdict() -> Bool {
+  let labels = map(
+    [witness_tach_standing(maximum: rpm(8600)), witness_tach_standing(maximum: rpm(8800)), witness_tach_standing(maximum: rpm(20000))],
+    st => fan_policy_standing_label(standing: st) as String,
+  )
+  fold(labels, init: true, f: (acc, l) => acc && l != "FailsafeHeldAfterPost" && l != "SteadyCurve" && l != "PostPostTransition")
 }
 
 // ── the site ceiling ───────────────────────────────────────────────────────────────────────────

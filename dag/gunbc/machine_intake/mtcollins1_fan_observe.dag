@@ -106,13 +106,16 @@ fn classify_fan_credential_path(raw: String) -> MtCollins1FanCredentialPath {
 // as a literal rather than a row because percent() admits a literal only (std.measure
 // percent_from_computed_int_frontier), so a row here would be a name that could not be passed.
 //
-// NINETY-FIVE PERCENT IS THIS LANE'S STATED TOLERANCE, NOT A FACT ABOUT ANY FAN. It is supplied here
-// rather than buried in the standing because it is a judgement about how close to a catalogued
-// maximum a tach reading has to sit before this run is willing to call it "at maximum". Nothing has
-// measured it for these fans, and it is inert on Mt. Collins today for a reason worth stating: with
-// no fan part modeled for this unit, catalog_maximum is Absent and the tach arm refuses before the
-// tolerance is ever consulted. It exists so that the day a fan part lands, the number it is compared
-// against is a value somebody chose and can revise, not a literal inside a shared fold.
+// NINETY-FIVE PERCENT IS THIS LANE'S STATED TOLERANCE, NOT A FACT ABOUT ANY FAN, and what it decides
+// is narrower than it looks. It selects between NearCatalogMaximum and BelowCatalogMaximum on a
+// SPEED observation; it cannot reach a failsafe verdict, because no tolerance converts RPM into a
+// commanded duty (operator ruling 2026-09-18: speed at a given PWM depends on supply voltage, part
+// tolerance, static pressure and chassis impedance).
+//
+// It is inert on Mt. Collins today for a further reason worth stating: no fan part is modeled for
+// this unit, so catalog_maximum is Absent and the relation comes back CatalogMaximumUnknown before
+// the tolerance is consulted at all. It is supplied rather than defaulted so that the day a fan part
+// lands, the number it is compared against is a value somebody chose and can revise.
 //
 // ONE STANDING PER SAMPLE, EACH WITH THE SITE DUTY VERDICT BESIDE IT. Both lines are rendered for
 // every sample rather than summarized, because a summary would be a second authority for the same

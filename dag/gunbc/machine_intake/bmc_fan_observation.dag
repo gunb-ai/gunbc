@@ -53,6 +53,7 @@ type FanObservationRound {
   observed_at: NonEmptyStr
   round_index: Int
   power_on: Bool
+  thermal_readable: Bool
   host_thermal_published: Bool
   fan_lines: List<SdrTypeLine>
   fan_undecoded_line_count: Int
@@ -60,6 +61,24 @@ type FanObservationRound {
   chassis_readable: Bool
 }
 
+// AN UNREADABLE THERMAL SENSOR LIST IS NOT "THIS HOST PUBLISHES NO THERMALS", AND THE FIRST
+// REVISION OF THIS MODULE GOT THAT EXACTLY BACKWARDS. It wrote `if temps.success { ... } else
+// { false }`, so a transport or authentication failure on one of the three reads was recorded as an
+// absence of host thermals - which post_state_of_round turned into HostPoweredOnPrePost and the
+// standing then turned into FailsafeBeforeHostTelemetry, the arm whose own header says it is the
+// contract working rather than a finding. A failed read therefore SILENTLY DISABLED
+// FailsafeHeldAfterPost, the one standing anybody is looking for.
+//
+// What makes it worth this much prose is that the correct reasoning was already written twenty
+// lines below, for chassis power, and simply not applied here: a machine whose controller did not
+// answer is a machine we know nothing about, and answering with the benign arm puts every such
+// sample where full-duty fans are expected and unremarkable. That is DESIGN §5's absorbing
+// fallback - a failure arm must refuse, never widen - and the module that refuses it in one field
+// and commits it in the next is the specimen worth keeping.
+//
+// So readability is carried BESIDE the reading, both on the round and in the rendered artifact, and
+// the post state refuses rather than guessing.
+//
 // POST IS INFERRED FROM THERMAL PUBLICATION, AND THIS IS A BET RATHER THAN A READING.
 //
 // Nothing on the IPMI sensor surface reports "this host has completed POST". What is observable is
@@ -74,8 +93,12 @@ type FanObservationRound {
 // stronger claim needs a POST observation from a channel that actually sees one - SOL or the SEL
 // firmware-progress records, neither of which this read-only lane touches.
 fn post_state_of_round(round: FanObservationRound) -> HostPostState {
-  if !round.power_on {
+  if !round.chassis_readable {
+    HostPostStateUnobserved
+  } else if !round.power_on {
     HostPoweredOff
+  } else if !round.thermal_readable {
+    HostPostStateUnobserved
   } else if round.host_thermal_published {
     HostPosted
   } else {
@@ -150,6 +173,7 @@ fn observe_fan_round(
     observed_at: clock_now_probed_at_or_unknown(),
     round_index: round_index,
     power_on: if status.success { chassis_power_on(stdout: status.stdout) } else { false },
+    thermal_readable: temps.success,
     host_thermal_published: if temps.success { sdr_any_temperature_reading(lines: sdr_decoded_lines(results: temp_results)) } else { false },
     fan_lines: if fans.success { sdr_decoded_lines(results: fan_results) } else { [] },
     fan_undecoded_line_count: sdr_unstructured_count(results: fan_results),
@@ -250,6 +274,7 @@ fn rounds_since_first_posted(rounds: List<FanObservationRound>) -> Int? {
       HostPosted => Present { value: 0 }
       HostPoweredOff => Absent
       HostPoweredOnPrePost => Absent
+      HostPostStateUnobserved => Absent
     }
   })
 }
@@ -270,6 +295,7 @@ fn render_round(round: FanObservationRound) -> String {
     " at=", round.observed_at as String,
     " chassis_readable=", to_string(round.chassis_readable),
     " power_on=", to_string(round.power_on),
+    " thermal_readable=", to_string(round.thermal_readable),
     " host_thermal_published=", to_string(round.host_thermal_published),
     " fan_sensors=", to_string(round.fan_lines.length()),
     " fan_undecoded_line_count=", to_string(round.fan_undecoded_line_count),

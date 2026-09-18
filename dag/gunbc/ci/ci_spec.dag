@@ -1510,13 +1510,16 @@ data gunbc_ci_mtcollins1_fan_observe_shell_emit_scaffold: Disposition = Scaffold
 data gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_mtcollins1_fan_observe_invoke - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, ONE pinned BMC secret version fetched over curl through the shared gunbc_ci_mtcollins1_bmc_credential_fetch_steps, a 0600 file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk. The pipeline steps are modeled but each step body is a shell string built by concat, so the transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold. The SHARED fetch means this row and gunbc_ci_mtcollins1_boot_credential_shell_emit_dissolution_trigger retire together for the fetch half; each keeps its own row because each lane's file names, trap and exports are still its own hand-shell.")
 
 fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
-  gunbc_run_step_script_with_prelude(
-    prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
-    source_roots: witness_layer_roots,
-    entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
-    function: gunbc_ci_mtcollins1_fan_observe_target.function,
-    claim_run: false,
-    receipt_rel: mtcollins1_fan_observation_receipt_path
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
+    gunbc_run_step_script_with_prelude(
+      prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
+      source_roots: witness_layer_roots,
+      entry: gunbc_ci_mtcollins1_fan_observe_target.entry,
+      function: gunbc_ci_mtcollins1_fan_observe_target.function,
+      claim_run: false,
+      receipt_rel: mtcollins1_fan_observation_receipt_path
+    )
   )
 }
 
