@@ -39,7 +39,7 @@ import gunbc.spark.vllm_runtime_image_build {
   vllm_source_is_clean, vllm_image_provenance_wire, BuiltByThisRun, AdoptedUnderExpectedTag,
   vllm_source_dir,
   v41_gb10_torch_cuda_arch_list, v41_build_max_jobs, v41_build_nvcc_threads,
-  v41_gb10_recipe, vllm_build_host_purpose, vllm_image_build_key, vllm_image_tag, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
+  v41_gb10_recipe, vllm_build_host_purpose, vllm_image_build_key, vllm_image_tag, vllm_image_tag_for_key, vllm_image_build_spec, vllm_recipe_arch_is_buildable,
   SparkHostAnswered, SparkHostIdentityMismatch, SparkHostIdentityUnjoinable,
   SparkHostUnreachable, SparkHostUnresolved,
   classify_reported_hostname, spark_host_answered,
@@ -181,6 +181,7 @@ test fn the_key_and_tag_move_with_the_arch_list_and_not_with_parallelism() -> Bo
   (serialize_content_hash(hash: vllm_image_build_key(r: other_arch)) as String) != fleet_key
     && (serialize_content_hash(hash: vllm_image_build_key(r: other_jobs)) as String) == fleet_key
     && string_contains(s: vllm_image_tag(r: fleet) as String, pattern: fleet_key)
+    && (vllm_image_tag(r: fleet) as String) == (vllm_image_tag_for_key(r: fleet, key: vllm_image_build_key(r: fleet)) as String)
     && (vllm_image_tag(r: other_arch) as String) != (vllm_image_tag(r: fleet) as String)
 }
 

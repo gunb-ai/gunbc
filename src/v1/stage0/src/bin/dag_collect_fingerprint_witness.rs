@@ -69,6 +69,7 @@ fn shell_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         module_item_kind: v1_compiler::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+        declaration_marker: v1_compiler::v1_std_core::DeclarationMarker::Unmarked,
         expr_data: Rc::new(ExprData::NoExprData),
     })
 }

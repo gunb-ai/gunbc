@@ -50,12 +50,16 @@ import gunbc.spark.vllm_observed { VllmModelsRouteReadbackStanding }
 import gunbc.spark.serving_offer {
   SparkOfferBound, SparkOfferBindingRefused, SparkOfferProjection,
   spark_serving_capability, spark_serving_shape, bind_spark_serving_offer, spark_serving_route_standing,
-  SparkServingRoute, DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable, spark_pair_head_unit_digest_unavailable_obligation,
+  SparkServingRoute,
   spark_serving_incarnation_unobserved_obligation,
 }
 import gunbc.spark.vllm_serving_launch { EndpointIncarnationStanding, EndpointIncarnationUnobserved }
+import gunbc.spark.pair_serving_realization {
+  DeclaredUnitDigestStanding, DeclaredUnitDigestUnavailable,
+  spark_pair_declared_head_digest,
+}
 import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, endpoint_incarnation_standing, read_unit_property, UnitTextObserved, UnitTextRefused }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_head, spark_pair_serving_unit }
+import gunbc.spark.pair_serving_desired { spark_pair_serving_head, spark_pair_group_head_host }
 import gunbc.spark.serving_group_launch { serving_group_launch, GroupRendezvous, serving_group_rendezvous }
 import gunbc.spark.rendezvous_participation {
   ServingGroupParticipation, GroupParticipationUnobserved, RendezvousEpoch, rendezvous_epoch, serving_group_participation,
@@ -64,16 +68,6 @@ import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import extdeps.systemd { InvocationIDProperty }
 import std.algebra { trim }
-import gunbc.spark.native_serving_realization {
-  GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused, glm_native_head_unit_render,
-}
-import gunbc.spark.pair_serving_realization {
-  spark_pair_realization, SparkPairRealization, SparkPairRealized, SparkPairRealizationRefused,
-  SparkPairUnitRender, SparkPairUnitRendered, SparkPairUnitRenderRefused,
-}
-import extdeps.crypto.hash { sha256sum_line_digest, sha256_digest_content_hash }
-import extdeps.crypto.hash
-import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet_ssh_locus { FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context, fleet_locus_ssh_target }
 import gunbc.serving.turn_admission {
   serving_co_tenancy, serving_capacity_pressure,
@@ -588,9 +582,10 @@ fn harness_no_candidate(acc: HarnessCandidates, note: String, retryable: Bool) -
 // it from gunbc.spark.serving_incarnation_observe at candidate time (harness_incarnation_standing
 // below), reading the group's head host over the fleet key session at the same instant the endpoint
 // launch was read, and a witness hands in a fixture observation to drive the arms past the
-// incarnation refusal. The declared unit digest is likewise an ARGUMENT, computed by the caller
-// through harness_declared_head_unit_digest: the render is pure from the desired unit, so the digest
-// exists on this path now, and a route with an observed incarnation can reach LaunchedFromDeclaredUnit.
+// incarnation refusal. The declared side of the unit comparison is no longer absent: the SHA-256 of
+// the rendered head unit is minted once per bind and passed in beside the incarnation, so a route
+// with an observed incarnation reaches the provenance join rather than stopping at
+// ServiceDeclaredUnitDigestUnavailable.
 fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding) -> SparkServingRealization {
   SparkServingRealization {
     hosts: fabric_group_hosts(g: group),
@@ -598,76 +593,6 @@ fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLa
     endpoint: launch,
     incarnation: incarnation,
     declared_model_path: serving_group_launch(group: group).declared_model_path,
-  }
-}
-
-// THE DECLARED UNIT DIGEST IS NOW COMPUTED, NOT ABSENT. The render is pure from the group's own
-// desired declaration (the pair-serving realization for group A, the native arm's for group B --
-// harness_declared_head_unit_render below), so the same bytes the apply path wrote are re-rendered
-// here and digested with the same tool the host side is read with (sha256sum, via
-// crypto.Sha256Sum), giving DeclaredUnitDigested a value in the family VllmServingLaunch.unit_digest
-// is read in. The scratch path carries the group because the two groups' renders differ and a
-// worker and an auditor bind concurrently; the path is content-addressed within a group since the
-// render is deterministic. Any leg that cannot produce the digest degrades to
-// DeclaredUnitDigestUnavailable carrying the located cause, never a guess.
-type DeclaredHeadUnitRender
-  = DeclaredHeadUnitRendered { unit_name: NonEmptyStr, text: String }
-  | DeclaredHeadUnitRenderRefused { cause: NonEmptyStr }
-
-// THE DECLARED UNIT IS THE GROUP'S OWN. Group A's head unit is the pair-serving realization's
-// (DeepSeek, Ray, the sparkrun image); group B's is the native four-rank arm's
-// (gunbc.spark.native_serving_realization glm_native_head_unit_render). Both render pure text from
-// their own desired declarations, so the digest below is computed over the same bytes the apply
-// path wrote, whichever arm the group is served by.
-fn harness_declared_head_unit_render(group: FabricGroup) -> DeclaredHeadUnitRender {
-  match group {
-    FabricGroupA =>
-      match spark_pair_realization(unit: spark_pair_serving_unit(group: group)) {
-        SparkPairRealizationRefused { group: _, cause: c } =>
-          DeclaredHeadUnitRenderRefused { cause: join(["the declared head unit could not be realized for digesting: ", c as String], "") as NonEmptyStr }
-        SparkPairRealized { group: _, head: h, workers: _ } =>
-          match h.unit {
-            SparkPairUnitRenderRefused { unit_name: _, cause: c } =>
-              DeclaredHeadUnitRenderRefused { cause: join(["the declared head unit could not be rendered for digesting: ", c as String], "") as NonEmptyStr }
-            SparkPairUnitRendered { unit_name: name, text: text } =>
-              DeclaredHeadUnitRendered { unit_name: name, text: text }
-          }
-      }
-    FabricGroupB =>
-      match glm_native_head_unit_render() {
-        GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
-          DeclaredHeadUnitRenderRefused { cause: join(["the declared head unit could not be rendered for digesting: ", c as String], "") as NonEmptyStr }
-        GlmNativeUnitRendered { unit_name: name, text: text } =>
-          DeclaredHeadUnitRendered { unit_name: name, text: text }
-      }
-  }
-}
-
-fn harness_declared_head_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
-  match harness_declared_head_unit_render(group: group) {
-    DeclaredHeadUnitRenderRefused { cause: c } =>
-      DeclaredUnitDigestUnavailable { obligation: c }
-    DeclaredHeadUnitRendered { unit_name: name, text: text } => {
-      let path = join(["/tmp/gunbc-declared-unit-", fabric_group_wire(g: group) as String, "-", name as String], "")
-      let w = Filesystem.Write(path: path, content: text)
-      if w.success == false {
-        DeclaredUnitDigestUnavailable { obligation: join(["the declared head unit scratch write failed: ", w.error], "") as NonEmptyStr }
-      } else {
-        let r = crypto.Sha256Sum.File(path: path)
-        if r.success == false {
-          DeclaredUnitDigestUnavailable { obligation: join(["sha256sum over the declared head unit failed: ", r.stderr], "") as NonEmptyStr }
-        } else {
-          match sha256sum_line_digest(line: r.line) {
-            Absent => DeclaredUnitDigestUnavailable { obligation: "sha256sum over the declared head unit printed no 64-hex digest line" as NonEmptyStr }
-            Present { value: d } =>
-              match sha256_digest_content_hash(digest: d) {
-                Absent => DeclaredUnitDigestUnavailable { obligation: "the declared head unit digest is not a sha256 content hash" as NonEmptyStr }
-                Present { value: ch } => DeclaredUnitDigested { unit_name: name, digest: ch }
-              }
-          }
-        }
-      }
-    }
   }
 }
 
@@ -679,7 +604,43 @@ fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, 
   )
 }
 
-// THE PARTICIPATION READ, TAKEN ONCE PER COLLECTION LIKE THE DECLARED DIGEST BESIDE IT. It is the
+// THE DECLARED-UNIT DIGEST IS THE SHA-256 OF WHAT THE CURRENT DECLARATION RENDERS, minted ONCE PER
+// BIND. Group A renders the pair head unit and DigestStdins those exact bytes
+// (gunbc.spark.pair_serving_realization spark_pair_declared_head_digest), refusing typed
+// (DeclaredUnitDigestUnavailable) when the render or the digest leg fails. GROUP B NEVER INHERITS
+// THE PAIR UNIT: it digests its own native four-rank arm's head unit, which the same sealed
+// constructor now renders for it (gunbc.spark.pair_serving_realization
+// declared_head_unit_render_for_group). An earlier revision answered group B with an obligation
+// because the canary it then ran had no rendered unit.
+fn harness_declared_unit_digest(group: FabricGroup) -> DeclaredUnitDigestStanding {
+  spark_pair_declared_head_digest(group: group)
+}
+
+type HarnessDeclaredUnitRoster {
+  group_a: DeclaredUnitDigestStanding
+  group_b: DeclaredUnitDigestStanding
+}
+
+// THE ONE MINT SITE PER BIND. harness_bind_seat calls this before the placement-round fold, so ONE
+// bind is one Group A render, one DigestStdin and one roster, consumed unchanged by every round and
+// every candidate. Calling it inside harness_collect_candidates would put it inside that fold and
+// re-render and re-hash once per round -- the authored duplication DESIGN §2 forbids, whose correct
+// repair is to carry the first value from the least common ancestor rather than to cache it.
+fn harness_declared_unit_roster() -> HarnessDeclaredUnitRoster {
+  HarnessDeclaredUnitRoster {
+    group_a: harness_declared_unit_digest(group: FabricGroupA),
+    group_b: harness_declared_unit_digest(group: FabricGroupB),
+  }
+}
+
+fn harness_declared_unit_from_roster(roster: HarnessDeclaredUnitRoster, group: FabricGroup) -> DeclaredUnitDigestStanding {
+  match group {
+    FabricGroupA => roster.group_a
+    FabricGroupB => roster.group_b
+  }
+}
+
+// THE PARTICIPATION READ, TAKEN PER CANDIDATE BESIDE THE DECLARED DIGEST, WHICH IS MINTED ONCE PER BIND. It is the
 // answer to a question the unit-level facts cannot reach: gunbc.spark.rendezvous_participation's
 // header records four Type=simple ranks reporting ActiveState=active inside a dead torch store for
 // most of an hour, so an arm that passes every check above can still be unable to serve.
@@ -832,7 +793,7 @@ fn harness_admit_bound_offer(acc: HarnessCandidates, group: FabricGroup, endpoin
 //
 // AND THE MODEL SCREEN SITS HERE TOO, before the offer exists. A route serving something the demand
 // did not ask for is not a candidate at all, which is a different answer from being outbid.
-fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, now: EpochSecs, access: FleetSshContextPreparation) -> HarnessCandidates {
+fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, now: EpochSecs, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster) -> HarnessCandidates {
   match route {
     ServingRouteUnresolved { group: _, obligation: o } =>
       harness_no_candidate(acc: acc, note: o as String, retryable: false)
@@ -863,7 +824,7 @@ fn harness_add_candidate(acc: HarnessCandidates, route: ServingRoute, class: Ser
             WithholdRouteNotProgressing { note: why } =>
               harness_no_candidate(acc: acc, note: seat_bind_detail(group: group, text: why), retryable: true)
             ProgressDoesNotWithhold =>
-              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now, access: access)
+              harness_candidate_from_standing(acc: acc, group: group, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject, standing: standing, availability: availability, launch: launch, engine: engine, route_ceiling: route_ceiling, layout: layout, now: now, access: access, declared_units: declared_units)
           }
       }
     }
@@ -890,6 +851,7 @@ fn harness_candidate_from_standing(
   layout: EventLogLayout,
   now: EpochSecs,
   access: FleetSshContextPreparation,
+  declared_units: HarnessDeclaredUnitRoster,
 ) -> HarnessCandidates {
           match standing {
             HarnessBackendServing { model: observed_model, unit: observed_unit, readback: observed_readback } =>
@@ -901,11 +863,12 @@ fn harness_candidate_from_standing(
                 )
               } else {
                 harness_add_serving_candidate(
-                  acc: acc, endpoint: endpoint, route: route, class: class, requirement: requirement, subject: subject,
+                  acc: acc, endpoint: endpoint, class: class, requirement: requirement, subject: subject,
                   availability: availability, launch: launch, engine: engine,
                   model: observed_model, unit: observed_unit, readback: observed_readback,
                   seats: harness_class_ceiling(class: class, route_ceiling: route_ceiling),
-                  layout: layout, now: now, access: access,
+                  seats_held: harness_seat_standing(route: route, layout: layout, now: now),
+                  now: now, access: access, declared_units: declared_units,
                 )
               }
             HarnessBackendModelNotAdmitted { advertised: _ } =>
@@ -917,10 +880,17 @@ fn harness_candidate_from_standing(
           }
 }
 
+// EVERY OBSERVATION THIS FOLD CONSUMES ARRIVES AS A SUPPLIED VALUE -- the engine reading, the
+// availability verdict, the launch, the seat pool standing, the fleet context, AND the declared-unit
+// roster, which harness_bind_seat minted once for the whole bind. This fold reaches for nothing
+// itself: it renders nothing and hashes nothing. That is what makes the mint -> carry -> bind wire
+// claimable at this one interface (test.claim.serving.serving_availability_bind_wet_witness supplies
+// a real roster minted from the production declarations, then places). The observations themselves
+// are taken one call up, in harness_add_candidate, which no claim executes because it reads live
+// endpoints.
 fn harness_add_serving_candidate(
   acc: HarnessCandidates,
   endpoint: ServingRouteEndpoint,
-  route: ServingRoute,
   class: ServingCoTenancyClass,
   requirement: ServingModelRequirement,
   subject: HarnessTurnSubject,
@@ -931,23 +901,24 @@ fn harness_add_serving_candidate(
   model: NonEmptyStr,
   unit: HarnessServingUnit,
   seats: Nat,
-  layout: EventLogLayout,
+  seats_held: ServingSeatStanding,
   now: EpochSecs,
   access: FleetSshContextPreparation,
+  declared_units: HarnessDeclaredUnitRoster,
 ) -> HarnessCandidates {
   let group = endpoint.group
   let admission = serving_group_admission(
     incoming: class,
     tenancy: serving_co_tenancy(reading: engine.queue),
     pressure: serving_capacity_pressure(reading: engine.queue),
-    seats: harness_seat_standing(route: route, layout: layout, now: now),
+    seats: seats_held,
     ceiling: seats,
     receipt: harness_metrics_probe_receipt,
   )
   match admission {
     AdmissibleForClass { class: _, receipt: _ } => {
       let launch_key = vllm_endpoint_process_launch_key(launch: launch)
-      let declared_unit = harness_declared_head_unit_digest(group: group)
+      let declared_unit = harness_declared_unit_from_roster(roster: declared_units, group: group)
       let participation = harness_group_participation(access: access, group: group)
       match incarnation_memo_lookup(memo: acc.incarnations, key: launch_key) {
         Present { value: cached } =>
@@ -989,9 +960,9 @@ fn harness_is_excluded(excluded: List<String>, key: NonEmptyStr) -> Bool {
 // while keeping a declared-but-silent one a candidate. gunbc.serving.serving_enrollment is the
 // authority for the second question; every route it names still has to answer a probe before it
 // becomes a candidate, which is what makes membership observed rather than declared.
-fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation, incarnations: List<IncarnationMemoEntry>) -> HarnessCandidates {
+fn harness_collect_candidates(class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, now: EpochSecs, excluded: List<String>, access: FleetSshContextPreparation, incarnations: List<IncarnationMemoEntry>, declared_units: HarnessDeclaredUnitRoster) -> HarnessCandidates {
   let collected = fold(serving_enrolled_routes(), init: HarnessCandidates { candidates: [], notes: [], retryable: false, incarnations: incarnations }, f: (acc, r) =>
-    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, subject: subject, layout: layout, now: now, access: access))
+    harness_add_candidate(acc: acc, route: r, class: class, requirement: requirement, subject: subject, layout: layout, now: now, access: access, declared_units: declared_units))
   HarnessCandidates {
     candidates: filter(collected.candidates, c => !harness_is_excluded(excluded: excluded, key: c.key)),
     notes: collected.notes,
@@ -1171,11 +1142,11 @@ fn harness_nothing_placed(notes: List<String>, retryable: Bool) -> HarnessSeatBi
 // consumer rejected until select_supply's pricing fold read it as a Measure and the interpreter
 // refused a field access on an Int -- first reached 2026-09-18, when the serving route's admission
 // first passed in production and this fold ran for real.
-fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation) -> PlacementRound {
+fn harness_placement_round(acc: PlacementRound, class: ServingCoTenancyClass, requirement: ServingModelRequirement, subject: HarnessTurnSubject, layout: EventLogLayout, shape: HarnessWireShape, actor: NonEmptyStr, attempt: NonEmptyStr, policy: LeasePolicy, now: EpochSecs, round: Nat, access: FleetSshContextPreparation, declared_units: HarnessDeclaredUnitRoster) -> PlacementRound {
   match acc.done {
     Present { value: _ } => acc
     Absent => {
-      let collected = harness_collect_candidates(class: class, requirement: requirement, subject: subject, layout: layout, now: now, excluded: acc.excluded, access: access, incarnations: acc.incarnations)
+      let collected = harness_collect_candidates(class: class, requirement: requirement, subject: subject, layout: layout, now: now, excluded: acc.excluded, access: access, incarnations: acc.incarnations, declared_units: declared_units)
       let notes = concat(acc.notes, collected.notes)
       let retryable = acc.retryable || collected.retryable
       match select_supply(
@@ -1247,8 +1218,9 @@ fn harness_bind_seat(short_hostname: String, class: ServingCoTenancyClass, requi
         Absent => HarnessSeatRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } => {
           let access = prepare_fleet_ssh_agent_context(attempt_raw: attempt as String)
+          let declared_units = harness_declared_unit_roster()
           let placed = fold(nat_range_inclusive(lo: 1, hi: harness_placement_rounds), init: PlacementRound { done: none, excluded: [], notes: [], retryable: false, incarnations: [] }, f: (acc, round) =>
-            harness_placement_round(acc: acc, class: class, requirement: requirement, subject: subject, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access))
+            harness_placement_round(acc: acc, class: class, requirement: requirement, subject: subject, layout: layout, shape: shape, actor: actor, attempt: attempt, policy: policy, now: now, round: round, access: access, declared_units: declared_units))
           match placed.done {
             Present { value: b } => b
             Absent =>

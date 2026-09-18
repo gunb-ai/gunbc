@@ -18,7 +18,9 @@ import gunbc.spark.vllm_observed {
   ModelsRouteDocumentUnreadable, ModelsRouteRead, vllm_models_route_readback,
 }
 import gunbc.spark.pair_serving_realization {
-  spark_pair_model_path_in_container, spark_pair_desired_snapshot,
+  spark_pair_model_path_in_container, spark_pair_desired_snapshot, spark_pair_head_unit_name,
+  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
+  spark_pair_declared_head_digest,
 }
 import std.measure { token_count }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
@@ -46,8 +48,7 @@ import gunbc.spark.serving_offer {
   SparkServiceIdentityCause, ServiceIncarnationUnobserved, ServiceObservationNamesAnotherEndpoint,
   ServiceIncarnationOutsideRealization, ServiceDeclaredUnitDigestUnavailable,
   ServiceIncarnationNotFromDeclaredUnit, ServiceConfigurationDisagrees,
-  DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
-  spark_pair_head_unit_digest_unavailable_obligation, spark_serving_incarnation_unobserved_obligation,
+  spark_serving_incarnation_unobserved_obligation,
 }
 import gunbc.spark.vllm_serving_launch {
   VllmServingLaunch, vllm_serving_launch, endpoint_incarnation_observation,
@@ -57,7 +58,6 @@ import gunbc.spark.vllm_serving_launch {
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, content_hash_of_value }
 import gunbc.harness.harness_seat { harness_serving_route }
 import gunbc.spark.first_party_serving { spark_first_party_route }
-import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name }
 
 // THE ROUTE OBLIGATION, EXECUTED. The standing has two independently evidenced halves. Host
 // membership is checked against the operator's allocation and can establish the region. The readback
@@ -155,12 +155,18 @@ fn t_incarnation_unobserved() -> EndpointIncarnationStanding {
   EndpointIncarnationUnobserved { obligation: spark_serving_incarnation_unobserved_obligation }
 }
 
+data t_declared_unit_unavailable_obligation: NonEmptyStr = "fixture: this standing is driven with DeclaredUnitDigestUnavailable so the ServiceDeclaredUnitDigestUnavailable arm stays reachable; production reaches this arm when the head unit does not render or the digest leg fails, at gunbc.spark.pair_serving_realization spark_pair_declared_head_digest" as NonEmptyStr
+
 fn t_unit_unavailable() -> DeclaredUnitDigestStanding {
-  DeclaredUnitDigestUnavailable { obligation: spark_pair_head_unit_digest_unavailable_obligation }
+  DeclaredUnitDigestUnavailable { obligation: t_declared_unit_unavailable_obligation }
 }
 
+// The standing under test here carries a fixture digest, because the declared unit is refused
+// BEFORE the incarnation is consulted: an unavailable digest would answer every row below with
+// ServiceDeclaredUnitDigestUnavailable and the incarnation and region arms they exist to exercise
+// would never be reached. the_declared_unit_is_refused_before_the_incarnation is the row for that.
 fn t_standing(realization: SparkServingRealization) -> SparkServingRoute {
-  spark_serving_route_standing(realization: realization, declared_unit: t_unit_unavailable(), participation: none)
+  spark_serving_route_standing(realization: realization, declared_unit: t_declared(), participation: none)
 }
 
 fn t_unobserved_configuration(cause: SparkServiceIdentityCause) -> SparkRealizationIdentity? {
@@ -508,13 +514,21 @@ test fn a_different_reported_path_does_not_bind_an_offer() -> Bool {
 
 
 // ── ACCEPTANCE ROWS FOR THE INCARNATION JOIN ────────────────────────────────────────────────────
+//
+// Production's harness_serving_route takes a declared-unit standing. This file supplies a fixture
+// DeclaredUnitDigested so the incarnation arms of spark_serving_route_standing are reachable;
+// an unavailable digest is refused first (the_declared_unit_is_refused_before_the_incarnation).
+// The mint and the bind wire are executed on the wet lane
+// (test.claim.spark.spark_pair_head_unit_digest_witness, test.claim.serving.serving_availability_bind_wet_witness).
+// The standing's incarnation-unobserved refusal stays enrolled below
+// (an_agreeing_unit_digest_without_an_observation_refuses).
 
 // PRODUCTION ROUTE. This drives gunbc.harness.harness_seat harness_serving_route, the function
 // harness_bind_candidate calls, with the incarnation standing production passes when the observer
 // refuses, and asserts the constructor that yields. If the harness could not reach the refusal arms
 // this change adds, the join would be dangling.
 test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Bool {
-  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_incarnation_unobserved(), declared_unit: t_unit_unavailable(), participation: none) {
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_incarnation_unobserved(), declared_unit: t_declared(), participation: none) {
     ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
       match c {
         ServiceIncarnationUnobserved { configuration: _, obligation: o } =>
@@ -532,24 +546,92 @@ test fn the_production_route_refuses_because_no_incarnation_is_observed() -> Boo
   }
 }
 
+
 fn t_sha256(hex: String) -> ContentHash {
   Sha256Hash(Sha256Digest { hex: hex as Sha256DigestHex })
 }
 
-data t_unit_hex: String = "5555555555555555555555555555555555555555555555555555555555555555"
+// THE DECLARED SIDE COMES FROM THE PRODUCTION MINT, AND THIS FILE COULD NOT AUTHOR IT IF IT WANTED
+// TO. DeclaredUnitDigestEvidence is a sole_constructor record whose only constructor in the corpus
+// is spark_pair_declared_head_digest(group), which renders the CURRENT Group A declaration and
+// hashes it. There is no byte-level door: spark_pair_rendered_unit_digest returns the UNSEALED
+// RenderedUnitDigestStanding, so no amount of fixture text produces a DeclaredUnitDigested. Hence
+// this file executes a real DigestStdin over the production declaration and lives on the required
+// floor's local-repo wet lane.
+//
+// THE OBSERVED SIDE IS ORDINARY AND IS WHERE THE DISCRIMINATION LIVES. VllmServingLaunch is freely
+// constructible, so the agreeing rows build their launch's unit_digest FROM the minted evidence's
+// digest, and the disagreeing rows use a fixed foreign hex instead. That keeps every arm
+// discriminating without an alternate mint: what varies across the rows is the OBSERVATION, which is
+// exactly the fact the route is deciding about.
+// DECLARED DIVERGENCE FROM DESIGN SECTION 3's SUPPLIED-INPUT RULE, STATED HERE RATHER THAN ONLY IN
+// REVIEW (DESIGN 3b: a divergence with a stated reason is admitted; an UNSTATED one is the fork that
+// gets consolidated later at interest). Review 67089 is RIGHT on the rule: a witness discriminates at
+// one interface, its inputs belong there as SUPPLIED VALUES, and deriving them re-executes
+// production the claim is not about -- once per claim. The subject of the rows below is
+// spark_serving_route_standing's ARM SELECTION (region, incarnation, provenance, configuration), not
+// the mint, so by the letter of that rule the declared standing should be handed in.
+//
+// WHY IT IS NOT, AND WHY NO THIRD OPTION EXISTS HERE. A supplied value must be AUTHORABLE, and this
+// one is not: DeclaredUnitDigestEvidence is a sole_constructor record whose only corpus constructor
+// is spark_pair_declared_head_digest(group). That seal is not incidental -- it is the repair for
+// gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress, whose receipt on
+// THIS carrier is that an earlier revision exported a mint taking SparkPairUnitRender and so let any
+// module aim the declared digest with bytes of its choosing. Re-opening an authorable standing for
+// the witnesses' convenience would re-open exactly that hole, because a sole_constructor wall cannot
+// tell a fixture from production. The other arm, DeclaredUnitDigestUnavailable, IS freely
+// constructible and is supplied where it fits (t_unit_unavailable), but it refuses BEFORE the
+// incarnation is consulted, so it cannot serve the rows whose subject lies past that gate --
+// the declared-unit-before-incarnation ordering is itself required.
+//
+// THE COST, NAMED SO IT IS COUNTABLE: every row below reaching a digested standing executes one real
+// Sha256.DigestStdin, which is why this file is excluded from hermetic discovery and enrolled per
+// function on the local-repo wet lane (gunbc.ci.ci_layer_roots
+// excl_local_repo_wet_declared_unit_digest_reason, v2.workflow.local_repo_wet_terminal
+// local_repo_wet_schedule, v2.workflow.floor_route_gap). It is a subprocess per row, not a fabric
+// effect. What DESIGN section 3 demands and this file does NOT skip is the pairing obligation's real
+// half: the mint's own inhabitance is executed separately and once, by
+// test.claim.spark.spark_pair_head_unit_digest_witness and
+// test.claim.serving.serving_availability_bind_wet_witness.
+//
+// DISSOLUTION, THE SAME TRIGGER THE EXCLUSION ROW NAMES: mock_response coverage for
+// extdeps.tools.sha256sum Sha256.DigestStdin sufficient to replay a digest over caller-supplied
+// stdin bytes. On that day these rows stop reaching a host effect, drop off the wet schedule and the
+// route-gap roster, and this divergence retires -- without unsealing anything.
+
 data t_other_unit_hex: String = "6666666666666666666666666666666666666666666666666666666666666666"
 data t_image_hex: String = "7777777777777777777777777777777777777777777777777777777777777777"
 
-fn t_incarnation() -> VllmServingLaunch {
+fn t_declared() -> DeclaredUnitDigestStanding {
+  spark_pair_declared_head_digest(group: FabricGroupA)
+}
+
+// THE UNAVAILABLE ARM YIELDS A STRUCTURAL FINGERPRINT ON PURPOSE. If the production mint ever stops
+// producing evidence, the observed fixtures below carry an Fnv1a64 digest against a SHA-256 declared
+// one, which is INCOMPARABLE -- so the agreeing rows go red rather than green on a fabricated match.
+// This arm is fail-closed, not a fallback answer (DESIGN section 5).
+fn t_declared_digest() -> ContentHash {
+  match t_declared() {
+    DeclaredUnitDigested { evidence: e } => e.digest
+    DeclaredUnitDigestUnavailable { obligation: _ } =>
+      content_hash_of_value(value: "fixture: the declared-unit mint returned no evidence" as NonEmptyStr)
+  }
+}
+
+fn t_launch_with_unit(unit: ContentHash) -> VllmServingLaunch {
   vllm_serving_launch(
     group: FabricGroupA,
     head: operator_host_srv5,
     systemd_invocation: "fixture-invocation-1" as NonEmptyStr,
     container_id: "fixture-container-1" as NonEmptyStr,
     executable_digest: t_sha256(hex: t_image_hex),
-    unit_digest: t_sha256(hex: t_unit_hex),
+    unit_digest: unit,
     started_at: 1788907506,
   )
+}
+
+fn t_incarnation() -> VllmServingLaunch {
+  t_launch_with_unit(unit: t_declared_digest())
 }
 
 // THE FIXTURE ENV CARRIES THE DISABLE ASSIGNMENT, because the offer's route standing now feeds the
@@ -572,10 +654,6 @@ fn t_with_incarnation(base: SparkServingRealization, incarnation: EndpointIncarn
   SparkServingRealization { hosts: base.hosts, readback: base.readback, endpoint: base.endpoint, incarnation: incarnation, declared_model_path: base.declared_model_path }
 }
 
-fn t_declared(hex: String) -> DeclaredUnitDigestStanding {
-  DeclaredUnitDigested { unit_name: spark_pair_head_unit_name, digest: t_sha256(hex: hex) }
-}
-
 fn t_cause(route: SparkServingRoute) -> SparkServiceIdentityCause? {
   match route {
     ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } => Present { value: c }
@@ -595,7 +673,7 @@ fn t_covered_matching() -> SparkServingRealization {
 test fn fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_observation() -> Bool {
   match spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(hex: t_unit_hex), participation: none,
+    declared_unit: t_declared(), participation: none,
   ) {
     ServingRouteOperatorAsserted { route: r, allocation: a, answered_by: obs } =>
       (r.service as String) == (spark_first_party_route().service as String)
@@ -611,7 +689,7 @@ test fn fixture_evidence_of_all_three_facts_asserts_the_route_and_carries_the_ob
 test fn fixture_evidence_of_all_three_facts_binds_an_offer() -> Bool {
   match t_bind(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(hex: t_unit_hex), participation: none,
+    declared_unit: t_declared(), participation: none,
   )) {
     SparkOfferBound { bound: _ } => true
     SparkOfferBindingRefused { group_wire: _, cause: _ } => false
@@ -623,7 +701,7 @@ test fn fixture_evidence_of_all_three_facts_binds_an_offer() -> Bool {
 // observation's reason. This is the row that keeps a declaration-side fact from satisfying the
 // answering-side one.
 test fn an_agreeing_unit_digest_without_an_observation_refuses() -> Bool {
-  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_declared(hex: t_unit_hex), participation: none)) {
+  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_declared(), participation: none)) {
     Present { value: ServiceIncarnationUnobserved { configuration: _, obligation: _ } } => true
     _ => false
   }
@@ -635,7 +713,7 @@ test fn an_observation_about_a_replaced_endpoint_process_refuses() -> Bool {
   let replaced = vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.1:8000" as NonEmptyStr, process_start_field: "2" as NonEmptyStr)
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: replaced, launch: t_incarnation())),
-    declared_unit: t_declared(hex: t_unit_hex), participation: none,
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } } => true
     _ => false
@@ -647,18 +725,30 @@ test fn an_incarnation_on_another_host_refuses() -> Bool {
   let elsewhere = vllm_serving_launch(
     group: FabricGroupA, head: operator_host_srv1,
     systemd_invocation: "fixture-invocation-1" as NonEmptyStr, container_id: "fixture-container-1" as NonEmptyStr,
-    executable_digest: t_sha256(hex: t_image_hex), unit_digest: t_sha256(hex: t_unit_hex), started_at: 1788907506,
+    executable_digest: t_sha256(hex: t_image_hex), unit_digest: t_declared_digest(), started_at: 1788907506,
   )
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: elsewhere)),
-    declared_unit: t_declared(hex: t_unit_hex), participation: none,
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceIncarnationOutsideRealization { incarnation: _ } } => true
     _ => false
   }
 }
 
-// RED -- THE DECLARED UNIT DIGEST IS UNAVAILABLE, which is production's second absence.
+// RED, AND THE ORDER IS THE CLAIM. With the incarnation unobserved AND the declared digest
+// unavailable, the digest is the refusal reported: it is decidable with no observation, and it is
+// what lets a harness wire that drops the digest between mint and fold go red today rather than
+// after an incarnation observer lands. The same realization with a fixture digest reports the
+// incarnation instead (an_agreeing_unit_digest_without_an_observation_refuses).
+test fn the_declared_unit_is_refused_before_the_incarnation() -> Bool {
+  match t_cause(route: spark_serving_route_standing(realization: t_covered_matching(), declared_unit: t_unit_unavailable(), participation: none)) {
+    Present { value: ServiceDeclaredUnitDigestUnavailable { obligation: _ } } => true
+    _ => false
+  }
+}
+
+// RED -- THE DECLARED UNIT DIGEST IS UNAVAILABLE, with the incarnation observed.
 test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
@@ -672,20 +762,33 @@ test fn an_observed_incarnation_without_a_declared_unit_digest_refuses() -> Bool
 // RED -- THE INCARNATION WAS LAUNCHED FROM A DIFFERENT UNIT.
 test fn an_incarnation_from_a_different_unit_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
-    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(hex: t_other_unit_hex), participation: none,
+    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_launch_with_unit(unit: t_sha256(hex: t_other_unit_hex)))),
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchedFromDifferentUnit { observed: _, declared: _ } } } => true
     _ => false
   }
 }
 
-// RED -- A DECLARED DIGEST IN ANOTHER HASH FAMILY IS INCOMPARABLE, NOT AGREEMENT. This is the
-// structural-fingerprint shortcut the unavailable obligation refuses to take.
-test fn a_declared_digest_in_another_family_is_incomparable_and_refuses() -> Bool {
+// RED -- AN OBSERVED UNIT DIGEST IN ANOTHER HASH FAMILY IS INCOMPARABLE, NOT AGREEMENT. This is the
+// structural-fingerprint shortcut the comparison refuses to take.
+//
+// THE SUBJECT MOVED FROM THE DECLARED SIDE TO THE OBSERVED SIDE, and that is a CLIMB, not a lost
+// control. The declared side can no longer be in another family AT ALL: DeclaredUnitDigestEvidence
+// is sole_constructor and its only mint is DigestStdin, so the digest inside it is Sha256Hash by
+// construction and no fixture can author an Fnv1a64 one. DESIGN section 4b: a check whose RED is not
+// authorable anywhere it could run is a decoration, so that row is deleted rather than kept green by
+// construction. The observed digest is a HOST READING and remains free to be any family, so the
+// incomparable arm of the comparison is still reachable and is still walled here.
+test fn an_observed_digest_in_another_family_is_incomparable_and_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
-    realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: DeclaredUnitDigested { unit_name: spark_pair_head_unit_name, digest: content_hash_of_value(value: t_unit_hex as NonEmptyStr) }, participation: none,
+    realization: t_with_incarnation(
+      base: t_covered_matching(),
+      incarnation: t_observed(endpoint: t_launch(), launch: t_launch_with_unit(
+        unit: content_hash_of_value(value: "fixture: a structural fingerprint is the wrong family" as NonEmptyStr),
+      )),
+    ),
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceIncarnationNotFromDeclaredUnit { provenance: LaunchUnitDigestsIncomparable } } => true
     _ => false
@@ -696,32 +799,24 @@ test fn a_declared_digest_in_another_family_is_incomparable_and_refuses() -> Boo
 test fn an_observed_declared_incarnation_with_a_disagreeing_readback_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(hex: t_unit_hex), participation: none,
+    declared_unit: t_declared(), participation: none,
   )) {
     Present { value: ServiceConfigurationDisagrees { configuration: _ } } => true
     _ => false
   }
 }
 
-// THE HARNESS CONSUMES THE INCARNATION IT IS HANDED. With an observed fixture incarnation on the
-// answering endpoint, the production route moves PAST the incarnation refusal and stops at the next
-// missing fact -- the declared unit digest, which harness_serving_route still passes as unavailable.
-// RED: a harness that ignored its incarnation argument would keep returning
-// ServiceIncarnationUnobserved here.
+// THE HARNESS CONSUMES THE INCARNATION IT IS HANDED. With a fixture digested unit and an observed
+// fixture incarnation on the answering endpoint, the production route moves past the incarnation
+// refusal to the same asserted-route arm the standing's own fixture evidence row already holds.
+// RED: a harness that ignored its incarnation argument would return ServiceIncarnationUnobserved
+// here, because the digest is supplied and that arm is reachable.
 test fn the_production_route_consumes_an_observed_incarnation() -> Bool {
-  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_unit_unavailable(), participation: none) {
-    ServingRouteServiceUnidentified { allocation: _, cause: c, obligation: _ } =>
-      match c {
-        ServiceDeclaredUnitDigestUnavailable { obligation: _ } => true
-        ServiceIncarnationUnobserved { configuration: _, obligation: _ } => false
-        ServiceObservationNamesAnotherEndpoint { observed: _, answering: _ } => false
-        ServiceIncarnationOutsideRealization { incarnation: _ } => false
-        ServiceIncarnationNotFromDeclaredUnit { provenance: _ } => false
-        ServiceRanksAdriftFromTheRendezvous { detail: _ } => false
-        ServiceConfigurationDisagrees { configuration: _ } => false
-      }
+  match harness_serving_route(group: FabricGroupA, launch: t_launch(), readback: t_realization(hosts: [operator_host_srv5, operator_host_srv6]).readback, incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation()), declared_unit: t_declared(), participation: none) {
+    ServingRouteOperatorAsserted { route: r, allocation: _, answered_by: _ } =>
+      (r.service as String) == (spark_first_party_route().service as String)
+    ServingRouteServiceUnidentified { allocation: _, cause: _, obligation: _ } => false
     ServingRouteObserved { route: _ } => false
-    ServingRouteOperatorAsserted { route: _, allocation: _, answered_by: _ } => false
     ServingRouteRegionUnobserved { obligation: _ } => false
   }
 }
@@ -745,7 +840,7 @@ test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool {
   }
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(hex: t_unit_hex), participation: Present { value: adrift },
+    declared_unit: t_declared(), participation: Present { value: adrift },
   )) {
     Present { value: ServiceRanksAdriftFromTheRendezvous { detail: d } } =>
       contains(d as String, "srv6") && contains(d as String, "not assembled")
@@ -760,7 +855,7 @@ test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool {
 test fn a_roster_that_could_not_be_read_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(hex: t_unit_hex),
+    declared_unit: t_declared(),
     participation: Present { value: GroupParticipationUnobserved { cause: "the head unit's InvocationID was not read" as NonEmptyStr } },
   )) {
     Present { value: ServiceRanksAdriftFromTheRendezvous { detail: d } } => contains(d as String, "could not be read")
@@ -781,7 +876,7 @@ test fn a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_ch
   }
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_foreign_realization(hosts: [operator_host_srv5, operator_host_srv6]), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
-    declared_unit: t_declared(hex: t_unit_hex), participation: Present { value: attached },
+    declared_unit: t_declared(), participation: Present { value: attached },
   )) {
     Present { value: ServiceConfigurationDisagrees { configuration: _ } } => true
     _ => false

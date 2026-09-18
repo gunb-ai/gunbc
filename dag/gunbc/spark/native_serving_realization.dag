@@ -2,7 +2,7 @@ module gunbc.spark.native_serving_realization
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { basis_point }
+import std.measure { token_count_value }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
 import product.placement_supply { HostIdentity, host_identity_eq }
@@ -31,7 +31,7 @@ import extdeps.docker.cli { docker_device_words, docker_cap_add_words, docker_me
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.model_snapshot_acquisition { glm_5_3_flash_snapshot, spark_hub_cache_root, ModelSnapshotPinned, ModelSnapshotUnpinned }
 import gunbc.spark.serving_arm {
-  glm_native_initial_profile, glm_native_engine_build, glm_native_engine_build_image,
+  glm_native_concurrent_profile, glm_native_engine_build, glm_native_engine_build_image,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -43,7 +43,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // LaunchedFromDeclaredUnit, a sha256 over the unit's fragment file) had no subject on srv9, and the
 // serving route could never name which deployment answered. This module is the arm's declared unit
 // set: one head unit on the group's serving head and one rank unit on each other host, rendered
-// from the arm's own profile (gunbc.spark.serving_arm glm_native_initial_profile), so the digest
+// from the arm's own profile (gunbc.spark.serving_arm glm_native_concurrent_profile), so the digest
 // the harness computes and the digest the host observes are the same bytes by construction.
 //
 // THE RENDER FOLLOWS THE LAUNCH THE CUTOVER ACTUALLY RAN, measured 2026-09-16 from the live rank-0
@@ -129,25 +129,25 @@ fn glm_native_engine_argv(rank: Nat, ranks: Nat, master: Ipv4Address) -> List<St
     Present { value: model_path } =>
       concat([
         model_path,
-        "--served-model-name", glm_native_initial_profile.served_alias as String,
+        "--served-model-name", glm_native_concurrent_profile.served_alias as String,
         "--tensor-parallel-size", to_string(ranks),
         "--distributed-executor-backend", "mp",
         "--nnodes", to_string(ranks),
         "--node-rank", to_string(rank),
         "--master-addr", render_ipv4_address(addr: master) as String,
         "--master-port", to_string(glm_native_master_port),
-        "--max-model-len", to_string(glm_native_initial_profile.max_model_len),
-        "--max-num-batched-tokens", to_string(glm_native_initial_profile.max_num_batched_tokens),
-        "--max-num-seqs", to_string(glm_native_initial_profile.max_num_seqs),
-        "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: glm_native_initial_profile.kv_cache_dtype) as String,
-        "--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: basis_point(count: glm_native_initial_profile.decided_gpu_memory_basis_points)),
+        "--max-model-len", to_string(token_count_value(t: glm_native_concurrent_profile.max_model_len)),
+        "--max-num-batched-tokens", to_string(token_count_value(t: glm_native_concurrent_profile.max_num_batched_tokens)),
+        "--max-num-seqs", to_string(glm_native_concurrent_profile.max_num_seqs),
+        "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: glm_native_concurrent_profile.kv_cache_dtype) as String,
+        "--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: glm_native_concurrent_profile.decided_gpu_memory_basis_points),
         "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
         "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
         "--enable-auto-tool-choice",
         "--host", "0.0.0.0",
-        "--port", to_string(glm_native_initial_profile.serve_port),
+        "--port", to_string(glm_native_concurrent_profile.serve_port),
       ], concat(
-        vllm_prefix_caching_argv(r: glm_native_initial_profile.prefix_caching),
+        vllm_prefix_caching_argv(r: glm_native_concurrent_profile.prefix_caching),
         if rank == 0 { [] } else { ["--headless"] },
       ))
   }
@@ -247,7 +247,7 @@ fn glm_native_host_unit_file(host: HostIdentity, rank: Nat, ranks: Nat, master: 
             unit_name: unit_name,
             text: serialize_systemd_unit_file(file: ServiceUnitFile {
               unit: [
-                Description { text: join(["gunbc GLM native four-rank arm, rank ", to_string(rank), " (", glm_native_initial_profile.served_alias as String, ")"], "") as NonEmptyStr },
+                Description { text: join(["gunbc GLM native four-rank arm, rank ", to_string(rank), " (", glm_native_concurrent_profile.served_alias as String, ")"], "") as NonEmptyStr },
                 After { target: "docker.service network-online.target" as NonEmptyStr },
                 Requires { target: "docker.service" as NonEmptyStr },
               ],

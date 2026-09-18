@@ -23,10 +23,10 @@ import gunbc.live_deploy.emit {
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentServiceConfig,
-  deployment_spec_srv1,
   deployment_slice_unit_name,
   deployment_belt_service_unit_name,
 }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import extdeps.systemd { MemoryMax, MemoryHigh }
@@ -590,13 +590,13 @@ test fn slice_unit_is_not_installable() -> Bool {
 fn spec_with_principal(wrong_user: NonEmptyStr) -> DeploymentSpec {
   let base = live_spec()
   match base {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
       match svc {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
           instance_root: ir, repo_root: rr, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n,
+            target: t, steps: s, names: n, instance_id: iid,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_function: f,
               instance_root: ir, repo_root: rr,
@@ -627,13 +627,13 @@ fn divergent_repo_root() -> NonEmptyStr {
 
 fn spec_with_repo_root(wrong_root: NonEmptyStr) -> DeploymentSpec {
   match live_spec() {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
       match svc {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
           instance_root: ir, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n,
+            target: t, steps: s, names: n, instance_id: iid,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_function: f,
               instance_root: ir, repo_root: wrong_root,
@@ -673,13 +673,13 @@ test fn serve_unit_user_goes_red_under_different_user() -> Bool {
 
 fn spec_with_port(wrong_port: Port) -> DeploymentSpec {
   match live_spec() {
-    DeploymentSpec { target: t, steps: s, names: n, service: svc } =>
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, instance_id: iid } =>
       match svc {
         DeploymentServiceConfig { unit_name: u, serve_binary: b, serve_function: f,
           instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
           listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
           DeploymentSpec {
-            target: t, steps: s, names: n,
+            target: t, steps: s, names: n, instance_id: iid,
             service: DeploymentServiceConfig {
               unit_name: u, serve_binary: b, serve_function: f,
               instance_root: ir, repo_root: rr,

@@ -13072,6 +13072,66 @@ fn compile_diagnostic_census_row_value(
     }
 }
 
+fn reference_derived_candidate_disposition_value(
+    disposition: &crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::v1_compiler_emit_rust::ReferenceDerivedCandidateDisposition as D;
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("ReferenceDerivedCandidateDisposition"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match disposition {
+        D::CandidateSurvived { provider_module } => variant(
+            "CandidateSurvived",
+            vec![(
+                ctx.sym("provider_module"),
+                str_value(provider_module.clone()),
+            )],
+        ),
+        D::CandidateOwnModule => variant("CandidateOwnModule", vec![]),
+        D::CandidateVariantDelegatedToParent { parent_enum } => variant(
+            "CandidateVariantDelegatedToParent",
+            vec![(ctx.sym("parent_enum"), str_value(parent_enum.clone()))],
+        ),
+        D::CandidateVariantParentUnresolved => variant("CandidateVariantParentUnresolved", vec![]),
+        D::CandidateRegistryAbsent => variant("CandidateRegistryAbsent", vec![]),
+        D::CandidateLeafAmbiguous => variant("CandidateLeafAmbiguous", vec![]),
+        D::CandidateExportProofFailed { provider_module } => variant(
+            "CandidateExportProofFailed",
+            vec![(
+                ctx.sym("provider_module"),
+                str_value(provider_module.clone()),
+            )],
+        ),
+    }
+}
+
+fn reference_derived_candidate_rows_value(
+    rows: &im::Vector<Rc<crate::v1_compiler_emit_rust::ReferenceDerivedCandidateRow>>,
+    ctx: &InterpContext,
+) -> Value {
+    list_value(
+        rows.iter()
+            .map(|row| Value::Record {
+                type_name: ctx.sym("ReferenceDerivedCandidateRow"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("module_name"), str_value(row.module_name.clone())),
+                    (ctx.sym("name"), str_value(row.name.clone())),
+                    (
+                        ctx.sym("disposition"),
+                        reference_derived_candidate_disposition_value(
+                            row.disposition.as_ref(),
+                            ctx,
+                        ),
+                    ),
+                ])),
+            })
+            .collect::<Vec<_>>(),
+    )
+}
+
 fn compile_diagnostic_census_value(
     census: crate::cli_run::CompileDiagnosticCensus,
     ctx: &InterpContext,
@@ -13269,6 +13329,211 @@ fn multi_module_compile_fixture_value(
     }
 }
 
+fn occurrence_id_value(
+    id: crate::std_occurrence_identity::OccurrenceId,
+    ctx: &InterpContext,
+) -> Value {
+    Value::Record {
+        type_name: ctx.sym("OccurrenceId"),
+        fields: Rc::new(sorted_fields(vec![(
+            ctx.sym("value"),
+            Value::Int(id.value),
+        )])),
+    }
+}
+
+fn authored_source_span_value(span: &crate::std_types::SourceSpan, ctx: &InterpContext) -> Value {
+    Value::Record {
+        type_name: ctx.sym("SourceSpan"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("file"), str_value(span.file.clone())),
+            (ctx.sym("start"), Value::Int(span.start)),
+            (ctx.sym("end"), Value::Int(span.end)),
+        ])),
+    }
+}
+
+fn occurrence_containment_path_value(
+    path: &crate::std_occurrence_identity::OccurrenceContainmentPath,
+    ctx: &InterpContext,
+) -> Value {
+    Value::Record {
+        type_name: ctx.sym("OccurrenceContainmentPath"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("ancestors"),
+                list_value(
+                    path.ancestors
+                        .iter()
+                        .copied()
+                        .map(|id| occurrence_id_value(id, ctx))
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+            (ctx.sym("terminal"), occurrence_id_value(path.terminal, ctx)),
+        ])),
+    }
+}
+
+fn occurrence_transport_value(
+    transport: &crate::std_occurrence_identity::OccurrenceTransport,
+    ctx: &InterpContext,
+) -> Value {
+    let projection = |p: &crate::std_occurrence_identity::OccurrenceProjection| Value::Record {
+        type_name: ctx.sym("OccurrenceProjection"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("occurrence"),
+                occurrence_id_value(p.occurrence, ctx),
+            ),
+            (ctx.sym("authored_name"), str_value(p.authored_name.clone())),
+            (
+                ctx.sym("diagnostic_span"),
+                authored_source_span_value(p.diagnostic_span.as_ref(), ctx),
+            ),
+        ])),
+    };
+    let index_entry = |e: &crate::std_occurrence_identity::OccurrenceIndexEntry| Value::Record {
+        type_name: ctx.sym("OccurrenceIndexEntry"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("projection"), projection(e.projection.as_ref())),
+            (
+                ctx.sym("containment"),
+                occurrence_containment_path_value(e.containment.as_ref(), ctx),
+            ),
+        ])),
+    };
+    let declaration = |d: &crate::std_occurrence_identity::DeclarationOccurrence| Value::Record {
+        type_name: ctx.sym("DeclarationOccurrence"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("occurrence"),
+                occurrence_id_value(d.occurrence, ctx),
+            ),
+            (
+                ctx.sym("containment"),
+                occurrence_containment_path_value(d.containment.as_ref(), ctx),
+            ),
+            (
+                ctx.sym("category"),
+                occurrence_category_value(&d.category, ctx),
+            ),
+            (
+                ctx.sym("diagnostic_span"),
+                authored_source_span_value(d.diagnostic_span.as_ref(), ctx),
+            ),
+        ])),
+    };
+    let reference = |r: &crate::std_occurrence_identity::ReferenceOccurrence| Value::Record {
+        type_name: ctx.sym("ReferenceOccurrence"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("occurrence"),
+                occurrence_id_value(r.occurrence, ctx),
+            ),
+            (
+                ctx.sym("containment"),
+                occurrence_containment_path_value(r.containment.as_ref(), ctx),
+            ),
+            (
+                ctx.sym("category"),
+                occurrence_category_value(&r.category, ctx),
+            ),
+            (
+                ctx.sym("diagnostic_span"),
+                authored_source_span_value(r.diagnostic_span.as_ref(), ctx),
+            ),
+        ])),
+    };
+    Value::Record {
+        type_name: ctx.sym("OccurrenceTransport"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("index"),
+                Value::Record {
+                    type_name: ctx.sym("OccurrenceIndex"),
+                    fields: Rc::new(sorted_fields(vec![(
+                        ctx.sym("entries"),
+                        list_value(
+                            transport
+                                .index
+                                .entries
+                                .iter()
+                                .map(|e| index_entry(e.as_ref()))
+                                .collect::<Vec<_>>(),
+                        ),
+                    )])),
+                },
+            ),
+            (
+                ctx.sym("declarations"),
+                list_value(
+                    transport
+                        .declarations
+                        .iter()
+                        .map(|d| declaration(d.as_ref()))
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+            (
+                ctx.sym("references"),
+                list_value(
+                    transport
+                        .references
+                        .iter()
+                        .map(|r| reference(r.as_ref()))
+                        .collect::<Vec<_>>(),
+                ),
+            ),
+        ])),
+    }
+}
+
+fn xl1_primary_root_tap_value(
+    tap: crate::cli_run::Xl1PrimaryRootTap,
+    ctx: &InterpContext,
+) -> Value {
+    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
+        type_name: ctx.sym("Xl1PrimaryRootTap"),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(fields)),
+    };
+    match tap {
+        crate::cli_run::Xl1PrimaryRootTap::Refused { cause } => variant(
+            "Xl1PrimaryRootRefused",
+            vec![(ctx.sym("cause"), str_value(cause))],
+        ),
+        crate::cli_run::Xl1PrimaryRootTap::Observed {
+            primary_root,
+            repair_rows,
+            occurrence_transport,
+            binding_rows,
+        } => variant(
+            "Xl1PrimaryRootObserved",
+            vec![
+                (ctx.sym("primary_root"), str_value(primary_root)),
+                (
+                    ctx.sym("repair_rows"),
+                    reference_derived_candidate_rows_value(repair_rows.as_ref(), ctx),
+                ),
+                (
+                    ctx.sym("occurrence_transport"),
+                    occurrence_transport_value(occurrence_transport.as_ref(), ctx),
+                ),
+                (
+                    ctx.sym("binding_rows"),
+                    list_value(
+                        binding_rows
+                            .into_iter()
+                            .map(|row| reference_occurrence_binding_census_row_value(row, ctx))
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ],
+        ),
+    }
+}
+
 fn occurrence_category_value(
     category: &crate::std_occurrence_identity::OccurrenceCategory,
     ctx: &InterpContext,
@@ -13286,6 +13551,189 @@ fn occurrence_category_value(
             OccurrenceCategory::MethodOccurrence => "MethodOccurrence",
         }),
         fields: Rc::new(vec![]),
+    }
+}
+
+fn reference_occurrence_binding_census_row_value(
+    row: crate::cli_run::ReferenceOccurrenceBindingRow,
+    ctx: &InterpContext,
+) -> Value {
+    let source_value = |source: crate::cli_run::UnlistedImportBindingSource| Value::Variant {
+        type_name: ctx.sym("UnlistedImportBindingSource"),
+        variant_name: ctx.sym(match source {
+            crate::cli_run::UnlistedImportBindingSource::ListedImport => "ListedImport",
+            crate::cli_run::UnlistedImportBindingSource::PoolCoincidence => "PoolCoincidence",
+            crate::cli_run::UnlistedImportBindingSource::DefinerResolvable => "DefinerResolvable",
+            crate::cli_run::UnlistedImportBindingSource::AmbiguousLeaf => "AmbiguousLeaf",
+        }),
+        fields: Rc::new(vec![]),
+    };
+    let disposition = match row.disposition {
+        crate::cli_run::ReferenceOccurrenceBindingDisposition::Bound {
+            declaration_occurrence,
+            provider_module,
+            binding_source,
+        } => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+            variant_name: ctx.sym("ReferenceOccurrenceBound"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("declaration_occurrence"),
+                    Value::Int(declaration_occurrence),
+                ),
+                (ctx.sym("provider_module"), str_value(provider_module)),
+                (ctx.sym("binding_source"), source_value(binding_source)),
+            ])),
+        },
+        crate::cli_run::ReferenceOccurrenceBindingDisposition::Unresolved => Value::Variant {
+            type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+            variant_name: ctx.sym("ReferenceOccurrenceUnresolved"),
+            fields: Rc::new(vec![]),
+        },
+        crate::cli_run::ReferenceOccurrenceBindingDisposition::Ambiguous { candidates } => {
+            Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceAmbiguous"),
+                fields: Rc::new(sorted_fields(vec![(
+                    ctx.sym("candidates"),
+                    list_value(candidates.into_iter().map(Value::Int).collect::<Vec<_>>()),
+                )])),
+            }
+        }
+        crate::cli_run::ReferenceOccurrenceBindingDisposition::Refused { cause } => {
+            Value::Variant {
+                type_name: ctx.sym("ReferenceOccurrenceBindingDisposition"),
+                variant_name: ctx.sym("ReferenceOccurrenceBindingRefused"),
+                fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+            }
+        }
+    };
+    Value::Record {
+        type_name: ctx.sym("ReferenceOccurrenceBindingRow"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("occurrence"),
+                Value::Int(row.denominator.occurrence),
+            ),
+            (
+                ctx.sym("consumer_file"),
+                str_value(row.denominator.consumer_file),
+            ),
+            (
+                ctx.sym("consumer_module"),
+                str_value(row.denominator.consumer_module),
+            ),
+            (
+                ctx.sym("authored_name"),
+                str_value(row.denominator.authored_name),
+            ),
+            (
+                ctx.sym("category"),
+                occurrence_category_value(&row.denominator.category, ctx),
+            ),
+            (
+                ctx.sym("file_reference_ordinal"),
+                Value::Int(row.denominator.file_reference_ordinal),
+            ),
+            (
+                ctx.sym("span_start"),
+                Value::Int(row.denominator.span_start),
+            ),
+            (ctx.sym("disposition"), disposition),
+        ])),
+    }
+}
+
+fn resolved_call_edge_census_value(
+    census: crate::cli_run::ResolvedCallEdgeCensus,
+    ctx: &InterpContext,
+) -> Value {
+    match census {
+        crate::cli_run::ResolvedCallEdgeCensus::Refused { cause } => Value::Variant {
+            type_name: ctx.sym("ResolvedCallEdgeCensus"),
+            variant_name: ctx.sym("ResolvedCallEdgeCensusRefused"),
+            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
+        },
+        crate::cli_run::ResolvedCallEdgeCensus::Observed { edges } => Value::Variant {
+            type_name: ctx.sym("ResolvedCallEdgeCensus"),
+            variant_name: ctx.sym("ResolvedCallEdgeCensusObserved"),
+            fields: Rc::new(sorted_fields(vec![(
+                ctx.sym("edges"),
+                list_value(
+                    edges
+                        .into_iter()
+                        .map(|edge| Value::Record {
+                            type_name: ctx.sym("ResolvedCallEdge"),
+                            fields: Rc::new(sorted_fields(vec![
+                                (ctx.sym("caller_module"), str_value(edge.caller_module)),
+                                (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
+                                (ctx.sym("callee_module"), str_value(edge.callee_module)),
+                                (ctx.sym("callee_decl"), str_value(edge.callee_decl)),
+                            ])),
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            )])),
+        },
+    }
+}
+
+fn evaluation_store_address_production_coverage_value(
+    coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
+    ctx: &InterpContext,
+) -> Value {
+    match coverage {
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::Qualified {
+            exact_resolved_roots,
+            zero_candidate_roots,
+        } => Value::Variant {
+            type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+            variant_name: ctx.sym("ProductionCoverageQualified"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("exact_resolved_roots"),
+                    list_value(
+                        exact_resolved_roots
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("zero_candidate_roots"),
+                    list_value(
+                        zero_candidate_roots
+                            .into_iter()
+                            .map(str_value)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+            ])),
+        },
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::Refused { root, path, cause } => {
+            Value::Variant {
+                type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+                variant_name: ctx.sym("ProductionCoverageRefused"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("root"), str_value(root)),
+                    (ctx.sym("path"), str_value(path)),
+                    (ctx.sym("cause"), str_value(cause)),
+                ])),
+            }
+        }
+        crate::cli_run::EvaluationStoreAddressProductionCoverage::CandidateOutsideExactResolution {
+            root,
+            path,
+            target_leaf,
+        } => Value::Variant {
+            type_name: ctx.sym("EvaluationStoreAddressProductionCoverage"),
+            variant_name: ctx.sym("CandidateOutsideExactResolution"),
+            fields: Rc::new(sorted_fields(vec![
+                (ctx.sym("root"), str_value(root)),
+                (ctx.sym("path"), str_value(path)),
+                (ctx.sym("target_leaf"), str_value(target_leaf)),
+            ])),
+        },
     }
 }
 
@@ -19242,6 +19690,26 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
             },
 
+            // ISSUANCE, THE KEY HOLDER'S OWN OPERATION, and a second primitive rather than a
+            // widening of verify: the verify arm above deliberately yields one bit, so a verifier
+            // is never handed a computed tag to compare in variable time. Minting is the only
+            // purpose a computed tag has, and with a symmetric MAC only the key holder (the
+            // broker) can perform it (extdeps.crypto.mac symmetric_verification_is_issuance_note).
+            //
+            // Same RustCrypto Hmac<Sha256>, same hex key spelling as verify. A key that is not
+            // hex answers ABSENT (the optional's null), never a tag: there is no key to have
+            // signed with, and a fabricated tag would be a plausible output standing where a
+            // refusal belongs. extdeps.crypto.mac mac_sign turns that absence into its typed arm.
+            arm "free_call.hmac_sha256_hex" { "hmac_sha256_hex" } => {
+                Ok(Some(match hmac_sha256_hex_tag(
+                    expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
+                    expect_value_str($positional.get(1).copied(), "hmac_sha256_hex message")?.as_str(),
+                ) {
+                    Some(tag) => str_value(tag),
+                    None => Value::Null,
+                }))
+            },
+
             arm "free_call.string_length" { "string_length" } => {
                 let s = expect_value_str($positional.first().copied(), "string_length")?;
                 Ok(Some(Value::Int(s.string_length())))
@@ -20222,6 +20690,20 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
+            arm "free_call.emit_rust_reference_derived_rows_bridge" { "emit_rust_reference_derived_rows_bridge" } => {
+                let source_roots = expect_str_list($positional.first().copied(), $name)?;
+                let repository = expect_str($positional.get(1).copied(), $name)?;
+                let measured_root_demands = expect_str($positional.get(2).copied(), $name)?;
+                Ok(Some(xl1_primary_root_tap_value(
+                    crate::cli_run::compile_xl1_primary_root_tap(
+                        &source_roots,
+                        &repository,
+                        &measured_root_demands,
+                    ),
+                    $ctx,
+                )))
+            },
+
             arm "free_call.compile_dag_rust_emit_check" { "compile_dag_rust_emit_check" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
                 let file_path = expect_str($positional.get(1).copied(), $name)?;
@@ -20268,6 +20750,54 @@ macro_rules! v1_builtin_arms {
                 let entry = expect_str($positional.get(2).copied(), $name)?;
                 Ok(Some(reference_occurrence_binding_census_value(
                     crate::cli_run::compile_dag_reference_occurrence_binding_census(&paths, &contents, &entry), $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_importer_resolved_call_edges" { "compile_dag_importer_resolved_call_edges" } => {
+                let import_modules = expect_str_list($positional.first().copied(), $name)?;
+                let exclude_substrings = expect_str_list($positional.get(1).copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(2).copied(), $name)?;
+                let target_leaves = expect_str_list($positional.get(3).copied(), $name)?;
+                Ok(Some(resolved_call_edge_census_value(
+                    crate::cli_run::compile_dag_importer_resolved_call_edges(
+                        &import_modules,
+                        &exclude_substrings,
+                        &pool_roots,
+                        &target_leaves,
+                    ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_callsite_resolved_call_edges" { "compile_dag_callsite_resolved_call_edges" } => {
+                let import_modules = expect_str_list($positional.first().copied(), $name)?;
+                let exclude_substrings = expect_str_list($positional.get(1).copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(2).copied(), $name)?;
+                let target_leaves = expect_str_list($positional.get(3).copied(), $name)?;
+                Ok(Some(resolved_call_edge_census_value(
+                    crate::cli_run::compile_dag_callsite_resolved_call_edges(
+                        &import_modules,
+                        &exclude_substrings,
+                        &pool_roots,
+                        &target_leaves,
+                    ),
+                    $ctx,
+                )))
+            },
+
+            arm "free_call.compile_dag_call_form_leaf_guard" { "compile_dag_call_form_leaf_guard" } => {
+                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
+                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
+                let target_leaves = expect_str_list($positional.get(2).copied(), $name)?;
+                let exact_resolved_roots = expect_str_list($positional.get(3).copied(), $name)?;
+                Ok(Some(evaluation_store_address_production_coverage_value(
+                    crate::cli_run::compile_dag_call_form_leaf_guard(
+                        &exclude_substrings,
+                        &pool_roots,
+                        &target_leaves,
+                        &exact_resolved_roots,
+                    ),
+                    $ctx,
                 )))
             },
 
@@ -21068,7 +21598,8 @@ fn record_call_frequency(func_name: &str) {
         "parse_table_record_miss",
         "parse_table_lookup",
         "parse_table_insert",
-        "parse_choice_residue_backtrack",
+        "parse_choice_plan",
+        "parse_choice_ordered_backtrack",
         "uri_percent_encode_scalar_fragment",
     ];
     let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
@@ -21826,6 +22357,48 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
         _ => Err(InterpError::TypeError {
             msg: format!("{} expects a string, got {}", context, val.type_label()),
         }),
+    }
+}
+
+/// The `hmac_sha256_hex` builtin's computation: the lowercase hex HMAC-SHA256 tag of `message`
+/// under the hex-encoded key, or `None` when the key is not hex -- no key, no tag.
+fn hmac_sha256_hex_tag(key_hex: &str, message: &str) -> Option<String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let key = hex::decode(key_hex).ok()?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(&key).ok()?;
+    mac.update(message.as_bytes());
+    Some(hex::encode(mac.finalize().into_bytes()))
+}
+
+#[cfg(test)]
+mod hmac_sha256_hex_tests {
+    use super::hmac_sha256_hex_tag;
+
+    // RFC 4231 publishes these so an implementation is checked against values it did not produce.
+    #[test]
+    fn rfc4231_case1_tag_is_produced() {
+        assert_eq!(
+            hmac_sha256_hex_tag("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b", "Hi There").as_deref(),
+            Some("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"),
+        );
+    }
+
+    #[test]
+    fn rfc4231_case2_tag_is_produced() {
+        assert_eq!(
+            hmac_sha256_hex_tag("4a656665", "what do ya want for nothing?").as_deref(),
+            Some("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"),
+        );
+    }
+
+    #[test]
+    fn a_key_that_is_not_hex_yields_no_tag() {
+        assert_eq!(
+            hmac_sha256_hex_tag("Jefe", "what do ya want for nothing?"),
+            None
+        );
+        assert_eq!(hmac_sha256_hex_tag("0b0", "Hi There"), None);
     }
 }
 
@@ -22765,6 +23338,7 @@ mod map_shell_outputs_optional_stream_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -22845,6 +23419,7 @@ mod map_shell_outputs_optional_stream_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -22869,6 +23444,7 @@ mod map_shell_outputs_optional_stream_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });

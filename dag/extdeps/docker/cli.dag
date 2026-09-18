@@ -2,6 +2,7 @@ module extdeps.docker.cli
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.nat { Nat }
+import std.measure { Second, second, second_count }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -142,8 +143,52 @@ fn docker_remove_force_command(name: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_binary_path, arguments: ["rm", "-f", name as String])
 }
 
-fn docker_stop_command(name: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: docker_binary_path, arguments: ["stop", name as String])
+// ── STOP, AND WHY THE GRACE PERIOD IS A PARAMETER RATHER THAN THE DAEMON'S DEFAULT ────────────
+//
+// `docker stop` WITHOUT `-t` GIVES THE PROCESS TEN SECONDS AND THEN SIGKILLs IT. For a shell that is
+// ample; for a tensor-parallel inference engine holding several tens of gigabytes of device memory
+// across four hosts it is not, and a rank killed mid-teardown leaves its peers waiting on a
+// collective that will never complete. The relaunch procedure this fleet actually performed used
+// `-t 30`, so the grace period is a value the caller states rather than one the daemon chooses.
+//
+// The `docker stop -t` flag takes SECONDS, which is why the parameter is a Second rather than a bare
+// Nat: a caller cannot hand it a millisecond figure and get a container killed three hundred times
+// too early.
+fn docker_stop_command(name: NonEmptyStr, grace: Second) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["stop", "-t", to_string(second_count(s: grace)), name as String])
+}
+
+// ── RENAME, WHICH IS HOW A CONTAINER IS PRESERVED RATHER THAN DESTROYED ───────────────────────
+//
+// THE OLD CONTAINER OBJECT IS THE ROLLBACK RECORD, and it is the only complete one: it carries the
+// exact argv, environment, mounts, device mappings and ulimits the daemon was given, in the daemon's
+// own accounting, with no transcription step that could lose a field. A `docker rm` followed by a
+// recreate-from-model would replace that record with this repository's belief about it -- and a
+// belief that was missing three fields is precisely what put this fleet on TCP for two and a half
+// days. So the incumbent is renamed aside and left on the host.
+fn docker_rename_command(name: NonEmptyStr, new_name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["rename", name as String, new_name as String])
+}
+
+// ── LOGS ──────────────────────────────────────────────────────────────────────────────────────
+//
+// THE WHOLE LOG, BECAUSE THE LINES THAT MATTER ARE AT THE BEGINNING. NCCL announces the network it
+// built once per communicator init, during startup, and the engine prints its KV residuals a few
+// seconds later; `--tail` returns the END of the stream, so a tailed read of a long-running engine
+// returns steady-state request logging and no announcement at all -- and the reader would then
+// report "no transport announced" for a rank that announced one perfectly well. No bounded arm is
+// offered, because an arm nothing constructs is a decoration that will be reached for by the next
+// author who wants the cheap read and does not know why it is the wrong one.
+//
+// THIS IS AN UNBOUNDED READ AND THAT IS A DECLARED COST, not an oversight: an engine logging at INFO
+// with NCCL_DEBUG=INFO produces a stream whose size grows with uptime, and this command transfers all
+// of it. TRIGGER for bounding it: a `--since`/`--until` window derived from the container's own
+// `State.StartedAt`, which extdeps.docker.container_inspect already decodes -- that needs instant
+// arithmetic over extdeps.time.rfc3339 (add a duration to a captured instant), which std does not
+// carry today. SUFFICIENT FOR: reading the startup announcement of a container that has been up for
+// weeks without transferring its steady-state log.
+fn docker_logs_command(name: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: docker_binary_path, arguments: ["logs", name as String])
 }
 
 // `docker exec` runs argv inside a running container; env assignments ride `--env`, never the
@@ -271,6 +316,22 @@ fn docker_container_inspect_command(name: NonEmptyStr) -> ArgvCommand {
 
 fn docker_image_inspect_names_no_such_image(stderr: String) -> Bool {
   string_contains(s: stderr, pattern: "No such image")
+}
+
+// THE DAEMON'S OWN WORDS FOR "THAT NAME IS NOT TAKEN", AND WHY THE DISTINCTION IS LOAD-BEARING.
+// `docker container inspect` exits non-zero for a container that does not exist AND for a daemon that
+// could not be reached, a socket permission failure, and a document this side could not parse. A
+// caller asking "is this name free" and reading any non-zero exit as "free" has answered yes for
+// every one of those -- which is the absorbing arm of DESIGN section 5 in the one place it costs an
+// outage, because the caller then renames onto a name that was taken and finds out after stopping
+// the thing it was protecting.
+//
+// SO THE MARKER IS CITED RATHER THAN THE EXIT CODE. This is the same shape as the image reader above
+// and carries the same limitation honestly: it is a string upstream prints, not a typed error code
+// the API surfaces, so a wording change upstream turns a free-name answer into an unread one -- which
+// is the safe direction, because an unread name refuses.
+fn docker_container_inspect_names_no_such_container(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "No such container")
 }
 
 type DockerImageInspectIdRead

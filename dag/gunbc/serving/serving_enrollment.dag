@@ -9,7 +9,7 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGro
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.glm_canary_converge { glm_canary_arm, SeqBound, ExperimentalOperatorBound, MeasuredFromLaunchLine }
-import gunbc.spark.serving_arm { glm_native_initial_profile }
+import gunbc.spark.serving_arm { glm_native_initial_profile, glm_native_concurrent_profile }
 
 // ── WHO WE MAY ASK IS NOT WHOSE HOSTS WE CLAIM ────────────────────────────────────────────────
 //
@@ -149,8 +149,8 @@ fn serving_route_ceiling(group: FabricGroup) -> ServingRouteTurnCeiling {
 // trigger to read that instead.
 fn serving_native_route_ceiling() -> ServingRouteTurnCeiling {
   CeilingFromRouteLaunch {
-    count: glm_native_initial_profile.max_num_seqs,
-    basis: "the sequence bound the native four-rank arm was launched with, carried on gunbc.spark.serving_arm glm_native_initial_profile; it is the engine's admitted concurrency and not a ceiling decided for this route" as NonEmptyStr,
+    count: glm_native_concurrent_profile.max_num_seqs,
+    basis: "the sequence bound the native four-rank arm was launched with, carried on gunbc.spark.serving_arm glm_native_concurrent_profile, the profile gunbc.spark.native_serving_realization renders; it is the engine's admitted concurrency and not a ceiling decided for this route" as NonEmptyStr,
   }
 }
 

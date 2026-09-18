@@ -1,6 +1,6 @@
 module test.claim.host_convergence_protocol_witness
 
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.goal_assessment {
   ObservationAttempt,
@@ -312,38 +312,41 @@ test fn frontier_self_trigger_is_red() -> Bool {
 test fn canonical_protocol_binds() -> Bool {
   match bind_canonical_protocol() {
     CanonicalFrontiersUnbound { frontiers: fs } =>
-      frontier_standings_await_routing(ss: fs)
+      plan_side_frontiers_honest_apply_still_unbound(ss: fs)
     CanonicalProtocolBound { frontiers: _ } => false
     CanonicalLayersUnbound { join: _ } => false
     CensusProtocolUnbound { standing: _ } => false
   }
 }
 
-fn frontier_standings_await_routing(ss: List<FrontierStanding>) -> Bool {
-  fold(ss, init: true, f: fn(ok, s) {
-    if ok {
-      match s {
-        FrontierTriggerIsTheConsumer { frontier: _ } => true
-        FrontierHonest => false
-        FrontierConsumerIsDeclaration { frontier: _ } => false
-        FrontierTriggerIsDeclaration { frontier: _ } => false
-      }
-    } else {
-      false
+fn plan_side_frontiers_honest_apply_still_unbound(ss: List<FrontierStanding>) -> Bool {
+  let c = fold(ss, init: StandingCensus { honest: 0, apply_unbound: 0 }, f: fn(acc, s) {
+    match s {
+      FrontierHonest => StandingCensus { honest: acc.honest + 1, apply_unbound: acc.apply_unbound }
+      FrontierTriggerIsTheConsumer { frontier: _ } =>
+        StandingCensus { honest: acc.honest, apply_unbound: acc.apply_unbound + 1 }
+      FrontierConsumerIsDeclaration { frontier: _ } => acc
+      FrontierTriggerIsDeclaration { frontier: _ } => acc
     }
   })
+  c.honest == 2 && c.apply_unbound == 1
 }
 
-test fn decide_frontiers_do_not_claim_routing_exists() -> Bool {
+type StandingCensus {
+  honest: Int
+  apply_unbound: Int
+}
+
+test fn plan_side_frontiers_are_honest_apply_is_not() -> Bool {
   match admit_frontier(f: host_effect_observe_frontier) {
-    FrontierTriggerIsTheConsumer { frontier: _ } => true
-    FrontierHonest => false
+    FrontierHonest => true
+    FrontierTriggerIsTheConsumer { frontier: _ } => false
     FrontierConsumerIsDeclaration { frontier: _ } => false
     FrontierTriggerIsDeclaration { frontier: _ } => false
   }
     && match admit_frontier(f: host_effect_decide_plan_frontier) {
-      FrontierTriggerIsTheConsumer { frontier: _ } => true
-      FrontierHonest => false
+      FrontierHonest => true
+      FrontierTriggerIsTheConsumer { frontier: _ } => false
       FrontierConsumerIsDeclaration { frontier: _ } => false
       FrontierTriggerIsDeclaration { frontier: _ } => false
     }
@@ -353,21 +356,4 @@ test fn decide_frontiers_do_not_claim_routing_exists() -> Bool {
       FrontierConsumerIsDeclaration { frontier: _ } => false
       FrontierTriggerIsDeclaration { frontier: _ } => false
     }
-}
-
-test fn host_convergence_protocol_keystone_holds() -> Bool {
-  control_2_observation_refusal_is_not_established_absence()
-    && control_3_divergence_names_a_deviation()
-    && control_4_noop_cannot_carry_an_application()
-    && control_5_refused_decision_cannot_carry_an_application()
-    && control_6_apply_cannot_converge_without_post_apply_readback()
-    && control_7_reused_pre_apply_reading_is_caught_by_independence()
-    && control_9_selection_cannot_occur_inside_observation_or_assessment()
-    && host_effect_domain_projection_inspects_without_selection()
-    && ensure_inaccessible_after_cannot_converge()
-    && canonical_protocol_binds()
-    && decide_frontiers_do_not_claim_routing_exists()
-    && canonical_layer_join_missing_required_layer_is_red()
-    && frontier_self_successor_is_red()
-    && frontier_self_trigger_is_red()
 }

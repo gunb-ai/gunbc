@@ -1,0 +1,235 @@
+module tools.approval_store_live_probe
+
+import std.types { Bool, NonEmptyStr, String, Timestamp, POST, Secret }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { ContentHash, Sha256Hash, Sha256Digest }
+import std.scoped_authorization { AttemptIdentity, AuthorizationRequest, AuthorizationGranted, AuthorizationDenied, AuthorizationPending }
+import extdeps.crypto.mac { MacKey, HmacSha256, MacSigned, MacKeyMaterialNotHex }
+import extdeps.tailscale.identity { tailnet_identity_of }
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
+import gunbc.auth.approval_broker { BrokerApproved, BrokerDenied }
+import gunbc.auth.approval_request_submission {
+  approval_submission_mac_key_id, sign_submission, submit_parsed_submission, submission_outcome_reason,
+  PublisherTokenUnavailable, SubmissionFiledPublisherTokenUnavailable, SubmissionAlreadyFiled, SubmissionRefused, SubmissionNotEnrolled,
+}
+import gunbc.auth.approval_decision_store {
+  ApprovalKeyLoaded, approval_mac_key_id,
+  StoredApprovalRequest, file_approval_request, StoreWritten, StoreSlotOccupied, StoreRefused,
+  capability_path_segment, IdentityHeaderTrustEstablished,
+  redeem_over_store, RedeemedApproved, RedeemedDenied, AlreadyDecided, RedemptionEscalationNotFiled, RedemptionBrokerRefused,
+  store_redemption_reason,
+  grant_from_store, GrantDerived, GrantStillPending, GrantEscalationNotFiled, GrantForAnotherIntent, GrantStoreUnreadable,
+}
+
+// THE LIVE RECEIPT FOR THE EFFECTFUL HALF OF THE APPROVAL DECISION STORE, which the hermetic
+// witness (test.claim.approval_decision_store_witness_test) cannot reach: a request filed into a
+// real slot, an approve tap that wins generation 2, a deny tap that then loses the race and changes
+// nothing, a second approve tap that reports the standing decision, and the workflow-side join that
+// turns the stored decision into an OperatorGrant for the exact intent. Run it as
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/approval_store_live_probe.dag --function approval_store_live_probe \
+//     --arg root=<an existing EMPTY directory>
+//
+// THE IDENTITY TRUST IS A FIXTURE HERE, deliberately: this probe exercises the store, not the
+// deployment, so it passes IdentityHeaderTrustEstablished with the probe named as its evidence.
+// The production row (approval_identity_trust) is derived from srv1_live_dashboard_instance.listen_host
+// and stays NotEstablished while that row binds 0.0.0.0; the loopback row (#11484) opens it.
+
+// The same fixture the hermetic witness uses: tags computed outside the substrate over the
+// signing input under this key, so a tag the store did not mint still has to verify against
+// the claims the store holds.
+data probe_key_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+data probe_approve_tag: NonEmptyStr = "d1f1f1034370302f1405bd0bcd71e907c079ead5bf912da095cbe110d7876663"
+data probe_deny_tag: NonEmptyStr = "0df108f82248bc3803c611a779d10108a581aecc68a46904a54a95b25e9e9c68"
+data probe_escalation: NonEmptyStr = "esc-mtc1-boot-1"
+data probe_revision: NonEmptyStr = "sha256:abababababababababababababababababababababababababababababababab"
+data probe_attempt: AttemptIdentity = "mtc1-boot-attempt-1" as AttemptIdentity
+data probe_operator: String = "briansrls@gmail.com"
+data probe_now: Timestamp = "2026-09-16T21:00:00Z"
+data probe_execute_by: Timestamp = "2026-09-17T20:00:00Z"
+
+fn probe_key() -> MacKey {
+  MacKey { id: approval_mac_key_id, suite: HmacSha256, material: probe_key_hex as Secret }
+}
+
+fn probe_request() -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: probe_escalation,
+    request_revision: probe_revision,
+    attempt: probe_attempt,
+    requester: "eager-owl-205",
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    destructive: true,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: "2026-09-17T20:00:00Z",
+    key_id: approval_mac_key_id,
+  }
+}
+
+fn probe_redeem(root: NonEmptyStr, decision_segment: NonEmptyStr, identity: String) -> String {
+  store_redemption_reason(r: redeem_over_store(
+    root: root,
+    trust: IdentityHeaderTrustEstablished { evidence: "tools.approval_store_live_probe fixture: exercising the store, not the deployment" },
+    keyring: ApprovalKeyLoaded { key: probe_key() },
+    method: POST,
+    segment: decision_segment as String,
+    presented_identity: tailnet_identity_of(header_value: identity),
+    observed_at: probe_now,
+  ))
+}
+
+type ProbeSubject { unit: NonEmptyStr }
+
+// A workflow-side request whose intent hash renders to the SAME revision the stored request carries
+// -- the join succeeds -- and a sibling whose revision differs, for which the join must refuse.
+fn probe_workflow_request(intent_hex: String) -> AuthorizationRequest<ProbeSubject> {
+  AuthorizationRequest {
+    escalation_id: probe_escalation,
+    scopes: [],
+    subject: ProbeSubject { unit: "mtcollins1" },
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    attempt: probe_attempt,
+    intent_hash: Sha256Hash(Sha256Digest { hex: intent_hex }),
+    destructive: true,
+  }
+}
+
+data probe_intent_hex: String = "abababababababababababababababababababababababababababababababab"
+data probe_other_intent_hex: String = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+
+fn join_word(root: NonEmptyStr, intent_hex: String) -> String {
+  match grant_from_store(root: root, request: probe_workflow_request(intent_hex: intent_hex)) {
+    GrantDerived { authorization: a } => match a {
+      AuthorizationGranted { grant: g, claim: _ } => if g.granted_by == "briansrls@gmail.com" && g.expires_at == probe_execute_by { "granted" } else { "granted-with-wrong-fields" }
+      AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => "denied"
+      AuthorizationPending { request: _ } => "pending"
+    }
+    GrantStillPending { escalation_id: _ } => "still-pending"
+    GrantEscalationNotFiled { escalation_id: _ } => "not-filed"
+    GrantForAnotherIntent { requested_revision: _, decided_revision: _ } => "another-intent"
+    GrantStoreUnreadable { detail: d } => concat("unreadable: ", d as String)
+  }
+}
+
+fn approval_store_live_probe(root: String) -> ProcessExit {
+  if root == "" {
+    exit_failure(reason: "approval store live probe: --arg root=<empty directory> is required")
+  } else {
+    let r = root as NonEmptyStr
+    let approve_seg = capability_path_segment(escalation_id: probe_escalation, decision: ProposeApprove, tag_hex: probe_approve_tag)
+    let deny_seg = capability_path_segment(escalation_id: probe_escalation, decision: ProposeDeny, tag_hex: probe_deny_tag)
+    let before = probe_redeem(root: r, decision_segment: approve_seg, identity: probe_operator)
+    let filed = match file_approval_request(root: r, request: probe_request()) { StoreWritten => "written"  StoreSlotOccupied => "occupied"  StoreRefused { detail: d } => d as String }
+    let refiled = match file_approval_request(root: r, request: probe_request()) { StoreWritten => "written"  StoreSlotOccupied => "occupied"  StoreRefused { detail: d } => d as String }
+    let stranger = probe_redeem(root: r, decision_segment: approve_seg, identity: "someone-else@gmail.com")
+    let wrong_tag = probe_redeem(root: r, decision_segment: capability_path_segment(escalation_id: probe_escalation, decision: ProposeApprove, tag_hex: probe_deny_tag), identity: probe_operator)
+    let approved = probe_redeem(root: r, decision_segment: approve_seg, identity: probe_operator)
+    let deny_after = probe_redeem(root: r, decision_segment: deny_seg, identity: probe_operator)
+    let approve_again = probe_redeem(root: r, decision_segment: approve_seg, identity: probe_operator)
+    let joined = join_word(root: r, intent_hex: probe_intent_hex)
+    let other = join_word(root: r, intent_hex: probe_other_intent_hex)
+    let report = join([
+      "before-filing=", before, "\nfiled=", filed, "\nrefiled=", refiled, "\nstranger=", stranger, "\nwrong-tag=", wrong_tag,
+      "\napproved=", approved, "\ndeny-after=", deny_after, "\napprove-again=", approve_again, "\njoined=", joined, "\nother-intent=", other,
+    ], "")
+    if contains(before, "no request is filed") && filed == "written" && refiled == "occupied"
+      && contains(stranger, "identity") && contains(wrong_tag, "tag") && approved == "approved and recorded"
+      && deny_after == "this escalation was already decided; nothing changed"
+      && approve_again == "this escalation was already decided; nothing changed"
+      && joined == "granted" && other == "another-intent"
+    {
+      ExitSuccess
+    } else {
+      exit_failure(reason: concat("approval store live probe: a stage did not answer as the store's law requires\n", report))
+    }
+  }
+}
+
+// THE FILING SIDE OVER A REAL STORE, publish excepted: a run signs a request with the submission
+// key, the server admits it and files generation 1; the SAME bytes filed again re-notify (the
+// retry path for a failed publish, so with the fixture publisher the answer is the token refusal
+// a second time), and DIFFERENT bytes under the same escalation id report the slot occupied.
+// The publisher token is a fixture refusal so no message leaves this probe; the publish leg's
+// receipt is part D's first real run. A request signed with the CAPABILITY key is refused as not
+// enrolled, over the same store.
+data probe_submission_key_hex: String = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+
+fn probe_submission_key() -> MacKey {
+  MacKey { id: approval_submission_mac_key_id, suite: HmacSha256, material: probe_submission_key_hex as Secret }
+}
+
+type ProbeSubmitStanding
+  = ProbeNotEnrolled
+  | ProbeFiledTokenUnavailable
+  | ProbeAlreadyFiled
+  | ProbeOther { reason: String }
+
+// A SECOND REQUEST UNDER THE SAME ESCALATION ID WITH DIFFERENT BYTES: the slot is occupied by the
+// first, and different bytes may not re-notify, so this is the input that reaches AlreadyFiled.
+fn probe_request_other_bytes() -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: probe_escalation,
+    request_revision: probe_revision,
+    attempt: "mtc1-boot-attempt-2" as AttemptIdentity,
+    requester: "eager-owl-205",
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    destructive: true,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: "2026-09-17T20:00:00Z",
+    key_id: approval_mac_key_id,
+  }
+}
+
+fn probe_submit(root: NonEmptyStr, signer: MacKey, request: StoredApprovalRequest) -> ProbeSubmitStanding {
+  match sign_submission(key: signer, request: request) {
+    MacKeyMaterialNotHex { key_id: _ } => ProbeOther { reason: "unsigned" }
+    MacSigned { tag: t } => {
+      let outcome = submit_parsed_submission(
+        root: root,
+        submission_keyring: ApprovalKeyLoaded { key: probe_submission_key() },
+        capability_keyring: ApprovalKeyLoaded { key: probe_key() },
+        publisher: PublisherTokenUnavailable { path: "/etc/gunbc-ntfy/publisher-token", detail: "probe fixture: no message leaves this probe" },
+        tag_hex: t.hex,
+        request: request,
+      )
+      match outcome {
+        SubmissionRefused { refusal: SubmissionNotEnrolled { detail: _ } } => ProbeNotEnrolled
+        SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => ProbeFiledTokenUnavailable
+        SubmissionAlreadyFiled { escalation_id: _ } => ProbeAlreadyFiled
+        other => ProbeOther { reason: submission_outcome_reason(o: other) }
+      }
+    }
+  }
+}
+
+fn probe_submit_word(s: ProbeSubmitStanding) -> String {
+  match s {
+    ProbeNotEnrolled => "not-enrolled"
+    ProbeFiledTokenUnavailable => "filed-publisher-token-unavailable"
+    ProbeAlreadyFiled => "already-filed"
+    ProbeOther { reason: r } => concat("other: ", r)
+  }
+}
+
+fn approval_submission_live_probe(root: String) -> ProcessExit {
+  if root == "" {
+    exit_failure(reason: "approval submission live probe: --arg root=<empty directory> is required")
+  } else {
+    let r = root as NonEmptyStr
+    let wrong_key = probe_submit(root: r, signer: probe_key(), request: probe_request())
+    let filed = probe_submit(root: r, signer: probe_submission_key(), request: probe_request())
+    let renotified = probe_submit(root: r, signer: probe_submission_key(), request: probe_request())
+    let other_bytes = probe_submit(root: r, signer: probe_submission_key(), request: probe_request_other_bytes())
+    let report = join(["wrong-key=", probe_submit_word(s: wrong_key), "\nfiled=", probe_submit_word(s: filed), "\nrenotified=", probe_submit_word(s: renotified), "\nother-bytes=", probe_submit_word(s: other_bytes)], "")
+    let ok = match wrong_key { ProbeNotEnrolled => true  _ => false }
+      && match filed { ProbeFiledTokenUnavailable => true  _ => false }
+      && match renotified { ProbeFiledTokenUnavailable => true  _ => false }
+      && match other_bytes { ProbeAlreadyFiled => true  _ => false }
+    if ok {
+      ExitSuccess
+    } else {
+      exit_failure(reason: concat("approval submission live probe: a stage did not answer as the filing law requires\n", report))
+    }
+  }
+}

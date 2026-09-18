@@ -1,0 +1,154 @@
+module test.claim.machine_intake_mtcollins1_bmc_secure_standing_witness_test
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.ipmi_channel { ipmi_controller_channel_census }
+import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
+import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.machine_intake_subject { UnitKeyBound, UnitKeyRefused }
+import gunbc.machine_intake_bmc_secure {
+  BmcSecured,
+  BmcSecureRefused,
+  CredentialAccepted,
+  PublishedCredentialCensusNotTaken,
+  PublishedCredentialCensusPrecedesRotation,
+  PublishedCredentialRetired,
+  RotationApplied,
+  derive_bmc_secure,
+  observed_bmc_credential_rotation,
+}
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
+  mtcollins1_bmc_secure_standing,
+  mtcollins1_bootstrap_at,
+  mtcollins1_channel_census,
+  mtcollins1_credential_rotation_observation,
+  mtcollins1_intake_subject,
+  mtcollins1_managed_credential,
+  mtcollins1_managed_probe_at,
+  mtcollins1_prerotation_evidence,
+  mtcollins1_published_probes,
+  mtcollins1_published_user,
+  mtcollins1_rotation_applied_at,
+  mtcollins1_secured_account,
+  mtcollins1_unit_key_standing,
+  mtcollins1_user2_retire_at,
+  mtcollins1_user2_retire_evidence,
+  mtcollins1_user3_route_evidence,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn unit1_unit_key_is_bound_by_bind_unit_key() -> Bool {
+  match mtcollins1_unit_key_standing {
+    UnitKeyBound { key: _ } => true
+    UnitKeyRefused { cause: _ } => false
+  }
+}
+
+test fn unit1_channel_census_mints_bmc_secured_with_managed_secret() -> Bool {
+  match mtcollins1_intake_subject() {
+    Absent => false
+    Present { value: subject } =>
+      match mtcollins1_credential_rotation_observation() {
+        Absent => false
+        Present { value: observation } =>
+          match mtcollins1_bmc_secure_standing() {
+            Absent => false
+            Present { value: standing } =>
+              match standing.outcome {
+                BmcSecured { endpoint: _, reference: r, evidence: _, latest_admitted_probe_at: _, published_credential: acc } =>
+                  r == mtcollins1_managed_credential
+                    && r.secret == mtcollins1_bmc_gunbc_secret_ref
+                    && r.secret.version == "2"
+                    && match acc {
+                      PublishedCredentialRetired { evidence: e, observed_at: at } =>
+                        e == mtcollins1_user2_retire_evidence && at == mtcollins1_user2_retire_at
+                      _ => false
+                    }
+                    && standing == derive_bmc_secure(
+                      subject: subject,
+                      observation: observation,
+                      policy: intake_qualification_policy(environment: DevelopmentAndTest),
+                    )
+                    && match mtcollins1_secured_account() {
+                      Present { value: account } => account == r.account
+                      Absent => false
+                    }
+                BmcSecureRefused { cause: _ } => false
+              }
+          }
+      }
+  }
+}
+
+test fn unit1_single_address_without_census_refuses() -> Bool {
+  match mtcollins1_intake_subject() {
+    Absent => false
+    Present { value: subject } =>
+      match mtcollins1_credential_rotation_observation() {
+        Absent => false
+        Present { value: observation } =>
+          match derive_bmc_secure(
+            subject: subject,
+            observation: observed_bmc_credential_rotation(
+              subject: observation.subject,
+              endpoint: observation.endpoint,
+              previous_credential_epoch: observation.previous_credential_epoch,
+              bootstrap_probe: observation.bootstrap_probe,
+              rotation: observation.rotation,
+              managed_probe: observation.managed_probe,
+              channel_census: ipmi_controller_channel_census(members: [], user_access: []),
+              census_evidence: observation.census_evidence,
+              census_observed_at: observation.census_observed_at,
+              published_probes: observation.published_probes,
+              published_user: observation.published_user,
+              published_account: observation.published_account,
+            ),
+            policy: intake_qualification_policy(environment: DevelopmentAndTest),
+          ).outcome {
+            BmcSecureRefused { cause: c } => c == PublishedCredentialCensusNotTaken
+            BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => false
+          }
+      }
+  }
+}
+
+test fn unit1_census_before_rotation_refuses() -> Bool {
+  match mtcollins1_intake_subject() {
+    Absent => false
+    Present { value: subject } =>
+      match mtcollins1_credential_rotation_observation() {
+        Absent => false
+        Present { value: observation } =>
+          match derive_bmc_secure(
+            subject: subject,
+            observation: observed_bmc_credential_rotation(
+              subject: subject,
+              endpoint: observation.endpoint,
+              previous_credential_epoch: 0,
+              bootstrap_probe: CredentialAccepted { evidence: mtcollins1_prerotation_evidence, observed_at: mtcollins1_bootstrap_at },
+              rotation: RotationApplied {
+                reference: mtcollins1_managed_credential,
+                applied_at: mtcollins1_rotation_applied_at,
+                evidence: mtcollins1_user3_route_evidence,
+              },
+              managed_probe: CredentialAccepted { evidence: mtcollins1_user3_route_evidence, observed_at: mtcollins1_managed_probe_at },
+              channel_census: mtcollins1_channel_census,
+              census_evidence: mtcollins1_user3_route_evidence,
+              census_observed_at: mtcollins1_bootstrap_at,
+              published_probes: mtcollins1_published_probes,
+              published_user: mtcollins1_published_user,
+              published_account: observation.published_account,
+            ),
+            policy: intake_qualification_policy(environment: DevelopmentAndTest),
+          ).outcome {
+            BmcSecureRefused { cause: c } =>
+              c == PublishedCredentialCensusPrecedesRotation {
+                applied_at: mtcollins1_rotation_applied_at,
+                observed_at: mtcollins1_bootstrap_at,
+              }
+            BmcSecured { endpoint: _, reference: _, evidence: _, latest_admitted_probe_at: _, published_credential: _ } => false
+          }
+      }
+  }
+}

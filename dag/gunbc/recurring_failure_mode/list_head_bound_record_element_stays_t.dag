@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.list_head_bound_record_element_stays_t
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data list_head_bound_record_element_stays_t: RecurringFailureMode = RecurringFailureMode {
+  identity: "list_head_bound_record_element_stays_t" as NonEmptyStr,
+
+  receipts: [
+    "**CLASS: list_head / list_tail bind a record element as T, so a field read on that binder is unwritable.** INVALID STATE: `match list_head(xs: alts) { HeadFound { value: alt } => alt.tree }` where `alts: List<PreparedExprFold>` typechecks as `no field 'tree' on type 'T'`. The same field read is writable on a function parameter of that record type, and `fold_list` `cons: fn(acc, p) { p.name }` over `root.productions` instantiates (v2.compiler.parse `compute_grammar_first_analysis_given`).",
+
+    "HARM: the author mints a projector `fn prepared_expr_fold_tree(alt: PreparedExprFold) -> PreparedGrammarExpr { alt.tree }` and calls it from the binder. That is a second name for a field the record already names (DESIGN section 3 nicknaming), standing in for element-binding refinement the seed does not perform. Deleting the projector greens nothing: typecheck fails, so the workaround is load-bearing until the binder refines.",
+
+    "MEASURED SPECIMEN (2026-09-16, gunbc#11422). After review 66856 deleted the projectors, heal-generated-artifacts refused `02_parse.dag` at `concat_prepared_alt_residue` (`no field 'residue' on type 'T'`). Recursion via `Cons { head: alt }` left `alt` as T. `list_head` plus a typed projector typechecked; `list_head` plus `alt.residue` did not. `fold_list` over `PreparedExprFold` had the same hole; `fold_list` over `GrammarProduction` did not.",
+
+    "DISTINGUISHING FACTS versus `unmarked_workaround`: that class is routing around an unnamed obstacle. This class names the obstacle -- HeadFound value on List of some records stays T -- and keeps the projector only as the inhabitance wall that instantiates the record. versus `builtin_element_domain_exceeds_seed_realization`: that is a domain the seed cannot inhabit; this is a domain the seed inhabits (the record exists) but does not refine through one destructor.",
+
+    "RUNG FOUND AT: 1, mitigatable -- typed projectors at the call site. CEILING: 3, structurally guaranteed, once HeadFound { value } on List<R> types the binder as R for every record R. NEXT-RUNG TRIGGER: the seed's match refinement of list_head / ListHeadResult instantiates T from the scrutinee List element, so a field read on the bound value typechecks without a projector. SUFFICIENT FOR: deleting prepared_expr_fold_tree / _first / _residue and token_prefix_row_prefix / _next and having v2.compiler.parse typecheck.",
+  ],
+
+  evidence: [],
+}

@@ -12,7 +12,7 @@ import extdeps.zhipu.glm_5_3_flash { glm_5_3_flash_mla_pe_dim }
 import gunbc.spark.serving_arm {
   GlmNativeKvCacheDtypeAdmission, GlmNativeKvCacheDtypeAdmitted, GlmNativeKvCacheDtypeRefused,
   GlmNativeEngineBuild, GlmNativeEngineStockG385dce36b, GlmNativeEngineDerived8d09804,
-  glm_native_kv_cache_dtype_admission, glm_native_initial_profile,
+  glm_native_kv_cache_dtype_admission, glm_native_initial_profile, glm_native_concurrent_profile,
   glm_native_engine_build, glm_native_engine_build_image,
 }
 import gunbc.spark.native_serving_realization { glm_native_image_reference }
@@ -87,8 +87,11 @@ test fn the_wire_map_spells_the_engines_own_choices() -> Bool {
 // edit sets the profile to a dtype the build refuses, or moves the declared build without
 // re-deriving the dtype. Mechanically preventable, as stated on the admission type; the
 // structural rung waits on a profile constructor taking the admission as an argument.
+// BOTH NATIVE SUBJECTS ARE GATED, and the concurrent one is the one that matters most: it is the
+// profile gunbc.spark.native_serving_realization renders into the live launch.
 test fn the_native_arm_profile_carries_an_admitted_dtype() -> Bool {
   admitted_on(build: glm_native_engine_build, dtype: glm_native_initial_profile.kv_cache_dtype)
+    && admitted_on(build: glm_native_engine_build, dtype: glm_native_concurrent_profile.kv_cache_dtype)
 }
 
 // THE IMAGE THE ARM RUNS IS THE DECLARED BUILD'S IMAGE: native_serving_realization derives its

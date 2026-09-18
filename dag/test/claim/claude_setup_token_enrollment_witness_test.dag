@@ -512,37 +512,3 @@ test fn witness_setup_token_challenge_refuses_url_line_without_token() -> Bool {
     SetupTokenChallengeParsed { challenge: _ } => false
   }
 }
-
-test fn claude_setup_token_enrollment_keystone_holds() -> Bool {
-  witness_secret_version_refuses_latest()
-    && witness_secret_version_refuses_empty()
-    && witness_secret_version_admits_exact()
-    && witness_enrollment_initiation_refuses_sdk_path()
-    && witness_enrollment_initiation_admits_cli_path()
-    && witness_cold_start_refuses_ambient_prerequisite()
-    && witness_cold_start_admits_isolated_context()
-    && witness_credential_write_back_refuses_unchanged_digest()
-    && witness_credential_write_back_admits_changed_digest()
-    && witness_credential_write_back_refuses_missing_observation()
-    && witness_setup_token_capture_refuses_multiple_candidates()
-    && witness_setup_token_capture_refuses_format_unobserved()
-    && witness_setup_token_capture_refuses_no_candidate()
-    && witness_setup_token_capture_refuses_malformed_prefix()
-    && witness_setup_token_capture_refuses_malformed_length()
-    && witness_setup_token_capture_admits_single_candidate()
-    && witness_setup_token_challenge_extracts_https_url_from_sentence()
-    && witness_setup_token_challenge_refuses_url_line_without_token()
-    && witness_paired_probe_native_limit_encoding()
-    && witness_rejected_credential_emits_reconnect_action()
-    && witness_usable_credential_emits_no_enrollment_action()
-    && witness_absent_credential_emits_connect_action()
-    && witness_writer_lease_refuses_concurrent_holder()
-    && witness_writer_lease_refuses_newer_binding()
-    && witness_writer_lease_grants_absent_incumbent()
-    && witness_writer_lease_publish_refuses_stale_epoch()
-    && witness_writer_lease_publish_grants_current_epoch()
-    && witness_enrollment_placement_refuses_unbound_operator_choices()
-    && witness_enrollment_workflow_refuses_host_effects_scaffold()
-    && witness_exact_secret_version_binding_admits_write_and_readback()
-    && witness_setup_token_standing_is_rotation_unobserved_by_default()
-}

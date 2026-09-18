@@ -238,14 +238,6 @@ test fn ts_sg2_instantiation_delimiters_bidirectional() -> Bool {
     row.instantiation_form.close == ^ts_token_gt
 }
 
-test fn witness_ts_sg2_projected_serialize_holds() -> Bool {
-  ts_sg2_projection_matches_golden()
-    && ts_sg2_arrow_projected_serialize_matches_expected()
-    && ts_sg2_conj_projected_serialize_matches_expected()
-    && ts_sg2_instantiation_projected_serialize_matches_expected()
-    && ts_sg2_disj_projected_serialize_matches_expected()
-}
-
 test fn ts_sg2_arrow_projection_matches_golden() -> Bool {
   content_hash(n: ts_sg2_project_arrow_emitted()) == content_hash(n: ts_sg2_arrow_xy_emitted())
 }

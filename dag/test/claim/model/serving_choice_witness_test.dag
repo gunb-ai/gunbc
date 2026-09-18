@@ -444,8 +444,6 @@ test fn w_the_real_roster_refuses_while_the_higher_rank_is_unresolved() -> Bool 
   }
 }
 
-
-
 // THE POSITIVE CONTROL FOR THE FOOTPRINT AXIS: the 2-bit build IS resident-established at the floor,
 // so the refusal above is not a footprint carrier that answers nothing. Its qualifying reading is
 // the 400,000 one rather than the 1,048,576 one -- the tightest sound bound at or beyond the floor.
@@ -1482,46 +1480,6 @@ test fn w_an_observed_request_override_moves_the_bound_the_server_default_set() 
       context_override: RequestContextOverrideObserved { effective_context: token_count(count: 500000) }))
 }
 
-test fn w_all_serving_choice_claims_hold() -> Bool {
-  w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved()
-    && w_the_real_roster_refuses_while_the_higher_rank_is_unresolved()
-    && w_the_two_bit_build_is_resident_established_at_the_floor()
-    && w_a_shallow_or_more_concurrent_demand_has_no_qualifying_footprint()
-    && w_the_higher_quality_candidate_wins_when_both_are_admissible()
-    && w_a_declared_context_never_qualifies_without_a_retrieval_receipt()
-    && w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor()
-    && w_tied_quality_ranks_refuse_in_both_roster_orders()
-    && w_nothing_admissible_refuses_and_reports_every_rejection()
-    && w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor()
-    && w_a_warm_floor_over_fresh_only_receipts_is_unanswerable()
-    && w_evidence_from_another_realization_or_node_cannot_qualify()
-    && w_a_retrieval_receipt_from_another_realization_does_not_qualify()
-    && w_a_prefill_receipt_from_another_realization_does_not_qualify()
-    && w_only_a_typed_memory_refusal_rejects_on_memory()
-    && w_contradictory_attempts_refuse_in_both_orders_and_at_both_magnitudes()
-    && w_a_success_at_the_floor_survives_an_oom_above_it()
-    && w_one_candidate_answers_admissible_quiet_and_rejected_busy()
-    && w_the_large_buffer_success_alone_still_admits()
-    && w_a_refusal_generalizes_to_no_easier_point_but_a_success_does()
-    && w_the_concurrency_axis_carries_the_same_asymmetry()
-    && w_a_prefill_reading_at_lower_concurrency_or_another_node_does_not_qualify()
-    && w_a_busier_prefill_reading_does_not_answer_a_quieter_demand()
-    && w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved()
-    && w_a_cross_family_semantic_receipt_refuses_rather_than_reading_as_unverified()
-    && w_a_cross_family_prefill_receipt_refuses_rather_than_reading_as_unmeasured()
-    && w_a_redundant_incomparable_success_does_not_overturn_established_fit()
-    && w_an_incomparable_exact_refusal_beside_a_success_still_stalls()
-    && w_two_failures_differing_only_in_cause_report_the_same_one_in_both_orders()
-    && w_an_irrelevant_cross_family_reading_does_not_stall_the_candidate()
-    && w_a_slower_incomparable_prefill_beside_a_passing_one_stalls_at_the_rate_floor()
-    && w_an_incomparable_exact_failure_beside_a_comparable_one_stalls_in_both_orders()
-    && w_the_same_two_prefill_rows_answer_once_their_identity_is_comparable()
-    && w_the_same_two_failures_report_a_cause_once_their_identity_is_comparable()
-    && w_a_point_its_configuration_could_not_have_produced_has_no_observation()
-    && w_an_observed_request_override_moves_the_bound_the_server_default_set()
-    && w_realization_comparison_reaches_all_three_states_and_different_wins()
-}
-
 // ======================= THE ANSWERABILITY CLAIMS =======================
 // Each arm below must be REACHABLE. An Unanswerable variant nothing can construct would be a
 // decoration that reads as coverage, so every one of these builds the state and observes it.
@@ -1613,13 +1571,6 @@ test fn w_two_admissible_releases_refuse_for_want_of_a_cross_release_order() -> 
 // no arithmetic left to malform. Retaining the witness would have meant retaining the carrier to
 // give it something to test, which is a check keeping its own subject alive.
 
-
-test fn w_all_answerability_claims_hold() -> Bool {
-  w_an_unmeasured_candidate_is_unanswerable_not_rejected()
-    && w_selection_refuses_while_an_unresolved_candidate_could_win()
-    && w_two_admissible_releases_refuse_for_want_of_a_cross_release_order()
-
-}
 
 // A TIE HAS NO MAXIMUM. Two admissible candidates of the SAME release at the SAME rank must refuse
 // rather than yield to roster order. The second call reverses the roster: a tie-break by position

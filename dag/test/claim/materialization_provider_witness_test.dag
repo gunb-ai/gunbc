@@ -1,6 +1,6 @@
 module test.claim.materialization_provider_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash,
   Fnv1a64,
@@ -8,7 +8,11 @@ import std.content_hash {
   as_content_hash_cryptographic,
   as_content_hash_structural,
   Fnv1a64Structural,
+  HashFamily, Fnv1a64StructuralFamily, Sha256Family, Sha1Family,
   sha256_hex_digest,
+  sha1_hex_digest,
+  as_content_hash_sha1,
+  content_hash_family,
 }
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.cache_identity {
@@ -23,6 +27,8 @@ import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingEnforcement, MissingConcept,
   identity_grade_is_known
 }
+import std.decl_ref { DeclarationRef }
+import std.dissolution { dissolution_description }
 import std.materialization_ladder { IdempotentEffect }
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
@@ -30,14 +36,27 @@ import std.materialization_provider {
   ArtifactOutputId, CarriedOutput, ArtifactPart,
   ParsedArtifact, TypedModuleArtifact, ResolvedGraphArtifact, LegacyIncompleteArtifact,
   artifact_content_digest, artifact_bytes, artifact_carried_outputs, artifact_kind,
-  ProviderProbe, ProbeAbsent, ProbeFound,
+  ProviderProbe, ProbeAbsent,
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
   NativeCompilerArtifactRequest, UniverseArtifactRequest, NativeModuleVerdictBundleRequest,
   NativeModuleVerdictBundleSubject,
   request_key, request_kind, request_required_outputs,
   request_judgment_contract, SemanticOnly, Scoped,
+  DemandIdentity, EvaluationIdentity, ResultContentIdentity, EvaluationResultBinding,
+  EvaluationResultConsistent, EvaluationContentConflict, EvaluationResultHashFamilyIncomparable,
+  EvaluationResultUnverifiable,
+  InProcessIndexScope, PersistentStoreScope, CrossRunScope,
+  HashFamilyAdmittedForScope, StructuralFingerprintRefusedAsStoreKey, FamilyNotAdmittedForRelation,
+  Admitted, FamilyRefused, CryptographicAddressStanding, PreimageVerifiedBucketStanding,
+  demand_identity_canonical, demand_identity_decode,
+  evaluation_store_address, evaluation_store_address_digest, evaluation_store_address_preimage,
+  request_evaluation_identity, result_content_identity, evaluation_identity_canonical,
+  two_parses_occurrence_qualification_frontier,
+  admit_hash_family_for_scope, evaluation_result_binding_outcome,
+  artifact_request_key,
   provider_serve, provider_admit, artifact_completeness, admission_fold,
-  compiler_identity_input,
+  compiler_identity_input, in_process_materialization,
+  in_process_fnv_producer_observation_frontier,
   output_parse_tree, output_typed_module_interface,
   output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union,
   output_list_contains,
@@ -45,8 +64,10 @@ import std.materialization_provider {
   lookup_is_refused_kind_mismatch,
   lookup_is_refused_wrong_artifact, lookup_is_refused_wrong_content,
   lookup_is_refused_cross_family_content_hash,
+  lookup_fold, ProviderLookup,
   lookup_refused_incomplete_missing, lookup_served_identity,
   serve_resolved_graph_stored_disk_probe,
+  serve_resolved_graph_incomplete_stored_disk_probe,
   admission_is_admitted, admission_evicted_keys,
   admission_is_budget_exhausted, admission_refused_incomplete_missing,
   admission_is_refused_incomplete_write, admission_is_refused_kind_mismatch_write,
@@ -57,12 +78,44 @@ import extdeps.realization.resolved_graph { resolved_graph_cache_id }
 import gunbc.materialization_provider_targets {
   materialization_provider_target_count,
   materialization_provider_targets_contain,
-  materialization_provider_targets_all_bound
+  materialization_provider_targets_all_bound,
 }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn lookup_is_refused_evaluation_preimage_mismatch(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => true,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => false
+  )
+}
+
+fn lookup_is_refused_unqualified_persisted_format(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    cross_family: (k, f) => false,
+    incomplete: (k, m) => false,
+    evaluation_preimage_mismatch: (k, e, f) => false,
+    store_family_refused: (k, f, sc) => false,
+    unqualified_persisted_format: k => true
+  )
+}
 
 // Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework
 // blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions
@@ -174,11 +227,20 @@ fn witness_v1_shape_digest() -> ContentHash {
   artifact_content_digest(artifact: witness_v1_shape_closure_artifact())
 }
 
+fn minted_in_process(
+  req: ArtifactRequest,
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash
+) -> ProviderProbe {
+  in_process_materialization(req: req, artifact: artifact, observed_digest: observed_digest)
+}
+
 fn witness_good_probe() -> ProviderProbe {
-  ProbeFound {
+  minted_in_process(
+    req: witness_closure_request(),
     artifact: witness_complete_closure_artifact(),
     observed_digest: witness_closure_digest()
-  }
+  )
 }
 
 fn witness_stale_typed_artifact() -> MaterializedArtifact {
@@ -244,10 +306,11 @@ test fn absent_probe_is_a_miss() -> Bool {
 test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: minted_in_process(
+      req: witness_closure_request(),
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
-    }
+    )
   )
   lookup_is_refused_kind_mismatch(l: forged) && (lookup_is_hit(l: forged) == false)
 }
@@ -255,10 +318,11 @@ test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
 test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bool {
   let stale = provider_serve(
     req: witness_typecheck_request_changed_input(),
-    probe: ProbeFound {
+    probe: minted_in_process(
+      req: witness_typecheck_request_changed_input(),
       artifact: witness_stale_typed_artifact(),
       observed_digest: witness_stale_typed_digest()
-    }
+    )
   )
   lookup_is_refused_wrong_artifact(l: stale) && (lookup_is_hit(l: stale) == false)
 }
@@ -266,10 +330,11 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
 test fn red_wrong_content_refuses_never_hits() -> Bool {
   let poisoned = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: minted_in_process(
+      req: witness_closure_request(),
       artifact: witness_complete_closure_artifact(),
       observed_digest: Fnv1a64(content_hash_atom(value: "closure-payload-corrupt"))
-    }
+    )
   )
   lookup_is_refused_wrong_content(l: poisoned) && (lookup_is_hit(l: poisoned) == false)
 }
@@ -319,13 +384,39 @@ test fn red_sha256_at_fnv1a64_seam_refuses_without_alias() -> Bool {
   }
 }
 
+test fn stored_disk_probe_admitted_fnv_parts_refuse_unqualified_persisted_format() -> Bool {
+  let fnv = as_content_hash_structural(structural: content_hash_atom(value: "closure-fnv-1"))
+  lookup_is_refused_unqualified_persisted_format(l: serve_resolved_graph_stored_disk_probe(
+    closure_digest: fnv,
+    compiler_digest: as_content_hash_structural(structural: content_hash_atom(value: "compiler-identity-1")),
+    stored_request_key: fnv,
+    stored_semantic_digest: fnv,
+    graph_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-graph-1")),
+    graph_bytes: byte_size(count: 60),
+    indices_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-indices-1")),
+    indices_bytes: byte_size(count: 25),
+    union_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-diagnostics-1")),
+    union_bytes: byte_size(count: 15)
+  ))
+    && lookup_is_refused_unqualified_persisted_format(l: serve_resolved_graph_incomplete_stored_disk_probe(
+      closure_digest: fnv,
+      compiler_digest: as_content_hash_structural(structural: content_hash_atom(value: "compiler-identity-1")),
+      stored_request_key: fnv,
+      graph_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-graph-1")),
+      graph_bytes: byte_size(count: 60),
+      indices_digest: as_content_hash_structural(structural: content_hash_atom(value: "closure-indices-1")),
+      indices_bytes: byte_size(count: 25)
+    ))
+}
+
 test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: minted_in_process(
+      req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
-    }
+    )
   )
   let missing = lookup_refused_incomplete_missing(l: refused)
   (missing.count() == 1)
@@ -454,10 +545,11 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
 test fn red_forged_output_roster_refuses_as_wrong_content_on_serve() -> Bool {
   let forged = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: minted_in_process(
+      req: witness_closure_request(),
       artifact: witness_complete_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
-    }
+    )
   )
   lookup_is_refused_wrong_content(l: forged) && (lookup_is_hit(l: forged) == false)
 }
@@ -572,7 +664,7 @@ test fn typecheck_request_key_is_the_existing_typed_module_key_authority() -> Bo
     ),
     compiler_identity: content_hash_atom(value: "compiler-identity-1")
   )
-  request_key(req: witness_typecheck_request()) == independently
+  request_key(req: witness_typecheck_request()) == as_content_hash_structural(structural: independently)
 }
 
 test fn red_typecheck_key_tracks_the_authority_when_an_import_changes() -> Bool {
@@ -583,8 +675,8 @@ test fn red_typecheck_key_tracks_the_authority_when_an_import_changes() -> Bool 
     ),
     compiler_identity: content_hash_atom(value: "compiler-identity-1")
   )
-  (request_key(req: witness_typecheck_request_changed_input()) == independently_changed)
-    && ((request_key(req: witness_typecheck_request()) == independently_changed) == false)
+  (request_key(req: witness_typecheck_request_changed_input()) == as_content_hash_structural(structural: independently_changed))
+    && ((request_key(req: witness_typecheck_request()) == as_content_hash_structural(structural: independently_changed)) == false)
 }
 
 // Blocker 2 (operator review): omission, not forgery. The digest-preimage work made lying
@@ -632,10 +724,11 @@ test fn served_hit_carries_a_derived_structural_grade() -> Bool {
 test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
   let mismatched = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: minted_in_process(
+      req: witness_closure_request(),
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
-    }
+    )
   )
   (identity_grade_is_known(ci: lookup_served_identity(l: mismatched)) == false)
     && (lookup_is_hit(l: mismatched) == false)
@@ -644,10 +737,11 @@ test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
 test fn incomplete_artifact_derives_unknown_identity() -> Bool {
   let refused = provider_serve(
     req: witness_closure_request(),
-    probe: ProbeFound {
+    probe: minted_in_process(
+      req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
-    }
+    )
   )
   identity_grade_is_known(ci: lookup_served_identity(l: refused)) == false
 }
@@ -718,7 +812,7 @@ test fn six_judgment_contracts_join_the_cache_identity_kinds() -> Bool {
     native_test_universe_artifact_kind,
     native_module_verdict_bundle_artifact_kind
   ]
-  let kinds = reqs |> map(r => request_judgment_contract(req: r).kind)
+  let kinds = reqs |> map(r => request_judgment_contract(req: r).demand_identity.kind)
   let joined = expected |> filter(k => (kinds |> filter(x => x == k) |> count()) == 1) |> count()
   let left_only = expected |> filter(k => (kinds |> filter(x => x == k) |> count()) == 0) |> count()
   let right_only = kinds |> filter(k => (expected |> filter(x => x == k) |> count()) == 0) |> count()
@@ -747,10 +841,11 @@ test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
   let required = request_required_outputs(req: req)
   let refused = provider_serve(
     req: req,
-    probe: ProbeFound {
+    probe: minted_in_process(
+      req: witness_closure_request(),
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_v1_shape_digest()
-    }
+    )
   )
   let missing = lookup_refused_incomplete_missing(l: refused)
   (required.count() == 3)
@@ -759,3 +854,233 @@ test fn provider_serve_completeness_reads_the_judgment_contract() -> Bool {
     && output_list_contains(xs: missing, wanted: output_compile_clean_diagnostic_union)
     && (lookup_is_hit(l: refused) == false)
 }
+
+fn demand_identity_canonical_c1_lossy(demand: DemandIdentity) -> NonEmptyStr {
+  demand.declared_inputs |> fold(
+    init: concat(concat(demand.kind as String, ":"), demand.subject.digest as String),
+    f: (acc, i) => concat(concat(concat(acc, ":"), i.ref as String), concat(":", i.digest.digest as String))
+  ) as NonEmptyStr
+}
+
+test fn parse_and_typecheck_store_addresses_are_preimage_verified_fnv_buckets() -> Bool {
+  let parse_req = witness_parse_request()
+  let typed_req = witness_typecheck_request()
+  match evaluation_store_address(req: parse_req) {
+    Admitted { address: parse_addr } =>
+      match evaluation_store_address(req: typed_req) {
+        Admitted { address: typed_addr } =>
+          match parse_addr.standing {
+            PreimageVerifiedBucketStanding { disposition: _ } =>
+              match typed_addr.standing {
+                PreimageVerifiedBucketStanding { disposition: _ } => true
+                CryptographicAddressStanding { family: _ } => false
+              }
+            CryptographicAddressStanding { family: _ } => false
+          }
+        FamilyRefused { family: _, scope: _ } => false
+      }
+    FamilyRefused { family: _, scope: _ } => false
+  }
+}
+
+test fn admitted_store_address_carries_the_request_bucket_digest_and_preimage() -> Bool {
+  let req = witness_parse_request()
+  match evaluation_store_address(req: req) {
+    Admitted { address: a } =>
+      (request_key(req: req) == evaluation_store_address_digest(address: a))
+        && ((evaluation_store_address_preimage(address: a) as String)
+          == (evaluation_identity_canonical(evaluation: request_evaluation_identity(req: req)) as String))
+        && match a.standing {
+          PreimageVerifiedBucketStanding { disposition: _ } => true
+          CryptographicAddressStanding { family: _ } => false
+        }
+    FamilyRefused { family: _, scope: _ } => false
+  }
+}
+
+test fn persist_sha1_bucket_is_typed_family_refused() -> Bool {
+  match admit_hash_family_for_scope(family: Sha1Family, scope: PersistentStoreScope) {
+    FamilyNotAdmittedForRelation { family: _, scope: _ } =>
+      (request_key(req: witness_parse_request()) == as_content_hash_structural(
+        structural: content_hash_atom(value: "evaluation_store_family_refused")
+      )) == false
+    HashFamilyAdmittedForScope { family: _, scope: _ } => false
+    StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false
+  }
+}
+
+test fn in_process_probe_same_bucket_foreign_identity_is_not_a_hit() -> Bool {
+  let req = witness_parse_request()
+  let foreign_req = ParseModuleRequest {
+    source_digest: content_hash_atom(value: "module-source-foreign"),
+    compiler: witness_compiler()
+  }
+  let artifact = ParsedArtifact {
+    request_key: request_key(req: req),
+    parse_tree: witness_graph_part(),
+    parse_diagnostics: witness_indices_part()
+  }
+  let digest = request_key(req: req)
+  let served_substituted = provider_serve(
+    req: req,
+    probe: minted_in_process(req: foreign_req, artifact: artifact, observed_digest: digest)
+  )
+  lookup_is_refused_evaluation_preimage_mismatch(l: served_substituted)
+    && (lookup_is_hit(l: served_substituted) == false)
+    && lookup_is_hit(l: provider_serve(
+      req: witness_closure_request(),
+      probe: minted_in_process(
+        req: witness_closure_request(),
+        artifact: witness_complete_closure_artifact(),
+        observed_digest: witness_closure_digest()
+      )
+    ))
+    && (content_hash_family(hash: digest) == Fnv1a64StructuralFamily)
+    && (content_hash_family(hash: request_key(req: foreign_req)) == Fnv1a64StructuralFamily)
+}
+
+test fn in_process_fnv_producer_observation_is_declared_frontier() -> Bool {
+  dissolution_description(condition: in_process_fnv_producer_observation_frontier).length() > 0
+}
+
+test fn demand_canonical_encoding_is_injective_and_c1_lossy_collapses() -> Bool {
+  let h1 = content_hash_atom(value: "p1")
+  let h2 = content_hash_atom(value: "p2")
+  let h3 = content_hash_atom(value: "p3")
+  let a = DemandIdentity {
+    kind: parse_source_artifact_kind,
+    subject: content_hash_atom(value: "subj"),
+    declared_inputs: [
+      DeclaredInput { ref: "a", digest: h1 },
+      DeclaredInput { ref: concat("b:", concat(h2.digest as String, ":c")) as NonEmptyStr, digest: h3 }
+    ]
+  }
+  let b = DemandIdentity {
+    kind: parse_source_artifact_kind,
+    subject: content_hash_atom(value: "subj"),
+    declared_inputs: [
+      DeclaredInput { ref: concat("a:", concat(h1.digest as String, ":b")) as NonEmptyStr, digest: h2 },
+      DeclaredInput { ref: "c", digest: h3 }
+    ]
+  }
+  let hostile = DemandIdentity {
+    kind: parse_source_artifact_kind,
+    subject: content_hash_atom(value: "subj"),
+    declared_inputs: [DeclaredInput { ref: "a:/ %\n1111deadbeef12", digest: h1 }]
+  }
+  let decoded_a = demand_identity_decode(encoded: demand_identity_canonical(demand: a) as String)
+  let decoded_hostile = demand_identity_decode(encoded: demand_identity_canonical(demand: hostile) as String)
+  ((demand_identity_canonical(demand: a) as String) == (demand_identity_canonical(demand: b) as String)) == false
+    && (demand_identity_canonical_c1_lossy(demand: a) as String) == (demand_identity_canonical_c1_lossy(demand: b) as String)
+    && match decoded_a {
+      Absent => false
+      Present { value: d } => (d.declared_inputs |> count()) == 2 && match get(xs: d.declared_inputs, index: 0) {
+        Absent => false
+        Present { value: i } => (i.ref as String) == "a"
+      }
+    }
+    && match decoded_hostile {
+      Absent => false
+      Present { value: d } => match get(xs: d.declared_inputs, index: 0) {
+        Absent => false
+        Present { value: i } => (i.ref as String) == "a:/ %\n1111deadbeef12"
+      }
+    }
+}
+
+test fn structural_fingerprint_refuses_as_cross_run_store_key() -> Bool {
+  let refused = admit_hash_family_for_scope(family: Fnv1a64StructuralFamily, scope: CrossRunScope)
+  let store_refused = admit_hash_family_for_scope(family: Fnv1a64StructuralFamily, scope: PersistentStoreScope)
+  let admitted = admit_hash_family_for_scope(family: Sha256Family, scope: CrossRunScope)
+  let index_ok = admit_hash_family_for_scope(family: Fnv1a64StructuralFamily, scope: InProcessIndexScope)
+  let sha1 = admit_hash_family_for_scope(family: Sha1Family, scope: PersistentStoreScope)
+  match refused {
+    StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
+      match store_refused {
+        StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } =>
+          match admitted {
+            HashFamilyAdmittedForScope { family: _, scope: _ } =>
+              match index_ok {
+                HashFamilyAdmittedForScope { family: _, scope: _ } =>
+                  match sha1 {
+                    FamilyNotAdmittedForRelation { family: _, scope: _ } => true
+                    HashFamilyAdmittedForScope { family: _, scope: _ } => false
+                    StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false
+                  }
+                StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false
+                FamilyNotAdmittedForRelation { family: _, scope: _ } => false
+              }
+            StructuralFingerprintRefusedAsStoreKey { family: _, scope: _ } => false
+            FamilyNotAdmittedForRelation { family: _, scope: _ } => false
+          }
+        HashFamilyAdmittedForScope { family: _, scope: _ } => false
+        FamilyNotAdmittedForRelation { family: _, scope: _ } => false
+      }
+    HashFamilyAdmittedForScope { family: _, scope: _ } => false
+    FamilyNotAdmittedForRelation { family: _, scope: _ } => false
+  }
+}
+
+test fn evaluation_result_binding_same_eval_different_content_is_conflict() -> Bool {
+  let eval = request_evaluation_identity(req: witness_parse_request())
+  let bucket = as_content_hash_structural(structural: content_hash_atom(value: "shared-fnv-bucket"))
+  let left = result_content_identity(bucket: bucket, canonical_preimage: "result-a" as NonEmptyStr)
+  let right = result_content_identity(bucket: bucket, canonical_preimage: "result-b" as NonEmptyStr)
+  let binding = EvaluationResultBinding { evaluation_identity: eval, result_content_identity: left }
+  let conflict = evaluation_result_binding_outcome(binding: binding, observed: right)
+  let same = evaluation_result_binding_outcome(binding: binding, observed: left)
+  let sha = match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => as_content_hash_structural(structural: content_hash_atom(value: "fallback"))
+    Present { value: d } => as_content_hash_cryptographic(digest: d)
+  }
+  let cross = evaluation_result_binding_outcome(
+    binding: binding,
+    observed: result_content_identity(bucket: sha, canonical_preimage: "result-a" as NonEmptyStr)
+  )
+  match conflict {
+    EvaluationContentConflict { binding: _, observed: _ } =>
+      match same {
+        EvaluationResultConsistent =>
+          match cross {
+            EvaluationResultHashFamilyIncomparable { left: _, right: _ } => true
+            EvaluationResultConsistent => false
+            EvaluationContentConflict { binding: _, observed: _ } => false
+            EvaluationResultUnverifiable { cause: _ } => false
+          }
+        EvaluationContentConflict { binding: _, observed: _ } => false
+        EvaluationResultHashFamilyIncomparable { left: _, right: _ } => false
+        EvaluationResultUnverifiable { cause: _ } => false
+      }
+    EvaluationResultConsistent => false
+    EvaluationResultHashFamilyIncomparable { left: _, right: _ } => false
+    EvaluationResultUnverifiable { cause: _ } => false
+  }
+}
+
+test fn evaluation_result_binding_same_preimage_different_bucket_is_unverifiable() -> Bool {
+  let eval = request_evaluation_identity(req: witness_parse_request())
+  let pre = "same-result-preimage" as NonEmptyStr
+  let left = result_content_identity(
+    bucket: as_content_hash_structural(structural: content_hash_atom(value: "bucket-a")),
+    canonical_preimage: pre
+  )
+  let right = result_content_identity(
+    bucket: as_content_hash_structural(structural: content_hash_atom(value: "bucket-b")),
+    canonical_preimage: pre
+  )
+  let binding = EvaluationResultBinding { evaluation_identity: eval, result_content_identity: left }
+  match evaluation_result_binding_outcome(binding: binding, observed: right) {
+    EvaluationResultUnverifiable { cause: _ } => true
+    EvaluationResultConsistent => false
+    EvaluationContentConflict { binding: _, observed: _ } => false
+    EvaluationResultHashFamilyIncomparable { left: _, right: _ } => false
+  }
+}
+
+test fn two_parses_occurrence_qualification_is_an_explicit_frontier() -> Bool {
+  let d = dissolution_description(condition: two_parses_occurrence_qualification_frontier)
+  (d.contains("v2.compiler.parse") || d.contains("tokenize"))
+    && d.contains("OccurrenceIdAllocator")
+    && d.contains("split-on-whitespace")
+}
+

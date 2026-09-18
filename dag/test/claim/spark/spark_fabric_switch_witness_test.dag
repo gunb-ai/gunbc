@@ -21,6 +21,7 @@ import product.cable_plant_assessment { CableLegReading, LegReadingTaken, LegNev
 import gunbc.spark.fabric_switch_observed {
   fabric_lane_observations, fabric_lane_interface, fabric_lane_for_host, fabric_leg_cable_observed,
   fabric_leg_eeprom_observations, fabric_leg_reading, fabric_cable_plant,
+  fabric_leg_reading_of_row, FabricLegEepromObservation, AcquisitionInvalidatedByReflash,
   fabric_forced_100g_attempts, fabric_forced_100g_ever_trained,
   FabricGroup, FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_of_host,
 }
@@ -65,13 +66,14 @@ test fn groups_derive_from_the_cage_and_a_host_off_the_fabric_has_none() -> Bool
 
 // THE LINK STILL RUNS AT 50G AND THE CODING NO LONGER EXPLAINS IT. Before the 2026-09-16 re-flash
 // these were one fact: the coding capped the mode and the leg linked at the cap. They have come
-// apart, so the witness asserts the pair and the fact that the NIC's admitted set now EXCEEDS the
-// rate -- which is what makes the residual 50G a link-training question rather than a coding one.
-test fn the_link_runs_at_50g_while_the_nic_now_admits_more() -> Bool {
+// apart: the rate half is asserted here, and the coding half -- every leg now attesting
+// 100GBASE-CR2 -- by every_legs_coding_attests_100gbase_cr2_after_the_reflash below. The NIC's
+// admitted-mode set used to be asserted here as a substring of a free-text row; that row was deleted
+// on main as an anemic leaf, and the set returns as a typed List<LinkMode> with gap G12.
+test fn the_link_runs_at_50g_while_the_coding_now_attests_more() -> Bool {
   fabric_leg_cable_observed.linked_speed_gbps == 50
     && (crs812_lane_speed_wire(s: Lane50GCr2) as String) == "50G-baseCR2"
     && crs812_passive_dac_requires_forced_mode
-    && contains(fabric_leg_cable_observed.nic_supported_speeds as String, "100G_2X")
 }
 
 // AND FORCING THE MODE WAS TRIED AND FAILED, which is the evidence that keeps the sentence above
@@ -143,6 +145,29 @@ fn plant_readings_never() -> Nat {
 
 test fn all_eight_legs_carry_a_reading() -> Bool {
   plant_readings_taken() == 8 && plant_readings_never() == 0
+}
+
+// AN INVALIDATED ACQUISITION IS NOT A LIVE READING, kept as a supplied row now that no leg in the
+// roster is in that state. A leg re-flashed and not re-read must project to LegNeverRead -- NOT to
+// LegReadingTaken with its pre-flash coding, which would present a known-false current coding (§5).
+// This is the discriminating red for the acquisition-standing projection (DESIGN §4b(4): the red
+// stays enrolled after the population it was written against moves); it reds if
+// fabric_leg_reading_of_row ever promotes an AcquisitionInvalidatedByReflash row to a live reading.
+test fn a_reflashed_but_unread_leg_reads_as_never_not_as_its_stale_value() -> Bool {
+  match fabric_leg_eeprom_observations.first() {
+    Absent => false
+    Present { value: r } =>
+      match fabric_leg_reading_of_row(
+        endpoint: "qsfp56-dd-1-1" as NonEmptyStr,
+        r: FabricLegEepromObservation {
+          host: r.host, vendor_serial: r.vendor_serial, date_code: r.date_code, coding: r.coding,
+          acquisition: AcquisitionInvalidatedByReflash { invalidating_event: "a re-flash with no re-read" as NonEmptyStr },
+        },
+      ) {
+        LegNeverRead { endpoint: _ } => true
+        LegReadingTaken { endpoint: _, observation: _ } => false
+      }
+  }
 }
 
 // AND EVERY RECEIPT IS AN INDEPENDENT ROW, not one value read eight times. Distinct vendor serials

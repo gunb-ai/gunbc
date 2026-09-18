@@ -94,7 +94,9 @@ mod required_floor_runner;
 mod required_lane_roster;
 pub mod rostered_row_join;
 mod serve_budget_refusal;
-pub use native_lane_runner::{run_required_v2_native, run_self_host};
+pub use native_lane_runner::{
+    run_required_v2_native, run_self_host, run_v2_native_cli, SelfHostHeld, V2NativeCliHeld,
+};
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     floor_discovery_path_excluded, make_eval_context, make_eval_context_with_runtime_options,
@@ -155,11 +157,13 @@ pub(crate) use complexity_gates::*;
 mod emit_host;
 pub(crate) use emit_host::*;
 pub use emit_host::{
-    compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
+    compile_dag_call_form_leaf_guard, compile_dag_callsite_resolved_call_edges,
+    compile_dag_importer_resolved_call_edges, compile_dag_multi_module_fixture,
+    compile_dag_reference_occurrence_binding_census, emit_module_storage_binding_manifest,
+    emit_source_root_ingest_manifest,
 };
 pub use emit_host::{
-    compile_dag_multi_module_fixture, compile_dag_reference_occurrence_binding_census,
-    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
+    compile_dag_diagnostic_census_memo_counts, compile_dag_rust_emit_check_memo_counts,
 };
 mod witness_gates;
 pub use witness_gates::witness_exclusion_substrings;
@@ -3231,6 +3235,38 @@ pub enum ReferenceOccurrenceBindingCensus {
         compiler_digest: String,
         denominator: Vec<ReferenceOccurrenceDenominatorRow>,
         observations: Vec<ReferenceOccurrenceBindingRow>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedCallEdgeRow {
+    pub caller_module: String,
+    pub caller_decl: String,
+    pub callee_module: String,
+    pub callee_decl: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedCallEdgeCensus {
+    Refused { cause: String },
+    Observed { edges: Vec<ResolvedCallEdgeRow> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EvaluationStoreAddressProductionCoverage {
+    Qualified {
+        exact_resolved_roots: Vec<String>,
+        zero_candidate_roots: Vec<String>,
+    },
+    Refused {
+        root: String,
+        path: String,
+        cause: String,
+    },
+    CandidateOutsideExactResolution {
+        root: String,
+        path: String,
+        target_leaf: String,
     },
 }
 
@@ -6797,6 +6833,9 @@ pub struct CompileRun {
     /// meanings, which is the §3 violation the fork closure exists to remove.
     pub subject: CompileSubject,
     pub closure_modules: usize,
+    /// Bytes of the resolved closure's sources: the byte half of the population a run measured,
+    /// read by the root demand measurement's census.
+    pub closure_source_bytes: u64,
     pub census_modules: usize,
     pub blocking_diagnostics: usize,
     pub advisory_diagnostics: usize,
@@ -6966,6 +7005,7 @@ mod entry_admission_tests {
     fn two_render_targets_emit_twice_from_one_resolution() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/v2_emission_gate/green")],
             primary_precedence: true,
             render_targets: vec![
@@ -7013,6 +7053,7 @@ mod entry_admission_tests {
     fn a_missing_source_root_refuses_at_source_discovery_instead_of_panicking() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/definitely-not-a-real-root")],
             primary_precedence: true,
             render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
@@ -7037,6 +7078,7 @@ mod entry_admission_tests {
     fn a_file_named_as_a_source_root_refuses_and_says_it_is_not_a_directory() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/v2_emission_gate/green/subject.dag")],
             primary_precedence: true,
             render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
@@ -7061,6 +7103,7 @@ mod entry_admission_tests {
     fn a_valid_source_root_still_completes_through_the_fallible_route() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/v2_emission_gate/green")],
             primary_precedence: true,
             render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Rust],
@@ -7096,6 +7139,7 @@ mod entry_admission_tests {
     fn a_refusing_second_target_withholds_the_first_target_s_finished_tree() {
         let request = |targets: Vec<crate::v1_compiler_artifact::RenderTarget>| CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/atomic_materialization/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/atomic_materialization")],
             primary_precedence: true,
             render_targets: targets,
@@ -7186,6 +7230,7 @@ mod entry_admission_tests {
     fn a_request_naming_no_target_refuses_before_it_resolves() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry(ws("fixtures/v2_emission_gate/green/subject.dag")),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec![ws("fixtures/v2_emission_gate/green")],
             primary_precedence: true,
             render_targets: Vec::new(),
@@ -7241,6 +7286,7 @@ mod entry_admission_tests {
     fn a_duplicate_target_refuses_before_the_subject_is_even_read() {
         let run = compile_emission(&CompileRequest {
             subject: CompileSubject::Entry("dag/definitely_not_a_real_entry_file.dag".to_string()),
+            root_demand: RootDemandDeclaration::default(),
             source_roots: vec!["dag".to_string()],
             primary_precedence: false,
             render_targets: vec![
@@ -7276,6 +7322,73 @@ mod entry_admission_tests {
     }
 }
 
+/// WHY A PRIMARY-ROOT SUBJECT REFUSES, WITH THE PHASE THE TRANSACTION REPORTS IT UNDER.
+pub struct PrimaryRootSubjectRefusal {
+    pub phase: &'static str,
+    pub cause: String,
+}
+
+/// THE ONE DERIVATION OF A PRIMARY-ROOT SUBJECT'S CLOSURE, consumed by the compile transaction's
+/// `CompileSubject::PrimaryRoot` arm and by the XL-1 live tap (`emit_host.rs`
+/// `compile_xl1_primary_root_tap`). Every module whose source sits under the root is an entry;
+/// the closure is those modules plus their transitive import edges, then the reference closure
+/// iterated to a fixpoint (`extend_sources_to_both_closure_fixpoint` -- the same relation the
+/// entry arm uses, because an import edge is strictly weaker than a reference in this flat
+/// namespace and the walk alone under-pulls across the pool boundary; measured on the specimen
+/// in the arm's history: compiling `src/v2` with `dag` as the pool refused 36 blocking
+/// diagnostics, 16 of them live pool modules the import walk could not reach).
+///
+/// A ROOT THAT MATCHES NO MODULE REFUSES rather than compiling nothing: zero modules is the
+/// transaction failing to reach any subject, and `Completed { emitted_count: 0 }` would be the
+/// empty-observation narrow. The module-less-`.dag` visibility step runs BEFORE that refusal
+/// and is NOT optional: a `.dag` file under the root with no `module` declaration is not in the
+/// index, is not in the subject, and would vanish with the transaction reporting `Completed`;
+/// the empty-root arm cannot catch it because a root holding one good file and one forgotten
+/// one is not empty. Its read failure refuses as `subject-read` rather than narrowing the
+/// population that exists to say which files were removed from the subject.
+pub fn primary_root_subject_closure(
+    index: &MultiEntryIndex,
+    root: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, PrimaryRootSubjectRefusal> {
+    let root_prefix = workspace_relative_entry_path(root);
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
+    for (module_path, source) in index.source_files.iter() {
+        let rel = workspace_relative_entry_path(&source.path);
+        if rel == root_prefix || rel.starts_with(&format!("{root_prefix}/")) {
+            seen.insert(module_path.clone(), source.clone());
+            entry_sources.push(source.clone());
+        }
+    }
+    let moduleless = match moduleless_dag_entry_paths_under_root(&root_prefix) {
+        Ok(paths) => paths,
+        Err(cause) => {
+            return Err(PrimaryRootSubjectRefusal {
+                phase: "subject-read",
+                cause,
+            })
+        }
+    };
+    report_moduleless_dag_entry_skips(&moduleless);
+    if entry_sources.is_empty() {
+        return Err(PrimaryRootSubjectRefusal {
+            phase: "subject-discovery",
+            cause: format!(
+                "no indexed module has a source file under the primary root '{root}' \
+                 -- the compile has no subject (pass a --source-root that covers it)"
+            ),
+        });
+    }
+    entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
+    let import_closure = resolve_transitively_bfs_legacy(entry_sources, &index.source_files, seen);
+    extend_sources_to_both_closure_fixpoint(import_closure, index).map_err(|e| {
+        PrimaryRootSubjectRefusal {
+            phase: "closure-load",
+            cause: format!("reference-derived closure load failed: {e}"),
+        }
+    })
+}
+
 fn compile_not_executed(
     subject: &CompileSubject,
     started: std::time::Instant,
@@ -7285,6 +7398,7 @@ fn compile_not_executed(
     CompileRun {
         subject: subject.clone(),
         closure_modules: 0,
+        closure_source_bytes: 0,
         census_modules: 0,
         blocking_diagnostics: 0,
         advisory_diagnostics: 0,
@@ -7330,6 +7444,13 @@ pub enum CompileSubject {
     /// Every module under this source root, plus their transitive import closure. The
     /// remaining roots stay a dependency pool.
     PrimaryRoot(String),
+    /// THE ROOT DEMAND MEASUREMENT: the same population as `PrimaryRoot`, compiled as its OWN
+    /// subject whose only product is a measurement receipt. Constructible only from an admitted
+    /// measurement (`memory_governor::AdmittedRootDemandMeasurement` has private fields), so it is
+    /// not the whole-root compile with its demand refusal skipped: whole-root admission is not
+    /// asked of it because `root_demand_measurement_admission` already required an enforceable
+    /// limit, and its caller emits nothing (`measure_root_demand`).
+    RootDemandMeasurement(crate::memory_governor::AdmittedRootDemandMeasurement),
 }
 
 /// THE EXACT TEXT `gunbc.emit_diagnostic_observation` `emit_entry_scope_marker` MATCHES ON.
@@ -7369,6 +7490,16 @@ impl CompileScopeReceipt {
 }
 
 impl CompileSubject {
+    /// The primary root a POPULATION subject compiles, or `None` for an entry. Both population
+    /// arms share every step after admission, so they read the root from one place.
+    pub fn population_root(&self) -> Option<&str> {
+        match self {
+            CompileSubject::Entry(_) => None,
+            CompileSubject::PrimaryRoot(root) => Some(root.as_str()),
+            CompileSubject::RootDemandMeasurement(m) => Some(m.root().primary_root.as_str()),
+        }
+    }
+
     /// The scope receipt for this subject. Total over the coproduct, so a new subject cannot be
     /// added without deciding what it measures.
     pub fn scope_receipt(&self) -> CompileScopeReceipt {
@@ -7378,6 +7509,11 @@ impl CompileSubject {
             },
             CompileSubject::PrimaryRoot(root) => {
                 CompileScopeReceipt::PrimaryRootPopulation { root: root.clone() }
+            }
+            CompileSubject::RootDemandMeasurement(m) => {
+                CompileScopeReceipt::PrimaryRootPopulation {
+                    root: m.root().primary_root.clone(),
+                }
             }
         }
     }
@@ -7389,6 +7525,9 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => path.clone(),
             CompileSubject::PrimaryRoot(root) => format!("{root} (whole root)"),
+            CompileSubject::RootDemandMeasurement(m) => {
+                format!("{} (root demand measurement)", m.root().primary_root)
+            }
         }
     }
 
@@ -7401,6 +7540,9 @@ impl CompileSubject {
         match self {
             CompileSubject::Entry(path) => format!("entry:{path}"),
             CompileSubject::PrimaryRoot(root) => format!("primary-root:{root}"),
+            CompileSubject::RootDemandMeasurement(m) => {
+                format!("root-demand-measurement:{}", m.root().primary_root)
+            }
         }
     }
 }
@@ -7412,6 +7554,10 @@ impl CompileSubject {
 #[derive(Debug, Clone)]
 pub struct CompileRequest {
     pub subject: CompileSubject,
+    /// WHERE a whole-root compile's demand fact lives and WHICH repository the run is, both
+    /// handed to the run as declared facts (`--repository`, `--measured-root-demands`). Read only
+    /// on a `PrimaryRoot` subject; never inferred from host paths, and never defaulted.
+    pub root_demand: RootDemandDeclaration,
     pub source_roots: Vec<String>,
     pub primary_precedence: bool,
     /// EVERY TARGET THIS ONE RESOLUTION IS EMITTED FOR. Non-empty or the request refuses at
@@ -7429,6 +7575,14 @@ pub struct CompileRequest {
     /// The name is now DERIVED from the target by `render_target_name`, so the disagreement has
     /// no representation. Raised in review before it could ship.
     pub render_targets: Vec<crate::v1_compiler_artifact::RenderTarget>,
+}
+
+/// The two declared facts a whole-root compile's admission joins on. `None` is an undeclared fact,
+/// which refuses on a `PrimaryRoot` subject; an `Entry` subject never reads either.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RootDemandDeclaration {
+    pub repository: Option<String>,
+    pub measured_root_demands: Option<String>,
 }
 
 impl CompileRequest {
@@ -7502,9 +7656,9 @@ impl CompileRequest {
     /// no spelling and this function has nothing to check -- dissolution on climb: this predicate
     /// is deleted by that carrier landing, not kept beside it.
     fn primary_root_agrees_with_precedence(&self) -> Result<(), String> {
-        match &self.subject {
-            CompileSubject::Entry(_) => Ok(()),
-            CompileSubject::PrimaryRoot(root) => match self.source_roots.first() {
+        match self.subject.population_root() {
+            None => Ok(()),
+            Some(root) => match self.source_roots.first() {
                 Some(first) if first == root => Ok(()),
                 Some(first) => Err(format!(
                     "subject is primary-root:{root} but the first --source-root is {first}, \
@@ -7565,6 +7719,7 @@ pub fn compile_entry_emission(
 ) -> CompileRun {
     compile_emission(&CompileRequest {
         subject: CompileSubject::Entry(entry_path.to_string()),
+        root_demand: RootDemandDeclaration::default(),
         source_roots: source_roots.to_vec(),
         primary_precedence,
         render_targets: vec![render_target],
@@ -7600,10 +7755,35 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // output reads a fabricated zero rather than a failure. Nothing about the corpus is an
     // input to the decision, so the cheapest correct place is the earliest one. Deliberately
     // NOT asked of `Entry`: see `CompileSubject`. Authority: gunbc.whole_corpus_compile_admission.
-    if let CompileSubject::PrimaryRoot(_) = &request.subject {
-        let (budget, budget_source) = crate::memory_governor::read_host_budget_bytes();
+    if let CompileSubject::PrimaryRoot(root) = &request.subject {
+        // The demand is a fact of THE ROOT COMPILED: its identity is the declared repository, the
+        // primary root and the ordered dependency pools, joined against the repository's own
+        // projection. An undeclared repository cannot be joined, so it refuses here rather than
+        // borrowing any identity.
+        let Some(repository) = &request.root_demand.repository else {
+            return compile_not_executed(
+                &request.subject,
+                started,
+                "admission",
+                format!(
+                    "WholeCorpusCompileRepositoryUndeclared: a whole-root compile of {root} is \
+                     admitted on its repository's measured demand, and no --repository was \
+                     declared, so the root has no identity to join. Remedy: pass \
+                     --repository <id> with --measured-root-demands <projection>."
+                ),
+            );
+        };
+        let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
+            repository: repository.clone(),
+            primary_root: root.clone(),
+            dependency_pools: source_roots.iter().skip(1).cloned().collect(),
+        };
+        let read = crate::memory_governor::read_whole_corpus_compile_demands(
+            request.root_demand.measured_root_demands.as_deref(),
+        );
+        let budget = crate::memory_governor::read_host_budget_resolution();
         let admission =
-            crate::memory_governor::whole_corpus_compile_admission(budget, &budget_source);
+            crate::memory_governor::whole_corpus_compile_admission(&budget, &identity, &read);
         if let Some(diagnostic) =
             crate::memory_governor::whole_corpus_compile_refusal_diagnostic(&admission)
         {
@@ -7620,7 +7800,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     // inspection. A root under the workspace that simply holds no module is a DIFFERENT state
     // and refuses at `subject-discovery` below -- outside-the-repository and empty-of-modules
     // have different remedies and are not collapsed.
-    if let CompileSubject::PrimaryRoot(root) = &request.subject {
+    if let Some(root) = request.subject.population_root() {
         let root_abs = if std::path::Path::new(root).is_absolute() {
             std::path::PathBuf::from(root)
         } else {
@@ -7644,6 +7824,7 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     let entry_path: &str = match &request.subject {
         CompileSubject::Entry(path) => path.as_str(),
         CompileSubject::PrimaryRoot(root) => root.as_str(),
+        CompileSubject::RootDemandMeasurement(m) => m.root().primary_root.as_str(),
     };
     if let CompileSubject::Entry(_) = &request.subject {
         // The entry is a FILE, so it is anchored against the workspace root directly rather
@@ -7788,133 +7969,39 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
         // and reporting it as `Completed { emitted_count: 0 }` is the empty-observation
         // narrow DESIGN names -- the exact shape that makes a ratchet read zero errors from
         // a run that compiled nothing.
-        CompileSubject::PrimaryRoot(root) => {
-            let root_prefix = workspace_relative_entry_path(root);
-            let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
-            let mut entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
-            for (module_path, source) in index.source_files.iter() {
-                let rel = workspace_relative_entry_path(&source.path);
-                if rel == root_prefix || rel.starts_with(&format!("{root_prefix}/")) {
-                    seen.insert(module_path.clone(), source.clone());
-                    entry_sources.push(source.clone());
-                }
-            }
-            // MODULE-LESS FILES UNDER THE ROOT ARE REPORTED, NOT SILENTLY DROPPED.
-            //
-            // The subject is discovered from `index.source_files`, which is keyed by module
-            // path -- so a `.dag` file under the root with NO `module` declaration is not in
-            // the index, is not in the subject, and would vanish with the transaction
-            // reporting `Completed`. The empty-root arm below cannot catch it, because a root
-            // holding one good file and one forgotten one is not empty.
-            //
-            // That visibility existed in the pipeline this transaction replaced and the
-            // consolidation dropped it. It is restored here through the SAME authority that
-            // already owned it -- `moduleless_dag_entry_paths` / `report_moduleless_dag_entry_skips`,
-            // both already `pub` in this file with their own tests. An earlier revision of the
-            // deletion note claimed this behaviour had no counterpart in `cli_run`; that was an
-            // absence asserted without grepping for it, and it was false.
-            //
-            // It REPORTS rather than refuses, which is the weaker of the two arms and is
-            // declared as such: a module-less `.dag` is a legitimate parse fixture today, so
-            // refusing would break real callers. The terminal form is the total role
-            // classification (`RootPopulation`), under which every `.dag` carries exactly one
-            // role and an unclassified file refuses. Until that lands this is countable
-            // visibility, not a wall.
-            // A `.dag` THAT CANNOT BE READ IS A REFUSAL, NOT AN OMISSION. The walk's contract
-            // is "every `.dag` under the root", and an `if let Ok(..)` that skips an unreadable
-            // file narrows that to "every READABLE `.dag`" while still reporting under the
-            // wider name -- so a permission error or a mid-walk deletion would remove a file
-            // from the visibility population that exists to say which files were removed from
-            // the subject. That is the empty-observation narrow at the one place whose job is
-            // to prevent it.
-            let moduleless = match moduleless_dag_entry_paths_under_root(&root_prefix) {
-                Ok(paths) => paths,
-                Err(cause) => {
-                    return compile_not_executed(&request.subject, started, "subject-read", cause)
-                }
-            };
-            report_moduleless_dag_entry_skips(&moduleless);
-
-            if entry_sources.is_empty() {
-                return compile_not_executed(
-                    &request.subject,
-                    started,
-                    "subject-discovery",
-                    format!(
-                        "no indexed module has a source file under the primary root '{root}' \
-                         -- the compile has no subject (pass a --source-root that covers it)"
-                    ),
-                );
-            }
-            entry_sources.sort_by(|a, b| a.path.cmp(&b.path));
-            let import_closure =
-                resolve_transitively_bfs_legacy(entry_sources, &index.source_files, seen);
-            // THEN THE REFERENCE CLOSURE, FOR THE SAME REASON THE ENTRY ARM USES IT.
-            //
-            // The import-edge walk alone was wrong here, and the assumption that made it look
-            // right is worth stating because it is nearly true: when every module under the
-            // root is already an entry, reference derivation can only over-pull WITHIN the
-            // root. That holds inside the root and fails at the POOL boundary. This corpus
-            // resolves most cross-module references with no import line at all, so a module
-            // under the root that names a type or fn in a pool module has NO edge to walk, the
-            // provider stays census-only -- a name for lookup, no definition for emit -- and
-            // the compile refuses with `unresolved type` or `function not found in scope`
-            // against a module that is present and correct.
-            //
-            // Measured on the specimen that produced this fix: compiling `src/v2` with `dag` as
-            // the pool refused with 36 blocking diagnostics, of which 16 were exactly this --
-            // `ContextAccess` and `StringLiteral` in `dag/extdeps/github/expressions.dag`,
-            // `run_bootstrap_witness` in `dag/gunbc/instruments/bootstrap_witness_transport.dag`,
-            // `KvmObservedScreen` in `dag/gunbc/os_install_deduction.dag`, every one of them a
-            // live module the walk could not reach. They are not 16 defects; they are one
-            // closure being derived from the wrong relation.
-            //
-            // `extend_sources_to_both_closure_fixpoint` is the SAME function the entry arm
-            // calls -- bare-reference closure and pool-reference closure iterated to a
-            // fixpoint -- so the two subjects now derive their closures by one relation
-            // instead of two that had to agree by luck. That they did not agree is what this
-            // repair is: DESIGN's namespace Rule-1 reasoning applied to the arm that was left
-            // out of it.
-            match extend_sources_to_both_closure_fixpoint(import_closure, &index) {
+        // EVERY MODULE UNDER THE PRIMARY ROOT IS AN ENTRY. The derivation of that subject --
+        // root-prefix filter, the module-less-`.dag` visibility step, the empty-root refusal,
+        // the import walk and the reference-closure fixpoint -- is ONE function,
+        // `primary_root_subject_closure`, because the XL-1 live tap (emit_host.rs
+        // `compile_xl1_primary_root_tap`) derives the same subject for the same question and a
+        // second copy had already drifted: it lacked the module-less step, so a `.dag` under the
+        // root with no `module` header would have left its closure silently (review 66847 on
+        // gunbc#11461; DESIGN 2/6 forked logic). Each refusal names its phase so this arm maps it
+        // onto compile_not_executed and the tap onto its own refusal, from one derivation.
+        // Both population arms name a root and derive the same subject from it.
+        CompileSubject::PrimaryRoot(_) | CompileSubject::RootDemandMeasurement(_) => {
+            let root = request
+                .subject
+                .population_root()
+                .expect("both population arms name a root");
+            match primary_root_subject_closure(&index, root) {
                 Ok(closure) => closure,
-                Err(e) => {
-                    return compile_not_executed(
-                        &request.subject,
-                        started,
-                        "closure-load",
-                        format!("reference-derived closure load failed: {e}"),
-                    );
+                Err(PrimaryRootSubjectRefusal { phase, cause }) => {
+                    return compile_not_executed(&request.subject, started, phase, cause);
                 }
             }
         }
     };
-    let closure_modules: std::collections::HashSet<String> = closure
-        .iter()
-        .filter_map(|s| extract_module_path(&s.content))
-        .collect();
-
     // Everything indexed and outside the closure enters the NAME CENSUS only. This is
-    // what makes the transaction see a parse break anywhere under the source roots, and
-    // membership is keyed on MODULE PATH rather than file path because the closure loader
-    // and the index normalize paths differently -- a file-path compare would fail to
-    // exclude closure modules and double-load them into the census.
-    let mut census_only: Vec<Rc<v1_compiler_compile::SourceFile>> = index
-        .source_files
-        .iter()
-        .filter(
-            |(module_path, _): &(&String, &Rc<v1_compiler_compile::SourceFile>)| {
-                !closure_modules.contains(*module_path)
-            },
-        )
-        .map(|(_, source)| source.clone())
-        .collect();
-    census_only.sort_by(|a, b| a.path.cmp(&b.path));
-    let census_modules = census_only.len();
+    // what makes the transaction see a parse break anywhere under the source roots. ONE
+    // derivation, shared with the required floor and the XL-1 tap:
+    // compile_clean_census_only_sources_for_compiled keys membership on MODULE PATH
+    // because the closure loader and the index normalize paths differently (review 67039
+    // on gunbc#11461: this arm and the tap each carried a copy, and the copies had already
+    // drifted from the helper in sort order).
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &closure);
+    let census_modules = options.census_only_sources.len();
 
-    let options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
-        analyze_complexity: false,
-        census_only_sources: Rc::new(census_only.into()),
-    });
     // RESOLVE ONCE, EMIT N TIMES. `compile_sources_with_options` is literally
     // `emit_resolved_for_target ∘ compile_to_resolved_with_options`, so the single-target
     // path through this pair is the same computation it was before multi-target routing --
@@ -8005,6 +8092,10 @@ pub fn compile_emission(request: &CompileRequest) -> CompileRun {
     CompileRun {
         subject: request.subject.clone(),
         closure_modules: closure.len(),
+        closure_source_bytes: closure
+            .iter()
+            .map(|source| source.content.len() as u64)
+            .sum(),
         census_modules,
         blocking_diagnostics: blocking,
         // Derived from one population rather than scanned twice, so the two counts cannot
@@ -15347,6 +15438,12 @@ fn provider_integrity_refusal_message(outcome: ResolvedGraphProviderOutcome) -> 
                     .to_string(),
             )
         }
+        ResolvedGraphProviderOutcome::RefusedUnqualifiedPersistedFormat => {
+            Some(
+                "resolved-graph-cache provider refused disk hit: unqualified persisted format"
+                    .to_string(),
+            )
+        }
         ResolvedGraphProviderOutcome::LookupUnclassified { label } => Some(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
@@ -19864,6 +19961,150 @@ fn serve_json_string(s: &str) -> String {
     out
 }
 
+/// THE ROOT DEMAND MEASUREMENT — how a root acquires its first `MeasuredForRoot` row. Seed
+/// realization of `gunbc.root_demand_measurement`, DESIGN section 5's stopped-line audit: it
+/// reports, it does not green.
+///
+/// The PARENT (`measurement_child == false`) asks `root_demand_measurement_admission`, spawns this
+/// same verb as the measured CHILD, and observes it through `wait4`: exit status or signal, and the
+/// child's peak resident set from its rusage. A killed child cannot write a receipt, so the parent
+/// writes it — `Exceeded` on a kill at the limit — to `receipt_path`, and that receipt is the run's
+/// only product. The CHILD re-asks the admission under the cgroup it inherited, compiles the
+/// population as `CompileSubject::RootDemandMeasurement`, prints one census line, and exits with the
+/// compile's status. It is handed no output directory, so it has nowhere to emit an artifact, and it
+/// renders no diagnostics and no verdict.
+pub fn measure_root_demand(
+    source_roots: Vec<String>,
+    repository: String,
+    receipt_path: String,
+    measurement_child: bool,
+) -> ! {
+    let Some(primary_root) = source_roots.first().cloned() else {
+        eprintln!(
+            "gunbc measure-root-demand: admission: no --source-root names the root to measure"
+        );
+        std::process::exit(2);
+    };
+    let identity = crate::memory_governor::WholeCorpusCompileRootIdentity {
+        repository: repository.clone(),
+        primary_root,
+        dependency_pools: source_roots.iter().skip(1).cloned().collect(),
+    };
+    let limit = crate::memory_governor::read_root_demand_measurement_limit();
+    let admission = crate::memory_governor::root_demand_measurement_admission(&limit, &identity);
+    if let Some(diagnostic) =
+        crate::memory_governor::root_demand_measurement_refusal_diagnostic(&admission)
+    {
+        eprintln!("gunbc measure-root-demand: admission: {diagnostic}");
+        std::process::exit(1);
+    }
+    let crate::memory_governor::RootDemandMeasurementAdmission::Admitted(admitted) = admission
+    else {
+        unreachable!("a refused admission returned above");
+    };
+    if measurement_child {
+        let run = compile_emission(&CompileRequest {
+            subject: CompileSubject::RootDemandMeasurement(admitted),
+            root_demand: RootDemandDeclaration::default(),
+            source_roots: source_roots.clone(),
+            primary_precedence: true,
+            render_targets: vec![crate::v1_compiler_artifact::RenderTarget::Dag],
+        });
+        println!(
+            "{} {} {}",
+            crate::memory_governor::ROOT_DEMAND_MEASUREMENT_CENSUS_PREFIX,
+            run.closure_modules,
+            run.closure_source_bytes
+        );
+        let code = match run.disposition {
+            CompileDisposition::Completed { .. } => 0,
+            CompileDisposition::Refused { .. } => 1,
+            CompileDisposition::NotExecuted { .. } => 2,
+        };
+        std::process::exit(code);
+    }
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("gunbc measure-root-demand: spawn: cannot locate this executable: {e}");
+            std::process::exit(2);
+        }
+    };
+    let mut argv = vec![
+        "measure-root-demand".to_string(),
+        "--repository".to_string(),
+        repository,
+    ];
+    for r in &source_roots {
+        argv.push("--source-root".to_string());
+        argv.push(r.clone());
+    }
+    argv.push("--receipt".to_string());
+    argv.push(receipt_path.clone());
+    argv.push("--measurement-child".to_string());
+    let mut child = match std::process::Command::new(&exe)
+        .args(&argv)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("gunbc measure-root-demand: spawn: {e}");
+            std::process::exit(2);
+        }
+    };
+    let pid = child.id() as libc::pid_t;
+    let mut stdout = String::new();
+    if let Some(mut out) = child.stdout.take() {
+        use std::io::Read;
+        let _ = out.read_to_string(&mut stdout);
+    }
+    let mut status: libc::c_int = 0;
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    let waited = unsafe { libc::wait4(pid, &mut status, 0, &mut usage) };
+    if waited != pid {
+        eprintln!(
+            "gunbc measure-root-demand: wait4 on the measured child failed: {}",
+            std::io::Error::last_os_error()
+        );
+        std::process::exit(2);
+    }
+    let wait = if libc::WIFSIGNALED(status) {
+        crate::memory_governor::RootDemandMeasurementWait::Signaled(libc::WTERMSIG(status))
+    } else {
+        crate::memory_governor::RootDemandMeasurementWait::Exited(libc::WEXITSTATUS(status))
+    };
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|h| h.trim().to_string())
+        .unwrap_or_else(|_| "hostname unreadable".to_string());
+    let run = crate::memory_governor::RootDemandMeasurementRun {
+        root: admitted.root().clone(),
+        limit_bytes: admitted.limit_bytes(),
+        limit_source: admitted.limit_source().to_string(),
+        measured_on_host: host,
+        instrument_run: format!(
+            "gunbc measure-root-demand ({}) child pid {pid} at unix {}",
+            env!("GUNBC_BUILD_IDENTITY"),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        ),
+        census: crate::memory_governor::parse_root_demand_measurement_census(&stdout),
+    };
+    let peak_bytes = (usage.ru_maxrss as u64).saturating_mul(1024);
+    let receipt = crate::memory_governor::root_demand_measurement_receipt(run, wait, peak_bytes);
+    let json = crate::memory_governor::root_demand_measurement_receipt_json(&receipt);
+    if let Err(e) = std::fs::write(&receipt_path, &json) {
+        eprintln!("gunbc measure-root-demand: receipt: cannot write {receipt_path}: {e}");
+        std::process::exit(2);
+    }
+    eprint!("gunbc measure-root-demand: receipt written to {receipt_path}: {json}");
+    std::process::exit(crate::memory_governor::root_demand_measurement_exit_code(
+        &receipt,
+    ));
+}
+
 pub fn handle_serve(
     source_roots: Vec<String>,
     entry_file: String,
@@ -21167,6 +21408,7 @@ mod closure_bare_disposition_tests {
             has_non_tail_self_call: false,
             match_pattern: None,
             module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
             expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
         });
         Rc::new(GlobalBareCandidate {
@@ -39081,7 +39323,6 @@ mod sigs_env_flat_parents {
                 marker.to_string(),
                 crate::v1_std_core::kernel_span(marker.to_string()),
             ),
-            is_async: false,
             output_provenance: Rc::new(im::vector![]),
             variant_provenance: crate::v1_rt::rc_empty_map(),
         })

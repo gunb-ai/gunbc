@@ -12,7 +12,7 @@ import extdeps.gpu.types {
 }
 import extdeps.vllm.server { VllmSourceRevision }
 import extdeps.vllm.source_build {
-  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting,
+  VllmContainerBuildRecipe, vllm_d2d649e6_aarch64_release_recipe, vllm_recipe_targeting, vllm_d2d649e6_revision,
 }
 import extdeps.flashinfer.flashinfer {
   FlashInferAcquisition, FlashInferWheel, flashinfer_acquisition_key, flashinfer_published_version,
@@ -34,6 +34,7 @@ import gunbc.spark.vllm_runtime_image_build {
 import gunbc.spark.serving_runtime_capability_probe { gb10_observed_compute_capability }
 import gunbc.spark.serving_deployment_selection { TopologyShape, topology_shape }
 import gunbc.fabric.engram_materialization { engram_route_b_identity, engram_route_d_identity }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 
 // ── ONE EXACT DeepSeek V4.1 RUNTIME CANDIDATE, AS IDENTITY ONLY ──────────────────────────────────
 //
@@ -256,6 +257,33 @@ fn v41_empty_observation_defects(patches: List<V41EnginePatch>, authority: V41En
         PartitionByLaunchConfiguration => [] as List<NonEmptyStr>
         PartitionFixedByPatch => ["this population claims the Engram partition is fixed by the patch while carrying no patch, so there are no bytes for it to be fixed in" as NonEmptyStr]
       })
+  }
+}
+
+// PATCH IDENTITY IS NOT PATCH REALIZATION. The runtime key can name an ordered population. Nothing in
+// converge_vllm_source applies those bytes: a clean checkout at applies_to is the only admitted tree,
+// and a dirty tree is refused. Hand-applying on the builder would produce bytes no declaration owns.
+// Until a modeled apply step exists, an observed nonempty population cannot mint a patched-source
+// identity. Absent-by-observation is the vanilla tree, which is what an unpatched baseline image is.
+type V41PatchApplicationStanding
+  = V41VanillaSourceAtRevision { revision: VllmSourceRevision }
+  | V41PatchApplicationUnestablished { obligation: NonEmptyStr }
+  | V41PatchApplicationRefused { defects: List<NonEmptyStr> }
+
+fn v41_patch_application_standing(source: VllmSourceRevision, patches: V41PatchPopulation) -> V41PatchApplicationStanding {
+  match patches {
+    V41PatchesUnestablished { obligation: o } => V41PatchApplicationUnestablished { obligation: o }
+    V41PatchesAbsentByObservation => V41VanillaSourceAtRevision { revision: source }
+    V41PatchesObserved { patches: ps, partition: authority } => {
+      let defects = concat(v41_patch_applicability_defects(patches: ps, source: source), v41_empty_observation_defects(patches: ps, authority: authority))
+      if length(defects) != 0 {
+        V41PatchApplicationRefused { defects: defects }
+      } else {
+        V41PatchApplicationUnestablished {
+          obligation: "a patched source tree is minted only by converge_vllm_source growing desired state with caller-supplied P, DigestFile of each member, std.upsert_decision Noop|Apply|Refuse, git apply --index so create-file members are in the index, and a readback of the tree (git diff --binary HEAD) that grounds the image key; this fold does not choose P and does not treat the intended patch list as the consumed identity" as NonEmptyStr,
+        }
+      }
+    }
   }
 }
 
@@ -629,14 +657,14 @@ fn v41_candidate_standing_of(c: V41CandidateInputs) -> V41CandidateStanding {
 
 // ── THE CANDIDATE AS IT STANDS TODAY ────────────────────────────────────────────────────────────
 
-// UPSTREAM'S aarch64 RELEASE RECIPE AT d2d649e6 WITH THE FLEET'S DECLARED OVERRIDES: the 12.1 arch list
-// the GB10 needs and the build parallelism gunbc.spark.vllm_runtime_image_build already chose.
+// UPSTREAM'S aarch64 RELEASE RECIPE AT d2d649e6 WITH THE FLEET'S DECLARED ARCH OVERRIDE (12.1).
+// Parallelism on a dedicated builder is upstream's own max_jobs (16), not the Spark-sharing cap of 6.
 fn v41_candidate_recipe() -> VllmContainerBuildRecipe {
   vllm_recipe_targeting(
     base: vllm_d2d649e6_aarch64_release_recipe,
     torch_cuda_arch_list: v41_gb10_torch_cuda_arch_list,
     install_kv_connectors: vllm_d2d649e6_aarch64_release_recipe.install_kv_connectors,
-    max_jobs: v41_build_max_jobs,
+    max_jobs: vllm_d2d649e6_aarch64_release_recipe.max_jobs,
     nvcc_threads: hardware_thread_count_value(t: v41_build_nvcc_threads),
   )
 }
@@ -661,7 +689,7 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
     recipe: v41_candidate_recipe(),
     kernel_acquisition: flashinfer_0_6_18_post1,
     kernel_wheels: flashinfer_0_6_18_post1_wheels,
-    patches: V41PatchesUnestablished { obligation: "no Engram storage-backed lookup patch has been written against vLLM d2d649e674c75425d2d6975c87eb89fd4d55fff8; its population and application order are the runtime's remaining identity" as NonEmptyStr },
+    patches: v41_storage_backed_patch_population(),
   },
   model_source: V41ModelSourceInputs {
     checkpoint_revision: deepseek_v4_1_flash_revision,
@@ -671,7 +699,7 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
   engram: V41EngramRealizationInputs {
     partition: v41_candidate_partition,
     population: deepseek_v4_1_flash_engram_population,
-    row_store_encoding: V41ManifestUnestablished { obligation: "no rank-local Engram row-store encoding exists yet, so the materialized artifact has no identity" as NonEmptyStr },
+    row_store_encoding: V41ManifestUnestablished { obligation: "no published-shard row-store content digest exists; fixture correspondence over eight rows is a different subject and does not identify the materialized tables" as NonEmptyStr },
     route: engram_route_b_identity,
   },
   topology: topology_shape(tensor_parallel_degree: 4, replica_count: 1),
@@ -680,4 +708,41 @@ data v41_candidate_inputs: V41CandidateInputs = V41CandidateInputs {
 
 fn v41_candidate() -> V41CandidateVerdict {
   v41_candidate_standing(c: v41_candidate_inputs)
+}
+
+data v41_engram_file_backed_overlay_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch" as NonEmptyStr
+data v41_engram_storage_hook_path: NonEmptyStr = "dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr
+
+fn v41_digest_declared_patch(path: NonEmptyStr) -> Sha256Digest? {
+  match sha256sum_file_digest_via_shell(path: path) {
+    Sha256FileDigestUnavailable { path: _, reason: _ } => none
+    Sha256FileDigest { digest: d } => sha256_hex_digest(hex: d.hex as String)
+  }
+}
+
+// V41PatchesObserved HERE MEANS THE PATCH FILES WERE DIGESTED, not that Engram lookup is
+// storage-backed. The overlay adds FileBackedEngramStorage. The second member imports those
+// names into engram.py and does not rebind ParallelEngramEmbedding._allocate_weights; that
+// dispatch is the wiring trigger.
+fn v41_storage_backed_patch_population() -> V41PatchPopulation {
+  match v41_digest_declared_patch(path: v41_engram_file_backed_overlay_path) {
+    Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the file-backed overlay patch at dag/gunbc/spark/patches/d2d649e6/engram_file_backed.py.patch" as NonEmptyStr }
+    Present { value: overlay_digest } =>
+      match v41_engine_patch(path: v41_engram_file_backed_overlay_path, applies_to: vllm_d2d649e6_revision, sha256_hex: overlay_digest.hex as String, purpose: "file-backed Engram row-store overlay" as NonEmptyStr) {
+        Absent => V41PatchesUnestablished { obligation: "DigestFile of the overlay patch was not a sha256 digest" as NonEmptyStr }
+        Present { value: overlay } =>
+          match v41_digest_declared_patch(path: v41_engram_storage_hook_path) {
+            Absent => V41PatchesUnestablished { obligation: "DigestFile could not read the engram.py import member at dag/gunbc/spark/patches/d2d649e6/engram_storage_backed.patch" as NonEmptyStr }
+            Present { value: hook_digest } =>
+              match v41_engine_patch(path: v41_engram_storage_hook_path, applies_to: vllm_d2d649e6_revision, sha256_hex: hook_digest.hex as String, purpose: "import of file-backed overlay symbols into engram.py; ParallelEngramEmbedding._allocate_weights is not rebound" as NonEmptyStr) {
+                Absent => V41PatchesUnestablished { obligation: "DigestFile of the engram.py import member was not a sha256 digest" as NonEmptyStr }
+                Present { value: hook } => V41PatchesObserved { patches: [overlay, hook], partition: PartitionByLaunchConfiguration }
+              }
+          }
+      }
+  }
+}
+
+fn v41_storage_patch_application_standing() -> V41PatchApplicationStanding {
+  v41_patch_application_standing(source: v41_candidate_recipe().source, patches: v41_storage_backed_patch_population())
 }

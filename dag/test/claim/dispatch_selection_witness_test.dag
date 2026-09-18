@@ -622,28 +622,6 @@ test fn witness_select_claude_automatic_honors_request_credential_and_model() ->
   }
 }
 
-test fn dispatch_selection_keystone_holds() -> Bool {
-  witness_automatic_codex_preserves_medium_effort()
-    && witness_intricacy_does_not_change_automatic_effort()
-    && witness_deep_profile_refuses_without_realization()
-    && witness_production_codex_selection_refuses_unobserved_fingerprint()
-    && witness_srv1_inventory_includes_codex()
-    && witness_srv1_inventory_includes_claude()
-    && witness_production_inventory_excludes_claude()
-    && witness_srv2_inventory_includes_cursor()
-    && witness_srv2_cursor_selection_resolves()
-    && witness_srv1_claude_selection_resolves_with_fixture_standing()
-    && witness_select_claude_automatic_honors_request_credential_and_model()
-    && witness_receipt_records_requested_and_resolved()
-    && witness_carrier_notes_record_directive_addendum()
-    && witness_wrong_selection_shape_refuses()
-    && witness_probe_bridge_ineligible_standing_refuses_selection()
-    && witness_claude_request_refuses_on_codex_only_inventory()
-    && witness_exact_override_requires_explicit_provider_arm()
-    && witness_automatic_multibucket_native_exhaustion_refuses_join_undetermined()
-    && witness_explicit_override_bengalfox_admitted_from_same_inventory()
-}
-
 
 // THE LIMIT DRAW IS A WALL, NOT A NAMED INERTNESS. Under the old string sentinel this fn always
 // returned LimitDispatchDrawModel, keyed on "account-default" -- a draw model that matches no

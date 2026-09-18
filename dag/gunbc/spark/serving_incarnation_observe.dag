@@ -43,7 +43,7 @@ import extdeps.prometheus.client {
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
 import extdeps.systemd { SystemdUnitProperty, InvocationIDProperty, FragmentPathProperty, systemd_unit_property_wire }
-import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyCaptureRefused, systemctl_show_property_read }
+import gunbc.systemctl_show_read { SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused, systemctl_show_property_read }
 import gunbc.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host_operation_exec {
   HostOperation, HostOperationObserved, HostOperationRefused, host_operation_exec,
@@ -187,6 +187,7 @@ type UnitTextRead
 fn read_unit_property(transport: HostEffectTransport, unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitTextRead {
   match systemctl_show_property_read(transport: transport, unit: unit, property: property) {
     SystemdPropertyCaptured { value: v } => UnitTextObserved { value: trim(s: v) }
+    SystemdPropertyBlank => UnitTextRefused { cause: "the unit property was blank" }
     SystemdPropertyCaptureRefused { reason: why } => UnitTextRefused { cause: why }
   }
 }
@@ -517,6 +518,51 @@ fn incarnation_after_unit(
   }
 }
 
+// ── ONE UNIT'S IDENTITY, READ WITHOUT PRIVILEGE ─────────────────────────────────────────────────
+//
+// The invocation id systemd minted for the unit's current start and the digest of the fragment the
+// unit was started from. It is the same three reads for the head unit and for a worker unit -- a
+// worker exports no endpoint, so this is the WHOLE of what can be observed about a worker rank
+// without privilege, and it is exactly the part of the head's incarnation that does not need one.
+// It is factored out so gunbc.spark.pair_incumbent_identity can read every rank of a pair through
+// one fold rather than a second copy of these three reads.
+type UnitIdentityRead
+  = UnitIdentityObserved { invocation: NonEmptyStr, unit_digest: ContentHash }
+  | UnitIdentityRefused { refusal: ServingIncarnationRefusal }
+
+fn read_unit_identity(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitIdentityRead {
+  match read_unit_property(transport: transport, unit: unit, property: InvocationIDProperty) {
+    UnitTextRefused { cause: c } =>
+      UnitIdentityRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty), cause: c } }
+    UnitTextObserved { value: invocation_text } =>
+      if invocation_text == "" {
+        UnitIdentityRefused { refusal: IncarnationUnitNotActive { unit: unit } }
+      } else {
+        match read_unit_property(transport: transport, unit: unit, property: FragmentPathProperty) {
+          UnitTextRefused { cause: c } =>
+            UnitIdentityRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: FragmentPathProperty), cause: c } }
+          UnitTextObserved { value: fragment_path } =>
+            if fragment_path == "" {
+              UnitIdentityRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the unit reports no fragment path" } }
+            } else {
+              match host_read_text(transport: transport, operation: Sha256SumFile { path: fragment_path as NonEmptyStr }) {
+                HostTextRefused { cause: c } => UnitIdentityRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: c } }
+                HostTextObserved { stdout: line } =>
+                  match sha256sum_line_digest(line: line) {
+                    Absent => UnitIdentityRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "sha256sum printed no 64-hex digest line" } }
+                    Present { value: d } =>
+                      match sha256_digest_content_hash(digest: d) {
+                        Absent => UnitIdentityRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the sha256sum output did not read as a sha256 content hash" } }
+                        Present { value: digest } => UnitIdentityObserved { invocation: invocation_text as NonEmptyStr, unit_digest: digest }
+                      }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
 // THE ENTRY. One head host, one group, the endpoint launch the harness just read from that group's
 // route, and the sealed fleet context; everything else is derived. The unit, container and engine
 // binary are the GROUP'S, read from gunbc.spark.serving_group_launch: group A's launch is the
@@ -533,39 +579,12 @@ fn observe_endpoint_incarnation(
   let transport = FleetSsh { target: target, context: context }
   let names = serving_group_launch(group: group)
   let unit = names.head_unit_name
-  match read_unit_property(transport: transport, unit: unit, property: InvocationIDProperty) {
-    UnitTextRefused { cause: c } =>
-      IncarnationRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty), cause: c } }
-    UnitTextObserved { value: invocation_text } =>
-      if invocation_text == "" {
-        IncarnationRefused { refusal: IncarnationUnitNotActive { unit: unit } }
-      } else {
-        match read_unit_property(transport: transport, unit: unit, property: FragmentPathProperty) {
-          UnitTextRefused { cause: c } =>
-            IncarnationRefused { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: FragmentPathProperty), cause: c } }
-          UnitTextObserved { value: fragment_path } =>
-            if fragment_path == "" {
-              IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the unit reports no fragment path" } }
-            } else {
-              match host_read_text(transport: transport, operation: Sha256SumFile { path: fragment_path as NonEmptyStr }) {
-                HostTextRefused { cause: c } => IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: c } }
-                HostTextObserved { stdout: line } =>
-                  match sha256sum_line_digest(line: line) {
-                    Absent => IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "sha256sum printed no 64-hex digest line" } }
-                    Present { value: d } =>
-                      match sha256_digest_content_hash(digest: d) {
-                        Absent => IncarnationRefused { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the sha256sum output did not read as a sha256 content hash" } }
-                        Present { value: digest } =>
-                          incarnation_after_unit(
-                            transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
-                            names: names, invocation: invocation_text as NonEmptyStr, unit_digest: digest,
-                          )
-                      }
-                  }
-              }
-            }
-        }
-    }
+  match read_unit_identity(transport: transport, unit: unit) {
+    UnitIdentityRefused { refusal: r } => IncarnationRefused { refusal: r }
+    UnitIdentityObserved { invocation: invocation, unit_digest: digest } =>
+      incarnation_after_unit(
+        transport: transport, target: target, context: context, group: group, head: head, endpoint: endpoint,
+        names: names, invocation: invocation, unit_digest: digest,
+      )
   }
 }
-

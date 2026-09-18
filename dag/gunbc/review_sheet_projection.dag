@@ -96,10 +96,24 @@ type A1RowSpan {
   end: A1Cell
 }
 
+// WHY THE CONFLICT CARRIES A CAUSE. Three conditions produced this value and all three discarded
+// what distinguished them: a derived field occupied by a value that is not the desired one, a
+// listing-standing cell holding a token the standing reader does not recognise, and an erasure-mark
+// cell holding a token the mark reader does not recognise. Each decide_*_cell arm BOUND the
+// distinguishing value and threw it away -- two of them literally as StandingForeign { raw: _ } --
+// so every one of them arrived here as the same nullary CellConflict and the renderer called all
+// three "derived cell conflict". Two of the three causes needed no new vocabulary: ListingStandingRead
+// and DerivedErasureMarkRead already carry the foreign token, and this type stops discarding it.
+type ReviewCellConflictCause
+  = DerivedFieldOccupied { observed: String, desired: String }
+  | ListingStandingForeignValue { raw: String }
+  | DerivedErasureMarkForeignValue { raw: String }
+
 type LocatedDerivedConflict {
   listing_id: NonEmptyStr
   column: NonEmptyStr
   a1: A1Cell
+  cause: ReviewCellConflictCause
 }
 
 type DerivedCellWrite {
@@ -680,12 +694,12 @@ fn write_plan_preserves_operator_columns(schema: ReviewSheetSchema, plan: Review
 type CellDecision
   = CellSkip
   | CellWrite { value: String }
-  | CellConflict
+  | CellConflict { cause: ReviewCellConflictCause }
 
 fn decide_standing_cell(observed: String, desired: ListingStandingState) -> CellDecision {
   match read_listing_standing(cell: observed) {
     StandingBlank => CellWrite { value: listing_standing_label(state: desired) }
-    StandingForeign { raw: _ } => CellConflict
+    StandingForeign { raw: r } => CellConflict { cause: ListingStandingForeignValue { raw: r } }
     StandingKnown { state: observed_state } =>
       if listing_standing_eq(a: observed_state, b: desired) {
         CellSkip
@@ -702,7 +716,7 @@ fn decide_derived_field_cell(observed: String, desired: String) -> CellDecision 
     if observed == "" {
       CellWrite { value: desired }
     } else {
-      CellConflict
+      CellConflict { cause: DerivedFieldOccupied { observed: observed, desired: desired } }
     }
   }
 }
@@ -717,7 +731,7 @@ fn decide_derived_erasure_cell(observed: String) -> CellDecision {
 
 fn decide_erasure_mark_cell(observed: String, erase_derived: Bool) -> CellDecision {
   match read_derived_erasure_mark(cell: observed) {
-    ErasureMarkForeign { raw: _ } => CellConflict
+    ErasureMarkForeign { raw: r } => CellConflict { cause: DerivedErasureMarkForeignValue { raw: r } }
     ErasureMarkApplied => CellSkip
     ErasureMarkBlank =>
       if erase_derived {
@@ -756,7 +770,7 @@ fn classification_from_cell_decision(
             )
           }
       }
-    CellConflict =>
+    CellConflict { cause: cause } =>
       match a1_cell(column_index: column_index, sheet_row: sheet_row_number(data_index: data_index)) {
         Absent => ReviewSheetUnreadable {
           reason: concat("unrepresentable A1 column index ", to_string(column_index)) as NonEmptyStr
@@ -767,6 +781,7 @@ fn classification_from_cell_decision(
               listing_id: listing_id,
               column: column,
               a1: a1,
+              cause: cause,
             }
           }
       }
@@ -1368,6 +1383,17 @@ fn finish_classify(
   }
 }
 
+fn cell_conflict_cause_text(cause: ReviewCellConflictCause) -> String {
+  match cause {
+    DerivedFieldOccupied { observed: o, desired: d } =>
+      join(["derived field occupied observed=", o, " desired=", d], "")
+    ListingStandingForeignValue { raw: r } =>
+      join(["listing standing value unrecognised raw=", r], "")
+    DerivedErasureMarkForeignValue { raw: r } =>
+      join(["derived erasure mark unrecognised raw=", r], "")
+  }
+}
+
 fn conflict_reason(conflict: LocatedDerivedConflict) -> NonEmptyStr {
   join(
     [
@@ -1377,6 +1403,8 @@ fn conflict_reason(conflict: LocatedDerivedConflict) -> NonEmptyStr {
       conflict.column as String,
       " cell=",
       a1_cell_wire(cell: conflict.a1),
+      " cause=",
+      cell_conflict_cause_text(cause: conflict.cause),
     ],
     "",
   ) as NonEmptyStr
@@ -1440,6 +1468,56 @@ fn judgement_for_listing(
           }
       }
     }
+  }
+}
+
+// THE CI PROSPECT SHEET'S COLUMN ROSTER, DECLARED ONCE HERE BECAUSE TWO MODULES WERE ABOUT TO OWN
+// IT. The format actuator carried a bare `column_count = 17` and `standing_column_index = 3`, while
+// this module already owns what a review sheet's columns ARE -- so "how wide is it" and "which
+// column is Standing" had two sources that could answer differently, and the drift would have been
+// silent: the formatter checks frozen rows, header colour and a rule count, never extent or column
+// position. Adding one derived column would have left the header band short and the conditional
+// rule painting a column that is no longer Standing, with every call reporting success.
+//
+// The names are the header row the live sheet already carries, read back from the write that put
+// 58 rows there on 2026-09-16. Standing carries the ListingStanding kind rather than a position,
+// which is what lets a consumer find it after the roster grows. Decision and Note are
+// OperatorEntered: they are the operator's cells, they ship empty from every derived row, and a
+// whole-range rewrite would erase them -- which is why the identity-keyed write path exists and why
+// marking them here is load-bearing rather than descriptive.
+data ci_prospect_derived_columns: List<ReviewColumn> = [
+  ReviewColumn { name: "Rank" as NonEmptyStr, kind: DerivedField { source_field: "rank" as NonEmptyStr } },
+  ReviewColumn { name: "Repository" as NonEmptyStr, kind: DerivedField { source_field: "repository" as NonEmptyStr } },
+  ReviewColumn { name: "Owner" as NonEmptyStr, kind: DerivedField { source_field: "owner" as NonEmptyStr } },
+  ReviewColumn { name: "Standing" as NonEmptyStr, kind: ListingStanding },
+  ReviewColumn { name: "Runner-min/day" as NonEmptyStr, kind: DerivedField { source_field: "runner_minutes_per_day" as NonEmptyStr } },
+  ReviewColumn { name: "Runs/day" as NonEmptyStr, kind: DerivedField { source_field: "runs_per_day" as NonEmptyStr } },
+  ReviewColumn { name: "Median min" as NonEmptyStr, kind: DerivedField { source_field: "median_minutes" as NonEmptyStr } },
+  ReviewColumn { name: "p90 min" as NonEmptyStr, kind: DerivedField { source_field: "p90_minutes" as NonEmptyStr } },
+  ReviewColumn { name: "Success %" as NonEmptyStr, kind: DerivedField { source_field: "success_percent" as NonEmptyStr } },
+  ReviewColumn { name: "Linux %" as NonEmptyStr, kind: DerivedField { source_field: "linux_percent" as NonEmptyStr } },
+  ReviewColumn { name: "Provider" as NonEmptyStr, kind: DerivedField { source_field: "provider" as NonEmptyStr } },
+  ReviewColumn { name: "Stars" as NonEmptyStr, kind: DerivedField { source_field: "stars" as NonEmptyStr } },
+  ReviewColumn { name: "Language" as NonEmptyStr, kind: DerivedField { source_field: "language" as NonEmptyStr } },
+  ReviewColumn { name: "Why" as NonEmptyStr, kind: DerivedField { source_field: "why" as NonEmptyStr } },
+  ReviewColumn { name: "URL" as NonEmptyStr, kind: DerivedField { source_field: "url" as NonEmptyStr } },
+]
+
+// THE IDENTITY IS THE REPOSITORY, not the rank. Rank is a derived ordering that changes every time
+// the census re-ranks, so keying rows on it would make every row a different row on each pass and
+// destroy the operator's cells. A repository full name is stable across re-ranking and across the
+// prospect leaving and re-entering the list.
+data ci_prospect_identity_column: NonEmptyStr = "Repository"
+
+data ci_prospect_operator_columns: List<ReviewColumn> = [
+  ReviewColumn { name: "Decision" as NonEmptyStr, kind: OperatorEntered },
+  ReviewColumn { name: "Note" as NonEmptyStr, kind: OperatorEntered },
+]
+
+fn ci_prospect_sheet_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: ci_prospect_identity_column,
+    columns: concat(ci_prospect_derived_columns, ci_prospect_operator_columns),
   }
 }
 

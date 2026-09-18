@@ -9,7 +9,7 @@ import std.human_intervention {
 }
 import gunbc.auth.approval_notification { approval_ntfy_topic }
 import extdeps.ntfy.ntfy { NtfyTopic, NtfyPublishReceipt, NtfyErrorShape }
-import extdeps.transports.rest { RestOutcome }
+import extdeps.transports.rest { RestOutcome, RestOk }
 import extdeps.uri { Uri, Https }
 import std.types { Secret }
 import v2.std.network { POST }
@@ -308,7 +308,12 @@ fn approval_ntfy_human_burden() -> ProvisioningHumanBurden {
 // TLD, which is guaranteed never to resolve. That is a structural failure, not an absorbing
 // fallback: it cannot succeed, cannot widen, and cannot be mistaken for a working endpoint. The
 // arm is witnessed so it is not merely asserted.
-fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+//
+// ONE COMPOSITION FOR EVERY SERVICE TAILSCALE SERVE PUBLISHES ON srv1: the port is the parameter,
+// because that is the only fact that differs between the ntfy address and the roadmap server's
+// (which the approval links point at, gunbc.auth.approval_request_submission). Absent means the
+// default TLS port and no `:port` suffix, which is how tailscale serve renders the 443 listener.
+fn srv1_tailnet_base_url_from(domain: NonEmptyStr?, port: Port?) -> NonEmptyStr {
   match domain {
     Present { value: d } =>
       join([
@@ -316,11 +321,14 @@ fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
         operator_host_srv1 as String,
         ".",
         d as String,
-        ":",
-        to_string(approval_ntfy_serve_port),
+        match port { Present { value: p } => concat(":", to_string(p))  Absent => "" },
       ], "") as NonEmptyStr
     Absent => "https://tailnet-domain-undeclared.invalid" as NonEmptyStr
   }
+}
+
+fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
+  srv1_tailnet_base_url_from(domain: domain, port: Present { value: approval_ntfy_serve_port })
 }
 
 // The TLS port tailscale serve publishes on, distinct from the loopback port ntfy binds. srv1's
@@ -328,6 +336,14 @@ fn approval_ntfy_base_url_from(domain: NonEmptyStr?) -> NonEmptyStr {
 data approval_ntfy_serve_port: Port = 8443
 
 data approval_ntfy_base_url: NonEmptyStr = approval_ntfy_base_url_from(domain: fleet_intent_network.tailnet_domain)
+
+// THE HERMETIC PUBLISH IS THE DECODED-200 SHAPE AND NOTHING ELSE: mock_response publishes one
+// result, so the hermetic arm is a published message whose id is the fixture's identity -- a live
+// ntfy id is a random 12-character string and cannot be this spelling. It exists so that a claim
+// can run the filing fold THROUGH the publish call: deleting ntfy.Publish.PublishMessage from
+// approval_request_submission must fail a control, not only an annotation.
+data hermetic_ntfy_publish_message_id: String = "hermetic-mock-ntfy-message"
+data hermetic_ntfy_publish_outcome: RestOutcome = RestOk
 
 service ntfy.Publish {
   config {
@@ -370,6 +386,9 @@ service ntfy.Publish {
       403 => NtfyErrorShape
       429 => NtfyErrorShape
       5xx => NtfyErrorShape
+    }
+    mock_response {
+      200 => { message_id: hermetic_ntfy_publish_message_id, outcome: hermetic_ntfy_publish_outcome } "hermetic POST / decoded-200 shape; the id is the fixture identity, not a live ntfy message"
     }
   }
 }

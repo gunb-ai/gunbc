@@ -122,28 +122,38 @@ import gunbc.fleet_intent_network {
 // where it belongs.
 
 // WHAT THE LINK REPORTS, which is a different subject from what the EEPROM says. The negotiated
-// speed and the NIC's advertised set are read from the HOST, per fleet and not per module, so they
-// stay here. The per-module EEPROM bytes are receipts and live in fabric_leg_eeprom_observations,
-// one row per acquisition -- an earlier head carried a `coding` field here as well, which made the
-// same bytes answerable from two places.
+// speed is read from the HOST, per fleet and not per module, so it stays here as linked_speed_gbps.
+// The NIC's advertised MODE SET is also a host-read link fact, but it is NOT carried as a field here:
+// it wants a typed List<LinkMode> with a cited instrument, and until a consumer needs it that is an
+// unread field this module declines to hold (see the deletion note on fabric_leg_cable_observed).
+// The per-module EEPROM bytes are receipts and live in fabric_leg_eeprom_observations, one row per
+// acquisition -- an earlier head carried a `coding` field here as well, which made the same bytes
+// answerable from two places.
 type FabricLegCableObserved {
   vendor: NonEmptyStr
   part_number: NonEmptyStr
-  nic_supported_speeds: NonEmptyStr
   linked_speed_gbps: Nat
 }
 
+// nic_supported_speeds WAS REMOVED HERE, not re-valued. It was a `String` leaf hiding named parts
+// -- a set of link modes this module already imports as extdeps.ethernet.link_mode LinkMode rows
+// (ieee_100gbase_cr2, ieee_50gbase_cr2, ...), plus the reading instrument and the observation date.
+// Spelling those as "100G_2X, 50G_1X, ..." is the nicknaming DESIGN §3 forbids and the anemic leaf
+// §2 forbids, and correcting its stale value only grew what it hid. Nothing read it (only
+// linked_speed_gbps is consumed, by fabric_rail_desired and the witness), so it is deleted rather
+// than enriched into a List<LinkMode> nothing would read. The NIC-supported-mode observation itself
+// -- post-recode 100G_2X, read by mstlink -- lives in the actuation log and lands as a typed set,
+// cited to its instrument (§6), when gap G12's event model gives it a consumer.
 data fabric_leg_cable_observed: FabricLegCableObserved = FabricLegCableObserved {
   vendor: "FS" as NonEmptyStr,
   part_number: "QDD-400G-4QPC015" as NonEmptyStr,
-  nic_supported_speeds: "100G_2X, 50G_1X, 50G_2X, 25G, 10G, 1G (mstlink, ConnectX-7 fw 28.45.4028, after the 2026-09-16 NVIDIA (ETH) re-flash)" as NonEmptyStr,
   linked_speed_gbps: 50,
 }
 
-// THE LINK'S RATE AND THE MODE THE NIC WILL ACCEPT ARE NOW DIFFERENT FACTS, and the row above says
-// both because the re-flash separated them: the NIC accepts 100G_2X and the link still runs at 50G.
-// Before 2026-09-16 the two moved together, which is why one row could carry them without the pair
-// ever disagreeing.
+// THE LINK'S RATE AND THE MODE THE NIC WILL ACCEPT ARE NOW DIFFERENT FACTS, because the re-flash
+// separated them: the NIC accepts 100G_2X and the link still runs at 50G. The row above carries only
+// the rate; the accepted-mode set lands as a typed List<LinkMode> cited to mstlink when gap G12's
+// event model gives it a consumer, rather than as the string this row used to carry.
 //
 // THE SWITCH'S OWN RATE FIELD IS NOT AN ADMISSIBLE READING OF EITHER. With the lane configured for
 // 100G-baseCR2, RouterOS `/interface/ethernet/monitor` reported `rate: 100Gbps` and
@@ -223,15 +233,33 @@ type FabricLaneObserved {
   leg_rdma_device: NonEmptyStr
 }
 
+// THE NETDEV NAMES THE LEG APPEARS ON, DECLARED ONCE. Every row below carried the same two
+// spellings as literals -- eight copies of `enp1s0f1np1` and eight of `enP2p1s0f1np1` -- which is one
+// concept authored sixteen times (DESIGN §2). The names are identical across the fleet because they
+// are derived from the NIC's PCI position and function, which is the same on every Spark, so a
+// per-row literal was never carrying per-row information.
+//
+// IT IS ALSO WHAT A PRIVILEGE GRANT NEEDS TO NAME. gunbc.spark.managed_access_bootstrap authorizes
+// an EEPROM read on ONE device rather than on every interface the host has, and a Cmnd_Spec that
+// spelled the device itself would be a seventeenth copy -- one that sudo would silently fail to
+// match if the fleet's naming ever moved. The grant folds this row instead.
+//
+// THE TWIN IS A SEPARATE ROW AND NOT A DERIVATION. Both second-function netdevs come up from the one
+// leg with distinct MACs; their names differ by PCI domain prefix rather than by any rule this
+// repository could apply, so deriving one from the other would be inventing a naming law upstream
+// does not publish.
+data spark_fabric_leg_netdev: NonEmptyStr = "enp1s0f1np1" as NonEmptyStr
+data spark_fabric_leg_netdev_twin: NonEmptyStr = "enP2p1s0f1np1" as NonEmptyStr
+
 data fabric_lane_observations: List<FabricLaneObserved> = [
-  FabricLaneObserved { cage: 1, lane: 1, host: operator_host_srv5, spark_hostname: "spark-a3ee" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 3, host: operator_host_srv8, spark_hostname: "spark-ac79" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 5, host: operator_host_srv7, spark_hostname: "spark-c2b1" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 1, lane: 7, host: operator_host_srv6, spark_hostname: "spark-3bd5" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 2, lane: 1, host: operator_host_srv10, spark_hostname: "spark-3336" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 2, lane: 3, host: operator_host_srv12, spark_hostname: "spark-2196" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 2, lane: 5, host: operator_host_srv9, spark_hostname: "spark-0c75" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
-  FabricLaneObserved { cage: 2, lane: 7, host: operator_host_srv11, spark_hostname: "spark-b66c" as NonEmptyStr, leg_netdev: "enp1s0f1np1" as NonEmptyStr, leg_netdev_twin: "enP2p1s0f1np1" as NonEmptyStr, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 1, host: operator_host_srv5, spark_hostname: "spark-a3ee" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 3, host: operator_host_srv8, spark_hostname: "spark-ac79" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 5, host: operator_host_srv7, spark_hostname: "spark-c2b1" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 1, lane: 7, host: operator_host_srv6, spark_hostname: "spark-3bd5" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 1, host: operator_host_srv10, spark_hostname: "spark-3336" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 3, host: operator_host_srv12, spark_hostname: "spark-2196" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 5, host: operator_host_srv9, spark_hostname: "spark-0c75" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
+  FabricLaneObserved { cage: 2, lane: 7, host: operator_host_srv11, spark_hostname: "spark-b66c" as NonEmptyStr, leg_netdev: spark_fabric_leg_netdev, leg_netdev_twin: spark_fabric_leg_netdev_twin, leg_rdma_device: "rocep1s0f1" as NonEmptyStr },
 ]
 
 fn fabric_lane_interface(o: FabricLaneObserved) -> NonEmptyStr {
@@ -297,18 +325,40 @@ data srv10_fabric_link_observed: Bool = true
 // cannot say it: editing it moves both legs at once.
 //
 // So one row per acquisition, carrying the identity that makes it a receipt rather than a value: the
-// host it was taken from, the module's own vendor serial, and the date code. The two legs agree
-// today; that agreement is DERIVED by comparing rows, never assumed by storing one.
+// host it was taken from, the module's own vendor serial, and the date code. Whether the two legs
+// agree is DERIVED by comparing rows, never assumed by storing one -- and they now DISAGREE
+// (spark-a3ee re-read post-recode to 0x40, spark-ac79 still at its last pre-recode 0x0B), which is
+// exactly the divergence this per-row shape exists to keep representable.
+//
+// AND A READING'S CURRENT STANDING IS TYPED, NOT ASSUMED FROM THE FACT THAT A ROW EXISTS. A leg that
+// was re-flashed after its last read has a KNOWN-INVALIDATED reading -- the mutation happened, so the
+// stored coding is no longer the leg's current coding, and answering it as a live reading is silent
+// wrongness on the plant path (§5). That is a different state from "never read", and it must not
+// collapse into either "current" or "never looked". So each acquisition carries an
+// EepromAcquisitionStanding: AcquisitionCurrent for a reading taken (or re-taken) after the last
+// mutation, AcquisitionInvalidatedByReflash for a reading a later re-flash invalidated and which was
+// not re-taken. The full append-only acquisition history is still G12; this is the minimum standing
+// the LIVE plant needs so it never promotes an invalidated reading to a current one.
+type EepromAcquisitionStanding
+  = AcquisitionCurrent
+  | AcquisitionInvalidatedByReflash { invalidating_event: NonEmptyStr }
+
 type FabricLegEepromObservation {
   host: NonEmptyStr
   vendor_serial: NonEmptyStr
   date_code: NonEmptyStr
   coding: CableLegObservation
+  acquisition: EepromAcquisitionStanding
 }
 
 // Each row states what ITS dump returned, written out rather than pointing at a shared value. All
 // eight agree byte for byte today; that agreement is a DERIVABLE fact about eight receipts, and
 // storing it as one row would make the agreement unfalsifiable and the divergence unrepresentable.
+//
+// EVERY ROW IS AcquisitionCurrent BECAUSE EVERY LEG WAS RE-READ AFTER THE RE-FLASH. An interim
+// revision on main carried spark-ac79 as AcquisitionInvalidatedByReflash, re-flashed but not re-read;
+// the 2026-09-16 acquisition below re-read it (0x40), so that standing no longer describes any leg,
+// and the type keeps it for the next re-flash that precedes its re-read.
 //
 // ALL EIGHT LEGS ARE NOW READ, WHERE TWO WERE BEFORE, and the roster went from a partial plant that
 // refused to a complete one. The rows are the post-re-flash acquisition of 2026-09-16: every leg
@@ -338,6 +388,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-a3ee" as NonEmptyStr,
@@ -350,6 +401,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-c2b1" as NonEmptyStr,
@@ -362,6 +414,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-ac79" as NonEmptyStr,
@@ -374,6 +427,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-0c75" as NonEmptyStr,
@@ -386,6 +440,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-b66c" as NonEmptyStr,
@@ -398,6 +453,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-3336" as NonEmptyStr,
@@ -410,6 +466,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
   FabricLegEepromObservation {
     host: "spark-2196" as NonEmptyStr,
@@ -422,6 +479,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
       encoding: sff8636_encoding_from_byte(code: 8),
       nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
       extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionCurrent,
   },
 ]
 
@@ -432,10 +490,21 @@ fn fabric_leg_observation_for(o: FabricLaneObserved) -> List<FabricLegEepromObse
 // MEMBERSHIP IS DERIVED FROM THE RECEIPTS, never from a parallel roster of which hosts were dumped.
 // A second list would be a second answer to "was this leg read", and the two would disagree the
 // first time a receipt was added without updating it.
+// A LEG'S PLANT READING IS ITS CURRENT CODING OR NOTHING. An AcquisitionCurrent row is a live
+// reading; an AcquisitionInvalidatedByReflash row is projected to LegNeverRead, because the leg's
+// current coding is unknown after the re-flash and presenting the invalidated value as a live reading
+// is the silent wrongness §5 forbids. The invalidated last-observation is not lost -- it stays on the
+// eeprom row -- it is simply not promoted to the plant.
+fn fabric_leg_reading_of_row(endpoint: NonEmptyStr, r: FabricLegEepromObservation) -> CableLegReading {
+  match r.acquisition {
+    AcquisitionCurrent => LegReadingTaken { endpoint: endpoint, observation: r.coding }
+    AcquisitionInvalidatedByReflash { invalidating_event: _ } => LegNeverRead { endpoint: endpoint }
+  }
+}
+
 fn fabric_leg_reading(o: FabricLaneObserved) -> CableLegReading {
   match fabric_leg_observation_for(o: o).first() {
-    Present { value: r } =>
-      LegReadingTaken { endpoint: fabric_lane_interface(o: o), observation: r.coding }
+    Present { value: r } => fabric_leg_reading_of_row(endpoint: fabric_lane_interface(o: o), r: r)
     Absent => LegNeverRead { endpoint: fabric_lane_interface(o: o) }
   }
 }
