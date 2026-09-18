@@ -12,7 +12,9 @@ import gunbc.machine_intake_subject { UnitKey }
 // "is dedicated management" cannot represent that. Connector identity and function bindings
 // are therefore separate types. Expansion-card attachment is the standard
 // NicAttachmentClass, not a second PcieCem/OcpNic3 spelling.
-// Panel text is an observation. Identity is unit + locator + attachment.
+// Panel text is an observation. Identity is an observed unit key + locator + attachment.
+// An unobserved unit cannot mint SameUnit or DistinctUnits; matching discriminator prose
+// is not a unit key.
 
 type EthernetAttachment
   = BaseboardOnboard
@@ -52,38 +54,75 @@ type ObservedEthernetLan {
   link: EthernetLinkAddress
 }
 
-fn ethernet_port_units_agree(a: EthernetPortUnit, b: EthernetPortUnit) -> Bool {
+type PortUnitIdentityStanding
+  = ObservedSameUnit
+  | ObservedDistinctUnits
+  | PortUnitIdentityUnobserved { discriminator: NonEmptyStr }
+
+type ConnectorIdentityStanding
+  = SameConnector
+  | DistinctConnectors
+  | ConnectorIdentityUnobserved { discriminator: NonEmptyStr }
+
+fn ethernet_port_unit_identity(a: EthernetPortUnit, b: EthernetPortUnit) -> PortUnitIdentityStanding {
   match a {
     PortOnUnit { key: ka } =>
       match b {
-        PortOnUnit { key: kb } => (ka as String) == (kb as String)
-        PortUnitUnobserved { discriminator: _ } => false
+        PortOnUnit { key: kb } =>
+          if (ka as String) == (kb as String) {
+            ObservedSameUnit
+          } else {
+            ObservedDistinctUnits
+          }
+        PortUnitUnobserved { discriminator: _ } =>
+          PortUnitIdentityUnobserved {
+            discriminator: "one port binds a unit key and the other does not",
+          }
       }
-    PortUnitUnobserved { discriminator: da } =>
-      match b {
-        PortOnUnit { key: _ } => false
-        PortUnitUnobserved { discriminator: db } => (da as String) == (db as String)
+    PortUnitUnobserved { discriminator: _ } =>
+      PortUnitIdentityUnobserved {
+        discriminator: "at least one port has no unit key; matching unobserved prose is not unit identity",
       }
   }
 }
 
-fn ethernet_ports_are_the_same_connector(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {
-  ethernet_port_units_agree(a: a.unit, b: b.unit)
-    && (a.panel_label as String) == (b.panel_label as String)
+fn ethernet_locator_and_attachment_match(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {
+  (a.panel_label as String) == (b.panel_label as String)
     && (a.connector_label as String) == (b.connector_label as String)
     && a.attachment == b.attachment
 }
 
+fn ethernet_connector_identity(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> ConnectorIdentityStanding {
+  match ethernet_port_unit_identity(a: a.unit, b: b.unit) {
+    ObservedDistinctUnits => DistinctConnectors
+    ObservedSameUnit =>
+      if ethernet_locator_and_attachment_match(a: a, b: b) {
+        SameConnector
+      } else {
+        DistinctConnectors
+      }
+    PortUnitIdentityUnobserved { discriminator: d } =>
+      ConnectorIdentityUnobserved { discriminator: d }
+  }
+}
+
 fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort) -> Bool {
-  ethernet_ports_are_the_same_connector(a: a, b: b) == false
+  match ethernet_connector_identity(a: a, b: b) {
+    DistinctConnectors => true
+    SameConnector => false
+    ConnectorIdentityUnobserved { discriminator: _ } => false
+  }
 }
 
 fn ethernet_port_may_carry_multiple_functions(
   a: EthernetFunctionBinding,
   b: EthernetFunctionBinding,
 ) -> Bool {
-  ethernet_ports_are_the_same_connector(a: a.port, b: b.port)
-    && (a.function == b.function) == false
+  match ethernet_connector_identity(a: a.port, b: b.port) {
+    SameConnector => (a.function == b.function) == false
+    DistinctConnectors => false
+    ConnectorIdentityUnobserved { discriminator: _ } => false
+  }
 }
 
 fn observed_lans_have_distinct_addresses(a: ObservedEthernetLan, b: ObservedEthernetLan) -> Bool {

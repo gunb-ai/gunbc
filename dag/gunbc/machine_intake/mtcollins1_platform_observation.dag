@@ -9,12 +9,15 @@ import gunbc.machine_intake_ethernet {
   BaseboardOnboard,
   BmcDedicated,
   ConfiguredLink,
+  ConnectorIdentityUnobserved,
+  DistinctConnectors,
   FunctionUnobserved,
   ObservedEthernetLan,
   EthernetFunctionBinding,
   PhysicalEthernetPort,
   PortUnitUnobserved,
-  ethernet_ports_are_distinct,
+  SameConnector,
+  ethernet_connector_identity,
   observed_lans_have_distinct_addresses,
 }
 import extdeps.network.ipv4 { ipv4_address }
@@ -153,10 +156,14 @@ data mtcollins1_second_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
 }
 
 fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
-  ethernet_ports_are_distinct(
+  match ethernet_connector_identity(
     a: mtcollins1_dedicated_bmc_lan.binding.port,
     b: mtcollins1_second_bmc_lan.binding.port,
-  )
+  ) {
+    ConnectorIdentityUnobserved { discriminator: _ } => true
+    SameConnector => false
+    DistinctConnectors => false
+  }
     && observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan)
     && mtcollins1_dedicated_bmc_lan.binding.function == BmcDedicated
     && match mtcollins1_second_bmc_lan.binding.function {

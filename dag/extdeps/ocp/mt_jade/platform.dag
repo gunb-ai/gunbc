@@ -415,18 +415,21 @@ data mt_jade_fan_connectors_1u: MtJadeFanConnectorPopulation = MtJadeFanConnecto
   dual_rotor: true,
 }
 
-// FEATURE LIST: DUAL CRPS, 1+1, HOT-PLUG. The specification names the PSU mechanical class and
-// redundancy and does not name IEC 60320 sheet, AC voltage range, or a wattage rating of any
-// fitted module. Inventing C14 vs C20 from "CRPS" would be a fabricated inlet.
+// FEATURE LIST: DUAL CRPS, 1+1, HOT-PLUG. "1+1" is required_count + spare_count, not a label.
+// The specification names the PSU mechanical class and does not name IEC 60320 sheet, AC
+// voltage range, or a wattage rating of any fitted module. Inventing C14 vs C20 from "CRPS"
+// would be a fabricated inlet.
 type MtJadeCrpsPower {
   psu_count: Nat
-  redundancy_label: NonEmptyStr
+  required_count: Nat
+  spare_count: Nat
   hot_plug: Bool
 }
 
 data mt_jade_crps_power: MtJadeCrpsPower = MtJadeCrpsPower {
   psu_count: 2,
-  redundancy_label: "1+1",
+  required_count: 1,
+  spare_count: 1,
   hot_plug: true,
 }
 
