@@ -52,6 +52,7 @@ import gunbc.network_boot_delivery {
   ProductionTrustedBootstrap,
   SignedBootManifestAbsent,
   SignedBootManifestIdentified,
+  SignedBootManifestVerificationRefused,
   SignedBootManifestVerified,
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
@@ -441,6 +442,25 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliveryUnestablished { missing: m } => m |> any(x => x == NetworkBootBootArtifacts)
     NetworkBootDeliveryEstablished { evidence: _ } => false
     NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
+  }
+}
+
+test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
+  let inputs = NetworkBootJoinInputs {
+    target: target,
+    artifact_digest: artifact,
+    fleet: fleet_ok(),
+    site: site_ok(),
+    client: client_ok(),
+    boot_control: control_ok(),
+    manifest: SignedBootManifestVerificationRefused { observation: obs, observed_at: 1788000000000 },
+  }
+  match join_network_boot_delivery(inputs: inputs) {
+    NetworkBootDeliveryEvidenceRefused { axis: axis, observation: o } =>
+      axis == NetworkBootBootArtifacts && (o.decl_name as String) == (obs.decl_name as String)
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
     NetworkBootDeliveryArchitectureRefused { architecture: _ } => false
   }
 }
