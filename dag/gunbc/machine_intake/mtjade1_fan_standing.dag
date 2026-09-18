@@ -9,6 +9,11 @@ import gunbc.machine_intake_bmc_first_contact_standing {
 }
 import gunbc.machine_intake_mtjade1_access_observation { mtjade1_firmware_family_standing }
 
+// COVERAGE STATE FOR THIS MODULE IS NOT HERE. Which consumer each standing waits on and what
+// retires it is carried by gunbc.machine_intake_mtjade1_coverage_frontier
+// mtjade1_fan_standing_frontier_rows as typed std.roster_frontier rows, because a "NAMED CONSUMER
+// / TRIGGER" note is unreadable to every Accepted program (DESIGN §4c, review 67984).
+//
 // OPERATOR RECEIPT 2026-09-18: Jade powered on with no DIMMs; fans ran at full and did not stop;
 // operator chassis-powered the host off. Next power-on is with the Table 11 16-DIMM 1DPC fill.
 // Acoustic inaudibility is not a PWM number: cooling_qualification already keeps room acoustics

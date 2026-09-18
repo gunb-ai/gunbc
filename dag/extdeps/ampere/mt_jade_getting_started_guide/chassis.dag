@@ -25,8 +25,8 @@ data mt_jade_gsg_chassis_model_scope: ExternalModelScope = mt_jade_gsg_model_sco
 //
 // Which consumer each row waits on, and what retires it, is a fact about THIS REPOSITORY rather
 // than about Ampere's document, so DESIGN section 3 homes it downstream and section 4c requires a
-// typed carrier a fold can read: gunbc.machine_intake_mtjade1_gsg_coverage_frontier
-// mtjade1_gsg_coverage_frontier_rows, one std.roster_frontier FrontierRow per declaration below.
+// typed carrier a fold can read: gunbc.machine_intake_mtjade1_coverage_frontier
+// mtjade1_gsg_document_frontier_rows, one std.roster_frontier FrontierRow per declaration below.
 
 type GsgUnstated {
   topic: NonEmptyStr
