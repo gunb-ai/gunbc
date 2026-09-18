@@ -1,12 +1,5 @@
 module v2.test.name_resolve.test_code_reference_wall
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.name_resolve { Admission, ResolutionSubject, resolve_with_admission }
-import v2.compiler.normalized_tree { NormalizedTree }
-import v2.extdeps.languages.dag { qualified_name_from_module_node }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE WALL AT ONE INTERFACE: name resolution, handed modules the real front end produced from
@@ -14,13 +7,18 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // onto NormalizedTree). Each claim reports the head refusal reason or ACCEPTED, so a red that
 // refuses for some OTHER reason (an unbound name, a malformed root) does not pass for the wall.
 //
+// Every fixture body is expression-bodied (`fn f() -> T = expr`). A block body holding a call,
+// `{ leaf() }`, lowers today to a Transform over the brace token with the call gone, so a block-bodied
+// fixture would hand resolution no reference at all and every red would green for the wrong reason.
+//
 // The owner ruling (2026-09-16/17) has two halves, and each has a red and a control here:
 // a test-marked declaration may be referenced by NOTHING, a test fn in the same module included;
 // and serving code may not depend on any declaration of a module that declares tests, while
 // another test module may.
 
-fn wall_normalized(src: String, file: Symbol) -> Outcome<NormalizedTree> {
-  let lm = dag_language_model()
+// The language model is built ONCE per claim and handed to every stage: building it is a large share
+// of a claim's cost, and each stage needs the same one.
+fn wall_normalized(lm: LanguageModel, src: String, file: Symbol) -> Outcome<NormalizedTree> {
   match tokenize(text: src, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: ts, diagnostics: _ } =>
@@ -38,19 +36,24 @@ fn wall_verdict(outcome: Outcome<ResolvedTree>) -> String {
   }
 }
 
-// Resolves `subject_src` with `peer_src` beside it as the only other root.
+// Resolves `subject_src` with `peer_src` beside it as the only other root, through the multi-root
+// door (v2.compiler.name_resolve resolve_with_admission) -- the one the native compile uses. The
+// single-tree door, v2.compiler.resolve resolve, builds its namespace from the root's own Conj and
+// does not see the members of a grafted module root at all, so it cannot bind a module-level
+// reference either way and is not a door this wall can be measured at.
 fn wall_resolve_with_peer(subject_src: String, peer_src: String) -> String {
-  match wall_normalized(src: subject_src, file: ^wall_subject_file) {
+  let lm = dag_language_model()
+  match wall_normalized(lm: lm, src: subject_src, file: ^wall_subject_file) {
     Rejected { diagnostics: _ } => "SUBJECT_REFUSED_BEFORE_RESOLVE"
     Accepted { value: subject, diagnostics: _ } =>
-      match wall_normalized(src: peer_src, file: ^wall_peer_file) {
+      match wall_normalized(lm: lm, src: peer_src, file: ^wall_peer_file) {
         Rejected { diagnostics: _ } => "PEER_REFUSED_BEFORE_RESOLVE"
         Accepted { value: peer, diagnostics: _ } =>
           match qualified_name_from_module_node(root: subject.root) {
             Rejected { diagnostics: _ } => "SUBJECT_UNNAMED"
             Accepted { value: subject_qn, diagnostics: _ } =>
               wall_verdict(outcome: resolve_with_admission(
-                lm: dag_language_model(),
+                lm: lm,
                 roots: Cons { head: subject, tail: Cons { head: peer, tail: Empty } },
                 admission: Admission {
                   subject: ResolutionSubject { name: subject_qn },
@@ -62,43 +65,35 @@ fn wall_resolve_with_peer(subject_src: String, peer_src: String) -> String {
   }
 }
 
-// The single-tree door, v2.compiler.resolve resolve, which builds its namespace from the tree alone.
-fn wall_resolve_alone(src: String) -> String {
-  match wall_normalized(src: src, file: ^wall_alone_file) {
-    Rejected { diagnostics: _ } => "SUBJECT_REFUSED_BEFORE_RESOLVE"
-    Accepted { value: tree, diagnostics: _ } => wall_verdict(outcome: resolve(tree: tree, lm: dag_language_model()))
-  }
-}
+data test_calls_test_source: String = "module wall.same\n\ntest fn leaf() -> Bool = true\n\ntest fn rollup() -> Bool = leaf()\n"
 
-data test_calls_test_source: String = "module wall.same\n\ntest fn leaf() -> Bool {\n  true\n}\n\ntest fn rollup() -> Bool {\n  leaf()\n}\n"
+data serving_calls_test_source: String = "module wall.same\n\ntest fn leaf() -> Bool = true\n\nfn helper() -> Bool = leaf()\n"
 
-data serving_calls_test_source: String = "module wall.same\n\ntest fn leaf() -> Bool {\n  true\n}\n\nfn helper() -> Bool {\n  leaf()\n}\n"
+data test_calls_helper_source: String = "module wall.same\n\nfn helper() -> Bool = true\n\ntest fn uses_helper() -> Bool = helper()\n"
 
-data test_calls_helper_source: String = "module wall.same\n\nfn helper() -> Bool {\n  true\n}\n\ntest fn uses_helper() -> Bool {\n  helper()\n}\n"
+data local_shadows_test_source: String = "module wall.same\n\ntest fn leaf() -> Bool = true\n\nfn helper(leaf: Bool) -> Bool = leaf\n"
 
-data local_shadows_test_source: String = "module wall.same\n\ntest fn leaf() -> Bool {\n  true\n}\n\nfn helper(leaf: Bool) -> Bool {\n  leaf\n}\n"
+data peer_test_module_source: String = "module wall.peer\n\nfn shared_fixture() -> Bool = true\n\ntest fn peer_leaf() -> Bool = shared_fixture()\n"
 
-data peer_test_module_source: String = "module wall.peer\n\nfn shared_fixture() -> Bool {\n  true\n}\n\ntest fn peer_leaf() -> Bool {\n  shared_fixture()\n}\n"
+data peer_serving_module_source: String = "module wall.peer\n\nfn shared_fixture() -> Bool = true\n"
 
-data peer_serving_module_source: String = "module wall.peer\n\nfn shared_fixture() -> Bool {\n  true\n}\n"
+data serving_reaches_peer_test_fn_source: String = "module wall.serving\n\nfn uses_peer() -> Bool = peer_leaf()\n"
 
-data serving_reaches_peer_test_fn_source: String = "module wall.serving\n\nfn uses_peer() -> Bool {\n  peer_leaf()\n}\n"
+data serving_reaches_peer_test_module_source: String = "module wall.serving\n\nfn uses_peer() -> Bool = shared_fixture()\n"
 
-data serving_reaches_peer_test_module_source: String = "module wall.serving\n\nfn uses_peer() -> Bool {\n  shared_fixture()\n}\n"
-
-data test_module_reaches_peer_test_module_source: String = "module wall.consumer\n\nfn local() -> Bool {\n  true\n}\n\ntest fn consumer_holds() -> Bool {\n  shared_fixture() && local()\n}\n"
+data test_module_reaches_peer_test_module_source: String = "module wall.consumer\n\nfn local() -> Bool = true\n\ntest fn consumer_holds() -> Bool = shared_fixture()\n"
 
 // RED: a test fn calling another test fn in its own module. This is the case the ruling names
-// explicitly, and it refuses on both resolution doors.
+// explicitly.
 test fn test_fn_calling_a_test_fn_is_refused_holds() -> Bool {
-  (wall_resolve_alone(src: test_calls_test_source) == "resolve_reason_test_code_referenced")
-    && (wall_resolve_with_peer(subject_src: test_calls_test_source, peer_src: peer_serving_module_source)
-      == "resolve_reason_test_code_referenced")
+  wall_resolve_with_peer(subject_src: test_calls_test_source, peer_src: peer_serving_module_source)
+    == "resolve_reason_test_code_referenced"
 }
 
 // RED: serving code calling a test fn in its own module.
 test fn serving_fn_calling_a_test_fn_is_refused_holds() -> Bool {
-  wall_resolve_alone(src: serving_calls_test_source) == "resolve_reason_test_code_referenced"
+  wall_resolve_with_peer(subject_src: serving_calls_test_source, peer_src: peer_serving_module_source)
+    == "resolve_reason_test_code_referenced"
 }
 
 // RED: serving code calling a test fn another module declares.
@@ -115,12 +110,12 @@ test fn serving_code_depending_on_a_test_module_is_refused_holds() -> Bool {
 
 // CONTROL: the intended shape, a test fn calling an ordinary fn, resolves.
 test fn test_fn_calling_an_ordinary_fn_resolves_holds() -> Bool {
-  wall_resolve_alone(src: test_calls_helper_source) == "ACCEPTED"
+  wall_resolve_with_peer(subject_src: test_calls_helper_source, peer_src: peer_serving_module_source) == "ACCEPTED"
 }
 
 // CONTROL: a local binder that shares a test fn's name binds to the local, not to the test fn.
 test fn a_local_binder_shadowing_a_test_fn_resolves_holds() -> Bool {
-  wall_resolve_alone(src: local_shadows_test_source) == "ACCEPTED"
+  wall_resolve_with_peer(subject_src: local_shadows_test_source, peer_src: peer_serving_module_source) == "ACCEPTED"
 }
 
 // CONTROL for the dependency half: the same reference from the same serving module resolves once the
@@ -135,3 +130,4 @@ test fn test_module_depending_on_a_test_module_resolves_holds() -> Bool {
   wall_resolve_with_peer(subject_src: test_module_reaches_peer_test_module_source, peer_src: peer_test_module_source)
     == "ACCEPTED"
 }
+
