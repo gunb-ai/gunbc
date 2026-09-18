@@ -254,17 +254,20 @@ fn pair_serving_authority_for(group: FabricGroup) -> PairServingGroupAuthority? 
     (fabric_group_wire(g: pair_serving_authority_group(a: a)) as String) == (fabric_group_wire(g: group) as String)))
 }
 
-// THE OBLIGATION THIS ROW CARRIES IS NOW A D0 OBLIGATION, NOT A MISSING PRODUCER. The producer that
-// was missing has landed: gunbc.spark.pair_incumbent_identity keys the DECLARED pair realization
-// from every rank's rendered unit bytes, observes the LIVE four-rank incarnation, and folds the two
-// into a PairRealizationAgreement. What this row may not do is copy that key in here as if the
-// declaration alone established what is live: the key is EXPECTED identity, the agreement is the
-// reading, and a reading taken before the authority transfer can go stale before suspension. So
-// the Keyed arm is minted by D0 -- inside its fence, from an Established agreement -- and by
-// nothing else. TRIGGER: the Cut D D0 transfer fold lands, reads pair_realization_agreement under
-// its held claim, and writes PairRealizationKeyed { key } on the suspended authority's
-// exact_realization from the Established arm (a Drifted reading records the drift and does not
-// become a restoration target; Unread and Conflict fence). SUFFICIENT FOR: PairServingActive can
-// name the incumbent exactly, so a successor transition is discriminated by realization rather
+// THE OBLIGATION THIS ROW CARRIES IS THE IMAGE AXIS, AND D0 DOES NOT DISCHARGE IT. The producers
+// that were missing have landed: gunbc.spark.pair_incumbent_identity keys the DECLARED pair
+// realization from every rank's rendered unit bytes, observes the LIVE four-rank incarnation, and
+// folds the two into a PairRealizationAgreement; gunbc.spark.pair_serving_d0 takes that reading
+// inside its held claim. What no producer has is a declared IMAGE identity to compare the running
+// container's image id against -- the pair runtime image is built on the host and the corpus
+// declares its reference, not its id -- so PairRealizationEstablished is rank-and-unit agreement
+// with the image carried observed-and-uncompared, and it may NOT mint an exact incumbent key: a
+// rebuilt image under the same reference with unchanged unit bytes passes it. D0 therefore restores
+// a live declared incumbent to the Active state it held, unchanged. The only Keyed realization D0
+// writes is the authorized SUCCESSOR's, on the suspended authority. TRIGGER: a produced-image
+// receipt for the pair runtime image (the build materialization gunbc.spark.vllm_runtime_image_build
+// is the shape) is carried on the declared realization and compared in the agreement, so
+// Established means the image too. SUFFICIENT FOR: the incumbent's exact realization can be minted
+// from an Established agreement, and a successor transition is discriminated by realization rather
 // than by a serving subject V4 and V4.1 deliberately share.
-data pair_realization_key_obligation: NonEmptyStr = "the live V4 pair realization is keyed by gunbc.spark.pair_incumbent_identity declared_pair_realization and read by pair_realization_agreement, but no transaction has yet taken that reading inside a held claim; the Keyed arm is minted by Cut D D0 from an Established agreement and by nothing else. SUFFICIENT FOR: PairServingActive can name the incumbent exactly, so a successor transition is discriminated by realization rather than by a serving subject V4 and V4.1 deliberately share" as NonEmptyStr
+data pair_realization_key_obligation: NonEmptyStr = "the live V4 pair realization is keyed by gunbc.spark.pair_incumbent_identity declared_pair_realization and read by pair_realization_agreement inside D0's held claim, but that agreement carries the running image observed and uncompared (no produced-image digest exists to compare it against), so it may not mint an exact incumbent key; the Keyed arm for the incumbent waits on a produced-image receipt compared in the agreement, and D0 restores a live declared incumbent to its Active state unchanged. SUFFICIENT FOR: PairServingActive can name the incumbent exactly, so a successor transition is discriminated by realization rather than by a serving subject V4 and V4.1 deliberately share" as NonEmptyStr

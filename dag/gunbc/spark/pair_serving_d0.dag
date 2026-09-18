@@ -57,12 +57,16 @@ import gunbc.spark.pair_serving_authority_log {
 // An earlier draft observed first and transferred after, which left an interval in which the
 // observation could go stale and two lanes could each believe they held the hosts.
 //
-// THE QUESTIONS ARE ORDERED. First: is a serving incumbent ANSWERING on the enrolled route? If it
-// is, this transaction is not the drain-and-preserve path and does not pretend to be: when the
-// answering realization is exactly the declared one (gunbc.spark.pair_incumbent_identity
-// PairRealizationEstablished) restoration is shown safe and the authority returns to Active --
-// now carrying the EXACT KEY, which is the one place PairRealizationKeyed is minted -- and when it
-// is anything else the group is fenced for an operator. Second, with nothing answering: does the
+// THE QUESTIONS ARE ORDERED. First: is a serving incumbent ANSWERING on the enrolled front door?
+// If it is, this transaction is not the drain-and-preserve path and does not pretend to be: when
+// the answering realization agrees with the declared one on every rank
+// (gunbc.spark.pair_incumbent_identity PairRealizationEstablished) restoration is shown safe and
+// the authority returns to EXACTLY the Active state it held -- unchanged, and in particular NOT
+// upgraded to PairRealizationKeyed, because that agreement carries the running image as observed
+// and uncompared; the incumbent's key stays minted nowhere until the image axis is compared --
+// and when the answer is anything else the group is fenced for an operator. The only Keyed
+// realization D0 writes is the SUCCESSOR's, on the suspended authority, from the admitted grant's
+// keyed candidate. Second, with nothing answering: does the
 // unit population on the four ranks reconcile with the declared realization? DeclaredOccupantObserved
 // (our units, our bytes, all running) and DeclaredOccupantDrifted (our units, not all running or
 // not all our bytes -- THE EXPECTED ANSWER on the readings the redesign records) are both eligible,
