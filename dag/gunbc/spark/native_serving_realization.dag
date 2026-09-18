@@ -2,39 +2,26 @@ module gunbc.spark.native_serving_realization
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { token_count_value }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.placement_supply { HostIdentity }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile, Installable, SystemdServiceDirective,
+  ServiceUnitFile, Installable,
   Description, After, Requires,
   ServiceType, SimpleMode, ExecStartPre, ExecStart, ExecStop, Restart, RestartSec, TimeoutStartSec, ServiceStandardOutput, ServiceStandardError, OutputAppendFile,
   WantedBy,
   serialize_systemd_unit_file,
 }
-import extdeps.huggingface.hub { hub_repo_cache_directory_name }
-import extdeps.vllm.engine_args { vllm_basis_point_fraction_wire, vllm_prefix_caching_argv, vllm_kv_cache_dtype_wire }
-import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
-import extdeps.vllm.environment {
-  VllmEngineReadyTimeoutSeconds, VllmSparseIndexerMaxLogitsMb, vllm_environment_assignment_wire,
+import extdeps.docker.cli {
+  DockerCreateSpec, DockerForegroundRunArgv, DockerForegroundRunRefused,
+  docker_run_foreground_argv,
 }
-import extdeps.zhipu.glm_5_3_flash {
-  glm_5_3_flash_vllm_tool_call_parser, glm_5_3_flash_vllm_reasoning_parser,
+import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment, glm_native_concurrent_profile }
+import gunbc.spark.serving_arm_launch {
+  ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch, glm_native_master_port,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, FabricLaneObserved, fabric_group_hosts, fabric_lane_for_host }
-import gunbc.spark.fabric_rail_desired { fabric_rail_address_of }
-import gunbc.spark.collective_transport_plan {
-  CollectiveTransportPlan, RoceOverInterface, spark_rail_gid_selection,
-  transport_plan_devices, transport_plan_cap_add, transport_plan_memlock_unlimited, transport_plan_env,
-}
-import extdeps.docker.cli { docker_device_words, docker_cap_add_words, docker_memlock_unlimited_words }
-import gunbc.spark.pair_serving_desired { spark_pair_serving_head }
-import gunbc.spark.model_snapshot_acquisition { glm_5_3_flash_snapshot, spark_hub_cache_root, ModelSnapshotPinned, ModelSnapshotUnpinned }
-import gunbc.spark.serving_arm {
-  glm_native_concurrent_profile, glm_native_engine_build, glm_native_engine_build_image,
-}
+import gunbc.spark.glm_group_b_launch { glm_group_b_launch_plan }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -44,199 +31,93 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 // no systemd unit, so the harness's launch-identity evidence (gunbc.spark.vllm_serving_launch
 // LaunchedFromDeclaredUnit, a sha256 over the unit's fragment file) had no subject on srv9, and the
 // serving route could never name which deployment answered. This module is the arm's declared unit
-// set: one head unit on the group's serving head and one rank unit on each other host, rendered
-// from the arm's own profile (gunbc.spark.serving_arm glm_native_concurrent_profile), so the digest
-// the harness computes and the digest the host observes are the same bytes by construction.
+// set: one head unit on the group's serving head and one rank unit on each other host.
 //
-// THE RENDER FOLLOWS THE LAUNCH THE CUTOVER ACTUALLY RAN, measured 2026-09-16 from the live rank-0
-// process on srv9 (`/usr/local/bin/vllm serve` with exactly the argv this module renders for rank 0)
-// and from the arm renderer in the change that launched it (glm-native-acquisition's
-// serving_arm_launch arm_container_argv, whose engine argv the live process matched word for word).
-// That change also carries the general multi-arm renderer this module is a single-arm instance of;
-// when it lands, its renderer and this one answer the same question and the consolidation is owed
-// here. The differences from the transaction's spelling are systemd's, not the arm's: the container
-// runs in the foreground under `--rm` so the unit stays active exactly while the engine does, which
-// is what the incarnation observer's InvocationID leg reads.
+// ── THIS MODULE IS A REALIZATION HANDLER, NOT A LAUNCH AUTHORITY ───────────────────────────────
+//
+// WHAT IT RENDERS IS PROJECTED, NEVER ASSEMBLED. Every field of the container -- image, mounts,
+// environment, devices, capabilities, memlock, shm size and the engine's own argv -- comes from the
+// one Group-B launch specification at gunbc.spark.glm_group_b_launch, through extdeps.docker.cli's
+// foreground verb. The only things this module decides are systemd's: which unit name a rank gets,
+// where its log goes, and the directives that make a unit's lifetime equal the container's.
+//
+// WHAT THIS REPLACED, AND WHY IT WAS A DEFECT. Until 2026-09-18 this module hand-assembled its own
+// `docker run` word list, so ONE Group-B launch had two authorities. They had already drifted, on
+// three fields nobody could have been told about: the launch spec carried a --shm-size this unit did
+// not spell, the two read VLLM_ENGINE_READY_TIMEOUT_S and VLLM_SPARSE_INDEXER_MAX_LOGITS_MB from
+// different homes, and only this unit declared the usage-stats reporter off. A comparison needs a
+// shared value to be against, and there was none -- which is why the drift was found by reading both
+// renderers rather than by anything going red. The equality of the two projections is now claimed:
+// dag/test/claim/spark/glm_group_b_launch_authority_witness_test.dag.
+//
+// THE IMAGE THIS NOW CARRIES IS THE DIGEST-PINNED ONE, WHICH IS A CHANGE TO WHAT THE UNITS SPELL.
+// The hand-assembled line named gunbc.spark.serving_arm glm_native_engine_build_image -- the derived
+// image's CONTENT-HASHED TAG. The launch specification names the runtime row's pin, which is the
+// registry reading's digest reference for the same build. They resolve to the same image on these
+// hosts, and the digest is the stronger identity because a tag can be repointed under a running
+// fleet; taking the plan's value is what makes there be ONE answer rather than a matched pair.
 //
 // NO RAY, BECAUSE THE ARM HAS NONE. The pair-serving units spend three directives on a Ray session
 // because the DeepSeek image's distributed executor is ray; this arm launches with
 // `--distributed-executor-backend mp` over the hosts' own rail addresses, so a rank unit is one
 // container lifecycle and one engine line and nothing else.
+//
+// THE INTENT IS THE BOUNDED EXPERIMENT, FOR THE SAME REASON THE DIRECT-DOCKER HANDLER'S IS. The
+// profile these units carry has no execution receipt at 8567 basis points and sixteen sequences, and
+// gunbc.spark.serving_arm_launch intent_refusal refuses a normal-serving plan that asserts one. A
+// unit set rendered under a different intent than the transaction that relaunches the same arm would
+// be two answers to whether this subject is measured, so both handlers declare the same thing.
+data glm_native_render_intent: ArmIntent = ArmBoundedExperiment
 
-data glm_native_container_name: NonEmptyStr = "glm-native-tp4" as NonEmptyStr
 data glm_native_head_unit_name: NonEmptyStr = "gunbc-glm-native-head.service" as NonEmptyStr
 data glm_native_rank_unit_name: NonEmptyStr = "gunbc-glm-native-rank.service" as NonEmptyStr
 
-// THE ENGINE'S PATH INSIDE THE STOCK IMAGE, measured 2026-09-16 from the live rank-0 process on
-// srv9 (`/usr/bin/python3 /usr/local/bin/vllm serve ...`). The pair image's is /opt/env/bin/vllm;
-// the incarnation observer's pgrep leg matches on this path, so the two arms' patterns differ and
-// each is carried by its own authority.
+// THE ENGINE'S PATH INSIDE THE IMAGE, measured 2026-09-16 from the live rank-0 process on srv9
+// (`/usr/bin/python3 /usr/local/bin/vllm serve ...`). The pair image's is /opt/env/bin/vllm; the
+// incarnation observer's pgrep leg matches on this path, so the two arms' patterns differ and each
+// is carried by its own authority. It is NOT part of the launch specification, because the launch
+// never spells it -- the image's entrypoint supplies it -- so it is an observation-side fact about
+// the image and lives with the module the observers read.
 data glm_native_engine_binary: NonEmptyStr = "/usr/local/bin/vllm" as NonEmptyStr
-
-// THE IMAGE THE ARM RUNS IS THE DECLARED BUILD'S IMAGE -- gunbc.spark.serving_arm
-// glm_native_engine_build is the single authority, so the pin and the KV-dtype admission cannot
-// drift apart. As of 2026-09-17 that is the lane-built derived image (vLLM 8d09804 + flashinfer
-// 0.7.0.dev20260910, receipt target/v41-runtime-image-build-receipt.txt, built-by-this-run): the
-// stock digest it replaces serves this model on no admitted KV-cache spelling -- fp8 crashes on
-// the pe_dim == 64 kernel assert and bfloat16 finds no attention backend (both observed on the
-// srv9 head 2026-09-17). The decision-layer row for this runtime (a ServingRuntimeRow beside the
-// other arms) arrives with the change that carries the general arm renderer; the consolidation is
-// owed there when it lands.
-data glm_native_image_reference: NonEmptyStr = glm_native_engine_build_image(build: glm_native_engine_build)
-
-// THE RENDEZVOUS PORT, authored rather than inherited: the image would pick 29501 itself (its own
-// ParallelConfig default, read 2026-09-10), and authoring it converts a value the image would have
-// picked today into one this repository guarantees against the next image.
-data glm_native_master_port: Nat = 29501
-
-// WHERE THE WEIGHTS SIT INSIDE THE CONTAINER. The host side is the shared hub cache root the
-// snapshot acquisition already owns; the container side is the mount point the launch renders.
-data glm_native_weights_container_dir: NonEmptyStr = "/weights" as NonEmptyStr
 
 data glm_native_head_log_path: NonEmptyStr = "/var/log/gunbc/glm-native-head.log" as NonEmptyStr
 data glm_native_rank_log_path: NonEmptyStr = "/var/log/gunbc/glm-native-rank.log" as NonEmptyStr
 
-// THE RAIL INTERFACE AND VERBS DEVICE COME FROM THE LANE CENSUS, not a literal: an earlier
-// revision carried `glm_native_rail_interface_name = "enp1s0f1np1"` beside the census's own
-// leg_netdev, a second authority for one fact, deleted 2026-09-17 when the arm took the
-// collective-transport plan (which reads both leg_netdev and leg_rdma_device from the lane row).
-
-// THE DECLARED MODEL PATH IN THE CONTAINER, derived from the pinned snapshot rather than spelled:
-// the hub cache directory naming is extdeps.huggingface.hub's, the revision is
-// glm_5_3_flash_snapshot's pin, and only the mount point is this module's. Absent when the snapshot
-// is unpinned, exactly as the pair's path is.
-fn glm_native_model_path_in_container() -> String? {
-  match glm_5_3_flash_snapshot {
-    ModelSnapshotUnpinned { identity: _, repo: _, cause: _ } => none
-    ModelSnapshotPinned { identity: _, repo: r, revision: rev, revision_provenance: _ } =>
-      Present { value: join([
-        glm_native_weights_container_dir as String, "/",
-        hub_repo_cache_directory_name(repo: r) as String,
-        "/snapshots/", rev as String,
-      ], "") }
-  }
-}
-
-// THE GROUP'S HOSTS IN RANK ORDER: the serving head is rank 0, the rest follow in fabric lane
-// order. The assignment only has to be consistent within the declared set -- convergence starts
-// every rank from these units, so no rank identity survives from the transaction-launched engine.
-fn glm_native_ranked_hosts() -> List<HostIdentity> {
-  let head = spark_pair_serving_head(group: FabricGroupB)
-  concat([head], filter(fabric_group_hosts(g: FabricGroupB), h => !host_identity_eq(a: h, b: head)))
-}
-
-// THESE TWO ARE THIS DEPLOYMENT'S VALUES FOR vLLM ENVIRONMENT VARIABLES, not facts about the model,
-// so they live with the deployment that chose them; the variable names are vLLM's and live in
-// extdeps.vllm.environment (review 67469: a model vendor's module is not the home for an engine
-// knob). They were homed in extdeps.zhipu.glm_5_3_flash until 2026-09-18.
+// ── THE ARM'S PLAN, READ ONCE ─────────────────────────────────────────────────────────────────
 //
-// THE ENGINE READY TIMEOUT IS THE RECIPE'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it
-// is carried because its absence is independently fatal on a cold multi-node start. torch's
-// distributed rendezvous defaults to 601 seconds; a four-rank group whose members are still
-// materialising exceeds that and dies with "Timed out waiting for clients", which is a different
-// failure from anything about the model and reports nothing about it.
-data glm_native_engine_ready_timeout_seconds: Nat = 3600
-
-// A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
-// vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
-// sparse-indexer logits allocation, with two independent mitigations offered. That report used a
-// different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
-// measurement of it -- which is why the figure is carried here as an upstream observation and the
-// decision to apply it is a deployment's own.
-data glm_native_sparse_indexer_max_logits_mb: Nat = 64
-data glm_native_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr
-
-fn glm_native_engine_argv(rank: Nat, ranks: Nat, master: Ipv4Address) -> List<String> {
-  match glm_native_model_path_in_container() {
-    Absent => []
-    Present { value: model_path } =>
-      concat([
-        model_path,
-        "--served-model-name", glm_native_concurrent_profile.served_alias as String,
-        "--tensor-parallel-size", to_string(ranks),
-        "--distributed-executor-backend", "mp",
-        "--nnodes", to_string(ranks),
-        "--node-rank", to_string(rank),
-        "--master-addr", render_ipv4_address(addr: master) as String,
-        "--master-port", to_string(glm_native_master_port),
-        "--max-model-len", to_string(token_count_value(t: glm_native_concurrent_profile.max_model_len)),
-        "--max-num-batched-tokens", to_string(token_count_value(t: glm_native_concurrent_profile.max_num_batched_tokens)),
-        "--max-num-seqs", to_string(glm_native_concurrent_profile.max_num_seqs),
-        "--kv-cache-dtype", vllm_kv_cache_dtype_wire(request: glm_native_concurrent_profile.kv_cache_dtype) as String,
-        "--gpu-memory-utilization", vllm_basis_point_fraction_wire(bp: glm_native_concurrent_profile.decided_gpu_memory_basis_points),
-        "--tool-call-parser", glm_5_3_flash_vllm_tool_call_parser as String,
-        "--reasoning-parser", glm_5_3_flash_vllm_reasoning_parser as String,
-        "--enable-auto-tool-choice",
-        "--host", "0.0.0.0",
-        "--port", to_string(glm_native_concurrent_profile.serve_port),
-      ], concat(
-        vllm_prefix_caching_argv(r: glm_native_concurrent_profile.prefix_caching),
-        if rank == 0 { [] } else { ["--headless"] },
-      ))
+// EVERY DERIVED ROSTER BELOW READS THIS, so the hosts the units are rendered for, the hosts the
+// apply touches and the hosts a participation reading ranks are one list by construction rather
+// than three constructions that happen to agree.
+fn glm_native_launch_lines() -> List<ArmNodeLaunch> {
+  match glm_group_b_launch_plan(intent: glm_native_render_intent) {
+    ArmLaunchRefused { cause: _ } => []
+    ArmLaunchPlanned { lines: ls, master: _ } => ls
   }
 }
 
-// THE ARM'S COLLECTIVE TRANSPORT IS ONE VALUE, CONSUMED FROM THE SAME AUTHORITY AS GROUP A.
-// Until 2026-09-17 this renderer hand-set NCCL_SOCKET_IFNAME/GLOO_SOCKET_IFNAME and nothing else:
-// no /dev/infiniband mapping, no IPC_LOCK, no memlock, no NCCL_IB_HCA -- so NCCL found no verbs
-// device in the container (`NET/IB : No device found.`) and silently bound `Using network Socket`
-// on every rank while the host's RoCE device sat ACTIVE on the very rail interface the container
-// was told to use. The fallback was observed serving, but the operator ruled it a correctness
-// issue, not a performance one: the deployment intends the direct fabric line, and a silent
-// downgrade is a wrong answer about which transport carries the collective. The plan below is the
-// same RoceOverInterface arm group A's pair route consumes, keyed by the same lane census row.
-fn glm_native_transport_plan(lane: FabricLaneObserved) -> CollectiveTransportPlan {
-  RoceOverInterface {
-    interface: lane.leg_netdev,
-    rdma_device: lane.leg_rdma_device,
-    gid_selection: spark_rail_gid_selection,
-  }
+// THE GROUP'S HOSTS IN RANK ORDER, taken from the plan's roster rather than rebuilt. An empty list
+// is a plan that refused; every consumer already treats an empty roster as a refusal rather than as
+// an arm of zero ranks.
+fn glm_native_ranked_hosts() -> List<HostIdentity> {
+  map(glm_native_launch_lines(), l => l.node.host)
 }
 
-// THE CONTAINER LINE. NCCL_DEBUG_SUBSYS is narrowed to INIT,NET because VOLUME is the reason to
-// hesitate: bare INFO narrates every channel of every collective; INIT,NET keeps the topology and
-// transport lines and drops the per-collective traffic -- and the transport verdict lines are what
-// the apply's readback gate greps for. The device mapping, capability, memlock and env are the
-// plan's projections, spelled through extdeps.docker.cli 's shared word shapes.
-// THE USAGE-STATS REPORTER IS DECLARED OFF in the environment below, spelled by
-// extdeps.vllm.usage_stats vllm_usage_stats_disable_assignment_wire -- the same row the route's
-// telemetry reading folds, so declaration and reading share one authority. The declaration alone
-// admits nothing; the reading of the answering container's effective environment discharges the
-// route (gunbc.spark.first_party_serving spark_serving_usage_stats_standing).
-fn glm_native_container_argv(lane: FabricLaneObserved, rank: Nat, ranks: Nat, master: Ipv4Address) -> List<String> {
-  let plan = glm_native_transport_plan(lane: lane)
-  concat(concat(concat([
-    "/usr/bin/docker", "run", "--rm",
-    "--name", glm_native_container_name as String,
-    "--gpus", "all",
-    "--network", "host",
-    "--ipc", "host",
-  ], concat(
-    flat_map(transport_plan_devices(p: plan), d => docker_device_words(d: d)),
-    concat(
-      flat_map(transport_plan_cap_add(p: plan), c => docker_cap_add_words(c: c)),
-      if transport_plan_memlock_unlimited(p: plan) { docker_memlock_unlimited_words() } else { [] },
-    ),
-  )), concat(
-    flat_map(transport_plan_env(p: plan), e => ["-e", join([e.name as String, "=", e.value], "")]),
-    [
-      "-e", "NCCL_DEBUG=INFO",
-      "-e", "NCCL_DEBUG_SUBSYS=INIT,NET",
-      "-e", vllm_usage_stats_disable_assignment_wire(),
-      "-e", join(["VLLM_HOST_IP=", render_ipv4_address(addr: fabric_rail_address_of(o: lane)) as String], ""),
-      "-e", vllm_environment_assignment_wire(variable: VllmEngineReadyTimeoutSeconds, value: to_string(glm_native_engine_ready_timeout_seconds)),
-      "-e", vllm_environment_assignment_wire(variable: VllmSparseIndexerMaxLogitsMb, value: to_string(glm_native_sparse_indexer_max_logits_mb)),
-      "-v", join([spark_hub_cache_root as String, ":", glm_native_weights_container_dir as String, ":ro"], ""),
-      glm_native_image_reference as String,
-    ],
-  )), glm_native_engine_argv(rank: rank, ranks: ranks, master: master))
+// THE DECLARED MODEL PATH IN THE CONTAINER, read off the engine argv the launch actually renders.
+// An earlier revision rebuilt the hub-cache path here from the snapshot pin, which is the same
+// derivation the launch already performs -- and a second derivation of one path is what lets a
+// readback compare the mount the engine got against a path nothing sent it.
+fn glm_native_model_path_in_container() -> String? {
+  match glm_native_launch_lines().first() {
+    Absent => none
+    Present { value: l } => l.engine_argv.first()
+  }
 }
 
 // A systemd Exec line is argv joined by spaces; a word carrying whitespace or a quote would need
 // systemd's own quoting, which this render does not model, so such a word is a refusal. This is the
 // same law pair_serving_realization's exec_line states for the pair's units; the two renderers
 // share no code because one renders ArgvCommand and this one a bare word list, and generalising the
-// helper across both is owed to the consolidation with the general arm renderer, not to this module.
+// helper across both is owed to the consolidation with the pair route, not to this module.
 fn glm_native_exec_word_is_plain(w: String) -> Bool {
   !(string_contains(s: w, pattern: " ") || string_contains(s: w, pattern: "\t") || string_contains(s: w, pattern: "\"") || string_contains(s: w, pattern: "'"))
 }
@@ -253,32 +134,50 @@ type GlmNativeUnitRender
   = GlmNativeUnitRendered { unit_name: NonEmptyStr, text: String }
   | GlmNativeUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
 
-// ONE UNIT PER HOST, THE SAME LINE BUT FOR WHO IT IS. The head and the ranks differ in exactly
-// three places: the unit's name, the node rank in the engine argv, and the rail address the
-// container publishes as VLLM_HOST_IP. Everything else -- image, mounts, environment, engine flags
-// -- is the arm's profile and is rendered once.
-fn glm_native_host_unit_file(host: HostIdentity, rank: Nat, ranks: Nat, master: Ipv4Address) -> GlmNativeUnitRender {
-  let is_head = rank == 0
+// THE CONTAINER LINE IS THE SPEC'S FOREGROUND PROJECTION AND NOTHING ELSE. A refusal from
+// extdeps.docker.cli is carried through rather than smoothed: the only way it fires is a spec asking
+// for a docker-level restart policy, which under systemd means two supervisors, and silently
+// dropping the field is the widen DESIGN section 5 forbids.
+fn glm_native_unit_exec_words(spec: DockerCreateSpec) -> List<String>? {
+  match docker_run_foreground_argv(spec: spec) {
+    DockerForegroundRunRefused { cause: _ } => none
+    DockerForegroundRunArgv { argv: a } => Present { value: a }
+  }
+}
+
+fn glm_native_unit_refusal_cause(spec: DockerCreateSpec) -> NonEmptyStr {
+  match docker_run_foreground_argv(spec: spec) {
+    DockerForegroundRunRefused { cause: c } => c
+    DockerForegroundRunArgv { argv: _ } => "the container line is not a plain argv: a rendered word carries whitespace or a quote, which this render does not model" as NonEmptyStr
+  }
+}
+
+// ONE UNIT PER HOST, THE SAME LINE BUT FOR WHO IT IS. The head and the ranks differ in exactly the
+// places the launch plan already differs them -- the node rank in the engine argv and the rail
+// address the container publishes as VLLM_HOST_IP -- plus the two this module owns: the unit's name
+// and its log path.
+fn glm_native_host_unit_file(launch: ArmNodeLaunch) -> GlmNativeUnitRender {
+  let is_head = launch.node.node_rank == 0
   let unit_name = if is_head { glm_native_head_unit_name } else { glm_native_rank_unit_name }
-  match fabric_lane_for_host(host: host) {
-    Absent => GlmNativeUnitRenderRefused { unit_name: unit_name, cause: "the host has no observed fabric lane, so its rail address is unknown" as NonEmptyStr }
-    Present { value: lane } =>
-      match glm_native_exec_line(words: glm_native_container_argv(lane: lane, rank: rank, ranks: ranks, master: master)) {
-        Absent => GlmNativeUnitRenderRefused { unit_name: unit_name, cause: "the container line is not a plain argv, or the snapshot is unpinned" as NonEmptyStr }
+  match glm_native_unit_exec_words(spec: launch.container) {
+    Absent => GlmNativeUnitRenderRefused { unit_name: unit_name, cause: glm_native_unit_refusal_cause(spec: launch.container) }
+    Present { value: words } =>
+      match glm_native_exec_line(words: words) {
+        Absent => GlmNativeUnitRenderRefused { unit_name: unit_name, cause: "the container line is not a plain argv: a rendered word carries whitespace or a quote, which this render does not model" as NonEmptyStr }
         Present { value: run_line } =>
           GlmNativeUnitRendered {
             unit_name: unit_name,
             text: serialize_systemd_unit_file(file: ServiceUnitFile {
               unit: [
-                Description { text: join(["gunbc GLM native four-rank arm, rank ", to_string(rank), " (", glm_native_concurrent_profile.served_alias as String, ")"], "") as NonEmptyStr },
+                Description { text: join(["gunbc GLM native four-rank arm, rank ", to_string(launch.node.node_rank), " (", glm_native_concurrent_profile.served_alias as String, ")"], "") as NonEmptyStr },
                 After { target: "docker.service network-online.target" as NonEmptyStr },
                 Requires { target: "docker.service" as NonEmptyStr },
               ],
               service: [
                 ServiceType { mode: SimpleMode },
-                ExecStartPre { command: join(["-/usr/bin/docker rm -f ", glm_native_container_name as String], "") as NonEmptyStr },
+                ExecStartPre { command: join(["-/usr/bin/docker rm -f ", launch.container.name as String], "") as NonEmptyStr },
                 ExecStart { command: run_line },
-                ExecStop { command: join(["/usr/bin/docker stop ", glm_native_container_name as String], "") as NonEmptyStr },
+                ExecStop { command: join(["/usr/bin/docker stop ", launch.container.name as String], "") as NonEmptyStr },
                 Restart { policy: "always" as NonEmptyStr },
                 RestartSec { duration: "30" as NonEmptyStr },
                 TimeoutStartSec { duration: "0" as NonEmptyStr },
@@ -296,32 +195,24 @@ fn glm_native_host_unit_file(host: HostIdentity, rank: Nat, ranks: Nat, master: 
 // because the head is the rank that exports the endpoint; the rank units export nothing and are
 // converged, never observed.
 fn glm_native_head_unit_render() -> GlmNativeUnitRender {
-  let hosts = glm_native_ranked_hosts()
-  match fabric_lane_for_host(host: spark_pair_serving_head(group: FabricGroupB)) {
-    Absent => GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: "the serving head has no observed fabric lane, so the master rail address is unknown" as NonEmptyStr }
-    Present { value: head_lane } =>
-      glm_native_host_unit_file(host: spark_pair_serving_head(group: FabricGroupB), rank: 0, ranks: count(hosts), master: fabric_rail_address_of(o: head_lane))
+  match glm_native_launch_lines().first() {
+    Absent => GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: glm_native_plan_refusal() }
+    Present { value: l } => glm_native_host_unit_file(launch: l)
   }
 }
 
-fn glm_native_rank_indices_from(next: Nat, xs: List<HostIdentity>) -> List<Nat> {
-  match xs {
-    Empty => []
-    Cons { head: _, tail: t } => concat([next], glm_native_rank_indices_from(next: next + 1, xs: t))
+fn glm_native_plan_refusal() -> NonEmptyStr {
+  match glm_group_b_launch_plan(intent: glm_native_render_intent) {
+    ArmLaunchRefused { cause: c } => c
+    ArmLaunchPlanned { lines: _, master: _ } => "the arm plan resolved but carries no ranks" as NonEmptyStr
   }
 }
 
-// EVERY RANK'S UNIT, RENDERED FOR ITS OWN HOST. The head is rank 0; the rest follow the fabric
-// lane roster's order. The render is pure, so the convergence installs exactly what the harness
-// digests.
+// EVERY RANK'S UNIT, RENDERED FOR ITS OWN HOST.
 fn glm_native_all_unit_renders() -> List<GlmNativeUnitRender> {
-  let hosts = glm_native_ranked_hosts()
-  match fabric_lane_for_host(host: spark_pair_serving_head(group: FabricGroupB)) {
-    Absent => [GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: "the serving head has no observed fabric lane, so the master rail address is unknown" as NonEmptyStr }]
-    Present { value: head_lane } => {
-      let master = fabric_rail_address_of(o: head_lane)
-      zip_map(a: hosts, b: glm_native_rank_indices_from(next: 0, xs: hosts), f: fn(h, i) { glm_native_host_unit_file(host: h, rank: i, ranks: count(hosts), master: master) })
-    }
+  match glm_native_launch_lines() {
+    Empty => [GlmNativeUnitRenderRefused { unit_name: glm_native_head_unit_name, cause: glm_native_plan_refusal() }]
+    Cons { head: _, tail: _ } => map(glm_native_launch_lines(), l => glm_native_host_unit_file(launch: l))
   }
 }
 
@@ -340,7 +231,7 @@ fn glm_native_units_render_wet() -> ProcessExit {
       }
     }
   })
-  if all(writes, w => w == "ok") {
+  if all(writes, w => w == "ok") && count(renders) == count(hosts) && count(hosts) > 0 {
     ExitSuccess
   } else {
     exit_failure(reason: join(["glm_native_units_render_wet: ", join(writes, "; ")], ""))
@@ -364,22 +255,18 @@ fn glm_native_head_unit_render_wet() -> ProcessExit {
   }
 }
 
-// THE ENDPOINT RENDERING SITS HERE, WITH THE FLAGS IT MUST AGREE WITH. The launch argv above writes
-// --master-addr and --master-port; anything observing participation must filter on exactly the pair
-// those two produce, so rendering them together is this module's job and putting it in the observer
-// would have made the launch authority depend on its own observer.
+// THE RENDEZVOUS THIS ARM'S RANKS ARE POINTED AT, derived from the same plan that renders
+// --master-addr and --master-port. Deriving the pair (address, port) from anything else would fork
+// the launch authority: an observer filtering on an endpoint the launch did not name would answer
+// about a store nobody was sent to.
 fn glm_native_rendezvous_endpoint(master: Ipv4Address, port: Nat) -> NonEmptyStr {
   join([render_ipv4_address(addr: master) as String, ":", to_string(port)], "") as NonEmptyStr
 }
 
-// THE RENDEZVOUS THIS ARM'S RANKS ARE POINTED AT, exported so a reader can observe participation
-// against the same endpoint the launch argv above actually names. Deriving the pair (address, port)
-// anywhere else would fork the launch authority: the master address is the head's rail address and
-// the port is glm_native_master_port, and both are already fixed here by --master-addr/--master-port.
 fn glm_native_master_endpoint() -> NonEmptyStr? {
-  match fabric_lane_for_host(host: spark_pair_serving_head(group: FabricGroupB)) {
-    Absent => none
-    Present { value: head_lane } =>
-      Present { value: glm_native_rendezvous_endpoint(master: fabric_rail_address_of(o: head_lane), port: glm_native_master_port) }
+  match glm_group_b_launch_plan(intent: glm_native_render_intent) {
+    ArmLaunchRefused { cause: _ } => none
+    ArmLaunchPlanned { lines: _, master: m } =>
+      Present { value: glm_native_rendezvous_endpoint(master: m, port: glm_native_master_port) }
   }
 }

@@ -62,7 +62,7 @@ import gunbc.spark.serving_incarnation_observe { observe_endpoint_incarnation, e
 import gunbc.spark.pair_serving_desired { spark_pair_serving_head, spark_pair_group_head_host }
 import gunbc.spark.serving_group_launch { serving_group_launch, GroupRendezvous, serving_group_rendezvous }
 import gunbc.spark.rendezvous_participation {
-  ServingGroupParticipation, GroupParticipationUnobserved, RendezvousEpoch, rendezvous_epoch, serving_group_participation,
+  ServingGroupRendezvousReach, GroupRendezvousReachUnobserved, RendezvousEpoch, rendezvous_epoch, serving_group_rendezvous_reach,
 }
 import gunbc.host_effect { FleetSsh }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
@@ -596,7 +596,7 @@ fn harness_serving_realization(group: FabricGroup, launch: VllmEndpointProcessLa
   }
 }
 
-fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding, declared_unit: DeclaredUnitDigestStanding, participation: ServingGroupParticipation?) -> SparkServingRoute {
+fn harness_serving_route(group: FabricGroup, launch: VllmEndpointProcessLaunch, readback: VllmModelsRouteReadbackStanding, incarnation: EndpointIncarnationStanding, declared_unit: DeclaredUnitDigestStanding, participation: ServingGroupRendezvousReach?) -> SparkServingRoute {
   spark_serving_route_standing(
     realization: harness_serving_realization(group: group, launch: launch, readback: readback, incarnation: incarnation),
     declared_unit: declared_unit,
@@ -651,7 +651,7 @@ fn harness_declared_unit_from_roster(roster: HarnessDeclaredUnitRoster, group: F
 // all, so gunbc.spark.serving_offer refuses that route on ServiceIncarnationUnobserved long before
 // the participation gate is consulted. Returning a participation refusal as well would be a second
 // diagnosis of the one missing capability.
-fn harness_group_participation(access: FleetSshContextPreparation, group: FabricGroup) -> ServingGroupParticipation? {
+fn harness_group_participation(access: FleetSshContextPreparation, group: FabricGroup) -> ServingGroupRendezvousReach? {
   match access {
     FleetSshContextRefused { cause: _ } => none
     FleetSshContextReady { context: context, receipt: _ } =>
@@ -659,11 +659,11 @@ fn harness_group_participation(access: FleetSshContextPreparation, group: Fabric
         Absent => none
         Present { value: rendezvous } =>
           match harness_rendezvous_epoch(context: context, group: group, rendezvous: rendezvous) {
-            Absent => Present { value: GroupParticipationUnobserved {
+            Absent => Present { value: GroupRendezvousReachUnobserved {
               cause: "the head unit's systemd InvocationID was not read, so the epoch the ranks would have to agree on is unknown" as NonEmptyStr,
             } }
             Present { value: epoch } =>
-              Present { value: serving_group_participation(context: context, epoch: epoch, ranked_hosts: rendezvous.ranked_hosts) }
+              Present { value: serving_group_rendezvous_reach(context: context, epoch: epoch, ranked_hosts: rendezvous.ranked_hosts) }
           }
       }
   }

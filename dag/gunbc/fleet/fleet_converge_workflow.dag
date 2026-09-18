@@ -172,6 +172,7 @@ type FleetConvergeWorkflowMode
   | SparkGrants
   | SparkBootstrap
   | SparkServingApply
+  | SparkNativeServingApply
   | SparkRuntimeImageProbe
   | DashboardDeploy
   | RlmLaunchDeploymentReceipt
@@ -197,6 +198,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     SparkGrants => "spark_grants"
     SparkBootstrap => "spark_bootstrap"
     SparkServingApply => "spark_serving_apply"
+    SparkNativeServingApply => "spark_native_serving_apply"
     SparkRuntimeImageProbe => "spark_runtime_image_probe"
     DashboardDeploy => "dashboard_deploy"
     RlmLaunchDeploymentReceipt => "rlm_launch_deployment_receipt"
@@ -230,7 +232,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2ObjectWriteMint]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -267,6 +269,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     SparkGrants => none
     SparkBootstrap => none
     SparkServingApply => none
+    SparkNativeServingApply => none
     SparkRuntimeImageProbe => none
     DashboardDeploy => Present { value: LiveDeploy }
     RlmLaunchDeploymentReceipt => none
@@ -701,6 +704,21 @@ data fleet_converge_spark_grants_step_if: String = fleet_converge_mode_step_if(m
 data fleet_converge_spark_bootstrap_step_if: String = fleet_converge_mode_step_if(mode: SparkBootstrap)
 
 data fleet_converge_spark_serving_apply_step_if: String = fleet_converge_mode_step_if(mode: SparkServingApply)
+
+// ── THE NATIVE ARM GETS ITS OWN MODE, BECAUSE IT IS ITS OWN ACTUATION ─────────────────────────
+//
+// WHAT THE SHARED MODE DID. One `spark_serving_apply` dispatch ran BOTH the pair apply and the native
+// arm's apply. Those are two different subjects with two different blast radii: the pair apply is
+// conditional and bounces a converged DeepSeek engine only when its roster moved, while the native
+// apply unconditionally restarts four ranks and reloads a 328 GB arm into a new rendezvous epoch. An
+// operator asking to converge the pair units could not decline the second, and nothing in the mode's
+// name said the second existed. A destructive actuation reachable only as a side effect of asking for
+// a different one is the escape hatch inverted: not a way to skip a refusal, but a way to trigger an
+// effect nobody selected.
+//
+// SO THE SUBJECT IS EXPLICIT AND THE DEFAULT IS TO DO NOTHING. `spark_native_serving_apply` names the
+// arm it relaunches; `spark_serving_apply` no longer reaches it.
+data fleet_converge_spark_native_serving_apply_step_if: String = fleet_converge_mode_step_if(mode: SparkNativeServingApply)
 data fleet_converge_spark_runtime_image_probe_step_if: String = fleet_converge_mode_step_if(mode: SparkRuntimeImageProbe)
 
 data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
@@ -1439,13 +1457,18 @@ fn fleet_converge_spark_serving_apply_step() -> Step {
   }
 }
 
-// THE NATIVE ARM'S APPLY, UNDER THE SAME MODE. The pair step converges the promoted fabric groups'
-// pair units; this step converges group B's native four-rank arm (gunbc.spark.native_serving_apply),
-// workers before the head, over the same password session. Same mode conditional, so it runs exactly
-// when the operator asks for spark_serving_apply and never otherwise.
+// THE NATIVE ARM'S APPLY, UNDER ITS OWN MODE. The pair step converges the promoted fabric groups'
+// pair units; this step converges group B's native four-rank arm (gunbc.spark.native_serving_apply)
+// over the same password session, and it runs exactly when the operator asks for
+// `spark_native_serving_apply` and never otherwise. THE HEAD IS APPLIED BEFORE THE WORKERS, which is
+// what the source does: the head's engine opens the rendezvous store every worker's restart then
+// joins, and workers restarted first were observed (2026-09-16) joining the PREVIOUS epoch's store
+// while the head crash-looped on DistStoreError. An earlier revision of this text said "workers
+// before the head" while the source did the opposite -- a generated description that contradicted the
+// thing it described, which is worse than none because an operator plans the blast radius from it.
 fn fleet_converge_spark_native_serving_apply_step() -> Step {
   RunStep {
-    name: Present { value: "Spark native serving apply (group B's native four-rank arm units over the password session, workers before the head)" },
+    name: Present { value: "Spark native serving apply (group B's native four-rank arm as one bounded transaction over the password session: all-host preflight, incumbent preserved, head before workers, full readback, commit or roll the whole arm back)" },
     id: Present { value: "spark_native_serving_apply" },
     run: gunbc_ci_spark_native_serving_apply_invoke(),
     shell: none,
@@ -1456,7 +1479,7 @@ fn fleet_converge_spark_native_serving_apply_step() -> Step {
       ]
     },
     working_directory: none,
-    if_condition: Present { value: fleet_converge_spark_serving_apply_step_if },
+    if_condition: Present { value: fleet_converge_spark_native_serving_apply_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
@@ -1716,7 +1739,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units and group B's native four-rank arm units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' pair vLLM units over the password session, workers before heads; spark_native_serving_apply relaunches group B's native four-rank arm as ONE BOUNDED TRANSACTION -- all-host preflight that touches nothing, the incumbent container and unit preserved, the head applied BEFORE the workers so every rank joins the head's new rendezvous store, an exact readback of image, engine argv, current-epoch reach and the front door's served model, and then commit or a rollback of the whole arm -- and it is a separate mode because it reloads a 328 GB arm and nobody should reach it by asking for the pair units; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },

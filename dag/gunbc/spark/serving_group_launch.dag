@@ -9,9 +9,10 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_desired_snapshot,
 }
 import gunbc.spark.native_serving_realization {
-  glm_native_head_unit_name, glm_native_container_name, glm_native_engine_binary,
+  glm_native_head_unit_name, glm_native_engine_binary,
   glm_native_model_path_in_container, glm_native_master_endpoint, glm_native_ranked_hosts,
 }
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_vllm_binary }
 
 // ── WHICH LAUNCH A GROUP'S ROUTE IS ABOUT ──────────────────────────────────────────────────────

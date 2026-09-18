@@ -1,0 +1,109 @@
+module test.claim.spark.rank_memory_path_join_witness_test
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv9, operator_host_srv10 }
+import gunbc.spark.serving_rank_observe {
+  ContainerIncarnationId, container_incarnation_id, ObservedRankIncarnation,
+  RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, RankProbeReply, ProbeReplied,
+}
+import gunbc.spark.glm_group_b_relaunch_cli {
+  RankMemoryPathReading, RankMemoryPathRead, RankMemoryPathProvenanceMismatch,
+  RankMemoryPathDeviceMismatch, RankMemoryPathLogNotFromIncarnation, rank_memory_path_reading,
+}
+import gunbc.spark.collective_memory_path_standing { MemoryPathStagedAsPlatformRequires }
+
+// ── THE JOIN REFUSES EVIDENCE THAT DOES NOT DESCRIBE ONE DEVICE ───────────────────────────────
+//
+// The live route addresses one pinned incarnation for every leg, so it never produces a mismatched
+// pair; that is why each refusal is exercised with SUPPLIED receipts. The receipts carry raw evidence
+// only -- the probe's replies and the captured log -- so the conclusions the join acts on are derived
+// here exactly as they are on the live route.
+
+data id_a: String = "0f3a9c1d2e4b"
+data id_b: String = "7b2e5a90c813"
+
+fn incarnation(host: HostIdentity, id: String, rank: Nat) -> ObservedRankIncarnation? {
+  match container_incarnation_id(id: id) {
+    Absent => none
+    Present { value: cid } => Present { value: ObservedRankIncarnation { host: host, container: cid, node_rank: rank } }
+  }
+}
+
+fn capability_from(i: ObservedRankIncarnation) -> RankGpuDirectCapabilityReceipt {
+  RankGpuDirectCapabilityReceipt {
+    from: i,
+    device_ordinal: 0,
+    device_api: ProbeReplied { stdout: "116 0 0 0 0" },
+    dma_buf: ProbeReplied { stdout: "124 0 0 0 0" },
+  }
+}
+
+fn nccl_from(i: ObservedRankIncarnation, device: String) -> RankNcclMemoryPathReceipt {
+  RankNcclMemoryPathReceipt {
+    from: i,
+    captured: join(["spark-0c75:385:385 [", device, "] NCCL INFO NET/IB : GPU Direct RDMA Disabled for HCA 0 'rocep1s0f1'"], ""),
+  }
+}
+
+fn joined(cap: ObservedRankIncarnation?, log: ObservedRankIncarnation?, device: String) -> RankMemoryPathReading? {
+  match cap {
+    Absent => none
+    Present { value: c } =>
+      match log {
+        Absent => none
+        Present { value: l } => Present { value: rank_memory_path_reading(capability: capability_from(i: c), nccl: nccl_from(i: l, device: device)) }
+      }
+  }
+}
+
+fn is_provenance_mismatch(r: RankMemoryPathReading?) -> Bool {
+  match r {
+    Present { value: RankMemoryPathProvenanceMismatch { capability_from: _, nccl_from: _ } } => true
+    _ => false
+  }
+}
+
+test fn two_incarnations_on_one_host_refuse() -> Bool {
+  is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_b, rank: 0), device: "0"))
+}
+
+test fn one_incarnation_attributed_to_two_node_ranks_refuses() -> Bool {
+  is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 1), device: "0"))
+}
+
+test fn one_id_on_two_hosts_refuses() -> Bool {
+  is_provenance_mismatch(r: joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv10, id: id_a, rank: 0), device: "0"))
+}
+
+// THE NCCL LINES CAME FROM LOCAL DEVICE 1 AND THE PROBE ASKED DEVICE 0.
+test fn lines_from_a_device_the_probe_did_not_ask_refuse() -> Bool {
+  match joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 0), device: "1") {
+    Present { value: RankMemoryPathDeviceMismatch { probed: p, announced: _ } } => p == 0
+    _ => false
+  }
+}
+
+// A CONTAINER NAME IS NOT AN INCARNATION ID, so the mutable name cannot be put on both sides of the
+// join to satisfy it across a recreate.
+test fn a_container_name_is_not_an_incarnation_id() -> Bool {
+  match container_incarnation_id(id: "glm-native-tp4") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE GREEN CONTROL, and the derivation it rests on: one incarnation, the probed device, and a raw
+// probe reply of 0 derive the platform-supported staged standing -- there is no stored capability
+// that could say otherwise.
+test fn one_incarnation_and_the_probed_device_join_and_derive_from_the_raw_reply() -> Bool {
+  match joined(cap: incarnation(host: operator_host_srv9, id: id_a, rank: 0), log: incarnation(host: operator_host_srv9, id: id_a, rank: 0), device: "0") {
+    Present { value: RankMemoryPathRead { facet: f } } =>
+      match f.standing {
+        MemoryPathStagedAsPlatformRequires { platform: _, capability_receipt: _, observed_from: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}

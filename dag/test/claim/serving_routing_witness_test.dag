@@ -75,6 +75,14 @@ test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool
 // the two routes carry ceilings from DIFFERENT AUTHORITIES. That property got STRONGER when group B's
 // route stopped naming the canary: group A carries a ceiling somebody DECIDED for the route, and group
 // B now carries the sequence bound its engine was LAUNCHED with, so the two are different VARIANTS and
+// BOTH ROUTES NOW CARRY A DECLARED POLICY, AND THE GROUP-B ARM IS THE ONE THAT CHANGED. It minted
+// CeilingFromRouteLaunch from the native arm's DESIRED profile while consulting no live argv producer
+// anywhere on the path -- a provenance carrier answering "from the launch" about a launch nobody had
+// observed. The row is now what it honestly is, and the arm it asserts against is its basis rather
+// than its variant: a basis that stops naming itself desired configuration is this claim's red, and
+// so is a re-minted CeilingFromRouteLaunch, because the producer that would justify one still does
+// not exist. gunbc.serving.serving_enrollment names the join that retires this.
+//
 // not merely different numbers. The counts once coincided at 1, which is exactly why the variant
 // check below carries the discrimination and the counts alone would not; group B's count has since
 // moved to the operator's chosen 16 (gunbc.spark.serving_arm glm_native_initial_profile), and the
@@ -93,8 +101,9 @@ test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measureme
           CeilingFromRouteLaunch { count: _, basis: _ } => false
         })
     && (match serving_route_ceiling(group: FabricGroupB) {
-          CeilingByDeclaredPolicy { count: _, decider: _, decided_on: _, basis: _ } => false
-          CeilingFromRouteLaunch { count: _, basis: b } => (b as String) != ""
+          CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: b } =>
+            (d as String) != "" && (on as String) != "" && string_contains(s: b as String, pattern: "DESIRED CONFIGURATION")
+          CeilingFromRouteLaunch { count: _, basis: _ } => false
         })
 }
 

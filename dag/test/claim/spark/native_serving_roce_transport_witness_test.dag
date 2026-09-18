@@ -9,9 +9,18 @@ import gunbc.spark.collective_transport_plan {
   CollectiveTransportPlan, SocketOverInterface, RoceOverInterface, transport_plan_interface,
 }
 import gunbc.spark.native_serving_realization {
-  glm_native_transport_plan, glm_native_container_argv, glm_native_head_log_path,
+  glm_native_launch_lines, glm_native_unit_exec_words, glm_native_head_log_path,
 }
-import gunbc.spark.native_serving_apply { spark_native_transport_gate_script, spark_native_apply_plans }
+import gunbc.spark.serving_arm_launch { ArmNodeLaunch }
+import gunbc.spark.native_serving_apply {
+  spark_native_transport_gate_script,
+  SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps,
+  spark_native_preflight_script, spark_native_readback_script, spark_native_rollback_script,
+  spark_native_reach_script, spark_native_front_door_script,
+  SparkNativeStage, NativeStagePreflight, NativeStagePreserve, NativeStageApply,
+  NativeStageTransportGate, NativeStageReadback, NativeStageCommit,
+  spark_native_stage_has_touched_a_host,
+}
 import product.placement_supply { host_identity_eq }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
 
@@ -37,15 +46,38 @@ fn argv_has(argv: List<String>, word: String) -> Bool {
   any(argv, w => w == word)
 }
 
+// THE SUBJECT IS THE HEAD RANK'S REAL RENDER, taken from the one Group-B launch specification and
+// projected through the same foreground verb the unit's ExecStart carries. An earlier revision of
+// this witness called a renderer that assembled its own word list; that renderer is gone, and
+// reading the projection is what makes these rows claims about what a host is actually sent.
+fn head_launch() -> ArmNodeLaunch? {
+  glm_native_launch_lines().first()
+}
+
+fn head_exec_words() -> List<String> {
+  match head_launch() {
+    Absent => []
+    Present { value: l } =>
+      match glm_native_unit_exec_words(spec: l.container) {
+        Absent => []
+        Present { value: ws } => ws
+      }
+  }
+}
+
 // ── THE PLAN IS THE RoCE ARM, KEYED BY THE LANE ───────────────────────────────────────────────
 test fn w_the_native_plan_is_the_roce_arm_keyed_by_the_lane() -> Bool {
   let lane = srv9_lane()
-  match glm_native_transport_plan(lane: lane) {
-    SocketOverInterface { interface: _ } => false
-    RoceOverInterface { interface: i, rdma_device: d, gid_selection: _ } =>
-      (i as String) == (lane.leg_netdev as String)
-        && (d as String) == (lane.leg_rdma_device as String)
-        && (d as String) == "rocep1s0f1"
+  match head_launch() {
+    Absent => false
+    Present { value: l } =>
+      match l.node.transport {
+        SocketOverInterface { interface: _ } => false
+        RoceOverInterface { interface: i, rdma_device: d, gid_selection: _ } =>
+          (i as String) == (lane.leg_netdev as String)
+            && (d as String) == (lane.leg_rdma_device as String)
+            && (d as String) == "rocep1s0f1"
+      }
   }
 }
 
@@ -55,9 +87,9 @@ test fn w_the_native_plan_is_the_roce_arm_keyed_by_the_lane() -> Bool {
 // had the interface env and nothing else. The device, the capability, the lock and BOTH endpoint
 // env assignments are asserted individually so a loss names itself.
 test fn w_the_container_argv_carries_the_roce_projections() -> Bool {
-  let lane = srv9_lane()
-  let argv = glm_native_container_argv(lane: lane, rank: 0, ranks: 4, master: fabric_rail_address_of(o: lane))
-  argv_has(argv: argv, word: "--device")
+  let argv = head_exec_words()
+  count(argv) > 0
+    && argv_has(argv: argv, word: "--device")
     && argv_has(argv: argv, word: "/dev/infiniband:/dev/infiniband:rwm")
     && argv_has(argv: argv, word: "--cap-add")
     && argv_has(argv: argv, word: "IPC_LOCK")
@@ -87,14 +119,90 @@ test fn w_the_gate_script_refuses_socket_and_requires_ib() -> Bool {
 // head's new rendezvous store existed were observed joining the PREVIOUS epoch's store while the
 // head crash-looped on DistStoreError (2026-09-16).
 test fn w_the_native_apply_plans_the_whole_arm_head_first() -> Bool {
-  match spark_native_apply_plans() {
-    Absent => false
-    Present { value: plans } =>
-      length(plans) == 4 && match first(plans) {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      length(steps) == 4 && match first(steps) {
         Absent => false
-        Present { value: head_plan } => host_identity_eq(a: head_plan.host, b: operator_host_srv9)
+        Present { value: head_step } => host_identity_eq(a: head_step.host, b: operator_host_srv9)
       }
   }
+}
+
+// ── THE TRANSACTION REFUSES BEFORE IT TOUCHES, AND ROLLS BACK AFTER ───────────────────────────
+//
+// THE STAGE ORDER IS WHAT MAKES THIS A TRANSACTION RATHER THAN A SWEEP, and the property that carries
+// it is which stages are allowed to have mutated a host: preflight alone may report "no host touched",
+// and every stage from preserve onward owes a rollback. A future stage inserted before preserve and
+// marked as touching, or preserve marked as not touching, is the defect this row is red for -- the
+// second would let a failed apply report a clean refusal over four restarted engines.
+test fn w_only_preflight_may_report_no_host_touched() -> Bool {
+  spark_native_stage_has_touched_a_host(st: NativeStagePreflight) == false
+    && spark_native_stage_has_touched_a_host(st: NativeStagePreserve)
+    && spark_native_stage_has_touched_a_host(st: NativeStageApply)
+    && spark_native_stage_has_touched_a_host(st: NativeStageTransportGate)
+    && spark_native_stage_has_touched_a_host(st: NativeStageReadback)
+    && spark_native_stage_has_touched_a_host(st: NativeStageCommit)
+}
+
+// ── THE PREFLIGHT ASKS ALL FOUR QUESTIONS BEFORE ANY HOST IS TOUCHED ──────────────────────────
+//
+// Each is named individually because losing one is silent: an apply that stopped checking for the
+// image would still pass preflight on every host and then fail four engines into a pull that cannot
+// happen while the GPUs are already released.
+test fn w_the_preflight_checks_image_snapshot_and_startability() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let script = spark_native_preflight_script(
+            unit_name: st.unit_name, unit_text: st.unit_text,
+            image: st.launch.image_reference, host_model_path: st.launch.host_model_path)
+          string_contains(s: script, pattern: "docker image inspect")
+            && string_contains(s: script, pattern: "PREFLIGHT-REFUSED-image-absent")
+            && string_contains(s: script, pattern: "PREFLIGHT-REFUSED-snapshot-absent")
+            && string_contains(s: script, pattern: "systemd-analyze verify")
+            && string_contains(s: script, pattern: st.launch.host_model_path as String)
+            && !string_contains(s: script, pattern: "systemctl restart")
+        }
+      }
+  }
+}
+
+// ── THE READBACK IS EXACT, NOT A MEMBERSHIP TEST ──────────────────────────────────────────────
+//
+// `cmp` over one word per line is the claim: an argv carrying every planned word PLUS one nobody
+// planned must fail, which a `grep` per word would pass. The planned blob is asserted to carry the
+// arm's own served alias so the comparison is against this arm rather than against an empty list.
+test fn w_the_readback_compares_image_and_argv_exactly() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: endpoint } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let script = spark_native_readback_script(image: st.launch.image_reference, engine_argv: st.launch.engine_argv)
+          string_contains(s: script, pattern: ".Config.Image")
+            && string_contains(s: script, pattern: "READBACK-REFUSED-argv-differs")
+            && string_contains(s: script, pattern: "cmp -s")
+            && string_contains(s: script, pattern: st.launch.image_reference as String)
+            && string_contains(s: script, pattern: "--max-num-seqs")
+            && string_contains(s: spark_native_reach_script(is_head: true, master_endpoint: endpoint), pattern: endpoint as String)
+            && string_contains(s: spark_native_reach_script(is_head: false, master_endpoint: endpoint), pattern: "state established dst")
+            && string_contains(s: spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr), pattern: "/v1/models")
+        }
+      }
+  }
+}
+
+// ── A HOST THAT WAS NEVER PRESERVED IS NOT GUESSED AT ─────────────────────────────────────────
+test fn w_the_rollback_refuses_an_unpreserved_host() -> Bool {
+  let script = spark_native_rollback_script(unit_name: "gunbc-glm-native-head.service" as NonEmptyStr)
+  string_contains(s: script, pattern: "ROLLBACK-REFUSED-this-host-was-never-preserved")
+    && string_contains(s: script, pattern: "rolled-back-to-incumbent")
+    && string_contains(s: script, pattern: "rolled-back-to-no-unit")
 }
 
 // ── THE TELEMETRY REPORTER IS DECLARED OFF, SPELLED BY UPSTREAM'S ROW ─────────────────────────
@@ -103,11 +211,8 @@ test fn w_the_native_apply_plans_the_whole_arm_head_first() -> Bool {
 // effective environment; this row pins the declaration half, so the reading the offer makes after
 // converge comes out disabled. The word is derived from extdeps.vllm.usage_stats, never re-typed.
 test fn w_the_container_argv_declares_the_reporter_off() -> Bool {
-  let lane = srv9_lane()
-  argv_has(
-    argv: glm_native_container_argv(lane: lane, rank: 0, ranks: 4, master: fabric_rail_address_of(o: lane)),
-    word: vllm_usage_stats_disable_assignment_wire(),
-  )
+  let argv = head_exec_words()
+  count(argv) > 0 && argv_has(argv: argv, word: vllm_usage_stats_disable_assignment_wire())
 }
 
 test fn w_all_native_roce_transport_claims_hold() -> Bool {
@@ -116,4 +221,8 @@ test fn w_all_native_roce_transport_claims_hold() -> Bool {
     && w_the_gate_script_refuses_socket_and_requires_ib()
     && w_the_native_apply_plans_the_whole_arm_head_first()
     && w_the_container_argv_declares_the_reporter_off()
+    && w_only_preflight_may_report_no_host_touched()
+    && w_the_preflight_checks_image_snapshot_and_startability()
+    && w_the_readback_compares_image_and_argv_exactly()
+    && w_the_rollback_refuses_an_unpreserved_host()
 }

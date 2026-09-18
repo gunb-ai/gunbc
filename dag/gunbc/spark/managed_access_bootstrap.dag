@@ -21,7 +21,7 @@ import extdeps.systemd.systemctl { systemctl_reboot_argv, systemctl_reboot_comma
 import extdeps.exec.command { argv_words }
 import extdeps.docker.cli { docker_container_inspect_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
-import gunbc.spark.native_serving_realization { glm_native_container_name }
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
 // WHAT THE PROBE ESTABLISHED, AND WHAT FOLLOWS FROM IT.
 //
 // The credential-bound probe measured, on both Sparks: the fleet key authenticates as briansrls;
@@ -392,9 +392,10 @@ type SparkGrantInstallBasis
 //
 // On 2026-09-16 the operator accepted the same risk arm for InspectServingContainer over the native
 // arm's container (glm-native-tp4), which the group-keyed service-identity chain inspects on srv9.
-// The native container's image is digest-pinned (gunbc.spark.native_serving_realization
-// glm_native_image_reference) and every Env entry its unit sets is declared in
-// glm_native_container_argv, but no classification receipt joins those declarations to the live
+// The native container's image is digest-pinned and every Env entry its unit sets is declared, both
+// by the one launch specification (gunbc.spark.glm_group_b_launch glm_group_b_launch_plan, whose
+// ArmNodeLaunch carries image_reference and whose container spec carries the environment), but no
+// classification receipt joins those declarations to the live
 // inspect object, so the disclosure stays unestablished and the obligation outstanding here too.
 //
 // The actor is the operator's fleet login, read from the account model rather than spelled here, so

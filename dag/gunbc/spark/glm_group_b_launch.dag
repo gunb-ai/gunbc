@@ -1,0 +1,94 @@
+module gunbc.spark.glm_group_b_launch
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.docker.cli { DockerEnvAssignment }
+import extdeps.vllm.environment {
+  VllmEngineReadyTimeoutSeconds, VllmSparseIndexerMaxLogitsMb, vllm_environment_variable_name,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
+import gunbc.spark.serving_arm {
+  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
+  glm_native_concurrent_profile, ArmIntent,
+}
+import gunbc.spark.serving_arm_launch { ArmLaunchPlan, plan_arm_launch_for }
+
+// ── THE ONE CALL SITE THAT SAYS WHAT GROUP B LAUNCHES ─────────────────────────────────────────
+//
+// THE ACCEPTANCE THIS DISCHARGES. Group B's launch had two authorities -- gunbc.spark.serving_arm_launch
+// rendered a DockerCreateSpec for the direct-docker relaunch, and gunbc.spark.native_serving_realization
+// hand-assembled a second `docker run` word list for the systemd unit -- and they had already drifted on
+// three fields (shm size, the home each read its vLLM environment values from, and whether the
+// usage-stats reporter was declared off at all). Two renderings of one launch is the DESIGN section 3
+// fork, and it is worse than an ordinary one here because the drift is invisible: there was no shared
+// value for any comparison to be against, so the disagreement could only be found by reading both.
+//
+// SO THE TUPLE IS NAMED EXACTLY ONCE, HERE. The checkpoint, the runtime, the topology, the group, the
+// profile and this deployment's environment are the six things a caller could have chosen differently,
+// and every Group-B consumer now takes them from this module rather than spelling its own. What each
+// consumer still chooses is its REALIZATION -- create-and-start under a transaction, or a systemd unit's
+// Exec line -- which is the handler axis DESIGN section 3 puts in the realization layer.
+//
+// THE INTENT IS THE CALLER'S AND STAYS A PARAMETER, because it is not a property of the launch: it is
+// the caller's declaration of whether it is asking for normal serving or for the bounded experiment that
+// EARNS the receipt normal serving requires. The rendered spec is identical under both; the intent only
+// decides whether gunbc.spark.serving_arm_launch admits the plan at all.
+data glm_group_b_group: FabricGroup = FabricGroupB
+
+// ── THIS DEPLOYMENT'S VALUES FOR TWO vLLM ENVIRONMENT VARIABLES ───────────────────────────────
+//
+// THE NAMES ARE vLLM'S AND THE VALUES ARE THIS DEPLOYMENT'S, which is why the two halves live in two
+// places: extdeps.vllm.environment carries the variable names as an interface fact about the engine,
+// and the figures below are decisions this arm made and are carried where the arm is. They were homed
+// in extdeps.zhipu.glm_5_3_flash until 2026-09-18 (a model vendor's module is not the home for an engine
+// knob, review 67469), and duplicated in extdeps.vllm.server until 2026-09-18, where the row's own
+// annotation already conceded that nothing derives them and that a launch wanting a different timeout
+// is a change to the spec rather than a value that module hands out. A figure no upstream publishes and
+// no upstream derives is not an upstream fact; it is this deployment's, and holding it in extdeps was
+// the layer inversion that let the systemd renderer read one home while the spec read the other.
+//
+// THE ENGINE READY TIMEOUT IS THE RECIPE'S BASE ENVIRONMENT FOR THIS MODEL, not a tuning knob, and it is
+// carried because its absence is independently fatal on a cold multi-node start. torch's distributed
+// rendezvous defaults to 601 seconds; a four-rank group whose members are still materialising exceeds
+// that and dies with "Timed out waiting for clients", which is a different failure from anything about
+// the model and reports nothing about it.
+data glm_group_b_engine_ready_timeout_seconds: Nat = 3600
+
+// A COMPATIBILITY GUARD FOR THIS HARDWARE, CITED TO AN UPSTREAM REPORT RATHER THAN TO THE RECIPE.
+// vllm-project/vllm#55569 reports unified-memory exhaustion on a GB10 at roughly 230K context, from
+// sparse-indexer logits allocation, with two independent mitigations offered. That report used a
+// different GLM quantisation and tensor-parallel shape, so it is a RELEVANT RISK for this arm and not a
+// measurement of it -- which is why the decision to apply it is a deployment's own and sits here, while
+// the report it cites is named beside it rather than transcribed as a bare number.
+data glm_group_b_sparse_indexer_max_logits_mb: Nat = 64
+data glm_group_b_gb10_context_exhaustion_report: NonEmptyStr = "https://github.com/vllm-project/vllm/issues/55569" as NonEmptyStr
+
+fn glm_group_b_deployment_env() -> List<DockerEnvAssignment> {
+  [
+    DockerEnvAssignment {
+      name: vllm_environment_variable_name(v: VllmEngineReadyTimeoutSeconds),
+      value: to_string(glm_group_b_engine_ready_timeout_seconds),
+    },
+    DockerEnvAssignment {
+      name: vllm_environment_variable_name(v: VllmSparseIndexerMaxLogitsMb),
+      value: to_string(glm_group_b_sparse_indexer_max_logits_mb),
+    },
+  ]
+}
+
+// THE PLAN EVERY GROUP-B REALIZATION PROJECTS FROM. A consumer that wants the arm's containers calls
+// this and reads `container` off each rank; a consumer that wants a unit file calls this and projects
+// the same spec through extdeps.docker.cli's foreground verb. Neither may assemble a launch of its own,
+// and the equality between the two projections is claimed rather than assumed --
+// dag/test/claim/spark/glm_group_b_launch_authority_witness_test.dag.
+fn glm_group_b_launch_plan(intent: ArmIntent) -> ArmLaunchPlan {
+  plan_arm_launch_for(
+    checkpoint: Glm53NativeFp8,
+    runtime: GunbcGlm53NopeDerivedGb10,
+    topology: FourSparkTp4,
+    group: glm_group_b_group,
+    intent: intent,
+    profile: glm_native_concurrent_profile,
+    deployment_env: glm_group_b_deployment_env(),
+  )
+}

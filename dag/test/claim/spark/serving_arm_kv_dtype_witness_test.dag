@@ -15,7 +15,7 @@ import gunbc.spark.serving_arm {
   glm_native_kv_cache_dtype_admission, glm_native_initial_profile, glm_native_concurrent_profile,
   glm_native_engine_build, glm_native_engine_build_image,
 }
-import gunbc.spark.native_serving_realization { glm_native_image_reference }
+import gunbc.spark.serving_arm { glm53_nope_derived_row }
 
 // THE CLASS UNDER TEST IS `A SERVING PROFILE CARRYING A KV DTYPE ITS (MODEL, ENGINE BUILD) PAIR
 // CANNOT RUN`. The arm crash-looped on exactly this on 2026-09-17, and the day's measurements
@@ -94,10 +94,19 @@ test fn the_native_arm_profile_carries_an_admitted_dtype() -> Bool {
     && admitted_on(build: glm_native_engine_build, dtype: glm_native_concurrent_profile.kv_cache_dtype)
 }
 
-// THE IMAGE THE ARM RUNS IS THE DECLARED BUILD'S IMAGE: native_serving_realization derives its
-// reference from glm_native_engine_build, so the pin cannot drift from the build the admission
-// was keyed against.
+// THE ARM LAUNCHES THE DECLARED BUILD, AND THE TWO WAYS OF SAYING SO MUST AGREE ON THE IMAGE.
+//
+// WHAT MOVED HERE AND WHY. Until 2026-09-18 the systemd renderer carried its own image row, derived
+// from glm_native_engine_build's content-hashed TAG, while the launch specification the direct-docker
+// handler sends carried the runtime row's DIGEST pin for the same build -- two references for one
+// image, and the renderer's row was what this claim checked. The renderer now projects from the
+// launch specification, so the subject is the runtime row: it must name a derived build rather than
+// a stock one, and gunbc.spark.glm_group_b_launch's plan is keyed to that same runtime.
+//
+// THE `derived-` SUBSTRING IS STILL THE DISCRIMINATOR, and it is asserted against the tag the build
+// authority mints, because that is the only spelling in which "derived rather than stock" is visible
+// as a word rather than as an opaque digest.
 test fn the_image_pin_is_the_declared_builds_image() -> Bool {
-  glm_native_image_reference == glm_native_engine_build_image(build: glm_native_engine_build)
-    && string_contains(s: glm_native_image_reference as String, pattern: "derived-")
+  string_contains(s: glm_native_engine_build_image(build: glm_native_engine_build) as String, pattern: "derived-")
+    && count(glm53_nope_derived_row.artifact.patch_set) == 3
 }

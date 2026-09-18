@@ -343,10 +343,15 @@ type EepromAcquisitionStanding
   = AcquisitionCurrent
   | AcquisitionInvalidatedByReflash { invalidating_event: NonEmptyStr }
 
+// THE ACQUISITION DATE IS A FIELD BECAUSE A SUPERSEDED READING STAYS. `date_code` is the cable's
+// manufacture date printed in its EEPROM; `observed_on` is when this repository read those bytes, and
+// the two were conflated as long as a host had only one row. A leg reprogrammed between two reads has
+// TWO true readings, and the only thing that orders them is when each was taken.
 type FabricLegEepromObservation {
   host: NonEmptyStr
   vendor_serial: NonEmptyStr
   date_code: NonEmptyStr
+  observed_on: NonEmptyStr
   coding: CableLegObservation
   acquisition: EepromAcquisitionStanding
 }
@@ -355,18 +360,18 @@ type FabricLegEepromObservation {
 // eight agree byte for byte today; that agreement is a DERIVABLE fact about eight receipts, and
 // storing it as one row would make the agreement unfalsifiable and the divergence unrepresentable.
 //
-// EVERY ROW IS AcquisitionCurrent BECAUSE EVERY LEG WAS RE-READ AFTER THE RE-FLASH. An interim
-// revision on main carried spark-ac79 as AcquisitionInvalidatedByReflash, re-flashed but not re-read;
-// the 2026-09-16 acquisition below re-read it (0x40), so that standing no longer describes any leg,
-// and the type keeps it for the next re-flash that precedes its re-read.
+// EVERY LEG HAS A CURRENT ACQUISITION, AND ONE LEG ALSO HAS ITS SUPERSEDED ONE. spark-ac79 was read
+// at 0x0B on 2026-09-10, reprogrammed, and re-read at 0x40 on 2026-09-16; both readings are rows, the
+// earlier one typed AcquisitionInvalidatedByReflash and never promoted to the plant. That is the
+// shape a re-flash has, and it is why the standing is a type rather than a deletion.
 //
 // ALL EIGHT LEGS ARE NOW READ, WHERE TWO WERE BEFORE, and the roster went from a partial plant that
 // refused to a complete one. The rows are the post-re-flash acquisition of 2026-09-16: every leg
 // returns byte 192 = 0x40 and both SFF-8636 checksums recompute over the read bytes, so the
 // programmer's write is self-consistent on every leg and not merely on the ones that were spot
-// checked. The pre-re-flash rows for spark-a3ee and spark-ac79 are GONE rather than kept beside
-// these: fabric_leg_reading takes the first receipt for a host, so a second row for one host is a
-// second answer to what that leg codes TODAY, and the 0x0B state exists on no leg in the plant.
+// checked. A second row for one host is NOT a second answer to what that leg codes today, because
+// fabric_leg_reading selects the leg's AcquisitionCurrent row rather than its first: the 0x0B state
+// exists on no leg in the plant AND remains readable as the observation the re-flash superseded.
 //
 // THE SERIALS WERE NOT UNIQUE ON THE FIRST READ, AND THAT IS WHY UNIQUENESS IS CHECKED RATHER THAN
 // ASSUMED. The first post-re-flash pass read the cage-2 legs as S2630771509-3 and -4 -- serials the
@@ -376,11 +381,49 @@ type FabricLegEepromObservation {
 // what a QSFP-DD breakout physically is. The receipt identity survived that defect precisely because
 // it is per-acquisition: a shared row could not have represented two legs claiming one serial, and
 // the witness that compares serials across rows is what makes the recurrence visible.
+// ── THE PRE-REFLASH READING, RESTORED ────────────────────────────────────────────────────────
+//
+// THIS ROW WAS DELETED IN A MERGE AND THAT DELETION REWROTE HISTORY. main carried spark-ac79's last
+// actual dump -- byte 192 = 0x0B, read 2026-09-10 -- typed AcquisitionInvalidatedByReflash because
+// the leg had been reprogrammed since. The post-reflash acquisition below re-read that leg to 0x40,
+// and the merge took the new rows OVER the old one instead of BESIDE it, so the plant's record went
+// from "this leg coded 0x0B, then was reprogrammed, and now codes 0x40" to "this leg codes 0x40",
+// with the eight days of refusal the 0x0B coding caused unattributable to anything in the corpus.
+//
+// A SUPERSEDING OBSERVATION DOES NOT MAKE ITS PREDECESSOR FALSE. Both readings are true of their own
+// date, and the chain they form -- original coding observed (this row) -> host ends reprogrammed
+// (the invalidating event named on it) -> post-recode coding observed (the eight rows below) ->
+// forced 100G_2X attempts all fail to train (fabric_forced_100g_attempts) -> the lane restored to
+// 50G (fabric_leg_cable_observed linked_speed_gbps) -- is the switch investigation's actual shape.
+// Keeping only the latest row leaves a reader unable to say what changed or when.
+//
+// ITS SERIAL IS KEPT AS READ, INCLUDING THE DEFECT. This row says S2630771509-3, which the
+// post-reflash pass established was another assembly's serial written by the programmer; the
+// corrected leg reads S2630771508-3 below. Rewriting it here to the corrected value would erase the
+// evidence that the programmer mis-wrote it, which is the same deletion at one field's grain.
+//
+// AND IT IS NOT PROMOTED TO THE PLANT. fabric_leg_reading selects the leg's current acquisition, so
+// this row is history a reader can consult and never an answer about what the plant codes today.
 data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
+  FabricLegEepromObservation {
+    host: "spark-ac79" as NonEmptyStr,
+    vendor_serial: "S2630771509-3" as NonEmptyStr,
+    date_code: "260728" as NonEmptyStr,
+    observed_on: "2026-09-10" as NonEmptyStr,
+    coding: cable_leg_observation(
+      identifier: transceiver_identifier_from_byte(code: 17),
+      primary_compliance_code: 11,
+      secondary_compliance: SecondaryObserved { code: 0 },
+      encoding: sff8636_encoding_from_byte(code: 8),
+      nominal_rate: sff8636_nominal_rate_from_byte140(code: 255),
+      extended_rate: ExtendedRateObserved { code: 106 }),
+    acquisition: AcquisitionInvalidatedByReflash { invalidating_event: "the operator reprogrammed every leg of both breakouts to the NVIDIA (ETH) coding on 2026-09-16; this leg was re-read on that date and its current reading is the spark-ac79 row below" as NonEmptyStr },
+  },
   FabricLegEepromObservation {
     host: "spark-3bd5" as NonEmptyStr,
     vendor_serial: "S2630771509-1" as NonEmptyStr,
     date_code: "260914" as NonEmptyStr,
+    observed_on: "2026-09-16" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
       primary_compliance_code: 64,
@@ -394,6 +437,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
     host: "spark-a3ee" as NonEmptyStr,
     vendor_serial: "S2630771509-2" as NonEmptyStr,
     date_code: "260914" as NonEmptyStr,
+    observed_on: "2026-09-16" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
       primary_compliance_code: 64,
@@ -407,6 +451,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
     host: "spark-c2b1" as NonEmptyStr,
     vendor_serial: "S2630771509-3" as NonEmptyStr,
     date_code: "260914" as NonEmptyStr,
+    observed_on: "2026-09-16" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
       primary_compliance_code: 64,
@@ -420,6 +465,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
     host: "spark-ac79" as NonEmptyStr,
     vendor_serial: "S2630771509-4" as NonEmptyStr,
     date_code: "260914" as NonEmptyStr,
+    observed_on: "2026-09-16" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
       primary_compliance_code: 64,
@@ -433,6 +479,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
     host: "spark-0c75" as NonEmptyStr,
     vendor_serial: "S2630771508-1" as NonEmptyStr,
     date_code: "260914" as NonEmptyStr,
+    observed_on: "2026-09-16" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
       primary_compliance_code: 64,
@@ -446,6 +493,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
     host: "spark-b66c" as NonEmptyStr,
     vendor_serial: "S2630771508-2" as NonEmptyStr,
     date_code: "260914" as NonEmptyStr,
+    observed_on: "2026-09-16" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
       primary_compliance_code: 64,
@@ -459,6 +507,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
     host: "spark-3336" as NonEmptyStr,
     vendor_serial: "S2630771508-3" as NonEmptyStr,
     date_code: "260914" as NonEmptyStr,
+    observed_on: "2026-09-16" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
       primary_compliance_code: 64,
@@ -472,6 +521,7 @@ data fabric_leg_eeprom_observations: List<FabricLegEepromObservation> = [
     host: "spark-2196" as NonEmptyStr,
     vendor_serial: "S2630771508-4" as NonEmptyStr,
     date_code: "260914" as NonEmptyStr,
+    observed_on: "2026-09-16" as NonEmptyStr,
     coding: cable_leg_observation(
       identifier: transceiver_identifier_from_byte(code: 17),
       primary_compliance_code: 64,
@@ -502,8 +552,21 @@ fn fabric_leg_reading_of_row(endpoint: NonEmptyStr, r: FabricLegEepromObservatio
   }
 }
 
+// THE LEG'S CURRENT ACQUISITION, SELECTED BY STANDING RATHER THAN BY POSITION. A host now carries one
+// row per acquisition, so `.first()` would have answered whichever reading happened to be written
+// first -- a positional rule standing where a stated one was available, and one that would have
+// promoted the superseded 0x0B reading the moment somebody sorted the list. The rule is the one the
+// per-row projection already states: an invalidated acquisition is never promoted to the plant, so the
+// plant reads the leg's AcquisitionCurrent row, and a leg with none reads as never read.
+fn fabric_leg_current_acquisition(o: FabricLaneObserved) -> FabricLegEepromObservation? {
+  filter(fabric_leg_observation_for(o: o), r => match r.acquisition {
+    AcquisitionCurrent => true
+    AcquisitionInvalidatedByReflash { invalidating_event: _ } => false
+  }).first()
+}
+
 fn fabric_leg_reading(o: FabricLaneObserved) -> CableLegReading {
-  match fabric_leg_observation_for(o: o).first() {
+  match fabric_leg_current_acquisition(o: o) {
     Present { value: r } => fabric_leg_reading_of_row(endpoint: fabric_lane_interface(o: o), r: r)
     Absent => LegNeverRead { endpoint: fabric_lane_interface(o: o) }
   }

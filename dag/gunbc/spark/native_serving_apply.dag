@@ -47,15 +47,26 @@ import gunbc.spark.pair_serving_apply {
 import gunbc.spark.native_serving_realization {
   GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
   glm_native_all_unit_renders, glm_native_ranked_hosts, glm_native_head_unit_name,
-  glm_native_container_name, glm_native_head_log_path, glm_native_rank_log_path,
+  glm_native_head_log_path, glm_native_rank_log_path,
 }
+import gunbc.spark.serving_arm_launch { glm_native_container_name, ArmNodeLaunch, glm_native_master_port }
+import gunbc.spark.serving_arm { glm_native_concurrent_profile }
+import gunbc.spark.native_serving_realization { glm_native_launch_lines, glm_native_master_endpoint }
+import extdeps.iproute2.ss { ss_established_to_peer_argv }
+import std.nat { Nat }
 
 // THE NATIVE ARM'S FIRST CONVERGENCE, OVER THE ADMINISTRATOR'S PASSWORD SESSION. Group B ran from
 // 2026-09-10 as a bare `docker run` per host written by the cutover transaction: supervised by
 // nothing, invisible to the harness's declared-unit check, and pinned to the launch policy's
 // max_num_seqs 1. This entry installs the rendered units from
-// gunbc.spark.native_serving_realization on the four cage-2 hosts and brings the arm under systemd,
-// workers before the head so the head's first engine start finds its ranks.
+// gunbc.spark.native_serving_realization on the four cage-2 hosts and brings the arm under systemd as
+// ONE BOUNDED TRANSACTION, the head before the workers so every rank joins the head's new store.
+//
+// THE ARM'S ROSTER AND STAGE ORDER LIVE WITH THE TRANSACTION AT THE FOOT OF THIS MODULE.
+// spark_native_arm_steps builds one row per host from the canonical launch plan, in the plan's own
+// rank order -- the head first, because the head's engine opens the rendezvous store every worker then
+// joins. An earlier revision built a second roster here by zipping hosts against renders; that was one
+// more answer to the arm's membership than the arm has.
 //
 // THE PRIVILEGED LEG AND THE RECEIPT ARE THE PAIR'S. spark_pair_privileged_leg,
 // SparkPairHostApplyPlan and the outcome vocabulary are generic over host, unit name and script;
@@ -104,46 +115,6 @@ fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr,
   ], "")
 }
 
-fn spark_native_host_plan(host: HostIdentity, render: GlmNativeUnitRender) -> SparkPairHostApplyPlan? {
-  match render {
-    GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => none
-    GlmNativeUnitRendered { unit_name: name, text: text } =>
-      Present { value: SparkPairHostApplyPlan {
-        host: host,
-        unit_name: name,
-        script: spark_native_host_apply_script(
-          unit_name: name,
-          log_path: if (name as String) == (glm_native_head_unit_name as String) { glm_native_head_log_path } else { glm_native_rank_log_path },
-          unit_text: text,
-        ),
-      } }
-  }
-}
-
-// HEAD BEFORE THE WORKERS. glm_native_all_unit_renders returns the head first (it is rank 0) and
-// the plan order keeps it: the head's engine starts first, so its rendezvous store's incarnation
-// is the one every worker's restart then joins -- workers restarted BEFORE the head's new store
-// existed were observed (2026-09-16) connecting to the PREVIOUS epoch's store and the head
-// crash-looping on DistStoreError waiting for ranks that would never arrive.
-fn spark_native_apply_plans() -> List<SparkPairHostApplyPlan>? {
-  let hosts = glm_native_ranked_hosts()
-  let renders = glm_native_all_unit_renders()
-  let plans = zip_map(a: hosts, b: renders, f: fn(h, r) { spark_native_host_plan(host: h, render: r) })
-  if any(plans, p => match p { Absent => true  Present { value: _ } => false }) {
-    none
-  } else {
-    let present = flat_map(plans, p => match p { Absent => [] as List<SparkPairHostApplyPlan>  Present { value: v } => [v] })
-    match list_head(xs: present) {
-      HeadAbsent => none
-      HeadFound { value: head_plan } =>
-        match list_tail(xs: present) {
-          TailAbsent => none
-          TailFound { tail: workers } => Present { value: concat([head_plan], workers) }
-        }
-    }
-  }
-}
-
 // ── THE TRANSPORT VERDICT GATE ───────────────────────────────────────────────────────────────
 //
 // THE HARD DEPENDENCY ON THE DIRECT FABRIC LINE, RULED A CORRECTNESS ISSUE BY THE OPERATOR ON
@@ -168,16 +139,6 @@ fn spark_native_transport_gate_script(log_path: NonEmptyStr) -> String {
     "grep -q \"Using network IB\" ", log_path as String, "\n",
     "echo transport-verdict-ib\n",
   ], "")
-}
-
-fn spark_native_transport_gate_plan(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyPlan {
-  SparkPairHostApplyPlan {
-    host: plan.host,
-    unit_name: plan.unit_name,
-    script: spark_native_transport_gate_script(
-      log_path: if (plan.unit_name as String) == (glm_native_head_unit_name as String) { glm_native_head_log_path } else { glm_native_rank_log_path },
-    ),
-  }
 }
 
 // ── THE OFFER'S GRANT PREFLIGHT ──────────────────────────────────────────────────────────────
@@ -242,13 +203,533 @@ fn spark_native_grant_preflight_refusals(ps: List<SparkNativeGrantPreflight>) ->
   })
 }
 
+
+
+// ══ THE NATIVE ARM'S APPLY IS ONE BOUNDED TRANSACTION ═════════════════════════════════════════
+//
+// WHAT THIS REPLACED, AND WHY IT WAS THE MOST DANGEROUS THING IN THE CHANGE. The apply above was a
+// single forward sweep: preflight the grants, then overwrite four units and restart four engines, then
+// declare success on the NCCL transport gate alone. It preserved nothing, verified nothing about what
+// the engines became, and had no way back -- a host failing in the middle left two rendezvous epochs
+// live with no modeled recovery except running the same sweep again. That is load-bearing rather than
+// theoretical here: the next invocation relaunches Group B at 0.8567 GPU memory utilization against
+// live units carrying 0.84, and reloads 328 GB of weights to do it.
+//
+// THE SHAPE, AND WHY EACH STAGE EXISTS.
+//
+//   PREFLIGHT, ON EVERY HOST, TOUCHING NOTHING. Grants (the 2026-09-17 converge's own lesson), the
+//   image actually present in the local daemon, the weights actually present at the host path the
+//   mount will bind, and the rendered unit accepted by systemd's own verifier. Any refusal here is
+//   reported with NO HOST TOUCHED, which is the whole value of doing it first: the arm is still up.
+//
+//   PRESERVE, AND AN HONEST ACCOUNT OF WHAT CAN BE PRESERVED. The direct-docker transaction in
+//   gunbc.spark.serving_relaunch_transaction keeps its incumbent by RENAMING the container, which does
+//   not transfer to this arm and would actively break it: these containers run `--rm` in the foreground
+//   under a unit, so renaming one orphans it from the ExecStop that would stop it, leaving it running
+//   and holding the GPUs the successor needs. What CAN be preserved is the DECLARED side -- the
+//   incumbent unit file, or a marker that there was none -- and that is what a rollback restores; the
+//   incumbent's own `docker inspect` is captured beside it so a diagnosis has the exact prior
+//   realization even though the container itself cannot outlive its unit.
+//
+//   APPLY, HEAD BEFORE WORKERS. The head's engine opens the rendezvous store every worker then joins.
+//   Workers restarted first were observed (2026-09-16) joining the PREVIOUS epoch's store while the
+//   head crash-looped on DistStoreError.
+//
+//   READBACK, EXACT AND ON EVERY HOST. The container's image compared to the planned reference, its
+//   Config.Cmd compared to the planned engine argv WORD FOR WORD AND IN ORDER, the current epoch's
+//   rendezvous reach (the head listening on the master endpoint, every worker holding an established
+//   connection to it), and the front door answering /v1/models with the served alias this arm declares.
+//   The transport gate keeps its own stage because its verdict cannot exist until every rank has joined.
+//
+//   COMMIT, OR ROLL THE WHOLE ARM BACK. A rollback restores every host's incumbent unit and restarts it
+//   head-first, so the previous epoch reassembles the same way the new one would have.
+//
+// AND THE FOURTH OUTCOME IS THE ONE THAT MATTERS. A rollback can itself fail on a host, and pretending
+// otherwise would put the fabricated plausible output back one layer up. NativeArmPartialTransaction is
+// a TERMINAL standing naming which hosts are on which side, because a silent mixed epoch is the state
+// this whole shape exists to make unrepresentable; an operator reading it knows the arm is split and
+// which way, rather than reading a success and discovering it later.
+//
+// WHAT THE EVIDENCE HERE IS. The stage scripts, their ordering and the outcome fold are claimed by
+// dag/test/claim/spark/native_serving_roce_transport_witness_test.dag. NOTHING BELOW HAS BEEN RUN
+// AGAINST THE FLEET: this is a transaction that has never actuated, and the receipt that would change
+// that is a converge under the `spark_native_serving_apply` mode.
+
+data spark_native_incumbent_suffix: String = ".gunbc-incumbent"
+data spark_native_absent_marker_suffix: String = ".gunbc-had-no-unit"
+data spark_native_preflight_dir: String = "/run/gunbc-native-preflight"
+data spark_native_readback_dir: String = "/run/gunbc-native-readback"
+
+// ── THE STAGES, NAMED SO A REFUSAL SAYS WHERE IT STOPPED ──────────────────────────────────────
+type SparkNativeStage
+  = NativeStagePreflight
+  | NativeStagePreserve
+  | NativeStageApply
+  | NativeStageTransportGate
+  | NativeStageReadback
+  | NativeStageCommit
+
+fn spark_native_stage_wire(st: SparkNativeStage) -> NonEmptyStr {
+  match st {
+    NativeStagePreflight => "preflight (no host touched)" as NonEmptyStr
+    NativeStagePreserve => "preserve the incumbent" as NonEmptyStr
+    NativeStageApply => "apply the arm, head before workers" as NonEmptyStr
+    NativeStageTransportGate => "NCCL transport verdict" as NonEmptyStr
+    NativeStageReadback => "exact readback" as NonEmptyStr
+    NativeStageCommit => "commit" as NonEmptyStr
+  }
+}
+
+// A STAGE THAT IS ONLY REACHED AFTER ANY HOST HAS BEEN MUTATED OWES A ROLLBACK, and which stages those
+// are is a property of the stage rather than a decision at each call site.
+fn spark_native_stage_has_touched_a_host(st: SparkNativeStage) -> Bool {
+  match st {
+    NativeStagePreflight => false
+    NativeStagePreserve => true
+    NativeStageApply => true
+    NativeStageTransportGate => true
+    NativeStageReadback => true
+    NativeStageCommit => true
+  }
+}
+
+type SparkNativeArmTransaction
+  = NativeArmCommitted { receipt: String }
+  | NativeArmRefusedBeforeActuation { stage: SparkNativeStage, receipt: String }
+  | NativeArmRolledBack { stage: SparkNativeStage, receipt: String }
+  | NativeArmPartialTransaction { stage: SparkNativeStage, receipt: String }
+
+// ── THE STAGE SCRIPTS ─────────────────────────────────────────────────────────────────────────
+
+// PREFLIGHT TOUCHES NOTHING IT CANNOT UNDO BY EXISTING. It writes the candidate unit under /run so
+// systemd's own verifier can judge it -- a tmpfs path that is not a unit search directory, so the
+// candidate is never loadable as a unit -- and reads everything else.
+fn spark_native_preflight_script(unit_name: NonEmptyStr, unit_text: String, image: NonEmptyStr, host_model_path: NonEmptyStr) -> String {
+  join([
+    "set -e\n",
+    "if ! command -v docker >/dev/null; then echo PREFLIGHT-REFUSED-no-docker; exit 1; fi\n",
+    "if ! docker info >/dev/null 2>&1; then echo PREFLIGHT-REFUSED-docker-daemon-unreachable; exit 1; fi\n",
+    "if ! docker image inspect ", shell_quote(arg: image as String), " >/dev/null 2>&1; then echo PREFLIGHT-REFUSED-image-absent; exit 1; fi\n",
+    "if ! test -d ", shell_quote(arg: host_model_path as String), "; then echo PREFLIGHT-REFUSED-snapshot-absent; exit 1; fi\n",
+    "mkdir -p ", spark_native_preflight_dir, "\n",
+    "printf '%s' ", shell_quote(arg: unit_text), " > ", spark_native_preflight_dir, "/", unit_name as String, "\n",
+    "if ! systemd-analyze verify ", spark_native_preflight_dir, "/", unit_name as String, "; then echo PREFLIGHT-REFUSED-unit-not-startable; exit 1; fi\n",
+    "echo preflight-ok\n",
+  ], "")
+}
+
+// PRESERVE RECORDS WHAT WAS THERE, INCLUDING THE CASE WHERE NOTHING WAS. A host with no incumbent unit
+// gets a marker rather than no file, because "no incumbent" and "the preserve step never ran here" are
+// different states and a rollback that could not tell them apart would leave a unit it should remove.
+fn spark_native_preserve_script(unit_name: NonEmptyStr) -> String {
+  let ctr = glm_native_container_name as String
+  let u = join(["/etc/systemd/system/", unit_name as String], "")
+  join([
+    "set -e\n",
+    "rm -f ", u, spark_native_incumbent_suffix, " ", u, spark_native_absent_marker_suffix, "\n",
+    "if [ -f ", u, " ]; then cp -f ", u, " ", u, spark_native_incumbent_suffix, "; else : > ", u, spark_native_absent_marker_suffix, "; fi\n",
+    "mkdir -p ", spark_native_readback_dir, "\n",
+    "docker container inspect ", ctr, " > ", spark_native_readback_dir, "/incumbent.json 2>/dev/null || : > ", spark_native_readback_dir, "/incumbent.json\n",
+    "echo preserved\n",
+  ], "")
+}
+
+// THE READBACK COMPARES, IT DOES NOT SUMMARISE. The image is an exact string comparison and the engine
+// argv an exact ordered file comparison -- `cmp` over one word per line, so a difference is located at a
+// word rather than reported as "argv differs". A membership test would pass an argv carrying every
+// planned word plus one nobody planned, which is precisely how a launch acquires a flag by accident.
+//
+// THE GO-TEMPLATE BRACES ARE ESCAPED BECAUSE THIS SUBSTRATE READS `{` AS INTERPOLATION. `\{` is the
+// literal, which is what docker's --format needs; a shell group `{ ...; }` is written as an `if`
+// instead, so no rendered word depends on remembering the escape.
+fn spark_native_readback_script(image: NonEmptyStr, engine_argv: List<String>) -> String {
+  let ctr = glm_native_container_name as String
+  join([
+    "set -e\n",
+    "mkdir -p ", spark_native_readback_dir, "\n",
+    "if ! docker container inspect ", ctr, " >/dev/null 2>&1; then echo READBACK-REFUSED-container-absent; exit 1; fi\n",
+    "img=$(docker container inspect -f '\{\{.Config.Image}}' ", ctr, ")\n",
+    "if [ \"$img\" != ", shell_quote(arg: image as String), " ]; then echo READBACK-REFUSED-image-is-$img; exit 1; fi\n",
+    "docker container inspect -f '\{\{range .Config.Cmd}}\{\{println .}}\{\{end}}' ", ctr, " > ", spark_native_readback_dir, "/observed-argv\n",
+    "printf '%s' ", shell_quote(arg: join(concat(engine_argv, [""]), "\n")), " > ", spark_native_readback_dir, "/planned-argv\n",
+    "if ! cmp -s ", spark_native_readback_dir, "/observed-argv ", spark_native_readback_dir, "/planned-argv; then echo READBACK-REFUSED-argv-differs; diff ", spark_native_readback_dir, "/planned-argv ", spark_native_readback_dir, "/observed-argv | head -20; exit 1; fi\n",
+    "echo readback-ok\n",
+  ], "")
+}
+
+// THE EPOCH'S REACH IS READ FROM BOTH SIDES OF THE SAME ENDPOINT. The head must be LISTENING on the
+// master endpoint this apply's own plan names -- a head that restarted into a different address would
+// pass a worker-side check against the old one -- and every worker must hold an established connection
+// TO it. The socket carries no process attribution (gunbc.spark.rendezvous_participation states what
+// that does and does not establish), so this is the reach half of the readback and the argv comparison
+// above is the identity half; neither substitutes for the other.
+fn spark_native_reach_script(is_head: Bool, master_endpoint: NonEmptyStr) -> String {
+  if is_head {
+    join([
+      "set -e\n",
+      "if ! ss -H -t -n -l src ", master_endpoint as String, " | grep -q .; then echo READBACK-REFUSED-head-not-listening-on-", master_endpoint as String, "; exit 1; fi\n",
+      "echo head-listening\n",
+    ], "")
+  } else {
+    join([
+      "set -e\n",
+      "if ! ss -H -t -n state established dst ", master_endpoint as String, " | grep -q .; then echo READBACK-REFUSED-no-connection-to-", master_endpoint as String, "; exit 1; fi\n",
+      "echo worker-connected\n",
+    ], "")
+  }
+}
+
+// THE FRONT DOOR IS ASKED WHAT IT SERVES, NOT WHETHER IT IS UP. A 200 from /v1/models with the wrong
+// model listed is a served arm that is not THIS arm, and an apply that accepted it would have relaunched
+// onto a configuration nobody asked for and reported success.
+fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr) -> String {
+  join([
+    "set -e\n",
+    "if ! curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json; then echo READBACK-REFUSED-front-door-unanswered; exit 1; fi\n",
+    "tr -d ' \\n' < ", spark_native_readback_dir, "/models.json > ", spark_native_readback_dir, "/models.compact\n",
+    "if ! grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo READBACK-REFUSED-front-door-serves-another-model; exit 1; fi\n",
+    "echo front-door-serves-", served_alias as String, "\n",
+  ], "")
+}
+
+fn spark_native_commit_script(unit_name: NonEmptyStr) -> String {
+  let u = join(["/etc/systemd/system/", unit_name as String], "")
+  join([
+    "set -e\n",
+    "rm -f ", u, spark_native_incumbent_suffix, " ", u, spark_native_absent_marker_suffix, "\n",
+    "echo committed\n",
+  ], "")
+}
+
+// ROLLBACK REFUSES RATHER THAN GUESSING. A host with neither an incumbent copy nor an absent marker was
+// never preserved, and the one thing this script must not do there is decide what the unit used to be.
+fn spark_native_rollback_script(unit_name: NonEmptyStr) -> String {
+  let u = join(["/etc/systemd/system/", unit_name as String], "")
+  join([
+    "set -e\n",
+    "if [ -f ", u, spark_native_incumbent_suffix, " ]; then\n",
+    "  mv -f ", u, spark_native_incumbent_suffix, " ", u, "\n",
+    "  systemctl daemon-reload\n",
+    "  systemctl restart ", unit_name as String, "\n",
+    "  rm -f ", u, spark_native_absent_marker_suffix, "\n",
+    "  echo rolled-back-to-incumbent\n",
+    "elif [ -f ", u, spark_native_absent_marker_suffix, " ]; then\n",
+    "  systemctl disable --now ", unit_name as String, " >/dev/null 2>&1 || true\n",
+    "  rm -f ", u, " ", u, spark_native_absent_marker_suffix, "\n",
+    "  systemctl daemon-reload\n",
+    "  echo rolled-back-to-no-unit\n",
+    "else\n",
+    "  echo ROLLBACK-REFUSED-this-host-was-never-preserved; exit 1\n",
+    "fi\n",
+  ], "")
+}
+
+// ── THE PER-STAGE PLANS, ONE PER HOST, IN THE ARM'S OWN RANK ORDER ────────────────────────────
+
+fn spark_native_is_head_unit(name: NonEmptyStr) -> Bool {
+  (name as String) == (glm_native_head_unit_name as String)
+}
+
+// ONE ROW PER HOST CARRYING EVERYTHING EVERY STAGE NEEDS, so a stage is a projection of the arm rather
+// than a second roster. The order is the plan's: rank 0 first.
+type SparkNativeHostStep sole_constructor {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+  unit_text: String
+  launch: ArmNodeLaunch
+}
+
+type SparkNativeArmSteps
+  = NativeArmSteps { steps: List<SparkNativeHostStep>, master_endpoint: NonEmptyStr }
+  | NativeArmStepsRefused { cause: NonEmptyStr }
+
+fn spark_native_step_of(launch: ArmNodeLaunch, render: GlmNativeUnitRender) -> SparkNativeHostStep? {
+  match render {
+    GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => none
+    GlmNativeUnitRendered { unit_name: name, text: text } =>
+      Present { value: SparkNativeHostStep {
+        host: launch.node.host,
+        unit_name: name,
+        unit_text: text,
+        launch: launch,
+      } }
+  }
+}
+
+// THE ARM IS PLANNED WHOLE OR NOT AT ALL. A roster missing a rank is not a smaller arm -- the
+// tensor-parallel degree is a property of the arm -- so one unrendered unit refuses the transaction
+// before any credential is materialized, let alone any host touched.
+fn spark_native_arm_steps() -> SparkNativeArmSteps {
+  let launches = glm_native_launch_lines()
+  let renders = glm_native_all_unit_renders()
+  match glm_native_master_endpoint() {
+    Absent => NativeArmStepsRefused { cause: "the arm's rendezvous endpoint is unknown, so nothing could be verified after a restart" as NonEmptyStr }
+    Present { value: endpoint } => {
+      let steps = flat_map(zip_map(a: launches, b: renders, f: fn(l, r) { spark_native_step_of(launch: l, render: r) }),
+        o => match o { Absent => [] as List<SparkNativeHostStep>  Present { value: v } => [v] })
+      if count(steps) == count(launches) && count(steps) > 0 {
+        NativeArmSteps { steps: steps, master_endpoint: endpoint }
+      } else {
+        NativeArmStepsRefused { cause: "a native arm unit did not render, so the arm cannot be planned whole; no host was touched" as NonEmptyStr }
+      }
+    }
+  }
+}
+
+fn spark_native_plan_of(step: SparkNativeHostStep, script: String) -> SparkPairHostApplyPlan {
+  SparkPairHostApplyPlan { host: step.host, unit_name: step.unit_name, script: script }
+}
+
+fn spark_native_preflight_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_preflight_script(
+    unit_name: st.unit_name, unit_text: st.unit_text,
+    image: st.launch.image_reference, host_model_path: st.launch.host_model_path)))
+}
+
+fn spark_native_preserve_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_preserve_script(unit_name: st.unit_name)))
+}
+
+fn spark_native_apply_stage_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_host_apply_script(
+    unit_name: st.unit_name,
+    log_path: if spark_native_is_head_unit(name: st.unit_name) { glm_native_head_log_path } else { glm_native_rank_log_path },
+    unit_text: st.unit_text)))
+}
+
+fn spark_native_gate_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_transport_gate_script(
+    log_path: if spark_native_is_head_unit(name: st.unit_name) { glm_native_head_log_path } else { glm_native_rank_log_path })))
+}
+
+// THE READBACK IS THREE CHECKS ON THE HEAD AND TWO ON A WORKER, IN ONE LEG PER HOST. They are
+// concatenated rather than run as three stages because they are one question -- is THIS host running
+// the arm this plan describes -- and splitting them would multiply the ssh legs without splitting the
+// answer. `set -e` in each fragment stops the leg at the first refusal, so the failing check is the one
+// that names itself.
+fn spark_native_readback_plans(steps: List<SparkNativeHostStep>, master_endpoint: NonEmptyStr) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => {
+    let is_head = spark_native_is_head_unit(name: st.unit_name)
+    spark_native_plan_of(step: st, script: join([
+      spark_native_readback_script(image: st.launch.image_reference, engine_argv: st.launch.engine_argv),
+      spark_native_reach_script(is_head: is_head, master_endpoint: master_endpoint),
+      if is_head {
+        spark_native_front_door_script(
+          port_text: to_string(glm_native_concurrent_profile.serve_port),
+          served_alias: glm_native_concurrent_profile.served_alias)
+      } else { "" },
+    ], ""))
+  })
+}
+
+fn spark_native_commit_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_commit_script(unit_name: st.unit_name)))
+}
+
+fn spark_native_rollback_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_rollback_script(unit_name: st.unit_name)))
+}
+
+// ── RUNNING ONE STAGE ─────────────────────────────────────────────────────────────────────────
+//
+// ONE MATERIALIZED CREDENTIAL FILE PER STAGE, torn down by the bracket. The alternative -- one file
+// held across the whole transaction -- would keep an administrator password on disk for the length of a
+// 328 GB model load, which is the opposite trade from the one gunbc.auth.materialized_secret exists to
+// make.
+type SparkNativeStageResult
+  = NativeStageRan { outcomes: List<SparkPairHostApplyOutcome> }
+  | NativeStageCredentialRefused { cause: NonEmptyStr }
+
+fn spark_native_run_stage(
+  trust: FleetOpenSshTrustPolicy,
+  path: SparkReachPath,
+  administrator: Secret,
+  credential_file_name: NonEmptyStr,
+  plans: List<SparkPairHostApplyPlan>,
+) -> SparkNativeStageResult
+  uses net: Network
+{
+  match with_materialized_ssh_key_file(
+    identity_file_name: credential_file_name,
+    secret_bytes: administrator,
+    use: fn(file) {
+      map(plans, p => spark_pair_privileged_leg(trust: trust, path: path, plan: p, admin_credential: administrator, admin_credential_file: file))
+    },
+  ) {
+    MaterializedSshKeyFileBracketRefused { cause: c } => NativeStageCredentialRefused { cause: c }
+    MaterializedSshKeyFileBracketCompleted { value: outcomes } => NativeStageRan { outcomes: outcomes }
+  }
+}
+
+fn spark_native_stage_body(st: SparkNativeStage, outcomes: List<SparkPairHostApplyOutcome>) -> String {
+  join([
+    "  stage: ", spark_native_stage_wire(st: st) as String, "\n",
+    join(map(outcomes, o => join([spark_pair_host_apply_outcome_line(o: o), "\n"], "")), ""),
+  ], "")
+}
+// ── THE TRANSACTION, STAGE BY STAGE ───────────────────────────────────────────────────────────
+//
+// THE CHAIN IS WRITTEN AS NESTED MATCHES RATHER THAN A LOOP because each stage's SUCCESSOR DIFFERS:
+// a preflight refusal reports and stops, every later refusal rolls the arm back, and the rollback's
+// own outcome decides between NativeArmRolledBack and NativeArmPartialTransaction. A fold over a stage
+// list would have to carry that dispatch as data and would make the one thing a reader must be able to
+// check -- that nothing reaches commit without passing every gate -- a property of the data rather than
+// of the shape.
+fn spark_native_after_touching(
+  trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, stage: SparkNativeStage, so_far: String,
+) -> SparkNativeArmTransaction
+  uses net: Network
+{
+  match spark_native_run_stage(
+    trust: trust, path: path, administrator: administrator,
+    credential_file_name: "gunbc-spark-native-rollback-admin-password" as NonEmptyStr,
+    plans: spark_native_rollback_plans(steps: steps),
+  ) {
+    NativeStageCredentialRefused { cause: c } =>
+      NativeArmPartialTransaction { stage: stage, receipt: join([so_far, "  ROLLBACK COULD NOT RUN: ", c as String, "\n"], "") }
+    NativeStageRan { outcomes: rollbacks } => {
+      let body = join([so_far, "  rollback:\n", join(map(rollbacks, o => join([spark_pair_host_apply_outcome_line(o: o), "\n"], "")), "")], "")
+      if spark_pair_apply_all_applied(outcomes: rollbacks) {
+        NativeArmRolledBack { stage: stage, receipt: body }
+      } else {
+        NativeArmPartialTransaction { stage: stage, receipt: body }
+      }
+    }
+  }
+}
+
+fn spark_native_stage_then(
+  trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, stage: SparkNativeStage,
+  credential_file_name: NonEmptyStr, plans: List<SparkPairHostApplyPlan>, so_far: String,
+  next: fn(String) -> SparkNativeArmTransaction,
+) -> SparkNativeArmTransaction
+  uses net: Network
+{
+  match spark_native_run_stage(trust: trust, path: path, administrator: administrator, credential_file_name: credential_file_name, plans: plans) {
+    NativeStageCredentialRefused { cause: c } => {
+      let body = join([so_far, "  stage: ", spark_native_stage_wire(st: stage) as String, "\n  CREDENTIAL REFUSED: ", c as String, "\n"], "")
+      if spark_native_stage_has_touched_a_host(st: stage) {
+        spark_native_after_touching(trust: trust, path: path, administrator: administrator, steps: steps, stage: stage, so_far: body)
+      } else {
+        NativeArmRefusedBeforeActuation { stage: stage, receipt: body }
+      }
+    }
+    NativeStageRan { outcomes: outcomes } => {
+      let body = join([so_far, spark_native_stage_body(st: stage, outcomes: outcomes)], "")
+      if spark_pair_apply_all_applied(outcomes: outcomes) {
+        next(body)
+      } else if spark_native_stage_has_touched_a_host(st: stage) {
+        spark_native_after_touching(trust: trust, path: path, administrator: administrator, steps: steps, stage: stage, so_far: body)
+      } else {
+        NativeArmRefusedBeforeActuation { stage: stage, receipt: body }
+      }
+    }
+  }
+}
+
+// THE COMMIT STAGE CANNOT ROLL BACK, AND SAYING SO IS THE POINT. By the time it runs the arm has passed
+// every gate; a commit leg that fails has left a stale incumbent copy on a host, which is untidy and is
+// NOT a reason to stop a verified arm. So its failure is a partial transaction naming the hosts rather
+// than a rollback of a working deployment.
+fn spark_native_transaction_body(
+  trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret,
+  steps: List<SparkNativeHostStep>, master_endpoint: NonEmptyStr,
+) -> SparkNativeArmTransaction
+  uses net: Network
+{
+  spark_native_stage_then(
+    trust: trust, path: path, administrator: administrator, steps: steps,
+    stage: NativeStagePreflight,
+    credential_file_name: "gunbc-spark-native-preflight-admin-password" as NonEmptyStr,
+    plans: spark_native_preflight_plans(steps: steps), so_far: "",
+    next: fn(after_preflight) {
+      spark_native_stage_then(
+        trust: trust, path: path, administrator: administrator, steps: steps,
+        stage: NativeStagePreserve,
+        credential_file_name: "gunbc-spark-native-preserve-admin-password" as NonEmptyStr,
+        plans: spark_native_preserve_plans(steps: steps), so_far: after_preflight,
+        next: fn(after_preserve) {
+          spark_native_stage_then(
+            trust: trust, path: path, administrator: administrator, steps: steps,
+            stage: NativeStageApply,
+            credential_file_name: "gunbc-spark-native-apply-admin-password" as NonEmptyStr,
+            plans: spark_native_apply_stage_plans(steps: steps), so_far: after_preserve,
+            next: fn(after_apply) {
+              spark_native_stage_then(
+                trust: trust, path: path, administrator: administrator, steps: steps,
+                stage: NativeStageTransportGate,
+                credential_file_name: "gunbc-spark-native-transport-gate-admin-password" as NonEmptyStr,
+                plans: spark_native_gate_plans(steps: steps), so_far: after_apply,
+                next: fn(after_gate) {
+                  spark_native_stage_then(
+                    trust: trust, path: path, administrator: administrator, steps: steps,
+                    stage: NativeStageReadback,
+                    credential_file_name: "gunbc-spark-native-readback-admin-password" as NonEmptyStr,
+                    plans: spark_native_readback_plans(steps: steps, master_endpoint: master_endpoint), so_far: after_gate,
+                    next: fn(after_readback) {
+                      match spark_native_run_stage(
+                        trust: trust, path: path, administrator: administrator,
+                        credential_file_name: "gunbc-spark-native-commit-admin-password" as NonEmptyStr,
+                        plans: spark_native_commit_plans(steps: steps),
+                      ) {
+                        NativeStageCredentialRefused { cause: c } =>
+                          NativeArmPartialTransaction { stage: NativeStageCommit, receipt: join([after_readback, "  COMMIT COULD NOT RUN (the arm is verified and serving; a stale incumbent copy remains on each host): ", c as String, "\n"], "") }
+                        NativeStageRan { outcomes: commits } => {
+                          let body = join([after_readback, spark_native_stage_body(st: NativeStageCommit, outcomes: commits)], "")
+                          if spark_pair_apply_all_applied(outcomes: commits) {
+                            NativeArmCommitted { receipt: body }
+                          } else {
+                            NativeArmPartialTransaction { stage: NativeStageCommit, receipt: body }
+                          }
+                        }
+                      }
+                    })
+                })
+            })
+        })
+    })
+}
+
+fn spark_native_transaction_headline(t: SparkNativeArmTransaction) -> String {
+  match t {
+    NativeArmCommitted { receipt: _ } =>
+      "spark native serving apply COMMITTED: every host preflighted, the incumbent unit preserved, the head applied before the workers, and every rank read back at the planned image and engine argv with the epoch's rendezvous reach and the front door serving this arm's model\n"
+    NativeArmRefusedBeforeActuation { stage: st, receipt: _ } =>
+      join(["spark native serving apply REFUSED at ", spark_native_stage_wire(st: st) as String, "; NO HOST WAS TOUCHED and the incumbent arm is untouched\n"], "")
+    NativeArmRolledBack { stage: st, receipt: _ } =>
+      join(["spark native serving apply ROLLED BACK from ", spark_native_stage_wire(st: st) as String, "; every host was restored to its incumbent unit and restarted head-first\n"], "")
+    NativeArmPartialTransaction { stage: st, receipt: _ } =>
+      join(["spark native serving apply PARTIAL TRANSACTION at ", spark_native_stage_wire(st: st) as String, ". THIS ARM IS SPLIT: some hosts carry the successor and some the incumbent, so the group is in a mixed rendezvous epoch and will not serve. The per-host lines below say which is which; an operator decides whether to complete or to reverse, and nothing here does it automatically\n"], "")
+  }
+}
+
+fn spark_native_transaction_receipt(t: SparkNativeArmTransaction) -> String {
+  match t {
+    NativeArmCommitted { receipt: r } => r
+    NativeArmRefusedBeforeActuation { stage: _, receipt: r } => r
+    NativeArmRolledBack { stage: _, receipt: r } => r
+    NativeArmPartialTransaction { stage: _, receipt: r } => r
+  }
+}
+
+fn spark_native_transaction_exit(t: SparkNativeArmTransaction, body: String) -> ProcessExit {
+  match t {
+    NativeArmCommitted { receipt: _ } => ExitSuccess
+    NativeArmRefusedBeforeActuation { stage: _, receipt: _ } => exit_failure(reason: body)
+    NativeArmRolledBack { stage: _, receipt: _ } => exit_failure(reason: body)
+    NativeArmPartialTransaction { stage: _, receipt: _ } => exit_failure(reason: body)
+  }
+}
+
 fn spark_native_serving_apply_wet() -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
-  match spark_native_apply_plans() {
-    Absent => exit_failure(reason: "spark_native_serving_apply: a native arm unit did not render; no host was touched")
-    Present { value: plans } =>
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: c } => exit_failure(reason: join(["spark_native_serving_apply: ", c as String], ""))
+    NativeArmSteps { steps: steps, master_endpoint: endpoint } =>
       match observe_executor_reach() {
         ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_native_serving_apply: ", c], ""))
         ExecutorReachKnown { short_hostname: executor, path: path } =>
@@ -271,53 +752,30 @@ fn spark_native_serving_apply_wet() -> ProcessExit
                           match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
                             Absent => exit_failure(reason: "the execution context could not be sealed for the grant preflight")
                             Present { value: preflight_context } => {
-                              let preflight = map(glm_native_ranked_hosts(), h => spark_native_grant_preflight_host(context: preflight_context, host: h))
-                              let refusals = spark_native_grant_preflight_refusals(ps: preflight)
+                              let grants = map(map(steps, st => st.host), h => spark_native_grant_preflight_host(context: preflight_context, host: h))
+                              let refusals = spark_native_grant_preflight_refusals(ps: grants)
                               if refusals.length() > 0 {
                                 exit_failure(reason: join([
                                   "spark_native_serving_apply preflight: the offer's grant is not in place on every host of the arm; NO HOST WAS TOUCHED.\n",
-                                  join(map(preflight, p => spark_native_grant_preflight_wire(p: p)), ""),
+                                  join(map(grants, p => spark_native_grant_preflight_wire(p: p)), ""),
                                 ], ""))
                               } else {
-                      match with_materialized_ssh_key_file(
-                        identity_file_name: "gunbc-spark-native-apply-admin-password" as NonEmptyStr,
-                        secret_bytes: administrator as Secret,
-                        use: fn(file) {
-                          map(plans, p => spark_pair_privileged_leg(trust: trust, path: path, plan: p, admin_credential: administrator as Secret, admin_credential_file: file))
-                        },
-                      ) {
-                        MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                        MaterializedSshKeyFileBracketCompleted { value: outcomes } => {
-                          let body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: outcomes)
-                          let wr = Filesystem.Write(path: spark_native_apply_receipt_path, content: body)
-                          if !wr.success {
-                            exit_failure(reason: join(["spark native apply receipt write failed: ", wr.error], ""))
-                          } else if spark_pair_apply_all_applied(outcomes: outcomes) {
-                            match with_materialized_ssh_key_file(
-                              identity_file_name: "gunbc-spark-native-transport-gate-admin-password" as NonEmptyStr,
-                              secret_bytes: administrator as Secret,
-                              use: fn(file) {
-                                map(map(plans, p => spark_native_transport_gate_plan(plan: p)), g => spark_pair_privileged_leg(trust: trust, path: path, plan: g, admin_credential: administrator as Secret, admin_credential_file: file))
-                              },
-                            ) {
-                              MaterializedSshKeyFileBracketRefused { cause: c } => exit_failure(reason: c as String)
-                              MaterializedSshKeyFileBracketCompleted { value: gate_outcomes } => {
-                                let gate_body = spark_pair_apply_receipt_body(at: probed_at_word(reading: now) as String, executor: executor, path: path, outcomes: gate_outcomes)
-                                if spark_pair_apply_all_applied(outcomes: gate_outcomes) {
-                                  ExitSuccess
+                                let outcome = spark_native_transaction_body(
+                                  trust: trust, path: path, administrator: administrator as Secret,
+                                  steps: steps, master_endpoint: endpoint)
+                                let body = join([
+                                  "spark native serving apply at ", probed_at_word(reading: now) as String,
+                                  " from ", executor, " over ", spark_reach_path_wire(p: path), "\n",
+                                  spark_native_transaction_headline(t: outcome),
+                                  join(map(grants, p => spark_native_grant_preflight_wire(p: p)), ""),
+                                  spark_native_transaction_receipt(t: outcome),
+                                ], "")
+                                let wr = Filesystem.Write(path: spark_native_apply_receipt_path, content: body)
+                                if !wr.success {
+                                  exit_failure(reason: join(["spark native apply receipt write failed (the transaction's own outcome is above and is NOT changed by this): ", wr.error, "\n", body], ""))
                                 } else {
-                                  exit_failure(reason: join([
-                                    "spark native serving apply TRANSPORT GATE REFUSED: a rank did not bind the RoCE plan's IB transport (NCCL's socket fallback is a correctness refusal on this arm, never an accepted degradation). The engines are restarted; the route stays closed until a converge binds every rank to the fabric line:\n",
-                                    gate_body,
-                                  ], ""))
+                                  spark_native_transaction_exit(t: outcome, body: body)
                                 }
-                              }
-                            }
-                          } else {
-                            exit_failure(reason: join(["spark native serving apply did not converge:\n", body], ""))
-                          }
-                        }
-                      }
                               }
                             }
                           }

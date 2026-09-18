@@ -13,7 +13,7 @@ import extdeps.currency.currency { Usd }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire, FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer }
-import gunbc.spark.native_serving_realization { glm_native_container_name }
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
 import gunbc.spark.dgx_procurement { OperatorAllocation }
 import gunbc.spark.first_party_serving {
   spark_fleet_site_allocation, spark_site_uncovered_units, spark_first_party_route,
@@ -36,8 +36,8 @@ import gunbc.spark.pair_serving_realization {
   DeclaredUnitDigestStanding, DeclaredUnitDigested, DeclaredUnitDigestUnavailable,
 }
 import gunbc.spark.rendezvous_participation {
-  ServingGroupParticipation, GroupAtRendezvous, GroupRanksAdrift, GroupParticipationUnobserved,
-  serving_group_participation_line,
+  ServingGroupRendezvousReach, GroupHostsAllConnected, GroupHostsNotAllConnected, GroupRendezvousReachUnobserved,
+  serving_group_rendezvous_reach_line,
 }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { host_identity_eq }
@@ -417,7 +417,7 @@ fn spark_configuration_matches(identity: SparkRealizationIdentity) -> Bool {
   }
 }
 
-fn spark_service_from_observation(realization: SparkServingRealization, declared: ContentHash, participation: ServingGroupParticipation?, observation: EndpointIncarnationObservation) -> SparkServingRoute {
+fn spark_service_from_observation(realization: SparkServingRealization, declared: ContentHash, participation: ServingGroupRendezvousReach?, observation: EndpointIncarnationObservation) -> SparkServingRoute {
   let observed_key = vllm_endpoint_process_launch_key(launch: observation.endpoint)
   let answering_key = vllm_endpoint_process_launch_key(launch: realization.endpoint)
   if (observed_key as String) != (answering_key as String) {
@@ -441,20 +441,20 @@ fn spark_service_from_observation(realization: SparkServingRealization, declared
   }
 }
 
-// THE ADRIFT DETAIL, OR NOTHING TO SAY. `none` participation is an UNASKED question and `GroupAtRendezvous`
+// THE ADRIFT DETAIL, OR NOTHING TO SAY. `none` participation is an UNASKED question and `GroupHostsAllConnected`
 // is an answered one; both continue, and only a roster with a demonstrably detached or unreadable rank
-// stops the line. GroupParticipationUnobserved stops it too, because a rendezvous we could not read is
+// stops the line. GroupRendezvousReachUnobserved stops it too, because a rendezvous we could not read is
 // not a rendezvous we found intact -- widening there would be the absorbing fallback DESIGN section 5
 // names, with the arm's assembly as the thing being assumed.
-fn spark_ranks_adrift_detail(participation: ServingGroupParticipation?) -> NonEmptyStr? {
+fn spark_ranks_adrift_detail(participation: ServingGroupRendezvousReach?) -> NonEmptyStr? {
   match participation {
     Absent => none
     Present { value: p } =>
       match p {
-        GroupAtRendezvous { epoch: _, ranks: _ } => none
-        GroupRanksAdrift { epoch: _, adrift: _, attached: _, expected: _ } =>
-          Present { value: join(["the answering incarnation is our declared arm, but its ranks are not assembled: ", serving_group_participation_line(p: p)], "") as NonEmptyStr }
-        GroupParticipationUnobserved { cause: c } =>
+        GroupHostsAllConnected { epoch: _, ranks: _ } => none
+        GroupHostsNotAllConnected { epoch: _, adrift: _, attached: _, expected: _ } =>
+          Present { value: join(["the answering incarnation is our declared arm, but its ranks are not assembled: ", serving_group_rendezvous_reach_line(p: p)], "") as NonEmptyStr }
+        GroupRendezvousReachUnobserved { cause: c } =>
           Present { value: join(["whether this arm's ranks are assembled could not be read, so it is not established that they are: ", c as String], "") as NonEmptyStr }
       }
   }
@@ -493,7 +493,7 @@ fn spark_service_after_rendezvous(realization: SparkServingRealization, observat
 // is still unobserved (EndpointIncarnationUnobserved on every production realization), so a wire
 // that drops the digest between its mint and this fold is red at ServiceDeclaredUnitDigestUnavailable
 // rather than green by coincidence at ServiceIncarnationUnobserved.
-fn spark_serving_route_standing(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, participation: ServingGroupParticipation?) -> SparkServingRoute {
+fn spark_serving_route_standing(realization: SparkServingRealization, declared_unit: DeclaredUnitDigestStanding, participation: ServingGroupRendezvousReach?) -> SparkServingRoute {
   let hosts = realization.hosts
   if count(hosts) == 0 {
     ServingRouteRegionUnobserved { obligation: spark_serving_route_hosts_unreadable_obligation }

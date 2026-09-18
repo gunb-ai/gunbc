@@ -141,16 +141,35 @@ fn serving_route_ceiling(group: FabricGroup) -> ServingRouteTurnCeiling {
 // the endpoint defect one field over, and repairing only the address would have left the route half
 // describing one arm and half another.
 //
-// IT IS CeilingFromRouteLaunch AND NOT A DECLARED POLICY, because this count is not a policy anyone
-// decided for the route: it is the value the engine was actually started with. The native profile
-// carries it as a bare count with no basis of its own -- unlike the canary's SeqBound, which carries
-// one -- so the basis stated here is the only honest one available: it names where the number comes
-// from rather than inventing a warrant for it, and a profile that grows a real basis field is the
-// trigger to read that instead.
+// IT IS A DECLARED POLICY AND NOT CeilingFromRouteLaunch, AND THE EARLIER SPELLING WAS FALSE. This row
+// minted CeilingFromRouteLaunch from gunbc.spark.serving_arm glm_native_concurrent_profile's
+// max_num_seqs and called it "the value the engine was actually started with". That profile is DESIRED
+// CONFIGURATION: it is what a launch would send, and no producer of an observed argv was consulted
+// anywhere on the path. The two are not the same fact and this fleet has the receipt -- the same
+// profile's decided GPU-memory fraction is 0.8567 while the units live on the hosts carry 0.84, so
+// desired and live are measurably apart on a sibling field of the very same row. A carrier whose whole
+// purpose is to say WHERE a number came from may not answer "from the launch" about a launch nobody
+// observed; that is the fabricated receipt DESIGN section 5 forbids, wearing a provenance type's name.
+//
+// SO THE NUMBER IS CARRIED AS WHAT IT HONESTLY IS: an allocation this repository declared, with the
+// authority that declared it and the basis it rests on, taken as a MINIMUM against the route's own
+// present-tense capacity signal exactly as group A's is -- so a wrong value costs throughput and never
+// correctness.
+//
+// THE TRIGGER THAT RETIRES IT IS A READING, AND IT IS NAMED BECAUSE A DECLARED FRONTIER WITHOUT ONE IS
+// A WISH (DESIGN section 3c). CeilingFromRouteLaunch becomes authorable for this route when the
+// effective --max-num-seqs is read off the EXACT ANSWERING INCARNATION's argv: the two halves already
+// exist and are not yet joined -- gunbc.spark.serving_rank_observe observed_rank_identity reads a live
+// container's Config.Cmd and binds it to an incarnation id, and extdeps.vllm.engine_args vllm_argv_nat
+// reads a Nat off a flag in exactly such an argv. What is missing is a producer that hands this fold
+// the answering incarnation, which a pure enrolment fold cannot acquire for itself. Until that lands,
+// the number below is a policy and says so.
 fn serving_native_route_ceiling() -> ServingRouteTurnCeiling {
-  CeilingFromRouteLaunch {
+  CeilingByDeclaredPolicy {
     count: glm_native_concurrent_profile.max_num_seqs,
-    basis: "the sequence bound the native four-rank arm was launched with, carried on gunbc.spark.serving_arm glm_native_concurrent_profile, the profile gunbc.spark.native_serving_realization renders; it is the engine's admitted concurrency and not a ceiling decided for this route" as NonEmptyStr,
+    decider: "gunbc.spark.serving_arm glm_native_concurrent_profile, the arm's declared launch profile" as NonEmptyStr,
+    decided_on: "2026-09-18" as NonEmptyStr,
+    basis: "the sequence bound the native four-rank arm's declared profile asks for. It is DESIRED CONFIGURATION and not an observation: no live argv producer is consulted on this path, and the same profile's memory fraction is known to differ from the live units, so this row states what this repository intends the arm to admit rather than what any engine reported. It is taken as the MINIMUM with the route's own present-tense capacity signal, so a wrong value costs throughput and never correctness. It becomes CeilingFromRouteLaunch when the effective --max-num-seqs is read off the answering incarnation's argv (gunbc.spark.serving_rank_observe observed_rank_identity joined to extdeps.vllm.engine_args vllm_argv_nat), and not before" as NonEmptyStr,
   }
 }
 

@@ -13,12 +13,12 @@ import extdeps.systemd.unit_file {
 }
 import gunbc.spark.rendezvous_participation {
   RendezvousEpoch, rendezvous_epoch,
-  RankParticipation, RankAtRendezvous, RankDetached, RankParticipationUnread,
-  ServingGroupParticipation, GroupAtRendezvous, GroupRanksAdrift, GroupParticipationUnobserved,
+  DeclaredRankRendezvousReach, DeclaredRankHostConnected, DeclaredRankHostNotConnected, DeclaredRankHostReachUnread,
+  ServingGroupRendezvousReach, GroupHostsAllConnected, GroupHostsNotAllConnected, GroupRendezvousReachUnobserved,
   ArmLivenessBasis, LivenessFromServiceAnnouncement, LivenessNeedsIndependentReading,
   ArmRecoveryPosture, SelfHealingOnFault, ConvergeRecovered, ConvergeRecoveredUnnoticed,
   arm_liveness_basis, arm_recovery_is_noticed, glm_native_arm_recovery_posture,
-  rank_participation_is_attached, serving_group_participation_line,
+  declared_rank_host_is_connected, serving_group_rendezvous_reach_line,
 }
 import gunbc.spark.serving_group_launch { serving_group_rendezvous }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
@@ -96,17 +96,17 @@ test fn a_simple_unit_owes_an_independent_reading_and_the_cause_names_the_mode()
 // must produce the adrift arm naming those three rather than a yes with a caveat.
 test fn one_attached_rank_out_of_four_is_adrift_and_not_a_yes() -> Bool {
   let readings = [
-    RankAtRendezvous { host: t_host_a, rank: 0, connections: 1 },
-    RankDetached { host: t_host_b, rank: 1, peer: t_peer },
-    RankDetached { host: "srv11" as HostIdentity, rank: 2, peer: t_peer },
-    RankDetached { host: "srv12" as HostIdentity, rank: 3, peer: t_peer },
+    DeclaredRankHostConnected { host: t_host_a, declared_rank: 0, connections: 1 },
+    DeclaredRankHostNotConnected { host: t_host_b, declared_rank: 1, peer: t_peer },
+    DeclaredRankHostNotConnected { host: "srv11" as HostIdentity, declared_rank: 2, peer: t_peer },
+    DeclaredRankHostNotConnected { host: "srv12" as HostIdentity, declared_rank: 3, peer: t_peer },
   ]
-  let adrift = filter(readings, p => rank_participation_is_attached(p: p) == false)
+  let adrift = filter(readings, p => declared_rank_host_is_connected(p: p) == false)
   length(adrift) == 3
     && (match t_adrift_verdict(readings: readings) {
-      GroupAtRendezvous { epoch: _, ranks: _ } => false
-      GroupParticipationUnobserved { cause: _ } => false
-      GroupRanksAdrift { epoch: _, adrift: ds, attached: a, expected: x } =>
+      GroupHostsAllConnected { epoch: _, ranks: _ } => false
+      GroupRendezvousReachUnobserved { cause: _ } => false
+      GroupHostsNotAllConnected { epoch: _, adrift: ds, attached: a, expected: x } =>
         length(ds) == 3 && a == 1 && x == 4
     })
 }
@@ -115,24 +115,24 @@ test fn one_attached_rank_out_of_four_is_adrift_and_not_a_yes() -> Bool {
 // is to treat an ssh failure as "probably fine" and keep the roster green; that is the absorbing
 // fallback, and it would hide exactly the case where the host is gone.
 test fn a_rank_whose_reading_refused_is_not_counted_as_attached() -> Bool {
-  rank_participation_is_attached(p: RankParticipationUnread { host: t_host_b, rank: 1, cause: "ssh refused" }) == false
-    && rank_participation_is_attached(p: RankDetached { host: t_host_b, rank: 1, peer: t_peer }) == false
-    && rank_participation_is_attached(p: RankAtRendezvous { host: t_host_b, rank: 1, connections: 2 })
+  declared_rank_host_is_connected(p: DeclaredRankHostReachUnread { host: t_host_b, declared_rank: 1, cause: "ssh refused" }) == false
+    && declared_rank_host_is_connected(p: DeclaredRankHostNotConnected { host: t_host_b, declared_rank: 1, peer: t_peer }) == false
+    && declared_rank_host_is_connected(p: DeclaredRankHostConnected { host: t_host_b, declared_rank: 1, connections: 2 })
 }
 
-// THE FOLD IS RE-DERIVED HERE RATHER THAN CALLED, because serving_group_participation takes an ssh
+// THE FOLD IS RE-DERIVED HERE RATHER THAN CALLED, because serving_group_rendezvous_reach takes an ssh
 // context and this claim is about the JOIN, not about the legs. The inhabitance obligation that the
 // real legs produce these readings is discharged by the executing serving path, which reads them on
 // every harness bind -- and by the ss argv assertion below, which pins the exact command that ran.
-fn t_adrift_verdict(readings: List<RankParticipation>) -> ServingGroupParticipation {
-  let adrift = filter(readings, p => rank_participation_is_attached(p: p) == false)
+fn t_adrift_verdict(readings: List<DeclaredRankRendezvousReach>) -> ServingGroupRendezvousReach {
+  let adrift = filter(readings, p => declared_rank_host_is_connected(p: p) == false)
   if length(adrift) == 0 {
-    GroupAtRendezvous { epoch: t_epoch(), ranks: readings }
+    GroupHostsAllConnected { epoch: t_epoch(), ranks: readings }
   } else {
-    GroupRanksAdrift {
+    GroupHostsNotAllConnected {
       epoch: t_epoch(),
       adrift: adrift,
-      attached: length(filter(readings, p => rank_participation_is_attached(p: p))),
+      attached: length(filter(readings, p => declared_rank_host_is_connected(p: p))),
       expected: length(readings),
     }
   }
@@ -141,9 +141,9 @@ fn t_adrift_verdict(readings: List<RankParticipation>) -> ServingGroupParticipat
 // THE DIAGNOSIS NAMES THE EPOCH AND THE HOSTS, not a count. An operator reading this line can act on
 // it; "3 ranks adrift" cannot be acted on without a second lookup.
 test fn the_adrift_line_names_the_epoch_and_every_detached_host() -> Bool {
-  let line = serving_group_participation_line(p: t_adrift_verdict(readings: [
-    RankAtRendezvous { host: t_host_a, rank: 0, connections: 1 },
-    RankDetached { host: t_host_b, rank: 1, peer: t_peer },
+  let line = serving_group_rendezvous_reach_line(p: t_adrift_verdict(readings: [
+    DeclaredRankHostConnected { host: t_host_a, declared_rank: 0, connections: 1 },
+    DeclaredRankHostNotConnected { host: t_host_b, declared_rank: 1, peer: t_peer },
   ]))
   contains(line, "de1a7e0c") && contains(line, "192.168.110.17:29501") && contains(line, "srv10")
 }
@@ -181,7 +181,7 @@ test fn the_native_arms_recovery_posture_is_declared_and_has_a_noticer() -> Bool
       SelfHealingOnFault { because: _ } => false
       ConvergeRecoveredUnnoticed { obligation: _ } => false
       ConvergeRecovered { noticer: n, converge_entry: e } =>
-        contains(n as String, "serving_group_participation") && contains(e as String, "native_serving_apply")
+        contains(n as String, "serving_group_rendezvous_reach") && contains(e as String, "native_serving_apply")
     })
     && arm_recovery_is_noticed(posture: ConvergeRecoveredUnnoticed { obligation: "nobody" as NonEmptyStr }) == false
 }

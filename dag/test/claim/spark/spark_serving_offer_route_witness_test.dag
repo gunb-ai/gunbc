@@ -32,8 +32,8 @@ import gunbc.spark.vllm_endpoint_process_launch {
 }
 import extdeps.vllm.usage_stats { vllm_usage_stats_disable_assignment_wire }
 import gunbc.spark.rendezvous_participation {
-  rendezvous_epoch, GroupRanksAdrift, GroupAtRendezvous, GroupParticipationUnobserved,
-  RankDetached, RankAtRendezvous,
+  rendezvous_epoch, GroupHostsNotAllConnected, GroupHostsAllConnected, GroupRendezvousReachUnobserved,
+  DeclaredRankHostNotConnected, DeclaredRankHostConnected,
 }
 import gunbc.spark.serving_offer {
   SparkOfferBinding, SparkOfferBound, SparkOfferBindingRefused,
@@ -832,9 +832,9 @@ test fn the_production_route_consumes_an_observed_incarnation() -> Bool {
 // on the roster alone and not on any other fixture change.
 test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool {
   let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-epoch" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
-  let adrift = GroupRanksAdrift {
+  let adrift = GroupHostsNotAllConnected {
     epoch: epoch,
-    adrift: [RankDetached { host: operator_host_srv6, rank: 1, peer: "10.0.0.9:29501" as NonEmptyStr }],
+    adrift: [DeclaredRankHostNotConnected { host: operator_host_srv6, declared_rank: 1, peer: "10.0.0.9:29501" as NonEmptyStr }],
     attached: 1,
     expected: 2,
   }
@@ -850,13 +850,13 @@ test fn an_assembled_looking_arm_with_adrift_ranks_refuses() -> Bool {
 
 // RED -- AN UNREADABLE ROSTER IS NOT AN INTACT ONE. The absorbing fallback here would be to treat a
 // rendezvous we could not read as a rendezvous we found whole, which fails open on precisely the
-// hosts that are unreachable. `none` (no roster modeled for this arm) and GroupParticipationUnobserved
+// hosts that are unreachable. `none` (no roster modeled for this arm) and GroupRendezvousReachUnobserved
 // (a roster we failed to read) are different facts and only the second stops the line.
 test fn a_roster_that_could_not_be_read_refuses() -> Bool {
   match t_cause(route: spark_serving_route_standing(
     realization: t_with_incarnation(base: t_covered_matching(), incarnation: t_observed(endpoint: t_launch(), launch: t_incarnation())),
     declared_unit: t_declared(),
-    participation: Present { value: GroupParticipationUnobserved { cause: "the head unit's InvocationID was not read" as NonEmptyStr } },
+    participation: Present { value: GroupRendezvousReachUnobserved { cause: "the head unit's InvocationID was not read" as NonEmptyStr } },
   )) {
     Present { value: ServiceRanksAdriftFromTheRendezvous { detail: d } } => contains(d as String, "could not be read")
     _ => false
@@ -867,11 +867,11 @@ test fn a_roster_that_could_not_be_read_refuses() -> Bool {
 // refuses every arm, which would pass the two reds above and break production.
 test fn a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_check() -> Bool {
   let epoch = rendezvous_epoch(head: operator_host_srv5, head_invocation: "fixture-epoch" as NonEmptyStr, master_endpoint: "10.0.0.9:29501" as NonEmptyStr)
-  let attached = GroupAtRendezvous {
+  let attached = GroupHostsAllConnected {
     epoch: epoch,
     ranks: [
-      RankAtRendezvous { host: operator_host_srv5, rank: 0, connections: 1 },
-      RankAtRendezvous { host: operator_host_srv6, rank: 1, connections: 1 },
+      DeclaredRankHostConnected { host: operator_host_srv5, declared_rank: 0, connections: 1 },
+      DeclaredRankHostConnected { host: operator_host_srv6, declared_rank: 1, connections: 1 },
     ],
   }
   match t_cause(route: spark_serving_route_standing(
