@@ -151,10 +151,18 @@ type SiteEdgeRoster {
   observed_at: EpochMs
 }
 
+// CONSUMER AND FRONTIER (§3c). The admission verdict's consumer is the binder of
+// gunbc.network_boot_delivery NetworkBootJoinInputs.site for a real unit: an Admitted verdict
+// carries the SitePxeEdgeStanding that field takes. That binder does not exist in 0C, because the
+// join also needs fleet, client, boot-control and manifest receipts that no 0C route produces.
+// TRIGGER: the first boot offer observed from the converged srv4 edge (PXE-FABRIC 0C follow-up,
+// gunbc.site_pxe_edge_converge) is minted as a SiteDhcpOfferObservation and bound through this
+// function into NetworkBootJoinInputs.site.
 type SiteEdgeClientAdmission
   = SiteEdgeClientAdmitted { standing: SitePxeEdgeStanding }
   | SiteEdgeUnknownMachineRefused { mac: NonEmptyStr }
   | SiteEdgeUnknownArchitectureRefused { arch_code: Int }
+  | SiteEdgeArchitectureRefusedByEdge { architecture: Architecture }
   | SiteEdgeNotEstablished { standing: SitePxeEdgeStanding, unreachable: List<BootNetworkReachabilityAxis> }
 
 fn client_is_known(roster: SiteEdgeRoster, mac: NonEmptyStr) -> Bool {
@@ -196,7 +204,7 @@ fn site_edge_admission_of_standing(standing: SitePxeEdgeStanding, unreachable: L
   match standing {
     SitePxeEdgeEstablished { receipt: _ } => SiteEdgeClientAdmitted { standing: standing }
     SitePxeEdgeUnestablished => SiteEdgeNotEstablished { standing: standing, unreachable: unreachable }
-    SitePxeEdgeArchitectureRefused { architecture: _ } => SiteEdgeNotEstablished { standing: standing, unreachable: unreachable }
+    SitePxeEdgeArchitectureRefused { architecture: a } => SiteEdgeArchitectureRefusedByEdge { architecture: a }
   }
 }
 
@@ -224,6 +232,9 @@ fn site_edge_proxy_dhcp_directives(network_address: NonEmptyStr, filename: NonEm
   )
 }
 
+// CONSUMER (§3c): gunbc.site_pxe_edge_converge site_pxe_edge_config_file writes this rendering to
+// srv4 as the edge daemon's config. That route lands in the 0C follow-up stacked on this change;
+// TRIGGER: that change merging. Until then its only reader is the witness.
 fn site_edge_proxy_dhcp_config(network_address: NonEmptyStr, filename: NonEmptyStr, known_client_macs: List<NonEmptyStr>) -> String {
   serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, filename: filename, known_client_macs: known_client_macs))
 }

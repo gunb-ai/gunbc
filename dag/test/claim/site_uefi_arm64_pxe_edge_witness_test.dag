@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Aarch64 }
+import extdeps.toolchain.types { Aarch64, X86_64 }
 import product.placement_supply { SiteIdentity }
 import gunbc.network_boot_delivery {
   SitePxeEdgeEstablished,
@@ -40,6 +40,7 @@ import gunbc.site_uefi_arm64_pxe_edge {
   SiteEdgeUnknownMachineRefused,
   SiteEdgeUnknownArchitectureRefused,
   SiteEdgeNotEstablished,
+  SiteEdgeArchitectureRefusedByEdge,
   first_onboarding_known_client_macs,
   site_edge_client_admission,
   site_edge_proxy_dhcp_config
@@ -101,6 +102,7 @@ fn arm64_request(mac: NonEmptyStr) -> EdgeClientRequest {
 fn not_established_with(admission: SiteEdgeClientAdmission, expected: List<BootNetworkReachabilityAxis>) -> Bool {
   match admission {
     SiteEdgeNotEstablished { standing: _, unreachable: u } => u == expected
+    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
@@ -114,6 +116,7 @@ test fn known_arm64_client_on_observed_proxy_edge_is_admitted() -> Bool {
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
   }
 }
 
@@ -125,6 +128,7 @@ test fn relay_offer_is_admitted_as_relay() -> Bool {
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
   }
 }
 
@@ -134,6 +138,7 @@ test fn unknown_machine_gets_no_boot() -> Bool {
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
   }
 }
 
@@ -143,6 +148,7 @@ test fn unknown_architecture_gets_no_boot_even_when_known() -> Bool {
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
   }
 }
 
@@ -178,6 +184,7 @@ test fn mtcollins1_on_its_measured_segment_is_not_yet_admitted() -> Bool {
   match site_edge_client_admission(roster: r, request: EdgeClientRequest { mac: mtcollins1_host_nic_mac, arch_code: mtcollins1_pxe_arch_code }) {
     SiteEdgeNotEstablished { standing: SitePxeEdgeUnestablished, unreachable: u } => u == []
     SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeArchitectureRefusedByEdge { architecture: _ } => false
     SiteEdgeClientAdmitted { standing: _ } => false
     SiteEdgeUnknownMachineRefused { mac: _ } => false
     SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
@@ -193,4 +200,31 @@ test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
     && contains(cfg, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi")
     && contains(cfg, "iPXE bin-arm64-efi/snponly.efi per ipxe.org/howto/chainloading")
     && length(split(cfg, "dhcp-boot=")) == 2
+}
+
+// THE EDGE'S OWN ARCHITECTURE REFUSAL STAYS LOCATED: a known ARM64 client on an edge whose chainloader
+// is not aarch64 is refused by architecture, not reported as a non-establishment with no axis.
+test fn a_non_arm64_chainloader_is_refused_by_architecture() -> Bool {
+  let r = roster(macs: [known_mac], offer: boot_offer(mode: SiteProxyDhcp, filename: chainloader_filename), reachability: reach(dns: ok(), route: ok(), https: ok()))
+  let x86 = SiteEdgeRoster {
+    site: r.site,
+    admitted_architectures: r.admitted_architectures,
+    bootstrap_transport: ArchitectureChainloader {
+      architecture: X86_64,
+      filename_hint: DhcpFilenameHint { filename: chainloader_filename },
+      chainloader_digest: content_hash_of_value(value: "ipxe-x86-fixture"),
+    },
+    known_client_macs: r.known_client_macs,
+    offer: r.offer,
+    reachability: r.reachability,
+    observation: r.observation,
+    observed_at: r.observed_at,
+  }
+  match site_edge_client_admission(roster: x86, request: arm64_request(mac: known_mac)) {
+    SiteEdgeArchitectureRefusedByEdge { architecture: a } => a == X86_64
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+  }
 }
