@@ -13,6 +13,7 @@ import extdeps.provisioning.dhcp_client_arch {
   HttpBootX86_64,
   HttpBootArm64,
 }
+import extdeps.provisioning.network_boot { DhcpBootDirection }
 import product.placement_supply { SiteIdentity }
 import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId, content_hash_equal }
@@ -56,6 +57,12 @@ type NetworkBootRequirementEvidence {
 // request.
 type NetworkBootDeliveryEstablishment {
   target: BootDeliveryTarget
+  fleet: FleetBootServiceReceipt
+  site: SitePxeEdgeReceipt
+  client: ObservedClientBootModeReceipt
+  boot_control: NetworkBootBootControlReceipt
+  manifest: SignedBootManifestIdentity
+  trust: BootstrapTrustStanding
   boot_source_override: NetworkBootRequirementEvidence
   client_boot_mode: NetworkBootRequirementEvidence
   serving_infrastructure: NetworkBootRequirementEvidence
@@ -67,11 +74,12 @@ type NetworkBootDeliveryStanding
   = NetworkBootDeliveryEstablished { evidence: NetworkBootDeliveryEstablishment }
   | NetworkBootDeliveryUnestablished { missing: List<NetworkBootRequirement> }
   | NetworkBootDeliveryEvidenceRefused { axis: NetworkBootRequirement, observation: DeclarationRef }
-  | NetworkBootDeliveryArchitectureRefused { architecture: Architecture }
+  | NetworkBootDeliveryArchitectureRefused { cause: NetworkBootArchitectureRefusal }
   | NetworkBootDeliveryClientModeRefused { arch: DhcpProcessorArchitecture }
   | NetworkBootDeliveryTargetMismatch { axis: NetworkBootRequirement }
   | NetworkBootDeliveryManifestRefused { cause: NetworkBootManifestRefusal }
   | NetworkBootDeliverySiteUnestablished
+  | NetworkBootDeliverySiteMismatch { expected: SiteIdentity, observed: SiteIdentity }
   | NetworkBootDeliveryTrustUnestablished
 
 // A computed rejection of an observed ticket. Missing means no ticket was presented.
@@ -96,7 +104,6 @@ type NetworkBootManifestRefusal
       class: NetworkBootManifestVerificationClass
       observation: DeclarationRef
     }
-  | ManifestJoinWrongArchitecture { architecture: Architecture }
   | ManifestJoinDigestDisagrees
   | ManifestJoinNotYetValid { not_before: EpochMs, observed_at: EpochMs }
   | ManifestJoinExpired { expiry: EpochMs, observed_at: EpochMs }
@@ -104,6 +111,13 @@ type NetworkBootManifestRefusal
   | ManifestJoinWrongAttempt
   | ManifestJoinWrongSigningKey
   | ManifestJoinChainloaderDigestDisagrees
+
+type NetworkBootArchitectureRefusal
+  = ClientArchitectureNotAdmitted { architecture: Architecture }
+  | ChainloaderMismatch { client: Architecture, chainloader: Architecture }
+  | LoaderNotAdmittedOnSlice { architecture: Architecture }
+  | TicketNotAdmittedOnEdge { architecture: Architecture }
+  | TicketNotAdmittedOnSlice { architecture: Architecture }
 
 data network_boot_requirements_all: List<NetworkBootRequirement> = [
   NetworkBootBootSourceOverride,
@@ -131,11 +145,13 @@ type FleetBootServiceStanding
 // DHCP filenames and URLs are routing hints. They never become identity or integrity evidence.
 type BootDiscoveryHint
   = DhcpFilenameHint { filename: NonEmptyStr }
-  | PresignedUrlAvailabilityFence { uri: Uri }
 
+// Who answers DHCP is extdeps.provisioning.network_boot DhcpBootDirection
+// (NativeDhcpBootOptions | ProxyDhcp). Relay and unobserved are not that
+// coproduct: a relay is not an answering server, and unobserved is not a
+// direction.
 type SiteBootstrapDiscovery
-  = SiteNativeDhcp
-  | SiteProxyDhcp
+  = SiteAnsweredDhcp { direction: DhcpBootDirection }
   | SiteDhcpRelay
   | SiteDiscoveryUnobserved
 
@@ -167,7 +183,8 @@ type SitePxeEdgeReceipt {
 type SitePxeEdgeStanding
   = SitePxeEdgeEstablished { receipt: SitePxeEdgeReceipt }
   | SitePxeEdgeUnestablished
-  | SitePxeEdgeArchitectureRefused { architecture: Architecture }
+  | SitePxeEdgeClientArchitectureNotAdmitted { architecture: Architecture }
+  | SitePxeEdgeChainloaderMismatch { client: Architecture, chainloader: Architecture }
 
 data first_slice_admitted_architectures: List<Architecture> = [Aarch64]
 
@@ -178,8 +195,7 @@ fn architecture_admitted_on_edge(arch: Architecture, admitted: List<Architecture
 fn site_pxe_edge_standing(edge: SitePxeEdge, client_architecture: Architecture, observation: DeclarationRef, observed_at: EpochMs) -> SitePxeEdgeStanding {
   match edge.discovery {
     SiteDiscoveryUnobserved => SitePxeEdgeUnestablished
-    SiteNativeDhcp => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
-    SiteProxyDhcp => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
+    SiteAnsweredDhcp { direction: _ } => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
     SiteDhcpRelay => site_pxe_edge_after_discovery(edge: edge, client_architecture: client_architecture, observation: observation, observed_at: observed_at)
   }
 }
@@ -191,14 +207,14 @@ fn site_pxe_edge_after_discovery(edge: SitePxeEdge, client_architecture: Archite
       match edge.bootstrap_transport {
         ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: _ } =>
           if architecture_admitted_on_edge(arch: client_architecture, admitted: edge.admitted_architectures) == false {
-            SitePxeEdgeArchitectureRefused { architecture: client_architecture }
+            SitePxeEdgeClientArchitectureNotAdmitted { architecture: client_architecture }
           } else {
             if loader_arch == client_architecture {
               SitePxeEdgeEstablished {
                 receipt: SitePxeEdgeReceipt { edge: edge, observation: observation, observed_at: observed_at },
               }
             } else {
-              SitePxeEdgeArchitectureRefused { architecture: loader_arch }
+              SitePxeEdgeChainloaderMismatch { client: client_architecture, chainloader: loader_arch }
             }
           }
       }
@@ -214,6 +230,7 @@ type ObservedDhcpPxeClient {
 
 type ObservedClientBootModeReceipt {
   target: BootDeliveryTarget
+  site: SiteIdentity
   client: ObservedDhcpPxeClient
   observation: DeclarationRef
   observed_at: EpochMs
@@ -298,6 +315,7 @@ fn bootstrap_trust_standing(firmware_https_or_secure_boot: Bool, isolated_onboar
 
 type NetworkBootJoinInputs {
   target: BootDeliveryTarget
+  expected_site: SiteIdentity
   artifact_digest: ContentHash
   trust: BootstrapTrustStanding
   fleet: FleetBootServiceStanding
@@ -332,8 +350,14 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
     FleetBootServiceEstablished { receipt: fleet } =>
       match inputs.site {
         SitePxeEdgeUnestablished => NetworkBootDeliverySiteUnestablished
-        SitePxeEdgeArchitectureRefused { architecture: a } => NetworkBootDeliveryArchitectureRefused { architecture: a }
+        SitePxeEdgeClientArchitectureNotAdmitted { architecture: a } =>
+          NetworkBootDeliveryArchitectureRefused { cause: ClientArchitectureNotAdmitted { architecture: a } }
+        SitePxeEdgeChainloaderMismatch { client: c, chainloader: l } =>
+          NetworkBootDeliveryArchitectureRefused { cause: ChainloaderMismatch { client: c, chainloader: l } }
         SitePxeEdgeEstablished { receipt: site } =>
+          if (site.edge.site as String) != (inputs.expected_site as String) {
+            NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: site.edge.site }
+          } else {
           match inputs.client {
             ClientBootModeUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootClientBootMode] }
             ClientBootModePredecessor { observation: o } =>
@@ -347,6 +371,9 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                 UefiArm64 =>
                   if same_boot_delivery_target(left: client.target, right: inputs.target) == false {
                     NetworkBootDeliveryTargetMismatch { axis: NetworkBootClientBootMode }
+                  } else {
+                  if (client.site as String) != (inputs.expected_site as String) {
+                    NetworkBootDeliverySiteMismatch { expected: inputs.expected_site, observed: client.site }
                   } else {
                     match inputs.boot_control {
                       BootControlUnobserved => NetworkBootDeliveryUnestablished { missing: [NetworkBootBootSourceOverride] }
@@ -379,7 +406,9 @@ fn join_network_boot_delivery(inputs: NetworkBootJoinInputs) -> NetworkBootDeliv
                         }
                     }
                   }
+                  }
               }
+          }
           }
       }
   }
@@ -423,13 +452,13 @@ fn join_verified_ticket_after_trust(
   match site.edge.bootstrap_transport {
     ArchitectureChainloader { architecture: loader_arch, filename_hint: _, chainloader_digest: loader_digest } =>
       if architecture_admitted_on_edge(arch: loader_arch, admitted: first_slice_admitted_architectures) == false {
-        NetworkBootDeliveryArchitectureRefused { architecture: loader_arch }
+        NetworkBootDeliveryArchitectureRefused { cause: LoaderNotAdmittedOnSlice { architecture: loader_arch } }
       } else {
         if architecture_admitted_on_edge(arch: id.architecture, admitted: site.edge.admitted_architectures) == false {
-          NetworkBootDeliveryArchitectureRefused { architecture: id.architecture }
+          NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnEdge { architecture: id.architecture } }
         } else {
           if architecture_admitted_on_edge(arch: id.architecture, admitted: first_slice_admitted_architectures) == false {
-            NetworkBootDeliveryArchitectureRefused { architecture: id.architecture }
+            NetworkBootDeliveryArchitectureRefused { cause: TicketNotAdmittedOnSlice { architecture: id.architecture } }
           } else {
             if content_hash_equal(left: loader_digest, right: id.chainloader_digest) == false {
               NetworkBootDeliveryManifestRefused { cause: ManifestJoinChainloaderDigestDisagrees }
@@ -459,6 +488,12 @@ fn join_verified_ticket_after_trust(
                           NetworkBootDeliveryEstablished {
                             evidence: NetworkBootDeliveryEstablishment {
                               target: inputs.target,
+                              fleet: fleet,
+                              site: site,
+                              client: client,
+                              boot_control: control,
+                              manifest: id,
+                              trust: inputs.trust,
                               boot_source_override: join_evidence(requirement: NetworkBootBootSourceOverride, observation: control.observation, observed_at: control.observed_at),
                               client_boot_mode: join_evidence(requirement: NetworkBootClientBootMode, observation: client.observation, observed_at: client.observed_at),
                               serving_infrastructure: join_evidence(requirement: NetworkBootServingInfrastructure, observation: fleet.observation, observed_at: fleet.observed_at),
