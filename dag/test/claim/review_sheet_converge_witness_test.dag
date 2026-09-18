@@ -1019,6 +1019,30 @@ test fn duplicate_header_refuses_rather_than_last_wins() -> Bool {
   }
 }
 
+fn rendered(cause: ReviewCellConflictCause) -> String {
+  conflict_reason(conflict: LocatedDerivedConflict {
+    listing_id: "L1" as NonEmptyStr,
+    column: "title" as NonEmptyStr,
+    a1: A1Cell { column: A1Column { letter: "B" as NonEmptyStr }, row: 2 },
+    cause: cause,
+  }) as String
+}
+
+test fn conflict_reason_renders_the_located_facts_and_names_which_cause() -> Bool {
+  let occupied = rendered(cause: DerivedFieldOccupied { observed: "hand-edited", desired: "alpha" })
+  let standing = rendered(cause: ListingStandingForeignValue { raw: "Obsered" })
+  let mark = rendered(cause: DerivedErasureMarkForeignValue { raw: "Aplied" })
+  string_contains(s: occupied, pattern: "listing=L1")
+    && string_contains(s: occupied, pattern: "column=title")
+    && string_contains(s: occupied, pattern: "cell=B2")
+    && string_contains(s: occupied, pattern: "cause=derived field occupied observed=hand-edited desired=alpha")
+    && string_contains(s: standing, pattern: "cause=listing standing value unrecognised raw=Obsered")
+    && string_contains(s: mark, pattern: "cause=derived erasure mark unrecognised raw=Aplied")
+    && occupied != standing
+    && standing != mark
+    && occupied != mark
+}
+
 fn conflict_cause_tag(c: ReviewSheetClassification) -> String {
   match c {
     ReviewSheetConflict { conflict: k } => match k.cause {
