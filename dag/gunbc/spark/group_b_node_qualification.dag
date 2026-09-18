@@ -19,6 +19,7 @@ import product.fabric.node_qualification {
   SmallMessageStepThenPlateau, SmallMessageShapeUncharacterized,
   EngineBufferModeUnestablished, PerLayerAllReduceCountUnestablished,
   EachRankContributesTheSizeColumn, TotalBufferSplitPerPeer, NcclTestsHalf,
+  SuppliedHistoricalDemonstration,
   CollectivePrimitiveAttribution, CollectivePrimitiveMeasuredOnDifferentRuntime,
   NcclLibraryVersion, ServingNcclIdentity,
   HostRegisteredIbFallbackStanding, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
@@ -137,12 +138,16 @@ data group_b_all_reduce_observation: CollectiveObservationIdentity = CollectiveO
   protocol: group_b_all_reduce_protocol,
   run_identity: "group-b-all-reduce-half-2026-09-18" as NonEmptyStr,
   ranks: group_b_expected_ranks,
+  samples: group_b_all_reduce_half_curve(),
+  provenance: SuppliedHistoricalDemonstration,
 }
 
 data group_b_all_to_all_observation: CollectiveObservationIdentity = CollectiveObservationIdentity {
   protocol: group_b_all_to_all_protocol,
   run_identity: "group-b-all-to-all-half-2026-09-18" as NonEmptyStr,
   ranks: group_b_expected_ranks,
+  samples: group_b_all_to_all_half_curve(),
+  provenance: SuppliedHistoricalDemonstration,
 }
 
 data group_b_advertised: AdvertisedNodeOffer = AdvertisedNodeOffer {
@@ -184,7 +189,6 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
   },
   group: CollectiveGroupMeasured {
     collective: CollectiveCurveRead {
-      samples: group_b_all_reduce_half_curve(),
       observation: group_b_all_reduce_observation,
       small_message_shape: SmallMessageStepThenPlateau { step_at: byte_size(count: 16384) },
       engine_buffer_mode: EngineBufferModeUnestablished,
@@ -193,7 +197,6 @@ data group_b_measured: MeasuredNodeDelivery = MeasuredNodeDelivery {
       window: WindowSharedWithDeclaredTraffic,
     },
     all_to_all: CollectiveCurveRead {
-      samples: group_b_all_to_all_half_curve(),
       observation: group_b_all_to_all_observation,
       small_message_shape: SmallMessageShapeUncharacterized,
       engine_buffer_mode: EngineBufferModeUnestablished,
@@ -221,7 +224,7 @@ data group_b_claimed_offer: FabricIdentity<NonEmptyStr, OfferKey> = FabricIdenti
   key: "group-b-historical",
 }
 
-fn group_b_group_admission() -> GroupQualificationAdmission {
+fn group_b_group_admission() -> GroupQualificationAdmission<NonEmptyStr> {
   admit_qualified_group(
     receipt: qualify_collective_group(
       offer: group_b_claimed_offer,

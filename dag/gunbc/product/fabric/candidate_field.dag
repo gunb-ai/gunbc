@@ -24,7 +24,8 @@ import product.fabric.selection {
 }
 import product.fabric.node_qualification {
   OfferDeliveryClaim, OfferDoesNotClaimNodeDelivery, OfferClaimsNodeDelivery,
-  QualificationRefusal, claimed_delivery_refusals,
+  QualificationRefusal, claimed_delivery_check, ClaimedDeliveryHolds,
+  ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
 }
 
 // THE CANDIDATE FIELD IS ASSEMBLED BEFORE ANY PRICE EXISTS, AND THIS MODULE'S IMPORT LIST IS THE
@@ -119,6 +120,10 @@ type FieldExclusionCause<P>
     }
   | FieldNodeNotQualified { refusals: List<QualificationRefusal> }
   | FieldDeliveryClaimNamesAnotherOffer { claim_names: FabricIdentity<P, OfferKey> }
+  | FieldDeliveryClaimReceiptMismatch {
+      claim_names: FabricIdentity<P, OfferKey>,
+      receipt_names: FabricIdentity<P, OfferKey>,
+    }
 
 // FieldNodeNotQualified is minted when FieldRequest.delivery is OfferClaimsNodeDelivery of the
 // SAME offer identity and a GroupNotQualified admission. A claim naming another offer is
@@ -217,12 +222,17 @@ fn field_entry_delivery<P>(
       decision_receipt: decision_receipt, facts: facts, request: request)
     OfferClaimsNodeDelivery { offer: named, admission: _ } =>
       if fabric_identity_eq(left: request.offer.id, right: named) {
-        match claimed_delivery_refusals(claim: request.delivery) {
-          Absent => field_entry_admitted(
+        match claimed_delivery_check(claim: request.delivery) {
+          ClaimedDeliveryHolds => field_entry_admitted(
             sanctions: sanctions, active: active, scope: scope,
             decision_receipt: decision_receipt, facts: facts, request: request)
-          Present { value: r } =>
+          ClaimedDeliveryUnqualified { refusals: r } =>
             excluded_entry(offer: request.offer.id, cause: FieldNodeNotQualified { refusals: r })
+          ClaimedDeliveryOfferMismatch { claim_names: c, receipt_names: rec } =>
+            excluded_entry(
+              offer: request.offer.id,
+              cause: FieldDeliveryClaimReceiptMismatch { claim_names: c, receipt_names: rec },
+            )
         }
       } else {
         excluded_entry(

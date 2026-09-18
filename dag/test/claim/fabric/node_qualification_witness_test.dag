@@ -47,14 +47,14 @@ import product.fabric.node_qualification {
   qualify_rail_link_mode, qualify_accelerator_count,
   qualify_rank_symmetry, qualify_nic_pcie, qualify_collective_latency,
   nccl_tests_busbw_from_printed_gbs,
-  OfferClaimsNodeDelivery, GroupQualified, DeliveryClaimOfferDoesNotMatchReceipt,
+  OfferClaimsNodeDelivery, GroupQualified,
   CollectiveGroupReceipt,
   WindowStandingUnread, WindowSharedWithDeclaredTraffic, WindowIsolated,
-  claimed_delivery_refusals, host_qualification_refusals,
-  AcceleratorCountDidNotHold, UsableMemoryDidNotHold, RailLinkModeDidNotHold,
-  NicPcieDidNotHold, CollectiveLatencyDidNotHold, CollectiveBandwidthDidNotHold,
-  RankSymmetryDidNotHold, AllToAllLatencyDidNotHold, HostRegisteredIbFallbackDidNotHold,
-  CollectiveWindowDidNotHold, CollectivePrimitiveDidNotHold, GroupHostRosterDidNotHold,
+  claimed_delivery_refusals, claimed_delivery_check, host_admission_refusals,
+  group_admission_refusals,
+  host_qualification_refusals,
+  ClaimedDeliveryHolds, ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
+  SuppliedHistoricalDemonstration, supplied_historical_curve_unread,
 }
 import gunbc.spark.group_b_node_qualification {
   group_b_group_admission, group_b_host_admission, group_b_measured,
@@ -63,6 +63,10 @@ import gunbc.spark.group_b_node_qualification {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type WitnessOfferPrincipal
+  = WitnessGunbc
+  | WitnessOther
 
 fn symmetry_because(s: RankSymmetryStanding, want: NonEmptyStr) -> Bool {
   match s {
@@ -93,11 +97,17 @@ fn fx_all_to_all_protocol() -> CollectiveProtocol {
   }
 }
 
-fn fx_observation(protocol: CollectiveProtocol, run: String) -> CollectiveObservationIdentity {
+fn fx_observation(
+  protocol: CollectiveProtocol,
+  run: String,
+  samples: List<CollectiveSample>,
+) -> CollectiveObservationIdentity {
   CollectiveObservationIdentity {
     protocol: protocol,
     run_identity: run as NonEmptyStr,
     ranks: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+    samples: samples,
+    provenance: SuppliedHistoricalDemonstration,
   }
 }
 
@@ -109,7 +119,7 @@ fn fx_offer_b() -> FabricIdentity<NonEmptyStr, OfferKey> {
   FabricIdentity { principal: "gunbc", key: "fixture-offer-b" }
 }
 
-fn fx_positive_group_receipt(offer: FabricIdentity<NonEmptyStr, OfferKey>) -> CollectiveGroupReceipt {
+fn fx_positive_group_receipt<P>(offer: FabricIdentity<P, OfferKey>) -> CollectiveGroupReceipt<P> {
   CollectiveGroupReceipt {
     offer: offer,
     advertised: fx_advertised().group,
@@ -168,8 +178,7 @@ fn fx_sample() -> CollectiveSample {
 
 fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
   CollectiveCurveRead {
-    samples: samples,
-    observation: fx_observation(protocol: fx_all_reduce_protocol(), run: "fixture-all-reduce"),
+    observation: fx_observation(protocol: fx_all_reduce_protocol(), run: "fixture-all-reduce", samples: samples),
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
@@ -182,8 +191,7 @@ fn fx_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
 
 fn fx_all_to_all_curve(samples: List<CollectiveSample>) -> CollectiveCurveReading {
   CollectiveCurveRead {
-    samples: samples,
-    observation: fx_observation(protocol: fx_all_to_all_protocol(), run: "fixture-all-to-all"),
+    observation: fx_observation(protocol: fx_all_to_all_protocol(), run: "fixture-all-to-all", samples: samples),
     small_message_shape: SmallMessageShapeUncharacterized,
     engine_buffer_mode: EngineBufferModeUnestablished,
     per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
@@ -314,7 +322,7 @@ fn fx_admit_host(m: MeasuredNodeDelivery) -> HostQualificationAdmission {
   )
 }
 
-fn fx_admit_group(m: MeasuredNodeDelivery) -> GroupQualificationAdmission {
+fn fx_admit_group(m: MeasuredNodeDelivery) -> GroupQualificationAdmission<NonEmptyStr> {
   admit_qualified_group(
     receipt: qualify_collective_group(
       offer: fx_offer_a(),
@@ -329,7 +337,7 @@ fn fx_admit_group_for(
   advertised: AdvertisedNodeOffer,
   m: MeasuredNodeDelivery,
   hosts: List<HostQualificationAdmission>,
-) -> GroupQualificationAdmission {
+) -> GroupQualificationAdmission<NonEmptyStr> {
   admit_qualified_group(
     receipt: qualify_collective_group(
       offer: fx_offer_a(),
@@ -467,7 +475,6 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
   match group_b_measured.group.collective {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
-      samples: samples,
       observation: proto,
       small_message_shape: shape,
       engine_buffer_mode: buf,
@@ -475,7 +482,7 @@ test fn group_b_curve_keeps_both_columns_and_the_16kb_step() -> Bool {
       primitive_attribution: attr,
       window: _,
     } =>
-      match samples.first() {
+      match proto.samples.first() {
         Absent => false
         Present { value: s } =>
           byte_size_count(b: s.message_bytes) == 8192
@@ -529,7 +536,6 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
   match group_b_measured.group.collective {
     CollectiveCurveUnread { because: _ } => false
     CollectiveCurveRead {
-      samples: ar,
       observation: ar_proto,
       small_message_shape: _,
       engine_buffer_mode: _,
@@ -539,7 +545,6 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
     } => match group_b_measured.group.all_to_all {
       CollectiveCurveUnread { because: _ } => false
       CollectiveCurveRead {
-        samples: a2a,
         observation: a2a_proto,
         small_message_shape: _,
         engine_buffer_mode: _,
@@ -547,9 +552,9 @@ test fn group_b_alltoall_size_column_is_not_allreduce_work() -> Bool {
         primitive_attribution: _,
         window: _,
       } =>
-        match ar.first() {
+        match ar_proto.samples.first() {
           Absent => false
-          Present { value: ar0 } => match a2a.first() {
+          Present { value: ar0 } => match a2a_proto.samples.first() {
             Absent => false
             Present { value: a2a0 } =>
               byte_size_count(b: ar0.message_bytes) == byte_size_count(b: a2a0.message_bytes)
@@ -833,33 +838,47 @@ test fn group_b_shared_window_and_different_nccl_do_not_hold() -> Bool {
 }
 
 test fn a_positive_admission_relabeled_as_another_offer_is_refused() -> Bool {
-  match claimed_delivery_refusals(
+  match claimed_delivery_check(
     claim: OfferClaimsNodeDelivery {
-      offer: fx_offer_b(),
-      admission: GroupQualified { receipt: fx_positive_group_receipt(offer: fx_offer_a()) },
+      offer: FabricIdentity { principal: WitnessOther, key: "same-key" },
+      admission: GroupQualified {
+        receipt: fx_positive_group_receipt(
+          offer: FabricIdentity { principal: WitnessGunbc, key: "same-key" },
+        ),
+      },
     },
   ) {
-    Present { value: r } => match r.first() {
-      Present { value: c } => match c {
-        DeliveryClaimOfferDoesNotMatchReceipt { claim_key: ck, receipt_key: rk } =>
-          (ck as String) == "fixture-offer-b" && (rk as String) == "fixture-offer-a"
-        AcceleratorCountDidNotHold { standing: _ } => false
-        UsableMemoryDidNotHold { standing: _ } => false
-        RailLinkModeDidNotHold { standing: _ } => false
-        NicPcieDidNotHold { standing: _ } => false
-        CollectiveLatencyDidNotHold { standing: _ } => false
-        CollectiveBandwidthDidNotHold { standing: _ } => false
-        RankSymmetryDidNotHold { standing: _ } => false
-        AllToAllLatencyDidNotHold { standing: _ } => false
-        HostRegisteredIbFallbackDidNotHold { standing: _ } => false
-        CollectiveWindowDidNotHold { standing: _ } => false
-        CollectivePrimitiveDidNotHold { attribution: _ } => false
-        GroupHostRosterDidNotHold { standing: _ } => false
+    ClaimedDeliveryOfferMismatch { claim_names: c, receipt_names: r } =>
+      match c.principal {
+        WitnessOther => match r.principal {
+          WitnessGunbc => (c.key as String) == "same-key" && (r.key as String) == "same-key"
+          WitnessOther => false
+        }
+        WitnessGunbc => false
       }
-      Absent => false
-    }
-    Absent => false
+    ClaimedDeliveryHolds => false
+    ClaimedDeliveryUnqualified { refusals: _ } => false
   }
+}
+
+test fn a_failing_group_receipt_wrapped_as_group_qualified_is_refused() -> Bool {
+  group_admission_refusals(
+    a: GroupQualified { receipt: fx_positive_group_receipt(offer: fx_offer_a()) },
+  ).length() > 0
+}
+
+test fn a_failing_host_receipt_wrapped_as_host_qualified_is_refused() -> Bool {
+  let unread = qualify_host(
+    node: fx_node,
+    advertised: fx_advertised().host,
+    measured: HostMeasuredDelivery {
+      accelerator_count: CountUnread { because: "not run" as NonEmptyStr },
+      usable_memory: ByteSizeUnread { because: "not run" as NonEmptyStr },
+      rail_link_mode: LinkModeUnread { because: "not run" as NonEmptyStr },
+      nic_pcie: PcieLinkUnread { because: "not run" as NonEmptyStr },
+    },
+  )
+  host_admission_refusals(a: HostQualified { receipt: unread }).length() > 0
 }
 
 test fn a_curve_from_another_four_host_roster_is_unread() -> Bool {
@@ -869,11 +888,12 @@ test fn a_curve_from_another_four_host_roster_is_unread() -> Bool {
     expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
     required: fx_all_reduce_protocol(),
     reading: CollectiveCurveRead {
-      samples: [fx_sample()],
       observation: CollectiveObservationIdentity {
         protocol: fx_all_reduce_protocol(),
         run_identity: "fixture-all-reduce" as NonEmptyStr,
         ranks: ["other-0" as HostIdentity, "other-1" as HostIdentity],
+        samples: [fx_sample()],
+        provenance: SuppliedHistoricalDemonstration,
       },
       small_message_shape: SmallMessageShapeUncharacterized,
       engine_buffer_mode: EngineBufferModeUnestablished,
@@ -885,6 +905,36 @@ test fn a_curve_from_another_four_host_roster_is_unread() -> Bool {
     },
   ) {
     CollectiveLatencyUnread { ceiling: _, because: _ } => true
+    CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
+    CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
+  }
+}
+
+test fn group_a_samples_relabeled_as_group_b_do_not_agree() -> Bool {
+  match qualify_collective_latency(
+    ceiling: nanosecond(count: 1000),
+    at: byte_size(count: 8),
+    expected: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+    required: fx_all_reduce_protocol(),
+    reading: CollectiveCurveRead {
+      observation: CollectiveObservationIdentity {
+        protocol: fx_all_reduce_protocol(),
+        run_identity: "group-a-run" as NonEmptyStr,
+        ranks: ["rank-0" as HostIdentity, "rank-1" as HostIdentity],
+        samples: [fx_sample()],
+        provenance: SuppliedHistoricalDemonstration,
+      },
+      small_message_shape: SmallMessageShapeUncharacterized,
+      engine_buffer_mode: EngineBufferModeUnestablished,
+      per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
+      primitive_attribution: CollectivePrimitiveSameRuntime {
+        nccl: NcclLibraryVersion { major: 2, minor: 31, patch: 2 },
+      },
+      window: WindowIsolated,
+    },
+  ) {
+    CollectiveLatencyUnread { ceiling: _, because: b } =>
+      (b as String) == (supplied_historical_curve_unread as String)
     CollectiveLatencyAgrees { ceiling: _, measured: _ } => false
     CollectiveLatencyFallsShort { ceiling: _, measured: _ } => false
   }

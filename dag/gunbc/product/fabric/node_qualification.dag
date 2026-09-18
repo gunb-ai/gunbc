@@ -7,7 +7,7 @@ import std.measure {
   Nanosecond, nanosecond_count,
 }
 import product.placement_supply { HostIdentity }
-import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.storage.types { PcieLink, Gen5 }
 
@@ -140,15 +140,22 @@ type CollectiveProtocol {
   rank_count: Nat
 }
 
+type CollectiveCurveProvenance
+  = SuppliedHistoricalDemonstration
+  | AwaitingLiveProducerMint
+
 type CollectiveObservationIdentity {
   protocol: CollectiveProtocol
   run_identity: NonEmptyStr
   ranks: List<HostIdentity>
+  samples: List<CollectiveSample>
+  provenance: CollectiveCurveProvenance
 }
+
+data supplied_historical_curve_unread: NonEmptyStr = "supplied historical curves are not a positive delivery reading" as NonEmptyStr
 
 type CollectiveCurveReading
   = CollectiveCurveRead {
-      samples: List<CollectiveSample>,
       observation: CollectiveObservationIdentity,
       small_message_shape: CollectiveSmallMessageShape,
       engine_buffer_mode: EngineBufferModeStanding,
@@ -348,8 +355,8 @@ type HostQualificationReceipt {
   nic_pcie: NicPcieStanding
 }
 
-type CollectiveGroupReceipt {
-  offer: FabricIdentity<NonEmptyStr, OfferKey>
+type CollectiveGroupReceipt<P> {
+  offer: FabricIdentity<P, OfferKey>
   advertised: CollectiveGroupAdvertised
   host_roster: GroupHostRosterStanding
   collective_latency: CollectiveLatencyStanding
@@ -370,9 +377,9 @@ type HostQualificationAdmission
   = HostQualified { receipt: HostQualificationReceipt }
   | HostNotQualified { receipt: HostQualificationReceipt, refusals: List<QualificationRefusal> }
 
-type GroupQualificationAdmission
-  = GroupQualified { receipt: CollectiveGroupReceipt }
-  | GroupNotQualified { receipt: CollectiveGroupReceipt, refusals: List<QualificationRefusal> }
+type GroupQualificationAdmission<P>
+  = GroupQualified { receipt: CollectiveGroupReceipt<P> }
+  | GroupNotQualified { receipt: CollectiveGroupReceipt<P>, refusals: List<QualificationRefusal> }
 
 type QualificationRefusal
   = AcceleratorCountDidNotHold { standing: AcceleratorCountStanding }
@@ -387,7 +394,14 @@ type QualificationRefusal
   | CollectiveWindowDidNotHold { standing: CollectiveWindowStanding }
   | CollectivePrimitiveDidNotHold { attribution: CollectivePrimitiveAttribution }
   | GroupHostRosterDidNotHold { standing: GroupHostRosterStanding }
-  | DeliveryClaimOfferDoesNotMatchReceipt { claim_key: OfferKey, receipt_key: OfferKey }
+
+type ClaimedDeliveryCheck<P>
+  = ClaimedDeliveryHolds
+  | ClaimedDeliveryUnqualified { refusals: List<QualificationRefusal> }
+  | ClaimedDeliveryOfferMismatch {
+      claim_names: FabricIdentity<P, OfferKey>,
+      receipt_names: FabricIdentity<P, OfferKey>,
+    }
 
 fn qualify_accelerator_count(advertised: Nat, reading: CountReading) -> AcceleratorCountStanding {
   match reading {
@@ -481,7 +495,6 @@ fn curve_protocol(reading: CollectiveCurveReading) -> CollectiveProtocol? {
   match reading {
     CollectiveCurveUnread { because: _ } => none
     CollectiveCurveRead {
-      samples: _,
       observation: obs,
       small_message_shape: _,
       engine_buffer_mode: _,
@@ -524,7 +537,6 @@ fn qualify_collective_latency(
     CollectiveCurveUnread { because: b } =>
       CollectiveLatencyUnread { ceiling: ceiling, because: b }
     CollectiveCurveRead {
-      samples: samples,
       observation: obs,
       small_message_shape: _,
       engine_buffer_mode: _,
@@ -542,19 +554,15 @@ fn qualify_collective_latency(
           Absent => if protocol_eq(a: key, b: required) {
           match observation_roster_unread_reason(observed: obs.ranks, expected: expected) {
             Present { value: b } => CollectiveLatencyUnread { ceiling: ceiling, because: b }
-            Absent => match sample_at_message_bytes(samples: samples, want: at) {
-            Absent => CollectiveLatencyUnread {
-              ceiling: ceiling,
-              because: "nccl-tests returned no sample at the advertised message size" as NonEmptyStr,
-            }
-            Present { value: s } => {
-              let measured = sample_stricter_latency(s: s)
-              if nanosecond_count(n: measured) <= nanosecond_count(n: ceiling) {
-                CollectiveLatencyAgrees { ceiling: ceiling, measured: measured }
-              } else {
-                CollectiveLatencyFallsShort { ceiling: ceiling, measured: measured }
+            Absent => match obs.provenance {
+              SuppliedHistoricalDemonstration => CollectiveLatencyUnread {
+                ceiling: ceiling,
+                because: supplied_historical_curve_unread,
               }
-            }
+              AwaitingLiveProducerMint => CollectiveLatencyUnread {
+                ceiling: ceiling,
+                because: supplied_historical_curve_unread,
+              }
             }
           }
         } else {
@@ -582,7 +590,6 @@ fn qualify_collective_bandwidth(
     CollectiveCurveUnread { because: b } =>
       CollectiveBandwidthUnread { floor: floor, because: b }
     CollectiveCurveRead {
-      samples: samples,
       observation: obs,
       small_message_shape: _,
       engine_buffer_mode: _,
@@ -600,16 +607,15 @@ fn qualify_collective_bandwidth(
           Absent => if protocol_eq(a: key, b: required) {
           match observation_roster_unread_reason(observed: obs.ranks, expected: expected) {
             Present { value: b } => CollectiveBandwidthUnread { floor: floor, because: b }
-            Absent => match sample_at_message_bytes(samples: samples, want: at) {
-            Absent => CollectiveBandwidthUnread {
-              floor: floor,
-              because: "nccl-tests returned no sample at the advertised message size" as NonEmptyStr,
-            }
-            Present { value: s } => if bandwidth_count(b: s.bus_bandwidth) >= bandwidth_count(b: floor) {
-              CollectiveBandwidthAgrees { floor: floor, measured: s.bus_bandwidth }
-            } else {
-              CollectiveBandwidthFallsShort { floor: floor, measured: s.bus_bandwidth }
-            }
+            Absent => match obs.provenance {
+              SuppliedHistoricalDemonstration => CollectiveBandwidthUnread {
+                floor: floor,
+                because: supplied_historical_curve_unread,
+              }
+              AwaitingLiveProducerMint => CollectiveBandwidthUnread {
+                floor: floor,
+                because: supplied_historical_curve_unread,
+              }
             }
           }
         } else {
@@ -628,7 +634,6 @@ fn reading_window(reading: CollectiveCurveReading) -> CollectiveWindowStanding {
   match reading {
     CollectiveCurveUnread { because: b } => WindowStandingUnread { because: b }
     CollectiveCurveRead {
-      samples: _,
       observation: _,
       small_message_shape: _,
       engine_buffer_mode: _,
@@ -643,7 +648,6 @@ fn reading_attribution(reading: CollectiveCurveReading) -> CollectivePrimitiveAt
   match reading {
     CollectiveCurveUnread { because: _ } => CollectivePrimitiveAttributionUnestablished
     CollectiveCurveRead {
-      samples: _,
       observation: _,
       small_message_shape: _,
       engine_buffer_mode: _,
@@ -736,7 +740,6 @@ fn curve_observation(reading: CollectiveCurveReading) -> CollectiveObservationId
   match reading {
     CollectiveCurveUnread { because: _ } => none
     CollectiveCurveRead {
-      samples: _,
       observation: obs,
       small_message_shape: _,
       engine_buffer_mode: _,
@@ -932,12 +935,12 @@ fn qualify_group_host_roster(
   }
 }
 
-fn qualify_collective_group(
-  offer: FabricIdentity<NonEmptyStr, OfferKey>,
+fn qualify_collective_group<P>(
+  offer: FabricIdentity<P, OfferKey>,
   advertised: CollectiveGroupAdvertised,
   measured: CollectiveGroupMeasured,
   host_admissions: List<HostQualificationAdmission>,
-) -> CollectiveGroupReceipt {
+) -> CollectiveGroupReceipt<P> {
   CollectiveGroupReceipt {
     offer: offer,
     advertised: advertised,
@@ -1001,7 +1004,7 @@ fn host_qualification_refusals(receipt: HostQualificationReceipt) -> List<Qualif
   )
 }
 
-fn group_qualification_refusals(receipt: CollectiveGroupReceipt) -> List<QualificationRefusal> {
+fn group_qualification_refusals<P>(receipt: CollectiveGroupReceipt<P>) -> List<QualificationRefusal> {
   concat(
     host_roster_refusal(s: receipt.host_roster),
     concat(
@@ -1035,7 +1038,7 @@ fn admit_qualified_host(receipt: HostQualificationReceipt) -> HostQualificationA
   }
 }
 
-fn admit_qualified_group(receipt: CollectiveGroupReceipt) -> GroupQualificationAdmission {
+fn admit_qualified_group<P>(receipt: CollectiveGroupReceipt<P>) -> GroupQualificationAdmission<P> {
   let refusals = group_qualification_refusals(receipt: receipt)
   if refusals.length() == 0 {
     GroupQualified { receipt: receipt }
@@ -1053,34 +1056,49 @@ type OfferDeliveryClaim<P>
   = OfferDoesNotClaimNodeDelivery
   | OfferClaimsNodeDelivery {
       offer: FabricIdentity<P, OfferKey>,
-      admission: GroupQualificationAdmission,
+      admission: GroupQualificationAdmission<P>,
     }
 
-fn group_admission_receipt(a: GroupQualificationAdmission) -> CollectiveGroupReceipt {
+fn group_admission_receipt<P>(a: GroupQualificationAdmission<P>) -> CollectiveGroupReceipt<P> {
   match a {
     GroupQualified { receipt: r } => r
     GroupNotQualified { receipt: r, refusals: _ } => r
   }
 }
 
-fn claimed_delivery_refusals<P>(claim: OfferDeliveryClaim<P>) -> List<QualificationRefusal>? {
+fn host_admission_refusals(a: HostQualificationAdmission) -> List<QualificationRefusal> {
+  host_qualification_refusals(receipt: admission_receipt(a: a))
+}
+
+fn group_admission_refusals<P>(a: GroupQualificationAdmission<P>) -> List<QualificationRefusal> {
+  group_qualification_refusals(receipt: group_admission_receipt(a: a))
+}
+
+fn claimed_delivery_check<P>(claim: OfferDeliveryClaim<P>) -> ClaimedDeliveryCheck<P> {
   match claim {
-    OfferDoesNotClaimNodeDelivery => none
+    OfferDoesNotClaimNodeDelivery => ClaimedDeliveryHolds
     OfferClaimsNodeDelivery { offer: o, admission: a } => {
       let r = group_admission_receipt(a: a)
-      if !((o.principal as String) == (r.offer.principal as String) && (o.key as String) == (r.offer.key as String)) {
-        Present {
-          value: [
-            DeliveryClaimOfferDoesNotMatchReceipt { claim_key: o.key, receipt_key: r.offer.key },
-          ],
-        }
+      if !fabric_identity_eq(left: o, right: r.offer) {
+        ClaimedDeliveryOfferMismatch { claim_names: o, receipt_names: r.offer }
       } else {
-        match a {
-          GroupQualified { receipt: _ } => none
-          GroupNotQualified { receipt: _, refusals: refusals } => Present { value: refusals }
+        let refusals = group_qualification_refusals(receipt: r)
+        if refusals.length() == 0 {
+          ClaimedDeliveryHolds
+        } else {
+          ClaimedDeliveryUnqualified { refusals: refusals }
         }
       }
     }
+  }
+}
+
+fn claimed_delivery_refusals<P>(claim: OfferDeliveryClaim<P>) -> List<QualificationRefusal>? {
+  match claimed_delivery_check(claim: claim) {
+    ClaimedDeliveryHolds => none
+    ClaimedDeliveryUnqualified { refusals: refusals } => Present { value: refusals }
+    ClaimedDeliveryOfferMismatch { claim_names: _, receipt_names: _ } =>
+      Present { value: [] }
   }
 }
 

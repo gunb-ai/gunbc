@@ -53,6 +53,7 @@ import product.fabric.candidate_field {
   FieldUseRefused, FieldDispatchInputsNameAnotherOffer, FieldPermitNamesAnotherOffer,
   FieldPermitNamesAnotherRoute, FieldPermitNamesAnotherWork, FieldPermitNamesAnotherDemand,
   FieldNodeNotQualified, FieldDeliveryClaimNamesAnotherOffer,
+  FieldDeliveryClaimReceiptMismatch,
   assemble_candidate_field,
 }
 import product.placement_supply { HostIdentity }
@@ -590,6 +591,8 @@ fn s_exclusion_tag(c: FieldExclusionCause<NonEmptyStr>) -> String {
     FieldPermitNamesAnotherDemand { permit_demand: _, subject_demand: _ } => "permit-names-another-demand"
     FieldNodeNotQualified { refusals: _ } => "node-not-qualified"
     FieldDeliveryClaimNamesAnotherOffer { claim_names: _ } => "delivery-claim-names-another-offer"
+    FieldDeliveryClaimReceiptMismatch { claim_names: _, receipt_names: _ } =>
+      "delivery-claim-receipt-mismatch"
   }
 }
 
@@ -611,7 +614,7 @@ test fn w_the_one_modeled_route_survives_the_field() -> Bool {
   s_admitted_keys(field: s_default_field()) == ["spill-hetzner-cax41"]
 }
 
-test fn w_an_offer_claiming_its_own_qualified_node_delivery_is_admitted() -> Bool {
+test fn w_an_offer_claiming_its_own_failing_group_qualified_arm_is_excluded() -> Bool {
   let offer = FabricIdentity { principal: "gunbc", key: "spill-hetzner-cax41" }
   let field = s_field(
     routes: s_modeled_routes(),
@@ -625,8 +628,8 @@ test fn w_an_offer_claiming_its_own_qualified_node_delivery_is_admitted() -> Boo
       ),
     ],
   )
-  s_admitted_keys(field: field) == ["spill-hetzner-cax41"]
-    && s_excluded_keys(field: field, tag: "node-not-qualified") == []
+  s_admitted_keys(field: field) == []
+    && s_excluded_keys(field: field, tag: "node-not-qualified") == ["spill-hetzner-cax41"]
 }
 
 test fn w_an_offer_claiming_another_offers_delivery_is_excluded() -> Bool {
