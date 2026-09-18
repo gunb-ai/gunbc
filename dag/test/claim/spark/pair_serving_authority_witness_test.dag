@@ -6,6 +6,7 @@ import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseRunningStale, LeaseAbsent, LeasePortForeign, LeaseInaccessible }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_hosts, fabric_group_wire }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_unit }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_plan_under, SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused }
 import gunbc.spark.host_commitment { spark_claimed_serving_group_members, spark_claimed_members_under }
@@ -71,7 +72,7 @@ fn w_suspended(h: ContentHash, stale: Bool) -> PairServingGroupAuthority {
     authorization: "witness-authorization" as NonEmptyStr,
     exact_candidate_realization: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
     lease: w_lease(h: h, observed_stale: stale),
-    cleanup: "witness-cleanup" as NonEmptyStr,
+    cleanup: QuiescentReservedBaseline,
   }
 }
 

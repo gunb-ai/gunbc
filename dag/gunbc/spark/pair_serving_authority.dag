@@ -5,6 +5,7 @@ import std.content_hash { ContentHash }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, held_lease_observed_verdict }
 import std.upsert_decision { ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, fabric_group_wire }
+import gunbc.spark.released_baseline { ReleasedBaselineSpec }
 
 // WHOSE HOSTS WE CLAIM AND WHAT WE MAY DO WITH THEM ARE TWO QUESTIONS WITH ONE ANSWER, AND IT IS HERE.
 // A bare roster of claimed groups could say which groups are ours and nothing about whether we are free
@@ -54,7 +55,7 @@ type PairServingGroupAuthority
       authorization: NonEmptyStr
       exact_candidate_realization: PairRealizationIdentity
       lease: HeldLease
-      cleanup: NonEmptyStr
+      cleanup: ReleasedBaselineSpec
     }
   | FencedRefusal {
       group: FabricGroup

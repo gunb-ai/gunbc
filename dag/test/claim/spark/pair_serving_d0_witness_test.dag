@@ -1,0 +1,268 @@
+module test.claim.spark.pair_serving_d0_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import v2.std.optional { Present, Absent }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
+import product.placement_supply { HostIdentity }
+import product.fabric.demand { ObservationReceiptRef }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
+import gunbc.spark.fabric_switch_observed { FabricGroupA }
+import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, IncarnationUnitNotActive }
+import gunbc.spark.vllm_endpoint_process_launch { vllm_endpoint_process_launch }
+import gunbc.spark.vllm_serving_launch { vllm_serving_launch, endpoint_incarnation_observation }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
+import gunbc.spark.pair_incumbent_identity {
+  DeclaredRankUnit, DeclaredPairRealization, declared_pair_realization_of, DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable,
+  ObservedRankUnit, observed_pair_realization_of, ObservedPairRealizationRead, pair_realization_agreement,
+}
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, SuspendedForAuthorizedSuccessor, FencedRefusal,
+  PairRealizationKeyed, PairRealizationUnestablished, pair_serving_apply_admits, pair_serving_successor_may_launch,
+}
+import gunbc.spark.pair_serving_d0 {
+  RankOccupancyReading, IncumbentReading, IncumbentAnswered, IncumbentSilent, IncumbentRouteUnread, D0Observation,
+  OccupancyReconciliation, DeclaredOccupantObserved, DeclaredOccupantDrifted, OccupancyUnread, reconcile_occupancy,
+  D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, D0Cause, D0IncumbentLive, D0OccupancyUnread, D0DeclarationUnavailable,
+  d0_decide, d0_decision_is_eligible,
+}
+
+// THE DECISION AND THE RECONCILIATION, OVER SUPPLIED READINGS. Every branch of the redesign's D0
+// table is driven here with a constructed observation; the transfer and the readings themselves
+// execute in the wet entry (pair_serving_d0_wet) against the fleet, and the compare-and-set it
+// relies on has its own real-execution witness on the authority log.
+
+fn t_sha(hex: String) -> ContentHash? {
+  match sha256_hex_digest(hex: hex) {
+    Absent => none
+    Present { value: d } => Present { value: Sha256Hash(d) }
+  }
+}
+
+fn with_digests(scenario: fn(ContentHash, ContentHash, ContentHash) -> Bool) -> Bool {
+  match t_sha(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: a } =>
+      match t_sha(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") {
+        Absent => false
+        Present { value: b } =>
+          match t_sha(hex: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc") {
+            Absent => false
+            Present { value: c } => scenario(a, b, c)
+          }
+      }
+  }
+}
+
+fn t_declared(head: ContentHash, worker: ContentHash) -> DeclaredPairRealization {
+  declared_pair_realization_of(
+    group: FabricGroupA,
+    head: DeclaredRankUnit { host: operator_host_srv5, unit_name: spark_pair_head_unit_name, digest: head },
+    workers: [
+      DeclaredRankUnit { host: operator_host_srv6, unit_name: spark_pair_worker_unit_name, digest: worker },
+      DeclaredRankUnit { host: operator_host_srv7, unit_name: spark_pair_worker_unit_name, digest: worker },
+      DeclaredRankUnit { host: operator_host_srv8, unit_name: spark_pair_worker_unit_name, digest: worker },
+    ],
+  )
+}
+
+fn t_rank(host: HostIdentity, unit: NonEmptyStr, occupancy: UnitOccupancy) -> RankOccupancyReading {
+  RankOccupancyReading { host: host, unit_name: unit, occupancy: occupancy }
+}
+
+fn t_ranks(head: UnitOccupancy, w6: UnitOccupancy, w7: UnitOccupancy, w8: UnitOccupancy) -> List<RankOccupancyReading> {
+  [
+    t_rank(host: operator_host_srv5, unit: spark_pair_head_unit_name, occupancy: head),
+    t_rank(host: operator_host_srv6, unit: spark_pair_worker_unit_name, occupancy: w6),
+    t_rank(host: operator_host_srv7, unit: spark_pair_worker_unit_name, occupancy: w7),
+    t_rank(host: operator_host_srv8, unit: spark_pair_worker_unit_name, occupancy: w8),
+  ]
+}
+
+fn t_lease(h: ContentHash) -> HeldLease {
+  held_lease(epoch: LeaseEpoch { lease_key: "tx-w" as NonEmptyStr, resource_fingerprint: h, owner_fingerprint: h, generation: 1 }, observed: LeaseRunningExpected)
+}
+
+fn t_decide(declared: DeclaredPairRealization, incumbent: IncumbentReading, ranks: List<RankOccupancyReading>, h: ContentHash) -> D0Decision {
+  d0_decide(
+    declared: DeclaredPairRealizationKeyed { declared: declared },
+    observation: D0Observation { group: FabricGroupA, incumbent: incumbent, ranks: ranks },
+    lease: t_lease(h: h),
+    authorization: "auth-w" as NonEmptyStr,
+    candidate: PairRealizationUnestablished { obligation: "witness" as NonEmptyStr },
+    cleanup: QuiescentReservedBaseline,
+  )
+}
+
+fn silent() -> IncumbentReading {
+  IncumbentSilent { obligation: "the metrics endpoint did not answer" as NonEmptyStr }
+}
+
+fn hashes_equal(l: ContentHash, r: ContentHash) -> Bool {
+  match compare_content_hash(left: l, right: r) {
+    ContentHashEqual => true
+    ContentHashDifferent => false
+    ContentHashCrossFamilyIncomparable => false
+  }
+}
+
+// ── RECONCILIATION ─────────────────────────────────────────────────────────────────────────────
+
+// Our units, our bytes, all running: observed converged.
+test fn all_ranks_installed_running_with_declared_bytes_is_observed() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match reconcile_occupancy(declared: t_declared(head: a, worker: b), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })) {
+      DeclaredOccupantObserved => true
+      _ => false
+    }
+  })
+}
+
+// THE EXPECTED ANSWER: our units installed, none running. Drifted, naming every inactive rank --
+// and eligible, not refused (the redesign's correction of an earlier draft).
+test fn installed_but_inactive_ranks_are_drifted_and_eligible() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    let ranks = t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b })
+    (match reconcile_occupancy(declared: t_declared(head: a, worker: b), ranks: ranks) {
+       DeclaredOccupantDrifted { drifted: ds } => length(ds) == 4
+       _ => false
+     })
+    && (match t_decide(declared: t_declared(head: a, worker: b), incumbent: silent(), ranks: ranks, h: c) {
+          D0DecidedSuspend { next: SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: _, lease: _, cleanup: QuiescentReservedBaseline }, reconciliation: DeclaredOccupantDrifted { drifted: ds } } =>
+            (au as String) == "auth-w" && length(ds) == 4
+          _ => false
+        })
+  })
+}
+
+// One rank carries other bytes: drifted, naming exactly that rank.
+test fn one_rank_with_other_bytes_is_drifted_naming_it() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match reconcile_occupancy(declared: t_declared(head: a, worker: b), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: true, unit_digest: b })) {
+      DeclaredOccupantDrifted { drifted: ds } => length(ds) == 1 && all(ds, h => (h as String) == (operator_host_srv7 as String))
+      _ => false
+    }
+  })
+}
+
+// RED -- a rank with no pair unit installed is UNREAD, not empty and not drifted: this
+// transaction cannot tell it from a foreign occupant, and says so. It fences.
+test fn an_uninstalled_rank_is_unread_and_fences() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    let ranks = t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitNotInstalled, w8: UnitInstalled { active: true, unit_digest: b })
+    (match reconcile_occupancy(declared: t_declared(head: a, worker: b), ranks: ranks) {
+       OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 1
+       _ => false
+     })
+    && (match t_decide(declared: t_declared(head: a, worker: b), incumbent: silent(), ranks: ranks, h: c) {
+          D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0OccupancyUnread { cause: _ } } => true
+          _ => false
+        })
+  })
+}
+
+// RED -- a rank whose read refused is unread even when every other rank converged.
+test fn one_unread_rank_makes_the_occupancy_unread() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match reconcile_occupancy(declared: t_declared(head: a, worker: b), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitOccupancyUnread { refusal: IncarnationUnitNotActive { unit: spark_pair_worker_unit_name } }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b })) {
+      OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 1 && all(hs, h => (h as String) == (operator_host_srv6 as String))
+      _ => false
+    }
+  })
+}
+
+// RED -- a declared rank with no reading at all is unread: a missing reading is not a reading.
+test fn a_missing_rank_reading_is_unread() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match reconcile_occupancy(declared: t_declared(head: a, worker: b), ranks: [t_rank(host: operator_host_srv5, unit: spark_pair_head_unit_name, occupancy: UnitInstalled { active: true, unit_digest: a })]) {
+      OccupancyUnread { hosts: hs, cause: _ } => length(hs) == 3
+      _ => false
+    }
+  })
+}
+
+// ── THE INCUMBENT QUESTION COMES FIRST ─────────────────────────────────────────────────────────
+
+fn t_answered_established(a: ContentHash, b: ContentHash, img: ContentHash) -> IncumbentReading {
+  let head = endpoint_incarnation_observation(
+    endpoint: vllm_endpoint_process_launch(group: FabricGroupA, endpoint: "http://10.0.0.5:8000" as NonEmptyStr, process_start_field: "1" as NonEmptyStr),
+    launch: vllm_serving_launch(group: FabricGroupA, head: operator_host_srv5, systemd_invocation: "inv" as NonEmptyStr, container_id: "c" as NonEmptyStr, executable_digest: img, unit_digest: a, started_at: 1),
+    receipt: "test.claim.spark.pair_serving_d0_witness fixture" as ObservationReceiptRef,
+  )
+  let workers = [
+    ObservedRankUnit { host: operator_host_srv6, unit_name: spark_pair_worker_unit_name, systemd_invocation: "inv" as NonEmptyStr, unit_digest: b },
+    ObservedRankUnit { host: operator_host_srv7, unit_name: spark_pair_worker_unit_name, systemd_invocation: "inv" as NonEmptyStr, unit_digest: b },
+    ObservedRankUnit { host: operator_host_srv8, unit_name: spark_pair_worker_unit_name, systemd_invocation: "inv" as NonEmptyStr, unit_digest: b },
+  ]
+  IncumbentAnswered {
+    agreement: pair_realization_agreement(
+      declared: DeclaredPairRealizationKeyed { declared: t_declared(head: a, worker: b) },
+      observed: ObservedPairRealizationRead { observed: observed_pair_realization_of(group: FabricGroupA, head: head, workers: workers, receipt: "test.claim.spark.pair_serving_d0_witness fixture" as ObservationReceiptRef) },
+    ),
+  }
+}
+
+// An incumbent answers and IS the declared realization: restoration is shown safe, the authority
+// returns to Active carrying the exact key -- the one mint of PairRealizationKeyed -- and D0 is
+// refused, whatever the ranks would have reconciled to.
+test fn a_live_declared_incumbent_restores_active_with_the_key_and_refuses() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    let d = t_declared(head: a, worker: b)
+    let decision = t_decide(declared: d, incumbent: t_answered_established(a: a, b: b, img: c), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c)
+    match decision {
+      D0DecidedRestore { next: PairServingActive { group: _, exact_realization: PairRealizationKeyed { key: k } }, key: k2 } =>
+        hashes_equal(l: k, r: d.key) && hashes_equal(l: k2, r: d.key) && !d0_decision_is_eligible(d: decision)
+          && pair_serving_apply_admits(a: PairServingActive { group: FabricGroupA, exact_realization: PairRealizationKeyed { key: k } })
+      _ => false
+    }
+  })
+}
+
+// RED -- an incumbent answers but is NOT the declared realization (a worker's bytes differ): not
+// restored, not suspended -- fenced for the operator, naming the standing.
+test fn a_live_drifted_incumbent_is_fenced() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match t_decide(declared: t_declared(head: a, worker: c), incumbent: t_answered_established(a: a, b: b, img: c), ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: c }, w7: UnitInstalled { active: true, unit_digest: c }, w8: UnitInstalled { active: true, unit_digest: c }), h: c) {
+      D0DecidedFence { next: FencedRefusal { group: _, cause: _, disposition_authority: _ }, cause: D0IncumbentLive { standing: _ } } => true
+      _ => false
+    }
+  })
+}
+
+// RED -- the route could not be read at all: the incumbent question is unanswered, and an
+// unanswered first question fences before the ranks are consulted.
+test fn an_unread_route_fences_before_reconciling() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match t_decide(declared: t_declared(head: a, worker: b), incumbent: IncumbentRouteUnread { cause: "no fleet ssh context" as NonEmptyStr }, ranks: t_ranks(head: UnitInstalled { active: true, unit_digest: a }, w6: UnitInstalled { active: true, unit_digest: b }, w7: UnitInstalled { active: true, unit_digest: b }, w8: UnitInstalled { active: true, unit_digest: b }), h: c) {
+      D0DecidedFence { next: _, cause: D0OccupancyUnread { cause: _ } } => true
+      _ => false
+    }
+  })
+}
+
+// A declaration that could not be keyed fences: there is nothing to reconcile against.
+test fn an_unavailable_declaration_fences() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match d0_decide(
+      declared: DeclaredPairRealizationUnavailable { group: FabricGroupA, obligation: "witness" as NonEmptyStr },
+      observation: D0Observation { group: FabricGroupA, incumbent: silent(), ranks: [] as List<RankOccupancyReading> },
+      lease: t_lease(h: c), authorization: "auth-w" as NonEmptyStr, candidate: PairRealizationUnestablished { obligation: "w" as NonEmptyStr }, cleanup: QuiescentReservedBaseline,
+    ) {
+      D0DecidedFence { next: _, cause: D0DeclarationUnavailable { obligation: _ } } => true
+      _ => false
+    }
+  })
+}
+
+// The suspended authority D0 writes is what the successor's launch gate reads: with the lease
+// running it may launch, and the incumbent's apply is refused.
+test fn the_suspension_d0_writes_admits_launch_and_refuses_apply() -> Bool {
+  with_digests(scenario: fn(a, b, c) {
+    match t_decide(declared: t_declared(head: a, worker: b), incumbent: silent(), ranks: t_ranks(head: UnitInstalled { active: false, unit_digest: a }, w6: UnitInstalled { active: false, unit_digest: b }, w7: UnitInstalled { active: false, unit_digest: b }, w8: UnitInstalled { active: false, unit_digest: b }), h: c) {
+      D0DecidedSuspend { next: n, reconciliation: _ } => pair_serving_successor_may_launch(a: n) && !pair_serving_apply_admits(a: n)
+      _ => false
+    }
+  })
+}

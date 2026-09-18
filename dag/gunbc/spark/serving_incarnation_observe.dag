@@ -548,6 +548,48 @@ fn read_unit_identity(transport: HostEffectTransport, unit: NonEmptyStr) -> Unit
   }
 }
 
+// ── ONE UNIT'S OCCUPANCY, WHETHER OR NOT IT RUNS ────────────────────────────────────────────────
+//
+// read_unit_identity asks about a RUNNING unit and refuses an inactive one, because an
+// incarnation is a launch. The Cut D D0 reconciliation asks a different question of the same
+// three reads: is our unit INSTALLED on this rank at all, what bytes is it, and is it running --
+// where "installed and not running" is the expected answer on the readings the redesign records,
+// not a refusal. So the fragment path decides installed, its digest decides which bytes, and the
+// invocation decides running; only a read that could not be taken is unread.
+type UnitOccupancy
+  = UnitInstalled { active: Bool, unit_digest: ContentHash }
+  | UnitNotInstalled
+  | UnitOccupancyUnread { refusal: ServingIncarnationRefusal }
+
+fn read_unit_occupancy(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitOccupancy {
+  match read_unit_property(transport: transport, unit: unit, property: FragmentPathProperty) {
+    UnitTextRefused { cause: c } =>
+      UnitOccupancyUnread { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: FragmentPathProperty), cause: c } }
+    UnitTextObserved { value: fragment_path } =>
+      if fragment_path == "" {
+        UnitNotInstalled
+      } else {
+        match host_read_text(transport: transport, operation: Sha256SumFile { path: fragment_path as NonEmptyStr }) {
+          HostTextRefused { cause: c } => UnitOccupancyUnread { refusal: IncarnationUnitDigestUnread { unit: unit, cause: c } }
+          HostTextObserved { stdout: line } =>
+            match sha256sum_line_digest(line: line) {
+              Absent => UnitOccupancyUnread { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "sha256sum printed no 64-hex digest line" } }
+              Present { value: d } =>
+                match sha256_digest_content_hash(digest: d) {
+                  Absent => UnitOccupancyUnread { refusal: IncarnationUnitDigestUnread { unit: unit, cause: "the sha256sum output did not read as a sha256 content hash" } }
+                  Present { value: digest } =>
+                    match read_unit_property(transport: transport, unit: unit, property: InvocationIDProperty) {
+                      UnitTextRefused { cause: c } =>
+                        UnitOccupancyUnread { refusal: IncarnationUnitPropertyUnread { unit: unit, property: systemd_unit_property_wire(property: InvocationIDProperty), cause: c } }
+                      UnitTextObserved { value: invocation_text } => UnitInstalled { active: invocation_text != "", unit_digest: digest }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
 // THE ENTRY. One head host, one group, the endpoint launch the harness just read from that group's
 // route, and the sealed fleet context; everything else is derived. The unit is the pair-serving head
 // unit, because that is the unit whose engine exports the endpoint; a worker unit exports nothing.

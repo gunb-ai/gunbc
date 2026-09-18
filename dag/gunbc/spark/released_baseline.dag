@@ -1,0 +1,47 @@
+module gunbc.spark.released_baseline
+
+import std.types { String, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+
+// ── THE STATE A TRANSACTION RETURNS THE HOSTS TO IS DECLARED BEFORE IT STARTS ──────────────────
+//
+// docs/plans/dsv41-cut-d-redesign.md §2 names three subjects that one word "baseline" had been
+// standing for: the ENTRY STATE D0 records (never a return target), the RELEASED BASELINE SPEC a
+// transaction declares before D1 runs (the target), and the RELEASED BASELINE RECEIPT D1 reads
+// back (the evidence). This is the second. It is carried on the suspended authority as its
+// cleanup contract -- gunbc.spark.pair_serving_authority SuspendedForAuthorizedSuccessor.cleanup
+// -- so the state the hosts are owed is a fact of the authorization, not a word in a script.
+//
+// THE SPEC MUST CHOOSE RESERVED OR FREE, and an earlier draft claimed both. Under
+// QuiescentReservedBaseline no rank process, engine, offer, seat or live device allocation
+// survives, immutable verified artifacts may remain on local storage, and the exact four-host
+// reservation REMAINS -- so an unrelated build or probe cannot occupy the hosts before D2.
+// FleetReleasedBaseline gives the hosts back: D2 must reacquire them and may not assume the same
+// four are available. They are two terminals with two names because they license different
+// things, and a converger asked to reach "the baseline" without saying which would be choosing.
+type ReleasedBaselineSpec
+  = QuiescentReservedBaseline
+  | FleetReleasedBaseline
+
+fn released_baseline_wire(s: ReleasedBaselineSpec) -> NonEmptyStr {
+  match s {
+    QuiescentReservedBaseline => "quiescent-reserved-baseline" as NonEmptyStr
+    FleetReleasedBaseline => "fleet-released-baseline" as NonEmptyStr
+  }
+}
+
+fn parse_released_baseline(wire: String) -> ReleasedBaselineSpec? {
+  if wire == "quiescent-reserved-baseline" { Present { value: QuiescentReservedBaseline } }
+  else if wire == "fleet-released-baseline" { Present { value: FleetReleasedBaseline } }
+  else { none }
+}
+
+// Whether the four-host reservation survives the transaction's cleanup. This is the projection
+// gunbc.spark.host_commitment will consume when the D1 converger lands: under the reserved
+// baseline the hosts stay committed after cleanup; under the fleet-released one they do not.
+fn released_baseline_retains_reservation(s: ReleasedBaselineSpec) -> Bool {
+  match s {
+    QuiescentReservedBaseline => true
+    FleetReleasedBaseline => false
+  }
+}

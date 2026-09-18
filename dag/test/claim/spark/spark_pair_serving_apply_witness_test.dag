@@ -16,7 +16,7 @@ import product.capacity.event_chain { HeadAbsent }
 // is exactly what the log folds to when no transition has been recorded. The live read goes over
 // the fleet event log and is exercised by the wet apply, not here.
 fn w_current() -> List<CurrentAuthority> {
-  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0 })
+  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none })
 }
 
 fn w_plan() -> SparkPairApplyPlan {

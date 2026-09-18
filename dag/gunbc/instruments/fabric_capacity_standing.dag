@@ -18,6 +18,7 @@ import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch 
 import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
 import std.resources { Network }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, admit_kv_layout,
 }
@@ -562,7 +563,7 @@ fn capacity_standing_verdict(standings: List<GroupStanding>) -> ProcessExit {
 // could not establish, and it does not fall back to the row.
 fn standing_for_current(c: CurrentAuthority) -> GroupStanding {
   match c {
-    CurrentAuthorityRead { authority: a, head: _, generation: _ } => standing_for_authority(a: a)
+    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _ } => standing_for_authority(a: a)
     CurrentAuthorityUnread { group: g, step: s, reason: why } =>
       refused_standing(text: join([fabric_group_wire(g: g) as String, ": serving authority could not be read at ", s, ": ", why], ""))
   }
@@ -581,6 +582,9 @@ fn fabric_capacity_standing() -> ProcessExit
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["fabric capacity standing: ", c], ""))
     ExecutorReachKnown { short_hostname: executor, path: _ } =>
-      fabric_capacity_standing_current(current: current_pair_serving_authorities(short_hostname: executor))
+      match now_epoch_seconds() {
+        Absent => exit_failure(reason: "fabric capacity standing: the clock could not be read as epoch seconds, so the lease standing of the authority cannot be derived")
+        Present { value: at } => fabric_capacity_standing_current(current: current_pair_serving_authorities(short_hostname: executor, at: at))
+      }
   }
 }

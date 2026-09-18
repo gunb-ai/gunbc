@@ -7,6 +7,7 @@ import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected, LeaseInaccessible }
 import product.capacity.event_chain { ChainEvent, ChainEnvelope, EventId, EventDecoded, EventUndecodable }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
+import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_authority {
   PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet,
   PairRealizationKeyed, PairRealizationUnestablished,
@@ -47,7 +48,7 @@ fn w_all_arms(h: ContentHash) -> List<PairServingGroupAuthority> {
     SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-1" as NonEmptyStr, lease: w_lease(h: h, inaccessible: false) },
     SuspendedForAuthorizedSuccessor {
       group: FabricGroupA, authorization: "auth-1" as NonEmptyStr, exact_candidate_realization: PairRealizationKeyed { key: h },
-      lease: w_lease(h: h, inaccessible: true), cleanup: "baseline" as NonEmptyStr,
+      lease: w_lease(h: h, inaccessible: true), cleanup: QuiescentReservedBaseline,
     },
     FencedRefusal { group: FabricGroupA, cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr },
     ReleasedToFleet { group: FabricGroupA, release_receipt: h },
@@ -60,7 +61,7 @@ fn w_event(previous: PairServingGroupAuthority, next: PairServingGroupAuthority,
     parent: parent,
     recorded_at: 1000,
     actor: "witness" as NonEmptyStr,
-    payload: AuthorityTransitioned { previous: previous, next: next, transaction: "tx-1" as NonEmptyStr },
+    payload: AuthorityTransitioned { previous: previous, next: next, transaction: "tx-1" as NonEmptyStr, grant: none },
   }
 }
 
@@ -70,7 +71,7 @@ fn round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAuthor
     EventUndecodable { reason: _ } => false
     EventDecoded { event: back } =>
       match back.payload {
-        AuthorityTransitioned { previous: p, next: n, transaction: t } =>
+        AuthorityTransitioned { previous: p, next: n, transaction: t, grant: _ } =>
           authority_eq(a: p, b: previous) && authority_eq(a: n, b: next) && (t as String) == "tx-1"
             && back.recorded_at == 1000 && (back.partition as String) == (pair_authority_partition(group: FabricGroupA) as String)
       }
@@ -130,11 +131,11 @@ test fn the_fold_walks_from_the_resting_row_through_each_transition() -> Bool {
     let fenced = FencedRefusal { group: FabricGroupA, cause: "foreign occupant" as NonEmptyStr, disposition_authority: "operator" as NonEmptyStr }
     let chain = [env(id: "e1", e: w_event(previous: resting, next: pending, parent: none)), env(id: "e2", e: w_event(previous: pending, next: fenced, parent: Present { value: "e1" as EventId }))]
     (match authority_fold(resting: resting, oldest_first: [] as List<ChainEnvelope<PairAuthorityEvent>>) {
-       AuthorityFolded { current: c, generation: g } => g == 0 && authority_eq(a: c, b: resting)
+       AuthorityFolded { current: c, generation: g, grant: _ } => g == 0 && authority_eq(a: c, b: resting)
        AuthorityFoldRefused { at_event: _, reason: _ } => false
      })
     && (match authority_fold(resting: resting, oldest_first: chain) {
-          AuthorityFolded { current: c, generation: g } => g == 2 && authority_eq(a: c, b: fenced)
+          AuthorityFolded { current: c, generation: g, grant: _ } => g == 2 && authority_eq(a: c, b: fenced)
           AuthorityFoldRefused { at_event: _, reason: _ } => false
         })
   })
@@ -150,7 +151,7 @@ test fn a_transition_from_a_state_that_was_not_current_refuses_at_that_event() -
     let chain = [env(id: "e1", e: w_event(previous: pending, next: fenced, parent: none))]
     match authority_fold(resting: resting, oldest_first: chain) {
       AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"
-      AuthorityFolded { current: _, generation: _ } => false
+      AuthorityFolded { current: _, generation: _, grant: _ } => false
     }
   })
 }
@@ -162,7 +163,7 @@ test fn a_transition_to_another_groups_authority_refuses() -> Bool {
     let elsewhere = ReleasedToFleet { group: FabricGroupB, release_receipt: h }
     match authority_fold(resting: resting, oldest_first: [env(id: "e1", e: w_event(previous: resting, next: elsewhere, parent: none))]) {
       AuthorityFoldRefused { at_event: e, reason: _ } => (e as String) == "e1"
-      AuthorityFolded { current: _, generation: _ } => false
+      AuthorityFolded { current: _, generation: _, grant: _ } => false
     }
   })
 }

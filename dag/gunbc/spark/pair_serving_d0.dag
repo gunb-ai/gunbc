@@ -1,0 +1,450 @@
+module gunbc.spark.pair_serving_d0
+
+import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
+import std.nat { Nat }
+import v2.std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import std.temporal_effect { HeldLease, LeaseEpoch, held_lease, LeaseRunningExpected }
+import product.capacity.lease { LeaseGrant, LeasePolicy, FencedResource, lease_grant, lease_fence_of }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fabric_event_log_host { HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds }
+import gunbc.fabric_event_log { EventLogLayout }
+import gunbc.host_effect { FleetSsh }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import gunbc.fleet_ssh_locus { fleet_locus_ssh_target, FleetSshContextReady, FleetSshContextRefused, prepare_fleet_ssh_agent_context }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, parse_fabric_group }
+import gunbc.serving.serving_enrollment { ServingRouteResolved, ServingRouteUnresolved, serving_route }
+import gunbc.harness.harness_backend { harness_observe_engine_at }
+import gunbc.spark.vllm_endpoint_process_launch { LaunchObserved, LaunchUnobserved }
+import gunbc.spark.serving_incarnation_observe { UnitOccupancy, UnitInstalled, UnitNotInstalled, UnitOccupancyUnread, read_unit_occupancy, serving_incarnation_refusal_text }
+import gunbc.spark.vllm_serving_launch { DigestsAgree, DigestsDiffer, DigestsIncomparable, digests_agree }
+import gunbc.spark.pair_serving_desired { SparkPairServingUnitReady, SparkPairServingUnitRefused, spark_pair_serving_unit }
+import gunbc.spark.pair_serving_realization { spark_pair_head_unit_name, spark_pair_worker_unit_name }
+import gunbc.spark.pair_incumbent_identity {
+  DeclaredPairRealization, DeclaredRankUnit, DeclaredPairRealizationStanding, DeclaredPairRealizationKeyed, DeclaredPairRealizationUnavailable, declared_pair_realization,
+  observe_pair_realization, PairRealizationAgreement, PairRealizationEstablished, pair_realization_agreement, pair_realization_agreement_lines,
+}
+import gunbc.spark.released_baseline { ReleasedBaselineSpec, QuiescentReservedBaseline }
+import gunbc.spark.pair_serving_authority {
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
+  PairRealizationIdentity, PairRealizationKeyed, PairRealizationUnestablished,
+}
+import gunbc.spark.pair_serving_authority_log {
+  CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority, authority_wire,
+  AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
+}
+
+// ── D0: TAKE THE CLAIM, RECONCILE THE OCCUPANCY, RECORD THE ENTRY STATE ─────────────────────────
+//
+// docs/plans/dsv41-cut-d-redesign.md §D0. The transfer is ATOMIC and lands in an intermediate
+// state that the readings happen INSIDE: PairServingActive moves to
+// SuspensionPendingReconciliation by one compare-and-set on the authority log
+// (gunbc.spark.pair_serving_authority_log), which disables the incumbent's apply and the
+// successor's launch at once; only then is the fleet read; and the answer moves the authority
+// again, to exactly one of SuspendedForAuthorizedSuccessor, PairServingActive or FencedRefusal.
+// An earlier draft observed first and transferred after, which left an interval in which the
+// observation could go stale and two lanes could each believe they held the hosts.
+//
+// THE QUESTIONS ARE ORDERED. First: is a serving incumbent ANSWERING on the enrolled route? If it
+// is, this transaction is not the drain-and-preserve path and does not pretend to be: when the
+// answering realization is exactly the declared one (gunbc.spark.pair_incumbent_identity
+// PairRealizationEstablished) restoration is shown safe and the authority returns to Active --
+// now carrying the EXACT KEY, which is the one place PairRealizationKeyed is minted -- and when it
+// is anything else the group is fenced for an operator. Second, with nothing answering: does the
+// unit population on the four ranks reconcile with the declared realization? DeclaredOccupantObserved
+// (our units, our bytes, all running) and DeclaredOccupantDrifted (our units, not all running or
+// not all our bytes -- THE EXPECTED ANSWER on the readings the redesign records) are both eligible,
+// the drift recorded and never a restoration target; OccupancyUnread fences.
+//
+// WHAT THIS TRANSACTION READS AND WHAT IT DOES NOT, stated because the redesign's fourth answer is
+// not produced here. ForeignOccupantObserved -- a container, process or device allocation we do
+// not declare -- needs a reading of the ranks BEYOND our unit, and this transaction reads only
+// the declared unit's fragment, bytes and activity. So a rank with no pair unit installed cannot
+// be told apart from a rank held by something foreign, and it is reported OccupancyUnread with
+// exactly that cause -- which fences, the disposition foreign occupancy would have reached. Nothing
+// is fabricated; the frontier is the container and device reading, and it is named on the arm.
+//
+// THE ENTRY STATE IS EVIDENCE, NOT A TARGET. The receipt records what was read per rank -- the
+// route's answer, each rank's unit occupancy -- and is total: an unread rank carries its cause
+// rather than forcing a fabricated field. Memory used and free, absence of a serving process
+// beyond the unit, and free disk are named by the redesign and are NOT read here; the receipt
+// says what it holds and a later reader may not infer the rest.
+//
+// TERMINAL: the authority is in exactly one of the three states, the receipt exists at
+// target/pair-serving-d0-receipt.txt, and no host state was altered. This transaction starts and
+// stops nothing on any rank.
+
+// ── THE LEASE ──────────────────────────────────────────────────────────────────────────────────
+//
+// The term is POLICY, declared here and applied at the grant instant (product.capacity.lease).
+// Six hours bounds D1a and D1 together under one authorization; it is a policy number and an
+// author changing it changes what a successor may start, not what it may finish.
+data pair_serving_d0_lease_policy: LeasePolicy = LeasePolicy { maximum_duration_seconds: 21600, release_law: FencedResource }
+
+// The lease as the authority carries it. The epoch names the transaction, the group as the
+// resource and the executor as the owner; the generation is the authority-log generation the
+// pending state lands at, so a stale holder presents a generation the fence rejects.
+fn d0_held_lease(group: FabricGroup, transaction: NonEmptyStr, executor: NonEmptyStr, generation: Nat) -> HeldLease {
+  held_lease(
+    epoch: LeaseEpoch {
+      lease_key: transaction,
+      resource_fingerprint: content_hash_of_value(value: fabric_group_wire(g: group)),
+      owner_fingerprint: content_hash_of_value(value: executor),
+      generation: generation,
+    },
+    observed: LeaseRunningExpected,
+  )
+}
+
+// ── THE READINGS ───────────────────────────────────────────────────────────────────────────────
+
+type RankOccupancyReading {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+  occupancy: UnitOccupancy
+}
+
+type IncumbentReading
+  = IncumbentAnswered { agreement: PairRealizationAgreement }
+  | IncumbentSilent { obligation: NonEmptyStr }
+  | IncumbentRouteUnread { cause: NonEmptyStr }
+
+type D0Observation {
+  group: FabricGroup
+  incumbent: IncumbentReading
+  ranks: List<RankOccupancyReading>
+}
+
+// ── THE RECONCILIATION ─────────────────────────────────────────────────────────────────────────
+
+type OccupancyReconciliation
+  = DeclaredOccupantObserved
+  | DeclaredOccupantDrifted { drifted: List<HostIdentity> }
+  | OccupancyUnread { hosts: List<HostIdentity>, cause: NonEmptyStr }
+
+type RankVerdict
+  = RankConverged
+  | RankDrifted { host: HostIdentity }
+  | RankUnread { host: HostIdentity, cause: NonEmptyStr }
+
+fn rank_verdict(declared: DeclaredRankUnit, ranks: List<RankOccupancyReading>) -> RankVerdict {
+  match first(filter(ranks, r => host_identity_eq(a: r.host, b: declared.host))) {
+    Absent => RankUnread { host: declared.host, cause: "no occupancy reading was taken for this declared rank" as NonEmptyStr }
+    Present { value: r } =>
+      match r.occupancy {
+        UnitOccupancyUnread { refusal: why } => RankUnread { host: declared.host, cause: serving_incarnation_refusal_text(r: why) as NonEmptyStr }
+        UnitNotInstalled =>
+          RankUnread { host: declared.host, cause: "no pair unit is installed on this rank; occupancy beyond the declared unit (containers, device allocations) is not read by this transaction, so an empty rank cannot be told apart from a foreign occupant" as NonEmptyStr }
+        UnitInstalled { active: active, unit_digest: d } =>
+          match digests_agree(left: d, right: declared.digest) {
+            DigestsIncomparable => RankUnread { host: declared.host, cause: "the installed unit's digest and the declared digest are of different hash families" as NonEmptyStr }
+            DigestsDiffer => RankDrifted { host: declared.host }
+            DigestsAgree => if active { RankConverged } else { RankDrifted { host: declared.host } }
+          }
+      }
+  }
+}
+
+fn verdict_unread(v: RankVerdict) -> List<RankVerdict> {
+  match v {
+    RankUnread { host: _, cause: _ } => [v]
+    RankConverged => [] as List<RankVerdict>
+    RankDrifted { host: _ } => [] as List<RankVerdict>
+  }
+}
+
+fn verdict_drifted_host(v: RankVerdict) -> List<HostIdentity> {
+  match v {
+    RankDrifted { host: h } => [h]
+    RankConverged => [] as List<HostIdentity>
+    RankUnread { host: _, cause: _ } => [] as List<HostIdentity>
+  }
+}
+
+fn unread_host(v: RankVerdict) -> List<HostIdentity> {
+  match v {
+    RankUnread { host: h, cause: _ } => [h]
+    RankConverged => [] as List<HostIdentity>
+    RankDrifted { host: _ } => [] as List<HostIdentity>
+  }
+}
+
+fn unread_cause(v: RankVerdict) -> List<String> {
+  match v {
+    RankUnread { host: h, cause: c } => [join([h as String, ": ", c as String], "")]
+    RankConverged => [] as List<String>
+    RankDrifted { host: _ } => [] as List<String>
+  }
+}
+
+// Every declared rank against its reading. One unread rank makes the whole occupancy unread --
+// a pair three-quarters reconciled is not reconciled -- and only with every rank read does drift
+// or convergence get decided. Readings for hosts the declaration does not name are ignored here
+// and kept on the receipt.
+fn reconcile_occupancy(declared: DeclaredPairRealization, ranks: List<RankOccupancyReading>) -> OccupancyReconciliation {
+  let verdicts = map(concat([declared.head], declared.workers), d => rank_verdict(declared: d, ranks: ranks))
+  let unread = flat_map(verdicts, v => verdict_unread(v: v))
+  if length(unread) != 0 {
+    OccupancyUnread { hosts: flat_map(unread, v => unread_host(v: v)), cause: join(flat_map(unread, v => unread_cause(v: v)), "; ") as NonEmptyStr }
+  } else {
+    let drifted = flat_map(verdicts, v => verdict_drifted_host(v: v))
+    if length(drifted) == 0 { DeclaredOccupantObserved } else { DeclaredOccupantDrifted { drifted: drifted } }
+  }
+}
+
+// ── THE DECISION ───────────────────────────────────────────────────────────────────────────────
+
+type D0Cause
+  = D0IncumbentLive { standing: String }
+  | D0OccupancyUnread { cause: NonEmptyStr }
+  | D0DeclarationUnavailable { obligation: NonEmptyStr }
+
+// What the second transition writes, decided from the readings alone.
+type D0Decision
+  = D0DecidedSuspend { next: PairServingGroupAuthority, reconciliation: OccupancyReconciliation }
+  | D0DecidedRestore { next: PairServingGroupAuthority, key: ContentHash }
+  | D0DecidedFence { next: PairServingGroupAuthority, cause: D0Cause }
+
+data d0_disposition_authority: NonEmptyStr = "operator" as NonEmptyStr
+
+fn fence(group: FabricGroup, cause: D0Cause) -> D0Decision {
+  let text = match cause {
+    D0IncumbentLive { standing: s } => join(["a serving incumbent answers on the enrolled route and is not the declared realization: ", s], "")
+    D0OccupancyUnread { cause: c } => join(["occupancy could not be reconciled: ", c as String], "")
+    D0DeclarationUnavailable { obligation: o } => join(["the declared pair realization could not be keyed: ", o as String], "")
+  }
+  D0DecidedFence { next: FencedRefusal { group: group, cause: text as NonEmptyStr, disposition_authority: d0_disposition_authority }, cause: cause }
+}
+
+// THE PURE DECISION over supplied readings. The successor's lease is the one the pending state
+// holds, re-read so its observed state is the read's; the candidate realization is what the
+// caller was authorized for, Unestablished until Cut 0 keys it.
+fn d0_decide(
+  declared: DeclaredPairRealizationStanding,
+  observation: D0Observation,
+  lease: HeldLease,
+  authorization: NonEmptyStr,
+  candidate: PairRealizationIdentity,
+  cleanup: ReleasedBaselineSpec,
+) -> D0Decision {
+  let group = observation.group
+  match declared {
+    DeclaredPairRealizationUnavailable { group: _, obligation: o } => fence(group: group, cause: D0DeclarationUnavailable { obligation: o })
+    DeclaredPairRealizationKeyed { declared: d } =>
+      match observation.incumbent {
+        IncumbentRouteUnread { cause: c } => fence(group: group, cause: D0OccupancyUnread { cause: c })
+        IncumbentAnswered { agreement: a } =>
+          match a {
+            PairRealizationEstablished { key: k, declared: _, observed: _, image: _ } =>
+              D0DecidedRestore { next: PairServingActive { group: group, exact_realization: PairRealizationKeyed { key: k } }, key: k }
+            _ => fence(group: group, cause: D0IncumbentLive { standing: join(pair_realization_agreement_lines(a: a), "; ") })
+          }
+        IncumbentSilent { obligation: _ } =>
+          match reconcile_occupancy(declared: d, ranks: observation.ranks) {
+            OccupancyUnread { hosts: _, cause: c } => fence(group: group, cause: D0OccupancyUnread { cause: c })
+            DeclaredOccupantObserved =>
+              D0DecidedSuspend {
+                next: SuspendedForAuthorizedSuccessor { group: group, authorization: authorization, exact_candidate_realization: candidate, lease: lease, cleanup: cleanup },
+                reconciliation: DeclaredOccupantObserved,
+              }
+            DeclaredOccupantDrifted { drifted: ds } =>
+              D0DecidedSuspend {
+                next: SuspendedForAuthorizedSuccessor { group: group, authorization: authorization, exact_candidate_realization: candidate, lease: lease, cleanup: cleanup },
+                reconciliation: DeclaredOccupantDrifted { drifted: ds },
+              }
+          }
+      }
+  }
+}
+
+fn d0_decision_next(d: D0Decision) -> PairServingGroupAuthority {
+  match d {
+    D0DecidedSuspend { next: n, reconciliation: _ } => n
+    D0DecidedRestore { next: n, key: _ } => n
+    D0DecidedFence { next: n, cause: _ } => n
+  }
+}
+
+fn d0_decision_is_eligible(d: D0Decision) -> Bool {
+  match d {
+    D0DecidedSuspend { next: _, reconciliation: _ } => true
+    D0DecidedRestore { next: _, key: _ } => false
+    D0DecidedFence { next: _, cause: _ } => false
+  }
+}
+
+// ── THE RECEIPT ────────────────────────────────────────────────────────────────────────────────
+
+fn occupancy_line(r: RankOccupancyReading) -> String {
+  let o = match r.occupancy {
+    UnitInstalled { active: a, unit_digest: d } => join(["installed active=", if a { "true" } else { "false" }, " unit=", serialize_content_hash(hash: d) as String], "")
+    UnitNotInstalled => "not-installed"
+    UnitOccupancyUnread { refusal: why } => join(["unread: ", serving_incarnation_refusal_text(r: why)], "")
+  }
+  join(["  rank ", r.host as String, " ", r.unit_name as String, ": ", o], "")
+}
+
+fn incumbent_lines(i: IncumbentReading) -> List<String> {
+  match i {
+    IncumbentAnswered { agreement: a } => concat(["  incumbent answered:"], map(pair_realization_agreement_lines(a: a), l => join(["  ", l], "")))
+    IncumbentSilent { obligation: o } => [join(["  incumbent silent: ", o as String], "")]
+    IncumbentRouteUnread { cause: c } => [join(["  incumbent route unread: ", c as String], "")]
+  }
+}
+
+fn reconciliation_line(r: OccupancyReconciliation) -> String {
+  match r {
+    DeclaredOccupantObserved => "  reconciliation: declared-occupant-observed"
+    DeclaredOccupantDrifted { drifted: ds } => join(["  reconciliation: declared-occupant-drifted ", join(map(ds, h => h as String), ",")], "")
+    OccupancyUnread { hosts: hs, cause: c } => join(["  reconciliation: occupancy-unread ", join(map(hs, h => h as String), ","), ": ", c as String], "")
+  }
+}
+
+fn decision_lines(d: D0Decision) -> List<String> {
+  match d {
+    D0DecidedSuspend { next: n, reconciliation: r } => ["verdict: d0-eligible", reconciliation_line(r: r), join(["  authority: ", authority_wire(a: n)], "")]
+    D0DecidedRestore { next: n, key: k } => ["verdict: d0-refused incumbent-live-restored", join(["  key: ", serialize_content_hash(hash: k) as String], ""), join(["  authority: ", authority_wire(a: n)], "")]
+    D0DecidedFence { next: n, cause: _ } => ["verdict: d0-refused fenced", join(["  authority: ", authority_wire(a: n)], "")]
+  }
+}
+
+fn d0_receipt_body(at: String, transaction: NonEmptyStr, observation: D0Observation, decision: D0Decision, written: String) -> String {
+  join(concat(
+    [join(["pair serving d0 at ", at, " transaction=", transaction as String, " group=", fabric_group_wire(g: observation.group) as String], "")],
+    concat(incumbent_lines(i: observation.incumbent), concat(map(observation.ranks, r => occupancy_line(r: r)), concat(decision_lines(d: decision), [join(["  written: ", written], "")]))),
+  ), "\n")
+}
+
+data pair_serving_d0_receipt_path: String = "target/pair-serving-d0-receipt.txt"
+data pair_serving_d0_attempt_raw: String = "pair-serving-d0"
+
+// ── THE OBSERVATION, OVER THE FLEET ────────────────────────────────────────────────────────────
+
+fn observe_ranks(context: FleetSshExecutionContext, group: FabricGroup) -> List<RankOccupancyReading> {
+  match spark_pair_serving_unit(group: group) {
+    SparkPairServingUnitRefused { group: _, cause: _ } => [] as List<RankOccupancyReading>
+    SparkPairServingUnitReady { group: _, engine: _, head: h, workers: ws } =>
+      concat(
+        [RankOccupancyReading { host: h.host, unit_name: spark_pair_head_unit_name, occupancy: read_unit_occupancy(transport: FleetSsh { target: fleet_locus_ssh_target(host: h.host), context: context }, unit: spark_pair_head_unit_name) }],
+        map(ws, w => RankOccupancyReading { host: w.host, unit_name: spark_pair_worker_unit_name, occupancy: read_unit_occupancy(transport: FleetSsh { target: fleet_locus_ssh_target(host: w.host), context: context }, unit: spark_pair_worker_unit_name) }),
+      )
+  }
+}
+
+fn observe_incumbent(context: FleetSshExecutionContext, group: FabricGroup, declared: DeclaredPairRealizationStanding, at: EpochSecs) -> IncumbentReading {
+  match serving_route(group: group) {
+    ServingRouteUnresolved { group: _, obligation: o } => IncumbentRouteUnread { cause: o }
+    ServingRouteResolved { endpoint: endpoint, ceiling: _ } =>
+      match harness_observe_engine_at(endpoint: endpoint, at: at).launch {
+        LaunchUnobserved { group: _, obligation: o } => IncumbentSilent { obligation: o }
+        LaunchObserved { launch: launch, receipt: _ } =>
+          IncumbentAnswered { agreement: pair_realization_agreement(declared: declared, observed: observe_pair_realization(context: context, group: group, endpoint: launch)) }
+      }
+  }
+}
+
+fn observe_d0(context: FleetSshExecutionContext, group: FabricGroup, declared: DeclaredPairRealizationStanding, at: EpochSecs) -> D0Observation {
+  D0Observation { group: group, incumbent: observe_incumbent(context: context, group: group, declared: declared, at: at), ranks: observe_ranks(context: context, group: group) }
+}
+
+// ── THE TRANSACTION ────────────────────────────────────────────────────────────────────────────
+
+fn refuse(reason: String) -> ProcessExit {
+  exit_failure(reason: join(["pair_serving_d0: ", reason], ""))
+}
+
+// The second transition, decided and written; the receipt records both what was decided and
+// whether the write landed. A stale second write means another lane moved the authority while
+// this transaction was reading, and the authority it left is reported rather than overwritten.
+fn d0_settle(layout: EventLogLayout, group: FabricGroup, pending: PairServingGroupAuthority, decision: D0Decision, grant: LeaseGrant, transaction: NonEmptyStr, executor: NonEmptyStr, at: EpochSecs, observation: D0Observation, now: String) -> ProcessExit {
+  let written = match pair_serving_authority_transition(layout: layout, group: group, expected: pending, next: d0_decision_next(d: decision), transaction: transaction, grant: Present { value: grant }, actor: executor, at: at) {
+    AuthorityTransitionAppended { id: i, generation: g, next: _ } => join(["appended ", i as String, " generation ", to_string(g)], "")
+    AuthorityTransitionStale { expected: _, current: c } => join(["STALE: another transaction moved the authority to ", authority_wire(a: c)], "")
+    AuthorityTransitionRefused { group: _, step: s, reason: why } => join(["REFUSED at ", s, ": ", why], "")
+  }
+  let body = d0_receipt_body(at: now, transaction: transaction, observation: observation, decision: decision, written: written)
+  let wr = Filesystem.Write(path: pair_serving_d0_receipt_path, content: body)
+  if !wr.success {
+    refuse(reason: join(["receipt write failed: ", wr.error], ""))
+  } else if starts_with(s: written, prefix: "appended") && d0_decision_is_eligible(d: decision) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: body)
+  }
+}
+
+// THE ENTRY. Arguments: the group's wire word, the transaction id, the successor authorization.
+//   gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/spark/pair_serving_d0.dag \
+//     --function pair_serving_d0_wet --arg group=group-a --arg transaction=<id> --arg authorization=<id>
+// Exit 0 only on D0Eligible with the suspension written; every other outcome exits non-zero with
+// the receipt body, and the authority is in exactly one written state either way.
+fn pair_serving_d0_wet(group: String, transaction: String, authorization: String) -> ProcessExit
+  uses net: Network
+{
+  let now = probed_at_word(reading: clock_now_probed_at()) as String
+  match parse_fabric_group(wire: group) {
+    Absent => refuse(reason: join(["`", group, "` names no fabric group"], ""))
+    Present { value: g } =>
+      if transaction == "" || authorization == "" {
+        refuse(reason: "transaction and authorization must both be named")
+      } else {
+        let tx = transaction as NonEmptyStr
+        match observe_executor_reach() {
+          ExecutorReachUnknown { cause: c } => refuse(reason: c)
+          ExecutorReachKnown { short_hostname: executor, path: _ } =>
+            match event_log_layout_for_host(short_hostname: executor) {
+              HostLayoutRefused { detail: d } => refuse(reason: d)
+              HostLayoutResolved { layout: layout, executor: _ } =>
+                match now_epoch_seconds() {
+                  Absent => refuse(reason: "the clock could not be read as epoch seconds")
+                  Present { value: at } =>
+                    match current_pair_serving_authority(layout: layout, group: g, at: at) {
+                      CurrentAuthorityUnread { group: _, step: s, reason: why } => refuse(reason: join(["authority unread at ", s, ": ", why], ""))
+                      CurrentAuthorityRead { authority: cur, head: _, generation: gen, grant: _ } =>
+                        match cur {
+                          PairServingActive { group: _, exact_realization: _ } => {
+                            let lease = d0_held_lease(group: g, transaction: tx, executor: executor as NonEmptyStr, generation: gen + 1)
+                            let pending = SuspensionPendingReconciliation { group: g, transaction: tx, lease: lease }
+                            match pair_serving_authority_transition(layout: layout, group: g, expected: cur, next: pending, transaction: tx, grant: none, actor: executor as NonEmptyStr, at: at) {
+                              AuthorityTransitionRefused { group: _, step: s, reason: why } => refuse(reason: join(["the transfer into suspension was refused at ", s, ": ", why], ""))
+                              AuthorityTransitionStale { expected: _, current: c } => refuse(reason: join(["the transfer into suspension was stale; the authority is now ", authority_wire(a: c)], ""))
+                              AuthorityTransitionAppended { id: admitting, generation: pending_gen, next: _ } => {
+                                let grant = lease_grant(reference: tx, fence: lease_fence_of(admitting_event: admitting, generation: pending_gen), granted_at: at, policy: pair_serving_d0_lease_policy)
+                                let declared = declared_pair_realization(group: g)
+                                match prepare_fleet_ssh_agent_context(attempt_raw: pair_serving_d0_attempt_raw) {
+                                  FleetSshContextRefused { cause: c } => {
+                                    let observation = D0Observation { group: g, incumbent: IncumbentRouteUnread { cause: join(["no fleet ssh context: ", c], "") as NonEmptyStr }, ranks: [] as List<RankOccupancyReading> }
+                                    let decision = d0_decide(declared: declared, observation: observation, lease: lease, authorization: authorization as NonEmptyStr, candidate: d0_candidate_realization(), cleanup: QuiescentReservedBaseline)
+                                    d0_settle(layout: layout, group: g, pending: pending, decision: decision, grant: grant, transaction: tx, executor: executor as NonEmptyStr, at: at, observation: observation, now: now)
+                                  }
+                                  FleetSshContextReady { context: context, receipt: _ } => {
+                                    let observation = observe_d0(context: context, group: g, declared: declared, at: at)
+                                    let decision = d0_decide(declared: declared, observation: observation, lease: lease, authorization: authorization as NonEmptyStr, candidate: d0_candidate_realization(), cleanup: QuiescentReservedBaseline)
+                                    d0_settle(layout: layout, group: g, pending: pending, decision: decision, grant: grant, transaction: tx, executor: executor as NonEmptyStr, at: at, observation: observation, now: now)
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          _ => refuse(reason: join(["the authority is not active, so there is nothing to suspend: ", authority_wire(a: cur)], ""))
+                        }
+                    }
+                }
+            }
+        }
+      }
+  }
+}
+
+// THE CANDIDATE IS NOT KEYED YET, AND THE AUTHORIZATION SAYS SO. Cut 0 (candidate artifacts:
+// produced image, closed manifests, four rank-store identities) keys the V4.1 realization; until
+// it lands the successor is authorized against an obligation, and D1 refuses to launch an
+// unestablished candidate.
+fn d0_candidate_realization() -> PairRealizationIdentity {
+  PairRealizationUnestablished { obligation: "the V4.1 candidate realization is keyed by Cut 0 (produced runtime image, closed weight and tokenizer manifests, four rank-store identities); D1 refuses to launch until it is" as NonEmptyStr }
+}

@@ -1,6 +1,7 @@
 module gunbc.spark.pair_serving_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath, EpochSecs }
+import gunbc.fabric_event_log_host { now_epoch_seconds }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -209,7 +210,7 @@ fn spark_pair_apply_plan_current(r: SparkPairRealization, current: List<CurrentA
       match c {
         CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
           SparkPairApplyRefused { cause: join(["the serving authority could not be read, so nothing is converged: ", current_authority_wire(c: c)], "") }
-        CurrentAuthorityRead { authority: a, head: _, generation: _ } =>
+        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _ } =>
           spark_pair_apply_plan_under(r: r, authority: Present { value: a })
       }
   }
@@ -229,8 +230,8 @@ fn spark_pair_apply_plans_current(current: List<CurrentAuthority>) -> List<Spark
   map(spark_pair_realizations(), r => spark_pair_apply_plan_current(r: r, current: current))
 }
 
-fn spark_pair_apply_plans(executor: String) -> List<SparkPairApplyPlan> {
-  spark_pair_apply_plans_current(current: current_pair_serving_authorities(short_hostname: executor))
+fn spark_pair_apply_plans(executor: String, at: EpochSecs) -> List<SparkPairApplyPlan> {
+  spark_pair_apply_plans_current(current: current_pair_serving_authorities(short_hostname: executor, at: at))
 }
 
 fn spark_pair_apply_plan_refusals(plans: List<SparkPairApplyPlan>) -> List<String> {
@@ -317,7 +318,10 @@ fn spark_pair_serving_apply_wet() -> ProcessExit
   match observe_executor_reach() {
     ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["spark_pair_serving_apply: ", c], ""))
     ExecutorReachKnown { short_hostname: executor, path: path } => {
-      let plans = spark_pair_apply_plans(executor: executor)
+      match now_epoch_seconds() {
+        Absent => exit_failure(reason: "spark_pair_serving_apply: the clock could not be read as epoch seconds, so the lease standing of the authority cannot be derived")
+        Present { value: at } => {
+      let plans = spark_pair_apply_plans(executor: executor, at: at)
       let refusals = spark_pair_apply_plan_refusals(plans: plans)
       if length(plans) == 0 {
         exit_failure(reason: "spark_pair_serving_apply: no group is promoted to pair serving")
@@ -371,5 +375,7 @@ fn spark_pair_serving_apply_wet() -> ProcessExit
           }
     }
   }
+}
+}
 }
 }
