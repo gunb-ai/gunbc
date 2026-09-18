@@ -16,7 +16,7 @@ import gunbc.auth.approval_request_submission {
   sign_submission, submission_envelope_json, parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
   admit_parsed_submission, SubmissionVerdict, SubmissionVerified, SubmissionNotAdmitted, SubmissionUnreadable, SubmissionKeyUnavailable, SubmissionNotEnrolled,
   issue_links, LinksIssued, LinksNotIssued, approval_message, escalation_status, escalation_status_of,
-  notify_filed, occupied_slot_renotifiable, PublisherTokenLoaded, SubmissionFiledCapabilityKeyUnavailable, SubmissionFiledAndNotified, SubmissionFiledPublisherTokenUnavailable, PublisherTokenUnavailable,
+  notify_filed, occupied_slot_standing, OccupiedRenotifiable, OccupiedConflict, OccupiedUnreadable, PublisherTokenLoaded, SubmissionFiledCapabilityKeyUnavailable, SubmissionFiledAndNotified, SubmissionFiledPublisherTokenUnavailable, PublisherTokenUnavailable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -181,9 +181,10 @@ test fn a_filed_request_with_a_publisher_token_is_published_and_without_one_is_r
     }
 }
 
-// A FAILED NOTIFY IS RETRIED BY RESUBMITTING: the occupied slot is re-notifiable only while it is
-// pending and holds exactly these bytes. A decided slot and a pending slot for a different request
-// stay 409, and an absent slot is never "occupied".
+// A FAILED NOTIFY IS RETRIED BY RESUBMITTING: an occupied slot re-notifies only while pending with
+// exactly these bytes; a decided slot or a pending slot for other bytes is a conflict; an
+// unreadable slot -- or one that reads absent after the write said occupied -- is the store's own
+// refusal and never a conflict that would tell the filer its request is on file.
 test fn an_occupied_slot_is_renotifiable_only_while_pending_with_the_same_bytes() -> Bool {
   let same = request()
   let other = StoredApprovalRequest {
@@ -197,10 +198,11 @@ test fn an_occupied_slot_is_renotifiable_only_while_pending_with_the_same_bytes(
     expires_at: "2026-09-17T20:00:00Z",
     key_id: approval_mac_key_id,
   }
-  occupied_slot_renotifiable(slot: EscalationPending { request: same }, request: request())
-    && !occupied_slot_renotifiable(slot: EscalationPending { request: other }, request: request())
-    && !occupied_slot_renotifiable(slot: EscalationNotFiled, request: request())
-    && !occupied_slot_renotifiable(slot: EscalationDecided { decision: BrokerDenied { escalation_id: "esc-mtc1-boot-1", revision: "sha256:abababababababababababababababababababababababababababababababab", decided_by: "briansrls@gmail.com", decided_at: "2026-09-16T21:00:00Z", reason: "no" } }, request: request())
+  match occupied_slot_standing(slot: EscalationPending { request: same }, request: request()) { OccupiedRenotifiable => true  _ => false }
+    && match occupied_slot_standing(slot: EscalationPending { request: other }, request: request()) { OccupiedConflict => true  _ => false }
+    && match occupied_slot_standing(slot: EscalationDecided { decision: BrokerDenied { escalation_id: "esc-mtc1-boot-1", revision: "sha256:abababababababababababababababababababababababababababababababab", decided_by: "briansrls@gmail.com", decided_at: "2026-09-16T21:00:00Z", reason: "no" } }, request: request()) { OccupiedConflict => true  _ => false }
+    && match occupied_slot_standing(slot: EscalationUnreadable { detail: "gen1 unreadable" }, request: request()) { OccupiedUnreadable { detail: _ } => true  _ => false }
+    && match occupied_slot_standing(slot: EscalationNotFiled, request: request()) { OccupiedUnreadable { detail: _ } => true  _ => false }
 }
 
 // A CAPABILITY-KEY REFUSAL AFTER THE WRITE STILL SAYS WHICH ESCALATION WAS FILED, like every other

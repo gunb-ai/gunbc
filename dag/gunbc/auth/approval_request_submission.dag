@@ -313,11 +313,23 @@ fn notify_filed(
   }
 }
 
-// AN OCCUPIED SLOT IS RE-NOTIFIABLE ONLY WHILE PENDING AND ONLY FOR THE SAME BYTES.
-fn occupied_slot_renotifiable(slot: EscalationSlot, request: StoredApprovalRequest) -> Bool {
+// AN OCCUPIED SLOT IS ONE OF FOUR ANSWERS, NONE COLLAPSED (review 67404): pending with the same
+// bytes re-notifies; pending with other bytes or already decided is a conflict; a slot the store
+// could not read is the store's refusal, on the 503 channel, never a 409 that would tell the filer
+// its request is safely on file; and not-filed after StoreSlotOccupied is a store that changed
+// under the write, also a refusal.
+type OccupiedSlotStanding
+  = OccupiedRenotifiable
+  | OccupiedConflict
+  | OccupiedUnreadable { detail: NonEmptyStr }
+
+fn occupied_slot_standing(slot: EscalationSlot, request: StoredApprovalRequest) -> OccupiedSlotStanding {
   match slot {
-    EscalationPending { request: stored } => stored_request_json(r: stored) == stored_request_json(r: request)
-    _ => false
+    EscalationPending { request: stored } =>
+      if stored_request_json(r: stored) == stored_request_json(r: request) { OccupiedRenotifiable } else { OccupiedConflict }
+    EscalationDecided { decision: _ } => OccupiedConflict
+    EscalationUnreadable { detail: d } => OccupiedUnreadable { detail: d }
+    EscalationNotFiled => OccupiedUnreadable { detail: "the slot was occupied at the write and absent at the read that followed" }
   }
 }
 
@@ -329,10 +341,10 @@ fn file_and_notify(
 ) -> SubmissionOutcome {
   match file_approval_request(root: root, request: request) {
     StoreSlotOccupied =>
-      if occupied_slot_renotifiable(slot: observe_escalation(root: root, escalation_id: request.escalation_id), request: request) {
-        notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request)
-      } else {
-        SubmissionAlreadyFiled { escalation_id: request.escalation_id }
+      match occupied_slot_standing(slot: observe_escalation(root: root, escalation_id: request.escalation_id), request: request) {
+        OccupiedRenotifiable => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request)
+        OccupiedConflict => SubmissionAlreadyFiled { escalation_id: request.escalation_id }
+        OccupiedUnreadable { detail: d } => SubmissionStoreRefused { detail: d }
       }
     StoreRefused { detail: d } => SubmissionStoreRefused { detail: d }
     StoreWritten => notify_filed(capability_keyring: capability_keyring, publisher: publisher, request: request)
