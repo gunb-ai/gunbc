@@ -782,9 +782,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_rerun_resumes_its_own_pending_state_and_refuses_anothers_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
-      function: "a_rerun_resumes_its_own_pending_state_and_refuses_anothers_by_real_execution",
+      function: "a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -803,6 +803,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_fence_and_a_restore_each_reach_their_terminal_by_real_execution" },
       entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
       function: "a_fence_and_a_restore_each_reach_their_terminal_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_d0_real_execution", function: "a_seat_granted_after_the_suspension_landed_is_released_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_d0_real_execution_witness_test.dag",
+      function: "a_seat_granted_after_the_suspension_landed_is_released_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

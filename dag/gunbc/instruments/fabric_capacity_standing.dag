@@ -563,7 +563,7 @@ fn capacity_standing_verdict(standings: List<GroupStanding>) -> ProcessExit {
 // could not establish, and it does not fall back to the row.
 fn standing_for_current(c: CurrentAuthority) -> GroupStanding {
   match c {
-    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _ } => standing_for_authority(a: a)
+    CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } => standing_for_authority(a: a)
     CurrentAuthorityUnread { group: g, step: s, reason: why } =>
       refused_standing(text: join([fabric_group_wire(g: g) as String, ": serving authority could not be read at ", s, ": ", why], ""))
   }

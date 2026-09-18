@@ -277,11 +277,20 @@ fn parse_content_hash_candidate(wire: String) -> ContentHash? {
           Present { value: d } => Present { value: as_content_hash_sha512(digest: d) }
         }
     }
+  } else if content_hash_validate_lower_hex_length(text: wire, expected_hex_digits: 40) {
+    match sha1_hex_digest(hex: wire) {
+      Absent => none
+      Present { value: d } => Present { value: as_content_hash_sha1(digest: d) }
+    }
   } else {
     content_hash_from_structural_digest(digest: wire)
   }
 }
 
+// RAW HEX IS TWO FAMILIES ON THE WIRE, TOLD APART BY LENGTH. serialize_content_hash writes a
+// Sha1Hash and a Fnv1a64 both as bare hex -- forty digits and sixteen -- so the inverse reads
+// forty as SHA-1 (a git object id is one) and sixteen as the structural fingerprint; the
+// round-trip check below is what makes a wrong length a refusal rather than a guess.
 fn parse_content_hash(wire: String) -> ContentHash? {
   match parse_content_hash_candidate(wire: wire) {
     Absent => none

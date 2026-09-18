@@ -16,7 +16,7 @@ import product.capacity.event_chain { HeadAbsent }
 // is exactly what the log folds to when no transition has been recorded. The live read of the log
 // is executed by test.claim.spark.spark_pair_serving_apply_wet_witness on the local-repo wet lane.
 fn w_current() -> List<CurrentAuthority> {
-  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none })
+  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none })
 }
 
 fn w_plan() -> SparkPairApplyPlan {

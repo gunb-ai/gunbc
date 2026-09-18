@@ -71,6 +71,18 @@ fn harness_bounded_get(url: String) -> HarnessBoundedRead {
   HarnessBoundedRead { body: read.body, success: read.success }
 }
 
+// PRESENCE, NOT CONTENT: whether ANY HTTP response came back within the front-door bound, and
+// with what status. Consumed by the Cut D D0 incumbent question, for which a 401 or a 500 is an
+// incumbent that answered and -f's failure would have read as absence.
+type HarnessBoundedPresence
+  = HarnessResponded { status: String }
+  | HarnessNoResponse { url: String }
+
+fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
+  let read = http.Client.StatusWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
+  if read.success { HarnessResponded { status: trim(s: read.status) } } else { HarnessNoResponse { url: url } }
+}
+
 type HarnessBoundedRead {
   body: String
   success: Bool

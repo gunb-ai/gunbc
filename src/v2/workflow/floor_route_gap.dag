@@ -935,7 +935,7 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.the_production_route_settles_and_the_lease_governs_launch_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_rerun_resumes_its_own_pending_state_and_refuses_anothers_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.fabric_capacity_standing_wet_witness.the_live_entry_reads_the_authority_before_judging_and_refuses_off_fleet", operation: "RunArgv", ground: NoMockResponse {} },
     tail: Cons {
@@ -943,10 +943,13 @@ fn floor_route_gap_expectation_chunk_08() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_fence_and_a_restore_each_reach_their_terminal_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.pair_serving_d0_real_execution.a_seat_granted_after_the_suspension_landed_is_released_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.devboot_text_blob_real_execution.a_lease_claim_is_stored_as_exactly_its_bytes_in_the_bare_store_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.devboot_text_blob_real_execution.a_staged_entry_is_stored_as_exactly_its_bytes_in_the_worktree_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
   }

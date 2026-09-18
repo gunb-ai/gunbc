@@ -396,8 +396,15 @@ fn authorize<Subject>(
 // The claim slot is keyed by escalation id, so every attempt that could claim one grant addresses
 // exactly one slot. Keying it by attempt instead would give each racer its own slot and exclude
 // nothing, which is the shape of the race rather than its resolution.
+//
+// THE KEY IS ONE PATH SEGMENT. The realization (gunbc.durable_cas_file_store) admits only a
+// slot-addressable key -- no "/" -- because a slot is one file under the root and a separator
+// would name a directory nobody created. The earlier spelling `scoped-authorization/<id>` was
+// refused by that wall on every claim, so no consumer had ever taken a claim through it; the
+// first executed claim (gunbc.spark.pair_serving_d0) found it. An escalation id is itself
+// admitted only if it is a segment, which the file store decides, not this fn.
 fn authorization_claim_key(escalation_id: NonEmptyStr) -> NonEmptyStr {
-  concat("scoped-authorization/", escalation_id as String) as NonEmptyStr
+  concat("scoped-authorization--", escalation_id as String) as NonEmptyStr
 }
 
 // THE SLOT HOLDS WHAT THE STORE HOLDS. std.durable_compare_and_set's realization

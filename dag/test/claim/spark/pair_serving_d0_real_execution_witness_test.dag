@@ -7,11 +7,20 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.git.plumbing
 import extdeps.git.plumbing { GitWorktreeAt }
-import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
+import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, serialize_content_hash }
 import std.scoped_authorization { OperatorGrant, ScopedAuthorization, AuthorizationGranted, Unclaimed, AuthorizationScope, AttemptIdentity }
 import std.effect_grant { Write, NamespacePosition, CodeNameTree }
-import gunbc.harness.harness_seat { SeatAuthorityGate, SeatAuthorityUngoverned, SeatAuthorityAdmits, SeatAuthorityRefuses, harness_seat_authority_gate }
-import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
+import gunbc.harness.harness_seat {
+  SeatAuthorityGate, SeatAuthorityUngoverned, SeatAuthorityAdmits, SeatAuthorityRefuses, harness_seat_authority_gate,
+  SeatAfterGrant, SeatStillAdmitted, SeatReleasedAuthorityMoved, SeatUnreleasedAuthorityMoved, harness_seat_after_grant_authority, harness_seat_pool_root,
+}
+import product.capacity.lease { LeasePolicy, QuiescenceRequired }
+import product.capacity.pool_events { SeatRequest }
+import gunbc.fabric_event_log {
+  RemoteLocalPath, EventLogLayout, event_log_layout,
+  SeatGranted, fabric_seat_acquire, SeatRoomObserved, fabric_seat_observe,
+  PartitionReadOk, event_log_read_partition_with,
+}
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import product.fabric.demand { ObservationReceiptRef }
 import gunbc.spark.serving_incarnation_observe { UnitInstalled, UnitNotInstalled }
@@ -23,17 +32,20 @@ import gunbc.spark.pair_incumbent_identity {
 }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
 import gunbc.spark.pair_serving_authority {
-  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal,
+  PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, PairRealizationKeyed,
   pair_serving_authority_for, pair_serving_successor_may_launch, pair_serving_may_finish,
 }
 import gunbc.spark.pair_serving_authority_log {
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
   AuthorityTransitionAppended, pair_serving_authority_transition, authority_eq,
+  PairAuthorityEvent, EntryStateRecorded, pair_authority_partition, pair_authority_event_decode,
 }
+import product.capacity.event_chain { PartitionId, ChainWalked }
 import gunbc.spark.pair_serving_d0 {
   D0Subject, RankOccupancyReading, IncumbentDidNotAnswer, IncumbentAnswered, D0Observation,
   D0Outcome, D0Settled, D0Refused, D0Decision, D0DecidedSuspend, D0DecidedRestore, D0DecidedFence, DeclaredOccupantDrifted, d0_transaction, d0_held_lease,
-  AdmittedD0Grant, D0GrantAdmitted, admit_d0_grant, d0_intent_hash, d0_authorized_action,
+  D0GrantAdmission,
+  AdmittedD0Grant, D0GrantAdmitted, D0GrantClaimLost, admit_d0_grant, resume_d0_grant, d0_intent_hash, d0_authorized_action,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -94,10 +106,32 @@ fn d0r_w_authorization(successor: ContentHash, tx: NonEmptyStr, escalation: NonE
   }
 }
 
-fn d0r_w_admitted(successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> AdmittedD0Grant? {
-  match admit_d0_grant(authorization: d0r_w_authorization(successor: successor, tx: tx, escalation: escalation), escalation_id: escalation, group: FabricGroupA, transaction: tx, executor: executor, at: "2026-09-18T00:00:00Z") {
+// The claim store for a scenario: a directory under the scenario's temp dir, so each scenario's
+// grants start unclaimed and the same escalation can be claimed once per scenario.
+fn d0r_claim_root(dir: FilePath) -> NonEmptyStr {
+  dir as String as NonEmptyStr
+}
+
+// START: permission decided and the claim TAKEN, against the scenario's store.
+fn d0r_w_admitted(dir: FilePath, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> AdmittedD0Grant? {
+  match admit_d0_grant(authorization: d0r_w_authorization(successor: successor, tx: tx, escalation: escalation), escalation_id: escalation, group: FabricGroupA, transaction: tx, executor: executor, claim_root: d0r_claim_root(dir: dir), at: "2026-09-18T00:00:00Z") {
     D0GrantAdmitted { admitted: a } => Present { value: a }
     _ => none
+  }
+}
+
+// RESUME: the claim found held by this attempt; permission is not re-decided.
+fn d0r_w_resumed(dir: FilePath, successor: ContentHash, tx: NonEmptyStr, escalation: NonEmptyStr, executor: NonEmptyStr) -> AdmittedD0Grant? {
+  match resume_d0_grant(authorization: d0r_w_authorization(successor: successor, tx: tx, escalation: escalation), escalation_id: escalation, group: FabricGroupA, transaction: tx, executor: executor, claim_root: d0r_claim_root(dir: dir)) {
+    D0GrantAdmitted { admitted: a } => Present { value: a }
+    _ => none
+  }
+}
+
+fn d0r_claim_is_lost(a: D0GrantAdmission) -> Bool {
+  match a {
+    D0GrantClaimLost { holder: _ } => true
+    _ => false
   }
 }
 
@@ -134,7 +168,7 @@ fn d0r_seat_gate_is(g: SeatAuthorityGate, admits: Bool) -> Bool {
 
 fn d0r_read_is_suspended_at(c: CurrentAuthority, generation: Int, entry_state: ContentHash, launch: Bool) -> Bool {
   match c {
-    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: gr, entry_state: es } =>
+    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: gr, entry_state: es, previous: _, admitted_by: _ } =>
       g == generation
         && (match a { SuspendedForAuthorizedSuccessor { group: _, authorization: au, exact_candidate_realization: _, lease: _, cleanup: QuiescentReservedBaseline } => (au as String) == "esc-d0-witness"  _ => false })
         && (match gr { Present { value: _ } => true  Absent => false })
@@ -142,6 +176,17 @@ fn d0r_read_is_suspended_at(c: CurrentAuthority, generation: Int, entry_state: C
         && pair_serving_successor_may_launch(a: a) == launch
         && pair_serving_may_finish(a: a)
     CurrentAuthorityUnread { group: _, step: _, reason: _ } => false
+  }
+}
+
+// THE RECEIPT IS ON THE LOG: the settling event names a content hash that is the id of an
+// EntryStateRecorded event on the same partition, and that event carries the receipt's bytes.
+fn d0r_entry_state_is_on_the_log(layout: EventLogLayout, entry_state: ContentHash) -> Bool {
+  match event_log_read_partition_with(layout: layout, partition: pair_authority_partition(group: FabricGroupA), budget: 64, decode: fn(text) { pair_authority_event_decode(text: text) }) {
+    PartitionReadOk { head: _, walk: ChainWalked { oldest_first: envs } } =>
+      any(envs, env => (env.id as String) == (serialize_content_hash(hash: entry_state) as String)
+        && (match env.event.payload { EntryStateRecorded { transaction: t, body: b } => (t as String) == "tx-d0" && b != ""  _ => false }))
+    _ => false
   }
 }
 
@@ -158,7 +203,7 @@ test fn the_production_route_settles_and_the_lease_governs_launch_by_real_execut
   d0r_with_hash(scenario: fn(h) {
     d0r_with_temp_dir(scenario: fn(dir) {
       let layout = d0r_witness_layout(dir: dir)
-      match d0r_w_admitted(successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+      match d0r_w_admitted(dir: dir, successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
         Absent => false
         Present { value: admitted } =>
       d0r_witness_remote_ready(dir: dir)
@@ -171,11 +216,11 @@ test fn the_production_route_settles_and_the_lease_governs_launch_by_real_execut
                   && d0r_seat_gate_is(g: harness_seat_authority_gate(layout: layout, group: FabricGroupA, now: 1000), admits: false)
                   && d0r_read_is_suspended_at(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500), generation: 2, entry_state: es, launch: false)
                   && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2500) {
-                        CurrentAuthorityRead { authority: expired, head: _, generation: _, grant: _, entry_state: _ } =>
+                        CurrentAuthorityRead { authority: expired, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } =>
                           match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: expired, next: FencedRefusal { group: FabricGroupA, cause: "witness cleanup" as NonEmptyStr, disposition_authority: "witness" as NonEmptyStr }, transaction: "tx-d0" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 2500) {
                             AuthorityTransitionAppended { id: _, generation: g3, next: _ } =>
                               g3 == 3 && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 2600) {
-                                CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: _, disposition_authority: _ }, head: _, generation: g4, grant: _, entry_state: _ } => g4 == 3
+                                CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: _, disposition_authority: _ }, head: _, generation: g4, grant: _, entry_state: _, previous: _, admitted_by: _ } => g4 == 3
                                 _ => false
                               })
                             _ => false
@@ -188,34 +233,43 @@ test fn the_production_route_settles_and_the_lease_governs_launch_by_real_execut
   })
 }
 
-// CRASH AFTER THE FIRST WRITE. The pending state is written by the production transition under
-// tx-d0 and this grant's binding (exactly what d0_transaction writes first), the process is gone;
-// a rerun under tx-other is refused, a rerun under tx-d0 but ANOTHER admitted grant (a different
-// escalation, so a different binding) is refused, nothing moved, and a rerun under tx-d0 with the
-// same grant settles from pending at generation 2.
-test fn a_rerun_resumes_its_own_pending_state_and_refuses_anothers_by_real_execution() -> Bool {
+// CRASH AFTER THE FIRST WRITE, FROM A NON-RESTING ACTIVE. The authority is first moved to
+// Active(Keyed K) -- not the resting row -- then the pending state is written by the production
+// transition under tx-d0 and this grant's binding (exactly what d0_transaction writes first), and
+// the process is gone. Then: a rerun under tx-other is refused; a rerun under tx-d0 but ANOTHER
+// admitted grant (a different escalation, so a different binding) is refused; a second START under
+// the same escalation and transaction finds the grant already claimed (the consent was consumed
+// once); nothing moved; and a RESUME under tx-d0 -- the claim found held, permission not
+// re-decided -- finds a live declared incumbent and restores EXACTLY Active(Keyed K), not the
+// resting row.
+test fn a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_real_execution() -> Bool {
   d0r_with_hash(scenario: fn(h) {
     d0r_with_temp_dir(scenario: fn(dir) {
       let layout = d0r_witness_layout(dir: dir)
       match pair_serving_authority_for(group: FabricGroupA) {
         Absent => false
         Present { value: resting } => {
-          match d0r_w_admitted(successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+          let keyed = PairServingActive { group: FabricGroupA, exact_realization: PairRealizationKeyed { key: h } }
+          match d0r_w_admitted(dir: dir, successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
             Absent => false
             Present { value: admitted } =>
-          match d0r_w_admitted(successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-another-decision" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+          match d0r_w_admitted(dir: dir, successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-another-decision" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
             Absent => false
             Present { value: other_grant_same_tx } =>
-          match d0r_w_admitted(successor: h, tx: "tx-other" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+          match d0r_w_admitted(dir: dir, successor: h, tx: "tx-other" as NonEmptyStr, escalation: "esc-third-decision" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
             Absent => false
             Present { value: other_tx } => {
           let pending = SuspensionPendingReconciliation {
             group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, authorization_binding: admitted.binding,
-            lease: d0_held_lease(group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 1),
+            lease: d0_held_lease(group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 2),
           }
           d0r_witness_remote_ready(dir: dir)
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: pending, transaction: "tx-d0" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: keyed, transaction: "tx-operator-keyed" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 999) {
                   AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1
+                  _ => false
+                })
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: keyed, next: pending, transaction: "tx-d0" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
+                  AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2
                   _ => false
                 })
             && (match d0_transaction(layout: layout, group: FabricGroupA, admitted: other_tx, transaction: "tx-other" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1001, now: "2026-09-18T00:00:01Z", observe: fn(g) { d0r_w_observe(group: g) }) {
@@ -226,19 +280,69 @@ test fn a_rerun_resumes_its_own_pending_state_and_refuses_anothers_by_real_execu
                   D0Refused { cause: _ } => true
                   D0Settled { decision: _, generation: _, receipt_path: _, entry_state: _ } => false
                 })
+            && d0r_claim_is_lost(a: admit_d0_grant(authorization: d0r_w_authorization(successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr), escalation_id: "esc-d0-witness" as NonEmptyStr, group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, claim_root: d0r_claim_root(dir: dir), at: "2026-09-18T00:00:01Z"))
             && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001) {
-                  CurrentAuthorityRead { authority: SuspensionPendingReconciliation { group: _, transaction: t, authorization_binding: _, lease: _ }, head: _, generation: g1, grant: _, entry_state: _ } => (t as String) == "tx-d0" && g1 == 1
+                  CurrentAuthorityRead { authority: SuspensionPendingReconciliation { group: _, transaction: t, authorization_binding: _, lease: _ }, head: _, generation: g1, grant: _, entry_state: _, previous: _, admitted_by: _ } => (t as String) == "tx-d0" && g1 == 2
                   _ => false
                 })
-            && (match d0r_settled_eligible(o: d0_transaction(layout: layout, group: FabricGroupA, admitted: admitted, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { d0r_w_observe(group: g) })) {
+            && (match d0r_w_resumed(dir: dir, successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
                   Absent => false
-                  Present { value: es } => d0r_read_is_suspended_at(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1002), generation: 2, entry_state: es, launch: true)
+                  Present { value: resumed } =>
+                    (match d0_transaction(layout: layout, group: FabricGroupA, admitted: resumed, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1002, now: "2026-09-18T00:00:02Z", observe: fn(g) { d0r_w_observe_live_declared(group: g) }) {
+                       D0Settled { decision: D0DecidedRestore { next: _, key: _ }, generation: g3, receipt_path: _, entry_state: _ } => g3 == 3
+                       _ => false
+                     })
+                    && d0r_read_authority_at(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1002), expected: keyed, generation: 3)
                 })
             }
           }
           }
           }
         }
+      }
+    })
+  })
+}
+
+// THE SEAT WALL AT ITS LINEARIZATION POINT. A seat attempt reads the authority (Active: admits),
+// the D0 transaction lands its first write, and THEN the seat's compare-and-set runs on its own
+// partition and is granted -- the interleaving the pre-check cannot settle. The post-grant read
+// (harness_seat_after_grant_authority, the seam harness_fence_grant runs first) finds the
+// authority moved, releases the seat on its partition, and no binding is returned; the seat
+// partition folds back to its full room. No unaccounted seat remains.
+test fn a_seat_granted_after_the_suspension_landed_is_released_by_real_execution() -> Bool {
+  d0r_with_hash(scenario: fn(h) {
+    d0r_with_temp_dir(scenario: fn(dir) {
+      let layout = d0r_witness_layout(dir: dir)
+      let partition = "witness-group-a-seat" as PartitionId
+      let ceiling = 1
+      let root = harness_seat_pool_root(partition: partition, ceiling: ceiling)
+      let policy = LeasePolicy { maximum_duration_seconds: 300, release_law: QuiescenceRequired }
+      match pair_serving_authority_for(group: FabricGroupA) {
+        Absent => false
+        Present { value: resting } =>
+      match d0r_w_admitted(dir: dir, successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+        Absent => false
+        Present { value: admitted } =>
+          d0r_witness_remote_ready(dir: dir)
+            && d0r_seat_gate_is(g: harness_seat_authority_gate(layout: layout, group: FabricGroupA, now: 1000), admits: true)
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: SuspensionPendingReconciliation { group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, authorization_binding: admitted.binding, lease: d0_held_lease(group: FabricGroupA, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, generation: 1) }, transaction: "tx-d0" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) {
+                  AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1
+                  _ => false
+                })
+            && (match fabric_seat_acquire(layout: layout, partition: partition, root: root, actor: "witness" as NonEmptyStr, request: SeatRequest { reference: "witness-seat-1" as NonEmptyStr, amount: 1, at: 1001, term_seconds: 300 }, policy: policy, attempts: 3, budget: 64) {
+                  SeatGranted { grant: g, generation: _, attempts_used: _ } =>
+                    (match harness_seat_after_grant_authority(layout: layout, group: FabricGroupA, partition: partition, ceiling: ceiling, grant: g, now: 1001) {
+                       SeatReleasedAuthorityMoved { cause: _ } => true
+                       _ => false
+                     })
+                    && (match fabric_seat_observe(layout: layout, partition: partition, root: root, at: 1002, budget: 64) {
+                          SeatRoomObserved { headroom: room, generation: _ } => room == ceiling
+                          _ => false
+                        })
+                  _ => false
+                })
+      }
       }
     })
   })
@@ -276,7 +380,7 @@ fn d0r_w_observe_live_declared(group: FabricGroup) -> D0Observation {
 
 fn d0r_read_authority_at(c: CurrentAuthority, expected: PairServingGroupAuthority, generation: Int) -> Bool {
   match c {
-    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: gr, entry_state: es } =>
+    CurrentAuthorityRead { authority: a, head: _, generation: g, grant: gr, entry_state: es, previous: _, admitted_by: _ } =>
       g == generation && authority_eq(a: a, b: expected)
         && (match gr { Absent => true  Present { value: _ } => false })
         && (match es { Present { value: _ } => true  Absent => false })
@@ -284,7 +388,8 @@ fn d0r_read_authority_at(c: CurrentAuthority, expected: PairServingGroupAuthorit
   }
 }
 
-// THE OTHER TWO TERMINALS ARE REACHED. An unread rank fences: the authority lands on FencedRefusal
+// THE OTHER TWO TERMINALS ARE REACHED. Two operator decisions, one per transaction -- a claimed
+// grant is consumed by its transaction, so the restore needs its own. An unread rank fences: the authority lands on FencedRefusal
 // at generation 2 with no grant and the receipt digest on the event, and the seat gate refuses. A
 // live declared incumbent restores: the authority lands back on the resting Active state,
 // unchanged (no keyed mint), at generation 2, and the seat gate admits again.
@@ -295,10 +400,10 @@ test fn a_fence_and_a_restore_each_reach_their_terminal_by_real_execution() -> B
       match pair_serving_authority_for(group: FabricGroupA) {
         Absent => false
         Present { value: resting } =>
-      match d0r_w_admitted(successor: h, tx: "tx-fence" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+      match d0r_w_admitted(dir: dir, successor: h, tx: "tx-fence" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
         Absent => false
         Present { value: fence_grant } =>
-      match d0r_w_admitted(successor: h, tx: "tx-restore" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
+      match d0r_w_admitted(dir: dir, successor: h, tx: "tx-restore" as NonEmptyStr, escalation: "esc-d0-restore" as NonEmptyStr, executor: "witness" as NonEmptyStr) {
         Absent => false
         Present { value: restore_grant } =>
           d0r_witness_remote_ready(dir: dir)
@@ -307,12 +412,12 @@ test fn a_fence_and_a_restore_each_reach_their_terminal_by_real_execution() -> B
                   _ => false
                 })
             && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000) {
-                  CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: _, disposition_authority: _ }, head: _, generation: g, grant: Absent, entry_state: Present { value: _ } } => g == 2
+                  CurrentAuthorityRead { authority: FencedRefusal { group: _, cause: _, disposition_authority: _ }, head: _, generation: g, grant: Absent, entry_state: Present { value: _ }, previous: _, admitted_by: _ } => g == 2
                   _ => false
                 })
             && d0r_seat_gate_is(g: harness_seat_authority_gate(layout: layout, group: FabricGroupA, now: 1000), admits: false)
             && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1000) {
-                  CurrentAuthorityRead { authority: fenced, head: _, generation: _, grant: _, entry_state: _ } =>
+                  CurrentAuthorityRead { authority: fenced, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } =>
                     match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: fenced, next: resting, transaction: "tx-operator-restore" as NonEmptyStr, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) {
                       AuthorityTransitionAppended { id: _, generation: g3, next: _ } => g3 == 3
                       _ => false

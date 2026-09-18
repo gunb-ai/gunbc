@@ -210,7 +210,7 @@ fn spark_pair_apply_plan_current(r: SparkPairRealization, current: List<CurrentA
       match c {
         CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
           SparkPairApplyRefused { cause: join(["the serving authority could not be read, so nothing is converged: ", current_authority_wire(c: c)], "") }
-        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _ } =>
+        CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _ } =>
           spark_pair_apply_plan_under(r: r, authority: Present { value: a })
       }
   }

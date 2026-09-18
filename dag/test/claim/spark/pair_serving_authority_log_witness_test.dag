@@ -13,7 +13,7 @@ import gunbc.spark.pair_serving_authority {
   PairRealizationKeyed, PairRealizationUnestablished,
 }
 import gunbc.spark.pair_serving_authority_log {
-  PairAuthorityEvent, AuthorityTransitioned, pair_authority_partition,
+  PairAuthorityEvent, AuthorityTransitioned, EntryStateRecorded, pair_authority_partition,
   pair_authority_event_wire_text, pair_authority_event_decode, authority_eq, authority_wire,
   AuthorityFold, AuthorityFolded, AuthorityFoldRefused, authority_fold,
 }
@@ -74,6 +74,7 @@ fn alw_round_trips(previous: PairServingGroupAuthority, next: PairServingGroupAu
         AuthorityTransitioned { previous: p, next: n, transaction: t, grant: _, entry_state: _ } =>
           authority_eq(a: p, b: previous) && authority_eq(a: n, b: next) && (t as String) == "tx-1"
             && back.recorded_at == 1000 && (back.partition as String) == (pair_authority_partition(group: FabricGroupA) as String)
+        EntryStateRecorded { transaction: _, body: _ } => false
       }
   }
 }
