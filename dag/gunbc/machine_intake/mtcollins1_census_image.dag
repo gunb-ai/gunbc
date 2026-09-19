@@ -114,6 +114,17 @@ data mtcollins1_census_image_input: UbuntuSeededInstallMediaBuildInput = mtcolli
   volume_id: mtcollins1_census_volume_id,
 )
 
+// DECLARED FRONTIER (DESIGN §3c): the two effectful entries below have NO consumer in this change,
+// and each names the one that lands next. mtcollins1_census_image_publish is consumed by stage 0B/0C:
+// a step in the fleet-converge workflow run on srv2 (host=srv2, the SM/WIF credential prelude, the same
+// job shape as gunbc.machine_intake_mtcollins1_boot_image_fetch mtcollins1_fetch_boot_image), which
+// builds and publishes inside /srv/bmc and emits the published name and digest as its receipt.
+// mtcollins1_census_image_resolve is consumed by stage 0D: gunbc.machine_intake_mtcollins1_boot_run
+// (#11484) resolves the census image before the approval-gated boot, and its signed boot subject binds
+// the resolved image_name and output_digest instead of the stock ones. TRIGGER THAT RETIRES THIS
+// FRONTIER: that fleet-converge step and that boot-run binding landing, each calling these functions;
+// until both do, neither is reachable from an entry point, and nothing here claims otherwise.
+//
 // BUILT WHERE IT IS SERVED. The build reads the stock medium already verified into srv2's export and
 // writes the derived image into the same export, admitted against that export's ownership
 // requirement like every other write the controller will read -- so the image never leaves the host
