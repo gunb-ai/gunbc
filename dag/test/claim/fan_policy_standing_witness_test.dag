@@ -60,6 +60,9 @@ import product.fan_policy_standing {
   FanDriveTachOnly,
   FanDutyNotReported,
   FanDutyExcursionOverCeiling,
+  NoPostTransitionWindow,
+  OutlivedPostTransitionWindow,
+  WithinPostTransitionWindow,
   FanDutySteadyCurveOverCeiling,
   duty_verdict_is_over_ceiling,
   FanDutyWithinCeiling,
@@ -101,7 +104,6 @@ import gunbc.machine_intake_bmc_fan_observation {
 }
 import gunbc.fleet_acoustic_intent {
   operator_residence_duty_ceiling_basis,
-  residence_duty_ceiling_from_datasheet,
   operator_residence_sustained_duty_ceiling,
   residence_duty_verdict,
 }
@@ -685,7 +687,10 @@ test fn witness_ceiling_bounds_curve_and_window_differently() -> Bool {
     level_at_drive: Present { value: tenths_dba(598) },
     route: witness_openbmc_route,
   ) {
-    FanPolicyFailsafeWindowOverCeiling { comparison: _, window: w } => second_count(s: w) == 0
+    FanPolicyFailsafeWindowOverCeiling { comparison: _, bound: b } => match b {
+      NoPostTransitionWindow => true
+      _ => false
+    }
     _ => false
   }
 }
@@ -725,7 +730,7 @@ test fn witness_ceiling_within_and_its_two_refusals() -> Bool {
 // evidence rather than a promise: it answers exactly what the ceiling module answers, and the
 // wrapper exists only to be the named production consumer when a dB(A) ceiling lands.
 test fn witness_residence_datasheet_route_is_executed() -> Bool {
-  match residence_duty_ceiling_from_datasheet(
+  match duty_ceiling_for_fan(
     row: dynatron_df126025bu_pwmh_catalog,
     ceiling: witness_datasheet_ceiling,
     fan_count: fan_count(count: 1),
@@ -754,13 +759,25 @@ test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
     FanDutySteadyCurveOverCeiling { duty: d, ceiling: c } => percent_count(p: d) == 80 && percent_count(p: c) == 60
     _ => false
   } && match prepost {
-    FanDutyExcursionOverCeiling { duty: _, ceiling: _, window: w } => second_count(s: w) == 0
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => match b {
+      NoPostTransitionWindow => true
+      _ => false
+    }
     _ => false
   } && duty_verdict_is_over_ceiling(verdict: curve)
     && duty_verdict_is_over_ceiling(verdict: prepost)
     && match residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPosted, elapsed: 90)) {
-      FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => false
-      FanDutyExcursionOverCeiling { duty: _, ceiling: _, window: w } => second_count(s: w) == 60
+      FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => match b {
+        OutlivedPostTransitionWindow { elapsed: e, window: w } => second_count(s: e) == 90 && second_count(s: w) == 60
+        _ => false
+      }
+      _ => false
+    }
+    && match residence_duty_verdict(standing: witness_standing(duty_count: 100, post: HostPosted, elapsed: 30)) {
+      FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => match b {
+        WithinPostTransitionWindow { elapsed: e, window: w } => second_count(s: e) == 30 && second_count(s: w) == 60
+        _ => false
+      }
       _ => false
     }
     && !duty_verdict_is_over_ceiling(verdict: residence_duty_verdict(standing: witness_standing(duty_count: 40, post: HostPosted, elapsed: 90)))

@@ -10,8 +10,12 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import product.placement_supply { HostIdentity }
 import product.fan_policy_standing {
   FanDutyCeilingVerdict,
+  ExcursionBound,
   FanDutyExcursionOverCeiling,
   FanDutyNotReported,
+  NoPostTransitionWindow,
+  OutlivedPostTransitionWindow,
+  WithinPostTransitionWindow,
   FanDutySteadyCurveOverCeiling,
   FanDutyWithinCeiling,
   FanPolicyAuthority,
@@ -155,7 +159,7 @@ fn render_duty_verdict(verdict: FanDutyCeilingVerdict) -> String {
   match verdict {
     FanDutyWithinCeiling { duty: _, ceiling: _ } => "WithinCeiling"
     FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => "SteadyCurveOverCeiling"
-    FanDutyExcursionOverCeiling { duty: _, ceiling: _, window: w } => join(["ExcursionOverCeiling(window=", to_string(second_count(s: w)), "s)"], "")
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: b } => join(["ExcursionOverCeiling(", render_excursion_bound(bound: b), ")"], "")
     FanDutyNotReported { cause: _ } => "NotReported"
   }
 }
@@ -163,6 +167,19 @@ fn render_duty_verdict(verdict: FanDutyCeilingVerdict) -> String {
 // EACH ROUND'S SAMPLES ARE STAMPED WITH THAT ROUND'S OWN ELAPSED, never with the series'. The first
 // posted index is computed once because it is a property of the series; the elapsed is computed per
 // round from it, because that is a property of the round.
+// THE BOUND RENDERS AS WHAT IT IS, and the pre-POST case says so in words rather than as a zero.
+// This receipt is what the operator reads about his own room, and "window=0s" said an excursion had
+// a zero-second budget where the fact is that nothing bounds it but him powering the machine off.
+fn render_excursion_bound(bound: ExcursionBound) -> String {
+  match bound {
+    NoPostTransitionWindow => "no post-transition window; bounded only by power-off"
+    WithinPostTransitionWindow { elapsed: e, window: w } =>
+      join(["within window, elapsed=", to_string(second_count(s: e)), "s of ", to_string(second_count(s: w)), "s"], "")
+    OutlivedPostTransitionWindow { elapsed: e, window: w } =>
+      join(["OUTLIVED window, elapsed=", to_string(second_count(s: e)), "s past ", to_string(second_count(s: w)), "s"], "")
+  }
+}
+
 fn render_observation(rounds: List<FanObservationRound>, interval: Second) -> String {
   let first_posted = first_posted_round_index(rounds: rounds)
   join([

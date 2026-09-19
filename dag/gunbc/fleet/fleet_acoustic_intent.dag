@@ -1,15 +1,11 @@
 module gunbc.fleet_acoustic_intent
 
 import std.types { Bool, NonEmptyStr }
-import std.measure { FanCount, Percent, percent }
+import std.measure { Percent, percent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.fans.types { FanCatalogRow }
 import product.acoustic_ceiling {
-  AcousticCeiling,
   AcousticCeilingBasis,
-  DutyCeilingResult,
   OperatorStatedTolerance,
-  duty_ceiling_for_fan,
 }
 import product.fan_policy_standing {
   FanDutyCeilingVerdict,
@@ -80,6 +76,12 @@ fn residence_duty_verdict(standing: FanPolicyStanding) -> FanDutyCeilingVerdict 
 
 // THE ACOUSTIC ROUTE IS A DECLARED FRONTIER, NOT A DANGLING DECLARATION (DESIGN §3c).
 //
+// A SIGNATURE-IDENTICAL WRAPPER STOOD HERE AND WAS THE SAME NICKNAME THIS MODULE DELETED FOUR
+// PARAGRAPHS ABOVE, in function form rather than row form: residence_duty_ceiling_from_datasheet
+// bound no ceiling, no row and no count, forwarded every argument unchanged, and existed only to
+// give the frontier row something local to name. The frontier names duty_ceiling_for_fan directly
+// now, which is the declaration that actually does the work.
+//
 // TWO FOLDS WAIT ON THE SAME MISSING FACT: product.acoustic_ceiling duty_ceiling_for_fan, which
 // derives a duty bound from a fan's published table under a stated dB(A) ceiling, and
 // product.fan_policy_standing fan_policy_against_ceiling, which bounds a standing by that ceiling
@@ -94,8 +96,4 @@ fn residence_duty_verdict(standing: FanPolicyStanding) -> FanDutyCeilingVerdict 
 // bounded. Both are required and neither alone retires this row - a ceiling with no catalogued fan
 // has nothing to compare against, and a catalogued fan with no ceiling has no bound. Mt. Jade's six
 // 6056 fans landing from the platform lane satisfies the second half only.
-fn residence_duty_ceiling_from_datasheet(row: FanCatalogRow, ceiling: AcousticCeiling, fan_count: FanCount) -> DutyCeilingResult {
-  duty_ceiling_for_fan(row: row, ceiling: ceiling, fan_count: fan_count)
-}
-
-data residence_acoustic_ceiling_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when this site carries a stated-or-measured dB(A) ceiling at a named reference position AND the host being bounded has a modeled fan part, at which point residence_duty_ceiling_from_datasheet and product.fan_policy_standing fan_policy_against_ceiling both gain production consumers; a catalogued fan without a ceiling, or a ceiling without a catalogued fan, retires neither half")
+data residence_acoustic_ceiling_frontier: DissolutionCondition = unbound_dissolution(description: "dissolves when this site carries a stated-or-measured dB(A) ceiling at a named reference position AND the host being bounded has a modeled fan part, at which point product.acoustic_ceiling duty_ceiling_for_fan and product.fan_policy_standing fan_policy_against_ceiling both gain production consumers; a catalogued fan without a ceiling, or a ceiling without a catalogued fan, retires neither half")

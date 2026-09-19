@@ -388,7 +388,7 @@ fn converge_route_obligation(route: FanDutyConvergeRoute) -> NonEmptyStr? {
 type FanPolicyCeilingVerdict
   = FanPolicyWithinSiteCeiling
   | FanPolicySteadyCurveOverCeiling { comparison: AcousticComparison }
-  | FanPolicyFailsafeWindowOverCeiling { comparison: AcousticComparison, window: Second }
+  | FanPolicyFailsafeWindowOverCeiling { comparison: AcousticComparison, bound: ExcursionBound }
   | FanPolicyCeilingUnenforceable { cause: NonEmptyStr }
   | FanPolicyCeilingUnderdetermined { cause: NonEmptyStr }
 
@@ -420,12 +420,12 @@ fn fan_policy_against_ceiling(
           AcousticOverCeiling { over_by: _ } => match standing {
             SteadyCurve { host: _, authority: _, drive: _ } =>
               FanPolicySteadyCurveOverCeiling { comparison: comparison }
-            PostPostTransition { host: _, authority: _, elapsed_since_post: _, window: w, drive: _ } =>
-              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, window: w }
+            PostPostTransition { host: _, authority: _, elapsed_since_post: e, window: w, drive: _ } =>
+              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, bound: WithinPostTransitionWindow { elapsed: e, window: w } }
             FailsafeBeforeHostTelemetry { host: _, authority: _, post_state: _, drive: _ } =>
-              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, window: unbounded_failsafe_window() }
-            FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: _, window: w, drive: _ } =>
-              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, window: w }
+              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, bound: NoPostTransitionWindow }
+            FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: e, window: w, drive: _ } =>
+              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, bound: OutlivedPostTransitionWindow { elapsed: e, window: w } }
             RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } =>
               FanPolicyCeilingUnderdetermined {
                 cause: "this controller reports the fan in RPM and not in duty, so no acoustic level can be attributed to a commanded operating point",
@@ -438,14 +438,6 @@ fn fan_policy_against_ceiling(
       }
     }
   }
-}
-
-// THE WINDOW REPORTED FOR A PRE-POST FAILSAFE IS ZERO SECONDS, AND THAT IS A DELIBERATE READING
-// RATHER THAN A MISSING NUMBER. A host that has not posted has no post-transition window at all,
-// so there is no duration to bound; what bounds that excursion is the operator powering the machine
-// off, which is a decision and not a controller fact. Zero says 'no window applies here'.
-fn unbounded_failsafe_window() -> Second {
-  second(count: 0)
 }
 
 fn fan_policy_standing_label(standing: FanPolicyStanding) -> NonEmptyStr {
@@ -487,10 +479,29 @@ fn fan_policy_standing_label(standing: FanPolicyStanding) -> NonEmptyStr {
 // powering the machine off. That is exactly the Mt. Jade complaint: the excursion was unbounded
 // because the host never posted. So the excursion arm carries the window rather than excusing the
 // reading, and a consumer that wants "is this room too loud right now" reads both arms as over.
+// HOW AN EXCURSION IS BOUNDED, AS THREE STATES RATHER THAN A NUMBER THAT IS SOMETIMES A SENTINEL.
+//
+// The window field used to be a bare Second, and a pre-POST failsafe filled it with zero to mean
+// "no post-transition window applies". That zero reached the operator's own receipt verbatim, which
+// rendered `ExcursionOverCeiling(window=0s)` -- a reader sees an excursion with a zero-second budget
+// where the modeled fact is an excursion bounded only by somebody powering the machine off. That is
+// the fabricated plausible output DESIGN §5 forbids, and it is the same defect this model fixed two
+// files over when duty_ceiling_of_result stopped reporting a zero level count.
+//
+// THE SAME FIELD ALSO COLLAPSED TWO STATES THE PROSE CLAIMED IT SEPARATED. An excursion inside its
+// window and one that has outlived it both carried the window and dropped the elapsed, so they
+// emitted byte-identical verdicts while a comment asserted that "the window it carries" said which
+// was which. It did not. The two are now different arms, each carrying both numbers, so the
+// discrimination is in the type rather than in a sentence.
+type ExcursionBound
+  = NoPostTransitionWindow
+  | WithinPostTransitionWindow { elapsed: Second, window: Second }
+  | OutlivedPostTransitionWindow { elapsed: Second, window: Second }
+
 type FanDutyCeilingVerdict
   = FanDutyWithinCeiling { duty: Percent, ceiling: Percent }
   | FanDutySteadyCurveOverCeiling { duty: Percent, ceiling: Percent }
-  | FanDutyExcursionOverCeiling { duty: Percent, ceiling: Percent, window: Second }
+  | FanDutyExcursionOverCeiling { duty: Percent, ceiling: Percent, bound: ExcursionBound }
   | FanDutyNotReported { cause: NonEmptyStr }
 
 // EVERY ARM THAT IS OVER, WHICHEVER KIND. Offered because the two over-arms exist to separate the
@@ -499,7 +510,7 @@ fn duty_verdict_is_over_ceiling(verdict: FanDutyCeilingVerdict) -> Bool {
   match verdict {
     FanDutyWithinCeiling { duty: _, ceiling: _ } => false
     FanDutySteadyCurveOverCeiling { duty: _, ceiling: _ } => true
-    FanDutyExcursionOverCeiling { duty: _, ceiling: _, window: _ } => true
+    FanDutyExcursionOverCeiling { duty: _, ceiling: _, bound: _ } => true
     FanDutyNotReported { cause: _ } => false
   }
 }
@@ -524,14 +535,14 @@ fn fan_drive_against_duty_ceiling(drive: FanDriveReading, ceiling: Percent) -> F
 fn duty_against_ceiling_in_excursion(
   drive: FanDriveReading,
   ceiling: Percent,
-  window: Second,
+  bound: ExcursionBound,
 ) -> FanDutyCeilingVerdict {
   match fan_drive_against_duty_ceiling(drive: drive, ceiling: ceiling) {
     FanDutySteadyCurveOverCeiling { duty: d, ceiling: c } =>
-      FanDutyExcursionOverCeiling { duty: d, ceiling: c, window: window }
+      FanDutyExcursionOverCeiling { duty: d, ceiling: c, bound: bound }
     FanDutyWithinCeiling { duty: d, ceiling: c } => FanDutyWithinCeiling { duty: d, ceiling: c }
-    FanDutyExcursionOverCeiling { duty: d, ceiling: c, window: w } =>
-      FanDutyExcursionOverCeiling { duty: d, ceiling: c, window: w }
+    FanDutyExcursionOverCeiling { duty: d, ceiling: c, bound: b } =>
+      FanDutyExcursionOverCeiling { duty: d, ceiling: c, bound: b }
     FanDutyNotReported { cause: cz } => FanDutyNotReported { cause: cz }
   }
 }
@@ -555,10 +566,10 @@ fn fan_policy_against_duty_ceiling(standing: FanPolicyStanding, ceiling: Percent
     SteadyCurve { host: _, authority: _, drive: d } =>
       fan_drive_against_duty_ceiling(drive: d, ceiling: ceiling)
     FailsafeBeforeHostTelemetry { host: _, authority: _, post_state: _, drive: d } =>
-      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, window: unbounded_failsafe_window())
-    PostPostTransition { host: _, authority: _, elapsed_since_post: _, window: w, drive: d } =>
-      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, window: w)
-    FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: _, window: w, drive: d } =>
-      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, window: w)
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, bound: NoPostTransitionWindow)
+    PostPostTransition { host: _, authority: _, elapsed_since_post: e, window: w, drive: d } =>
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, bound: WithinPostTransitionWindow { elapsed: e, window: w })
+    FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: e, window: w, drive: d } =>
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, bound: OutlivedPostTransitionWindow { elapsed: e, window: w })
   }
 }
