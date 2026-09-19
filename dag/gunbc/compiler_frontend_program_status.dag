@@ -71,6 +71,7 @@ import gunbc.namespace_cut_stage {
   stage_prerequisites,
   act0_release_milestones,
   StageDeliveryEvidenceKind,
+  StageDeliveryReceipt,
   RehearsalInstrumentDelivered,
   ReferenceGraphInstrumentDelivered,
   stage_delivery_kind_outstanding,
@@ -182,7 +183,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
     ResolverBoundDeclaringIdentity => "the v2 resolver answering a qualified reference with an EXACT declaring identity by execution -- the binding's declaration containment path, not a leaf and not the authored spelling -- so that v2.compiler.repair_input_origin_roster derives RepairInputDeclared.declaring from that binding rather than from carrier_declaration_ref's spelling arm (XL-0's population; the roster producer itself exists and answers)"
     DeclaringIdentitySpellingCensus => "a declaring-identity spelling census that answers over XL-3's usable population on the production ingest route: QUALIFIED cross-module mentions (every position) and bare type names in FIELD position, joined to their declaring identity - the producer v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest exists and answers over the bare same-module classes only, which is not that population (XL-3's population)"
-    ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
+    ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population): the typed import strip (std.import strip_import_statements, already built) applied to a throwaway tree, followed by the v2 production route -- ingest, graft, normalize, RESOLVE -- over every stripped module, its resolve refusals joined to occurrence identity where an id is minted and to module + path + locus structure where it is synthetic (the residual's ids are mixed, majority synthetic over the whole tree -- gunbc#11738's census-resolve run; a wave keyed on occurrence identity alone would cover a minority and report success on the rest). KNOWN NECESSARY prerequisites -- not an exhaustive set, and a fourth found by review is not the end of the list either -- each an undercount BY CONSTRUCTION rather than a missing producer file: (i) call callees and ARGUMENTS reach resolve (gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering -- resolve fails OPEN for every dependent reached through a call, so its refusal roster cannot establish completeness over that population; the callee half is gunbc#11683's, the argument half is open); (ii) bare FIELD-position type names reach the containment tree (the grafting lane, namespace_cut_stage cause 4); (iii) a whole-tree v2 census that RESOLVES per module rather than stopping at normalize: the executing entry that omits resolve is the SourceRootEvalDriver's rendered census mode (v1.compiler.emit_rust emit_source_root_eval_driver_main_rs, run_census), which calls v2.compiler.compile native_test_context_from_ingest, whose per-file native_test_context_fold_step reaches program_assembly_read_to_normalized_root_prepared and nothing further -- resolve is native_test_resolve_module, reached only from adjudicate mode's prepare over universe modules (gunbc.witness.v2_native_route native_route_census is a fold over supplied verdict rows and is not that entry). AND ONE UNRESOLVED OBLIGATION THAT NONE OF THOSE DISCHARGES, occurrence completeness: v2.compiler.resolve resolve_children_homogeneous_scope (and resolve_transform_children, resolve_edges_first_outer_then_inner, resolve_bind_edges) returns a Rejected accumulator without visiting the remaining children, so a module with two independent post-cut refusals records the first and never observes the second -- a truthful MODULE-level refusal and an incomplete OCCURRENCE-level population -- and an earlier parse or normalize refusal blocks a whole module the same way. Running resolve once per module therefore does not establish that every affected occurrence was observed; the census must report every site or explicitly refuse completeness, and its discriminator is two independently failing sites in ONE module, each shown individually reachable by a control, both reported. The Step-0 canary (gunbc.namespace_step0_candidate_run over tools.multi_module_compile_fixture) is NOT this instrument, on a population ground rather than a version-number one: its carrier is a per-bucket diagnostic HISTOGRAM differential (gunbc.namespace_step0_canary_v2 Step0HistogramDifferential, whose arms include OccurrenceJoinUnavailable), so it cannot carry an exact occurrence residual whatever pipeline compiles it; a rehearsal that observes a proposed cut through the old implementation is admissible as a differential, and what it may not do is be the authority that still answers after the surgery"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
     SeedDeletionObservation => "an observation of the live tree that the v1 seed families (interpreter, cli_run, seed harness, interpreter floor) are ABSENT, read from the tree rather than from an authored roster"
@@ -818,7 +819,9 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 //             outstanding while some subject's pulse cannot be taken (today: every host Rust
 //             probe, which awaits a host-item observation authority).
 //   XL-1   -- delegation to NamespaceBaselineObservationComplete.
-//   XL-2   -- the rehearsal digest read out of ACT-0's receipt carrier.
+//   XL-2   -- NotDerivable: the rehearsal residual cannot be produced on the v2 route while
+//             calls, arguments and field-position types never reach resolve (an undercount by
+//             construction is not a census), so the delivery receipt has no honest producer yet.
 //   XL-3   -- NotDerivable: no carrier censuses occurrences not spelled at their declaring
 //             identity, and fabricating a population would be worse than naming the gap.
 //   XL-4   -- the reference-graph digest read out of ACT-0's receipt carrier.
@@ -892,6 +895,64 @@ fn act0_release_standing() -> MilestoneStanding {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// XL-2'S STANDING: THE DELIVERY AUTHORITY DECIDES FIRST, AND THE CAPABILITY LITERAL CLASSIFIES
+// ONLY THE UNDELIVERED STATE. Two earlier cuts of this arm got that order wrong in two ways. The
+// first returned NotDerivable outright, so the stage could never leave that class. The second
+// routed through a supplied producer standing but let the Unavailable branch IGNORE the roster,
+// so xl2_stage_standing(rehearsal_producer_standing(), D) was NotDerivable for EVERY roster D --
+// including one holding an honest RehearsalInstrumentDelivered receipt -- and recovery depended
+// on someone remembering to edit an authored literal. That is two authorities answering one
+// question with a permanent winner (DESIGN section 3), and the witness pinned the veto (side-chat
+// review on gunbc#11735, twice).
+//
+// The order now: a StageDeliveryReceipt of the rehearsal kind means the instrument EXISTS AND WAS
+// DISCRIMINATED, which is the whole of what this stage owes, so a held receipt is Clear whatever
+// the literal says -- the literal cannot veto delivery. With delivery outstanding, the literal
+// says which kind of outstanding: no honest producer -> NotDerivable naming the capability;
+// producer established -> Outstanding. XL-4's kind and ACT-0's activation receipts establish
+// nothing here: the fold keys on the rehearsal kind, and an activation receipt is a different
+// type that cannot be passed. The literal is an honest temporary statement of a missing
+// capability and nothing more; it is retired (flipped to Available) by the change that lands
+// the producer, and a delivery landing before that edit still clears the stage.
+//
+// WHAT EXECUTION CAN AND CANNOT DISCRIMINATE HERE, stated so the witness is not read one rung
+// high. The live roster is empty today, so on the live route a constant NotDerivable with the
+// same why and cause is value-identical to this decision -- exactly as a constant Outstanding
+// with the same evidence would be for XL-4's arm. What the witness establishes is the
+// supplier-consumer algebra: the live standing equals this decision over the live roster, and
+// this same decision over the live roster PLUS a rehearsal receipt is Clear without any change to
+// the literal. Disconnecting the roster from the decision (the Unavailable branch ignoring
+// `held` again) fails that second assertion.
+// ---------------------------------------------------------------------------------------------
+type RehearsalProducerStanding
+  = RehearsalProducerUnavailable { why: NonEmptyStr, cause: Underivability }
+  | RehearsalProducerAvailable
+
+fn xl2_stage_standing(producer: RehearsalProducerStanding, held: List<StageDeliveryReceipt>) -> MilestoneStanding {
+  let evidence = observe_outstanding(
+    subject: "XL-2: the rehearsal instrument delivered and discriminated once" as NonEmptyStr,
+    outstanding: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held)
+  )
+  if count(evidence.outstanding) == 0 {
+    Clear { evidence: evidence }
+  } else {
+    match producer {
+      RehearsalProducerUnavailable { why, cause } => NotDerivable { why: why, cause: cause }
+      RehearsalProducerAvailable => Outstanding { evidence: evidence }
+    }
+  }
+}
+
+// TODAY'S ANSWER, and the only place it is authored. It classifies the UNDELIVERED state only; a
+// held rehearsal receipt clears the stage without this being edited (see above).
+fn rehearsal_producer_standing() -> RehearsalProducerStanding {
+  RehearsalProducerUnavailable {
+    why: "XL-2 is the ROOT-DELETION REHEARSAL: the cut executed in a throwaway tree, its failure roster captured as the census. Its deliverable is an instrument DISCRIMINATED ONCE on the production route, and no honest producer of the residual exists today: a roster taken now is a strict undercount presented as the census (DESIGN section 4b(1), the shape review 64925 refused on XL-4). WHAT blocks the producer -- the known necessary prerequisites, the occurrence-completeness obligation, the residual's key, and why the Step-0 canary is not it -- is stated ONCE, on missing_instrument_label ExactOccurrenceResidualCensus, and is deliberately not restated here. This arm exists so the empty delivery roster is not read as an instrument nobody has started: Outstanding never meant buildable, it meant a named outstanding population, and a lane (wise-pike-696, 2026-09-19) was dispatched to build the instrument on that reading. Startability is the chain axis and stays separate: XL-2 is chain-startable off XL-1 while its own standing is NotDerivable, which is the two-axis design working. The base-pinned execution remains ACT-0's RehearsalFailureRosterDigest either way." as NonEmptyStr,
+    cause: needs(i: ExactOccurrenceResidualCensus)
+  }
+}
+
 fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
   match s {
     StageF0 =>
@@ -914,12 +975,7 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
         )
       )
     StageXL2RootDeletionRehearsal =>
-      standing_from_evidence(
-        e: observe_outstanding(
-          subject: "XL-2: the rehearsal instrument delivered and discriminated once" as NonEmptyStr,
-          outstanding: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held_stage_delivery_receipts)
-        )
-      )
+      xl2_stage_standing(producer: rehearsal_producer_standing(), held: held_stage_delivery_receipts)
     StageXL3DeclaringIdentitySpelling =>
       NotDerivable {
         why: "the spelling census producer exists (v2.compiler.declaring_identity_spelling_census spelling_census_from_ingest) over the production ingest route. Frontiers are separate capabilities: BARE value outside a call, parameter reference, and BARE type name in PARAMETER position reach; BARE type name in FIELD position does not (not a qualification fact -- measured by v2.test.claim.declaring_identity_spelling.production_ingest field_vs_parameter); names inside calls are missing (body-lowering, eager-raven / #11207); QUALIFIED/dotted references WITHOUT a call or brace suffix now reach the production-route tree as one qualified-name spine (the gap was body lowering, not qualification -- gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering, smart-lynx-554 2026-09-18); whether this census joins them to a declaring identity is to be re-measured by its own producer, and a dotted CALLEE stays with the call class. A qualified field type is absent for ONE remaining reason -- the declaration never reaches the containment tree (grafting) -- now that qualification no longer hides a mention (v2.test.claim.namespace_xl0.qualified_site_enumerator_differential). kernel Int has no corpus declaration. IdentityUnbound on a same-module ingest census row is an index-path probe, not a compiler fact -- enrolled control v2.test.claim.provenance.cross_file_provenance cfp_own_module_site binds on resolve_reference_provenance. Derivable once the producer answers over qualified mentions; restoring dotted will not restore bare field types. The producer landed with #11201 in gunbc#11461; what remains UNBUILT is the capability the instrument label names, not the producer file." as NonEmptyStr,
