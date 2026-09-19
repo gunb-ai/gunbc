@@ -130,7 +130,7 @@ type RouteClassProbe
 
 type ApprovalBrokerCutoverEvidence {
   dark: DarkDeploymentStanding
-  release: ReleaseReadback
+  release_readback: ReleaseReadback
   demand: BrokerDemandReading
   front_door: FrontDoorStanding
   confirm_probe: RouteClassProbe
@@ -201,7 +201,7 @@ fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal
 }
 
 fn release_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
-  match e.release {
+  match e.release_readback {
     ReleaseNotReadBack { detail: d } => Present { value: ReleaseUnreadable { detail: d } }
     ReleaseReadBack { revision: _ } => Absent
   }

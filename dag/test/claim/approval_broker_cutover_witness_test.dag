@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitNotStarted { detail: "no unit installed" as NonEmptyStr },
-    release: ReleaseNotReadBack { detail: "not probed" as NonEmptyStr },
+    release_readback: ReleaseNotReadBack { detail: "not probed" as NonEmptyStr },
     demand: DemandUnmeasured { missing: "all six readings" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
     confirm_probe: RouteClassUnprobed,
@@ -43,7 +43,7 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
 fn everything_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitListening { port: approval_broker_dark_listen_port },
-    release: ReleaseReadBack { revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr },
+    release_readback: ReleaseReadBack { revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr },
     demand: DemandMeasured {
       cold_load_peak_bytes: 900000000,
       idle_resident_bytes: 300000000,
@@ -100,7 +100,7 @@ test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bo
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
-    release: full.release,
+    release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
     confirm_probe: full.confirm_probe,
@@ -126,7 +126,7 @@ test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
-    release: full.release,
+    release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
     confirm_probe: RouteClassRefused { status: 404, detail: "front door presented /esc-1.approve.0badc0de" as NonEmptyStr },
@@ -153,7 +153,7 @@ test fn cutover_refuses_a_dark_stage_that_bound_the_serving_port() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: DarkUnitListening { port: approval_broker_listen_port },
-    release: full.release,
+    release_readback: full.release_readback,
     demand: full.demand,
     front_door: FrontDoorPointsAtRoadmap,
     confirm_probe: RouteClassUnprobed,
@@ -179,7 +179,7 @@ test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
-    release: full.release,
+    release_readback: full.release_readback,
     demand: DemandUnmeasured { missing: "redemption peak" as NonEmptyStr },
     front_door: full.front_door,
     confirm_probe: full.confirm_probe,
@@ -214,7 +214,7 @@ test fn cutover_is_not_complete_while_the_roadmap_still_mounts_the_routes() -> B
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {
     dark: full.dark,
-    release: full.release,
+    release_readback: full.release_readback,
     demand: full.demand,
     front_door: full.front_door,
     confirm_probe: full.confirm_probe,
