@@ -1168,8 +1168,45 @@ fn floor_route_gap_expectation_chunk_14() -> List<FloorRouteGapExpectation> {
   }
   }}}
 
+// The eight test.claim.durable_exclusive_hold_file_store_wet_witness identities: the hold protocol
+// over the real file store -- absent acquires at 1, held refuses without writing (another owner and
+// its own spelling), release to N+1 and reacquire at N+2, two contenders over one free observation,
+// store refusal distinct from contention, refused releases leave no next generation, and a commit
+// after the slot moved is release-lost. First effect is shell.Mktemp.DirWithTemplate with no
+// mock_response, exactly as the CAS store's own wet rows in chunk_12. Triple enrollment: this
+// expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
+// witness_exclusion_frontier LocalRepoWetLane row for durable_exclusive_hold_file_store_wet_witness_test.dag.
+// Floor run 35402867077 measured the unenrolled DirWithTemplate / NoMockResponse gap on each identity.
+fn floor_route_gap_expectation_chunk_15() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.an_absent_slot_acquires_at_generation_one_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_held_slot_refuses_another_owner_without_writing_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.two_contenders_over_one_free_generation_give_one_commit_and_one_lost_race_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.refused_releases_do_not_free_the_slot_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.durable_exclusive_hold_file_store_wet_witness.a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Empty {} } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Empty {} } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
