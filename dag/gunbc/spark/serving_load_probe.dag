@@ -42,7 +42,7 @@ import gunbc.spark.serving_performance_subject {
 import gunbc.spark.serving_rank_observe {
   ObservedRankIncarnation, observed_rank_incarnations_agree, observed_rank_incarnation_text,
 }
-import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff }
+import extdeps.vllm.engine_args { SpeculativeDecodingOff }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished, AdmissionCostBlocks }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, CitedToAuthority }
 
@@ -1387,7 +1387,7 @@ fn client_latency_from_bench_stdout(body: String, window: ProbeWindowStanding) -
   }
 }
 
-// max_num_seqs is 16 on the live units (parent reverted the out-of-band 64 edit).
+// max_num_seqs and the other launch figures are read from glm_native_concurrent_profile, the one row that owns them.
 // Runtime is glm53_derived_row (GunbcGlm53DerivedGb10); checkpoint revision is the native Flash row.
 data glm_native_live_subject: ServingPerformanceSubject = serving_performance_subject(
   checkpoint: Glm53NativeFp8,
@@ -1398,8 +1398,8 @@ data glm_native_live_subject: ServingPerformanceSubject = serving_performance_su
   rank_population: Present { value: 4 },
   context_ceiling: Present { value: glm_native_concurrent_profile.max_model_len },
   max_num_batched_tokens: glm_native_concurrent_profile.max_num_batched_tokens,
-  max_num_seqs: Present { value: 16 },
-  kv_cache_dtype: Present { value: KvFp8 },
+  max_num_seqs: Present { value: glm_native_concurrent_profile.max_num_seqs },
+  kv_cache_dtype: none,
   speculative: Present { value: SpeculativeDecodingOff },
   collective_transport: none,
 )
@@ -1407,8 +1407,8 @@ data glm_native_live_subject: ServingPerformanceSubject = serving_performance_su
 fn glm_native_live_subject_standing() -> ServingPerformanceSubjectStanding {
   serving_subject_standing(
     subject: glm_native_live_subject,
-    believed: "collective transport was unread; the runtime is glm53_derived_row and the checkpoint revision is glm53_native_fp8_row.revision" as NonEmptyStr,
-    would_settle: "read the running launch's NCCL transport announcement on this incarnation" as NonEmptyStr,
+    believed: "collective transport was unread; the KV cache dtype is unread because glm_native_concurrent_profile declares kv_cache_dtype_wire auto while the running group B unit was launched from a different plan; the runtime is glm53_derived_row and the checkpoint revision is glm53_native_fp8_row.revision" as NonEmptyStr,
+    would_settle: "read the running launch's NCCL transport announcement and its --kv-cache-dtype on this incarnation" as NonEmptyStr,
   )
 }
 

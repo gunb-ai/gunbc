@@ -644,7 +644,7 @@ test fn receipts_differing_only_in_the_settling_obligation_differ() -> Bool {
 test fn the_live_subject_receipt_carries_the_nccl_announcement_obligation() -> Bool {
   let t = serving_load_observation_text(o: fx_obs())
   string_contains(s: t, pattern: "subject: partial ")
-    && string_contains(s: t, pattern: "would_settle=read the running launch's NCCL transport announcement on this incarnation")
+    && string_contains(s: t, pattern: "would_settle=read the running launch's NCCL transport announcement and its --kv-cache-dtype on this incarnation")
 }
 
 test fn arrival_unread_and_observed_render_distinguishably() -> Bool {
