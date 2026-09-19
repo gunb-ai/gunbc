@@ -63,6 +63,7 @@ import gunbc.fleet_workflow_steps {
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
+  fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_reset_return_run { host_reset_dispatch_mode_env }

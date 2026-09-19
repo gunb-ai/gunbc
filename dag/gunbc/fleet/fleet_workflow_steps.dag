@@ -564,7 +564,15 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // input, so plan/apply, dashboard deploy and the launch-deployment receipt of ONE host queue behind
 // each other while different hosts stay independent. Expression-valued because the host is a
 // dispatch input, not a constant of the workflow.
-data fleet_host_mutation_concurrency_group_expression: String = "gunbc-host-mutation-${{ github.event.inputs.host }}"
+// THE PREFIX AND THE INPUT REFERENCE ARE EACH ONE DATUM, because a second mode composes its own
+// ternary around this same domain (gunbc.fleet.fleet_converge_workflow): spelling either half twice
+// would let one job move domain while the others stayed, which is exactly the interleaving the
+// ruling above forbids.
+data fleet_host_mutation_group_prefix: String = "gunbc-host-mutation-"
+
+data fleet_host_input_expression: String = "github.event.inputs.host"
+
+data fleet_host_mutation_concurrency_group_expression: String = join([fleet_host_mutation_group_prefix, "${{ ", fleet_host_input_expression, " }}"], "")
 
 // ── THE HOST DOMAIN IS NOT THE ONLY MUTATION DOMAIN, AND THE EXCEPTION IS NAMED ELSEWHERE ─────
 //
