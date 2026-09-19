@@ -339,17 +339,39 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // roster like XL-4 (gunbc.compiler_frontend_program_status xl2_stage_standing, whose premise is
 // supplied rather than pinned).
 //
-// ONE REQUIREMENT ON THE THROWAWAY TREE ITSELF, found by the lane building capability 3
-// (vivid-lark-741, 2026-09-19) and stated here so it binds whoever executes the cut:
-// v2.compiler.source_authority source_root_for_storage_path classifies a read's tree by a TEXTUAL
-// prefix on the path as walked (`src/` is V2Tree, everything else DagTree). A stripped copy read
-// at an absolute scratch path therefore classifies every file as DagTree, the active roots
-// collapse to one tree, and v2.std.cross_tree.resolution answers EdgeNormalResolution where the
-// real tree answers EdgeCrossDenied -- FEWER refusals, from the copy rather than from the strip.
-// So the rehearsal tree is a worktree whose roots are passed under the SAME RELATIVE spellings
-// (`dag`, `src/v2`) with the process cwd inside it; the path strings are then identical and so
-// is the classification. A census whose root spelling differs from production's is not a
-// rehearsal of production.
+// ONE REQUIREMENT ON THE THROWAWAY TREE ITSELF -- A PRECAUTION WHOSE DISCRIMINATOR IS CURRENTLY
+// DEAD, stated at exactly that strength. Found by the lane building prerequisite 3
+// (vivid-lark-741, 2026-09-19, gunbc#11738). THE MECHANISM IS REAL: v2.compiler.source_authority
+// source_root_for_storage_path classifies a read's tree by a TEXTUAL prefix on the path as walked
+// (`src/` is V2Tree, everything else DagTree), so a stripped copy read at an absolute scratch path
+// classifies every file as DagTree, and v2.std.cross_tree.resolution cross_tree_edge_decision
+// then answers EdgeNormalResolution where the real tree would answer EdgeCrossDenied. THE OUTCOME
+// IS CURRENTLY UNOBSERVABLE: that lane's census-resolve over the whole tree found
+// resolve_cross_tree_import_denied ZERO times, because most modules refuse earlier on unbound
+// symbols and never reach import admission, and its three-arm differential (real tree /
+// path-faithful copy / absolute-path copy) returned byte-identical rows -- a prediction that the
+// denial would appear was FALSIFIED. So this is not a demonstrated defect and must not be cited
+// as one. The requirement stays because it costs a worktree checkout and stops being free the
+// moment the unbound residual closes: the rehearsal tree is a worktree whose roots are passed
+// under the SAME RELATIVE spellings (`dag`, `src/v2`) with the process cwd inside it.
+//
+// AND ONE FACT ABOUT THE RESIDUAL'S KEY THAT DECIDES XL-5'S PREMISE, from the same run
+// (producer: the SourceRootEvalDriver's census-resolve mode and
+// v2.test.claim.native_census.whole_tree_census_resolve, gunbc#11738 -- re-run rather than trust):
+// the occurrence ids the residual carries are MIXED, OccurrenceMinted beside OccurrenceSynthetic,
+// with the synthetic arm the majority over the whole tree. A wave keyed on occurrence identity
+// would therefore cover a minority of its population and report success on the rest -- a green
+// that means nothing, over exactly the population XL-5 consumes. Until minting is total, the
+// residual joins by module + path + locus structure, and the ExactOccurrenceResidualCensus label
+// in gunbc.compiler_frontend_program_status says "joined to occurrence identity" at the strength
+// the key currently supports: identity where minted, locus structure where not.
+//
+// COST, since it decides whether the rehearsal can take this at all: the same run measured
+// census-resolve at the cost census mode already pays, with the resolve half a fraction of a
+// percent of it (figures on gunbc#11738; re-derive, do not copy). The 4h06m adjudicate baseline
+// that gunbc.rung_drop v2_native_route_off_the_merge_path records does NOT transfer -- adjudicate
+// pays infer plus per-declaration eval and a census pays neither. An earlier revision of this
+// note extrapolated a multi-hour instrument from that baseline, which overstated it.
 //
 // Empty by construction again, and honestly so: no stage delivery instrument is delivered. XL-0's
 // producer exists and answers on the production route (gunbc#11582), but its declared identities
