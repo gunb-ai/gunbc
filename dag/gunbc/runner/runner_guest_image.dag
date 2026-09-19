@@ -34,7 +34,7 @@ import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, SystemdInstallSection, Installable,
   SystemdDropIn, SystemdDropInSection, DropInUnitSection,
   Description, After, Wants, SuccessAction, FailureAction,
-  ServiceType, ExecStartPre, ExecStart, ExecStartPost, ExecStopPost, WorkingDirectory,
+  ServiceType, ExecStartPre, ExecStart, ExecStartPost, ExecStopPostIgnoringFailure, WorkingDirectory,
   Restart, Environment, EnvironmentFileIfPresent,
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
   WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in,
@@ -314,11 +314,12 @@ fn guest_observation_emit_command(event: GuestEmittedEvent, image: RunnerGuestIm
 }
 
 // RunnerExited CARRIES THE EXIT THE MANAGER RECORDED, via systemd's own ExecStopPost environment
-// ($EXIT_CODE, $EXIT_STATUS: systemd.exec(5), "Environment Variables in Spawned Processes"). The
-// leading `-` makes a failed echo non-fatal, so reporting can never be what keeps the VM alive.
+// ($EXIT_CODE, $EXIT_STATUS: systemd.exec(5), "Environment Variables in Spawned Processes"). It is
+// placed as ExecStopPostIgnoringFailure -- systemd's `-` prefix, modeled in extdeps as its own
+// variant like EnvironmentFileIfPresent -- so a failed echo can never be what fails the unit.
 fn guest_runner_exited_emit_command(image: RunnerGuestImage) -> NonEmptyStr {
   join([
-    "-", runner_guest_echo_program, " ", guest_observation_line(event: RunnerExited, image: image),
+    runner_guest_echo_program, " ", guest_observation_line(event: RunnerExited, image: image),
     " exit_code=${EXIT_CODE} exit_status=${EXIT_STATUS}",
   ], "") as NonEmptyStr
 }
@@ -442,7 +443,7 @@ fn runner_guest_agent_unit(image: RunnerGuestImage) -> SystemdUnitFile {
       ExecStartPre { command: runner_guest_version_readback_command() },
       ExecStart { command: runner_guest_listener_command() },
       ExecStartPost { command: guest_observation_emit_command(event: RunnerStarted, image: image) },
-      ExecStopPost { command: guest_runner_exited_emit_command(image: image) },
+      ExecStopPostIgnoringFailure { command: guest_runner_exited_emit_command(image: image) },
     ],
     install: Installable {
       directives: [WantedBy { target: runner_guest_agent_target }],
