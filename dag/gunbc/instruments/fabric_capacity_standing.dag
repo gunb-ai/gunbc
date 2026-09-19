@@ -11,10 +11,13 @@ import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.pair_serving_authority {
-  PairServingGroupAuthority, spark_pair_serving_authorities, pair_serving_capacity_subject,
+  PairServingGroupAuthority, pair_serving_capacity_subject,
   CapacityOrdinarySubject, CapacitySuspendedSubject, CapacityReleasedSubject,
 }
 import gunbc.spark.vllm_serving_launch { VllmServingLaunch, vllm_serving_launch }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
+import std.resources { Network }
 import gunbc.spark.vllm_kv_layout_observe {
   VllmKvLayoutReceipt, admit_kv_layout,
 }
@@ -552,6 +555,32 @@ fn capacity_standing_verdict(standings: List<GroupStanding>) -> ProcessExit {
   }
 }
 
-fn fabric_capacity_standing() -> ProcessExit {
-  capacity_standing_verdict(standings: map(spark_pair_serving_authorities, a => standing_for_authority(a: a)))
+// THE AUTHORITY IS READ FROM THE LOG, NOT THE SOURCE ROW. gunbc.spark.pair_serving_authority_log
+// folds the resting row through every recorded transition, so a group a transaction has suspended
+// is reported suspended here without a commit. An authority that could not be read is a refused
+// standing naming the read's step -- the instrument does not stand for a group whose state it
+// could not establish, and it does not fall back to the row.
+fn standing_for_current(c: CurrentAuthority) -> GroupStanding {
+  match c {
+    CurrentAuthorityRead { authority: a, head: _, generation: _ } => standing_for_authority(a: a)
+    CurrentAuthorityUnread { group: g, step: s, reason: why } =>
+      refused_standing(text: join([fabric_group_wire(g: g) as String, ": serving authority could not be read at ", s, ": ", why], ""))
+  }
+}
+
+// The verdict over a SUPPLIED current roster: the real group_report route for every read
+// authority, so a witness can hand in the resting row at generation 0 and still execute the
+// producer and the binding, while the live entry below hands in what the executor's log says.
+fn fabric_capacity_standing_current(current: List<CurrentAuthority>) -> ProcessExit {
+  capacity_standing_verdict(standings: map(current, c => standing_for_current(c: c)))
+}
+
+fn fabric_capacity_standing() -> ProcessExit
+  uses net: Network
+{
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => exit_failure(reason: join(["fabric capacity standing: ", c], ""))
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      fabric_capacity_standing_current(current: current_pair_serving_authorities(short_hostname: executor))
+  }
 }

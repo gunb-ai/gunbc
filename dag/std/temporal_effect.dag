@@ -65,6 +65,27 @@ type HeldLease {
   observed: HeldLeaseObservedState
 }
 
+// The observed state on a wire, and back. One grammar read in both directions: the parse is the
+// exact inverse of the wire, and a word that is not one of the five is no state, never a default.
+fn held_lease_observed_state_wire(observed: HeldLeaseObservedState) -> NonEmptyStr {
+  match observed {
+    LeaseAbsent => "lease-absent" as NonEmptyStr
+    LeaseRunningExpected => "lease-running-expected" as NonEmptyStr
+    LeaseRunningStale => "lease-running-stale" as NonEmptyStr
+    LeasePortForeign => "lease-port-foreign" as NonEmptyStr
+    LeaseInaccessible => "lease-inaccessible" as NonEmptyStr
+  }
+}
+
+fn parse_held_lease_observed_state(wire: String) -> HeldLeaseObservedState? {
+  if wire == "lease-absent" { Present { value: LeaseAbsent } }
+  else if wire == "lease-running-expected" { Present { value: LeaseRunningExpected } }
+  else if wire == "lease-running-stale" { Present { value: LeaseRunningStale } }
+  else if wire == "lease-port-foreign" { Present { value: LeasePortForeign } }
+  else if wire == "lease-inaccessible" { Present { value: LeaseInaccessible } }
+  else { none }
+}
+
 fn held_lease(epoch: LeaseEpoch, observed: HeldLeaseObservedState) -> HeldLease {
   HeldLease { epoch: epoch, observed: observed }
 }
