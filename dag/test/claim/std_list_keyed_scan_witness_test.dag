@@ -1,0 +1,42 @@
+module test.claim.std_list_keyed_scan_witness
+
+import std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, List }
+import std.list { distinct_by_key, duplicated_by_key }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT IS WHICH ELEMENT EACH KEYED SCAN RETURNS, so every row carries a payload that differs
+// from the other rows sharing its key. A scan returning the right KEYS but the wrong ELEMENT would
+// pass any claim that read keys only, which is how duplicated_by_key once shipped emitting the second
+// occurrence while its note promised the first (review 68028).
+type KeyedRow {
+  key: String
+  payload: String
+}
+
+fn row(key: String, payload: String) -> KeyedRow { KeyedRow { key: key, payload: payload } }
+
+fn key_of(r: KeyedRow) -> String { r.key }
+
+fn payloads(rs: List<KeyedRow>) -> List<String> { map(rs, r => r.payload) }
+
+fn rows() -> List<KeyedRow> {
+  [row(key: "a", payload: "a1"), row(key: "b", payload: "b1"), row(key: "a", payload: "a2"),
+   row(key: "c", payload: "c1"), row(key: "b", payload: "b2"), row(key: "a", payload: "a3")]
+}
+
+// The FIRST element of each duplicated key, once, in the order the keys were found to repeat: "a"
+// repeats before "b", and "c" never repeats. The second-occurrence reading would give a2, b2.
+test fn w_duplicated_by_key_returns_the_first_element_of_each_repeated_key() -> Bool {
+  payloads(rs: duplicated_by_key(rows(), key_of)) == ["a1", "b1"]
+}
+
+test fn w_distinct_by_key_keeps_the_first_element_in_first_seen_order() -> Bool {
+  payloads(rs: distinct_by_key(rows(), key_of)) == ["a1", "b1", "c1"]
+}
+
+test fn w_keyed_scans_of_an_empty_list_are_empty() -> Bool {
+  count(duplicated_by_key([], key_of)) == 0 && count(distinct_by_key([], key_of)) == 0
+}
