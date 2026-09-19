@@ -1,0 +1,216 @@
+module gunbc.machine_intake_mtjade1_coverage_frontier
+
+import std.types { List, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_rows_for_decls }
+
+// COVERAGE STATE FOR THE MT. JADE UNIT 1 INTAKE, DOCUMENT ROWS AND GUNBC ROWS ALIKE, HOMED DOWNSTREAM OF THE DOCUMENT IT IS ABOUT.
+//
+// Two rules put this file here rather than beside the rows. DESIGN §4c: a dissolution condition
+// belongs in a typed carrier, because no Accepted program can read an annotation — an earlier
+// revision carried these consumers and triggers as a // block, so nothing in the closure could
+// read the trigger that gates the rows a fan realizer must not consume (review 67963). And DESIGN
+// §3 external upstream decomposition: an extdeps module may not store consumer coverage state,
+// and a missing observation is a coverage obligation DOWNSTREAM, never a property authored inside
+// the upstream module. Whether this repository has built a consumer for a figure Ampere printed
+// is a fact about this repository.
+//
+// Every row is UNBOUND on purpose. std.dissolution's own note names the trap: binding forward to
+// a symbol nobody has declared is the DESIGN §3 fabricated-citation class. The #11529 folds are
+// on another branch and the wet-probe row does not exist at all, so neither is a DeclarationRef
+// this closure can name, and dissolution_status reports DissolutionUnbound rather than a promise.
+
+fn gsg_chassis_decl(name: String) -> DeclarationRef {
+  decl_ref(module_path: "extdeps.ampere.mt_jade_getting_started_guide.chassis", decl_name: name)
+}
+
+fn gsg_subject_decl(name: String) -> DeclarationRef {
+  decl_ref(
+    module_path: "extdeps.ampere.mt_jade_getting_started_guide.subject",
+    decl_name: name,
+  )
+}
+
+// THE SUBJECT MODULE WAS OUT OF THIS ROSTER'S SCOPE, which is the third time this roster has
+// under-reported its own subject (reviews 67996, 68026, 68056). Every previous instance was a row
+// inside a module the roster already covered; this one was a whole MODULE the scope conjunct did
+// not admit, so the gap was invisible to the very claim that checks for gaps.
+data mtjade1_gsg_subject_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(
+      module_path: "gunbc.specification_citation_read_provenance",
+      decl_name: "mt_jade_gsg_citation_read_comparison",
+    ),
+    reason: "The publisher-versus-mirror byte agreement for the GSG. Its Collins sibling names a production consumer (mt_collins_dimm_physical_identity carries both reads and their comparison into its operator projection); the Jade one has none, and is read only by the witness that asserts RecordedReadBytesAgree.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a carriage or provenance gate that refuses a GSG-derived declaration whose reads did not agree, the same gate mt_jade_gsg_publication_status waits on. TRIGGER: a production fold reads this comparison's standing on the path that consumes a GSG fact. SUFFICIENT FOR deleting this row. NOT satisfied by a witness asserting the standing, which is what reads it today."),
+  ),
+  frontier_row_decl(
+    ref: gsg_subject_decl(name: "mt_jade_gsg_publication_status"),
+    reason: "Whether the GSG is publicly published, which gates whether its facts may be carried into this corpus at all. Read only by a witness: upstream_fact_carriage is called on it there, but no production fold consults the status before consuming a GSG row.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a carriage gate that refuses a GSG-derived declaration when upstream_fact_carriage(status) is not FactsMayBeCarried, rather than leaving the permission checked once in a claim. TRIGGER: a production fold reads this status on the path that consumes a GSG fact. SUFFICIENT FOR deleting this row. NOT satisfied by a witness asserting the status is publicly published, which is what reads it today."),
+  ),
+]
+
+fn gsg_memory_population_decl(name: String) -> DeclarationRef {
+  decl_ref(
+    module_path: "extdeps.ampere.mt_jade_getting_started_guide.memory_population",
+    decl_name: name,
+  )
+}
+
+// THE MEMORY-POPULATION SIDE. Every other row in that module is consumed WITHIN it -- the channel
+// pairs build the 1DPC labels, which build the 2S2P population -- so this is the only one on the
+// frontier. A census that excludes the declaring file reports three more and is wrong; in-module
+// consumption is consumption, and rostering a consumed row breaks the roster the other way.
+data mtjade1_gsg_memory_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: gsg_memory_population_decl(name: "mt_jade_gsg_one_dpc_empty_slot_labels"),
+    reason: "The slots Table 11's 16-DIMM 1DPC row leaves empty. Nothing reads it: the plan module imported the name without referencing it, which is what made the row look consumed and kept it off this roster (review 68045), and its only real readers are witnesses.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: an installed-DIMM observation for unit 1 that asserts the empty slots are in fact empty, which is the half of the 1DPC fill a populated-slot join cannot check. TRIGGER: that observation exists and a production fold reads this list against it. SUFFICIENT FOR deleting this row. NOT satisfied by a witness comparing its length to the DIMM count, which is what reads it today."),
+  ),
+]
+
+data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_carton_power_cable_count"),
+    reason: "Table 5 carton quantity, transcribed and read by nothing. A claim comparing it to the same literal is a change detector: both sides are authored in this tree, so no edit to the subject can make it red (DESIGN §5).",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the Mt. Jade / SV328R physical class-facts lane (#11529) binding carton and accessory inventory from the cited packing list. TRIGGER: a production fold outside test.claim reads this row and joins it to an observed carton contents row. SUFFICIENT FOR deleting this row. NOT satisfied by a witness importing the count, nor by restating the figure in a second module."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_carton_rail_kit_count"),
+    reason: "Table 5 rail-kit quantity, same shape and same lane as the power-cable count.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: #11529 carton and accessory inventory. TRIGGER: a production fold joins this count to an observed rail-kit row. SUFFICIENT FOR deleting this row. NOT satisfied by a witness import."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_rear_psu_count"),
+    reason: "Table 6 rear PSU count, read by nothing. PowerSupplyStanding exists on the #11529 branch and carries Watt and RevolutionsPerMinute, but not in this closure.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: PowerSupplyStanding in the #11529 lane. TRIGGER: a PSU observation for this unit binds Watt and RevolutionsPerMinute for each supply, making this count a cardinality check over real rows rather than a standalone figure. SUFFICIENT FOR deleting this row. NOT satisfied by declaring PowerSupplyStanding without an observation to count."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_chassis_fan_count"),
+    reason: "Table 6 chassis fan count, read by nothing. The fan standing carries FirstPostFanCapture, which is AwaitingFirstPostWithDimms and has no per-fan readings to count yet.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: FirstPostFanCapture in gunbc.machine_intake_mtjade1_fan_standing. TRIGGER: AwaitingFirstPostWithDimms becomes FirstPostFanCaptured with per-fan readings, and a fold counts them against this figure. SUFFICIENT FOR deleting this row. NOT satisfied by the first POST alone if the capture records a finding without per-fan rows."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_minimum_bmc_firmware_family"),
+    reason: "THE GSG'S MINIMUM FAMILY IS NOT THIS UNIT'S FAMILY, AND THAT IS WHY IT HAS NO CONSUMER. Review 67954 and the parent lane both proposed wiring it into gunbc.machine_intake_bmc_first_contact_standing; that consumer may not be written. BmcFirmwareFamilyStanding is two arms and deliberately no function from a document to an installed family (review 67792), so reading this row as a stand-in for an observed family is the exact fork that module exists to prevent.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer selected by jade_fan_policy_convergence, which dispatches on an OBSERVED family. TRIGGER: a SEPARATE per-unit discriminator constructs FamilyObserved -- an observed BMC firmware identity or OEM fingerprint, an authenticated Manager/firmware response, or another explicitly modeled probe -- NOT the ProbeServiceRoot surface, which establishes reachability and Redfish presence only. That surface CANNOT fire this trigger: IntakeRedfishSurface carries no BmcFirmwareFamily in any arm, so the promotion is unconstructible rather than merely unchecked (DESIGN section 4b rung 4). Once the discriminator lands, this row becomes the minimum an observed family is compared AGAINST rather than a substitute for one. SUFFICIENT FOR deleting this row. NOT satisfied by any document read, and explicitly NOT by a fold that mints a family from Redfish presence or from this figure."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_without_1p_bmc_image_fan_duty"),
+    reason: "Appendix E's documented 100% duty without the 1P BMC image. Blocked on the same trigger as the minimum family and for the same reason: it describes a MegaRAC-package behaviour, and this unit's package is unobserved.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer selected by jade_fan_policy_convergence. TRIGGER: a wet ProbeServiceRoot read establishes REACHABILITY AND A REDFISH SURFACE ONLY -- a 200 service root is served by several firmware families and a 404 establishes the absence of that surface, not MegaRAC -- so a SEPARATE per-unit discriminator (an observed BMC firmware identity or OEM fingerprint, an authenticated Manager/firmware response, or another explicitly modeled probe) must construct FamilyObserved, so the realizer can decide whether this documented duty applies to the package actually installed. A Redfish surface alone does NOT fire this trigger, and cannot: IntakeRedfishSurface carries no BmcFirmwareFamily in any arm, so the promotion is unconstructible rather than merely unchecked (DESIGN section 4b rung 4). SUFFICIENT FOR deleting this row. NOT satisfied by a percent_count claim over the figure, which is the literal-copy shape this roster exists to record."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_inlet_connector_face"),
+    reason: "Recorded as GsgUnstated: the document does not name the IEC inlet or cord face. The only value a claim could inspect is the row's own prose.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the #11529 physical class-facts lane binding inlet face and cord from a cited datasheet. TRIGGER: that cited read lands and the topic becomes a stated value, at which point this row is REPLACED by the measure rather than asserted. SUFFICIENT FOR deleting this row. NOT satisfied by citing a datasheet without binding the value."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_chassis_weight"),
+    reason: "Recorded as GsgUnstated: this GSG prints no chassis or system mass.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the #11529 lane binding chassis mass from a cited datasheet as a Gram measure. TRIGGER: that cited read lands. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_bmc_ethernet_port"),
+    reason: "Table 6 / Figure 1 name a rear management port. An earlier revision made this row LOOK consumed by re-binding it as mtjade1_bmc_ethernet in the intake module, but that alias was a second name for one concept whose only reader asserted x == x, so the row was dangling and off this roster (review 67996).",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a PhysicalEthernetPort observation of unit 1's rear panel joined to this row through the refusing ethernet_port_unit_identity in the #11529 lane, which answers PortUnitIdentityUnobserved rather than minting SameUnit from matching prose. TRIGGER: that observation exists and the join runs, at which point the document's port and the observed connector are two subjects a fold relates. SUFFICIENT FOR deleting this row. NOT satisfied by re-binding the row under a unit-scoped name, which is what it was."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_rail_kit_part_number"),
+    reason: "Recorded as GsgUnstated: Table 5 gives quantity 1 and the description Rail Kit, and no vendor part number. Same alias history as the port row above - mtjade1_rail_kit_part_number made it look consumed.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the #11529 physical class-facts lane binding a cited rail-kit part number. TRIGGER: that cited read lands and the topic becomes a stated value. SUFFICIENT FOR deleting this row."),
+  ),
+  frontier_row_decl(
+    ref: gsg_chassis_decl(name: "mt_jade_gsg_bmc_ethernet_phy"),
+    reason: "Recorded as GsgUnstated: Table 6 names the BMC Ethernet port and not its PHY or controller SKU.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: an OnboardNetworkController row in the #11529 lane, or a host-side lspci/ethtool census of this unit. TRIGGER: either binds a cited controller SKU. SUFFICIENT FOR deleting this row. NOT satisfied by inferring the PHY from the platform's standard configuration, which the GSG itself says custom-shipped systems may differ from."),
+  ),
+]
+
+// THE INTAKE SIDE, HELD BACK BY ONE FACT RATHER THAN NINE. Every declaration below is the PLAN or
+// the STANDING for a machine whose wet observations have not happened: the DIMMs are not installed,
+// the unit has not POSTed with them, and the BMC has not answered a probe. They are not waiting on
+// nine different consumers, so the reason and the trigger are written once and mapped over the
+// names (std.roster_frontier frontier_rows_for_decls). Copying a row per name would be DESIGN §2
+// authored duplication and would lose the grain: what retires is ONE NAME, not the frontier.
+//
+// Applying the carrier here is the other half of the job this module already did for the document
+// rows (review 67984). The same §4c argument in this file's header applies to a prose "NAMED
+// CONSUMER / TRIGGER" note on a gunbc row exactly as it applies to one on an extdeps row.
+
+// THREE ROWS CAME OFF THIS ROSTER BECAUSE THEY WERE NEVER UNCONSUMED. jade_first_dpc_slot is
+// called by the jade_first_dpc_slots builder, jade_channel_slot builds all sixteen of its rows,
+// and jade_fan_policy_convergence is called by jade_current_fan_policy_convergence. All three
+// were added by the round-14 census whose consumer count EXCLUDED the declaring file - the
+// false-positive mode I documented one round later, after these were already in. Documenting a
+// broken method is not the same as re-checking what it produced, and a roster that declares a
+// live declaration dangling is wrong in the direction nobody audits: every reader downstream
+// treats it as a known gap rather than as working code.
+//
+// THE ACCESS-OBSERVATION MODULE, the FOURTH module this roster failed to cover (review 68081).
+// Every previous miss was found by a reviewer and fixed one module at a time, so this round the
+// census ran over EVERY declaration the change adds, in every production module it touches, with
+// annotation text stripped. That last part matters: mtjade1_managed_bmc_secret_standing is named
+// only in a // note in gunbc.secret_provision, and an un-stripped census counts that mention as a
+// consumer -- the same "an annotation makes a row look consumed" failure this roster exists to
+// record, reproduced inside the tool checking for it.
+data mtjade1_access_observation_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: "gunbc.machine_intake_mtjade1_access_observation",
+  decl_names: [
+    "mtjade1_unit_key_standing",
+    "mtjade1_managed_bmc_secret_standing",
+  ],
+  reason: "The access standing for unit 1 before any wet contact. The unit key is UnitKeyRefused{BoardSerialAbsent} because no FRU or SMBIOS read has happened, and the secret locus is reserved off the accessor roster because the secret is not minted. Both are refusals, and nothing in production reads a refusal that has no alternative yet.",
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: the BMC onboarding route, which reads the secret standing to decide whether a credential may be fetched and the unit key to name the machine it belongs to. TRIGGER: THREE STAGES IN ORDER, and the first does not imply the second -- (1) a wet ProbeServiceRoot read establishes reachability and a Redfish surface; (2) a SEPARATE per-unit discriminator (observed BMC firmware identity or OEM fingerprint, an authenticated Manager/firmware response, or another explicitly modeled probe) constructs FamilyObserved; (3) only then may the family-specific rotation route run, the secret be minted and read back, and the locus join fleet_accessor_grant_roster - at which point SecretLocusReservedNotOnAccessorRoster is no longer the only arm and a fold must choose between them. SUFFICIENT FOR deleting the NAME the route reads. NOT satisfied by minting the secret without rotating, which is the 'secret populated, server never rotated' state extdeps.bmc.http warns about."),
+)
+
+data mtjade1_first_dpc_plan_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: "gunbc.machine_intake_mtjade1_first_dpc_population_plan",
+  decl_names: [
+    "jade_first_dpc_topology",
+    "jade_first_dpc_slots",
+    "jade_first_dpc_dimm_count",
+    "jade_first_dpc_printed_slot_labels",
+    "jade_first_dpc_silk_standing",
+    "jade_first_dpc_preferred_class",
+    "jade_first_dpc_admits_die_stacking",
+    "jade_first_dpc_cross_channel_1r_2r",
+  ],
+  reason: "The 1DPC fill plan for Mt. Jade unit 1. It is a PLAN: nothing installs DIMMs, so no production fold reads the slot list, the silk standing, the admitted die stacking or the 1R/2R standing, and the only readers are this roster and test.claim.",
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: an installed-DIMM observation for this unit that joins each planned slot to a populated module. TRIGGER: that observation exists and a production fold compares it against the plan, at which point each name here becomes a plan-versus-actual join rather than a plan nobody checked. SUFFICIENT FOR deleting the NAME that the join reads, not the whole roster. NOT satisfied by installing the DIMMs without recording the population, nor by a witness importing the plan."),
+)
+
+data mtjade1_fan_standing_frontier_rows: List<FrontierRow> = frontier_rows_for_decls(
+  module_path: "gunbc.machine_intake_mtjade1_fan_standing",
+  decl_names: [
+    "mtjade1_residence_acoustic_intent",
+    "mtjade1_failsafe_window_close",
+    "mtjade1_first_post_fan_capture",
+    "mtjade1_host_thermal_before_next_power_on",
+    "jade_current_fan_policy_convergence",
+  ],
+  reason: "The fan standing for Mt. Jade unit 1, recorded from one operator receipt and read by no production fold. FirstPostFanCapture is AwaitingFirstPostWithDimms and HostThermalTelemetry is HostThermalAbsentBeforePost, so there is nothing yet for a realizer to converge against.",
+  dissolution: unbound_dissolution(description: "NAMED CONSUMER: the fan realizer jade_fan_policy_convergence selects once a family is observed - phosphor pid_control rows for OpenBMC, or an executed PWM profile for MegaRAC. TRIGGER: a separate per-unit discriminator constructs FamilyObserved -- NOT the ProbeServiceRoot surface, which establishes reachability only -- AND the unit POSTs with DIMMs so FirstPostFanCaptured carries a reading the realizer can act on. BOTH are required: a family with no post gives the realizer no thermal input, and a post with no family gives it no realizer. SUFFICIENT FOR deleting the NAME the realizer reads. NOT satisfied by the acoustic intent alone, which is a constraint on the realizer and not a consumer of it."),
+)
+
+// ONE LIST SO A READER ASKS ONE QUESTION. The witness folds this, not the parts.
+//
+// THIS ROW IS NOT ON THE FRONTIER AND THAT IS NOT AN OVERSIGHT. A census of the declarations this
+// change adds reports it dangling, because its only reader is a claim. But §3c's red is "a witness
+// that asserts a declaration EXISTS rather than exercising it", and the claim over this list
+// exercises it: it builds a keyed roster to find duplicate subjects, folds every row's dissolution
+// status, and checks every subject against the modules this roster is about. Execution by a claim
+// is execution. Rostering the roster would also be circular -- the frontier is the mechanism, not
+// a subject waiting for one.
+data mtjade1_coverage_frontier_rows: List<FrontierRow> = concat(
+  mtjade1_gsg_document_frontier_rows,
+  concat(
+    concat(mtjade1_gsg_subject_frontier_rows, mtjade1_gsg_memory_frontier_rows),
+    concat(
+      mtjade1_access_observation_frontier_rows,
+      concat(mtjade1_first_dpc_plan_frontier_rows, mtjade1_fan_standing_frontier_rows),
+    ),
+  ),
+)
