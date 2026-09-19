@@ -40783,7 +40783,7 @@ pub(crate) fn prepared_subject_exclusion_row_for<'a>(
 
 /// Segment-bounded module-name containment: `module` is `seed` itself or a module `seed`
 /// contains by name (`seed.` is a proper prefix). `a.b` contains `a.b.c` and not `a.bc`.
-fn module_name_is_or_is_contained_by(module: &str, seed: &str) -> bool {
+pub(crate) fn module_name_is_or_is_contained_by(module: &str, seed: &str) -> bool {
     module == seed
         || (module.len() > seed.len()
             && module.starts_with(seed)
