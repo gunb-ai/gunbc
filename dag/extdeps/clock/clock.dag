@@ -88,6 +88,13 @@ type ClockUnixMillisRead
   | ClockUnixMillisRefused { detail: String }
 
 // The OPERATION's output stays String and the TYPED read is a function over it, which is the shape every other numeric host read in this tree already has (extdeps.tools.wc, extdeps.systemd.systemd, extdeps.filesystem.linux all take a stdout String and route it through parse_int). The alternative — declaring the operation's output as EpochMs and letting the transport coerce — would put a decode inside the transport layer where it has no way to REFUSE: a stdout that is not a number would have to become some Int anyway, and the only available answers are a fabricated zero or a crash. Here an unparseable clock reading is ClockUnixMillisRefused carrying what was actually read, and a caller must answer that arm. The negative check is not redundant with parse_int: parse_int admits a leading minus, EpochMs is `Int where range(min: 0)`, and a clock that reported a pre-epoch instant is a broken clock rather than a very old one.
+// THE ONE MILLIS-TO-SECONDS CONVERSION, beside the read that produces millis. Truncation toward the
+// epoch is POSIX seconds' own rounding (date +%s truncates), and both carriers are non-negative, so
+// a reading that satisfied EpochMs yields one that satisfies EpochSecs.
+fn epoch_secs_of_millis(millis: EpochMs) -> EpochSecs {
+  millis / 1000
+}
+
 fn clock_unix_millis_read() -> ClockUnixMillisRead {
   let result = Clock.UnixMillis()
   match parse_int(s: trim(result.unix_millis)) {

@@ -503,13 +503,6 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
   }
 }
 
-// THE POSITIVE-CONTROL COUNT beside planned_jailer_launches: an authorized plan stages exactly one
-// device, and every refusal stages none. Because both counts read the same arm they are equal by
-// construction -- a device without a launch, or a launch without a device, has no value to be.
-fn planned_jit_devices(plan: AttemptLaunchPlan) -> Int {
-  planned_jailer_launches(plan: plan)
-}
-
 // STAGING, PERFORMED -- and READ BACK FROM THE HOST rather than believed from the steps' exits.
 // Each step's refusal is its own arm naming the step, so a failed install is not reported as a
 // failed write. The readback checks the three facts the device's safety rests on: owned by the

@@ -36,7 +36,7 @@ import gunbc.runner_attempt_launch {
   JitDeviceRefusal, JitMintNotReceived, JitCredentialNotDelivered,
   JitCredentialBoundToDifferentAttempt, JitCredentialBelowFloor, JitCredentialAboveCeiling,
   jit_device_readback, JitDeviceStagingRefused, JitDeviceReadbackStep,
-  plan_attempt_launch, planned_jailer_launches, planned_jit_devices,
+  plan_attempt_launch, planned_jailer_launches,
   attempt_jail_chroot_root, workspace_drive_path_on_host,
   work_standing_from_vmm_exit, WorkNotEstablished,
   reported_attempt_launch_rung,
@@ -162,9 +162,12 @@ fn refusal_of(plan: AttemptLaunchPlan) -> List<JitDeviceRefusal> {
   }
 }
 
-// NEITHER A DEVICE NOR A VMM: the law's two halves, read off one plan so they cannot disagree.
+// NEITHER A DEVICE NOR A VMM. The device and the jailer are fields of the one LaunchAuthorized arm,
+// so the law is carried by the plan's shape: zero launches IS zero devices. This helper counts
+// launches and says nothing more; a second count read off the same arm would be green by
+// construction (DESIGN §4b).
 fn no_device_no_vmm(plan: AttemptLaunchPlan) -> Bool {
-  planned_jailer_launches(plan: plan) == 0 && planned_jit_devices(plan: plan) == 0
+  planned_jailer_launches(plan: plan) == 0
 }
 
 // THE RECEIPTED FAIL-OPEN, AS A RED. X staged whatever bytes it had and launched. A credential below
@@ -318,7 +321,7 @@ test fn a_live_grant_stages_exactly_one_device_and_records_the_registration() ->
       match accepted_attempt(i: 4, id: "ok1") {
         Cons { head: a, tail: _ } => {
           let plan = plan_for(pair: pair, account: pair.account, attempt: a, mint: live_grant(attempt: a), ground: GroundClear)
-          planned_jit_devices(plan: plan) == 1 && planned_jailer_launches(plan: plan) == 1
+          planned_jailer_launches(plan: plan) == 1
             && match plan {
               LaunchAuthorized {
                 authorization: _,
