@@ -7,7 +7,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, serialize_content_hash }
 import extdeps.uri { Uri }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address }
-import gunbc.fleet_intent_network { srv4_host_lan_endpoint }
+import gunbc.fleet_intent_network { srv4_host_lan_endpoint, operator_lan_segment }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256_digest_content_hash }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_digest_from_line }
@@ -89,7 +89,12 @@ import gunbc.fleet_physical_inventory { operator_site }
 // from an observed boot offer reaching a client. A daemon that started is not an offer that arrived.
 data site_pxe_edge_host: HostIdentity = "srv4" as HostIdentity
 
-data site_pxe_edge_segment_network: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)
+// THE SEGMENT IS gunbc.fleet_intent_network operator_lan_segment, parsed from its cidr's network part
+// rather than re-typed; a failure to parse is a gate cause, never a guessed network.
+data site_pxe_edge_segment_network: Ipv4ParseResult = match split(s: operator_lan_segment.cidr as String, delimiter: "/").first() {
+  Present { value: network } => parse_ipv4_address(text: network)
+  Absent => parse_ipv4_address(text: "")
+}
 
 data site_pxe_edge_unit_name: NonEmptyStr = "gunbc-site-pxe-edge.service"
 
@@ -168,12 +173,12 @@ fn site_pxe_edge_roster(target: SitePxeEdgeChainloaderTarget, known_client_macs:
   }
 }
 
-fn site_pxe_edge_config_file(roster: SiteEdgeRoster) -> SitePxeEdgeFile {
+fn site_pxe_edge_config_file(roster: SiteEdgeRoster, network: Ipv4Address) -> SitePxeEdgeFile {
   SitePxeEdgeFile {
     subject: "dnsmasq-proxy-dhcp-config",
     path: site_pxe_edge_config_path,
     content: site_edge_proxy_dhcp_config(
-      network_address: site_pxe_edge_segment_network,
+      network_address: network,
       roster: roster,
       tftp_directory: site_pxe_edge_tftp_root,
     ),
@@ -202,8 +207,8 @@ fn site_pxe_edge_unit_file() -> SitePxeEdgeFile {
   }
 }
 
-fn site_pxe_edge_desired_files(roster: SiteEdgeRoster) -> List<SitePxeEdgeFile> {
-  [site_pxe_edge_config_file(roster: roster), site_pxe_edge_unit_file()]
+fn site_pxe_edge_desired_files(roster: SiteEdgeRoster, network: Ipv4Address) -> List<SitePxeEdgeFile> {
+  [site_pxe_edge_config_file(roster: roster, network: network), site_pxe_edge_unit_file()]
 }
 
 // ── The gate (pure) ──────────────────────────────────────────────────────────────────────────────
@@ -224,6 +229,7 @@ type SitePxeEdgeChainloaderObservation
 // consumer has to recover a cause from prose. Probe refusals stay a String: that is open-ended stderr.
 type SitePxeEdgeGateCause
   = TftpServerAddressUnparseable { error: Ipv4ParseError }
+  | SegmentNetworkUnparseable { error: Ipv4ParseError }
   | KnownClientMacUnparseable { error: MacParseError }
   | ChainloaderUnpinned { obligation: NonEmptyStr }
   | ChainloaderUnobservable { reason: String }
@@ -242,6 +248,9 @@ fn site_pxe_edge_gate_causes(
   (match site_pxe_edge_tftp_server_address {
     Ipv4Parsed { address: _ } => []
     Ipv4ParseFailed { error: e } => [TftpServerAddressUnparseable { error: e }]
+  }) + (match site_pxe_edge_segment_network {
+    Ipv4Parsed { address: _ } => []
+    Ipv4ParseFailed { error: e } => [SegmentNetworkUnparseable { error: e }]
   }) + (match roster {
     MacParsed { address: _ } => []
     MacParseFailed { error: e } => [KnownClientMacUnparseable { error: e }]
@@ -278,6 +287,7 @@ fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
     ChainloaderUnobservable { reason: _ } => true
     AdministratorPrivilegeRefused { reason: _ } => true
     TftpServerAddressUnparseable { error: _ } => false
+    SegmentNetworkUnparseable { error: _ } => false
     KnownClientMacUnparseable { error: _ } => false
     ChainloaderUnpinned { obligation: _ } => false
     ChainloaderDigestMismatch { observed: _, pinned: _ } => false
@@ -289,6 +299,7 @@ fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
 fn site_pxe_edge_gate_cause_text(cause: SitePxeEdgeGateCause) -> String {
   match cause {
     TftpServerAddressUnparseable { error: _ } => "tftp-server-address-unparseable: srv4_host_lan_endpoint.address is not an IPv4 address"
+    SegmentNetworkUnparseable { error: _ } => "segment-network-unparseable: operator_lan_segment.cidr has no IPv4 network part"
     KnownClientMacUnparseable { error: _ } => "known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"
     ChainloaderUnpinned { obligation: o } => concat("chainloader-unpinned: ", o as String)
     ChainloaderUnobservable { reason: r } => concat("chainloader-unobservable: ", r)
@@ -540,7 +551,11 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
       match first_onboarding_known_client_mac {
         MacParsed { address: a } =>
           match site_pxe_edge_tftp_server_address {
-            Ipv4Parsed { address: server } => site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: c, known_client_macs: [a], tftp_server_address: server))
+            Ipv4Parsed { address: server } =>
+              match site_pxe_edge_segment_network {
+                Ipv4Parsed { address: network } => site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: c, known_client_macs: [a], tftp_server_address: server), network: network)
+                Ipv4ParseFailed { error: _ } => [site_pxe_edge_unit_file()]
+              }
             Ipv4ParseFailed { error: _ } => [site_pxe_edge_unit_file()]
           }
         MacParseFailed { error: _ } => [site_pxe_edge_unit_file()]
