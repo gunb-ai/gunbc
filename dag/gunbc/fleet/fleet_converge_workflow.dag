@@ -59,6 +59,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
   gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
   fleet_host_mutation_concurrency_group_expression,
+  host_mutation_concurrency_group_expression,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
@@ -418,11 +419,9 @@ fn fleet_converge_reset_subject_map_json() -> String {
 // Binding the mutating ingresses to that lease closes the observer side and this row becomes belt
 // rather than braces; until then the observer exposure is real and undefended, and saying so is the
 // difference between a declared gap and the silent one review 62030 found.
-data fleet_converge_reset_subject_mutation_concurrency_group_expression: String = join([
-  "gunbc-host-mutation-${{ fromJSON('",
-  fleet_converge_reset_subject_map_json(),
-  "')[github.event.inputs.reset_observer] }}",
-], "")
+data fleet_converge_reset_subject_mutation_concurrency_group_expression: String = host_mutation_concurrency_group_expression(
+  host_expression: join(["fromJSON('", fleet_converge_reset_subject_map_json(), "')[github.event.inputs.reset_observer]"], ""),
+)
 
 data fleet_converge_reset_observer_runner_expression: String = label_pinned_runner_expression(input_name: "reset_observer")
 
@@ -528,9 +527,11 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
 // of the request and it is not decoration: two dispatches naming DIFFERENT retained executors and the
 // SAME target are, to an executor-keyed group, two independent runs -- they would interleave two
 // assessments and, once the actuation route lands, two mutations of one machine. The group below is
-// the SAME `gunbc-host-mutation-<host>` domain `fleet_host_mutation_concurrency_group_expression`
-// derives for every other host-touching job, indexed by the target instead, so a fleet apply on srv2
-// and a retirement assessment of srv2 contend on one domain rather than on two names for it.
+// the SAME `gunbc-host-mutation-<host>` domain every other host-touching job keys on, indexed by the
+// target instead, so a fleet apply on srv2 and a retirement assessment of srv2 contend on one domain
+// rather than on two names for it. That sameness is an EDGE and not this sentence: all three rows
+// call host_mutation_concurrency_group_expression, so they cannot drift apart while the note claims
+// they have not.
 //
 // WHAT THIS DOES NOT ESTABLISH, said plainly because a concurrency group is exactly the artifact a
 // later reader cites as the serialization authority. It serializes the GitHub ingress and nothing
@@ -573,7 +574,7 @@ fn fleet_converge_retirement_executor_runner_spec() -> RunnerSpec {
   RunsOnExpression { expression: fleet_converge_retirement_executor_runner_expression }
 }
 
-data fleet_converge_retirement_target_mutation_concurrency_group_expression: String = "gunbc-host-mutation-${{ github.event.inputs.retirement_target }}"
+data fleet_converge_retirement_target_mutation_concurrency_group_expression: String = host_mutation_concurrency_group_expression(host_expression: "github.event.inputs.retirement_target")
 
 data fleet_converge_runner_slot_retire_step_if: String = fleet_converge_mode_step_if(mode: RunnerSlotRetire)
 
