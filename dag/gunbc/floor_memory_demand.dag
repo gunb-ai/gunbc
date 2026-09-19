@@ -1,0 +1,177 @@
+module gunbc.floor_memory_demand
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryLimitValue,
+  CgroupMemoryLimited,
+  CgroupMemoryUnlimited,
+  CgroupMemoryLimitUnparseable,
+}
+
+// WHAT THIS MODULE IS FOR, AND WHY IT IS NOT A SECOND HOME FOR A NUMBER.
+//
+// A peak RSS or cgroup charge read from a run that was HELD measures what the process was
+// ALLOWED, not what it needs. `gunbc.runner_slot_allocation` states the reading directly -- a
+// peak equal to the throttle line is "the censored lower bound ... the workload being held, not
+// the workload being measured" -- and then, on 2026-09-12, recorded two disagreeing figures for
+// one run and said in as many words that it did not know which cgroup level each named.
+//
+// This module makes that ambiguity unwritable rather than re-describing it. A demand figure may
+// not travel without its standing: whether anything held the workload, and whether the number is
+// a demand or a floor under one. THE JUDGMENT IS DERIVED FROM THE KERNEL'S OWN COUNTERS, never
+// authored beside them.
+//
+// SUBJECT: the measured PROCESS (or its declared process subtree), not any function inside it.
+// That distinction is load-bearing and is why the reading is taken by a SUPERVISOR from outside.
+// An in-process observer -- a Drop guard, an exit hook, a final log line -- covers ordinary
+// returns and unwinding panics and NOTHING ELSE. It does not run on `panic = abort`, on
+// `process::abort`, on `process::exit`, or on SIGKILL, and Rust's allocation-error handler
+// normally ABORTS rather than unwinds. So allocation failure and the OOM kill -- the two
+// terminations a memory instrument most exists to report -- are exactly the ones no in-process
+// observer can report on. The kernel maintains `memory.peak` and `memory.events` regardless, and
+// a supervisor that outlived the child can still read them, so the supervisor's post-mortem read
+// is the load-bearing evidence and any in-process emission is a convenience beside it.
+
+// HOW THE MEASURED PROCESS ENDED, observed by the supervisor from OUTSIDE it (a wait status, or
+// the service manager's own record). This is an INDEPENDENT AXIS from whether the reading was
+// censored: a run can terminate cleanly and still have been throttled the whole way, and a run
+// can be killed without ever having been throttled. Folding them into one enum would lose
+// exactly the pair of facts the operator needs to tell "it fits" from "it was held".
+type SupervisedTermination
+  = TerminationExited { code: Int }
+  | TerminationSignalled { signal: Int }
+  | TerminationUnobserved { cause: NonEmptyStr }
+
+// The cumulative counters from `memory.events`, read AFTER the child is gone. `oom_kills` is the
+// kernel's own statement that it killed something in this cgroup; it is not inferred from the
+// wait status, because the two can disagree and the disagreement is informative.
+type CgroupMemoryEvents {
+  high_events: Nat,
+  max_events: Nat,
+  oom_kills: Nat,
+}
+
+// WHY A READ CAN REFUSE, each arm naming a distinct thing that went wrong. None of these may be
+// rendered as a zero or as "it fit": a supervisor that cannot distinguish "could not read" from
+// "the workload was within its limit" reproduces one layer out the very conflation this module
+// exists to remove.
+type DemandReadRefusalCause
+  = CgroupDirectoryAbsent { path: String }
+  | CgroupFileUnreadable { path: String, detail: String }
+  | CgroupValueUnparseable { file: NonEmptyStr, body: String }
+  | SupervisorDidNotOwnTheCgroup { detail: String }
+
+// THE THREE ARMS AN OPERATOR READS, and they are three because two of the pairings are the ones
+// that have actually caused harm here.
+//
+// `DemandObserved` is the only arm whose peak may be cited as a DEMAND. `DemandBounded` carries a
+// peak that is a LOWER BOUND on demand -- the workload wanted at least this much and we cannot say
+// how much more -- and it covers both ways that happens, because the consequence for a consumer is
+// identical: the number may not be used to size anything downward. Which way it happened is
+// carried in the fields rather than in a fourth arm, so a consumer asking "may I treat this as a
+// demand?" gets a two-valued answer and a consumer asking "why not?" still gets the cause.
+//
+// `DemandUnreadable` is separate from both and must never render like either.
+//
+// WHAT `DemandObserved` DOES NOT SAY, because the gap is easy to cross by accident: it says
+// NOTHING HELD THE MEMORY. It does not say the workload was COMPLETE. A run that refused half its
+// witnesses and exited early was not throttled, so it qualifies here, and its peak is still a
+// truthful statement about what that run demanded -- but it is not a statement about what a
+// complete run would demand. Workload completeness is the caller's subject and is carried by the
+// caller's own verdict, never inferred from this one.
+type FloorMemoryQualification
+  = DemandObserved {
+      peak: ByteSize,
+      limit_max: CgroupMemoryLimitValue,
+      limit_high: CgroupMemoryLimitValue,
+      events: CgroupMemoryEvents,
+      termination: SupervisedTermination,
+    }
+  | DemandBounded {
+      peak_lower_bound: ByteSize,
+      limit_max: CgroupMemoryLimitValue,
+      limit_high: CgroupMemoryLimitValue,
+      events: CgroupMemoryEvents,
+      termination: SupervisedTermination,
+    }
+  | DemandUnreadable { cause: DemandReadRefusalCause }
+
+// A LIMIT THAT IS ABSENT CANNOT HOLD ANYTHING, and an unparseable one cannot be reasoned about at
+// all. `CgroupMemoryUnlimited` is the `high=max` case that makes an uncensored measurement
+// possible in the first place, so it must read as "this line did not bind" rather than as a very
+// large number.
+fn peak_reached_limit(peak: ByteSize, limit: CgroupMemoryLimitValue) -> Bool {
+  match limit {
+    CgroupMemoryLimited { bytes: b } => byte_size_count(b: peak) >= byte_size_count(b: b)
+    CgroupMemoryUnlimited => false
+    CgroupMemoryLimitUnparseable { body: _ } => false
+  }
+}
+
+fn any_events(events: CgroupMemoryEvents) -> Bool {
+  events.high_events > 0 || events.max_events > 0 || events.oom_kills > 0
+}
+
+// A TERMINATION THAT WAS NOT AN ORDINARY EXIT WITHHELD THE REST OF THE WORKLOAD, so whatever the
+// peak reached, the process had not finished wanting memory. An UNOBSERVED termination counts the
+// same way and deliberately so: not knowing how a process ended is not evidence that it ended
+// well, and the fail-closed reading of an unobserved end is that the figure is a lower bound.
+fn termination_withheld_completion(termination: SupervisedTermination) -> Bool {
+  match termination {
+    TerminationExited { code: _ } => false
+    TerminationSignalled { signal: _ } => true
+    TerminationUnobserved { cause: _ } => true
+  }
+}
+
+// THE JUDGMENT. Every input is a kernel counter or a wait status; nothing here is authored.
+//
+// The order of the tests is the order of severity, and each one independently establishes that the
+// peak is a lower bound rather than a demand:
+//   a kill    -- the workload was stopped before it finished wanting memory;
+//   an event  -- reclaim or the OOM killer acted, so the workload was held below what it asked for;
+//   a pin     -- the peak sits AT a limit, which is the censored signature even when the counters
+//                have not yet ticked, and is what a throttled run looks like from the outside.
+// Only a run that survived all three may be read as a demand.
+fn qualify_floor_memory_demand(
+  peak: ByteSize,
+  limit_max: CgroupMemoryLimitValue,
+  limit_high: CgroupMemoryLimitValue,
+  events: CgroupMemoryEvents,
+  termination: SupervisedTermination,
+) -> FloorMemoryQualification {
+  let killed = termination_withheld_completion(termination: termination)
+  let pinned =
+    peak_reached_limit(peak: peak, limit: limit_high)
+      || peak_reached_limit(peak: peak, limit: limit_max)
+  if killed || any_events(events: events) || pinned {
+    DemandBounded {
+      peak_lower_bound: peak,
+      limit_max: limit_max,
+      limit_high: limit_high,
+      events: events,
+      termination: termination,
+    }
+  } else {
+    DemandObserved {
+      peak: peak,
+      limit_max: limit_max,
+      limit_high: limit_high,
+      events: events,
+      termination: termination,
+    }
+  }
+}
+
+// THE ONE QUESTION A SIZING CONSUMER MAY ASK, so that no consumer re-derives the judgment and
+// gets a different answer (DESIGN section 3). A bounded or unreadable qualification is never a
+// demand; only `DemandObserved` is.
+fn qualification_is_a_demand(q: FloorMemoryQualification) -> Bool {
+  match q {
+    DemandObserved { peak: _, limit_max: _, limit_high: _, events: _, termination: _ } => true
+    DemandBounded { peak_lower_bound: _, limit_max: _, limit_high: _, events: _, termination: _ } => false
+    DemandUnreadable { cause: _ } => false
+  }
+}

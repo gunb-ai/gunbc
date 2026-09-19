@@ -1,0 +1,133 @@
+module test.claim.floor_memory_demand_witness
+
+import std.types { Bool }
+import std.measure { byte_size }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryLimited,
+  CgroupMemoryUnlimited,
+}
+import gunbc.floor_memory_demand {
+  CgroupMemoryEvents,
+  TerminationExited,
+  TerminationSignalled,
+  TerminationUnobserved,
+  DemandUnreadable,
+  CgroupDirectoryAbsent,
+  qualify_floor_memory_demand,
+  qualification_is_a_demand,
+}
+
+// THE DISCRIMINATING PAIR IS TWO REAL RUNS, NOT TWO FIXTURES. Both were taken on srv1 at
+// 56375ec44a from the same binary and the same tree, back to back, with ONE variable changed:
+// the throttle line. Every number below is a kernel counter read from those runs, so if the
+// judgment stops separating them, it has stopped separating the two states the corpus has
+// actually observed rather than two states someone imagined.
+//
+//   Run A, uncensored: MemoryMax=64G, MemoryHigh=infinity.  peak 28962353152, all events zero.
+//   Run B, 16 GiB throttle line: MemoryHigh=17179869184.    peak 17181028352, high events 17466.
+//
+// Run B's peak sits 1158168 bytes ABOVE its throttle line, which is the reclaim clamp's overshoot
+// signature rather than a contradiction: allocations cross the line in a burst, direct reclaim
+// drags usage back, and memory.peak records the crossing.
+
+data run_a_events: CgroupMemoryEvents = CgroupMemoryEvents {
+  high_events: 0,
+  max_events: 0,
+  oom_kills: 0,
+}
+
+data run_b_events: CgroupMemoryEvents = CgroupMemoryEvents {
+  high_events: 17466,
+  max_events: 0,
+  oom_kills: 0,
+}
+
+data no_events: CgroupMemoryEvents = CgroupMemoryEvents {
+  high_events: 0,
+  max_events: 0,
+  oom_kills: 0,
+}
+
+// GREEN: the uncensored run is a demand. An exit code of 1 does not withhold completion -- the
+// floor refused two of its own witnesses, which is a statement about the workload and not about
+// whether memory was held.
+test fn the_uncensored_run_qualifies_as_a_demand_holds() -> Bool {
+  qualification_is_a_demand(
+    q: qualify_floor_memory_demand(
+      peak: byte_size(count: 28962353152),
+      limit_max: CgroupMemoryLimited { bytes: byte_size(count: 68719476736) },
+      limit_high: CgroupMemoryUnlimited,
+      events: run_a_events,
+      termination: TerminationExited { code: 1 },
+    ),
+  )
+}
+
+// RED SIDE OF THE SAME PAIR: the censored run must NOT qualify, and it is the same binary on the
+// same tree. This is the assertion that would have stopped the 2026-09-12 reading from travelling
+// as a demand.
+test fn the_throttled_run_does_not_qualify_as_a_demand_holds() -> Bool {
+  qualification_is_a_demand(
+    q: qualify_floor_memory_demand(
+      peak: byte_size(count: 17181028352),
+      limit_max: CgroupMemoryLimited { bytes: byte_size(count: 68719476736) },
+      limit_high: CgroupMemoryLimited { bytes: byte_size(count: 17179869184) },
+      events: run_b_events,
+      termination: TerminationExited { code: 1 },
+    ),
+  ) == false
+}
+
+// THE CASE EVENT COUNTERS ALONE WOULD MISS, and the one the corpus has been burned by: a peak
+// sitting EXACTLY on the throttle line with the counters still reading zero. Every figure behind
+// the old 16/15 row had this shape. If the judgment consulted only memory.events this would read
+// as a demand.
+test fn a_peak_pinned_to_the_line_with_zero_events_is_not_a_demand_holds() -> Bool {
+  qualification_is_a_demand(
+    q: qualify_floor_memory_demand(
+      peak: byte_size(count: 16106127360),
+      limit_max: CgroupMemoryLimited { bytes: byte_size(count: 17179869184) },
+      limit_high: CgroupMemoryLimited { bytes: byte_size(count: 16106127360) },
+      events: no_events,
+      termination: TerminationExited { code: 0 },
+    ),
+  ) == false
+}
+
+// A KILLED PROCESS NEVER FINISHED WANTING MEMORY, so its peak is a lower bound even when it sits
+// far below every limit and no counter ticked -- which is what an abort or an external SIGKILL
+// looks like from the supervisor.
+test fn a_killed_run_is_not_a_demand_even_far_below_its_limits_holds() -> Bool {
+  qualification_is_a_demand(
+    q: qualify_floor_memory_demand(
+      peak: byte_size(count: 1073741824),
+      limit_max: CgroupMemoryLimited { bytes: byte_size(count: 68719476736) },
+      limit_high: CgroupMemoryUnlimited,
+      events: no_events,
+      termination: TerminationSignalled { signal: 9 },
+    ),
+  ) == false
+}
+
+// NOT KNOWING HOW A PROCESS ENDED IS NOT EVIDENCE THAT IT ENDED WELL. The fail-closed reading of
+// an unobserved termination is a lower bound.
+test fn an_unobserved_termination_is_not_a_demand_holds() -> Bool {
+  qualification_is_a_demand(
+    q: qualify_floor_memory_demand(
+      peak: byte_size(count: 1073741824),
+      limit_max: CgroupMemoryLimited { bytes: byte_size(count: 68719476736) },
+      limit_high: CgroupMemoryUnlimited,
+      events: no_events,
+      termination: TerminationUnobserved { cause: "supervisor lost the child" },
+    ),
+  ) == false
+}
+
+// THE ARM THE WHOLE INSTRUMENT EXISTS TO KEEP DISTINCT: could-not-read must not render as it-fit.
+test fn an_unreadable_cgroup_is_not_a_demand_holds() -> Bool {
+  qualification_is_a_demand(
+    q: DemandUnreadable {
+      cause: CgroupDirectoryAbsent { path: "/sys/fs/cgroup/nonexistent" },
+    },
+  ) == false
+}
