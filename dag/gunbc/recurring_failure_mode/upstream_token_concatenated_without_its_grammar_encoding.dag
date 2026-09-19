@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.upstream_token_concatenated_without_its_grammar_encoding
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data upstream_token_concatenated_without_its_grammar_encoding: RecurringFailureMode = RecurringFailureMode {
+  identity: "upstream_token_concatenated_without_its_grammar_encoding" as NonEmptyStr,
+
+  receipts: [
+    "**an upstream grammar's token is built by concatenating a raw value, and read back by splitting on a delimiter the raw value may contain** (invalid state: a wire string that the upstream grammar parses differently from what the writer meant, or refuses outright; harm: the first live write hits the wrong range or is rejected, and the reader refuses the spelling the upstream actually returns, so the lane cannot converge at all).",
+
+    "Specimen (gunbc#11613 finding 1): `gunbc.review_sheet_sheets` `sheet_a1_range_wire`, `sheet_qualified_cell` and `sheet_qualified_span` concatenated the raw sheet title before `!`, and Google Sheets A1 notation requires a title with a space to be single-quoted with `'` doubled. The buyer sheet's tab title has a space. The reader `a1_readback_standing` split on `!` first and refused any title containing a quote, which is a refusal standing where a decoder should be. The fixtures all used the one-word title `Review`, so every witness was green over a lane whose first real input would fail.",
+
+    "**RECOGNITION RULE: a `concat` or `split` over a delimiter that belongs to an external grammar, with no encoder or decoder in the upstream's extdeps module between the value and the delimiter.** The discriminator is a fixture value carrying the grammar's reserved characters (a space, the quote, the delimiter itself). A fixture of plain identifiers cannot tell an encoder from a concat.",
+
+    "Found at rung 1, mitigatable: only a review caught it. Now rung 2, mechanically preventable, for this grammar: one codec, `extdeps.google.sheets` `a1_sheet_title_wire` and `a1_range_title_decode`, which every A1 writer and reader in the lane consumes, and whose claims each go red under a named mutation (skip quoting, skip escaping, split on `!` before decoding). The ceiling is structural (rung 3/4): a qualified-range carrier whose only constructor is the codec, so a raw `String` range is unwritable. The next trigger is `ValueRange.range` typed as that carrier rather than `String`, and it is open.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.google.sheets", decl_name: "a1_range_title_decode", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.google.sheets", decl_name: "a1_sheet_title_wire", field: WholeDeclaration },
+  ],
+}

@@ -235,17 +235,19 @@ fn sheets_value_render_option_from_wire(raw: String) -> SheetsValueRenderOption?
 // A1 NOTATION: THE SHEET-TITLE TOKEN (sheets_a1_notation_citation). A qualified A1 range is
 // `<title>!<cells>`; the guide spells a title with a space as `'My Custom Sheet'!A:A` and states
 // single quotes are required for names with spaces, special characters or an alphanumeric
-// combination, and an embedded single quote is doubled inside the quotes. The guide never forbids
-// quoting a plain name, and `'Sheet1'!A1` is accepted, so the ENCODER ALWAYS QUOTES: one spelling,
-// no "is this title a plain identifier" classifier to get wrong. That quoting a plain name is
-// admitted is an observed API behaviour beside the guide, not a sentence the guide prints.
+// combination, and an embedded single quote is doubled inside the quotes. The ENCODER ALWAYS
+// QUOTES: one spelling, no "is this title a plain identifier" classifier to get wrong. The guide
+// states when quotes are REQUIRED and never forbids them elsewhere; that `'Sheet1'!A1` is admitted
+// is a BET read from that silence, not a sentence the guide prints and not observed by this repo.
+// It is grounded by the first live values.batchUpdate through gunbc.review_sheet_sheets, and if it
+// is refused, the remedy is a required-quoting classifier here and nowhere else.
 // The DECODER models what values.get actually returns in ValueRange.range: plain titles come back
 // bare (`Sheet1!A1:Z1000`), others quoted (`'Buyer Review'!A1:C1`), so both spellings decode. The
 // quoted title is scanned to its closing quote BEFORE any '!' is looked for, because a quoted
 // title may itself contain '!'.
 
 fn a1_sheet_title_wire(title: NonEmptyStr) -> String {
-  concat("'", concat(replace(title as String, "'", "''"), "'"))
+  replace(title as String, "'", "''")
 }
 
 fn a1_qualified_range_wire(title: NonEmptyStr, cells: String) -> String {
