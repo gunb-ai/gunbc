@@ -1290,52 +1290,57 @@ fn primitive_call_edge_at(
 ) {
     use crate::cli_run::{PrimitiveCallEdgeRow, PrimitiveCalleeIdentity};
     use crate::v1_std_core::{CallSemantics, ExprData, MethodSemantics};
-    let callee: Option<PrimitiveCalleeIdentity> = match &*texpr.expr_data {
-        ExprData::ExprCall { call_semantics, .. } => {
-            let spelling =
-                crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone());
-            match call_semantics.as_deref() {
-                Some(CallSemantics::PlainCallSemantics { target })
-                | Some(CallSemantics::ResolvedDirectCallSemantics { target, .. })
-                | Some(CallSemantics::LookupCallSemantics { target }) => {
-                    primitive_call_callee_of_target(target, &spelling)
-                }
-                Some(CallSemantics::FunctionValueCallSemantics) => None,
-                None => Some(PrimitiveCalleeIdentity::UndeterminedFreeCall { spelling }),
-            }
-        }
-        ExprData::ExprMethodCall { method_semantics } => {
-            let spelling =
-                crate::v1_std_core::expr_method_name_at(texpr.clone(), source_indices.clone());
-            match method_semantics.as_deref() {
-                Some(MethodSemantics::AlgebraMethodSemantics {
-                    algebra_template, ..
-                }) => match algebra_template {
-                    Some(t) => Some(PrimitiveCalleeIdentity::AlgebraMethod {
-                        template_name: t.name.clone(),
+    // The authored spelling is read ONCE per node and shared by the callee arm and the row;
+    // reading it twice was a copied producer on the innermost loop of the corpus walk.
+    let (authored_spelling, callee): (String, Option<PrimitiveCalleeIdentity>) =
+        match &*texpr.expr_data {
+            ExprData::ExprCall { call_semantics, .. } => {
+                let spelling =
+                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone());
+                let callee = match call_semantics.as_deref() {
+                    Some(CallSemantics::PlainCallSemantics { target })
+                    | Some(CallSemantics::ResolvedDirectCallSemantics { target, .. })
+                    | Some(CallSemantics::LookupCallSemantics { target }) => {
+                        primitive_call_callee_of_target(target, &spelling)
+                    }
+                    Some(CallSemantics::FunctionValueCallSemantics) => None,
+                    None => Some(PrimitiveCalleeIdentity::UndeterminedFreeCall {
+                        spelling: spelling.clone(),
                     }),
-                    None => Some(PrimitiveCalleeIdentity::PlainMethod { spelling }),
-                },
-                Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) => {
-                    Some(PrimitiveCalleeIdentity::ServiceOperation {
-                        service_name: service_name.clone(),
-                        operation: spelling,
-                    })
-                }
-                Some(MethodSemantics::PlainMethodSemantics) | None => {
-                    Some(PrimitiveCalleeIdentity::PlainMethod { spelling })
-                }
+                };
+                (spelling, callee)
             }
-        }
-        _ => None,
-    };
-    if let Some(callee) = callee {
-        let authored_spelling = match &*texpr.expr_data {
-            ExprData::ExprCall { .. } => {
-                crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone())
+            ExprData::ExprMethodCall { method_semantics } => {
+                let spelling =
+                    crate::v1_std_core::expr_method_name_at(texpr.clone(), source_indices.clone());
+                let callee = match method_semantics.as_deref() {
+                    Some(MethodSemantics::AlgebraMethodSemantics {
+                        algebra_template, ..
+                    }) => match algebra_template {
+                        Some(t) => Some(PrimitiveCalleeIdentity::AlgebraMethod {
+                            template_name: t.name.clone(),
+                        }),
+                        None => Some(PrimitiveCalleeIdentity::PlainMethod {
+                            spelling: spelling.clone(),
+                        }),
+                    },
+                    Some(MethodSemantics::ServiceMethodSemantics { service_name, .. }) => {
+                        Some(PrimitiveCalleeIdentity::ServiceOperation {
+                            service_name: service_name.clone(),
+                            operation: spelling.clone(),
+                        })
+                    }
+                    Some(MethodSemantics::PlainMethodSemantics) | None => {
+                        Some(PrimitiveCalleeIdentity::PlainMethod {
+                            spelling: spelling.clone(),
+                        })
+                    }
+                };
+                (spelling, callee)
             }
-            _ => crate::v1_std_core::expr_method_name_at(texpr.clone(), source_indices.clone()),
+            _ => (String::new(), None),
         };
+    if let Some(callee) = callee {
         out.push(PrimitiveCallEdgeRow {
             caller_module: caller_module.to_string(),
             caller_decl: caller_decl.to_string(),
@@ -1545,6 +1550,14 @@ fn compile_dag_primitive_call_edges_on_this_thread(
             module.module.clone(),
         );
         if !walked_modules.insert(module_name.clone()) {
+            // Two modules in one resolved graph carrying one authored name is an ambiguity
+            // the census must SEE: a typed refusal row, never a shortened population.
+            entries_refused.push(PrimitiveCallEntryRefusal {
+                entry: module_file,
+                cause: format!(
+                    "module name `{module_name}` is declared by a second file in the resolved graph"
+                ),
+            });
             continue;
         }
         if let Some(messages) = blocked_modules.get(&module_name) {

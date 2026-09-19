@@ -76,12 +76,15 @@ fn hand_roster_rows_absent_from_registry() -> List<String> {
 // the seed's own .dag as src/v1 against dag; no module is counted twice because every walk names
 // its own entry prefix.
 //
-// WHY THE SCOPE IS A PARAMETER. One whole-corpus walk is an hours-long, ~19 GiB process
-// (measured 2026-09-18) that a shared session host reclaims before it finishes. A scope names
-// WHICH entry prefixes the consumer walk covers, and the receipt carries it, so a bounded run is
-// an honest projection -- "v2-reached identities first" is the program's own order -- and never
-// reports an unwalked layer's identities as unused: a finding that depends on consumers is only
-// rendered against the walked scope.
+// WHY THE SCOPE IS A PARAMETER, AND A LABEL. One walk is one resolution of its pool followed by
+// a module walk: for dag ∪ src/v2 that is ~1000 s and ~32 GB peak in a `gunbc run` (measured
+// 2026-09-19: 6062 sources, 1190 src/v2 modules walked, 5250 call sites), which a loaded
+// session host reclaims before the full three-walk census finishes. A scope names WHICH entry
+// prefixes the consumer walk covers and the receipt carries it, so a bounded run is an honest
+// projection -- "v2-reached identities first" is the program's own order -- and never reports
+// an unwalked layer's identities as unused: a finding that depends on consumers is only rendered
+// against the walked scope. Each scope is its own instrument label
+// (gunbc.instrument_targets primitive_egress_census_{v2,dag,seed}_label), never a flag.
 data admitted_corpus_pool_roots: List<String> = ["dag", "src/v2"]
 data seed_pool_roots: List<String> = ["dag", "src/v1"]
 
@@ -209,8 +212,9 @@ fn primitive_egress_census_exit() -> CliWireResponse {
   census_wire(scope: FullCorpus)
 }
 
-// The bounded projections, each its own entry so a run can be sized to the host: the receipt's
-// `scope` line says which entries were walked.
+// The bounded projections, each bound to its own instrument label
+// (//gunbc/instruments:primitive-egress-census-{v2,dag,seed}) so a run can be sized to the host:
+// the receipt's `scope` line says which entries were walked.
 fn primitive_egress_census_v2_exit() -> CliWireResponse {
   census_wire(scope: V2EntriesOnly)
 }

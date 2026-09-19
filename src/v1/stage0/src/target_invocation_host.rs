@@ -156,6 +156,9 @@ pub enum TargetProducer {
     CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
     PrimitiveEgressCensus,
+    PrimitiveEgressCensusV2,
+    PrimitiveEgressCensusDag,
+    PrimitiveEgressCensusSeed,
 }
 
 /// `gunbc.instrument_targets` `instrument_targets` / `instrument_bindings`, as the pairs the
@@ -216,6 +219,18 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("primitive-egress-census"),
             TargetProducer::PrimitiveEgressCensus,
+        ),
+        (
+            instrument_label("primitive-egress-census-v2"),
+            TargetProducer::PrimitiveEgressCensusV2,
+        ),
+        (
+            instrument_label("primitive-egress-census-dag"),
+            TargetProducer::PrimitiveEgressCensusDag,
+        ),
+        (
+            instrument_label("primitive-egress-census-seed"),
+            TargetProducer::PrimitiveEgressCensusSeed,
         ),
     ]
 }
@@ -411,12 +426,26 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::EvaluationStoreAddressExactHead => {
             run_evaluation_store_address_exact_head()
         }
-        TargetProducer::PrimitiveEgressCensus => run_primitive_egress_census(),
+        TargetProducer::PrimitiveEgressCensus => {
+            run_primitive_egress_census("primitive-egress-census", "primitive_egress_census_exit")
+        }
+        TargetProducer::PrimitiveEgressCensusV2 => run_primitive_egress_census(
+            "primitive-egress-census-v2",
+            "primitive_egress_census_v2_exit",
+        ),
+        TargetProducer::PrimitiveEgressCensusDag => run_primitive_egress_census(
+            "primitive-egress-census-dag",
+            "primitive_egress_census_dag_exit",
+        ),
+        TargetProducer::PrimitiveEgressCensusSeed => run_primitive_egress_census(
+            "primitive-egress-census-seed",
+            "primitive_egress_census_seed_exit",
+        ),
     }
 }
 
-/// THE PRIMITIVE EGRESS CENSUS PRODUCER (gunbc#11642): evaluate
-/// `gunbc.primitive_egress.census_live primitive_egress_census_exit`, which answers a
+/// THE PRIMITIVE EGRESS CENSUS PRODUCERS (gunbc#11642): evaluate one of the
+/// `gunbc.primitive_egress.census_live` `primitive_egress_census_*_exit` entries, each answering a
 /// `CliWireResponse` -- the receipt bytes (one JSON object per line) plus the exit the census
 /// standing carries. The bytes are printed on EVERY termination, because the receipt is the
 /// product and a did-not-hold census is exactly when its identity lists are wanted.
@@ -426,14 +455,17 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
 /// identity with zero or two dispositions) and is `ObservationDidNotHold`; `ExitFailure { code: 2 }`
 /// is the population not being established (a refused entry, no identities) and is `Refused`;
 /// a resolve or eval failure is `SubjectUnreached`.
-fn run_primitive_egress_census() -> InvocationOutcome {
+/// One runner for the four census labels: the scope is the `.dag` entry function the label
+/// names (`gunbc.primitive_egress.census_live` `census_wire(scope:)` decides what it walks), so a
+/// bounded projection is a label of its own and not a flag on the full one.
+fn run_primitive_egress_census(label: &'static str, function: &'static str) -> InvocationOutcome {
     const ENTRY: &str = "dag/gunbc/primitive_egress/census_live.dag";
-    const FUNCTION: &str = "primitive_egress_census_exit";
-    const LABEL: &str = "primitive-egress-census";
+    let label_name = label;
+    let function_name = function;
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
             termination: Termination::Refused,
-            message: format!("{LABEL}: refused: could not anchor at the workspace root: {e}"),
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
     let roots = cli_run::default_source_roots();
@@ -442,7 +474,7 @@ fn run_primitive_egress_census() -> InvocationOutcome {
         Err(cause) => {
             return InvocationOutcome {
                 termination: Termination::SubjectUnreached,
-                message: format!("{LABEL}: resolve failed for {ENTRY}: {cause}"),
+                message: format!("{label_name}: resolve failed for {ENTRY}: {cause}"),
             };
         }
     };
@@ -453,7 +485,7 @@ fn run_primitive_egress_census() -> InvocationOutcome {
         return InvocationOutcome {
             termination: Termination::Refused,
             message: format!(
-                "{LABEL}: {ENTRY} has blocking diagnostics: {}",
+                "{label_name}: {ENTRY} has blocking diagnostics: {}",
                 blocking.iter().cloned().collect::<Vec<_>>().join("; ")
             ),
         };
@@ -463,15 +495,16 @@ fn run_primitive_egress_census() -> InvocationOutcome {
         source_indices,
         crate::v1_interpreter::ExecutionMode::Wet,
     );
-    let value = match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &[], true) {
-        Ok(value) => value,
-        Err(cause) => {
-            return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
-                message: format!("{LABEL}: eval failed: {cause}"),
+    let value =
+        match crate::v1_interpreter::run_in_context_with_args(&ctx, function_name, &[], true) {
+            Ok(value) => value,
+            Err(cause) => {
+                return InvocationOutcome {
+                    termination: Termination::SubjectUnreached,
+                    message: format!("{label_name}: eval failed: {cause}"),
+                }
             }
-        }
-    };
+        };
     match cli_run::classify_cli_wire(&value, &ctx) {
         cli_run::CliWireClass::Printable { bytes, exit } => {
             let termination = match &exit {
@@ -481,12 +514,12 @@ fn run_primitive_egress_census() -> InvocationOutcome {
                 cli_run::ExitClass::NotProcessExit { .. } => Termination::Refused,
             };
             let reason = match exit {
-                cli_run::ExitClass::Success => format!("{LABEL}: held"),
+                cli_run::ExitClass::Success => format!("{label_name}: held"),
                 cli_run::ExitClass::Failure { reason, .. } => {
-                    reason.unwrap_or_else(|| format!("{LABEL}: failed"))
+                    reason.unwrap_or_else(|| format!("{label_name}: failed"))
                 }
                 cli_run::ExitClass::NotProcessExit { type_name } => {
-                    format!("{LABEL}: wire exit is `{type_name}`, not a ProcessExit")
+                    format!("{label_name}: wire exit is `{type_name}`, not a ProcessExit")
                 }
             };
             InvocationOutcome {
@@ -496,15 +529,17 @@ fn run_primitive_egress_census() -> InvocationOutcome {
         }
         cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
             termination: Termination::Refused,
-            message: format!("{LABEL}: renderer refused: {cause}"),
+            message: format!("{label_name}: renderer refused: {cause}"),
         },
         cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
             termination: Termination::Refused,
-            message: format!("{LABEL}: {FUNCTION} returned `{type_name}`, not a CliWireResponse"),
+            message: format!(
+                "{label_name}: {function_name} returned `{type_name}`, not a CliWireResponse"
+            ),
         },
         cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
             termination: Termination::Refused,
-            message: format!("{LABEL}: malformed CliWireResponse: {detail}"),
+            message: format!("{label_name}: malformed CliWireResponse: {detail}"),
         },
     }
 }

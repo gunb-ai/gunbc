@@ -24,6 +24,9 @@ type TargetProducer
   | V2NativeCliProducer
   | EvaluationStoreAddressExactHeadProducer
   | PrimitiveEgressCensusProducer
+  | PrimitiveEgressCensusV2Producer
+  | PrimitiveEgressCensusDagProducer
+  | PrimitiveEgressCensusSeedProducer
 
 type TargetBinding {
   target: Label
