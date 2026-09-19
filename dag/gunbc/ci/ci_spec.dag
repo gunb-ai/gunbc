@@ -815,6 +815,18 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+data gunbc_ci_runner_slot_retire_dispatch_admission_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_slot_retire_run.dag",
+  function: "runner_slot_retire_dispatch_admission_wet",
+}
+
+// THE RETIREMENT ROUTE'S TARGET IS NOT ITS EXECUTOR, so this step's entry takes its subject from
+// RUNNER_RETIREMENT_TARGET and never from the runner it happens to be running on.
+data gunbc_ci_runner_slot_retire_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_slot_retire_run.dag",
+  function: "runner_slot_retire_ci_wet",
+}
+
 data gunbc_ci_runner_password_session_tool_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_password_session_tool_converge.dag",
   function: "runner_password_session_tool_converge_ci_wet",
@@ -1011,6 +1023,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
+    gunbc_ci_runner_slot_retire_target,
+    gunbc_ci_runner_slot_retire_dispatch_admission_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
@@ -1878,6 +1892,26 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
     function: gunbc_ci_runner_host_file_observe_target.function,
     claim_run: false,
     receipt_rel: "target/runner-host-file-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_runner_slot_retire_dispatch_admission_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_slot_retire_dispatch_admission_target.entry,
+    function: gunbc_ci_runner_slot_retire_dispatch_admission_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_runner_slot_retire_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_slot_retire_target.entry,
+    function: gunbc_ci_runner_slot_retire_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-slot-retire-receipt.txt"
   )
 }
 

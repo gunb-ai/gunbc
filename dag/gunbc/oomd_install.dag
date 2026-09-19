@@ -54,6 +54,7 @@ import extdeps.systemd.systemctl {
   UnitEnabledRuntime,
   UnitLinked,
   UnitMasked,
+  UnitMaskedRuntime,
   UnitStatic,
   UnitDisabled,
   UnitIndirect,
@@ -187,6 +188,7 @@ fn unit_is_enabled(s: UnitFileState) -> Bool {
     UnitEnabledRuntime => false
     UnitLinked => false
     UnitMasked => false
+    UnitMaskedRuntime => false
     UnitStatic => false
     UnitDisabled => false
     UnitIndirect => false
