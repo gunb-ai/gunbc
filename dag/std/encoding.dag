@@ -314,43 +314,58 @@ fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
 // Each completed scalar is checked against its sequence length, so overlong forms (a value encodable
 // in fewer bytes), UTF-16 surrogates (U+D800..U+DFFF) and values above U+10FFFF are malformed here --
 // no valid identity was decoded -- rather than reaching the canonical check as an alternate spelling.
-type Utf8Decode {
-  out: List<Int>
-  need: Int
-  len: Int
-  acc: Int
-  ok: Bool
+// THE DECODER'S STATE IS A CLOSED SUM, as base64's Base64EncodeBuf is beside it: each arm carries
+// exactly what it owns, so "refused but still waiting" or a length no lead byte produces cannot be
+// written. Pending arms name how many continuation bytes remain; the sequence length they carry is
+// only the lengths possible at that point (three remaining can only be a four-byte sequence).
+type Utf8SequenceLength = Utf8TwoByte | Utf8ThreeByte | Utf8FourByte
+
+type Utf8DecodeState
+  = Utf8Ready { out: List<Int> }
+  | Utf8NeedOne { out: List<Int>, length: Utf8SequenceLength, acc: Int }
+  | Utf8NeedTwo { out: List<Int>, length: Utf8SequenceLength, acc: Int }
+  | Utf8NeedThree { out: List<Int>, acc: Int }
+  | Utf8Refused
+
+fn utf8_scalar_admissible(cp: Int, length: Utf8SequenceLength) -> Bool {
+  match length {
+    Utf8TwoByte => cp >= 128
+    Utf8ThreeByte => cp >= 2048 && !(cp >= 55296 && cp <= 57343)
+    Utf8FourByte => cp >= 65536 && cp <= 1114111
+  }
 }
 
-fn utf8_scalar_admissible(cp: Int, len: Int) -> Bool {
-  if len == 2 { cp >= 128 }
-  else if len == 3 { cp >= 2048 && !(cp >= 55296 && cp <= 57343) }
-  else if len == 4 { cp >= 65536 && cp <= 1114111 }
-  else { false }
+fn utf8_is_continuation(o: Int) -> Bool {
+  o >= 128 && o < 192
+}
+
+fn utf8_step(d: Utf8DecodeState, o: Int) -> Utf8DecodeState {
+  match d {
+    Utf8Refused => Utf8Refused
+    Utf8Ready { out: out } =>
+      if o < 128 { Utf8Ready { out: concat(out, [o]) } }
+      else if o >= 194 && o < 224 { Utf8NeedOne { out: out, length: Utf8TwoByte, acc: o - 192 } }
+      else if o >= 224 && o < 240 { Utf8NeedTwo { out: out, length: Utf8ThreeByte, acc: o - 224 } }
+      else if o >= 240 && o < 245 { Utf8NeedThree { out: out, acc: o - 240 } }
+      else { Utf8Refused }
+    Utf8NeedThree { out: out, acc: acc } =>
+      if utf8_is_continuation(o: o) { Utf8NeedTwo { out: out, length: Utf8FourByte, acc: acc * 64 + (o - 128) } } else { Utf8Refused }
+    Utf8NeedTwo { out: out, length: len, acc: acc } =>
+      if utf8_is_continuation(o: o) { Utf8NeedOne { out: out, length: len, acc: acc * 64 + (o - 128) } } else { Utf8Refused }
+    Utf8NeedOne { out: out, length: len, acc: acc } =>
+      if !utf8_is_continuation(o: o) { Utf8Refused }
+      else {
+        let cp = acc * 64 + (o - 128)
+        if utf8_scalar_admissible(cp: cp, length: len) { Utf8Ready { out: concat(out, [cp]) } } else { Utf8Refused }
+      }
+  }
 }
 
 fn utf8_decode_octets(octets: List<UInt8>) -> List<Int>? {
-  let st = fold(octets, init: Utf8Decode { out: [], need: 0, len: 0, acc: 0, ok: true }, f: (d, octet) => {
-    let o = base64_octet_int(b: octet)
-    if !d.ok { d }
-    else if d.need == 0 {
-      if o < 128 { Utf8Decode { out: concat(d.out, [o]), need: 0, len: 0, acc: 0, ok: true } }
-      else if o >= 194 && o < 224 { Utf8Decode { out: d.out, need: 1, len: 2, acc: o - 192, ok: true } }
-      else if o >= 224 && o < 240 { Utf8Decode { out: d.out, need: 2, len: 3, acc: o - 224, ok: true } }
-      else if o >= 240 && o < 245 { Utf8Decode { out: d.out, need: 3, len: 4, acc: o - 240, ok: true } }
-      else { Utf8Decode { out: d.out, need: 0, len: 0, acc: 0, ok: false } }
-    } else {
-      if o >= 128 && o < 192 {
-        let acc = d.acc * 64 + (o - 128)
-        if d.need == 1 {
-          if utf8_scalar_admissible(cp: acc, len: d.len) { Utf8Decode { out: concat(d.out, [acc]), need: 0, len: 0, acc: 0, ok: true } }
-          else { Utf8Decode { out: d.out, need: 0, len: 0, acc: 0, ok: false } }
-        }
-        else { Utf8Decode { out: d.out, need: d.need - 1, len: d.len, acc: acc, ok: true } }
-      } else { Utf8Decode { out: d.out, need: 0, len: 0, acc: 0, ok: false } }
-    }
-  })
-  if st.ok && st.need == 0 { Present { value: st.out } } else { none }
+  match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_step(d: d, o: base64_octet_int(b: octet))) {
+    Utf8Ready { out: out } => Present { value: out }
+    _ => none
+  }
 }
 
 data utf8_decode_bytes_host_realization_marker: Disposition = Scaffold {
