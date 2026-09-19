@@ -152,7 +152,12 @@ type Base64EncodeState {
 // than an error. std.encoding's Base64 authority is ENCODING-0's (gunbc#11629) to grow; this change
 // is NUMERIC-BIT-0 (gunbc#11627) substituting the bit arithmetic underneath it.
 
-fn base64_group_word(octets: List<Word>) -> WordResult {
+// THE GROUP IS ASSEMBLED IN OCTETS AND ONLY ITS RESULT IS A WORD. The previous form converted each
+// octet to a Width8 Word first and packed Words, which meant three conversions that could refuse
+// and a leading zero Word minted separately. With Octet as the member type the packing takes the
+// members directly, so the only refusal left is the one word_from_octets raises about the WIDTH --
+// and the conversions, along with their unreachable arms, are gone rather than handled.
+fn base64_group_word(octets: List<Octet>) -> WordResult {
   word_from_octets(width: Width32, octets: octets, endianness: BigEndian)
 }
 
@@ -181,8 +186,8 @@ fn base64_sextet_mask() -> WordResult {
 // substrate realizes and inventing a Width24 for one caller would be a width authority minted for
 // a convenience. The leading zero octet is the packing's own statement that the group occupies the
 // low three octets, and every field offset below is measured from that.
-fn base64_zero_octet() -> WordResult {
-  word_of_int(width: Width8, value: 0)
+fn base64_zero_octet() -> OctetResult {
+  octet_of_int(value: 0)
 }
 
 fn base64_sextet_at(group: Word, offset: Int) -> Int? {
@@ -207,49 +212,10 @@ fn base64_sextet_char_at(alphabet: String, group: Word, offset: Int) -> String? 
   }
 }
 
-fn base64_group_of_words(a: Word, b: Word, c: Word) -> WordResult {
-  match base64_zero_octet() {
-    WordRefused { cause: cause } => WordRefused { cause: cause }
-    WordReady { word: zero } => base64_group_word(octets: [zero, a, b, c])
-  }
-}
-
-// The flush groups: one or two real octets, zero-padded to the full 24-bit group. They exist so the
-// flush arms name what they are doing rather than open-coding a zero octet twice.
-fn base64_pad_group_one(a: Word) -> WordResult {
-  match base64_zero_octet() {
-    WordRefused { cause: c } => WordRefused { cause: c }
-    WordReady { word: zero } => base64_group_of_words(a: a, b: zero, c: zero)
-  }
-}
-
-fn base64_pad_group_two(a: Word, y: Octet) -> WordResult {
-  match base64_octet_word(o: y) {
-    WordRefused { cause: c } => WordRefused { cause: c }
-    WordReady { word: b } =>
-      match base64_zero_octet() {
-        WordRefused { cause: c } => WordRefused { cause: c }
-        WordReady { word: zero } => base64_group_of_words(a: a, b: b, c: zero)
-      }
-  }
-}
-
-fn base64_octet_word(o: Octet) -> WordResult {
-  word_of_int(width: Width8, value: octet_value(o: o))
-}
-
 fn base64_group_of_octets(x: Octet, y: Octet, z: Octet) -> WordResult {
-  match base64_octet_word(o: x) {
-    WordRefused { cause: c } => WordRefused { cause: c }
-    WordReady { word: a } =>
-      match base64_octet_word(o: y) {
-        WordRefused { cause: c } => WordRefused { cause: c }
-        WordReady { word: b } =>
-          match base64_octet_word(o: z) {
-            WordRefused { cause: c } => WordRefused { cause: c }
-            WordReady { word: c2 } => base64_group_of_words(a: a, b: b, c: c2)
-          }
-      }
+  match base64_zero_octet() {
+    OctetRefused { cause: c } => WordRefused { cause: c }
+    OctetReady { octet: zero } => base64_group_word(octets: [zero, x, y, z])
   }
 }
 
@@ -299,10 +265,10 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
   match st.buf {
     EncEmpty => Present { value: st.out }
     EncOne { b0: x } =>
-      match base64_octet_word(o: x) {
-        WordRefused { cause: _ } => none
-        WordReady { word: a } =>
-          match base64_pad_group_one(a: a) {
+      match base64_zero_octet() {
+        OctetRefused { cause: _ } => none
+        OctetReady { octet: zero } =>
+          match base64_group_of_octets(x: x, y: zero, z: zero) {
             WordRefused { cause: _ } => none
             WordReady { word: group } =>
               match base64_sextet_char_at(alphabet: alphabet, group: group, offset: 18) {
@@ -316,10 +282,10 @@ fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String? {
           }
       }
     EncTwo { b0: x, b1: y } =>
-      match base64_octet_word(o: x) {
-        WordRefused { cause: _ } => none
-        WordReady { word: a } =>
-          match base64_pad_group_two(a: a, y: y) {
+      match base64_zero_octet() {
+        OctetRefused { cause: _ } => none
+        OctetReady { octet: zero } =>
+          match base64_group_of_octets(x: x, y: y, z: zero) {
             WordRefused { cause: _ } => none
             WordReady { word: group } =>
               match base64_sextet_char_at(alphabet: alphabet, group: group, offset: 18) {
@@ -438,7 +404,7 @@ type Base64DecodeState {
 // The decode direction is the same packing read backwards: four six-bit fields are placed into one
 // 32-bit group and the group's low three octets ARE the answer, so word_to_octets replaces the
 // previous (n / 65536) % 256 ladder outright. The leading octet is dropped rather than masked away
-// because it is the zero octet base64_group_of_words put there.
+// because it is the zero octet base64_group_of_octets put there.
 fn base64_group_of_sextets(a: Int, b: Int, c: Int, v: Int) -> WordResult {
   match base64_place_sextet(value: a, offset: 18) {
     WordRefused { cause: cause } => WordRefused { cause: cause }
