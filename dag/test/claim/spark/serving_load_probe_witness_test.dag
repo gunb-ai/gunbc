@@ -40,7 +40,7 @@ import gunbc.spark.serving_load_probe {
   saturation_from_one_run, observation_rate_is_stored_separately,
   foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread, ForeignWorkContradiction,
   ClientRateUnqualified,
-  occupancy_from_body, occupancy_trace_from_endpoint_scrapes, histogram_delta, HistogramDeltaRead, HistogramDeltaUnread, HistogramCounterReset,
+  occupancy_from_body, occupancy_trace_from_endpoint_scrapes, 
   itl_latency_delta, iteration_tokens_booked_delta,
   LatencyHistogramRead, LatencyHistogramUnread, LatencyHistogramReset,
   TokenHistogramRead, TokenHistogramUnread, TokenHistogramReset,
@@ -442,10 +442,10 @@ test fn occupancy_reads_prompt_tokens_that_are_not_an_integer_lexeme() -> Bool {
 test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() -> Bool {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10.1234567", itl_count: "100.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "12.1234567", itl_count: "200.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
-  match histogram_delta(before_body: before, after_body: after, metric: InterTokenLatencySeconds) {
-    HistogramDeltaRead { sum_milli: ds, count: dc } => ds == 2000 && dc == 100
-    HistogramDeltaUnread { cause: _ } => false
-    HistogramCounterReset { cause: _ } => false
+  match itl_latency_delta(before_body: before, after_body: after) {
+    LatencyHistogramRead { sum: ds, observations: dc } => millisecond_count(m: ds) == 2000 && dc == 100
+    LatencyHistogramUnread { cause: _ } => false
+    LatencyHistogramReset { cause: _ } => false
   }
 }
 
@@ -472,6 +472,16 @@ test fn an_iteration_tokens_sum_delta_is_booked_tokens_not_a_duration() -> Bool 
 test fn a_fractional_iteration_tokens_sum_delta_refuses_rather_than_rounding() -> Bool {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.5", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
+  match iteration_tokens_booked_delta(before_body: before, after_body: after) {
+    TokenHistogramRead { booked: _, observations: _ } => false
+    TokenHistogramUnread { cause: _ } => true
+    TokenHistogramReset { cause: _ } => false
+  }
+}
+
+test fn a_sub_milli_token_fraction_refuses_rather_than_truncating() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0005", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
   match iteration_tokens_booked_delta(before_body: before, after_body: after) {
     TokenHistogramRead { booked: _, observations: _ } => false
     TokenHistogramUnread { cause: _ } => true
@@ -759,4 +769,41 @@ test fn the_receipt_persists_raw_evidence_for_replay() -> Bool {
 
 test fn qualification_frontier_names_the_producers() -> Bool {
   qualification_frontier_requires_serve_py_digest(f: glm_native_qualification_frontier)
+}
+
+test fn a_latency_sum_decrease_within_one_millisecond_is_a_reset_not_zero() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "100.0009", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "100.0001", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  match itl_latency_delta(before_body: before, after_body: after) {
+    LatencyHistogramReset { cause: _ } => true
+    LatencyHistogramRead { sum: _, observations: _ } => false
+    LatencyHistogramUnread { cause: _ } => false
+  }
+}
+
+fn fx_obs_between(before: String, after: String) -> ServingLoadObservation {
+  serving_load_observation(
+    subject: glm_native_live_subject_standing(),
+    window: window_from_drain(drain: DrainObservedIdle),
+    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+    occupancy: occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after),
+    before_body: before,
+    after_body: after,
+    before_incarnation: fx_same_incarnation(),
+    after_incarnation: fx_same_incarnation(),
+    bench: fx_bench_receipt(stdout: fx_bench_stdout),
+  )
+}
+
+test fn a_fractional_token_delta_reaches_the_receipt_as_unread_not_booked() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0005", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
+  let obs = fx_obs_between(before: before, after: after)
+  let text = serving_load_observation_text(o: obs)
+  match obs.iteration_tokens_booked {
+    TokenHistogramUnread { cause: _ } =>
+      string_contains(s: text, pattern: "iteration_tokens booked (not occupancy): unread") && !string_contains(s: text, pattern: "booked_tokens=10 ")
+    TokenHistogramRead { booked: _, observations: _ } => false
+    TokenHistogramReset { cause: _ } => false
+  }
 }

@@ -9,7 +9,7 @@ import std.measure {
   MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
   MilliRequestsPerSecond, milli_requests_per_second,
 }
-import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
+import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, exact_decimal_sub }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -259,12 +259,14 @@ fn counter_continuity(before: VllmEndpointProcessLaunchObservation, after: VllmE
 }
 
 // THE RAW DELTA IS DIMENSION-AGNOSTIC ON PURPOSE. `histogram_delta` is the one shared parse and
-// subtract for any vLLM histogram: `sum_milli` is thousandths of WHATEVER UNIT THAT METRIC'S SUM IS
-// IN, and `count` is how many observations the histogram recorded. It is not a receipt field: the
+// subtract for any vLLM histogram. `sum` is the EXACT decimal difference of the two cumulative sums,
+// so a decrease or a fraction of any size survives to the check that must see it; each projection
+// then applies its own unit (latency floors seconds to whole milliseconds, tokens require an exact
+// whole number and refuse any fraction). `count` is how many observations the histogram recorded. It is not a receipt field: the
 // observation stores only the typed projections below, so a seconds sum and a booked-token sum can
 // never be read through one carrier.
 type HistogramDelta
-  = HistogramDeltaRead { sum_milli: Nat, count: Nat }
+  = HistogramDeltaRead { sum: ExactDecimal, count: Nat }
   | HistogramDeltaUnread { cause: NonEmptyStr }
   | HistogramCounterReset { cause: NonEmptyStr }
 
@@ -300,10 +302,20 @@ fn field_to_milli(field: String) -> Nat? {
   }
 }
 
+// A sample read as its exact decimal; a non-finite or unreadable lexeme is absent, never rounded.
+fn field_to_exact(field: String) -> ExactDecimal? {
+  match prometheus_sample_value_reading(field: field) {
+    SampleValueNotFinite { lexeme: _ } => none
+    SampleValueUnreadable { lexeme: _ } => none
+    SampleValueExact { value: d } => Present { value: d }
+  }
+}
+
 fn nat_delta(after: Nat, before: Nat) -> Nat? {
   if after < before { none } else { Present { value: after - before } }
 }
 
+// The sum is read through the projection's own reader, so its unit is the caller's, never guessed here.
 fn histogram_delta(before_body: String, after_body: String, metric: VllmServingMetric) -> HistogramDelta {
   if !vllm_metric_exports_histogram_statistics(m: metric) {
     HistogramDeltaUnread { cause: "this metric does not export histogram sum/count" as NonEmptyStr }
@@ -320,11 +332,11 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
                 match harness_histogram_statistic_value(body: after_body, metric: metric, statistic: HistogramCount) {
                   Absent => HistogramDeltaUnread { cause: "histogram count missing on the second body" as NonEmptyStr }
                   Present { value: ac } =>
-                    match field_to_milli(field: bs) {
-                      Absent => HistogramDeltaUnread { cause: "histogram sum before was not exact to three decimals" as NonEmptyStr }
+                    match field_to_exact(field: bs) {
+                      Absent => HistogramDeltaUnread { cause: "histogram sum before was not an exact decimal" as NonEmptyStr }
                       Present { value: bsm } =>
-                        match field_to_milli(field: asv) {
-                          Absent => HistogramDeltaUnread { cause: "histogram sum after was not exact to three decimals" as NonEmptyStr }
+                        match field_to_exact(field: asv) {
+                          Absent => HistogramDeltaUnread { cause: "histogram sum after was not an exact decimal" as NonEmptyStr }
                           Present { value: asm } =>
                             match harness_gauge_count(text: bc) {
                               Absent => HistogramDeltaUnread { cause: "histogram count before was not an exact count" as NonEmptyStr }
@@ -332,12 +344,13 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
                                 match harness_gauge_count(text: ac) {
                                   Absent => HistogramDeltaUnread { cause: "histogram count after was not an exact count" as NonEmptyStr }
                                   Present { value: acn } =>
-                                    match nat_delta(after: asm, before: bsm) {
-                                      Absent => HistogramCounterReset { cause: "histogram sum decreased across the window" as NonEmptyStr }
-                                      Present { value: ds } =>
+                                    let ds = exact_decimal_sub(a: asm, b: bsm)
+                                    if ds.units < 0 {
+                                      HistogramCounterReset { cause: "histogram sum decreased across the window" as NonEmptyStr }
+                                    } else {
                                         match nat_delta(after: acn, before: bcn) {
                                           Absent => HistogramCounterReset { cause: "histogram count decreased across the window" as NonEmptyStr }
-                                          Present { value: dc } => HistogramDeltaRead { sum_milli: ds, count: dc }
+                                          Present { value: dc } => HistogramDeltaRead { sum: ds, count: dc }
                                         }
                                     }
                                 }
@@ -366,7 +379,11 @@ type TokenHistogramDelta
 
 fn itl_latency_delta(before_body: String, after_body: String) -> LatencyHistogramDelta {
   match histogram_delta(before_body: before_body, after_body: after_body, metric: InterTokenLatencySeconds) {
-    HistogramDeltaRead { sum_milli: s, count: c } => LatencyHistogramRead { sum: millisecond(count: s), observations: c }
+    HistogramDeltaRead { sum: s, count: c } =>
+      match milli_from_exact(d: s) {
+        Absent => LatencyHistogramUnread { cause: "inter-token latency sum delta did not project to milliseconds" as NonEmptyStr }
+        Present { value: ms } => LatencyHistogramRead { sum: millisecond(count: ms), observations: c }
+      }
     HistogramDeltaUnread { cause: x } => LatencyHistogramUnread { cause: x }
     HistogramCounterReset { cause: x } => LatencyHistogramReset { cause: x }
   }
@@ -374,12 +391,17 @@ fn itl_latency_delta(before_body: String, after_body: String) -> LatencyHistogra
 
 fn iteration_tokens_booked_delta(before_body: String, after_body: String) -> TokenHistogramDelta {
   match histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal) {
-    HistogramDeltaRead { sum_milli: s, count: c } =>
-      if s % 1000 == 0 {
-        TokenHistogramRead { booked: token_count(count: s / 1000), observations: c }
-      } else {
+    HistogramDeltaRead { sum: s, count: c } => {
+      let d = canonical_exact_decimal(d: s)
+      if d.fraction_digits != 0 {
         TokenHistogramUnread { cause: "iteration_tokens_total sum delta was not a whole token count" as NonEmptyStr }
+      } else {
+        match nat_from_nonneg_int(n: d.units) {
+          Absent => TokenHistogramUnread { cause: "iteration_tokens_total sum delta was negative" as NonEmptyStr }
+          Present { value: t } => TokenHistogramRead { booked: token_count(count: t), observations: c }
+        }
       }
+    }
     HistogramDeltaUnread { cause: x } => TokenHistogramUnread { cause: x }
     HistogramCounterReset { cause: x } => TokenHistogramReset { cause: x }
   }

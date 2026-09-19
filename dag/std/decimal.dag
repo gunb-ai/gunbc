@@ -127,6 +127,15 @@ fn exact_decimal_equal(a: ExactDecimal, b: ExactDecimal) -> Bool {
   ca.units == cb.units && ca.fraction_digits == cb.fraction_digits
 }
 
+// EXACT DIFFERENCE: both operands are aligned to the larger scale before subtracting, so no digit is
+// dropped and a decrease smaller than either operand's last shared digit still comes out negative.
+fn exact_decimal_sub(a: ExactDecimal, b: ExactDecimal) -> ExactDecimal {
+  let digits = if a.fraction_digits > b.fraction_digits { a.fraction_digits } else { b.fraction_digits }
+  let au = a.units * decimal_pow10(exponent: digits - a.fraction_digits)
+  let bu = b.units * decimal_pow10(exponent: digits - b.fraction_digits)
+  canonical_exact_decimal(d: ExactDecimal { units: au - bu, fraction_digits: digits })
+}
+
 // THE PROJECTION BACK TO A NUMERAL, WHICH IS NOT THE LEXEME IT WAS READ FROM AND DOES NOT CLAIM TO
 // BE. It renders the canonical form, so `30.0` reads in and `30` renders out. That is a round-trip
 // of the VALUE, never of the bytes; a consumer needing the authored bytes keeps the lexeme.
