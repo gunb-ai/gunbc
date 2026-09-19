@@ -128,6 +128,9 @@ fn jit_mint_performance_of_generate(
   }
 }
 
+// THE APP JWT STAYS JwtCompactSerialization until the installation-token call, whose Bearer input
+// is a Secret; that call is the single place the brand is shed, so the JWT and the opaque
+// installation token are not interchangeable anywhere else in this function.
 fn perform_organization_jit_mint(dispatch: JitMintDispatch) -> JitMintPerformance uses net: Network {
   match dispatch {
     JitMintDispatchRefused { refusal: r } =>
@@ -148,8 +151,6 @@ fn perform_organization_jit_mint(dispatch: JitMintDispatch) -> JitMintPerformanc
               match app_jwt_for(dispatch_app_id: app.app_id.value, key_file: lifecycle_controller_app_key_path, now_epoch_secs: epoch_secs_of_millis(millis: ms)) {
                 AppJwtUnsigned { detail: d } => JitMintAppJwtUnsigned { detail: d }
                 AppJwtSigned { jwt: jwt } => {
-                  // The JWT stays JwtCompactSerialization up to this one call; the operation's
-                  // Bearer input is a Secret, and this is the single place the brand is shed.
                   let token = github.AppInstallationAccessTokens.Create(
                     app_jwt: jwt as Secret,
                     installation_id: installation.value,
