@@ -40,7 +40,6 @@ import gunbc.network_boot_manifest_broker {
   present_boot_manifest,
   boot_manifest_architecture_token,
   network_boot_manifest_broker_frontier_rows,
-  SignedBootManifestClaims,
   SignedBootManifestTicket,
   BootManifestIssued,
   BootManifestIssuanceRefused,
@@ -102,10 +101,6 @@ fn identity_for(target: UnitKey, arch: Architecture, root_digest: ContentHash, n
   }
 }
 
-fn claims_for(id: SignedBootManifestIdentity) -> SignedBootManifestClaims {
-  SignedBootManifestClaims { identity: id }
-}
-
 fn https_obs() -> FirmwareHttpsTrustObservation {
   FirmwareHttpsTrustObservation {
     endpoint: uri_https(locator: "boot.example/manifest"),
@@ -128,13 +123,13 @@ fn production_trust() -> BootstrapTrustStanding {
 
 fn issued_ticket(id: SignedBootManifestIdentity) -> SignedBootManifestTicket {
   match issue_signed_boot_manifest(
-    claims: claims_for(id: id),
+    identity: id,
     key: broker_key,
     trust: production_trust(),
   ) {
     BootManifestIssued { ticket: t } => t
     BootManifestIssuanceRefused { cause: _ } =>
-      SignedBootManifestTicket { claims: claims_for(id: id), tag_hex: "00" }
+      SignedBootManifestTicket { identity: id, tag_hex: "00" }
   }
 }
 
@@ -179,10 +174,10 @@ test fn claims_that_collide_under_a_separator_join_have_distinct_signing_inputs(
   let b = identity_with_attempt_and_nonce(attempt_id: "intake" as IntakeAttemptId, nonce: concat("x", concat(us, "n")))
   let separator_joined_a = join([a.attempt_id as String, a.nonce], us)
   let separator_joined_b = join([b.attempt_id as String, b.nonce], us)
-  match signed_boot_manifest_signing_input(c: claims_for(id: a)) {
+  match signed_boot_manifest_signing_input(id: a) {
     Absent => false
     Present { value: pa } =>
-      match signed_boot_manifest_signing_input(c: claims_for(id: b)) {
+      match signed_boot_manifest_signing_input(id: b) {
         Absent => false
         Present { value: pb } => separator_joined_a == separator_joined_b && pa != pb
       }
@@ -199,7 +194,7 @@ test fn issued_ticket_round_trips_through_the_real_mac() -> Bool {
     key: broker_key,
     expectation: expectation_at(spent: []),
   ) {
-    BootManifestAuthentic { claims: c } => c.identity.target_unit == unit
+    BootManifestAuthentic { identity: c } => c.target_unit == unit
     BootManifestRefused { class: _ } => false
   }
 }
@@ -212,7 +207,7 @@ test fn replayed_attempt_nonce_is_refused() -> Bool {
     expectation: expectation_at(spent: spent),
   ) {
     BootManifestRefused { class: c } => c == ManifestVerificationReplay
-    BootManifestAuthentic { claims: _ } => false
+    BootManifestAuthentic { identity: _ } => false
   }
 }
 
@@ -223,7 +218,7 @@ test fn redemption_at_expiry_is_refused() -> Bool {
     expectation: expectation_when(spent: [], at: 1788003600000),
   ) {
     BootManifestRefused { class: c } => c == ManifestVerificationExpired
-    BootManifestAuthentic { claims: _ } => false
+    BootManifestAuthentic { identity: _ } => false
   }
 }
 
@@ -234,26 +229,26 @@ test fn redemption_before_not_before_is_refused() -> Bool {
     expectation: expectation_when(spent: [], at: 1787999999999),
   ) {
     BootManifestRefused { class: c } => c == ManifestVerificationNotYetValid
-    BootManifestAuthentic { claims: _ } => false
+    BootManifestAuthentic { identity: _ } => false
   }
 }
 
 test fn bad_signature_is_refused() -> Bool {
   let good = issued_ticket(id: good_identity())
-  let forged = SignedBootManifestTicket { claims: good.claims, tag_hex: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }
+  let forged = SignedBootManifestTicket { identity: good.identity, tag_hex: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }
   match redeem_signed_boot_manifest(
     ticket: forged,
     key: broker_key,
     expectation: expectation_at(spent: []),
   ) {
     BootManifestRefused { class: c } => c == ManifestVerificationMac
-    BootManifestAuthentic { claims: _ } => false
+    BootManifestAuthentic { identity: _ } => false
   }
 }
 
 test fn unpublished_dhcp_architecture_refuses_issuance() -> Bool {
   match issue_signed_boot_manifest(
-    claims: claims_for(id: identity_for(target: unit, arch: Wasm32, root_digest: root(), nbf: 1788000000000, exp: 1788003600000)),
+    identity: identity_for(target: unit, arch: Wasm32, root_digest: root(), nbf: 1788000000000, exp: 1788003600000),
     key: broker_key,
     trust: production_trust(),
   ) {
@@ -268,7 +263,7 @@ test fn unpublished_dhcp_architecture_refuses_issuance() -> Bool {
 
 test fn inverted_window_refuses_issuance() -> Bool {
   match issue_signed_boot_manifest(
-    claims: claims_for(id: identity_for(target: unit, arch: Aarch64, root_digest: root(), nbf: 1788003600000, exp: 1788000000000)),
+    identity: identity_for(target: unit, arch: Aarch64, root_digest: root(), nbf: 1788003600000, exp: 1788000000000),
     key: broker_key,
     trust: production_trust(),
   ) {
@@ -283,7 +278,7 @@ test fn inverted_window_refuses_issuance() -> Bool {
 
 test fn unestablished_trust_refuses_issuance() -> Bool {
   match issue_signed_boot_manifest(
-    claims: claims_for(id: good_identity()),
+    identity: good_identity(),
     key: broker_key,
     trust: BootstrapTrustUnestablished,
   ) {
@@ -297,9 +292,9 @@ test fn unestablished_trust_refuses_issuance() -> Bool {
 }
 
 test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -> Bool {
-  let claims = claims_for(id: good_identity())
+  let identity = good_identity()
   let other_key_id: MacKeyId = "boot-manifest-impostor" as MacKeyId
-  let ticket = SignedBootManifestTicket { claims: claims, tag_hex: "00" }
+  let ticket = SignedBootManifestTicket { identity: identity, tag_hex: "00" }
   match present_boot_manifest(ticket: ticket) {
     Absent => false
     Present { value: p } =>
@@ -314,7 +309,7 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
         ),
       ) {
         BootManifestRefused { class: c } => c == ManifestVerificationVerifiedKey
-        BootManifestAuthentic { claims: _ } => false
+        BootManifestAuthentic { identity: _ } => false
       }
   }
 }
@@ -324,8 +319,8 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
 // suite it carries. redeem never reaches this arm (it MACs the same input it
 // presents), so this supplied-input claim is the arm's only discriminating red.
 test fn a_mac_verified_over_a_different_message_is_refused() -> Bool {
-  let claims = claims_for(id: good_identity())
-  let ticket = SignedBootManifestTicket { claims: claims, tag_hex: "00" }
+  let identity = good_identity()
+  let ticket = SignedBootManifestTicket { identity: identity, tag_hex: "00" }
   match present_boot_manifest(ticket: ticket) {
     Absent => false
     Present { value: p } =>
@@ -340,7 +335,7 @@ test fn a_mac_verified_over_a_different_message_is_refused() -> Bool {
         ),
       ) {
         BootManifestRefused { class: c } => c == ManifestVerificationWrongMessage
-        BootManifestAuthentic { claims: _ } => false
+        BootManifestAuthentic { identity: _ } => false
       }
   }
 }
@@ -348,12 +343,12 @@ test fn a_mac_verified_over_a_different_message_is_refused() -> Bool {
 // Claims B presented beside a MAC verified over claims A's signing input: the
 // carrier binds B to B's own input, so the A-message does not authenticate B.
 test fn a_mac_over_another_tickets_input_does_not_authenticate_this_ticket() -> Bool {
-  let a = claims_for(id: identity_with_attempt_and_nonce(attempt_id: attempt, nonce: "nonce-a"))
-  let b = claims_for(id: identity_with_attempt_and_nonce(attempt_id: attempt, nonce: "nonce-b"))
-  match signed_boot_manifest_signing_input(c: a) {
+  let a = identity_with_attempt_and_nonce(attempt_id: attempt, nonce: "nonce-a")
+  let b = identity_with_attempt_and_nonce(attempt_id: attempt, nonce: "nonce-b")
+  match signed_boot_manifest_signing_input(id: a) {
     Absent => false
     Present { value: input_a } =>
-      match present_boot_manifest(ticket: SignedBootManifestTicket { claims: b, tag_hex: "00" }) {
+      match present_boot_manifest(ticket: SignedBootManifestTicket { identity: b, tag_hex: "00" }) {
         Absent => false
         Present { value: presented_b } =>
           match verify_signed_boot_manifest(
@@ -367,7 +362,7 @@ test fn a_mac_over_another_tickets_input_does_not_authenticate_this_ticket() -> 
             ),
           ) {
             BootManifestRefused { class: c } => c == ManifestVerificationWrongMessage
-            BootManifestAuthentic { claims: _ } => false
+            BootManifestAuthentic { identity: _ } => false
           }
       }
   }
@@ -378,7 +373,7 @@ test fn a_mac_over_another_tickets_input_does_not_authenticate_this_ticket() -> 
 test fn claims_naming_a_key_other_than_the_one_that_verified_are_refused() -> Bool {
   let other_key_id: MacKeyId = "boot-manifest-other" as MacKeyId
   let id = good_identity()
-  let claims = claims_for(id: SignedBootManifestIdentity {
+  let identity = SignedBootManifestIdentity {
     target_unit: id.target_unit,
     attempt_id: id.attempt_id,
     nonce: id.nonce,
@@ -393,8 +388,8 @@ test fn claims_naming_a_key_other_than_the_one_that_verified_are_refused() -> Bo
     expiry: id.expiry,
     signing_key_identity: other_key_id,
     callback_identity: id.callback_identity,
-  })
-  match present_boot_manifest(ticket: SignedBootManifestTicket { claims: claims, tag_hex: "00" }) {
+  }
+  match present_boot_manifest(ticket: SignedBootManifestTicket { identity: identity, tag_hex: "00" }) {
     Absent => false
     Present { value: p } =>
       match verify_signed_boot_manifest(
@@ -408,7 +403,7 @@ test fn claims_naming_a_key_other_than_the_one_that_verified_are_refused() -> Bo
         ),
       ) {
         BootManifestRefused { class: c } => c == ManifestVerificationSigningKey
-        BootManifestAuthentic { claims: _ } => false
+        BootManifestAuthentic { identity: _ } => false
       }
   }
 }
@@ -473,10 +468,10 @@ test fn legacy_bios_x86_ticket_projects_its_published_dhcp_class() -> Bool {
     signing_key_identity: broker_key_id,
     callback_identity: "intake-callback-0d",
   }
-  match issue_signed_boot_manifest(claims: claims_for(id: id), key: broker_key, trust: production_trust()) {
+  match issue_signed_boot_manifest(identity: id, key: broker_key, trust: production_trust()) {
     BootManifestIssued { ticket: t } =>
       match redeem_signed_boot_manifest(ticket: t, key: broker_key, expectation: expectation_at(spent: [])) {
-        BootManifestAuthentic { claims: c } => c.identity.target_unit == unit
+        BootManifestAuthentic { identity: c } => c.target_unit == unit
         BootManifestRefused { class: _ } => false
       }
     BootManifestIssuanceRefused { cause: _ } => false
@@ -508,10 +503,10 @@ fn legacy_bios_identity(arch: Architecture) -> SignedBootManifestIdentity {
 // for X86 verify after architecture is flipped to X86_64 — the field the join
 // admits on. The authored architecture must be signed itself (review 68037).
 test fn legacy_bios_x86_and_x86_64_tickets_have_distinct_signing_inputs() -> Bool {
-  match signed_boot_manifest_signing_input(c: claims_for(id: legacy_bios_identity(arch: X86))) {
+  match signed_boot_manifest_signing_input(id: legacy_bios_identity(arch: X86)) {
     Absent => false
     Present { value: p32 } =>
-      match signed_boot_manifest_signing_input(c: claims_for(id: legacy_bios_identity(arch: X86_64))) {
+      match signed_boot_manifest_signing_input(id: legacy_bios_identity(arch: X86_64)) {
         Absent => false
         Present { value: p64 } => p32 != p64
       }
@@ -519,15 +514,15 @@ test fn legacy_bios_x86_and_x86_64_tickets_have_distinct_signing_inputs() -> Boo
 }
 
 test fn x86_ticket_does_not_redeem_as_x86_64() -> Bool {
-  match issue_signed_boot_manifest(claims: claims_for(id: legacy_bios_identity(arch: X86)), key: broker_key, trust: production_trust()) {
+  match issue_signed_boot_manifest(identity: legacy_bios_identity(arch: X86), key: broker_key, trust: production_trust()) {
     BootManifestIssued { ticket: t } =>
       match redeem_signed_boot_manifest(
-        ticket: SignedBootManifestTicket { claims: claims_for(id: legacy_bios_identity(arch: X86_64)), tag_hex: t.tag_hex },
+        ticket: SignedBootManifestTicket { identity: legacy_bios_identity(arch: X86_64), tag_hex: t.tag_hex },
         key: broker_key,
         expectation: expectation_at(spent: []),
       ) {
         BootManifestRefused { class: c } => c == ManifestVerificationMac
-        BootManifestAuthentic { claims: _ } => false
+        BootManifestAuthentic { identity: _ } => false
       }
     BootManifestIssuanceRefused { cause: _ } => false
   }

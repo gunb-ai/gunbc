@@ -71,13 +71,9 @@ data boot_manifest_mac_key_secret_ref: SecretRef = fleet_secret_ref(secret_id: "
 
 data boot_manifest_mac_suite: MacSuite = HmacSha256
 
-type SignedBootManifestClaims {
-  identity: SignedBootManifestIdentity
-}
-
 // Digests, identities, and a MAC tag only — no host credential, cloud token, or install secret field exists to put on a public origin.
 type SignedBootManifestTicket {
-  claims: SignedBootManifestClaims
+  identity: SignedBootManifestIdentity
   tag_hex: NonEmptyStr
 }
 
@@ -109,7 +105,7 @@ type BootManifestExpectation {
 }
 
 type BootManifestVerification
-  = BootManifestAuthentic { claims: SignedBootManifestClaims }
+  = BootManifestAuthentic { identity: SignedBootManifestIdentity }
   | BootManifestRefused { class: NetworkBootManifestVerificationClass }
 
 // A ticket bound to the signing input derived from ITS OWN claims. Only
@@ -123,7 +119,7 @@ type PresentedBootManifest sole_constructor {
 }
 
 fn present_boot_manifest(ticket: SignedBootManifestTicket) -> PresentedBootManifest? {
-  match signed_boot_manifest_signing_input(c: ticket.claims) {
+  match signed_boot_manifest_signing_input(id: ticket.identity) {
     Absent => none
     Present { value: message } => Present { value: PresentedBootManifest { ticket: ticket, signing_input: message } }
   }
@@ -171,8 +167,7 @@ fn boot_manifest_architecture_token(arch: Architecture) -> NonEmptyStr {
 // it is a derived projection that sends X86 and X86_64 to one BiosX86 code
 // under legacy BIOS, so it cannot stand in for the field the join admits on.
 // The DHCP projection keeps its fail-closed arm (Absent refuses).
-fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr? {
-  let id = c.identity
+fn signed_boot_manifest_signing_input(id: SignedBootManifestIdentity) -> NonEmptyStr? {
   match dhcp_client_processor_architecture(arch: id.architecture, mode: id.boot_mode) {
     Absent => none
     Present { value: dhcp_arch } =>
@@ -203,34 +198,34 @@ fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptySt
 }
 
 fn issue_signed_boot_manifest(
-  claims: SignedBootManifestClaims,
+  identity: SignedBootManifestIdentity,
   key: MacKey,
   trust: BootstrapTrustStanding,
 ) -> BootManifestIssuance {
   match trust {
     BootstrapTrustUnestablished => BootManifestIssuanceRefused { cause: ManifestIssuanceTrustUnestablished }
-    ProductionTrustedBootstrap { grounds: _ } => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
-    ControlledNetworkBootstrap { evidence: _ } => issue_signed_boot_manifest_under_trust(claims: claims, key: key)
+    ProductionTrustedBootstrap { grounds: _ } => issue_signed_boot_manifest_under_trust(identity: identity, key: key)
+    ControlledNetworkBootstrap { evidence: _ } => issue_signed_boot_manifest_under_trust(identity: identity, key: key)
   }
 }
 
-fn issue_signed_boot_manifest_under_trust(claims: SignedBootManifestClaims, key: MacKey) -> BootManifestIssuance {
-  if claims.identity.signing_key_identity != key.id {
+fn issue_signed_boot_manifest_under_trust(identity: SignedBootManifestIdentity, key: MacKey) -> BootManifestIssuance {
+  if identity.signing_key_identity != key.id {
     BootManifestIssuanceRefused {
       cause: ManifestIssuanceKeyIdDisagrees {
-        claimed: claims.identity.signing_key_identity,
+        claimed: identity.signing_key_identity,
         signing_key: key.id,
       },
     }
-  } else if claims.identity.expiry <= claims.identity.not_before {
+  } else if identity.expiry <= identity.not_before {
     BootManifestIssuanceRefused {
       cause: ManifestIssuanceWindowInverted {
-        not_before: claims.identity.not_before,
-        expiry: claims.identity.expiry,
+        not_before: identity.not_before,
+        expiry: identity.expiry,
       },
     }
   } else {
-    match signed_boot_manifest_signing_input(c: claims) {
+    match signed_boot_manifest_signing_input(id: identity) {
       Absent => BootManifestIssuanceRefused { cause: ManifestIssuanceDhcpArchUnpublished }
       Present { value: message } =>
         match mac_sign(key: key, message: message) {
@@ -238,7 +233,7 @@ fn issue_signed_boot_manifest_under_trust(claims: SignedBootManifestClaims, key:
             BootManifestIssuanceRefused { cause: ManifestIssuanceKeyMaterialNotHex { key_id: k } }
           MacSigned { tag: t } =>
             BootManifestIssued {
-              ticket: SignedBootManifestTicket { claims: claims, tag_hex: t.hex },
+              ticket: SignedBootManifestTicket { identity: identity, tag_hex: t.hex },
             }
         }
     }
@@ -297,15 +292,15 @@ fn join_verified_mac(
     refused(class: ManifestVerificationSuite)
   } else if verified.key_id != expectation.trust.signing_key_id {
     refused(class: ManifestVerificationVerifiedKey)
-  } else if ticket.claims.identity.signing_key_identity != verified.key_id {
+  } else if ticket.identity.signing_key_identity != verified.key_id {
     refused(class: ManifestVerificationSigningKey)
-  } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: ticket.claims.identity.attempt_id, nonce: ticket.claims.identity.nonce) {
+  } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: ticket.identity.attempt_id, nonce: ticket.identity.nonce) {
     refused(class: ManifestVerificationReplay)
   } else {
-    match signed_boot_manifest_window(identity: ticket.claims.identity, at: expectation.redeemed_at) {
+    match signed_boot_manifest_window(identity: ticket.identity, at: expectation.redeemed_at) {
       ManifestWindowNotYetValid => refused(class: ManifestVerificationNotYetValid)
       ManifestWindowExpired => refused(class: ManifestVerificationExpired)
-      ManifestWindowOpen => BootManifestAuthentic { claims: ticket.claims }
+      ManifestWindowOpen => BootManifestAuthentic { identity: ticket.identity }
     }
   }
 }
@@ -328,9 +323,9 @@ fn signed_boot_manifest_standing(
   observed_at: EpochMs,
 ) -> SignedBootManifestStanding {
   match verification {
-    BootManifestAuthentic { claims: c } =>
+    BootManifestAuthentic { identity: id } =>
       SignedBootManifestVerified {
-        identity: c.identity,
+        identity: id,
         observation: observation,
         observed_at: observed_at,
       }
@@ -352,7 +347,7 @@ data network_boot_manifest_broker_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.network_boot_manifest_broker", decl_name: "issue_signed_boot_manifest"),
     reason: "issue_signed_boot_manifest is called only by its witness; no production fold mints a SignedBootManifestTicket for an admitted intake attempt, so no ticket the broker signs ever reaches a client",
     dissolution: unbound_dissolution(
-      description: "dissolves when an intake attempt admission fold in gunbc.machine_intake calls issue_signed_boot_manifest with claims built from the admitted attempt and the fleet signing key from boot_manifest_mac_key_secret_ref, and binds the BootManifestIssued ticket into the boot offer the site edge serves; a witness that issues against a hand-built identity does not fire this"
+      description: "dissolves when an intake attempt admission fold in gunbc.machine_intake calls issue_signed_boot_manifest with the identity built from the admitted attempt and the fleet signing key from boot_manifest_mac_key_secret_ref, and binds the BootManifestIssued ticket into the boot offer the site edge serves; a witness that issues against a hand-built identity does not fire this"
     )
   ),
   frontier_row_decl(
