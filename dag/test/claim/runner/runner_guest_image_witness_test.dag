@@ -184,7 +184,7 @@ test fn the_credential_drive_is_whole_sectors_of_one_assignment() -> Bool {
   let c = jit_drive_content(encoded_jit_config: "eyJhIjoiYiJ9" as NonEmptyStr)
   string_length(s: c) % 512 == 0
     && string_length(s: c) == 512
-    && starts_with(s: c, prefix: "ACTIONS_RUNNER_INPUT_JITCONFIG=eyJhIjoiYiJ9\n\n")
+    && starts_with(s: c, prefix: "ACTIONS_RUNNER_INPUT_jitconfig=eyJhIjoiYiJ9\n\n")
     && !string_contains(s: c, pattern: " ")
 }
 
