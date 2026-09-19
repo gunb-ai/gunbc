@@ -1,31 +1,47 @@
 module test.claim.mtjade1_coverage_frontier_witness
 
-import std.types { Bool, String, all, any, list_length }
+import std.types { Bool, String, all, any }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionFired, DissolutionPending, DissolutionUnbound, dissolution_status }
-import std.roster_frontier { DeclSubject, PathSubject, frontier_rows_well_formed, frontier_subject_eq }
+import std.roster_frontier {
+  DeclSubject,
+  PathSubject,
+  frontier_rows_keyed_roster_build,
+  frontier_rows_well_formed,
+  frontier_subject_eq,
+}
+import std.keyed_roster { KeyedRosterBuildDuplicateKey, KeyedRosterBuilt }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake_mtjade1_coverage_frontier {
   mtjade1_coverage_frontier_rows,
-  mtjade1_gsg_document_frontier_rows,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ROSTER IS READ BY A FOLD, WHICH IS THE WHOLE POINT OF MOVING IT OUT OF PROSE. Each conjunct
-// has an authorable RED that a comment could not have: a malformed row fails the first, a row
-// whose subject is not one of the GSG chassis declarations fails the second, and a row whose
-// dissolution is bound forward to a symbol this closure cannot name fails the third — which is
-// the fabricated-citation class std.dissolution warns about by name.
-test fn w_mtjade1_gsg_frontier_rows_are_well_formed_and_unbound() -> Bool {
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT. An earlier revision asserted
+// list_length(...) == 23 against a roster three files away in the same tree, which is the change
+// detector DESIGN §5 names: automate the literal and it collapses to measure() == measure()
+// (review 68005). Worse for this subject specifically, a count cannot tell "a row silently left
+// the roster" — the exact failure review 67996 found — from "one left and another arrived".
+//
+// What replaces it has reds a count never had. A DUPLICATE subject fails the keyed build, which
+// answers KeyedRosterBuildDuplicateKey over frontier_subject_eq rather than over a name string. A
+// subject outside the three modules this roster is ABOUT fails the module conjunct, so a row
+// cannot be parked here for a declaration in some other lane. A dissolution bound forward to a
+// symbol this closure cannot name fails the last one — std.dissolution's fabricated-citation class.
+test fn w_mtjade1_frontier_rows_are_keyed_scoped_and_unbound() -> Bool {
   frontier_rows_well_formed(rows: mtjade1_coverage_frontier_rows)
-    && list_length(mtjade1_coverage_frontier_rows) == 23
-    && list_length(mtjade1_gsg_document_frontier_rows) == 11
+    && match frontier_rows_keyed_roster_build(rows: mtjade1_coverage_frontier_rows) {
+      KeyedRosterBuilt { rows: _ } => true
+      KeyedRosterBuildDuplicateKey { key: _, first: _, second: _ } => false
+    }
     && all(
-      mtjade1_gsg_document_frontier_rows,
+      mtjade1_coverage_frontier_rows,
       row => match row.subject {
         DeclSubject { ref: r } =>
           (r.module_path as String) == "extdeps.ampere.mt_jade_getting_started_guide.chassis"
+            || (r.module_path as String) == "gunbc.machine_intake_mtjade1_first_dpc_population_plan"
+            || (r.module_path as String) == "gunbc.machine_intake_mtjade1_fan_standing"
         PathSubject { path: _ } => false
       },
     )
@@ -39,32 +55,41 @@ test fn w_mtjade1_gsg_frontier_rows_are_well_formed_and_unbound() -> Bool {
     )
 }
 
-// THE ROW THAT MOST NEEDS TO BE MACHINE-READABLE, asserted by identity rather than by prose: the
-// GSG minimum family may not be consumed before a wet probe binds an observed family, because
-// bmc_first_contact_standing carries no function from a document to an installed family.
-test fn w_minimum_bmc_firmware_family_is_on_the_frontier() -> Bool {
+fn jade_frontier_covers(module_path: String, decl_name: String) -> Bool {
   any(
     mtjade1_coverage_frontier_rows,
     row => frontier_subject_eq(
       a: row.subject,
-      b: DeclSubject {
-        ref: decl_ref(
-          module_path: "extdeps.ampere.mt_jade_getting_started_guide.chassis",
-          decl_name: "mt_jade_gsg_minimum_bmc_firmware_family",
-        ),
-      },
+      b: DeclSubject { ref: decl_ref(module_path: module_path, decl_name: decl_name) },
     ),
   )
-    && any(
-      mtjade1_coverage_frontier_rows,
-      row => frontier_subject_eq(
-        a: row.subject,
-        b: DeclSubject {
-          ref: decl_ref(
-            module_path: "extdeps.ampere.mt_jade_getting_started_guide.chassis",
-            decl_name: "mt_jade_gsg_without_1p_bmc_image_fan_duty",
-          ),
-        },
-      ),
+}
+
+fn gsg_chassis_on_frontier(decl_name: String) -> Bool {
+  jade_frontier_covers(
+    module_path: "extdeps.ampere.mt_jade_getting_started_guide.chassis",
+    decl_name: decl_name,
+  )
+}
+
+// MEMBERSHIP BY IDENTITY FOR THE FOUR NAMES WITH A HISTORY. The first two gate a consumption that
+// would be wrong to build: the GSG minimum family and the Appendix E duty may not reach a fan
+// realizer before a wet probe binds FamilyObserved, because bmc_first_contact_standing carries no
+// function from a document to an installed family. The second two were DROPPED FROM THIS ROSTER
+// ONCE ALREADY (review 67996): two aliases made them look consumed, so nine siblings were rostered
+// and these were not. A count conjunct did not catch that and could not have; this does.
+test fn w_frontier_covers_the_rows_that_have_been_dropped_or_must_not_be_consumed() -> Bool {
+  gsg_chassis_on_frontier(decl_name: "mt_jade_gsg_minimum_bmc_firmware_family")
+    && gsg_chassis_on_frontier(decl_name: "mt_jade_gsg_without_1p_bmc_image_fan_duty")
+    && gsg_chassis_on_frontier(decl_name: "mt_jade_gsg_bmc_ethernet_port")
+    && gsg_chassis_on_frontier(decl_name: "mt_jade_gsg_rail_kit_part_number")
+    && gsg_chassis_on_frontier(decl_name: "fixture: not a chassis declaration") == false
+    && jade_frontier_covers(
+      module_path: "gunbc.machine_intake_mtjade1_fan_standing",
+      decl_name: "mtjade1_first_post_fan_capture",
+    )
+    && jade_frontier_covers(
+      module_path: "gunbc.machine_intake_mtjade1_first_dpc_population_plan",
+      decl_name: "jade_first_dpc_silk_standing",
     )
 }

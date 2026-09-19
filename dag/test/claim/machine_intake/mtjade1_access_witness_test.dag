@@ -41,11 +41,14 @@ test fn w_bmc_only_bind_without_serials_is_absent_not_a_fabricated_key() -> Bool
   }
 }
 
+// THE CLAIM IS THE DISTINCTNESS, AND THAT IS ALL IT ASSERTS NOW. Two conjuncts comparing each
+// secret id to its own literal were the same change detector as the count above (review 68005):
+// both sides authored here, red only if someone edits one copy. What has a real RED is re-binding
+// Jade's locus to the Collins secret, which is the confusion that would hand one machine another
+// machine's BMC credential.
 test fn w_mtjade1_bmc_secret_locus_is_not_the_collins_secret() -> Bool {
   match mtjade1_managed_bmc_secret_standing {
     SecretLocusReservedNotOnAccessorRoster { ref: r } =>
-      (r.secret as String) == "bmc-mtjade1-gunbc"
-        && (mtcollins1_bmc_gunbc_secret_ref.secret as String) == "bmc-mtcollins1-gunbc"
-        && (r.secret as String) != (mtcollins1_bmc_gunbc_secret_ref.secret as String)
+      (r.secret as String) != (mtcollins1_bmc_gunbc_secret_ref.secret as String)
   }
 }
