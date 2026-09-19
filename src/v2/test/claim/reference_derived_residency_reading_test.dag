@@ -16,7 +16,15 @@ import gunbc.namespace_reference_derived_residency_qualification {
 }
 import std.decl_ref { decl_ref }
 import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
 import v2.lens.reference_derived_residency_reading { carrier_reading_from_type_decl }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.optional { Absent, Optional, Present }
+import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
+import v2.extdeps.languages.dag { qualified_name_from_module_node }
+import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
+import v2.test.claim.reference_derived_graph_fixture { xl4_fixture_trees, xl4_item_at, consumer_field_bare_local_path }
+import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -43,18 +51,22 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THE PAIRING OBLIGATION IS OPEN, AND IT IS STATED RATHER THAN QUIETLY OMITTED. DESIGN section 3
 // requires one inhabitance claim that the real producer emits these shapes, and this module does NOT
-// carry one, because the route that would supply it does not work: a standalone single-file ingest of
-// src/v2/lens/module_graph.dag does not yield field type expressions to read. MEASURED, not assumed,
-// over three attempts at this head:
-//   tokenize + parse_module            27827 subtree nodes, ZERO Named edges labelled the declaration
-//   located_roots_from_source_root_ingest  1628 subtree nodes, 1340 Named edges, ONE ^Node atom
-//   symbol_index_fill_module_root over that root  does not resolve the declaration's qualified name
-// The reading a normalized single-file root carries is names, not declared types, and normalization
-// of a module with imports needs its closure. So the derivation must run where field type expressions
-// are present -- the compile-door lens path, which is where v2.lens.lifecycle_carrier reads field
-// types through edge_field_type_name today. THAT INTEGRATION IS THE NAMED NEXT STEP and until it
-// lands NOTHING HERE ESTABLISHES A PROPERTY OF THE LIVE PRODUCER. An earlier revision of this branch
-// asserted one from a hand-authored row; review 68631 on gunbc#11740 refused it and was right to.
+// carry one, because a type declaration cannot be resolved from a live tree today. The two claims at
+// the foot of this module establish that by execution, with a function declaration as the control.
+// Attributed cause and dissolution trigger: gunbc#11574.
+//
+// A CORRECTION, KEPT RATHER THAN DELETED so a later reader knows why this module ever mentioned the
+// compile door. An earlier revision of this branch asserted here that "a normalized single-file root
+// carries names, not declared types, and normalizing a module with imports needs its closure",
+// and concluded the derivation had to move to the compile-door lens path. THAT WAS AN UNVERIFIED
+// INTERPRETATION OF A REAL READING, not a measurement, and it is withdrawn. The readings behind it
+// were real -- 27827 subtree nodes with zero Named edges labelled the declaration on the parse tree,
+// 1628 nodes and one ^Node atom on the normalized root -- but the account of WHY was wrong, and it
+// was published in a commit message and a PR comment before it was checked. What falsified it: the
+// same lookup fails on a seven-line fixture with no unresolved imports, and in that fixture the
+// module QN resolves and a FUNCTION declaration resolves while the type does not. The cause is not
+// single-file roots, not the closure, and not key construction; it is that type declarations never
+// become Named edges. No compile-door work is required.
 
 fn atom(identity: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: identity } }, children: [], occurrence_id: OccurrenceSynthetic }
@@ -187,8 +199,61 @@ test fn derived_readings_of_a_bounded_producer_qualify() -> Bool {
   }
 }
 
-// Probe only: the six claims above as one bitmask, so a verification run pays ONE closure typecheck
-// instead of six. Asserts nothing and is not enrolled.
+
+// THE FRONTIER, AS AN EXECUTING CLAIM RATHER THAN AN ANNOTATION. DESIGN 4c is explicit that no
+// Accepted program can read a comment, so prose explaining why there is no claim about the live
+// producer is not itself a claim. These two are, and together they say exactly what is true today:
+// the live route WORKS, and it does not carry type declarations.
+//
+// WHY THIS IS ADMISSIBLE NOW AND WAS NOT AN HOUR AGO. A claim that a route yields nothing is only
+// honest if its author can distinguish "the route cannot supply this" from "my code is wrong". FIVE
+// hypotheses died on this lookup, so that discrimination was exactly what I lacked and the claim was
+// correctly refused. The FUNCTION control below is what supplies it: same module, same tree, same
+// index, same key construction, and it RESOLVES. So the ingest, the fill, the qualified-name key and
+// the lookup are all proven working by execution, and the type declaration's absence is a fact about
+// the tree rather than about this module.
+//
+// ATTRIBUTED, NOT MERELY OBSERVED: gunbc#11574, "Declaration grafting: type/data decls never become
+// Named edges". THAT PR IS THIS PAIR'S DISSOLUTION TRIGGER. When it lands, the second claim below
+// goes RED -- deliberately -- and that red is the signal to wire the derivation to the producer's own
+// declaration and retire this frontier. It does not retire on anything else.
+
+// POSITIVE CONTROL, and the load-bearing half. A function declaration in the fixture resolves through
+// the live ingest, so every link the type lookup uses is proven to work.
+test fn a_function_declaration_resolves_from_a_live_module_root() -> Bool {
+  live_fixture_lookup(segment: ^uses)
+}
+
+// THE FRONTIER CLAIM. A type declaration in the SAME module, through the SAME index, does not. This
+// is why this branch carries no reading of the live producer.
+test fn a_type_declaration_does_not_resolve_from_a_live_module_root_pending_11574() -> Bool {
+  !live_fixture_lookup(segment: ^LocalWrapper)
+}
+
+fn live_fixture_lookup(segment: Symbol) -> Bool {
+  match xl4_fixture_trees().located {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: items, diagnostics: _ } =>
+      match xl4_item_at(items: items, path: consumer_field_bare_local_path) {
+        Absent => false
+        Present { value: item } =>
+          match qualified_name_from_module_node(root: item.root) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: mqn, diagnostics: _ } =>
+              match symbol_index_lookup(
+                index: symbol_index_fill_module_root(index: empty_symbol_index(), root: item.root),
+                qualified_path: qualified_name_snoc(qn: mqn, segment: segment),
+              ) {
+                Absent => false
+                Present { value: _ } => true
+              }
+          }
+      }
+  }
+}
+
+// Probe only: the eight claims above as one bitmask, so a verification run pays ONE closure
+// typecheck. Asserts nothing and is not enrolled.
 fn residency_reading_probe_bits() -> Int {
   (if a_tree_map_declaration_derives_as_whole_population_syntax() { 1 } else { 0 })
     + (if an_index_entries_declaration_derives_as_whole_population_syntax() { 2 } else { 0 })
@@ -196,4 +261,6 @@ fn residency_reading_probe_bits() -> Int {
     + (if a_digest_keyed_population_is_not_whole_population_syntax() { 8 } else { 0 })
     + (if derived_readings_of_the_two_carriers_refuse_at_construction_peak() { 16 } else { 0 })
     + (if derived_readings_of_a_bounded_producer_qualify() { 32 } else { 0 })
+    + (if a_function_declaration_resolves_from_a_live_module_root() { 64 } else { 0 })
+    + (if a_type_declaration_does_not_resolve_from_a_live_module_root_pending_11574() { 128 } else { 0 })
 }
