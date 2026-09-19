@@ -653,13 +653,20 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
 // standing property of this module that nothing currently enforces.
 //
 // AN IDENTITY COLUMN THAT IS ONE OF THE SCHEMA'S OWN COLUMNS IS LEGITIMATE AND IS RENDERED ONCE, IN
-// PLACE. identity_column says which column keys the rows; it does not declare a second column. Both
-// production schemas are here: ci_prospect keys on "Repository", which IS its column at index 1, and
-// its live header row reads Rank, Repository, Owner, ... -- prepending the identity would both
-// duplicate the name and reorder a sheet that already carries 58 rows. buyer_review keys on
-// "Listing", which is NOT among its columns, so the identity is prepended and the header row is one
-// wider than the column roster. The two shapes are one rule: the identity is rendered where the
-// schema puts it, and prepended only when the schema puts it nowhere.
+// PLACE. identity_column says which column keys the rows; it does not declare a second column. The
+// public production schema is the concrete case: ci_prospect keys on "Repository", which IS its
+// column at index 1, and its live header row reads Rank, Repository, Owner, ... -- prepending the
+// identity would both duplicate the name and reorder a sheet that already carries 58 rows.
+//
+// The other shape is a schema whose identity is NOT among its columns; the identity is then
+// prepended and the header row is one wider than the column roster. It is stated as a shape rather
+// than by naming a schema on purpose: the roster-derived schema that inhabits it is private
+// (strategy.buyer_review_projection), so a name cited here would be a citation this repository
+// cannot resolve. test.claim.review_sheet_header_schema_witness carries a generic specimen of that
+// shape and asserts its header order, width and Standing position.
+//
+// The two shapes are one rule: the identity is rendered where the schema puts it, and prepended
+// only when the schema puts it nowhere.
 //
 // EMPTY NAMES ARE NOT CHECKED HERE BECAUSE THEY ARE NOT WRITABLE. ReviewColumn.name and
 // ReviewSheetSchema.identity_column are NonEmptyStr (std.types: String where non_empty), so an empty

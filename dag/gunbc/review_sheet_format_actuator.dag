@@ -134,7 +134,7 @@ data review_sheet_header_row_count: Int = 1
 //
 // THE HEADER ROW'S EXTENT AND THE STANDING COLUMN'S POSITION ARE READ OFF THE VALIDATED HEADER ROW,
 // NOT OFF THE COLUMN ROSTER. They differ: gunbc.review_sheet_projection renders the identity column
-// ahead of the roster when the schema does not carry it as a column, so for a buyer-shaped schema
+// ahead of the roster when the schema does not carry it as a column, so for a schema of that shape
 // `count(schema.columns)` is one short of the header row and every column's sheet position is one
 // to the left of where the roster puts it. A band sized that way stops before the last header and a
 // conditional rule keyed that way paints the column beside Standing -- both silently, both reported

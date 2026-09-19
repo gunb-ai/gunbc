@@ -8,11 +8,19 @@ module test.claim.review_sheet_header_schema_witness
 // right things, and that the carrier cannot be assembled around it.
 //
 // THE IDENTITY-IN-COLUMNS RULE IS THE PART A READER WILL GET WRONG, so it is claimed in both
-// directions rather than left to the annotation: ci_prospect keys on "Repository", which IS its
-// column at index 1, and its header row must read Rank, Repository, Owner, ... with the name once
-// and in place; buyer_review keys on "Listing", which is NOT among its columns, so "Listing" is
-// prepended and the header row is one wider than the roster. Both production schemas are asserted
-// to validate, by name.
+// directions rather than left to the annotation. The in-columns direction is asserted against the
+// PUBLIC PRODUCTION SCHEMA by name: ci_prospect keys on "Repository", which IS its column at index
+// 1, and its header row must read Rank, Repository, Owner, ... with the name once and in place.
+//
+// THE OTHER DIRECTION IS ASSERTED AGAINST A GENERIC SPECIMEN, NOT A PRODUCTION SCHEMA, and that is
+// deliberate rather than a weaker second choice. The roster-derived schema that inhabits the
+// identity-outside-columns shape is private (strategy.buyer_review_projection) and the public
+// buyer_review_sheet_schema is deleted by gunbc#11589, so importing it here would bind this witness
+// to a declaration that is leaving -- and asserting its hardcoded header row would make this
+// witness a second authority for a roster it does not own. identity_outside_columns_schema carries
+// the shape instead, and every fact the rule turns on is asserted against it: the identity is
+// prepended, the complete header order, the header width against the roster count, and the Standing
+// column's position.
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import extdeps.filesystem.filesystem_io
@@ -47,7 +55,6 @@ import gunbc.review_sheet_projection {
   review_sheet_header_names,
   review_sheet_header_count,
   ci_prospect_sheet_schema,
-  buyer_review_sheet_schema,
 }
 import gunbc.review_sheet_format_actuator {
   standing_column_index,
@@ -176,17 +183,8 @@ test fn an_identity_outside_the_columns_is_prepended_to_the_header_row() -> Bool
 
 // -- the production schemas -----------------------------------------------------------
 
-fn buyer_derived_columns() -> List<ReviewColumn> {
-  [
-    derived(name: "Title", field: "title"),
-    standing(name: "Standing"),
-    derived(name: "Price", field: "price"),
-  ]
-}
-
-test fn both_production_schemas_validate() -> Bool {
+test fn the_public_production_schema_validates() -> Bool {
   is_validated(v: validate_header_schema(schema: ci_prospect_sheet_schema()))
-    && is_validated(v: validate_header_schema(schema: buyer_review_sheet_schema(derived_columns: buyer_derived_columns())))
 }
 
 // The live ci_prospect header row, asserted by name and in order. This is the row the sheet already
@@ -194,11 +192,6 @@ test fn both_production_schemas_validate() -> Bool {
 test fn the_ci_prospect_header_row_is_its_column_roster_in_order() -> Bool {
   rendered(v: validate_header_schema(schema: ci_prospect_sheet_schema()))
     == "Rank|Repository|Owner|Standing|Runner-min/day|Runs/day|Median min|p90 min|Success %|Linux %|Provider|Stars|Language|Why|URL|Decision|Note"
-}
-
-test fn the_buyer_header_row_carries_its_identity_ahead_of_the_roster() -> Bool {
-  rendered(v: validate_header_schema(schema: buyer_review_sheet_schema(derived_columns: buyer_derived_columns())))
-    == "Listing|Title|Standing|Price|Decision|Units to buy|Accepted on judgement|Note"
 }
 
 // -- the header row's extent and the standing column's position -----------------------
