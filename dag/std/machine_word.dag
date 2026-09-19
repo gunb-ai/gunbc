@@ -171,6 +171,35 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
 // different and far rarer mistake. Rung unchanged -- mitigatable -- and the next-rung trigger is
 // still sole construction, which would make the forgery unwritable and delete word_qualified's
 // range arm along with it.
+//
+// THE WALL ITSELF IS UNWITNESSED, AND THAT IS A GAP RATHER THAN A CEILING. Everything above rests
+// on one property: handing a bare Word where a QualifiedWord is declared DOES NOT TYPECHECK. No
+// claim in this corpus establishes that. It cannot be established from the accepted corpus -- if
+// the bad call were writable there the tree would not compile -- so the evidence has to be fixture
+// source compiled through the real acceptance path, which DESIGN section 4b explicitly says is
+// available and therefore owed.
+//
+// I WROTE THAT WITNESS AND WITHDREW IT, which is worth recording precisely because the approving
+// review cited it as a strength while it was not executing. test.claim.machine_word_qualification_
+// typecheck compiled three illegal sources plus an acceptance-asserting green control through
+// gunbc.compile_diagnostic_census. All four claims FAILED on every run: first uniformly, which the
+// 0 - 1 not-runnable sentinel is designed to produce when the harness is dead, and then still
+// uniformly after the probe sources' record-literal braces were unescaped to match the corpus
+// precedent -- the REDs failing a > 0 assertion and the green failing an == 0 assertion at the same
+// time, which no single count explains. The floor's own reach probe reports
+// reach=opaque_host_call_unbounded:compile_dag_diagnostic_census, last_builtin=census_total_count,
+// ~2.3s of shared fill per claim. Diagnosing further needs a harness that can print the census
+// cause, which is another cycle per hypothesis.
+//
+// Shipping four claims that cannot run would have been worse than none -- they would be cited as
+// coverage, which is exactly what happened in review before anyone looked at a run. Weakening them
+// until they passed would have been worse still. So the module is withdrawn and the obligation is
+// stated here, on the carrier whose property it was meant to establish.
+//
+// TRIGGER, at capability grain: a census probe in this lane that can report CompileDiagnosticCensus
+// CensusNotRunnable's cause string, sufficient to tell a harness that did not run from a source
+// that compiled clean. Nothing else retires this; re-adding the same four claims without that
+// discrimination reproduces the state being recorded.
 type QualifiedWord {
   word: Word
 }
