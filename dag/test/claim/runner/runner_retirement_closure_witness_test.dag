@@ -59,6 +59,13 @@ import gunbc.runner_host_retirement {
   CaptureUnavailable,
   host_retirement_obligation_basis_of,
 }
+import gunbc.build_provenance_join {
+  RunningSeedIdentityRead,
+  RunningSeedIdentityUnreadable,
+  join_build_provenance,
+}
+import gunbc.cli_dispatch_surface { CliCleanSourceCommit }
+import gunbc.runner_slot_retire_run { build_provenance_blockers }
 import gunbc.runner_retirement_closure {
   ClosureBlocker,
   PlannerSawCompleteSubject,
@@ -614,6 +621,90 @@ test fn a_contradictory_retiree_reading_blocks_in_either_order() -> Bool {
       basis: grounded_basis(),
       estate: complete_estate(),
       extra: [],
+    ),
+  )
+}
+
+// ── THE BUILD-PROVENANCE JOIN, ROUTED THROUGH THE VERDICT IN BOTH DIRECTIONS ──────────────────
+//
+// The claim above supplies its own blocker, so it proves the verdict honours `extra` and nothing
+// about the join. These two run the REAL producer, gunbc.runner_slot_retire_run
+// build_provenance_blockers, over otherwise clear inputs: an executable built from a commit other
+// than the selected revision must BLOCK the assessment, and one built from the selected revision
+// must leave it clear -- the second is the control without which the first could be satisfied by a
+// producer that blocks unconditionally, which is exactly the blocker this join replaced.
+test fn an_executable_built_from_another_revision_blocks_the_assessment() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: build_provenance_blockers(
+        verdict: join_build_provenance(
+          expected: "4e6e066f88fcabe0058a683f9cb634de4f8abff3",
+          reading: RunningSeedIdentityRead {
+            identity: CliCleanSourceCommit { commit: "7261964510969c72ab874e908e8cc3fc80b880aa" },
+          },
+        ),
+        run_id: "35416075835",
+      ),
+    ),
+  )
+}
+
+test fn an_unobserved_executable_identity_blocks_the_assessment() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: build_provenance_blockers(
+        verdict: join_build_provenance(
+          expected: "4e6e066f88fcabe0058a683f9cb634de4f8abff3",
+          reading: RunningSeedIdentityUnreadable { cause: "the running gunbc did not report its version" },
+        ),
+        run_id: "35416296362",
+      ),
+    ),
+  )
+}
+
+test fn an_executable_built_from_the_selected_revision_leaves_the_assessment_clear() -> Bool {
+  assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: build_provenance_blockers(
+        verdict: join_build_provenance(
+          expected: "4e6e066f88fcabe0058a683f9cb634de4f8abff3",
+          reading: RunningSeedIdentityRead {
+            identity: CliCleanSourceCommit { commit: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" },
+          },
+        ),
+        run_id: "35416075835",
+      ),
     ),
   )
 }
