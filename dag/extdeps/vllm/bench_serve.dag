@@ -3,7 +3,11 @@ module extdeps.vllm.bench_serve
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.nat { Nat }
 import v2.std.optional { Present, Absent }
-import std.measure { TokenCount, token_count, token_count_value }
+import std.measure {
+  TokenCount, token_count, token_count_value,
+  Measure, Dimensionless, Milli, measure_count,
+  MilliRequestsPerSecond, milli_requests_per_second_count,
+}
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.decimal { fixed_point_wire }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
@@ -64,7 +68,7 @@ fn vllm_bench_backend_route(b: VllmBenchBackend) -> VllmRoute {
 // session simulation must not select it.
 type BenchArrival
   = SendAllImmediately
-  | PoissonProcess { millirequests_per_second: Nat, burstiness_milli: Nat }
+  | PoissonProcess { request_rate: MilliRequestsPerSecond, burstiness: Measure<Dimensionless, Milli, Nat> }
 
 type RandomDatasetSpec {
   input_len: TokenCount
@@ -114,16 +118,16 @@ fn vllm_bench_serve_request(
 fn vllm_bench_arrival_rate_wire(a: BenchArrival) -> String {
   match a {
     SendAllImmediately => "inf"
-    PoissonProcess { millirequests_per_second: n, burstiness_milli: _ } =>
-      fixed_point_wire(value: n as Int, decimals: 3)
+    PoissonProcess { request_rate: n, burstiness: _ } =>
+      fixed_point_wire(value: milli_requests_per_second_count(r: n) as Int, decimals: 3)
   }
 }
 
 fn vllm_bench_burstiness_words(a: BenchArrival) -> List<String> {
   match a {
     SendAllImmediately => []
-    PoissonProcess { millirequests_per_second: _, burstiness_milli: b } =>
-      ["--burstiness", fixed_point_wire(value: b as Int, decimals: 3)]
+    PoissonProcess { request_rate: _, burstiness: b } =>
+      ["--burstiness", fixed_point_wire(value: measure_count(b) as Int, decimals: 3)]
   }
 }
 
@@ -147,12 +151,14 @@ fn vllm_bench_arrival_eq(a: BenchArrival, b: BenchArrival) -> Bool {
     SendAllImmediately =>
       match b {
         SendAllImmediately => true
-        PoissonProcess { millirequests_per_second: _, burstiness_milli: _ } => false
+        PoissonProcess { request_rate: _, burstiness: _ } => false
       }
-    PoissonProcess { millirequests_per_second: an, burstiness_milli: ab } =>
+    PoissonProcess { request_rate: an, burstiness: ab } =>
       match b {
         SendAllImmediately => false
-        PoissonProcess { millirequests_per_second: bn, burstiness_milli: bb } => an == bn && ab == bb
+        PoissonProcess { request_rate: bn, burstiness: bb } =>
+          milli_requests_per_second_count(r: an) == milli_requests_per_second_count(r: bn)
+            && measure_count(ab) == measure_count(bb)
       }
   }
 }
@@ -197,6 +203,7 @@ fn vllm_bench_serve_arguments(req: VllmBenchServeRequest) -> List<String> {
 fn vllm_bench_serve_uses_poisson_idle_gaps(req: VllmBenchServeRequest) -> Bool {
   match req.arrival {
     SendAllImmediately => false
-    PoissonProcess { millirequests_per_second: n, burstiness_milli: b } => n > 0 && b == 1000
+    PoissonProcess { request_rate: n, burstiness: b } =>
+      milli_requests_per_second_count(r: n) > 0 && measure_count(b) == 1000
   }
 }

@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, EpochSecs, List }
 import std.nat { Nat }
 import v2.std.algebra { length, filter }
 import v2.std.optional { Present, Absent }
-import std.measure { token_count, millisecond, millisecond_count }
+import std.measure { token_count, token_count_value, millisecond, millisecond_count, milli_tokens_per_second_count }
 import product.capacity.lease { LeaseGrant, lease_fence_of, lease_grant, LeasePolicy, FencedResource }
 import product.capacity.event_chain { EventId }
 import gunbc.fleet_intent_network { operator_host_srv9 }
@@ -41,6 +41,9 @@ import gunbc.spark.serving_load_probe {
   foreign_work_bound, ForeignWorkBounded, ForeignWorkUnread, ForeignWorkContradiction,
   ClientRateUnqualified,
   occupancy_from_body, occupancy_trace_from_endpoint_scrapes, histogram_delta, HistogramDeltaRead, HistogramDeltaUnread, HistogramCounterReset,
+  itl_latency_delta, iteration_tokens_booked_delta,
+  LatencyHistogramRead, LatencyHistogramUnread, LatencyHistogramReset,
+  TokenHistogramRead, TokenHistogramUnread, TokenHistogramReset,
   CapacityClaimUnavailable,
   glm_native_holistic_protocol, holistic_protocol_is_session_shaped,
   glm_native_live_subject_standing, counter_continuity, SameExporter, ExporterChanged, ContinuityUnread,
@@ -446,6 +449,51 @@ test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() ->
   }
 }
 
+test fn an_itl_histogram_sum_delta_of_half_a_second_is_500_milliseconds() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
+  match itl_latency_delta(before_body: before, after_body: after) {
+    LatencyHistogramRead { sum: s, observations: n } => millisecond_count(m: s) == 500 && n == 5
+    LatencyHistogramUnread { cause: _ } => false
+    LatencyHistogramReset { cause: _ } => false
+  }
+}
+
+test fn an_iteration_tokens_sum_delta_is_booked_tokens_not_a_duration() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
+  match iteration_tokens_booked_delta(before_body: before, after_body: after) {
+    TokenHistogramRead { booked: t, observations: n } => token_count_value(t: t) == 10 && n == 2
+    TokenHistogramUnread { cause: _ } => false
+    TokenHistogramReset { cause: _ } => false
+  }
+}
+
+test fn a_fractional_iteration_tokens_sum_delta_refuses_rather_than_rounding() -> Bool {
+  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.5", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
+  match iteration_tokens_booked_delta(before_body: before, after_body: after) {
+    TokenHistogramRead { booked: _, observations: _ } => false
+    TokenHistogramUnread { cause: _ } => true
+    TokenHistogramReset { cause: _ } => false
+  }
+}
+
+test fn the_observation_keeps_itl_milliseconds_and_booked_tokens_distinct() -> Bool {
+  let obs = fx_obs()
+  match obs.itl_latency {
+    LatencyHistogramRead { sum: s, observations: n } =>
+      millisecond_count(m: s) == 2000 && n == 100
+        && match obs.iteration_tokens_booked {
+          TokenHistogramRead { booked: t, observations: k } => token_count_value(t: t) == 98999 && k == 10
+          TokenHistogramUnread { cause: _ } => false
+          TokenHistogramReset { cause: _ } => false
+        }
+    LatencyHistogramUnread { cause: _ } => false
+    LatencyHistogramReset { cause: _ } => false
+  }
+}
+
 test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
   let body = join(["[sudo] password for briansrls:\n", fx_bench_stdout], "")
   match ledger_from_bench_stdout(body: body, offered: 4) {
@@ -563,7 +611,7 @@ test fn the_contended_sweep_is_five_shared_window_client_points() -> Bool {
     && glm_native_sweep_num_prompts(concurrency: 1) == 8
     && glm_native_sweep_num_prompts(concurrency: 2) == 8
     && glm_native_sweep_num_prompts(concurrency: 4) == 16
-    && glm_native_contended_sweep_c1.latency.output_throughput_milli_tok_per_s == 10860
+    && milli_tokens_per_second_count(r: glm_native_contended_sweep_c1.latency.output_throughput) == 10860
     && millisecond_count(m: glm_native_contended_sweep_c1.latency.tpot_milli) == 81
     && millisecond_count(m: glm_native_contended_sweep_c1.latency.ttft_milli) == 1542
     && glm_native_contended_sweep_c1.concurrency == 1

@@ -2,7 +2,13 @@ module gunbc.spark.serving_load_probe
 
 import std.types { Bool, String, NonEmptyStr, List, EpochSecs, Int }
 import std.nat { Nat }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure {
+  Millisecond, millisecond, millisecond_count,
+  TokenCount, token_count, token_count_value,
+  Measure, Dimensionless, Milli,
+  MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
+  MilliRequestsPerSecond, milli_requests_per_second,
+}
 import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import v2.std.optional { Present, Absent }
@@ -252,6 +258,11 @@ fn counter_continuity(before: VllmEndpointProcessLaunchObservation, after: VllmE
   }
 }
 
+// THE RAW DELTA IS DIMENSION-AGNOSTIC ON PURPOSE. `histogram_delta` is the one shared parse and
+// subtract for any vLLM histogram: `sum_milli` is thousandths of WHATEVER UNIT THAT METRIC'S SUM IS
+// IN, and `count` is how many observations the histogram recorded. It is not a receipt field: the
+// observation stores only the typed projections below, so a seconds sum and a booked-token sum can
+// never be read through one carrier.
 type HistogramDelta
   = HistogramDeltaRead { sum_milli: Nat, count: Nat }
   | HistogramDeltaUnread { cause: NonEmptyStr }
@@ -310,10 +321,10 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
                   Absent => HistogramDeltaUnread { cause: "histogram count missing on the second body" as NonEmptyStr }
                   Present { value: ac } =>
                     match field_to_milli(field: bs) {
-                      Absent => HistogramDeltaUnread { cause: "histogram sum before was not an exact milli-second" as NonEmptyStr }
+                      Absent => HistogramDeltaUnread { cause: "histogram sum before was not exact to three decimals" as NonEmptyStr }
                       Present { value: bsm } =>
                         match field_to_milli(field: asv) {
-                          Absent => HistogramDeltaUnread { cause: "histogram sum after was not an exact milli-second" as NonEmptyStr }
+                          Absent => HistogramDeltaUnread { cause: "histogram sum after was not exact to three decimals" as NonEmptyStr }
                           Present { value: asm } =>
                             match harness_gauge_count(text: bc) {
                               Absent => HistogramDeltaUnread { cause: "histogram count before was not an exact count" as NonEmptyStr }
@@ -337,6 +348,40 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
             }
         }
     }
+  }
+}
+
+// vllm:inter_token_latency_seconds: the sum is SECONDS, so thousandths of it are milliseconds.
+type LatencyHistogramDelta
+  = LatencyHistogramRead { sum: Millisecond, observations: Nat }
+  | LatencyHistogramUnread { cause: NonEmptyStr }
+  | LatencyHistogramReset { cause: NonEmptyStr }
+
+// vllm:iteration_tokens_total: the sum is TOKENS BOOKED across scheduler iterations, not a
+// duration, and the count is histogram observations, not an engine-step count the probe may rely on.
+type TokenHistogramDelta
+  = TokenHistogramRead { booked: TokenCount, observations: Nat }
+  | TokenHistogramUnread { cause: NonEmptyStr }
+  | TokenHistogramReset { cause: NonEmptyStr }
+
+fn itl_latency_delta(before_body: String, after_body: String) -> LatencyHistogramDelta {
+  match histogram_delta(before_body: before_body, after_body: after_body, metric: InterTokenLatencySeconds) {
+    HistogramDeltaRead { sum_milli: s, count: c } => LatencyHistogramRead { sum: millisecond(count: s), observations: c }
+    HistogramDeltaUnread { cause: x } => LatencyHistogramUnread { cause: x }
+    HistogramCounterReset { cause: x } => LatencyHistogramReset { cause: x }
+  }
+}
+
+fn iteration_tokens_booked_delta(before_body: String, after_body: String) -> TokenHistogramDelta {
+  match histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal) {
+    HistogramDeltaRead { sum_milli: s, count: c } =>
+      if s % 1000 == 0 {
+        TokenHistogramRead { booked: token_count(count: s / 1000), observations: c }
+      } else {
+        TokenHistogramUnread { cause: "iteration_tokens_total sum delta was not a whole token count" as NonEmptyStr }
+      }
+    HistogramDeltaUnread { cause: x } => TokenHistogramUnread { cause: x }
+    HistogramCounterReset { cause: x } => TokenHistogramReset { cause: x }
   }
 }
 
@@ -449,13 +494,13 @@ type ArrivalSkew
 
 type ArrivalPolicy
   = ArrivalPolicySendAll
-  | ArrivalPolicyPoisson { millirequests_per_second: Nat, burstiness_milli: Nat }
+  | ArrivalPolicyPoisson { request_rate: MilliRequestsPerSecond, burstiness: Measure<Dimensionless, Milli, Nat> }
 
 fn arrival_policy_from_request(req: VllmBenchServeRequest) -> ArrivalPolicy {
   match req.arrival {
     SendAllImmediately => ArrivalPolicySendAll
-    PoissonProcess { millirequests_per_second: n, burstiness_milli: b } =>
-      ArrivalPolicyPoisson { millirequests_per_second: n, burstiness_milli: b }
+    PoissonProcess { request_rate: n, burstiness: b } =>
+      ArrivalPolicyPoisson { request_rate: n, burstiness: b }
   }
 }
 
@@ -463,7 +508,7 @@ fn arrival_from_protocol(req: VllmBenchServeRequest) -> ArrivalSkew {
   match arrival_policy_from_request(req: req) {
     ArrivalPolicySendAll =>
       ArrivalSkewUnread { cause: "ArrivalPolicySendAll is input policy, not observed skew; vLLM's max_concurrency semaphore can run prompts in waves, and per-request start times were not retained" as NonEmptyStr }
-    ArrivalPolicyPoisson { millirequests_per_second: _, burstiness_milli: _ } =>
+    ArrivalPolicyPoisson { request_rate: _, burstiness: _ } =>
       ArrivalSkewUnread { cause: "Poisson starts are not parsed from vllm bench serve stdout until per-request start_times are retained" as NonEmptyStr }
   }
 }
@@ -772,7 +817,7 @@ fn decode_corroboration_for_protocol(req: VllmBenchServeRequest) -> DecodeCorrob
 type ClientBenchLatency
   = ClientBenchLatencyUnread { cause: NonEmptyStr }
   | ClientBenchLatencyReported {
-      output_throughput_milli_tok_per_s: Nat
+      output_throughput: MilliTokensPerSecond
       tpot_milli: Millisecond
       itl_milli: Millisecond?
       ttft_milli: Millisecond
@@ -1006,8 +1051,8 @@ type ServingLoadObservation sole_constructor {
   before_backlog: BacklogStanding
   after_backlog: BacklogStanding
   generation: TokenDelta
-  itl_latency: HistogramDelta
-  iteration_tokens_booked: HistogramDelta
+  itl_latency: LatencyHistogramDelta
+  iteration_tokens_booked: TokenHistogramDelta
   ledger: OperationLedger
   admission: AdmissionCost
   corroboration: DecodeCorroboration
@@ -1064,8 +1109,8 @@ fn serving_load_observation(
     before_backlog: backlog_from_body(body: before_body, preemptions: before_p),
     after_backlog: backlog_from_body(body: after_body, preemptions: after_p),
     generation: generation,
-    itl_latency: histogram_delta(before_body: before_body, after_body: after_body, metric: InterTokenLatencySeconds),
-    iteration_tokens_booked: histogram_delta(before_body: before_body, after_body: after_body, metric: IterationTokensTotal),
+    itl_latency: itl_latency_delta(before_body: before_body, after_body: after_body),
+    iteration_tokens_booked: iteration_tokens_booked_delta(before_body: before_body, after_body: after_body),
     ledger: ledger,
     admission: glm_native_workload_admission,
     corroboration: decode_corroboration_for_protocol(req: protocol),
@@ -1135,8 +1180,8 @@ fn serving_load_observation_text(o: ServingLoadObservation) -> String {
     "occupancy: ", occupancy_text(t: o.occupancy), "\n",
     "agreement: ", agreement_text(a: o.agreement), "\n",
     "generation: ", token_delta_text(d: o.generation), "\n",
-    "itl latency (not a rate): ", histogram_text(d: o.itl_latency), "\n",
-    "iteration_tokens booked (not occupancy): ", histogram_text(d: o.iteration_tokens_booked), "\n",
+    "itl latency (not a rate): ", latency_histogram_text(d: o.itl_latency), "\n",
+    "iteration_tokens booked (not occupancy): ", token_histogram_text(d: o.iteration_tokens_booked), "\n",
     "ledger: ", ledger_text(l: o.ledger), "\n",
     "admission: ", admission_text(a: o.admission), "\n",
     "corroboration: ", corroboration_text(c: o.corroboration), "\n",
@@ -1177,9 +1222,9 @@ fn capacity_claim_text(c: CapacityClaim) -> String {
 fn client_latency_text(c: ClientBenchLatency) -> String {
   match c {
     ClientBenchLatencyUnread { cause: x } => join(["unread ", x as String], "")
-    ClientBenchLatencyReported { output_throughput_milli_tok_per_s: th, tpot_milli: tpot, itl_milli: itl, ttft_milli: ttft, window: w } =>
+    ClientBenchLatencyReported { output_throughput: th, tpot_milli: tpot, itl_milli: itl, ttft_milli: ttft, window: w } =>
       join([
-        "bench-serve throughput_milli_tok_s=", to_string(th),
+        "bench-serve throughput_milli_tok_s=", to_string(milli_tokens_per_second_count(r: th)),
         " tpot_ms=", to_string(millisecond_count(m: tpot)),
         " itl_ms=",
         match itl {
@@ -1295,12 +1340,21 @@ fn backlog_text(b: BacklogStanding) -> String {
   }
 }
 
-fn histogram_text(d: HistogramDelta) -> String {
+fn latency_histogram_text(d: LatencyHistogramDelta) -> String {
   match d {
-    HistogramDeltaRead { sum_milli: s, count: n } =>
-      join(["delta sum_milli=", to_string(s), " count=", to_string(n)], "")
-    HistogramDeltaUnread { cause: c } => join(["unread ", c as String], "")
-    HistogramCounterReset { cause: c } => join(["reset ", c as String], "")
+    LatencyHistogramRead { sum: s, observations: n } =>
+      join(["delta sum_ms=", to_string(millisecond_count(m: s)), " observations=", to_string(n)], "")
+    LatencyHistogramUnread { cause: c } => join(["unread ", c as String], "")
+    LatencyHistogramReset { cause: c } => join(["reset ", c as String], "")
+  }
+}
+
+fn token_histogram_text(d: TokenHistogramDelta) -> String {
+  match d {
+    TokenHistogramRead { booked: t, observations: n } =>
+      join(["delta booked_tokens=", to_string(token_count_value(t: t)), " observations=", to_string(n)], "")
+    TokenHistogramUnread { cause: c } => join(["unread ", c as String], "")
+    TokenHistogramReset { cause: c } => join(["reset ", c as String], "")
   }
 }
 
@@ -1405,7 +1459,7 @@ data glm_native_holistic_protocol: VllmBenchServeRequest = vllm_bench_serve_requ
   tokenizer: glm_native_engine_tokenizer_path,
   dataset: glm_native_holistic_dataset,
   num_prompts: 4,
-  arrival: PoissonProcess { millirequests_per_second: 50, burstiness_milli: 1000 },
+  arrival: PoissonProcess { request_rate: milli_requests_per_second(count: 50), burstiness: Measure { count: 1000 } },
   max_concurrency: Present { value: 2 },
   ignore_eos: true,
   seed: glm_native_bench_seed,
@@ -1438,7 +1492,7 @@ data glm_native_wiring_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_
 // Client TTFT/TPOT/ITL from vllm bench serve stdout, transcribed from the 2026-09-18 wiring
 // smoke (256/64, inf rate, c=2, 4/4 ok). Contended. Not the 256/128 sweep protocol.
 type TranscribedClientLatency {
-  output_throughput_milli_tok_per_s: Nat
+  output_throughput: MilliTokensPerSecond
   tpot_milli: Millisecond
   itl_milli: Millisecond?
   ttft_milli: Millisecond
@@ -1446,7 +1500,7 @@ type TranscribedClientLatency {
 }
 
 data glm_native_smoke_client_latency: TranscribedClientLatency = TranscribedClientLatency {
-  output_throughput_milli_tok_per_s: 17390
+  output_throughput: milli_tokens_per_second(count: 17390)
   tpot_milli: millisecond(count: 82)
   itl_milli: Present { value: millisecond(count: 82) }
   ttft_milli: millisecond(count: 2185)
@@ -1460,7 +1514,7 @@ data glm_native_wet_smoke_standing: CitedFigureStanding = TranscribedUncited {
 }
 
 data glm_native_wet_smoke_client_latency: TranscribedClientLatency = TranscribedClientLatency {
-  output_throughput_milli_tok_per_s: 22510
+  output_throughput: milli_tokens_per_second(count: 22510)
   tpot_milli: millisecond(count: 82)
   itl_milli: Present { value: millisecond(count: 83) }
   ttft_milli: millisecond(count: 996)
@@ -1574,7 +1628,7 @@ fn client_latency_from_bench_stdout(body: String, window: ProbeWindowStanding) -
             Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Mean TTFT (ms) line" as NonEmptyStr }
             Present { value: ttft } =>
               ClientBenchLatencyReported {
-                output_throughput_milli_tok_per_s: th,
+                output_throughput: milli_tokens_per_second(count: th),
                 tpot_milli: tpot,
                 itl_milli: bench_labeled_whole_milli(body: body, label: "Mean ITL (ms)"),
                 ttft_milli: ttft,
@@ -1594,21 +1648,21 @@ data glm_native_client_rate_denomination: RateTokenDenomination = RateDenominate
 }
 
 type PrefillVersusDecodeThroughput {
-  output_milli_tok_per_s: Nat
-  total_milli_tok_per_s: Nat
+  output_throughput: MilliTokensPerSecond
+  total_throughput: MilliTokensPerSecond
   input_tokens: Nat
   output_tokens: Nat
 }
 
 data glm_native_wet_smoke_prefill_versus_decode: PrefillVersusDecodeThroughput = PrefillVersusDecodeThroughput {
-  output_milli_tok_per_s: 22510
-  total_milli_tok_per_s: 69640
+  output_throughput: milli_tokens_per_second(count: 22510)
+  total_throughput: milli_tokens_per_second(count: 69640)
   input_tokens: 1072
   output_tokens: 512
 }
 
 fn total_token_throughput_is_not_the_probe_rate(r: PrefillVersusDecodeThroughput) -> Bool {
-  r.total_milli_tok_per_s != r.output_milli_tok_per_s
+  milli_tokens_per_second_count(r: r.total_throughput) != milli_tokens_per_second_count(r: r.output_throughput)
 }
 
 data glm_native_wet_smoke_client_output: ClientOutputTokens = ClientOutputTokensObserved { tokens: 512 }
@@ -1668,12 +1722,12 @@ fn glm_native_contended_sweep_protocol(concurrency: Nat) -> VllmBenchServeReques
 }
 
 fn glm_native_contended_client_latency(
-  throughput_milli_tok_per_s: Nat,
+  throughput: MilliTokensPerSecond,
   tpot_milli: Nat,
   ttft_milli: Nat,
 ) -> TranscribedClientLatency {
   TranscribedClientLatency {
-    output_throughput_milli_tok_per_s: throughput_milli_tok_per_s,
+    output_throughput: throughput,
     tpot_milli: millisecond(count: tpot_milli),
     itl_milli: none,
     ttft_milli: millisecond(count: ttft_milli),
@@ -1689,7 +1743,7 @@ type ContendedSweepPoint {
 
 fn glm_native_contended_sweep_point(
   concurrency: Nat,
-  throughput_milli_tok_per_s: Nat,
+  throughput: MilliTokensPerSecond,
   tpot_milli: Nat,
   ttft_milli: Nat,
 ) -> ContendedSweepPoint {
@@ -1697,7 +1751,7 @@ fn glm_native_contended_sweep_point(
     concurrency: concurrency,
     protocol: glm_native_contended_sweep_protocol(concurrency: concurrency),
     latency: glm_native_contended_client_latency(
-      throughput_milli_tok_per_s: throughput_milli_tok_per_s,
+      throughput: throughput,
       tpot_milli: tpot_milli,
       ttft_milli: ttft_milli,
     ),
@@ -1705,19 +1759,19 @@ fn glm_native_contended_sweep_point(
 }
 
 data glm_native_contended_sweep_c1: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 1, throughput_milli_tok_per_s: 10860, tpot_milli: 81, ttft_milli: 1542,
+  concurrency: 1, throughput: milli_tokens_per_second(count: 10860), tpot_milli: 81, ttft_milli: 1542,
 )
 data glm_native_contended_sweep_c2: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 2, throughput_milli_tok_per_s: 17220, tpot_milli: 109, ttft_milli: 994,
+  concurrency: 2, throughput: milli_tokens_per_second(count: 17220), tpot_milli: 109, ttft_milli: 994,
 )
 data glm_native_contended_sweep_c4: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 4, throughput_milli_tok_per_s: 25490, tpot_milli: 140, ttft_milli: 2353,
+  concurrency: 4, throughput: milli_tokens_per_second(count: 25490), tpot_milli: 140, ttft_milli: 2353,
 )
 data glm_native_contended_sweep_c8: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 8, throughput_milli_tok_per_s: 38360, tpot_milli: 190, ttft_milli: 2602,
+  concurrency: 8, throughput: milli_tokens_per_second(count: 38360), tpot_milli: 190, ttft_milli: 2602,
 )
 data glm_native_contended_sweep_c16: ContendedSweepPoint = glm_native_contended_sweep_point(
-  concurrency: 16, throughput_milli_tok_per_s: 62530, tpot_milli: 198, ttft_milli: 5218,
+  concurrency: 16, throughput: milli_tokens_per_second(count: 62530), tpot_milli: 198, ttft_milli: 5218,
 )
 
 data glm_native_contended_sweep_points: List<ContendedSweepPoint> = [
