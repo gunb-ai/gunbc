@@ -28,7 +28,17 @@ import gunbc.runner_width_transition {
   TransitionPopulationDisagrees,
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv4 }
-import gunbc.host_operation_exec { SystemctlMaskNow, HostOperationObserved, HostOperationRefused, HostOperationOutcome }
+import gunbc.host_operation_exec {
+  SystemctlMaskNow,
+  CgroupReadEvents,
+  HostOperationObserved,
+  HostOperationRefused,
+  HostOperationOutcome,
+  host_operation_materialize_argv,
+}
+import gunbc.host_effect { LocalShell }
+import extdeps.linux.cgroup_v2 { cgroup_v2_events_path }
+import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.runner_slot_retirement {
   CgroupObservedEmpty,
   CgroupObservedPopulated,
@@ -59,6 +69,8 @@ import gunbc.runner_slot_retirement {
   retirement_observation_from_readings,
   authorized_retirement_actuation,
   cgroup_occupancy_from_reads,
+  observe_slot_cgroup_occupancy,
+  RunnerRetirementStanding,
   control_group_property_means_cgroup_absent,
   retirement_property_text,
   RetirementPropertyRead,
@@ -98,7 +110,7 @@ test fn a_present_unit_is_pending_rather_than_stopped() -> Bool {
       unit: "actions-runner@srv1-14.service",
       replacement_inhibited: true,
       service_running: true,
-      occupancy: CgroupObservedPopulated { count: 3 },
+      occupancy: CgroupObservedPopulated,
     }
   ) {
     RetirementPendingDrain { unit: _, cause: _ } => true
@@ -117,7 +129,7 @@ test fn a_gone_unit_with_a_populated_cgroup_is_not_retired() -> Bool {
       unit: "actions-runner@srv1-14.service",
       replacement_inhibited: true,
       service_running: false,
-      occupancy: CgroupObservedPopulated { count: 2 },
+      occupancy: CgroupObservedPopulated,
     }
   ) {
     RetirementPendingDrain { unit: _, cause: _ } => true
@@ -174,7 +186,7 @@ test fn a_partial_drain_still_blocks_the_raise() -> Bool {
             unit: "actions-runner@srv1-15.service",
             replacement_inhibited: true,
             service_running: true,
-            occupancy: CgroupObservedPopulated { count: 1 },
+            occupancy: CgroupObservedPopulated,
           }
         ),
       ]
@@ -300,7 +312,7 @@ test fn authorized_interruption_still_requires_an_empty_cgroup() -> Bool {
         unit: "actions-runner@srv4-13.service",
         replacement_inhibited: true,
         service_running: false,
-        occupancy: CgroupObservedPopulated { count: 4 },
+        occupancy: CgroupObservedPopulated,
       },
       work_interrupted: true,
     )
@@ -377,7 +389,7 @@ test fn a_unit_absent_from_the_listing_with_a_busy_cgroup_still_blocks() -> Bool
             unit: "actions-runner@srv4-13.service",
             replacement_inhibited: true,
             service_running: false,
-            occupancy: CgroupObservedPopulated { count: 2 },
+            occupancy: CgroupObservedPopulated,
           },
         ),
       ],
@@ -637,11 +649,17 @@ test fn the_actuator_authorizes_a_named_unit_and_masks_that_same_unit() -> Bool 
 // directory, never reading cgroup.procs -- turning a masked, inactive slot holding a live
 // Runner.Worker into a completed retirement and authorizing `rm -rf` on its tree.
 //
-// THE FIRST ATTEMPT AT COVERING THIS RAN THROUGH THE TRANSPORT AND COULD NOT REACH ITS SUBJECT. The
-// hermetic envelope refused, naming `ReadInterfaceFile` as declaring no mock_response, and reported a
-// ROUTE GAP rather than a verdict -- correctly, and uselessly for the property. A fixed mock would not
-// have helped: it answers identically for every caller, and the discriminating input here is a PID
-// list. So the decode is pure and takes both readings, and these rows supply them.
+// THE SECOND TIME THE HAZARD CAME BACK, IT CAME BACK ONE LEVEL DOWN. With the directory test fixed,
+// the decode read `<ControlGroup>/cgroup.procs` and counted its lines -- and `cgroup.procs` lists the
+// processes attached to THAT cgroup only. systemd places a service's children in scoped child cgroups,
+// so a runner whose Runner.Worker was alive one level down read as an EMPTY parent, and the same
+// masked, inactive slot completed again with live work under it. The kernel's subtree answer is the
+// `populated` key of `cgroup.events` (extdeps.linux.cgroup_v2), and the decode now takes that reading.
+//
+// THE READINGS ARE SUPPLIED AT THE INTERFACE (DESIGN 3, witness rule): the decode is pure over the two
+// HostOperationOutcomes, so each row constructs exactly the host state it discriminates instead of
+// re-executing the transport. The pairing obligation is discharged once, below, by
+// `the_live_observer_reaches_the_events_decoder`, which runs the real producer route hermetically.
 fn dir_exists() -> HostOperationOutcome {
   HostOperationObserved { stdout: "", success: true, stderr: none }
 }
@@ -650,115 +668,166 @@ fn dir_missing() -> HostOperationOutcome {
   HostOperationObserved { stdout: "", success: false, stderr: none }
 }
 
-fn procs(text: String) -> HostOperationOutcome {
+fn events(text: String) -> HostOperationOutcome {
   HostOperationObserved { stdout: text, success: true, stderr: none }
 }
 
 fn read_refused() -> HostOperationOutcome {
-  HostOperationRefused { operation: "CgroupReadInterfaceFile", reason: "transport refused" }
+  HostOperationRefused { operation: "CgroupReadEvents", reason: "transport refused" }
 }
 
-// THE DECISIVE NEGATIVE: `test -d` SUCCEEDS WITH EMPTY STDOUT AND cgroup.procs RETURNS PIDS. This is
-// what a live, occupied runner cgroup looks like. It must decode as populated -- the old decode
-// answered CgroupAbsent here without ever reading the PID list.
-test fn an_existing_cgroup_with_pids_is_populated_not_absent() -> Bool {
-  match cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "4821\n4977\n")) {
-    CgroupObservedPopulated { count: n } => n == 2
+fn masked_inactive_standing(occupancy_read: HostOperationOutcome) -> RunnerRetirementStanding {
+  runner_retirement_standing(
+    o: retirement_observation_from_readings(
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      unit_file_state: "masked",
+      active_state: "inactive",
+      occupancy: cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: occupancy_read),
+    ),
+  )
+}
+
+// THE DISCRIMINATING RED: AN EMPTY PARENT WITH A POPULATED CHILD BLOCKS RETIREMENT. This is exactly
+// the host state the procs-only decode read as empty -- the parent's own cgroup.procs is blank, and
+// the kernel reports `populated 1` because a descendant holds a live process. It must decode as
+// populated, and the masked, inactive slot over it must NOT complete: no teardown, no capacity
+// release. Under the procs decode this state completed.
+test fn an_empty_parent_with_a_populated_child_is_populated() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: "populated 1\nfrozen 0\n")) {
+    CgroupObservedPopulated => true
     CgroupAbsent => false
     CgroupObservedEmpty => false
     CgroupUnobserved { cause: _ } => false
   }
 }
 
-// AND ITS STANDING CONSEQUENCE, END TO END: masked and inactive with surviving processes must NOT
-// complete, so no teardown and no cap raise can follow. Under the old decode this exact host state
-// completed.
-test fn a_masked_inactive_slot_with_surviving_processes_does_not_complete() -> Bool {
-  match runner_retirement_standing(
-    o: retirement_observation_from_readings(
-      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
-      unit_file_state: "masked",
-      active_state: "inactive",
-      occupancy: cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "4821\n")),
-    ),
-  ) {
+test fn an_empty_parent_with_a_populated_child_blocks_retirement() -> Bool {
+  match masked_inactive_standing(occupancy_read: events(text: "populated 1\nfrozen 0\n")) {
     RetirementPendingDrain { unit: _, cause: _ } => true
     RetirementComplete { unit: _ } => false
     RetirementUnobserved { unit: _, cause: _ } => false
   }
 }
 
-// AN EXISTING BUT EMPTY CGROUP IS A LEGITIMATE POSTCONDITION, AND THE TWO HALVES OF THAT ARE SPLIT.
-//
-// This was ONE conjunctive row named `..._is_empty_and_completes` whose body asserted only the
-// CLASSIFICATION -- it never called `runner_retirement_standing`. Its mutation RED was then read as
-// evidence that the defective decode BLOCKED completion of an empty cgroup, which the source
-// contradicts: `CgroupAbsent` and `CgroupObservedEmpty` both route into
-// `runner_retirement_standing_over_quiesced_workload`, so a masked, inactive unit completes under
-// either. The defective decode misclassified the evidence; it did not block the behaviour.
-//
-// A conjunctive row's RED says only that SOME conjunct became false, and a row whose NAME claims more
-// than its body asserts invites exactly the inference that was drawn from it. Split, each half reports
-// for itself: the classification is expected to flip under the old decode, and the completion is
-// expected to stay green -- which separates an evidence-fidelity defect from a behavioural one instead
-// of forcing both through one Boolean.
-test fn an_existing_empty_cgroup_is_observed_empty() -> Bool {
-  match cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "\n  \n")) {
+// THE POSITIVE CONTROL: `populated 0` IS THE KERNEL SAYING NOTHING IS ALIVE IN THE SUBTREE, and a
+// masked, inactive unit over it completes. Without this row every refusal in this block is satisfied
+// by a decode that never says empty.
+test fn a_subtree_the_kernel_reports_unpopulated_is_observed_empty() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: "populated 0\nfrozen 0\n")) {
     CgroupObservedEmpty => true
-    CgroupObservedPopulated { count: _ } => false
+    CgroupObservedPopulated => false
     CgroupAbsent => false
     CgroupUnobserved { cause: _ } => false
   }
 }
 
-// THE BEHAVIOURAL HALF. A masked, inactive unit over a positively-empty cgroup must complete -- this
-// is the positive control for the whole retirement path, and without it every refusal in this file is
-// satisfied by a fold that never completes.
-test fn an_existing_empty_cgroup_completes() -> Bool {
-  match runner_retirement_standing(
-    o: retirement_observation_from_readings(
-      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
-      unit_file_state: "masked",
-      active_state: "inactive",
-      occupancy: cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: procs(text: "\n  \n")),
-    ),
-  ) {
+test fn a_subtree_the_kernel_reports_unpopulated_completes() -> Bool {
+  match masked_inactive_standing(occupancy_read: events(text: "populated 0\nfrozen 0\n")) {
     RetirementComplete { unit: _ } => true
     RetirementPendingDrain { unit: _, cause: _ } => false
     RetirementUnobserved { unit: _, cause: _ } => false
   }
 }
 
-// A FAILING `test -d` IS THE ONLY READING THAT MAY MEAN ABSENT. Exit status is the operation's whole
-// answer.
-test fn a_failing_directory_test_is_the_absent_arm() -> Bool {
-  match cgroup_occupancy_from_reads(directory_test: dir_missing(), procs_read: read_refused()) {
-    CgroupAbsent => true
-    CgroupObservedEmpty => false
-    CgroupObservedPopulated { count: _ } => false
-    CgroupUnobserved { cause: _ } => false
-  }
-}
-
-// AN EXISTING DIRECTORY WHOSE PROCS READ REFUSES IS UNOBSERVED, NOT EMPTY AND NOT ABSENT. Not being
-// able to look is not the same as looking and finding nothing.
-test fn an_unreadable_procs_file_is_unobserved() -> Bool {
-  match cgroup_occupancy_from_reads(directory_test: dir_exists(), procs_read: read_refused()) {
+// UNREADABLE EVENTS ARE UNOBSERVED, NOT EMPTY, AND UNOBSERVED BLOCKS. Three ways the reading can fail
+// to be a reading: the transport refused, `cat` exited nonzero, or the body is not the kernel's
+// documented flat-keyed form. None of them may release anything.
+test fn a_refused_events_read_is_unobserved() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: read_refused()) {
     CgroupUnobserved { cause: _ } => true
     CgroupAbsent => false
     CgroupObservedEmpty => false
-    CgroupObservedPopulated { count: _ } => false
+    CgroupObservedPopulated => false
+  }
+}
+
+test fn a_failed_events_read_is_unobserved() -> Bool {
+  match cgroup_occupancy_from_reads(
+    directory_test: dir_exists(),
+    events_read: HostOperationObserved { stdout: "", success: false, stderr: none },
+  ) {
+    CgroupUnobserved { cause: _ } => true
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated => false
+  }
+}
+
+// A PID LIST IS NOT A cgroup.events BODY. This is the reading the old decode consumed; handed to the
+// new one it must refuse rather than be read as "no populated key means nobody is home".
+test fn a_procs_shaped_body_is_unobserved_not_empty() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: "4821\n4977\n")) {
+    CgroupUnobserved { cause: _ } => true
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated => false
+  }
+}
+
+test fn an_empty_events_body_is_unobserved_not_empty() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: "")) {
+    CgroupUnobserved { cause: _ } => true
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated => false
+  }
+}
+
+test fn an_unreadable_events_file_blocks_retirement() -> Bool {
+  match masked_inactive_standing(occupancy_read: read_refused()) {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
+  }
+}
+
+// A FAILING `test -d` IS THE ONLY READING THAT MAY MEAN ABSENT. Exit status is the operation's whole
+// answer.
+test fn a_failing_directory_test_is_the_absent_arm() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_missing(), events_read: read_refused()) {
+    CgroupAbsent => true
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated => false
+    CgroupUnobserved { cause: _ } => false
   }
 }
 
 // A REFUSED DIRECTORY TEST IS ALSO UNOBSERVED. The transport failing to answer says nothing about
 // whether the cgroup is there.
 test fn a_refused_directory_test_is_unobserved_rather_than_absent() -> Bool {
-  match cgroup_occupancy_from_reads(directory_test: read_refused(), procs_read: read_refused()) {
+  match cgroup_occupancy_from_reads(directory_test: read_refused(), events_read: read_refused()) {
     CgroupUnobserved { cause: _ } => true
     CgroupAbsent => false
     CgroupObservedEmpty => false
-    CgroupObservedPopulated { count: _ } => false
+    CgroupObservedPopulated => false
+  }
+}
+
+// THE INHABITANCE CLAIM OVER THE REAL PRODUCER ROUTE (DESIGN 3, pairing obligation). Every row above
+// supplies its readings; this one runs `observe_slot_cgroup_occupancy` through the LocalShell
+// transport under the hermetic envelope, where ShowProperty answers a non-blank ControlGroup,
+// PathIsDirectory answers exists, and linux.CgroupV2.ReadEvents answers the kernel's documented
+// `populated 0` form. The verdict it reaches is therefore reachable only through the events read --
+// nothing else in the hermetic envelope can say EMPTY -- so this asserts the ROUTE and not merely
+// the answer. Beside it, the argv row pins that route to `cgroup.events` at the transport: pointing
+// the CgroupReadEvents arm back at a cgroup.procs read makes the materialized argv disagree with the
+// extdeps composition and this goes red.
+test fn the_live_observer_reaches_the_events_decoder() -> Bool {
+  match observe_slot_cgroup_occupancy(transport: LocalShell, unit: "actions-runner@srv4-13.service" as NonEmptyStr) {
+    CgroupObservedEmpty => true
+    CgroupObservedPopulated => false
+    CgroupAbsent => false
+    CgroupUnobserved { cause: _ } => false
+  }
+}
+
+test fn the_events_read_operation_targets_cgroup_events() -> Bool {
+  let cgroup = "/sys/fs/cgroup/system.slice/actions-runner@srv4-13.service" as NonEmptyStr
+  match host_operation_materialize_argv(operation: CgroupReadEvents { cgroup_path: cgroup }) {
+    ArgvMaterialized { argv: argv } =>
+      join(argv, " ") == join(["cat", cgroup_v2_events_path(cgroup_path: cgroup) as String], " ")
+        && string_contains(s: join(argv, " "), pattern: "cgroup.events")
+    ArgvMaterializationRefused { at: _, cause: _ } => false
   }
 }
 
