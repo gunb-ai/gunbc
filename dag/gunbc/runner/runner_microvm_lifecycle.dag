@@ -84,7 +84,7 @@ type ControllerStart
 
 //
 // THE GROUND IS gunbc.runner_attempt_launch's AttemptGround, the host's own check for prior attempt
-// resources, and it outranks an admitting record: a store that says Ready over a cell whose tap or
+// resources, and it outranks an admitting record: a store that says Ready over a cell whose jail or
 // attempt directory is still present is a store that missed something, and the answer is a
 // ResourcesFoundOnRecovery teardown at the settled generation, not a launch onto the residue.
 fn controller_start(
@@ -115,7 +115,7 @@ fn controller_start(
 
 // THE BRING-UP PROGRESSION IS A TOTAL ORDER AND EACH STEP IS OBSERVED, NOT ASSUMED.
 //
-// AttemptPrepared: credential disk, workspace and tap staged by the host. VmmStarted: the host saw
+// AttemptPrepared: credential disk and workspace staged by the host, slot network converged. VmmStarted: the host saw
 // the jailer's VMM running in the cell's cgroup. GuestBooted and RunnerListening: the guest reported
 // them -- these are guest events, admissible here because progression only decides whether the
 // slot is SERVING, never whether it is CLEAN. SlotServing: the listener is up and the host has
@@ -216,11 +216,18 @@ type ResourceReadback
   | ResourcePresent { detail: NonEmptyStr }
   | ResourceUnreadable { reason: NonEmptyStr }
 
+// THE SLOT NETWORK IS NOT AN ATTEMPT RESOURCE, SO IT IS NOT READ BACK ABSENT. The tap and nft ruleset
+// are slot-scoped converge state (sunny-ant-606 ruling A); the attempt owns only its jail subtree and
+// workspace. What must hold after an attempt is that the slot network is QUIESCENT -- no process holds
+// the tap, conntrack for the reused guest address is empty, the ruleset digest equals the converged
+// one -- and any failure of that is the network fact refuted. `network` carries that verdict; its
+// typed producer is gunbc.runner_microvm_network's network readback (networking lane), and until it
+// lands this field is the frontier where that readback is consumed.
 type HostTeardownReadback {
   stop: TeardownStop
   cgroup: CgroupSubtreeReadback
   mounts: ResourceReadback
-  tap: ResourceReadback
+  network: ResourceReadback
   attempt_storage: ResourceReadback
   credential_disk: ResourceReadback
 }
@@ -272,7 +279,7 @@ fn host_observations(host: HostTeardownReadback) -> List<SanitationObservation> 
     surviving_process_observation(stop: host.stop, cgroup: host.cgroup),
     cgroup_observation(readback: host.cgroup),
     resource_observation(fact: MountsRemoved, readback: host.mounts),
-    resource_observation(fact: NetworkNamespaceRemoved, readback: host.tap),
+    resource_observation(fact: NetworkNamespaceRemoved, readback: host.network),
     resource_observation(fact: WritableLayersDeleted, readback: host.attempt_storage),
     resource_observation(fact: SecretsRemoved, readback: host.credential_disk),
   ]

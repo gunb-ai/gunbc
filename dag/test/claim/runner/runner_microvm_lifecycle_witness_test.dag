@@ -60,7 +60,7 @@ fn clean_host(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> HostTeardown
     stop: stop,
     cgroup: cgroup,
     mounts: ResourceAbsent,
-    tap: ResourceAbsent,
+    network: ResourceAbsent,
     attempt_storage: ResourceAbsent,
     credential_disk: ResourceAbsent,
   }
@@ -149,15 +149,15 @@ test fn a_successful_job_that_leaves_a_background_process_quarantines() -> Bool 
   ))
 }
 
-// EACH ATTEMPT RESOURCE IS ITS OWN FACT: a tap left behind quarantines a cell whose processes are gone.
-test fn a_leftover_tap_quarantines_a_cell_with_no_processes() -> Bool {
+// EACH FACT IS ITS OWN: a slot tap still held after the VMM is gone quarantines a cell whose cgroup is empty.
+test fn a_held_slot_tap_quarantines_a_cell_with_no_processes() -> Bool {
   is_quarantined(r: readiness_after(
     trigger: RunnerExited { exit_code: 0 },
     host: HostTeardownReadback {
       stop: StoppedGracefully,
       cgroup: CgroupSubtreeEmpty,
       mounts: ResourceAbsent,
-      tap: ResourcePresent { detail: "tap-srv2-04 still exists" as NonEmptyStr },
+      network: ResourcePresent { detail: "tap-srv2-04 is still held open" as NonEmptyStr },
       attempt_storage: ResourceAbsent,
       credential_disk: ResourceAbsent,
     },
