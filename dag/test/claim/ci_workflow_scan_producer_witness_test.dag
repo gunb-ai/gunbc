@@ -217,11 +217,18 @@ test fn no_pages_read_leaves_the_size_unobserved() -> Bool {
 // THE THREE-WAY GATE. A population may be read only when the walk exhausted AND the query was
 // enumerable; each of the next three claims removes one leg and expects a refusal.
 // THIS PAIR AND THE ONE BELOW ARE THE JUDGEMENT'S WALL AND CONTROL, AND THEY TEST THE JUDGEMENT
-// RATHER THAN THE CARRIER -- deliberately, which is the point of the ScanOutcome repair. ScanOutcome
-// is sole_constructor and is minted only inside scan_partition, where the receipt and the hits both
-// come from one walk state. A claim able to construct ScanDeclaredPopulation could pair a green
-// receipt for one population with hits from another, which is exactly the invalid state the carrier
-// exists to make unwritable; being unable to mint it here is the wall working, not a coverage gap.
+// RATHER THAN THE CARRIER -- deliberately, which is the point of the ScanOutcome repair.
+//
+// WHAT IS FREELY CONSTRUCTIBLE AND WHAT IS NOT, stated exactly, because an earlier version of this
+// note got it backwards and named the wrong type as the wall. ScanDeclaredPopulation is an ORDINARY
+// ScanDisposition arm: any module may build it, and that is safe precisely because it carries NO
+// RECEIPT and therefore authorizes nothing. What cannot be built outside scan_partition is
+// ScanOutcome -- the sealed record that BINDS a receipt to a disposition -- so the invalid state the
+// carrier removes is a receipt from walk A paired with hits from walk B, not the existence of a
+// disposition value.
+//
+// So claims may and do construct dispositions; they cannot mint the authority that makes one a
+// scan's result. That is the wall working, and testing the judgement here is not a coverage gap.
 //
 // An earlier revision of this PR added two NEW claims here and called them that wall and control.
 // They were byte-identical in subject, inputs and expectation to this pair -- two names for one
