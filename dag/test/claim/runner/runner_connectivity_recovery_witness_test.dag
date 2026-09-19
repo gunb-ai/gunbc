@@ -96,9 +96,10 @@ fn remote_offline_evidence() -> RemoteRegistrationEvidence {
   }
 }
 
-// THE REMOTE'S NAME IS DERIVED FROM THE SPECIMEN SLOT through the registration-name authority
-// (gunbc.build_cache_instance runner_slot_instance_name, gunbc.runner_unit
-// runner_unit_name_of_registration), so an srv4 case observes an srv4-named remote. The
+// THE REMOTE'S NAME IS THE SLOT'S INSTANCE NAME (gunbc.build_cache_instance
+// runner_slot_instance_name, e.g. srv4-01) and the LOCAL UNIT is the unit named for that
+// registration (gunbc.runner_unit runner_unit_name_of_registration, e.g.
+// actions-runner@srv4-01.service), both derived from the specimen slot. The
 // postcondition does NOT join the remote name to the slot -- an inherited limitation this fixture
 // does not repair -- so no witness here establishes replacement IDENTITY; they establish labels.
 fn fixture_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
@@ -108,7 +109,7 @@ fn fixture_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
 fn remote_online_evidence(slot: RunnerSlotIdentity, labels: List<String>) -> RemoteRegistrationEvidence {
   RemoteRegistrationObserved {
     registration: RunnerRemoteOnline {
-      runner_name: fixture_unit_name(slot: slot),
+      runner_name: runner_slot_instance_name(slot: slot) as NonEmptyStr,
       labels: labels,
     },
     registration_id: "reg-1",
@@ -698,4 +699,19 @@ test fn postcondition_accepts_a_case_and_order_variant_of_the_slots_labels() -> 
 // ...and case folding does not launder a wrong host: SRV3 is still not srv4.
 test fn postcondition_refuses_a_mixed_case_wrong_host_label() -> Bool {
   !replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "Linux", "ARM64", "gunbc-heavy", "SRV3"])
+}
+
+// FIXTURE FIDELITY ONLY: the srv4 specimen's remote carries the instance name and its local
+// incarnation carries the unit name, and the two are distinct. This checks the fixture; it does not
+// claim production rejects a wrong remote identity.
+test fn srv4_specimen_remote_name_is_the_instance_and_local_unit_is_the_unit() -> Bool {
+  let slot = fixture_slot(host: operator_host_srv4, index: 1)
+  let unit = fixture_incarnation(slot: slot, pid: 1, start: "1").unit as String
+  match remote_online_evidence(slot: slot, labels: fixture_labels()) {
+    RemoteRegistrationObserved { registration: RunnerRemoteOnline { runner_name: name, labels: _ }, registration_id: _, grade: _ } =>
+      (name as String) == "srv4-01"
+        && unit == "actions-runner@srv4-01.service"
+        && (name as String) != unit
+    _ => false
+  }
 }
