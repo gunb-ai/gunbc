@@ -615,8 +615,27 @@ fn utf8_step(d: Utf8DecodeState, o: Int) -> Utf8DecodeState {
   }
 }
 
+// THE OCTET IS ADMITTED, NOT ASSERTED. This fold read each member through base64_octet_int, the
+// `b + 0` identity whose whole content was a width claim it never checked -- NUMERIC-BIT-0
+// (gunbc#11627) deleted it, and this consumer arrived on main from gunbc#11660 while that cut was
+// in review, so the two are correct separately and refuse together. A semantic conflict, not a
+// textual one: nothing overlaps in the diff and the merge is clean.
+//
+// The replacement is the seam that already exists for base64's own octets: base64_octet_word admits
+// the member through word_of_int at Width8, so a value outside the byte range REFUSES instead of
+// being renamed. Utf8Refused is the honest destination for that -- a decoder handed something that
+// is not an octet has not been handed UTF-8 -- and it is the state this fold already uses for every
+// other malformed input, so no new refusal vocabulary is minted for a case the model already had a
+// word for.
+fn utf8_admit_octet(d: Utf8DecodeState, b: UInt8) -> Utf8DecodeState {
+  match base64_octet_word(b: b) {
+    WordRefused { cause: _ } => Utf8Refused
+    WordReady { word: w } => utf8_step(d: d, o: w.value)
+  }
+}
+
 fn utf8_decode_octets(octets: List<UInt8>) -> List<Int>? {
-  match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_step(d: d, o: base64_octet_int(b: octet))) {
+  match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_admit_octet(d: d, b: octet)) {
     Utf8Ready { out: out } => Present { value: out }
     _ => none
   }
