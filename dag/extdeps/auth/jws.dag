@@ -7,6 +7,7 @@ import std.encoding { base64_encode, UrlSafe }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.auth.jwt { JwtCompactSerialization }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "datatracker.ietf.org/doc/html/rfc7515" }
@@ -53,8 +54,11 @@ fn jws_rs256_signing_input(payload_json: String) -> NonEmptyStr {
 // THE SIGNATURE IS OCTETS, NOT TEXT. A realization that hands back a printable rendering (hex,
 // standard base64) decodes it to octets first; this join then encodes exactly once. Accepting a
 // pre-encoded String here would let a standard-alphabet signature through looking valid.
-fn jws_compact_serialization(signing_input: NonEmptyStr, signature: List<UInt8>) -> NonEmptyStr {
-  join([signing_input as String, ".", jws_base64url_octets(octets: signature)], "") as NonEmptyStr
+// THE RESULT IS extdeps.auth.jwt JwtCompactSerialization, not a bare string: the only protected
+// header this module produces is typ JWT, so every value it emits IS a JWT, and the brand keeps it
+// from being confused with an opaque bearer (an installation token is not decodable).
+fn jws_compact_serialization(signing_input: NonEmptyStr, signature: List<UInt8>) -> JwtCompactSerialization {
+  join([signing_input as String, ".", jws_base64url_octets(octets: signature)], "") as JwtCompactSerialization
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

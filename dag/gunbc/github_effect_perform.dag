@@ -7,6 +7,7 @@ import extdeps.clock {
   clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
 }
 import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization }
+import extdeps.auth.jwt { JwtCompactSerialization }
 import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.github.actions_jit_runner {
@@ -85,12 +86,12 @@ fn app_jwt_for(dispatch_app_id: Int, key_file: NonEmptyStr, now_epoch_secs: Epoc
   match openssl_sign_sha256(key_file: key_file, signing_input: signing_input) {
     OpensslSignRefused { exit_code: _, detail: d } => AppJwtUnsigned { detail: d }
     OpensslSigned { octets: sig } =>
-      AppJwtSigned { jwt: jws_compact_serialization(signing_input: signing_input, signature: sig) as Secret }
+      AppJwtSigned { jwt: jws_compact_serialization(signing_input: signing_input, signature: sig) }
   }
 }
 
 type JitMintAppJwt
-  = AppJwtSigned { jwt: Secret }
+  = AppJwtSigned { jwt: JwtCompactSerialization }
   | AppJwtUnsigned { detail: String }
 
 // THE GENERATE STEP'S ANSWER, DECIDED WITHOUT I/O so the decision is witnessable on supplied
@@ -127,6 +128,9 @@ fn jit_mint_performance_of_generate(
   }
 }
 
+// THE APP JWT STAYS JwtCompactSerialization until the installation-token call, whose Bearer input
+// is a Secret; that call is the single place the brand is shed, so the JWT and the opaque
+// installation token are not interchangeable anywhere else in this function.
 fn perform_organization_jit_mint(dispatch: JitMintDispatch) -> JitMintPerformance uses net: Network {
   match dispatch {
     JitMintDispatchRefused { refusal: r } =>
@@ -148,7 +152,7 @@ fn perform_organization_jit_mint(dispatch: JitMintDispatch) -> JitMintPerformanc
                 AppJwtUnsigned { detail: d } => JitMintAppJwtUnsigned { detail: d }
                 AppJwtSigned { jwt: jwt } => {
                   let token = github.AppInstallationAccessTokens.Create(
-                    app_jwt: jwt,
+                    app_jwt: jwt as Secret,
                     installation_id: installation.value,
                   )
                   match classify_rest_outcome(standing: RestMutationExchange { rest: token.outcome }) {

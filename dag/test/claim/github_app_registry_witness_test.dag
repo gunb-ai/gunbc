@@ -9,13 +9,14 @@ import gunbc.ci_heal_credential {
 import gunbc.repository { gunbc_repository }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.runner_slot_allocation { runner_label_sets_equal }
 import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
   microvm_attempt, bind_owned_attempt, runner_microvm_attempt_unit_name,
 }
 import extdeps.github.actions_jit_runner {
-  JitRunnerGroupId, JitRunnerLabel, JitConfigMintOutcome, jit_config_mint_outcome,
+  JitRunnerGroupId, JitConfigMintOutcome, jit_config_mint_outcome,
 }
 import gunbc.runner.runner_jit_admission {
   jit_admission_axis_standing, AttemptBindingAxis, AxisDeferred,
@@ -968,7 +969,6 @@ fn planned(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintPlan {
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
     runner_group_id: JitRunnerGroupId { value: 1 },
-    labels: [JitRunnerLabel { value: "self-hosted" }],
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1006,6 +1006,10 @@ test fn witness_jit_mint_authorizes_an_owned_cell_with_the_runner_permission() -
     } =>
       path == "/orgs/gunb-ai/actions/runners/generate-jitconfig"
         && (req.name.value as String) == (runner_microvm_attempt_unit_name(attempt: a) as String)
+        && runner_label_sets_equal(
+             a: map(req.labels, l => l.value as String),
+             b: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv2"],
+           )
     _ => false
   }
 }
@@ -1017,7 +1021,6 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
     runner_group_id: JitRunnerGroupId { value: 1 },
-    labels: [JitRunnerLabel { value: "self-hosted" }],
     attempt_binding: AxisDeferred {
       trigger: "fixture: deferred standing must refuse a mint that would not carry the attempt identity" as NonEmptyStr,
     },
@@ -1029,11 +1032,11 @@ test fn witness_jit_mint_refuses_when_attempt_binding_is_deferred() -> Bool {
 
 // ---------------------------------------------------------------------------------------------
 // JIT MINT DISPATCH AND DELIVERY. gunbc.runner.runner_jit_perform is the consumer that closed
-// plan_jit_mint's frontier, and these witnesses are FIXTURE-ONLY BY CONSTRUCTION: nothing in gunbc
-// performs a GitHubEffect, so no input here was produced by GitHub. What they establish is that the
-// fold discriminates -- and, in the delivery arms, that a credential cannot be obtained apart from
-// the drive destination the ownership proof named. They establish nothing about a live mint, and
-// runner_jit_perform's own transport frontier is what records that.
+// plan_jit_mint's frontier, and these witnesses are FIXTURE-ONLY BY CONSTRUCTION: their outcomes
+// are supplied, not produced by GitHub. What they establish is that the fold discriminates -- and,
+// in the delivery arms, that a credential cannot be obtained apart from the attempt the ownership
+// proof named. The performer is gunbc.github_effect_perform, and its consumer frontier records that
+// no production route runs it yet.
 
 fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch {
   dispatch_jit_mint(
@@ -1042,7 +1045,6 @@ fn dispatched(owned: Bool, perms: List<GitHubAppPermission>) -> JitMintDispatch 
     control_plane: observed_grant(perms: perms),
     organization: gunbai_org_ref,
     runner_group_id: JitRunnerGroupId { value: 1 },
-    labels: [JitRunnerLabel { value: "self-hosted" }],
     attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
   )
 }
@@ -1099,7 +1101,6 @@ test fn witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred() -> B
     control_plane: observed_grant(perms: runner_grant),
     organization: gunbai_org_ref,
     runner_group_id: JitRunnerGroupId { value: 1 },
-    labels: [JitRunnerLabel { value: "self-hosted" }],
     attempt_binding: AxisDeferred {
       trigger: "fixture: deferred standing must refuse a dispatch that would not carry the attempt identity" as NonEmptyStr,
     },

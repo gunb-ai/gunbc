@@ -237,7 +237,13 @@ type JitDeviceStaging {
   pad: ArgvCommand
 }
 
-data jit_device_octal_mode: NonEmptyStr = "0400"
+// ONE ROW FOR THE DEVICE'S MODE, in the digits stat(1) %a prints. install(1) -m takes the same
+// digits with a leading 0; both spellings derive from this row, so they cannot drift.
+data jit_device_mode_digits: NonEmptyStr = "400"
+
+fn jit_device_install_mode() -> NonEmptyStr {
+  concat("0", jit_device_mode_digits as String) as NonEmptyStr
+}
 
 fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> JitDeviceStaging {
   let host_path = join([jail_root, jail_jit_path as String], "")
@@ -245,7 +251,7 @@ fn jit_device_staging(jail_root: String, admitted: AdmittedJitCredential) -> Jit
     host_path: host_path,
     create: install_empty_file_command(
       path: host_path,
-      octal_mode: jit_device_octal_mode,
+      octal_mode: jit_device_install_mode(),
       uid: attempt_unprivileged_uid,
       gid: attempt_unprivileged_gid,
     ),
@@ -530,7 +536,7 @@ fn process_outcome_token(outcome: ProcessOutcome) -> String {
 fn jit_device_readback(uid: String, mode: String, size: String) -> JitDeviceStagingOutcome? {
   if uid != to_string(attempt_unprivileged_uid) {
     Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join(["owner uid is ", uid], "") } }
-  } else if mode != "400" {
+  } else if mode != (jit_device_mode_digits as String) {
     Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join(["mode is ", mode], "") } }
   } else if size != to_string(byte_size_count(b: jit_config_byte_ceiling)) {
     Present { value: JitDeviceStagingRefused { step: JitDeviceReadbackStep, detail: join(["size is ", size], "") } }

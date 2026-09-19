@@ -101,11 +101,12 @@ import extdeps.transports.rest {
 // WHY THIS IS THE AUTOMATABLE HALF AND WHERE IT STOPS. The code-for-credentials exchange
 // authenticates with the temporary code alone and needs no JWT, so it runs in-process. Everything
 // downstream of the stored private key - listing installations, minting an installation access token -
-// requires an RS256-signed App JWT, and nothing in this corpus can sign RS256. That is not a gap this
-// module papers over with a plausible-looking arm: extdeps.github.app declares github.AppInstallations
-// with auth_source EnvVar so an external step supplies the JWT at the transport, and the token request
-// is modeled to its wire with no operation, because an operation that cannot execute would be a route
-// cited for a red it cannot produce (DESIGN 4b).
+// requires an RS256-signed App JWT. The corpus signs one only on a host holding the key FILE
+// (extdeps.auth.jws over extdeps.tools.openssl, performed by gunbc.github_effect_perform), and this
+// acquisition flow runs where the stored key is not custodied as such a file, so it does not consume
+// that signer: extdeps.github.app declares github.AppInstallations with auth_source EnvVar so an
+// external step supplies the JWT at the transport. The wiring that would retire that is a key
+// custody for the census App, not a signer.
 
 // THE APP'S SHAPE, DECLARED ONCE. Each permission is here because a specific census read needs it,
 // and the set is what makes an installation worth having: an installation multiplies this fleet's
