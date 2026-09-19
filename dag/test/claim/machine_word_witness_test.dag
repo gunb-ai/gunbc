@@ -29,10 +29,27 @@ fn word32_value_or(result: WordResult, fallback: Int) -> Int {
   }
 }
 
-fn word32_refused(result: WordResult) -> Bool {
+// REFUSING IS NOT THE CLAIM; REFUSING FOR THE STATED REASON IS. A helper answering true for ANY
+// cause was the one these claims used, and a claim built on it is satisfied by an operation that
+// refuses for a reason the claim is not about -- a width mismatch standing in for an out-of-range value, or an unrealizable
+// width standing in for an out-of-range amount. That is the shape review 68385 found in the
+// typecheck control and review 68118 found in the packing guard, and I found it here by auditing
+// my own claims for it rather than waiting for a sixth review to. These two name the cause each
+// claim exists to pin; the any-cause helper had no consumer left afterwards and is deleted, which
+// is the same section 3c remedy word_zero, word_equal and word_int_value got.
+fn refused_value_out_of_range(result: WordResult) -> Bool {
   match result {
+    WordRefused { cause: WordValueOutOfRange { width: _, value: _ } } => true
+    WordRefused { cause: _ } => false
     WordReady { word: _ } => false
-    WordRefused { cause: _ } => true
+  }
+}
+
+fn refused_shift_amount(result: WordResult) -> Bool {
+  match result {
+    WordRefused { cause: ShiftAmountOutOfRange { width: _, amount: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
   }
 }
 
@@ -49,7 +66,7 @@ test fn word_of_int_refuses_one_past_the_range_holds() -> Bool {
 }
 
 test fn word_of_int_refuses_a_negative_value_holds() -> Bool {
-  word32_refused(result: word_of_int(width: Width32, value: 0 - 1))
+  refused_value_out_of_range(result: word_of_int(width: Width32, value: 0 - 1))
 }
 
 // Width64 has no residue the Int realization can hold, so it refuses BY NAME rather than being
@@ -65,9 +82,9 @@ test fn width64_refuses_as_unrealizable_holds() -> Bool {
 
 test fn width8_and_width16_are_realizable_holds() -> Bool {
   word32_value_or(result: word_of_int(width: Width8, value: 255), fallback: 0 - 1) == 255
-    && word32_refused(result: word_of_int(width: Width8, value: 256))
+    && refused_value_out_of_range(result: word_of_int(width: Width8, value: 256))
     && word32_value_or(result: word_of_int(width: Width16, value: 65535), fallback: 0 - 1) == 65535
-    && word32_refused(result: word_of_int(width: Width16, value: 65536))
+    && refused_value_out_of_range(result: word_of_int(width: Width16, value: 65536))
 }
 
 // THE OPERANDS ARE TRANSCRIBED, SO THE TRANSCRIPTION IS CLAIMED RATHER THAN TRUSTED.
@@ -181,10 +198,10 @@ test fn shift_left_at_the_top_of_the_width_holds() -> Bool {
 
 test fn shift_refuses_out_of_range_amounts_holds() -> Bool {
   let v = word32_or_zero(value: 1)
-  word32_refused(result: word_shift_left(a: v, amount: 32))
-    && word32_refused(result: word_shift_right(a: v, amount: 32))
-    && word32_refused(result: word_shift_left(a: v, amount: 0 - 1))
-    && word32_refused(result: word_rotate_left(a: v, amount: 32))
+  refused_shift_amount(result: word_shift_left(a: v, amount: 32))
+    && refused_shift_amount(result: word_shift_right(a: v, amount: 32))
+    && refused_shift_amount(result: word_shift_left(a: v, amount: 0 - 1))
+    && refused_shift_amount(result: word_rotate_left(a: v, amount: 32))
 }
 
 test fn rotate_direction_is_pinned_both_ways_holds() -> Bool {
@@ -551,16 +568,16 @@ test fn every_exported_family_refuses_an_unqualified_operand_holds() -> Bool {
     WordReady { word: w } => w
     WordRefused { cause: _ } => Word { width: Width8, value: 0 }
   }
-  word32_refused(result: word_and(a: bad, b: good))
-    && word32_refused(result: word_or(a: good, b: bad))
-    && word32_refused(result: word_xor(a: bad, b: good))
-    && word32_refused(result: word_not(a: bad))
-    && word32_refused(result: word_shift_left(a: bad, amount: 1))
-    && word32_refused(result: word_rotate_left(a: bad, amount: 1))
-    && word32_refused(result: word_rotate_right(a: bad, amount: 1))
-    && word32_refused(result: word_wrapping_add(a: bad, b: good))
-    && word32_refused(result: word_wrapping_subtract(a: bad, b: good))
-    && word32_refused(result: word_wrapping_multiply(a: bad, b: good))
+  refused_value_out_of_range(result: word_and(a: bad, b: good))
+    && refused_value_out_of_range(result: word_or(a: good, b: bad))
+    && refused_value_out_of_range(result: word_xor(a: bad, b: good))
+    && refused_value_out_of_range(result: word_not(a: bad))
+    && refused_value_out_of_range(result: word_shift_left(a: bad, amount: 1))
+    && refused_value_out_of_range(result: word_rotate_left(a: bad, amount: 1))
+    && refused_value_out_of_range(result: word_rotate_right(a: bad, amount: 1))
+    && refused_value_out_of_range(result: word_wrapping_add(a: bad, b: good))
+    && refused_value_out_of_range(result: word_wrapping_subtract(a: bad, b: good))
+    && refused_value_out_of_range(result: word_wrapping_multiply(a: bad, b: good))
 }
 
 test fn carrying_add_refuses_an_unqualified_operand_holds() -> Bool {
