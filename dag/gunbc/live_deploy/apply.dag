@@ -64,7 +64,7 @@ import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_ide
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.auth.approval_broker_cutover {
   CutoverAdmission, StageAdmitted, StageRefused,
-  dark_install_release_admission, cutover_refusal_reason,
+  dark_install_release_discharged, cutover_refusal_reason,
 }
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
@@ -663,13 +663,18 @@ fn approval_broker_dark_install_wet_with_access(
 // what the probe said reaches an operator through the refusal path, where it is needed, and through
 // the journal of the unit that answered.
 //
-// IT EXITS ON THE ADMISSION, not on the probe. A broker that came up answering a malformed revision
-// is a converged mutation and a REFUSED stage, and reporting success for it would leave every later
-// stage reasoning about a build nobody can name.
+// IT EXITS ON THE STAGE BEING DISCHARGED, NOT ON BEING ADMITTED TO IT, and the difference is the
+// defect review 68058 found in the first cut of this function: admission for ProveRelease asks
+// whether the readback MAY BE ATTEMPTED and was a constant pass from here, so a broker that never
+// bound its port still exited success while this annotation claimed the opposite.
+//
+// What goes red now: an unanswered probe, non-JSON bytes, a JSON value that is not an object, a
+// missing or duplicated revision member, a non-string revision, and a revision that is not 40
+// lowercase hex -- a converged mutation with any of those is a FAILED deploy.
 fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec) -> ProcessExit {
   let port = spec.approval_broker.listen.port
   let read = live_deploy_liveness_get_local(port: port, spec: spec)
-  match dark_install_release_admission(listening_port: port, read: read) {
+  match dark_install_release_discharged(listening_port: port, read: read) {
     StageAdmitted { stage: _ } => ExitSuccess
     StageRefused { stage: _, cause: c } =>
       exit_failure(reason: join([

@@ -4,6 +4,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, Int, Port }
 import std.measure { ByteSize, byte_size }
 import gunbc.running_release_identity { running_release_revision_key }
+import gunbc.serve_liveness {
+  ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe,
+}
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_listen_port, approval_broker_dark_listen_port,
 }
@@ -21,6 +24,9 @@ import gunbc.auth.approval_broker_cutover {
   CutoverRefusal, DarkDeploymentNotListening, DarkDeploymentOnTheServingPort, ReleaseUnreadable,
   DemandNotMeasured, FrontDoorStillAtRoadmap, RouteClassNotProbed, RouteClassProbeRefused,
   approval_broker_cutover_admission,
+  approval_broker_cutover_stage_discharged,
+  dark_install_release_discharged, dark_install_evidence,
+  DarkUnitNotStarted,
   approval_broker_cutover_position,
   approval_broker_cutover_complete,
   RoadmapApprovalMount, RoadmapStillMountsApprovalRoutes, RoadmapApprovalRoutesRetired,
@@ -265,4 +271,105 @@ test fn front_door_repoint_installs_two_distinct_scoped_mounts() -> Bool {
   count(lines) == 2
     && count(filter(lines, l => string_contains(s: l, pattern: "--set-path=/approve "))) == 1
     && count(filter(lines, l => string_contains(s: l, pattern: "--set-path=/approvals "))) == 1
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// THE PRODUCTION CONSUMER'S RED — review 68058
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// The first cut of the dark-install gate was green by construction: it asked ADMISSION for
+// ProveRelease, whose cumulative cause list is the stages BEFORE it, so the release readback was
+// never consulted and the only arm that could have fired -- a broker on the serving port -- is
+// unwritable because approval_broker_deploy_port() derives the dark port. A constant StageAdmitted
+// cited as the receipt that the plan is consumed is worse than no check at all, and the function's
+// own annotation asserted the opposite of what it did.
+//
+// These four claims are the red that was missing. Each drives dark_install_release_discharged --
+// the exact fold gunbc.live_deploy.apply calls -- with a reading the probe could actually return.
+
+fn dark_install_refuses(read: ServeLivenessRead) -> Bool {
+  match dark_install_release_discharged(listening_port: approval_broker_dark_listen_port, read: read) {
+    StageRefused { stage: _, cause: _ } => true
+    StageAdmitted { stage: _ } => false
+  }
+}
+
+fn probe_answered(body: String) -> ServeLivenessRead {
+  serve_liveness_read_from_probe(success: true, body: body, error: "unused" as NonEmptyStr)
+}
+
+// A UNIT THAT NEVER CAME UP. This is the most likely real failure of stage 1 -- a bad ExecStart, a
+// missing binary, a slice that does not exist -- and it used to exit success.
+test fn the_dark_install_refuses_when_the_broker_never_answered() -> Bool {
+  dark_install_refuses(read: serve_liveness_read_from_probe(
+    success: false,
+    body: "",
+    error: "connection refused" as NonEmptyStr,
+  ))
+}
+
+// A PROCESS THAT ANSWERED A BRANCH NAME. The stage exists to establish WHICH BUILD is listening;
+// every later stage's evidence is about that build, so admitting an unnameable one poisons all of
+// them. This is the case the old annotation claimed to catch and did not.
+test fn the_dark_install_refuses_a_revision_that_is_not_a_revision() -> Bool {
+  dark_install_refuses(read: probe_answered(body: join([
+    "{\"", running_release_revision_key, "\":\"main\"}",
+  ], "")))
+}
+
+// SOMETHING ELSE ON THE PORT. During the cutover two gunbc processes and a front door are all live
+// on one host; a well-formed answer from the wrong thing must not be read as this broker.
+test fn the_dark_install_refuses_a_body_that_is_not_the_liveness_document() -> Bool {
+  dark_install_refuses(read: probe_answered(body: "[1,2,3]"))
+    && dark_install_refuses(read: probe_answered(body: "{\"live\":true}"))
+}
+
+// THE POSITIVE CONTROL. Without it every claim above is satisfiable by a fold that refuses
+// everything -- which is the same defect as one that admits everything, wearing the other sign.
+test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool {
+  match dark_install_release_discharged(
+    listening_port: approval_broker_dark_listen_port,
+    read: probe_answered(body: cutover_fixture_liveness_body),
+  ) {
+    StageAdmitted { stage: _ } => true
+    StageRefused { stage: _, cause: _ } => false
+  }
+}
+
+// THE PROBE DECIDES WHETHER A UNIT IS LISTENING, NOT THE CALLER'S PORT ARGUMENT. The evidence used
+// to carry DarkUnitListening built from the port the deploy intended to use, which restated "we
+// asked systemd to start one" as "one is listening".
+test fn an_unanswered_probe_reports_the_unit_as_not_started() -> Bool {
+  let e = dark_install_evidence(
+    listening_port: approval_broker_dark_listen_port,
+    read: serve_liveness_read_from_probe(success: false, body: "", error: "no route to host" as NonEmptyStr),
+  )
+  match e.dark {
+    DarkUnitNotStarted { detail: _ } => true
+    DarkUnitListening { port: _ } => false
+  }
+}
+
+// ── ADMISSION AND DISCHARGE ARE DIFFERENT QUESTIONS, AND THE FOLD MUST NOT MERGE THEM ────────
+// With the dark deployment observed and nothing else, a caller MAY attempt the release readback and
+// has NOT discharged it. A single fold answering both is how the production gate came to be green.
+test fn a_stage_may_be_admitted_and_undischarged() -> Bool {
+  let full = everything_observed()
+  let e = ApprovalBrokerCutoverEvidence {
+    dark: full.dark,
+    release_readback: release_readback_from_livez(body: ""),
+    demand: DemandUnmeasured { missing: "not taken" as NonEmptyStr },
+    front_door: FrontDoorPointsAtRoadmap,
+    confirm_probe: RouteClassUnprobed,
+    decide_probe: RouteClassUnprobed,
+    submit_probe: RouteClassUnprobed,
+    status_probe: RouteClassUnprobed,
+  }
+  stage_is_admitted(stage: ProveRelease, e: e)
+    && match approval_broker_cutover_stage_discharged(stage: ProveRelease, e: e) {
+      StageRefused { stage: _, cause: c } => match c {
+        ReleaseUnreadable { detail: _ } => true
+        _ => false
+      }
+      StageAdmitted { stage: _ } => false
+    }
 }

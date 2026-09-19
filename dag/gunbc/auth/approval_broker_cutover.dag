@@ -342,31 +342,104 @@ fn front_door_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   }
 }
 
-// ADMISSION IS CUMULATIVE, AND THAT IS THE ORDERING LAW RATHER THAN A CONVENIENCE. Each stage
-// requires every earlier stage's evidence as well as its own, so a plan cannot reach the retirement
-// stage by taking the observations out of order and it cannot skip the measurement by having probed
-// successfully. The refusal reported is the FIRST missing one, which is the one to go and take.
+// ── ENTERING A STAGE AND DISCHARGING IT ARE TWO QUESTIONS ───────────────────────────────────
+// THE FIRST CUT HAD ONLY ONE FOLD AND ITS ONE PRODUCTION CALLER ASKED THE WRONG QUESTION (review
+// 68058). Admission is CUMULATIVE over PRIOR stages -- what must already be observed before this
+// stage may be attempted -- so `admission(ProveRelease)` consulted the dark deployment and NOT the
+// release readback, which is correct for what it means and useless as a check that the release was
+// proved. The dark-install entry asked it anyway and reported success for a broker that never
+// bound its port or answered a branch name, while the annotation above that entry asserted the
+// opposite. That is rung inflation on a check of my own (DESIGN section 4b, and section 4b's prior
+// question: is the RED authorable before the check is written -- here it was not).
+//
+// SO THE PER-STAGE OBSERVATION IS NAMED ONCE and the two questions are both derived from it:
+// admission folds the stages BEFORE this one, discharge folds the stages UP TO AND INCLUDING it.
+// One roster, so a new stage cannot be added to one question and forgotten in the other.
+//
+// RetireRoadmapRoutes HAS NO OWN OBSERVATION because its discharge is not something anyone reports:
+// it is roadmap_approval_mount being flipped, which approval_broker_cutover_complete reads
+// directly. A stage whose completion is a corpus fact must not also have an evidence field, or the
+// two can disagree and the one that is asserted wins.
+fn cutover_stage_own_cause(
+  stage: ApprovalBrokerCutoverStage,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverRefusal? {
+  match stage {
+    DeployDark => dark_deployment_admission(e: e)
+    ProveRelease => release_admission(e: e)
+    MeasureDemand => demand_admission(e: e)
+    RepointFrontDoor => front_door_admission(e: e)
+    ProbeRouteClasses => all_route_classes_probed(e: e)
+    RetireRoadmapRoutes => none
+  }
+}
+
+fn cutover_causes_through(
+  stage: ApprovalBrokerCutoverStage,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverRefusal? {
+  match stage {
+    DeployDark => cutover_stage_own_cause(stage: DeployDark, e: e)
+    ProveRelease => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+    ])
+    MeasureDemand => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+      cutover_stage_own_cause(stage: MeasureDemand, e: e),
+    ])
+    RepointFrontDoor => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+      cutover_stage_own_cause(stage: MeasureDemand, e: e),
+      cutover_stage_own_cause(stage: RepointFrontDoor, e: e),
+    ])
+    ProbeRouteClasses => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+      cutover_stage_own_cause(stage: MeasureDemand, e: e),
+      cutover_stage_own_cause(stage: RepointFrontDoor, e: e),
+      cutover_stage_own_cause(stage: ProbeRouteClasses, e: e),
+    ])
+    RetireRoadmapRoutes => first_refusal(causes: [
+      cutover_stage_own_cause(stage: DeployDark, e: e),
+      cutover_stage_own_cause(stage: ProveRelease, e: e),
+      cutover_stage_own_cause(stage: MeasureDemand, e: e),
+      cutover_stage_own_cause(stage: RepointFrontDoor, e: e),
+      cutover_stage_own_cause(stage: ProbeRouteClasses, e: e),
+    ])
+  }
+}
+
+// MAY THIS STAGE BE ATTEMPTED: every EARLIER stage's observation is in. The refusal reported is the
+// first missing one, which is the one to go and take.
 fn approval_broker_cutover_admission(
   stage: ApprovalBrokerCutoverStage,
   e: ApprovalBrokerCutoverEvidence,
 ) -> CutoverAdmission {
   let cause = match stage {
     DeployDark => none
-    ProveRelease => first_refusal(causes: [dark_deployment_admission(e: e)])
-    MeasureDemand => first_refusal(causes: [dark_deployment_admission(e: e), release_admission(e: e)])
-    RepointFrontDoor => first_refusal(causes: [
-      dark_deployment_admission(e: e), release_admission(e: e), demand_admission(e: e),
-    ])
-    ProbeRouteClasses => first_refusal(causes: [
-      dark_deployment_admission(e: e), release_admission(e: e), demand_admission(e: e),
-      front_door_admission(e: e),
-    ])
-    RetireRoadmapRoutes => first_refusal(causes: [
-      dark_deployment_admission(e: e), release_admission(e: e), demand_admission(e: e),
-      front_door_admission(e: e), all_route_classes_probed(e: e),
-    ])
+    ProveRelease => cutover_causes_through(stage: DeployDark, e: e)
+    MeasureDemand => cutover_causes_through(stage: ProveRelease, e: e)
+    RepointFrontDoor => cutover_causes_through(stage: MeasureDemand, e: e)
+    ProbeRouteClasses => cutover_causes_through(stage: RepointFrontDoor, e: e)
+    RetireRoadmapRoutes => cutover_causes_through(stage: ProbeRouteClasses, e: e)
   }
   match cause {
+    Present { value: c } => StageRefused { stage: stage, cause: c }
+    Absent => StageAdmitted { stage: stage }
+  }
+}
+
+// HAS THIS STAGE BEEN DISCHARGED: its OWN observation is in, and every earlier one too. This is the
+// question a caller asks when it has just performed a stage and wants to know whether it worked --
+// which is what the dark install asks, and what it previously got wrong by asking the other one.
+fn approval_broker_cutover_stage_discharged(
+  stage: ApprovalBrokerCutoverStage,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverAdmission {
+  match cutover_causes_through(stage: stage, e: e) {
     Present { value: c } => StageRefused { stage: stage, cause: c }
     Absent => StageAdmitted { stage: stage }
   }
@@ -421,7 +494,7 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
 // one that goes stale when a stage is rolled back.
 fn approval_broker_cutover_position(e: ApprovalBrokerCutoverEvidence) -> ApprovalBrokerCutoverStage {
   fold(approval_broker_cutover_stages(), init: DeployDark, f: (acc, stage) =>
-    match approval_broker_cutover_admission(stage: stage, e: e) {
+    match approval_broker_cutover_stage_discharged(stage: stage, e: e) {
       StageAdmitted { stage: s } => s
       StageRefused { stage: _, cause: _ } => acc
     }
@@ -481,9 +554,16 @@ fn approval_broker_front_door_enable_argv(https_port: Port) -> List<List<String>
 // plan exists to prevent. So this builds the evidence it HAS and leaves the rest at its unmeasured
 // and unprobed arms, which is why the admission it can reach is ProveRelease and no further -- the
 // cumulative rule then refuses every later stage on its own missing observation, by name.
+// THE DARK ARM IS DERIVED FROM THE PROBE, NOT FROM THE CALLER'S ARGUMENT (review 68058). It was
+// built from the port the deploy intended to use, which made "is a broker listening" a restatement
+// of "we asked systemd to start one". A probe that did not land is a unit that is not listening,
+// and that is the only thing that can distinguish them from here.
 fn dark_install_evidence(listening_port: Port, read: ServeLivenessRead) -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
-    dark: DarkUnitListening { port: listening_port },
+    dark: match read {
+      ServeLivenessUnreachable { detail: d } => DarkUnitNotStarted { detail: d }
+      _ => DarkUnitListening { port: listening_port }
+    },
     release_readback: release_readback_from_read(read: read),
     demand: DemandUnmeasured { missing: "the six readings stage 3 takes against this dark process" as NonEmptyStr },
     front_door: FrontDoorPointsAtRoadmap,
@@ -494,8 +574,19 @@ fn dark_install_evidence(listening_port: Port, read: ServeLivenessRead) -> Appro
   }
 }
 
-fn dark_install_release_admission(listening_port: Port, read: ServeLivenessRead) -> CutoverAdmission {
-  approval_broker_cutover_admission(
+// IT ASKS DISCHARGE, NOT ADMISSION, and that is the whole correction. Admission for ProveRelease
+// asks whether the release readback MAY BE ATTEMPTED; discharge asks whether it SUCCEEDED. The
+// first is a constant pass from this caller and was being reported as a receipt that the plan is
+// consumed -- worse than an absent check, because it was cited as evidence (review 68058).
+//
+// WHAT NOW GOES RED FROM THIS CALLER, stated so the claim is not read as stronger than it is: a
+// probe that did not land, bytes that are not JSON, a JSON value that is not an object, a document
+// with no revision member or two of them, a non-string revision, and a revision that is not 40
+// lowercase hex. What CANNOT go red from here is the serving-port arm of dark_deployment_admission,
+// because approval_broker_deploy_port() makes that placement unwritable -- that arm's red is
+// authorable only over a supplied observation, and it is exercised there.
+fn dark_install_release_discharged(listening_port: Port, read: ServeLivenessRead) -> CutoverAdmission {
+  approval_broker_cutover_stage_discharged(
     stage: ProveRelease,
     e: dark_install_evidence(listening_port: listening_port, read: read),
   )
