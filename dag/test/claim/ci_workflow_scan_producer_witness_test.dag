@@ -7,6 +7,11 @@ import extdeps.github.code_search {
   CodeSearchHit,
   CodeSearchRepository,
   retrievable_result_ceiling,
+  CodeSearchPageSize,
+  CodeSearchPageSizeAdmission,
+  CodeSearchPageSizeAdmitted,
+  CodeSearchPageSizeRefused,
+  admit_code_search_page_size,
   deepest_retrievable_page,
 }
 import gunbc.ci_workflow_source_read {
@@ -252,8 +257,15 @@ test fn an_exhausted_walk_over_a_saturated_query_is_not_a_population() -> Bool {
 // THE BOUND IS DERIVED FROM THE ENDPOINT'S CEILING, not authored beside it, so a caller cannot ask
 // for a page the endpoint will never serve.
 test fn the_page_bound_comes_from_the_ceiling() -> Bool {
-  deepest_retrievable_page(per_page: 100) == 10
-    && deepest_retrievable_page(per_page: 50) == 20
+  match admit_code_search_page_size(observed: 100) {
+    CodeSearchPageSizeAdmitted { page_size: hundred } =>
+      deepest_retrievable_page(page_size: hundred) == 10
+        && match admit_code_search_page_size(observed: 50) {
+          CodeSearchPageSizeAdmitted { page_size: fifty } => deepest_retrievable_page(page_size: fifty) == 20
+          CodeSearchPageSizeRefused { observed: _, cause: _ } => false
+        }
+    CodeSearchPageSizeRefused { observed: _, cause: _ } => false
+  }
 }
 
 // A WALK WITH NO STOP REASON STOPPED BECAUSE IT RAN OUT OF PAGES, and saying so is what keeps
@@ -274,5 +286,36 @@ test fn a_full_page_record_names_the_next_page() -> Bool {
     ObservationComplete => false
     ObservationTruncatedUpstream { cause: _ } => false
     ObservationRefused { cause: _ } => false
+  }
+}
+
+
+// THE PAGE SIZE IS ADMITTED BEFORE THE WALK BOUND IS DERIVED FROM IT, and these three claims are the
+// wall and its controls. An earlier cut divided the retrievable ceiling by whatever Int arrived: a
+// caller passing 1000 got a bound of ONE PAGE, so a short first page reported StoppedExhausted and a
+// partial result was presented as a complete population -- the same shape as every other defect this
+// module exists to close, reached through a parameter rather than through an observation.
+test fn a_page_size_above_the_endpoint_maximum_is_refused() -> Bool {
+  match admit_code_search_page_size(observed: 1000) {
+    CodeSearchPageSizeRefused { observed: o, cause: c } =>
+      o == 1000 && string_contains(s: c as String, pattern: "at most")
+    CodeSearchPageSizeAdmitted { page_size: _ } => false
+  }
+}
+
+test fn a_page_size_below_one_is_refused() -> Bool {
+  match admit_code_search_page_size(observed: 0) {
+    CodeSearchPageSizeRefused { observed: o, cause: _ } => o == 0
+    CodeSearchPageSizeAdmitted { page_size: _ } => false
+  }
+}
+
+// THE CONTROL, without which a refusal of everything would satisfy both claims above while making
+// the producer uncallable.
+test fn the_endpoint_maximum_itself_is_admitted_and_bounds_the_walk() -> Bool {
+  match admit_code_search_page_size(observed: 100) {
+    CodeSearchPageSizeAdmitted { page_size: ps } =>
+      ps.size == 100 && deepest_retrievable_page(page_size: ps) == (retrievable_result_ceiling / 100)
+    CodeSearchPageSizeRefused { observed: _, cause: _ } => false
   }
 }

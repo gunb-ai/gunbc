@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, String, Int, Bool, List, Secret }
 import std.nat { Nat, nat_range_inclusive }
 import std.resources { Network }
 import extdeps.github.code_search {
+  CodeSearchPageSize,
   CodeSearchPage,
   CodeSearchHit,
   code_search_hits_read,
@@ -283,16 +284,22 @@ fn page_completeness(read_count: Int, per_page: Int, page: Int) -> ObservationCo
 // THE WALK ITSELF, AND ITS BOUND IS DERIVED BEFORE THE FIRST CALL. deepest_retrievable_page turns
 // the endpoint's own ceiling into the page list, so the cost of this scan is known from the query
 // and the page size alone -- no configuration, no caller-supplied limit that could be set past what
-// the endpoint will serve. A caller wanting a shallower walk narrows the query, which is the same
+// the endpoint will serve. THE PAGE SIZE ARRIVES ADMITTED rather than as a bare Int: an earlier cut
+// took one and divided the retrievable ceiling by it, so a caller passing 1000 got a bound of ONE
+// PAGE and a short first page then reported StoppedExhausted -- a partial page presented as a
+// complete population, which is the same shape as every other defect this module is about. The
+// admission is extdeps.github.code_search admit_code_search_page_size, because the 1..max_per_page
+// domain is the endpoint's contract rather than this lane's policy. A caller wanting a shallower walk narrows the query, which is the same
 // repair saturation calls for.
 fn scan_partition(
   auth_token: Secret,
   query: NonEmptyStr,
-  per_page: Int,
+  page_size: CodeSearchPageSize,
   observed_at: NonEmptyStr,
   api_version: NonEmptyStr,
 ) -> ScanOutcome uses net: Network {
-  let bound = deepest_retrievable_page(per_page: per_page)
+  let per_page = page_size.size
+  let bound = deepest_retrievable_page(page_size: page_size)
   let walked = fold(
     nat_range_inclusive(1, bound as Nat),
     init: initial_walk_state(),
