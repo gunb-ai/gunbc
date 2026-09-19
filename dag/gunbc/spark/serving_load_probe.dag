@@ -253,7 +253,7 @@ fn counter_continuity(before: VllmEndpointProcessLaunchObservation, after: VllmE
 }
 
 type HistogramDelta
-  = HistogramDeltaRead { sum_milli: Millisecond, count: Nat }
+  = HistogramDeltaRead { sum_milli: Nat, count: Nat }
   | HistogramDeltaUnread { cause: NonEmptyStr }
   | HistogramCounterReset { cause: NonEmptyStr }
 
@@ -326,7 +326,7 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
                                       Present { value: ds } =>
                                         match nat_delta(after: acn, before: bcn) {
                                           Absent => HistogramCounterReset { cause: "histogram count decreased across the window" as NonEmptyStr }
-                                          Present { value: dc } => HistogramDeltaRead { sum_milli: millisecond(count: ds), count: dc }
+                                          Present { value: dc } => HistogramDeltaRead { sum_milli: ds, count: dc }
                                         }
                                     }
                                 }
@@ -1298,7 +1298,7 @@ fn backlog_text(b: BacklogStanding) -> String {
 fn histogram_text(d: HistogramDelta) -> String {
   match d {
     HistogramDeltaRead { sum_milli: s, count: n } =>
-      join(["delta sum_milli=", to_string(millisecond_count(m: s)), " count=", to_string(n)], "")
+      join(["delta sum_milli=", to_string(s), " count=", to_string(n)], "")
     HistogramDeltaUnread { cause: c } => join(["unread ", c as String], "")
     HistogramCounterReset { cause: c } => join(["reset ", c as String], "")
   }

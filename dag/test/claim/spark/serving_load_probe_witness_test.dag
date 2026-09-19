@@ -440,7 +440,7 @@ test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() ->
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10.1234567", itl_count: "100.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "12.1234567", itl_count: "200.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   match histogram_delta(before_body: before, after_body: after, metric: InterTokenLatencySeconds) {
-    HistogramDeltaRead { sum_milli: ds, count: dc } => millisecond_count(m: ds) == 2000 && dc == 100
+    HistogramDeltaRead { sum_milli: ds, count: dc } => ds == 2000 && dc == 100
     HistogramDeltaUnread { cause: _ } => false
     HistogramCounterReset { cause: _ } => false
   }
