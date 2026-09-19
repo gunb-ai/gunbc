@@ -8,7 +8,10 @@ import std.measure {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, SingleAuthority }
 import extdeps.toolchain.types { Architecture, Aarch64 }
-import gunbc.floor_demand { FloorJobWallReceipt, gunbc_floor_job_wall_receipt_2026_09_19 }
+import gunbc.floor_demand {
+  FloorJobWallReceipt, gunbc_floor_job_wall_receipt_2026_09_19,
+  ColdBuildStepWallReceipt, gunbc_cold_build_step_wall_x86_64_2026_09_19,
+}
 import gunbc.witness_floor_workflow { witness_floor_lane_timeout }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 import gunbc.runner_microvm { runner_microvm_workspace_grant }
@@ -119,6 +122,7 @@ type ColdBuildReceiptPlan {
   subject: ColdBuildSubject
   instruments: List<DeclarationRef>
   warm_baseline: FloorJobWallReceipt
+  cold_proxy_build_step: ColdBuildStepWallReceipt
   revises: List<DeclarationRef>
 }
 
@@ -131,6 +135,7 @@ fn gunbc_floor_cold_build_receipt_plan() -> ColdBuildReceiptPlan {
       DeclarationRef { module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command", field: WholeDeclaration },
     ],
     warm_baseline: gunbc_floor_job_wall_receipt_2026_09_19,
+    cold_proxy_build_step: gunbc_cold_build_step_wall_x86_64_2026_09_19,
     revises: [
       DeclarationRef { module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_storage_components", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.floor_demand", decl_name: "gunbc_floor_job_wall_receipt_2026_09_19", field: WholeDeclaration },
@@ -141,12 +146,14 @@ fn gunbc_floor_cold_build_receipt_plan() -> ColdBuildReceiptPlan {
 }
 
 // WHAT THE WARM BASELINE PREDICTS, STATED BEFORE THE COLD RUN SO THE RUN CAN FALSIFY IT. The
-// 2026-09-19 job took 2788 s with a 198 s build step; the same build cold on a 6-vCPU x86_64
-// executor took 267 s (gunbc.floor_demand, the storage note). A cold arm64 build is therefore
-// expected to move the build step by minutes, not the whole job by an hour: the witnesses lane
-// that dominates the wall does not compile. The prediction is that the cold wall stays under
-// twice the warm wall. A cold receipt over that line falsifies the reading that the build step
-// is the only cold cost, and is a finding about the guest rather than about the toolchain.
+// warm receipt (gunbc.floor_demand gunbc_floor_job_wall_receipt_2026_09_19) took 2788 s with a
+// 198 s build step; the same build cold on a 6-vCPU x86_64 executor
+// (gunbc_cold_build_step_wall_x86_64_2026_09_19, the row beside the proxy storage components it
+// was measured with) took 267 s. A cold arm64 build is therefore expected to move the build step
+// by minutes, not the whole job by an hour: the witnesses lane that dominates the wall does not
+// compile. The prediction is that the cold wall stays under twice the warm wall. A cold receipt
+// over that line falsifies the reading that the build step is the only cold cost, and is a
+// finding about the guest rather than about the toolchain.
 fn cold_wall_prediction_ceiling(warm: FloorJobWallReceipt) -> Second {
   second(count: second_count(warm.whole_job_wall) * 2)
 }

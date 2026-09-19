@@ -127,6 +127,8 @@ test fn the_production_standing_is_pending_with_a_cold_plan_against_the_warm_bas
       subject_is_cold(subject: p.subject)
         && subject_is_cold(subject: gunbc_floor_cold_build_subject())
         && p.warm_baseline.run_id == gunbc_floor_job_wall_receipt_2026_09_19.run_id
+        && !subject_is_cold(subject: ColdBuildSubject { architecture: p.cold_proxy_build_step.measured_on, cargo_home_wiped: true, sccache_reachable: false })
+        && second_count(p.cold_proxy_build_step.build_step_wall) > second_count(p.warm_baseline.build_step_wall)
         && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline))
           > second_count(p.warm_baseline.whole_job_wall)
         && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline)) < minute_count(witness_floor_lane_timeout) * seconds_per_minute()
