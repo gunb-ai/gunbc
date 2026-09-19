@@ -1,6 +1,8 @@
 module gunbc.spark.serving_load_probe_cli
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
+import std.measure { second }
+import extdeps.tools.curl { curl_bounded_get_argv }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -8,7 +10,7 @@ import extdeps.docker.cli { docker_exec_command }
 import extdeps.exec.command { argv_words }
 import extdeps.vllm.bench_serve { vllm_bench_serve_arguments }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_intent_network { operator_host_srv9 }
+import gunbc.fleet_intent_network { operator_host_srv9, srv9_host_lan_endpoint }
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable,
 }
@@ -53,7 +55,7 @@ fn metrics_url() -> String {
 }
 
 fn curl_metrics_argv() -> List<String> {
-  ["curl", "-fsS", "--max-time", "15", metrics_url()]
+  curl_bounded_get_argv(url: metrics_url(), connect_timeout: second(count: 2), max_time: second(count: 15))
 }
 
 fn bench_exec_argv() -> List<String> {
@@ -64,20 +66,31 @@ fn bench_exec_argv() -> List<String> {
   ))
 }
 
-fn remote_or_fail(ctx: SparkMaterializeContext, argv: List<String>, step: String) -> String {
-  match spark_remote_run(ctx: ctx, argv: argv) {
-    RemoteUnreachable { cause: c } => join(["UNREACHABLE ", step, " ", c], "")
+// One metrics scrape keeps the remote run's arms: a refusal is never a body a parser can read.
+type MetricsScrape
+  = ScrapeBody { body: String }
+  | ScrapeUnreachable { step: String, cause: String }
+  | ScrapeExitedNonZero { step: String, exit_code: Int, stdout: String, stderr: String }
+
+fn scrape_metrics(ctx: SparkMaterializeContext, step: String) -> MetricsScrape {
+  match spark_remote_run(ctx: ctx, argv: curl_metrics_argv()) {
+    RemoteUnreachable { cause: c } => ScrapeUnreachable { step: step, cause: c }
     RemoteRan { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {
-        join(["FAILED ", step, " exit=", to_string(code), " stderr=", err], "")
+        ScrapeExitedNonZero { step: step, exit_code: code, stdout: out, stderr: err }
       } else {
-        out
+        ScrapeBody { body: out }
       }
   }
 }
 
-fn body_is_failure(body: String) -> Bool {
-  starts_with(s: body, prefix: "UNREACHABLE ") || starts_with(s: body, prefix: "FAILED ")
+fn scrape_refusal_text(s: MetricsScrape) -> String {
+  match s {
+    ScrapeBody { body: _ } => "scrape produced a body"
+    ScrapeUnreachable { step: st, cause: c } => join(["UNREACHABLE ", st, " ", c], "")
+    ScrapeExitedNonZero { step: st, exit_code: code, stdout: out, stderr: err } =>
+      join(["FAILED ", st, " exit=", to_string(code), " stderr=", err, " stdout=", out], "")
+  }
 }
 
 fn inspect_incarnation(ctx: SparkMaterializeContext) -> ObservedRankIncarnation?
@@ -101,10 +114,11 @@ fn glm_native_serving_load_run() -> ProcessExit
 {
   with_group_b_access(use: fn(trust, path, administrator, file) {
     let ctx = rank_context(host: operator_host_srv9, trust: trust, path: path, administrator: administrator, credential_file: file)
-    let before = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-before")
-    if body_is_failure(body: before) {
-      exit_failure(reason: before)
-    } else {
+    let before_scrape = scrape_metrics(ctx: ctx, step: "metrics-before")
+    match before_scrape {
+      ScrapeUnreachable { step: _, cause: _ } => exit_failure(reason: scrape_refusal_text(s: before_scrape))
+      ScrapeExitedNonZero { step: _, exit_code: _, stdout: _, stderr: _ } => exit_failure(reason: scrape_refusal_text(s: before_scrape))
+      ScrapeBody { body: before } => {
       let drain = drain_from_queue(q: harness_queue_from_body(body: before))
       let window = window_from_drain(drain: drain)
       match window {
@@ -122,13 +136,14 @@ fn glm_native_serving_load_run() -> ProcessExit
             DrainObservedIdle => {
       let before_incarnation = inspect_incarnation(ctx: ctx)
       let bench = bench_serve_from_remote(protocol: glm_native_smoke_protocol, remote: spark_remote_run(ctx: ctx, argv: bench_exec_argv()))
-      let after = remote_or_fail(ctx: ctx, argv: curl_metrics_argv(), step: "metrics-after")
-      if body_is_failure(body: after) {
-        exit_failure(reason: after)
-      } else {
+      let after_scrape = scrape_metrics(ctx: ctx, step: "metrics-after")
+      match after_scrape {
+        ScrapeUnreachable { step: _, cause: _ } => exit_failure(reason: scrape_refusal_text(s: after_scrape))
+        ScrapeExitedNonZero { step: _, exit_code: _, stdout: _, stderr: _ } => exit_failure(reason: scrape_refusal_text(s: after_scrape))
+        ScrapeBody { body: after } => {
             let after_incarnation = inspect_incarnation(ctx: ctx)
-            let before_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: before)
-            let after_launch = harness_launch_from_body(group: FabricGroupB, address: "192.168.1.236", body: after)
+            let before_launch = harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: before)
+            let after_launch = harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: after)
             let occ = occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after)
             let bucket = bench_serve_bucket_peak(e: bench)
             let itl = bench_serve_itl(e: bench)
@@ -155,9 +170,11 @@ fn glm_native_serving_load_run() -> ProcessExit
             } else {
               ExitSuccess
             }
+        }
       }
             }
           }
+      }
       }
     }
   }, attempt_raw: glm_native_serving_load_attempt_raw, credential_file_name: "gunbc-glm-native-serving-load-admin-password" as NonEmptyStr)

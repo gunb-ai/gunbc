@@ -2,6 +2,7 @@ module gunbc.spark.serving_load_probe
 
 import std.types { Bool, String, NonEmptyStr, List, EpochSecs, Int }
 import std.nat { Nat }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import v2.std.optional { Present, Absent }
@@ -252,7 +253,7 @@ fn counter_continuity(before: VllmEndpointProcessLaunchObservation, after: VllmE
 }
 
 type HistogramDelta
-  = HistogramDeltaRead { sum_milli: Nat, count: Nat }
+  = HistogramDeltaRead { sum_milli: Millisecond, count: Nat }
   | HistogramDeltaUnread { cause: NonEmptyStr }
   | HistogramCounterReset { cause: NonEmptyStr }
 
@@ -325,7 +326,7 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
                                       Present { value: ds } =>
                                         match nat_delta(after: acn, before: bcn) {
                                           Absent => HistogramCounterReset { cause: "histogram count decreased across the window" as NonEmptyStr }
-                                          Present { value: dc } => HistogramDeltaRead { sum_milli: ds, count: dc }
+                                          Present { value: dc } => HistogramDeltaRead { sum_milli: millisecond(count: ds), count: dc }
                                         }
                                     }
                                 }
@@ -443,7 +444,7 @@ fn scrape_interval_millis(before_at: EpochSecs, after_at: EpochSecs) -> Nat? {
 }
 
 type ArrivalSkew
-  = ArrivalSkewObserved { max_stagger_millis: Nat }
+  = ArrivalSkewObserved { max_stagger_millis: Millisecond }
   | ArrivalSkewUnread { cause: NonEmptyStr }
 
 type ArrivalPolicy
@@ -477,12 +478,12 @@ fn send_all_without_start_events_is_not_zero_skew(num_prompts: Nat, cap: Nat, st
     }
 }
 
-data arrival_skew_comparison_bound_millis: Nat = 250
+data arrival_skew_comparison_bound_millis: Millisecond = millisecond(count: 250)
 
 fn arrival_admits_rate_comparison(s: ArrivalSkew) -> Bool {
   match s {
     ArrivalSkewUnread { cause: _ } => false
-    ArrivalSkewObserved { max_stagger_millis: n } => n <= arrival_skew_comparison_bound_millis
+    ArrivalSkewObserved { max_stagger_millis: n } => millisecond_count(m: n) <= millisecond_count(m: arrival_skew_comparison_bound_millis)
   }
 }
 
@@ -644,7 +645,7 @@ fn capacity_claim_for_window(window: ProbeWindowStanding) -> CapacityClaim {
 }
 
 type DerivedRate
-  = RateFromClientOutputTokens { tokens: Nat, scrape_millis: Nat }
+  = RateFromClientOutputTokens { tokens: Nat, scrape_millis: Millisecond }
   | RateUndenominable { because: NonEmptyStr }
   | RateUnreadable { because: NonEmptyStr }
 
@@ -653,13 +654,13 @@ fn tokens_per_observation_second(r: DerivedRate) -> Nat? {
     RateUndenominable { because: _ } => none
     RateUnreadable { because: _ } => none
     RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
-      if ms == 0 { none } else { Present { value: (t * 1000) / ms } }
+      if millisecond_count(m: ms) == 0 { none } else { Present { value: (t * 1000) / millisecond_count(m: ms) } }
   }
 }
 
 fn derive_rate_honest(
   ledger: OperationLedger,
-  scrape_millis: Nat?,
+  scrape_millis: Millisecond?,
   client_output: ClientOutputTokens,
 ) -> DerivedRate {
   if !ledger_admits_token_denomination(l: ledger) {
@@ -772,9 +773,9 @@ type ClientBenchLatency
   = ClientBenchLatencyUnread { cause: NonEmptyStr }
   | ClientBenchLatencyReported {
       output_throughput_milli_tok_per_s: Nat
-      tpot_milli: Nat
-      itl_milli: Nat?
-      ttft_milli: Nat
+      tpot_milli: Millisecond
+      itl_milli: Millisecond?
+      ttft_milli: Millisecond
       window: ProbeWindowStanding
     }
 
@@ -783,7 +784,7 @@ type ItlTailCause
 
 type ClientItlDistribution
   = ClientItlDistributionUnread { cause: NonEmptyStr }
-  | ClientItlDistributionObserved { mean_milli: Nat, median_milli: Nat, p99_milli: Nat, cause: ItlTailCause }
+  | ClientItlDistributionObserved { mean_milli: Millisecond, median_milli: Millisecond, p99_milli: Millisecond, cause: ItlTailCause }
 
 type ClientRequestConcurrencyStanding
   = ClientConcurrencyUnread { cause: NonEmptyStr }
@@ -859,7 +860,7 @@ fn bench_serve_completed_output(e: BenchServeExecution) -> ClientOutputTokens {
   }
 }
 
-fn bench_serve_interval(e: BenchServeExecution) -> Nat? {
+fn bench_serve_interval(e: BenchServeExecution) -> Millisecond? {
   match bench_summary_stdout(e: e) {
     Absent => none
     Present { value: body } => scrape_millis_from_bench_stdout(body: body)
@@ -1179,13 +1180,13 @@ fn client_latency_text(c: ClientBenchLatency) -> String {
     ClientBenchLatencyReported { output_throughput_milli_tok_per_s: th, tpot_milli: tpot, itl_milli: itl, ttft_milli: ttft, window: w } =>
       join([
         "bench-serve throughput_milli_tok_s=", to_string(th),
-        " tpot_ms=", to_string(tpot),
+        " tpot_ms=", to_string(millisecond_count(m: tpot)),
         " itl_ms=",
         match itl {
           Absent => "unread"
-          Present { value: n } => to_string(n)
+          Present { value: n } => to_string(millisecond_count(m: n))
         },
-        " ttft_ms=", to_string(ttft),
+        " ttft_ms=", to_string(millisecond_count(m: ttft)),
         " window=", window_text(s: w),
       ], "")
   }
@@ -1297,7 +1298,7 @@ fn backlog_text(b: BacklogStanding) -> String {
 fn histogram_text(d: HistogramDelta) -> String {
   match d {
     HistogramDeltaRead { sum_milli: s, count: n } =>
-      join(["delta sum_milli=", to_string(s), " count=", to_string(n)], "")
+      join(["delta sum_milli=", to_string(millisecond_count(m: s)), " count=", to_string(n)], "")
     HistogramDeltaUnread { cause: c } => join(["unread ", c as String], "")
     HistogramCounterReset { cause: c } => join(["reset ", c as String], "")
   }
@@ -1329,7 +1330,7 @@ fn rate_text(r: DerivedRate) -> String {
     RateFromClientOutputTokens { tokens: t, scrape_millis: ms } =>
       join([
         "completed_output_tokens=", to_string(t),
-        " scrape_millis=", to_string(ms),
+        " scrape_millis=", to_string(millisecond_count(m: ms)),
         " output_tokens_per_s=",
         match tokens_per_observation_second(r: r) {
           Absent => "none"
@@ -1438,17 +1439,17 @@ data glm_native_wiring_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_
 // smoke (256/64, inf rate, c=2, 4/4 ok). Contended. Not the 256/128 sweep protocol.
 type TranscribedClientLatency {
   output_throughput_milli_tok_per_s: Nat
-  tpot_milli: Nat
-  itl_milli: Nat?
-  ttft_milli: Nat
+  tpot_milli: Millisecond
+  itl_milli: Millisecond?
+  ttft_milli: Millisecond
   standing: CitedFigureStanding
 }
 
 data glm_native_smoke_client_latency: TranscribedClientLatency = TranscribedClientLatency {
   output_throughput_milli_tok_per_s: 17390
-  tpot_milli: 82
-  itl_milli: Present { value: 82 }
-  ttft_milli: 2185
+  tpot_milli: millisecond(count: 82)
+  itl_milli: Present { value: millisecond(count: 82) }
+  ttft_milli: millisecond(count: 2185)
   standing: TranscribedUncited {
     read_obligation: "re-read vllm bench serve stdout for the 256-in/64-out wiring argv; the 17.39 tok/s / 82.1 ms TPOT / 81.8 ms ITL / 2185 ms TTFT figures were transcribed from calm-bat-65's docker-exec receipt" as NonEmptyStr
   }
@@ -1460,9 +1461,9 @@ data glm_native_wet_smoke_standing: CitedFigureStanding = TranscribedUncited {
 
 data glm_native_wet_smoke_client_latency: TranscribedClientLatency = TranscribedClientLatency {
   output_throughput_milli_tok_per_s: 22510
-  tpot_milli: 82
-  itl_milli: Present { value: 83 }
-  ttft_milli: 996
+  tpot_milli: millisecond(count: 82)
+  itl_milli: Present { value: millisecond(count: 83) }
+  ttft_milli: millisecond(count: 996)
   standing: glm_native_wet_smoke_standing
 }
 
@@ -1484,8 +1485,8 @@ fn cap_2_bucket_peak_4_is_not_foreign_work(p: ClientRequestConcurrencyStanding) 
   match p {
     ClientConcurrencyUnread { cause: _ } => false
     SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: c, bucket_peak: b } =>
-      c == token_count_value(t: token_count(count: 2))
-        && b == token_count_value(t: token_count(count: 4))
+      c == 2
+        && b == 4
         && !client_second_bucket_peak_establishes_foreign_work(p: p)
   }
 }
@@ -1501,8 +1502,11 @@ fn bench_labeled_milli_from_seconds(body: String, label: String) -> Nat? {
   }
 }
 
-fn bench_labeled_whole_milli(body: String, label: String) -> Nat? {
-  text_labeled_head_count(body: text_without_sudo_prompt(body: body), label: label)
+fn bench_labeled_whole_milli(body: String, label: String) -> Millisecond? {
+  match text_labeled_head_count(body: text_without_sudo_prompt(body: body), label: label) {
+    Absent => none
+    Present { value: n } => Present { value: millisecond(count: n) }
+  }
 }
 
 fn ledger_from_bench_stdout(body: String, offered: Nat) -> OperationLedger {
@@ -1528,8 +1532,11 @@ fn client_output_from_bench_stdout(body: String) -> ClientOutputTokens {
   }
 }
 
-fn scrape_millis_from_bench_stdout(body: String) -> Nat? {
-  bench_labeled_milli_from_seconds(body: body, label: "Benchmark duration (s)")
+fn scrape_millis_from_bench_stdout(body: String) -> Millisecond? {
+  match bench_labeled_milli_from_seconds(body: body, label: "Benchmark duration (s)") {
+    Absent => none
+    Present { value: n } => Present { value: millisecond(count: n) }
+  }
 }
 
 fn client_itl_from_bench_stdout(body: String) -> ClientItlDistribution {
@@ -1605,7 +1612,7 @@ fn total_token_throughput_is_not_the_probe_rate(r: PrefillVersusDecodeThroughput
 }
 
 data glm_native_wet_smoke_client_output: ClientOutputTokens = ClientOutputTokensObserved { tokens: 512 }
-data glm_native_wet_smoke_duration_millis: Nat = 22750
+data glm_native_wet_smoke_duration_millis: Millisecond = millisecond(count: 22750)
 
 fn glm_native_wet_smoke_rate() -> DerivedRate {
   derive_rate_honest(
@@ -1627,7 +1634,7 @@ fn glm_native_wet_smoke_rate_is_output_tokens() -> Bool {
         && glm_native_wet_smoke_prefill_versus_decode.output_tokens == 512
         && glm_native_wet_smoke_prefill_versus_decode.input_tokens == 1072
         && match glm_native_wet_smoke_rate() {
-          RateFromClientOutputTokens { tokens: t, scrape_millis: ms } => t == 512 && ms == 22750
+          RateFromClientOutputTokens { tokens: t, scrape_millis: ms } => t == 512 && millisecond_count(m: ms) == 22750
           RateUndenominable { because: _ } => false
           RateUnreadable { because: _ } => false
         }
@@ -1638,10 +1645,11 @@ data glm_native_contended_sweep_standing: CitedFigureStanding = TranscribedUncit
   read_obligation: "re-read calm-bat-65's vllm bench serve stdout for the 256-in/128-out inf-rate ignore-eos sweep (num-prompts 4×concurrency, min 8) taken while operator long-context traffic shared Group B" as NonEmptyStr
 }
 
+data glm_native_sweep_min_prompts: Nat = 8
+
 fn glm_native_sweep_num_prompts(concurrency: Nat) -> Nat {
   let fourfold = concurrency * 4
-  let eight = token_count_value(t: token_count(count: 8))
-  if fourfold < eight { eight } else { fourfold }
+  if fourfold < glm_native_sweep_min_prompts { glm_native_sweep_min_prompts } else { fourfold }
 }
 
 fn glm_native_contended_sweep_protocol(concurrency: Nat) -> VllmBenchServeRequest {
@@ -1666,9 +1674,9 @@ fn glm_native_contended_client_latency(
 ) -> TranscribedClientLatency {
   TranscribedClientLatency {
     output_throughput_milli_tok_per_s: throughput_milli_tok_per_s,
-    tpot_milli: tpot_milli,
+    tpot_milli: millisecond(count: tpot_milli),
     itl_milli: none,
-    ttft_milli: ttft_milli,
+    ttft_milli: millisecond(count: ttft_milli),
     standing: glm_native_contended_sweep_standing,
   }
 }
@@ -1737,28 +1745,28 @@ fn elasticity_is_off_the_uncontrolled_series(s: UncontrolledSeriesElasticity) ->
 }
 
 fn glm_native_sweep_ttft_c8() -> Nat {
-  glm_native_contended_sweep_c8.latency.ttft_milli
+  millisecond_count(m: glm_native_contended_sweep_c8.latency.ttft_milli)
 }
 
 fn glm_native_sweep_ttft_c16() -> Nat {
-  glm_native_contended_sweep_c16.latency.ttft_milli
+  millisecond_count(m: glm_native_contended_sweep_c16.latency.ttft_milli)
 }
 
 type WindowStandingGapSpecimen {
-  quieter_engine_tpot_milli: Nat
-  contended_client_c1_tpot_milli: Nat
+  quieter_engine_tpot_milli: Millisecond
+  contended_client_c1_tpot_milli: Millisecond
 }
 
 data glm_native_window_standing_specimen: WindowStandingGapSpecimen = WindowStandingGapSpecimen {
   quieter_engine_tpot_milli: glm_native_single_stream_decode_bound_millis,
-  contended_client_c1_tpot_milli: 81,
+  contended_client_c1_tpot_milli: millisecond(count: 81),
 }
 
 // Same subject, same single-stream protocol shape, different window: quieter engine 48.9 ms vs
 // contended client c=1 TPOT 80.7 ms. The gap is observed; its cause is unestablished until an
 // overlapping lease or engine-population join attributes it.
 fn window_standing_gap_is_unattributed(s: WindowStandingGapSpecimen) -> Bool {
-  s.contended_client_c1_tpot_milli > s.quieter_engine_tpot_milli
+  millisecond_count(m: s.contended_client_c1_tpot_milli) > millisecond_count(m: s.quieter_engine_tpot_milli)
 }
 
 fn bench_output_len(req: VllmBenchServeRequest) -> Nat {
@@ -1798,7 +1806,7 @@ data glm_native_holistic_execution: LongContextExecutionStanding = LongContextLo
 // floor from the checkpoint config (45 layers, hidden 4096, 288 routed experts, top-8 + 1 shared, fp8)
 // and measured 48.9 ms single-stream. Until those config rows are cited, the 49 ms figure stays
 // TranscribedUncited and is not consumed as a rate.
-data glm_native_single_stream_decode_bound_millis: Nat = 49
+data glm_native_single_stream_decode_bound_millis: Millisecond = millisecond(count: 49)
 data glm_native_single_stream_decode_bound_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "read the served GLM-5.3-Flash checkpoint config for layer count, hidden size, routed experts, top-k and shared expert, and the independent single-stream measurement this 49 ms/token bound was transcribed from; the 9-11 ms memory-bandwidth floor is a derived bound from that config, not a serving reading" as NonEmptyStr
 }

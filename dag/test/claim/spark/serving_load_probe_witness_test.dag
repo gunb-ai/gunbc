@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, EpochSecs, List }
 import std.nat { Nat }
 import v2.std.algebra { length, filter }
 import v2.std.optional { Present, Absent }
-import std.measure { token_count, token_count_value }
+import std.measure { token_count, millisecond, millisecond_count }
 import product.capacity.lease { LeaseGrant, lease_fence_of, lease_grant, LeasePolicy, FencedResource }
 import product.capacity.event_chain { EventId }
 import gunbc.fleet_intent_network { operator_host_srv9 }
@@ -225,11 +225,11 @@ test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool 
       t == 128 &&
         match derive_rate_honest(
           ledger: closed_ok(),
-          scrape_millis: Present { value: 2000 },
+          scrape_millis: Present { value: millisecond(count: 2000) },
           client_output: ClientOutputTokensObserved { tokens: t },
         ) {
           RateFromClientOutputTokens { tokens: tok, scrape_millis: ms } =>
-            tok == 128 && ms == 2000 &&
+            tok == 128 && millisecond_count(m: ms) == 2000 &&
               match tokens_per_observation_second(r: RateFromClientOutputTokens { tokens: tok, scrape_millis: ms }) {
                 Absent => false
                 Present { value: rate } => rate == 64
@@ -292,7 +292,7 @@ test fn a_scoped_generation_delta_names_the_incarnation() -> Bool {
     after_body: fx_after,
   ) {
     TokenDeltaScoped { tokens: t, incarnation: i } =>
-      t == 128 && (i.container.id as String) == "0f3a9c1d2e4b" && i.node_rank == token_count_value(t: token_count(count: 0))
+      t == 128 && (i.container.id as String) == "0f3a9c1d2e4b" && i.node_rank == 0
     TokenDeltaRead { tokens: _ } => false
     TokenDeltaUnread { cause: _ } => false
     TokenDeltaReset { cause: _ } => false
@@ -303,7 +303,7 @@ fn fx_incarnation(id: String) -> ObservedRankIncarnation? {
   match container_incarnation_id(id: id) {
     Absent => none
     Present { value: cid } =>
-      Present { value: ObservedRankIncarnation { host: operator_host_srv9, container: cid, node_rank: token_count_value(t: token_count(count: 0)) } }
+      Present { value: ObservedRankIncarnation { host: operator_host_srv9, container: cid, node_rank: 0 } }
   }
 }
 
@@ -335,7 +335,7 @@ fn fx_obs() -> ServingLoadObservation {
 test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool {
   match derive_rate_honest(
     ledger: LedgerClosed { offered: 4, completed: 0, failed: 4 },
-    scrape_millis: Present { value: 2000 },
+    scrape_millis: Present { value: millisecond(count: 2000) },
     client_output: ClientOutputTokensUnread { cause: "none" as NonEmptyStr },
   ) {
     RateUndenominable { because: _ } => true
@@ -347,7 +347,7 @@ test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool {
 test fn occupancy_above_declared_concurrency_does_not_refuse_the_client_rate() -> Bool {
   match derive_rate_honest(
     ledger: closed_ok(),
-    scrape_millis: Present { value: 2000 },
+    scrape_millis: Present { value: millisecond(count: 2000) },
     client_output: ClientOutputTokensObserved { tokens: 128 },
   ) {
     RateFromClientOutputTokens { tokens: t, scrape_millis: _ } => t == 128
@@ -359,7 +359,7 @@ test fn occupancy_above_declared_concurrency_does_not_refuse_the_client_rate() -
 test fn unread_client_output_tokens_refuse_the_rate() -> Bool {
   match derive_rate_honest(
     ledger: closed_ok(),
-    scrape_millis: Present { value: 2000 },
+    scrape_millis: Present { value: millisecond(count: 2000) },
     client_output: ClientOutputTokensUnread { cause: "bench stdout not parsed" as NonEmptyStr },
   ) {
     RateUnreadable { because: _ } => true
@@ -371,7 +371,7 @@ test fn unread_client_output_tokens_refuse_the_rate() -> Bool {
 test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Bool {
   match derive_rate_honest(
     ledger: closed_ok(),
-    scrape_millis: Present { value: 2000 },
+    scrape_millis: Present { value: millisecond(count: 2000) },
     client_output: ClientOutputTokensObserved { tokens: 128 },
   ) {
     RateFromClientOutputTokens { tokens: t, scrape_millis: _ } =>
@@ -389,7 +389,7 @@ test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Boo
 test fn unsampled_occupancy_does_not_refuse_the_client_rate() -> Bool {
   match derive_rate_honest(
     ledger: closed_ok(),
-    scrape_millis: Present { value: 2000 },
+    scrape_millis: Present { value: millisecond(count: 2000) },
     client_output: ClientOutputTokensObserved { tokens: 128 },
   ) {
     RateFromClientOutputTokens { tokens: t, scrape_millis: _ } => t == 128
@@ -440,7 +440,7 @@ test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() ->
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10.1234567", itl_count: "100.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "12.1234567", itl_count: "200.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   match histogram_delta(before_body: before, after_body: after, metric: InterTokenLatencySeconds) {
-    HistogramDeltaRead { sum_milli: ds, count: dc } => ds == 2000 && dc == 100
+    HistogramDeltaRead { sum_milli: ds, count: dc } => millisecond_count(m: ds) == 2000 && dc == 100
     HistogramDeltaUnread { cause: _ } => false
     HistogramCounterReset { cause: _ } => false
   }
@@ -448,7 +448,7 @@ test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() ->
 
 test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
   let body = join(["[sudo] password for briansrls:\n", fx_bench_stdout], "")
-  match ledger_from_bench_stdout(body: body, offered: token_count_value(t: token_count(count: 4))) {
+  match ledger_from_bench_stdout(body: body, offered: 4) {
     LedgerClosed { offered: o, completed: c, failed: f } =>
       o == 4 && c == 4 && f == 0
         && match client_output_from_bench_stdout(body: body) {
@@ -462,7 +462,7 @@ test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
 test fn the_holistic_protocol_does_not_corroborate_the_single_stream_bound() -> Bool {
   match decode_corroboration_for_protocol(req: glm_native_holistic_protocol) {
     CorroborationNotApplicable { because: _ } =>
-      glm_native_single_stream_decode_bound_millis == 49
+      millisecond_count(m: glm_native_single_stream_decode_bound_millis) == 49
         && match glm_native_single_stream_decode_bound_standing {
           TranscribedUncited { read_obligation: _ } => true
           CitedToAuthority { authority: _ } => false
@@ -474,7 +474,7 @@ test fn the_holistic_protocol_does_not_corroborate_the_single_stream_bound() -> 
 test fn the_smoke_protocol_is_not_the_holistic_envelope() -> Bool {
   !holistic_protocol_is_session_shaped(req: glm_native_smoke_protocol)
     && !vllm_bench_serve_uses_poisson_idle_gaps(req: glm_native_smoke_protocol)
-    && glm_native_smoke_client_latency.tpot_milli == 82
+    && millisecond_count(m: glm_native_smoke_client_latency.tpot_milli) == 82
 }
 
 test fn a_64_out_wiring_receipt_is_not_the_128_out_sweep_protocol() -> Bool {
@@ -519,8 +519,8 @@ data fx_bench_stdout_short: String = join([
 
 test fn a_cap_2_second_bucket_peak_4_does_not_establish_foreign_work() -> Bool {
   cap_2_bucket_peak_4_is_not_foreign_work(p: SuccessfulClientRequestSecondBucketPeak {
-    client_max_concurrency: token_count_value(t: token_count(count: 2)),
-    bucket_peak: token_count_value(t: token_count(count: 4)),
+    client_max_concurrency: 2,
+    bucket_peak: 4,
   })
 }
 
@@ -528,13 +528,13 @@ test fn parsed_itl_distribution_does_not_establish_a_cause() -> Bool {
   let d = client_itl_from_bench_stdout(body: fx_bench_stdout)
   match d {
     ClientItlDistributionObserved { mean_milli: mean_m, median_milli: med, p99_milli: p99, cause: _ } =>
-      mean_m == 83 && med == 82 && p99 == 165 && itl_tail_cause_is_unestablished(d: d)
+      millisecond_count(m: mean_m) == 83 && millisecond_count(m: med) == 82 && millisecond_count(m: p99) == 165 && itl_tail_cause_is_unestablished(d: d)
     ClientItlDistributionUnread { cause: _ } => false
   }
 }
 
 test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
-  match ledger_from_bench_stdout(body: fx_bench_stdout, offered: token_count_value(t: token_count(count: 4))) {
+  match ledger_from_bench_stdout(body: fx_bench_stdout, offered: 4) {
     LedgerClosed { offered: o, completed: c, failed: f } =>
       o == 4 && c == 4 && f == 0
         && match client_output_from_bench_stdout(body: fx_bench_stdout) {
@@ -543,7 +543,7 @@ test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
             n == 512
               && match scrape_millis_from_bench_stdout(body: fx_bench_stdout) {
                 Absent => false
-                Present { value: ms } => ms == 22750
+                Present { value: ms } => millisecond_count(m: ms) == 22750
               }
         }
     LedgerIncomplete { because: _ } => false
@@ -564,8 +564,8 @@ test fn the_contended_sweep_is_five_shared_window_client_points() -> Bool {
     && glm_native_sweep_num_prompts(concurrency: 2) == 8
     && glm_native_sweep_num_prompts(concurrency: 4) == 16
     && glm_native_contended_sweep_c1.latency.output_throughput_milli_tok_per_s == 10860
-    && glm_native_contended_sweep_c1.latency.tpot_milli == 81
-    && glm_native_contended_sweep_c1.latency.ttft_milli == 1542
+    && millisecond_count(m: glm_native_contended_sweep_c1.latency.tpot_milli) == 81
+    && millisecond_count(m: glm_native_contended_sweep_c1.latency.ttft_milli) == 1542
     && glm_native_contended_sweep_c1.concurrency == 1
 }
 
@@ -578,8 +578,8 @@ test fn ttft_c8_and_c16_remain_primitive_observations() -> Bool {
 }
 
 test fn the_49_vs_81_ms_gap_is_why_window_standing_is_a_field() -> Bool {
-  glm_native_window_standing_specimen.quieter_engine_tpot_milli == 49
-    && glm_native_window_standing_specimen.contended_client_c1_tpot_milli == 81
+  millisecond_count(m: glm_native_window_standing_specimen.quieter_engine_tpot_milli) == 49
+    && millisecond_count(m: glm_native_window_standing_specimen.contended_client_c1_tpot_milli) == 81
     && window_standing_gap_is_unattributed(s: glm_native_window_standing_specimen)
 }
 
@@ -655,8 +655,8 @@ test fn mixing_two_bench_stdout_bodies_cannot_write_one_receipt() -> Bool {
 
 test fn send_all_at_cap_2_with_no_start_events_is_not_zero_skew() -> Bool {
   send_all_without_start_events_is_not_zero_skew(
-    num_prompts: token_count_value(t: token_count(count: 4)),
-    cap: token_count_value(t: token_count(count: 2)),
+    num_prompts: 4,
+    cap: 2,
     start_event_count: 0,
   )
 }
