@@ -410,3 +410,28 @@ test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool {
     })
   })
 }
+
+// A CLAIM UNDER AN OLD HOME STILL FENCES. The source can move a host between homes; a claim
+// written on the host's own partition (its home while it was in no group) is still a claim once
+// the host is grouped: an admission on the group partition refuses at `held`, an establishment
+// that would commit the host refuses at `host-effects`, and after the claim's own release both
+// land. Driven with a group-B host whose claim is written on its own partition by supplying that
+// home directly (the rule would place it on group B's partition today).
+test fn a_claim_on_a_hosts_former_home_fences_admission_and_establishment_by_real_execution() -> Bool {
+  alr_with_temp_dir(scenario: fn(dir) {
+    let layout = alr_witness_layout(dir: dir)
+    let host = match get(xs: fabric_group_hosts(g: FabricGroupB), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv14") }
+    let old_home = HostHome { host: host }
+    let spec = alr_residue(pattern: "/srv/build")
+    let active_b = PairServingActive { group: FabricGroupB, exact_realization: PairRealizationUnestablished { obligation: "w" as NonEmptyStr } }
+    alr_witness_remote_ready(dir: dir)
+      && (match host_effect_admit(layout: layout, home: old_home, host: host, purpose: "a build under the old home" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1000) {
+            HostEffectClaimed { id: c, generation: _ } =>
+              (match host_effect_admit(layout: layout, home: GroupHome { group: FabricGroupB }, host: host, purpose: "a second build" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1001) { HostEffectClaimRefused { partition: _, step: st, reason: r } => st == "held" && r.contains("another partition")  _ => false })
+                && (match pair_serving_authority_establish(layout: layout, group: FabricGroupB, authority: active_b, actor: "operator" as NonEmptyStr, at: 1002) { AuthorityEstablishmentRefused { group: _, step: st, reason: r } => st == "host-effects" && r.contains("another partition")  _ => false })
+                && alr_release_with_quiet(handle: HostEffectHandle { home: old_home, host: host, residue: spec, claim: c }, layout: layout, at: 1003)
+                && (match pair_serving_authority_establish(layout: layout, group: FabricGroupB, authority: active_b, actor: "operator" as NonEmptyStr, at: 1004) { AuthorityEstablishedAt { id: _ } => true  _ => false })
+            _ => false
+          })
+  })
+}
