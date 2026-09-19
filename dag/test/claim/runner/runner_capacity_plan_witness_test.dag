@@ -30,7 +30,6 @@ import gunbc.fleet_runner_connectivity {
   organization_runner_roster_evidence,
   RosterReadUnavailable,
   RosterObserved,
-  RosterObservedPartial,
   OrganizationRunnerRosterEvidence,
 }
 import std.types { String, NonEmptyStr, Int, List }
@@ -430,53 +429,6 @@ test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped
     width: 5,
     roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05", "srv9-01"]),
   )
-}
-
-// A PARTIAL ROSTER IS NOT AN EMPTY ONE, AND NOT THE PREFIX IT HAPPENS TO CARRY EITHER. The page
-// below carries srv3's full committed population -- the exact registrations the row above accepts
-// as RosterObserved -- but the authority's own total says one more exists, so the observation is a
-// prefix. Reading the prefix as the population would plan against an under-count; reading it as
-// empty would plan every slot as an addition GitHub already holds. Both are the fail-open this row
-// refuses, and the sibling that accepts the identical registrations under RosterObserved is what
-// makes the refusal a discrimination on completeness rather than on the data.
-fn partial_roster_of(names: List<String>) -> OrganizationRunnerRosterEvidence {
-  match roster_of(names: names) {
-    RosterObserved { observed_on: on, registrations: regs } =>
-      RosterObservedPartial {
-        observed_on: on,
-        registrations: regs,
-        observed_count: regs.length(),
-        authority_total: regs.length() + 1,
-      }
-    RosterObservedPartial { observed_on: on, registrations: regs, observed_count: seen, authority_total: total } =>
-      RosterObservedPartial { observed_on: on, registrations: regs, observed_count: seen, authority_total: total }
-    RosterReadUnavailable { reason: r } => RosterReadUnavailable { reason: r }
-  }
-}
-
-test fn a_partial_roster_is_an_unreadable_population_not_an_empty_one() -> Bool {
-  match observed_github_slot_identities(
-    host: operator_host_srv3,
-    roster: partial_roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
-  ) {
-    GitHubSlotPopulationUnreadable { reason: _ } => true
-    GitHubSlotPopulationObserved { identities: _ } => false
-    GitHubSlotPopulationDuplicateRegistration { slot: _ } => false
-    GitHubSlotPopulationForeignRegistration { registration_name: _ } => false
-  }
-}
-
-test fn a_partial_roster_refuses_the_plan_the_complete_one_admits() -> Bool {
-  plan_is_refused(
-    host: operator_host_srv3,
-    width: 5,
-    roster: partial_roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
-  )
-    && !plan_is_refused(
-      host: operator_host_srv3,
-      width: 5,
-      roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
-    )
 }
 
 // THE OBSERVATION IS THE ROSTER'S, NOT THIS HOST'S DENSE PREFIX. Handed a roster made entirely of

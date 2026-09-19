@@ -764,6 +764,28 @@ test fn a_procs_shaped_body_is_unobserved_not_empty() -> Bool {
   }
 }
 
+// A DUPLICATED OR CONTRADICTED KEY IS NOT A READING. The kernel writes `populated` once; a body that
+// carries it twice -- agreeing or not -- and a body whose first occurrence is malformed and whose
+// second is `0` are both refused. The second row is the one a two-state scan gets wrong: it would
+// recover to EMPTY on the later line.
+test fn a_duplicated_populated_key_is_unobserved_even_when_it_agrees() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: "populated 0\npopulated 0\n")) {
+    CgroupUnobserved { cause: _ } => true
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated => false
+  }
+}
+
+test fn a_malformed_populated_value_is_not_recovered_by_a_later_line() -> Bool {
+  match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: "populated 2\npopulated 0\n")) {
+    CgroupUnobserved { cause: _ } => true
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated => false
+  }
+}
+
 test fn an_empty_events_body_is_unobserved_not_empty() -> Bool {
   match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: "")) {
     CgroupUnobserved { cause: _ } => true

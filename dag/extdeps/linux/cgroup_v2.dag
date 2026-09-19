@@ -134,11 +134,12 @@ data cgroup_v2_events_interface_file: NonEmptyStr = "cgroup.events"
 data cgroup_v2_events_populated_key: NonEmptyStr = "populated"
 
 // THE POPULATED KEY, DECODED, OR A TYPED REASON IT COULD NOT BE. `populated` is documented as
-// exactly 0 or 1, so the reading is a Bool and any other value -- a missing key, a third value, a
-// body that is not the flat-keyed form at all -- is `CgroupEventsUnparseable`, never a default.
-// The fail-closed direction matters here more than for most files: this key is what a consumer
-// uses to release something (a capacity ceiling, a directory), and a body it could not read is
-// evidence of nothing.
+// exactly 0 or 1, so the reading is a Bool and any other body -- a missing key, a third value, a
+// key that appears TWICE (the kernel writes each key once; a second occurrence, agreeing or not,
+// is a body this file's documented form does not produce), or text that is not the flat-keyed
+// form at all -- is `CgroupEventsUnparseable`, never a default. The fail-closed direction matters
+// here more than for most files: this key is what a consumer uses to release something (a
+// capacity ceiling, a directory), and a body it could not read is evidence of nothing.
 //
 // `frozen` (the file's other documented key) is not decoded: nothing consumes it, and a decoded
 // field with no reader is dangling modeling (DESIGN 3c). It is a row to add when a consumer
@@ -169,63 +170,38 @@ fn cgroup_events_populated_value_on_line(line: String) -> String? {
     }).value
 }
 
+// THE SCAN IS THREE-STATE AND A REFUSAL IS STICKY. A two-state fold that flipped from "unparseable
+// so far" to "decoded" on a later line would read `populated 2` followed by `populated 0` as empty,
+// which is the duplicate case above dressed as recovery.
+type CgroupEventsPopulatedScan
+  = CgroupEventsPopulatedNotSeen
+  | CgroupEventsPopulatedSeen { populated: Bool }
+  | CgroupEventsPopulatedRefused { cause: String }
+
+fn cgroup_events_populated_scan_step(acc: CgroupEventsPopulatedScan, line: String) -> CgroupEventsPopulatedScan {
+  match cgroup_events_populated_value_on_line(line: line) {
+    Absent => acc
+    Present { value: v } =>
+      match acc {
+        CgroupEventsPopulatedRefused { cause: c } => CgroupEventsPopulatedRefused { cause: c }
+        CgroupEventsPopulatedSeen { populated: _ } =>
+          CgroupEventsPopulatedRefused { cause: "cgroup.events carried the `populated` key more than once" }
+        CgroupEventsPopulatedNotSeen =>
+          if v == "0" {
+            CgroupEventsPopulatedSeen { populated: false }
+          } else if v == "1" {
+            CgroupEventsPopulatedSeen { populated: true }
+          } else {
+            CgroupEventsPopulatedRefused { cause: concat("cgroup.events `populated` is documented as 0 or 1 and read as: ", v) }
+          }
+      }
+  }
+}
+
 fn decode_cgroup_events_populated(body: String) -> CgroupEventsDecoding {
-  fold(split(s: body, delimiter: "\n"), init: CgroupEventsUnparseable { cause: "cgroup.events carried no `populated` key" }, f: (acc, line) =>
-    match acc {
-      CgroupEventsDecoded { populated: _ } => acc
-      CgroupEventsUnparseable { cause: _ } =>
-        match cgroup_events_populated_value_on_line(line: line) {
-          Absent => acc
-          Present { value: v } =>
-            if v == "0" {
-              CgroupEventsDecoded { populated: false }
-            } else if v == "1" {
-              CgroupEventsDecoded { populated: true }
-            } else {
-              CgroupEventsUnparseable { cause: concat("cgroup.events `populated` is documented as 0 or 1 and read as: ", v) }
-            }
-        }
-    })
-}
-
-// THE PATH IS COMPOSED IN .dag AND INTERPOLATED AS ONE VALUE, NOT ASSEMBLED INSIDE THE ARGV.
-// An argv of ["cat", "{cgroup_path}/{interface_file}"] does not concatenate two interpolations
-// around a literal slash -- the interpolation grammar reads across it and the `/` becomes a
-// DIVISION operator, which fails at evaluation with "unsupported operator Div on String".
-// Measured on srv1-07: ListChildCgroups, whose argv interpolates a single value, executed fine;
-// this operation was the only one carrying two interpolations separated by an operator character.
-// One input, one interpolation, and the composition stays where the type system can see it.
-fn cgroup_v2_child_path(parent: NonEmptyStr, child: NonEmptyStr) -> NonEmptyStr {
-  concat(parent as String, "/", child as String) as NonEmptyStr
-}
-
-fn cgroup_v2_slice_path(slice: NonEmptyStr) -> NonEmptyStr {
-  cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: slice)
-}
-
-fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
-  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_events_interface_file)
-}
-
-// WHICH KERNELS PROVIDE THIS MECHANISM AT ALL, homed here for the same reason and by the same
-// parallel as extdeps.linux.procfs kernel_provides_procfs: whether a kernel family offers cgroup
-// v2 is a fact about cgroup v2, not about any consumer that happens to need it. It first appeared
-// in gunbc.host_budget_source as `kernel_provides_private_memory_limit` -- a consumer-side name
-// for this fact, which is DESIGN section 3's nickname in the ordinary case and a layer inversion
-// in the strict one: a second name for one concept, homed away from its authority, and it would
-// have forked the moment a second consumer needed the same answer.
-//
-// LinuxGuestOnWindows answers TRUE for the reason its procfs sibling gives -- WSL2 runs a real
-// Linux kernel and mounts a real unified hierarchy -- and it is the arm most likely to be got
-// wrong by reading the name. Darwin and WindowsNt answer false: neither has cgroups, and neither
-// has any modeled equivalent per-process memory limit, which is the load-bearing consequence for
-// gunbc.host_budget_source -- on those kernels a host-shared reading is the strongest fact
-// available rather than a substitute for a bound that could have been read.
-fn kernel_provides_cgroup_v2(kernel: KernelFamily) -> Bool {
-  match kernel {
-    Linux => true
-    LinuxGuestOnWindows => true
-    Darwin => false
-    WindowsNt => false
+  match fold(split(s: body, delimiter: "\n"), init: CgroupEventsPopulatedNotSeen, f: (acc, line) => cgroup_events_populated_scan_step(acc: acc, line: line)) {
+    CgroupEventsPopulatedNotSeen => CgroupEventsUnparseable { cause: "cgroup.events carried no `populated` key" }
+    CgroupEventsPopulatedSeen { populated: p } => CgroupEventsDecoded { populated: p }
+    CgroupEventsPopulatedRefused { cause: c } => CgroupEventsUnparseable { cause: c }
   }
 }
