@@ -992,7 +992,7 @@ fn settle_host_effect_live(handle: HostEffectHandle) -> HostEffectSettlement {
               match prepare_fleet_ssh_agent_context(attempt_raw: host_effect_release_attempt_raw) {
                 FleetSshContextRefused { cause: c } => HostEffectStillHeld { cause: join(["the host could not be reached to observe quiescence, so the host-effect claim ", handle.claim as String, " stays live: ", c], "") }
                 FleetSshContextReady { context: context, receipt: _ } =>
-                  settle_host_effect_over(handle: handle, provenance: ClaimantTerminal, run: fn(argv) { fleet_argv_run(context: context, host: handle.host, argv: argv) }, layout: layout, executor: executor as NonEmptyStr, at: at)
+                  settle_host_effect_over(handle: handle, provenance: ClaimantTerminal { claim: handle.claim, claimant_executor: executor as NonEmptyStr }, run: fn(argv) { fleet_argv_run(context: context, host: handle.host, argv: argv) }, layout: layout, executor: executor as NonEmptyStr, at: at)
               }
           }
       }

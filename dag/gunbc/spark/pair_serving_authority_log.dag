@@ -52,15 +52,16 @@ import gunbc.spark.pair_serving_authority {
 // leased push. gunbc.fabric_event_log was generic in nothing but its seats until this module; it
 // now reads and appends for any payload, and this module supplies the authority's codec.
 //
-// CLAIM AND TRANSACTION STATE ARE TWO FACTS, AND THIS IS WHERE THE SPLIT IS DECIDED. The source row
-// stays the claim and the resting authority: membership (the desired roster, host commitment) is
-// pure and reads it, and the design says suspension KEEPS the claim, so membership does not move
-// during a transaction. The log carries the open transaction's state, folded FROM the resting
-// authority: an empty partition means no transition was ever recorded and the authored resting
-// state governs -- that is an authored fact, not a default -- while an UNREADABLE partition
-// refuses, because a consumer that fell back to the row when the log could not be read would act
-// on a state a transaction may have left behind. Absence is authored; unreadability is never
-// permission.
+// DESIRED AND ESTABLISHED ARE TWO FACTS, AND THIS IS WHERE THE SPLIT IS DECIDED. The source row is
+// the DESIRED authority: the pure membership projection (the desired roster, the resting host
+// commitment) reads it, and the design says suspension KEEPS the claim, so membership does not
+// move during a transaction. The log is the ESTABLISHED authority, folded from one durable genesis
+// per partition: an empty partition is UNESTABLISHED (no authority, nothing committed), the source
+// row becomes the group's authority only by an AuthorityEstablished event on that partition, and
+// every effectful consumer reads the log and never the row -- a row without its establishment is
+// Unread at "claim", and an UNREADABLE partition refuses, because a consumer that fell back to
+// the row when the log could not be read would act on a state a transaction may have left behind.
+// Absence is a read fact; unreadability is never permission.
 //
 // A TRANSITION NAMES THE STATE IT LEAVES, AND THE FOLD CHECKS IT. Every event carries the previous
 // authority beside the next one, and the fold refuses a chain whose event claims to leave a state
@@ -181,12 +182,15 @@ type ReleaseAdmission
   | ReleaseEvidenceForAnother { record: HostEffectRecord }
   | ReleaseProvenanceForAnother { record: HostEffectRecord }
 
-fn release_admission(records: List<HostEffectRecord>, claim: EventId, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance) -> ReleaseAdmission {
+// `actor` is the event's actor: a claimant-terminal release must be written by the executor that
+// acquired the claim (and name it), so another executor that observes a momentarily quiet host
+// cannot label itself the claimant; it has the recovery route, which names the claimant's standing.
+fn release_admission(records: List<HostEffectRecord>, claim: EventId, evidence: HostQuiescenceEvidence, provenance: ReleaseProvenance, actor: NonEmptyStr) -> ReleaseAdmission {
   match first(filter(records, r => (r.id as String) == (claim as String) && !r.released)) {
     Absent => ReleaseNotLive
     Present { value: r } =>
       if !quiescence_evidence_covers(e: evidence, claim: claim, admitted_at: r.recorded_at, host: r.host, spec: r.residue) { ReleaseEvidenceForAnother { record: r } }
-      else if !release_provenance_covers(p: provenance, claim: claim) { ReleaseProvenanceForAnother { record: r } }
+      else if !release_provenance_covers(p: provenance, claim: claim, claimant: r.executor, actor: actor) { ReleaseProvenanceForAnother { record: r } }
       else { ReleaseAdmitted { record: r } }
   }
 }
@@ -195,7 +199,7 @@ fn release_refusal_reason(a: ReleaseAdmission, claim: EventId) -> String {
   match a {
     ReleaseAdmitted { record: _ } => ""
     ReleaseNotLive => join(["no live host effect claim ", claim as String, " on this partition"], "")
-    ReleaseProvenanceForAnother { record: _ } => join(["the recovery authorization is not for claim ", claim as String], "")
+    ReleaseProvenanceForAnother { record: r } => join(["the release provenance is not for claim ", claim as String, ": a claimant-terminal release must name this claim and be written by its claimant ", r.executor as String, "; any other writer needs a recovery authorization naming this claim"], "")
     ReleaseEvidenceForAnother { record: r } => join(["the quiescence evidence is not for claim ", claim as String, ": it must name that claim, host ", r.host as String, " and the claim's own residue (process pattern `", r.residue.process_pattern as String, "`), and be observed no earlier than ", to_string(r.recorded_at)], "")
   }
 }
@@ -766,9 +770,13 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
     AuthorityUnestablished { host_effects: effs } =>
       match env.event.payload {
         AuthorityEstablished { authority: a } =>
+          if (env.event.partition as String) != (pair_authority_partition(group: pair_serving_authority_group(a: a)) as String) {
+            AuthorityFoldRefused { at_event: env.id, reason: join(["the established authority names ", fabric_group_wire(g: pair_serving_authority_group(a: a)) as String, ", which is not this partition's group"], "") }
+          } else {
           match establishment_refusal(a: a, effs: effs, at: env.event.recorded_at) {
             Present { value: why } => AuthorityFoldRefused { at_event: env.id, reason: join(["the establishment is refused: ", why], "") }
             Absent => AuthorityFolded { current: a, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord>, host_effects: effs }
+          }
           }
         AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: _, grant: _, entry_state: _ } =>
           AuthorityFoldRefused { at_event: env.id, reason: "a transition was recorded before any authority was established on this partition" }
@@ -795,7 +803,7 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
             AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, host_effects: concat(effs, [HostEffectRecord { id: env.id, host: h, purpose: p, executor: x, recorded_at: env.event.recorded_at, term: t, residue: rs, released: false }]) }
           }
         HostEffectReleased { admitted_by: a, evidence: ev, provenance: pv } =>
-          match release_admission(records: effs, claim: a, evidence: ev, provenance: pv) {
+          match release_admission(records: effs, claim: a, evidence: ev, provenance: pv, actor: env.event.actor) {
             ReleaseAdmitted { record: _ } =>
               AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, host_effects: map(effs, r => if (r.id as String) == (a as String) { host_effect_released(r: r) } else { r }) }
             other => AuthorityFoldRefused { at_event: env.id, reason: join(["a host effect release is refused: ", release_refusal_reason(a: other, claim: a)], "") }
@@ -1192,7 +1200,7 @@ fn host_effect_fold_step(acc: HostEffectFold, env: ChainEnvelope<PairAuthorityEv
             HostEffectsFolded { records: concat(effs, [HostEffectRecord { id: env.id, host: h, purpose: p, executor: x, recorded_at: env.event.recorded_at, term: t, residue: rs, released: false }]) }
           }
         HostEffectReleased { admitted_by: a, evidence: ev, provenance: pv } =>
-          match release_admission(records: effs, claim: a, evidence: ev, provenance: pv) {
+          match release_admission(records: effs, claim: a, evidence: ev, provenance: pv, actor: env.event.actor) {
             ReleaseAdmitted { record: _ } => HostEffectsFolded { records: map(effs, r => if (r.id as String) == (a as String) { host_effect_released(r: r) } else { r }) }
             other => HostEffectFoldRefused { at_event: env.id, reason: join(["a host effect release is refused: ", release_refusal_reason(a: other, claim: a)], "") }
           }
@@ -1302,7 +1310,7 @@ fn host_effect_release(layout: EventLogLayout, home: HostEffectHome, claim: Even
   match host_effect_home_read(layout: layout, home: home, at: at) {
     HostEffectHomeUnread { partition: _, step: st, reason: why } => HostEffectReleaseRefused { partition: partition, step: st, reason: why }
     HostEffectHomeRead { head: head, current: _, records: effs } =>
-      match release_admission(records: effs, claim: claim, evidence: evidence, provenance: provenance) {
+      match release_admission(records: effs, claim: claim, evidence: evidence, provenance: provenance, actor: executor) {
         ReleaseAdmitted { record: _ } => {
           let event = ChainEvent {
             partition: partition,
