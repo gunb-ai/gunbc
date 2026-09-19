@@ -74,6 +74,16 @@ import gunbc.runner_unit_file {
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_slot_retirement {
+  RunnerRetirementStanding,
+  RetirementComplete,
+  RetirementPendingDrain,
+  RetirementUnobserved,
+  runner_retirement_standing,
+  observe_runner_retirement,
+  retirement_unit,
+}
+import gunbc.host_effect { FleetSsh }
 import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
@@ -464,6 +474,7 @@ type RunnerSlotUnitStanding
   | SlotReloadPending
   | SlotUnitNotLoaded { load_state: String }
   | SlotRetiredAsDeclared
+  | SlotRetirementIncomplete { cause: String }
   | SlotUnitUnread
 
 // ORDER MATTERS AND IS THE POINT. A unit the manager has not loaded still gets a show block, carrying
@@ -471,19 +482,26 @@ type RunnerSlotUnitStanding
 // certify a slot that does not exist. A loaded unit whose configuration changed on disk reports the
 // OLD values until a reload, so NeedDaemonReload is read before the pair it would otherwise vouch for.
 fn classify_runner_slot_unit(reading: RunnerSlotUnitReading, intent: RunnerUnitLifecycleIntent) -> RunnerSlotUnitStanding {
-  classify_runner_slot_unit_against_retirement(reading: reading, intent: intent, retired: [])
+  classify_runner_slot_unit_against_retirement(reading: reading, intent: intent, retirements: [])
 }
 
-// THE POPULATION IS JUDGED AGAINST THE SLOTS THAT SHOULD EXIST, NOT AGAINST THE GLOB. A unit the width
-// transition (gunbc.runner_width_transition required_retirees_for_host) obliges retired, observed
-// masked, is that obligation discharged: it runs nothing a restart could orphan, so it carries no
-// teardown verdict. The join is at unit identity and in one direction only. A masked unit the
-// authority does NOT retire stays not-loaded, because ignoring masked units would hide a slot masked
-// by mistake; a retiree still loaded is still judged on its teardown, because it can still run a job.
-fn classify_runner_slot_unit_against_retirement(reading: RunnerSlotUnitReading, intent: RunnerUnitLifecycleIntent, retired: List<NonEmptyStr>) -> RunnerSlotUnitStanding {
-  if trim(s: reading.load_state) == (systemd_unit_load_state_masked_wire as String)
-      && any(retired, r => (r as String) == (reading.unit as String)) {
-    SlotRetiredAsDeclared
+// THE POPULATION IS JUDGED AGAINST THE SLOTS THAT SHOULD EXIST, NOT AGAINST THE GLOB. A masked unit is
+// discharged only by the retirement authority's OWN verdict on it: `retirements` carries
+// gunbc.runner_slot_retirement runner_retirement_standing for each unit the width transition obliges
+// retired, and only RetirementComplete -- mask held, service not running, workload cgroup empty or
+// absent -- reads SlotRetiredAsDeclared. Masked is the inhibit, not the drain: a retiree masked mid-job
+// still holds its worker, so a pending or unobserved retirement refuses as SlotRetirementIncomplete.
+// A masked unit with no retirement standing -- one the authority does NOT retire -- stays not-loaded,
+// because ignoring masked units would hide a slot masked by mistake; a retiree still loaded is still
+// judged on its teardown, because it can still run a job.
+fn classify_runner_slot_unit_against_retirement(reading: RunnerSlotUnitReading, intent: RunnerUnitLifecycleIntent, retirements: List<RunnerRetirementStanding>) -> RunnerSlotUnitStanding {
+  let own = filter(retirements, st => retirement_unit(s: st) == (reading.unit as String))
+  if trim(s: reading.load_state) == (systemd_unit_load_state_masked_wire as String) && length(own) > 0 {
+    fold(own, init: SlotRetiredAsDeclared, f: (acc, st) => match st {
+      RetirementComplete { unit: _ } => acc
+      RetirementPendingDrain { unit: _, cause: c } => SlotRetirementIncomplete { cause: c }
+      RetirementUnobserved { unit: _, cause: c } => SlotRetirementIncomplete { cause: c }
+    })
   } else if trim(s: reading.load_state) != "loaded" {
     SlotUnitNotLoaded { load_state: trim(s: reading.load_state) }
   } else if trim(s: reading.need_daemon_reload) != "no" {
@@ -503,6 +521,7 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
     SlotReloadPending => "RELOAD-PENDING"
     SlotUnitNotLoaded { load_state: l } => concat("NOT-LOADED LoadState=", l)
     SlotRetiredAsDeclared => "retired-as-declared LoadState=masked"
+    SlotRetirementIncomplete { cause: c } => concat("MASKED-RETIREMENT-INCOMPLETE ", c)
     SlotUnitUnread => "UNREAD"
   }
 }
@@ -577,7 +596,7 @@ fn parse_runner_slot_show_block(block: String) -> RunnerSlotUnitReading? {
 
 // Each requested unit is joined to the block that NAMES it; a unit with no block of its own is UNREAD,
 // never borrowed from a neighbour's.
-fn classify_runner_slot_population(units: List<NonEmptyStr>, retired: List<NonEmptyStr>, show_stdout: String, intent: RunnerUnitLifecycleIntent) -> List<RunnerSlotUnitResult> {
+fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<RunnerRetirementStanding>, show_stdout: String, intent: RunnerUnitLifecycleIntent) -> List<RunnerSlotUnitResult> {
   let readings = flat_map(split(s: show_stdout, delimiter: "\n\n"), b => match parse_runner_slot_show_block(block: b) {
     Present { value: r } => [r]
     Absent => []
@@ -586,7 +605,7 @@ fn classify_runner_slot_population(units: List<NonEmptyStr>, retired: List<NonEm
     RunnerSlotUnitResult {
       unit: u,
       standing: fold(readings, init: SlotUnitUnread, f: (acc, r) =>
-        if (r.unit as String) == (u as String) { classify_runner_slot_unit_against_retirement(reading: r, intent: intent, retired: retired) } else { acc }),
+        if (r.unit as String) == (u as String) { classify_runner_slot_unit_against_retirement(reading: r, intent: intent, retirements: retirements) } else { acc }),
     })
 }
 
@@ -600,6 +619,7 @@ fn runner_slot_population_owes_reload(population: RunnerSlotPopulation) -> Bool 
         SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false
         SlotUnitNotLoaded { load_state: _ } => false
         SlotRetiredAsDeclared => false
+        SlotRetirementIncomplete { cause: _ } => false
         SlotUnitUnread => false
       })
   }
@@ -609,10 +629,11 @@ fn runner_slot_population_effective(population: RunnerSlotPopulation) -> Bool {
   match population {
     SlotPopulationUnobservable { reason: _ } => false
     SlotPopulationObserved { units: us } =>
-      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotUnitUnread => false })
+      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false })
         && all(us, r => match r.standing {
         SlotTeardownEffective => true
         SlotRetiredAsDeclared => true
+        SlotRetirementIncomplete { cause: _ } => false
         SlotReloadPending => false
         SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false
         SlotUnitNotLoaded { load_state: _ } => false
@@ -632,6 +653,7 @@ fn runner_slot_population_read_completely(population: RunnerSlotPopulation) -> B
         SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true
         SlotUnitNotLoaded { load_state: _ } => true
         SlotRetiredAsDeclared => true
+        SlotRetirementIncomplete { cause: _ } => true
       })
   }
 }
@@ -770,7 +792,9 @@ fn observe_runner_slot_population(
             if !shown.success {
               SlotPopulationUnobservable { reason: join(["systemctl show exit=", to_string(shown.exit_code), " ", trim(s: shown.stderr)], "") }
             } else {
-              SlotPopulationObserved { units: classify_runner_slot_population(units: units, retired: subject.retired_units, show_stdout: shown.stdout, intent: gunbc_runner_lifecycle_intent) }
+              let retirees = filter(subject.retired_units, r => any(units, u => (u as String) == (r as String)))
+              let retirements = map(retirees, r => runner_retirement_standing(o: observe_runner_retirement(transport: FleetSsh { target: subject.target, context: context }, unit: r)))
+              SlotPopulationObserved { units: classify_runner_slot_population(units: units, retirements: retirements, show_stdout: shown.stdout, intent: gunbc_runner_lifecycle_intent) }
             }
         }
       }
@@ -1046,8 +1070,8 @@ fn runner_slot_population_text(population: RunnerSlotPopulation) -> String {
     SlotPopulationObserved { units: us } =>
       join([
         "slots observed=", to_string(length(us)),
-        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotUnitUnread => false }))),
-        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
+        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false }))),
+        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
         "\n",
         join(map(us, r => join(["slot ", r.unit as String, " ", runner_slot_unit_standing_wire(standing: r.standing), "\n"], "")), ""),
       ], "")

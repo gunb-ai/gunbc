@@ -11,6 +11,14 @@ import extdeps.needrestart {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
+import gunbc.runner_slot_retirement {
+  RunnerRetirementStanding,
+  CgroupOccupancy,
+  CgroupAbsent,
+  CgroupObservedPopulated,
+  runner_retirement_standing,
+  retirement_observation_from_readings,
+}
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
@@ -71,6 +79,7 @@ import gunbc.runner_host_file_converge {
   SlotUnitNotLoaded,
   SlotUnitUnread,
   SlotRetiredAsDeclared,
+  SlotRetirementIncomplete,
   classify_runner_slot_unit,
   RunnerSlotUnitResult,
   RunnerSlotPopulation,
@@ -407,6 +416,7 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
     SlotReloadPending => "reload-pending"
     SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
     SlotRetiredAsDeclared => "retired"
+    SlotRetirementIncomplete { cause: _ } => "retirement-incomplete"
     SlotUnitUnread => "unread"
   }
 }
@@ -462,7 +472,7 @@ data show_fixture: String = "Id=actions-runner@srv1-01.service\nLoadState=loaded
 
 fn population_wires(units: List<String>) -> List<String> {
   map(
-    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retired: [], show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
+    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retirements: [], show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
     r => standing_wire_of(st: r.standing),
   )
 }
@@ -575,33 +585,56 @@ fn srv1_show_reading(live: List<String>, masked: List<String>) -> String {
   join(concat(map(live, u => show_block_of(unit: u, load: "loaded")), map(masked, u => show_block_of(unit: u, load: "masked"))), "\n\n")
 }
 
-fn srv1_population(units: List<String>, retired: List<NonEmptyStr>, show: String) -> RunnerSlotPopulation {
-  SlotPopulationObserved { units: classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retired: retired, show_stdout: show, intent: gunbc_runner_lifecycle_intent) }
+fn srv1_population(units: List<String>, retirements: List<RunnerRetirementStanding>, show: String) -> RunnerSlotPopulation {
+  SlotPopulationObserved { units: classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retirements: retirements, show_stdout: show, intent: gunbc_runner_lifecycle_intent) }
 }
 
-fn srv1_retired() -> List<NonEmptyStr> {
+// The retirement authority's own verdict over the property readings `mask --now` leaves behind, for
+// every unit the real srv1 subject carries as a required retiree. The readings are the boundary; the
+// fold from readings to standing is gunbc.runner_slot_retirement's, not restated here.
+fn srv1_retirements(active: String, occupancy: CgroupOccupancy) -> List<RunnerRetirementStanding> {
   match witness_subject() {
     Absent => []
-    Present { value: s } => s.retired_units
+    Present { value: s } => map(s.retired_units, u => runner_retirement_standing(o: retirement_observation_from_readings(unit: u, unit_file_state: "masked", active_state: active, occupancy: occupancy)))
   }
 }
 
+fn srv1_drained() -> List<RunnerRetirementStanding> {
+  srv1_retirements(active: "inactive", occupancy: CgroupAbsent)
+}
+
 // POSITIVE CONTROL. The 21-unit reading that refused is effective once each masked unit is joined to
-// the retirement the authority declared, and the route is the join: every masked unit reads retired.
+// the retirement authority's COMPLETE verdict, and the route is the join: every masked unit reads
+// retired, and the same reading with no retirement standing refuses.
 test fn srv1_twelve_live_and_nine_retired_masked_is_effective() -> Bool {
   let units = srv1_unit_names(slot: 1, limit: 21)
-  let pop = srv1_population(units: units, retired: srv1_retired(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21)))
+  let show = srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21))
+  let pop = srv1_population(units: units, retirements: srv1_drained(), show: show)
   runner_slot_population_effective(population: pop)
     && (match pop {
       SlotPopulationUnobservable { reason: _ } => false
       SlotPopulationObserved { units: us } => length(filter(us, r => standing_wire_of(st: r.standing) == "retired")) == 9
     })
-    && !runner_slot_population_effective(population: srv1_population(units: units, retired: [], show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21))))
+    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: [], show: show))
+}
+
+// RED: masked is the inhibit, not the drain. A retiree masked while its worker still runs -- service
+// active, or its cgroup still populated -- is the orphan the retirement exists to prevent, and refuses.
+test fn a_masked_retiree_still_running_or_occupied_refuses() -> Bool {
+  let units = srv1_unit_names(slot: 1, limit: 21)
+  let show = srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21))
+  let running = srv1_population(units: units, retirements: srv1_retirements(active: "deactivating", occupancy: CgroupAbsent), show: show)
+  !runner_slot_population_effective(population: running)
+    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: srv1_retirements(active: "inactive", occupancy: CgroupObservedPopulated { count: 3 }), show: show))
+    && (match running {
+      SlotPopulationUnobservable { reason: _ } => false
+      SlotPopulationObserved { units: us } => length(filter(us, r => standing_wire_of(st: r.standing) == "retirement-incomplete")) == 9
+    })
 }
 
 // RED: a masked slot the authority does NOT retire is a slot masked by mistake, not a retirement.
 test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
-  let pop = srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retired: srv1_retired(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 11), masked: srv1_unit_names(slot: 12, limit: 21)))
+  let pop = srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 11), masked: srv1_unit_names(slot: 12, limit: 21)))
   !runner_slot_population_effective(population: pop)
     && (match pop {
       SlotPopulationUnobservable { reason: _ } => false
@@ -611,7 +644,7 @@ test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
 
 // RED: a declared-live slot missing from the host stays a refusal, retirement notwithstanding.
 test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
-  let missing = join(["Id=actions-runner@srv1-12.service\nLoadState=not-found\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"], "")
+  let missing = "Id=actions-runner@srv1-12.service\nLoadState=not-found\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"
   let show = join([srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 11), masked: srv1_unit_names(slot: 13, limit: 21)), missing], "\n\n")
-  !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retired: srv1_retired(), show: show))
+  !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
 }
