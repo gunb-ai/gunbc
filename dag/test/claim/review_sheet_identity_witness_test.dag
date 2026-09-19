@@ -33,6 +33,7 @@ import gunbc.review_sheet_identity {
   CurrentMarkerObservedLegacyExtentUnresolved,
   ReviewSheetIdentityUnreadable,
   review_sheet_identity_standing,
+  review_sheet_identity_standing_disposition,
   LegacyExtentVerdict,
   LegacyExtentSettledEmpty,
   LegacyExtentFound,
