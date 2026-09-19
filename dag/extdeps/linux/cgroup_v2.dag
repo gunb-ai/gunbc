@@ -148,17 +148,25 @@ type CgroupEventsDecoding
   = CgroupEventsDecoded { populated: Bool }
   | CgroupEventsUnparseable { cause: String }
 
-// ONE FLAT-KEYED LINE IS `KEY VALUE`, SPACE-SEPARATED, and the scan below is the same shape as
-// extdeps.linux.proc_stat's btime scan: the first non-empty word is the key, the second is the
-// value, anything further is ignored on a line whose key is not ours.
+// ONE FLAT-KEYED LINE IS `KEY VALUE`, SPACE-SEPARATED, and a line is read into one of THREE
+// answers rather than a `String?`: not a `populated` line at all; a `populated` line with exactly
+// one value; or a `populated` line that is malformed -- the key with no value, or the key with
+// more than one token after it. An optional collapsed the first and the third into one arm, so a
+// bare `populated` never reached the duplicate check and a trailing token on a valid line was
+// silently dropped: both are bodies the kernel does not write, and both then read as EMPTY.
+type CgroupEventsLineReading
+  = CgroupEventsLineNotPopulated
+  | CgroupEventsLinePopulated { value: String }
+  | CgroupEventsLineMalformed { cause: String }
+
 type CgroupEventsLineScan {
   seen: Int
   key_matches: Bool
   value: String?
 }
 
-fn cgroup_events_populated_value_on_line(line: String) -> String? {
-  fold(split(s: trim(s: line), delimiter: " "), init: CgroupEventsLineScan { seen: 0, key_matches: false, value: none }, f: (acc, w) =>
+fn cgroup_events_populated_line(line: String) -> CgroupEventsLineReading {
+  let scan = fold(split(s: trim(s: line), delimiter: " "), init: CgroupEventsLineScan { seen: 0, key_matches: false, value: none }, f: (acc, w) =>
     if w == "" {
       acc
     } else if acc.seen == 0 {
@@ -167,21 +175,40 @@ fn cgroup_events_populated_value_on_line(line: String) -> String? {
       CgroupEventsLineScan { seen: 2, key_matches: true, value: Present { value: w } }
     } else {
       CgroupEventsLineScan { seen: acc.seen + 1, key_matches: acc.key_matches, value: acc.value }
-    }).value
+    })
+  if !scan.key_matches {
+    CgroupEventsLineNotPopulated
+  } else if scan.seen == 1 {
+    CgroupEventsLineMalformed { cause: "cgroup.events carried a `populated` key with no value" }
+  } else if scan.seen > 2 {
+    CgroupEventsLineMalformed { cause: "cgroup.events carried a `populated` line with more than one value" }
+  } else {
+    match scan.value {
+      Present { value: v } => CgroupEventsLinePopulated { value: v }
+      Absent => CgroupEventsLineMalformed { cause: "cgroup.events carried a `populated` key with no value" }
+    }
+  }
 }
 
 // THE SCAN IS THREE-STATE AND A REFUSAL IS STICKY. A two-state fold that flipped from "unparseable
 // so far" to "decoded" on a later line would read `populated 2` followed by `populated 0` as empty,
-// which is the duplicate case above dressed as recovery.
+// which is the duplicate case above dressed as recovery. A malformed occurrence enters the refusal
+// whether or not a valid one was seen before it, so a duplicate never disappears for lacking a value.
 type CgroupEventsPopulatedScan
   = CgroupEventsPopulatedNotSeen
   | CgroupEventsPopulatedSeen { populated: Bool }
   | CgroupEventsPopulatedRefused { cause: String }
 
 fn cgroup_events_populated_scan_step(acc: CgroupEventsPopulatedScan, line: String) -> CgroupEventsPopulatedScan {
-  match cgroup_events_populated_value_on_line(line: line) {
-    Absent => acc
-    Present { value: v } =>
+  match cgroup_events_populated_line(line: line) {
+    CgroupEventsLineNotPopulated => acc
+    CgroupEventsLineMalformed { cause: m } =>
+      match acc {
+        CgroupEventsPopulatedRefused { cause: c } => CgroupEventsPopulatedRefused { cause: c }
+        CgroupEventsPopulatedSeen { populated: _ } => CgroupEventsPopulatedRefused { cause: m }
+        CgroupEventsPopulatedNotSeen => CgroupEventsPopulatedRefused { cause: m }
+      }
+    CgroupEventsLinePopulated { value: v } =>
       match acc {
         CgroupEventsPopulatedRefused { cause: c } => CgroupEventsPopulatedRefused { cause: c }
         CgroupEventsPopulatedSeen { populated: _ } =>

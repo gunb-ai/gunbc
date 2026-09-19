@@ -786,6 +786,38 @@ test fn a_malformed_populated_value_is_not_recovered_by_a_later_line() -> Bool {
   }
 }
 
+// A MALFORMED OCCURRENCE IS NOT AN ABSENT ONE. Three bodies a `String?` line reader let through:
+// the key with no value before a valid line, the key with no value after one, and a valid line
+// with a trailing token. Each must refuse at occupancy AND at retirement -- `RetirementUnobserved`,
+// not merely "not complete" -- because under the collapsed reader each reached RetirementComplete
+// for a masked, inactive unit.
+fn malformed_body_is_unobserved_through_retirement(body: String) -> Bool {
+  let at_occupancy = match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: body)) {
+    CgroupUnobserved { cause: _ } => true
+    CgroupAbsent => false
+    CgroupObservedEmpty => false
+    CgroupObservedPopulated => false
+  }
+  let at_retirement = match masked_inactive_standing(occupancy_read: events(text: body)) {
+    RetirementUnobserved { unit: _, cause: _ } => true
+    RetirementComplete { unit: _ } => false
+    RetirementPendingDrain { unit: _, cause: _ } => false
+  }
+  at_occupancy && at_retirement
+}
+
+test fn a_bare_populated_key_before_a_valid_line_is_unobserved() -> Bool {
+  malformed_body_is_unobserved_through_retirement(body: "populated\npopulated 0\n")
+}
+
+test fn a_bare_populated_key_after_a_valid_line_is_unobserved() -> Bool {
+  malformed_body_is_unobserved_through_retirement(body: "populated 0\npopulated\n")
+}
+
+test fn a_populated_line_with_a_trailing_token_is_unobserved() -> Bool {
+  malformed_body_is_unobserved_through_retirement(body: "populated 0 extra\n")
+}
+
 test fn an_empty_events_body_is_unobserved_not_empty() -> Bool {
   match cgroup_occupancy_from_reads(directory_test: dir_exists(), events_read: events(text: "")) {
     CgroupUnobserved { cause: _ } => true
