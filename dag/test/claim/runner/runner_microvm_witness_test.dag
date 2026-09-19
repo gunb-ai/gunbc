@@ -175,6 +175,15 @@ data deployed_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleI
 }
 
 data repaired_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
+  exit_type: ExitTypeMain,
+  kill_mode: KillModeControlGroup,
+}
+
+// THE ExitType=cgroup DROP-IN THE FLEET CARRIES ON 2026-09-18, which an earlier revision of this file
+// called the repaired intent. One survivor holds the unit running with no stop issued (srv2-02, 2.7
+// days; srv1-03 and srv1-07, 16 days), so under a lifecycle controller an orphaned VMM would be held
+// exactly the same way.
+data exittype_cgroup_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLifecycleIntent {
   exit_type: ExitTypeCgroup,
   kill_mode: KillModeControlGroup,
 }
@@ -189,7 +198,7 @@ test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -197,14 +206,29 @@ test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
   )
 }
 
-// THE POSITIVE CONTROL. Same VM, same transport, cgroup-reaching teardown: admitted. Without this
+// THE INCIDENT FIXTURE AS A RED: the configuration the previous revision admitted must now refuse,
+// with the orphan cause, or a revert to it would read green.
+test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
+  admission_is_orphan_refusal(
+    a: runner_microvm_admission(
+      topology: VmmUnderLifecycleController,
+      intent: exittype_cgroup_lifecycle_intent,
+      main_exits_when_incarnation_ends: true,
+      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+      config: mvp_sized_config(),
+      reserve: witness_reserve,
+    ),
+  )
+}
+
+// THE POSITIVE CONTROL. Same VM, same transport, the declared intent (ExitType=main, KillMode=control-group): admitted. Without this
 // arm the refusal above would be satisfied by an admission that refuses everything.
-test fn cgroup_teardown_admits_the_same_microvm() -> Bool {
+test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -221,7 +245,7 @@ test fn shared_slot_directory_credential_is_refused() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigInSharedSlotDirectory { path: "/opt/actions-runner/srv4-04/.credentials" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -246,7 +270,7 @@ test fn two_root_devices_is_a_malformed_vm() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: two_root_config(),
       reserve: witness_reserve,
@@ -281,7 +305,7 @@ test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
     a: runner_microvm_admission(
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -297,7 +321,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
     a: runner_microvm_admission(
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -306,7 +330,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -321,7 +345,7 @@ test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
     a: runner_microvm_admission(
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigInSharedSlotDirectory { path: "/opt/actions-runner/srv4-04/.credentials" },
       config: mvp_sized_config(),
       reserve: witness_reserve,
@@ -400,7 +424,7 @@ test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool {
     a: runner_microvm_admission(
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
-      listener_is_main_process: false,
+      main_exits_when_incarnation_ends: true,
       transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
       config: mvp_sized_config(),
       reserve: witness_unmodeled_reserve,
@@ -429,7 +453,7 @@ fn admission_of_machine(vcpus: Int, mib: Int) -> RunnerMicroVmAdmission {
   runner_microvm_admission(
     topology: VmmUnderLifecycleController,
     intent: repaired_lifecycle_intent,
-    listener_is_main_process: false,
+    main_exits_when_incarnation_ends: true,
     transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
     config: config_with_machine(vcpus: vcpus, mib: mib),
     reserve: witness_reserve,
