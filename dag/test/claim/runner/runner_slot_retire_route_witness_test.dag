@@ -13,6 +13,14 @@ import gunbc.runner_slot_retire_run {
   RetirementDispatchUnnamed,
   admit_retirement_dispatch,
   runner_slot_retire_dispatch_mode_wire,
+  retirement_route_terminal,
+  retirement_route_terminal_is_settled,
+}
+import gunbc.runner_retirement_closure {
+  RetirementAssessmentVerdict,
+  AssessmentClearOfBlockers,
+  AssessmentBlocked,
+  ClosureBlocker,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -101,4 +109,43 @@ test fn a_well_formed_retirement_dispatch_is_admitted() -> Bool {
     RetirementDispatchUnnamed { cause: _ } => false
     RetirementDispatchNotThisMode { mode: _ } => false
   }
+}
+
+// ── THE EXIT STATUS MAY NOT BE MORE OPTIMISTIC THAN THE ASSESSMENT ──────────────────────────
+
+fn clear_verdict() -> RetirementAssessmentVerdict {
+  AssessmentClearOfBlockers { revision: "abc123" as NonEmptyStr, required_subjects: 1 }
+}
+
+fn blocked_verdict() -> RetirementAssessmentVerdict {
+  AssessmentBlocked {
+    revision: "abc123" as NonEmptyStr,
+    blockers: [ClosureBlocker { subject: "github-runner-roster", cause: "unread" }],
+  }
+}
+
+// THE REACHABLE FAILURE THE REVIEW NAMED. Every required subject settles -- which is the expected
+// state once srv2's units are actually masked and quiescent -- and the assessment still carries the
+// unread roster and the unresolved build provenance. Exiting zero here reports success over this
+// run's own refusal, and the green is what an operator reads while the refusal is a string in an
+// uploaded file.
+test fn a_settled_run_with_a_blocked_assessment_refuses() -> Bool {
+  !retirement_route_terminal_is_settled(
+    t: retirement_route_terminal(succeeded: true, verdict: blocked_verdict()),
+  )
+}
+
+// THE POSITIVE CONTROL, without which the row above is satisfied by a terminal that never settles.
+test fn a_settled_run_with_a_clear_assessment_settles() -> Bool {
+  retirement_route_terminal_is_settled(
+    t: retirement_route_terminal(succeeded: true, verdict: clear_verdict()),
+  )
+}
+
+// AND THE OTHER HALF STILL HOLDS: unsettled subjects refuse whatever the assessment says, so the
+// conjunction did not replace one test with the other.
+test fn an_unsettled_run_refuses_even_under_a_clear_assessment() -> Bool {
+  !retirement_route_terminal_is_settled(
+    t: retirement_route_terminal(succeeded: false, verdict: clear_verdict()),
+  )
 }

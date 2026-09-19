@@ -78,7 +78,12 @@ import gunbc.runner_host_retirement {
   HostNotRetiring,
   host_retirement_standing,
   host_retirement_obligation_basis,
+  host_retirement_discovery_subjects,
   retiree_obligation_basis_wire,
+  RetireeObligationBasis,
+  ObligationFromCapturedSnapshot,
+  ObligationFromSearchBound,
+  ObligationAbsent,
   EstateObligationStanding,
   EstateObligationOutstanding,
   EstateObligationUnobserved,
@@ -105,9 +110,12 @@ import gunbc.runner_retirement_closure {
   PlannerDisposition,
   PlannerSawCompleteSubject,
   PlannerRefusedAccess,
+  PlannerFilteredSubjects,
   planner_disposition_wire,
   retirement_assessment_verdict,
   assessment_verdict_text,
+  assessment_is_clear_of_blockers,
+  RetirementAssessmentVerdict,
 }
 
 // THE RETIREMENT ROUTE, WHOSE EXECUTOR IS NOT ITS TARGET.
@@ -365,6 +373,9 @@ fn observe_reconcile_mechanism_reading(transport: HostEffectTransport) -> Reconc
 
 type RetirementRouteRun {
   subject: RetirementRouteSubject
+  basis: RetireeObligationBasis
+  discovery: List<NonEmptyStr>
+  discovery_standings: List<RunnerRetirementStanding>
   required: List<NonEmptyStr>
   standings: List<RunnerRetirementStanding>
   invocations: List<SlotRetirementInvocation>
@@ -380,11 +391,16 @@ fn run_retirement_route(
 {
   let transport = retirement_route_transport(subject: subject, context: context)
   let required = transition_required_retiring(host: subject.target)
+  let discovery = host_retirement_discovery_subjects(host: subject.target)
   let standings = observe_retirement_standings(transport: transport, units: required)
+  let discovery_standings = observe_retirement_standings(transport: transport, units: discovery)
   let evidence = retirement_evidence_for(target: subject.target)
   let timer_reading = observe_reconcile_mechanism_reading(transport: transport)
   RetirementRouteRun {
     subject: subject,
+    basis: host_retirement_obligation_basis(host: subject.target),
+    discovery: discovery,
+    discovery_standings: discovery_standings,
     required: required,
     standings: standings,
     invocations: map(required, u =>
@@ -460,33 +476,52 @@ fn retirement_route_graceful_subjects(run: RetirementRouteRun) -> List<String> {
 // THE PLANNER'S OWN DISPOSITION, WHICH IS WHAT THE CLOSURE ASKS FOR RATHER THAN AN OPERATION COUNT. A
 // run that could not read every required subject FILTERED them, whatever its operation list looks
 // like, and saying so is the difference between an empty plan that is settled and one that is silent.
+// COMPLETENESS IS DECIDED BY THE OBLIGATION BASIS, NOT BY A COUNT.
+//
+// This asked `list_length(required) == 0` and called an empty population a refusal. That cannot tell
+// a COMPLETE capture that genuinely found nothing -- a host whose slot population really is gone --
+// from an UNKNOWN one, and after the obligation boundary moved it would have called every ungrounded
+// host refused for the wrong reason. The basis already distinguishes the three, so the disposition
+// reads it: a grounded population is complete at whatever size it has, including zero, and an
+// ungrounded one is UNRESOLVED rather than refused-for-access.
+fn retirement_route_emitted_operations(run: RetirementRouteRun) -> Int {
+  list_length(
+    items: run.invocations |> filter(i => match i {
+      SlotRetirementActuate { unit: _, method_label: _, operation: _ } => true
+      SlotRetirementAlreadySatisfied { unit: _ } => false
+      SlotRetirementPending { unit: _, cause: _ } => false
+      SlotRetirementRefused { unit: _, cause: _ } => false
+      SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => false
+    }),
+  )
+}
+
 fn retirement_route_planner_disposition(run: RetirementRouteRun) -> PlannerDisposition {
-  if list_length(items: run.required) == 0 {
-    PlannerRefusedAccess {
-      cause: join([run.subject.target as String, " is declared retiring and its obligation set resolved empty, so this assessment has no required subject to be complete over"], ""),
-    }
-  } else {
-    PlannerSawCompleteSubject {
-      operations_emitted: list_length(
-        items: run.invocations |> filter(i => match i {
-          SlotRetirementActuate { unit: _, method_label: _, operation: _ } => true
-          SlotRetirementAlreadySatisfied { unit: _ } => false
-          SlotRetirementPending { unit: _, cause: _ } => false
-          SlotRetirementRefused { unit: _, cause: _ } => false
-          SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => false
-        }),
-      ),
-    }
+  match run.basis {
+    ObligationAbsent { host: h } =>
+      PlannerRefusedAccess {
+        cause: join([h as String, " carries no retirement obligation authority at all, so this assessment has no subject"], ""),
+      }
+    ObligationFromSearchBound { units: us, bound: _, cause: c } =>
+      PlannerFilteredSubjects {
+        filtered: us,
+        cause: join(["the owned-identity population for this host is not grounded, so these identities were observed as DISCOVERY subjects only and none of them entered the obligation: ", c], ""),
+      }
+    ObligationFromCapturedSnapshot { observed_on: _, units: _ } =>
+      PlannerSawCompleteSubject { operations_emitted: retirement_route_emitted_operations(run: run) }
   }
 }
 
-// EVERY REQUIRED SUBJECT MUST BE SETTLED FOR THIS INVOCATION TO SUCCEED, and settled means the
-// postcondition already held. An emitted actuation is not success: the operation it names is executed
-// by the reviewed plan/apply artifact and established by a LATER pass's independent readback, never
-// by the run that decided it was owed.
+// A COMPLETE-EMPTY CAPTURE SETTLES THE SLOT-POPULATION PORTION WITHOUT INVENTING RETIREES, and an
+// ungrounded one never settles. The previous test required a non-empty population, which refused a
+// genuinely empty host for the same reason it refused an unknown one.
 fn retirement_route_succeeded(run: RetirementRouteRun) -> Bool {
-  list_length(items: run.required) > 0
-    && all(run.invocations, i => slot_retirement_invocation_settled(i: i))
+  match run.basis {
+    ObligationAbsent { host: _ } => false
+    ObligationFromSearchBound { units: _, bound: _, cause: _ } => false
+    ObligationFromCapturedSnapshot { observed_on: _, units: _ } =>
+      all(run.invocations, i => slot_retirement_invocation_settled(i: i))
+  }
 }
 
 fn invocation_line(i: SlotRetirementInvocation) -> String {
@@ -506,6 +541,8 @@ fn retirement_route_text(run: RetirementRouteRun) -> String {
     "executor=", run.subject.executor as String, " target=", run.subject.target as String, "\n",
     "required-subjects=", to_string(list_length(items: run.required)),
     " basis=", retiree_obligation_basis_wire(b: host_retirement_obligation_basis(host: run.subject.target)), "\n",
+    "discovery-subjects=", to_string(list_length(items: run.discovery)), " (observed read-only; no obligation)\n",
+    join(map(run.discovery_standings, s => join(["discovery unit=", retirement_unit(s: s), " ", retirement_standing_wire(s: s), "\n"], "")), ""),
     join(map(run.standings, s => join(["standing unit=", retirement_unit(s: s), " ", retirement_standing_wire(s: s), "\n"], "")), ""),
     join(map(run.invocations, i => invocation_line(i: i)), ""),
     "reconcile-timer intent=", reconcile_timer_intent_wire(i: runner_liveness_reconcile_timer_intent(host: run.subject.target)),
@@ -520,20 +557,9 @@ fn retirement_route_text(run: RetirementRouteRun) -> String {
 
 // ── The CI entry ─────────────────────────────────────────────────────────────────────────────────
 
-// THE EXIT STATUS IS ABOUT THIS INVOCATION; THE CLOSURE VERDICT IS ABOUT THE LANE, AND THEY ARE
-// REPORTED SEPARATELY ON PURPOSE.
-//
-// A bounded per-host execution cannot establish the closure -- the contract's package is a plan
-// artifact, authorized apply receipts, an independent readback and a complete second assessment, all
-// at one revision, joined across runs. Letting this process's exit code carry that claim would make
-// the strongest sentence in the lane a property of whichever single job ran last. So the receipt
-// carries the closure verdict in full, named blockers and all, and the exit status answers the
-// narrower question this run can actually answer: is every required subject of THIS host settled.
-//
-// NEITHER MAY BE READ AS THE OTHER, which is why the terminal line prints both words.
 // ── WHAT REVISION THIS ASSESSMENT ACTUALLY RAN AGAINST ───────────────────────────────────────
 //
-// THE EVENT BINDING IS NOT A CHECKOUT OBSERVATION, AND THE FIRST REPAIR TREATED IT AS ONE.
+// THE EVENT BINDING IS NOT A CHECKOUT OBSERVATION, AND AN EARLIER REPAIR TREATED IT AS ONE.
 //
 // `observe_actions_run_binding` reads `GITHUB_SHA` into `binding.run_revision`, and
 // `admit_run_revision` compares that to `RLM_EXPECTED_REVISION`. GitHub defines `GITHUB_SHA` as the
@@ -605,20 +631,63 @@ fn build_provenance_blocker(run_id: String) -> ClosureBlocker {
   }
 }
 
-// THE REVISION ON THE RECEIPT IS THE ONE THIS RUN EXECUTED, CORROBORATED, NOT `GITHUB_SHA`.
+// THE EXIT STATUS MAY NEVER BE MORE OPTIMISTIC THAN THE ASSESSMENT.
 //
-// The first version read `GITHUB_SHA` and used it as the assessment revision. But this job checks out
-// `${{ github.event.inputs.expected_revision || github.ref }}`, and GitHub defines `GITHUB_SHA` as
-// the commit of the TRIGGERING EVENT. Those are the same only when nobody passed an expected
-// revision; a dispatch at S naming `expected_revision=R` executes R and would have labelled the
-// receipt S. Selecting a different checkout revision does not make the event's commit that
-// checkout's identity, and a receipt carrying the wrong revision is worse than one carrying none --
-// it is exactly the artifact a closure joins ON.
+// The previous version decided the process status from `retirement_route_succeeded` alone and spliced
+// the verdict into the receipt as text, reasoning that a bounded per-host execution cannot establish
+// the closure package and so must not let its exit code claim one. That reasoning is right and it
+// justified the wrong asymmetry: it argued against a green exit CLAIMING the closure, and what it
+// produced was a green exit ALONGSIDE a fold that says BLOCKED.
 //
-// SO IT REUSES THE EXACT-REVISION BINDING THE PLAN ROUTE ALREADY USES, unchanged:
-// `observe_actions_run_binding` reads the run's own facts, `read_expected_revision` reads the
-// operator-selected R, and `admit_run_revision` REFUSES when the two disagree rather than picking
-// one. The event SHA stays a separate fact inside the binding; it is corroboration, never the answer.
+// The failure is reachable and it is the direction that matters. Once srv2's units are actually
+// masked, stopped and quiescent, every invocation is `SlotRetirementAlreadySatisfied`,
+// `retirement_route_succeeded` is true, and the step exits zero -- while the receipt still carries
+// `assessment=BLOCKED` over an unread GitHub roster and an unresolved build provenance. The green is
+// what an operator and the next lane read; the refusal is a string inside an uploaded file. DESIGN
+// section 6 names that tier exactly: the machinery exists and nothing gates on it, and an inert lens
+// is itself a lie.
+//
+// SO THE TERMINAL IS A CONJUNCTION, AND THE TWO HALVES STILL MEAN DIFFERENT THINGS. A blocked
+// assessment forces a non-zero exit, because this run must never report success over its own refusal.
+// A clear assessment does NOT mint the closure -- that is still a join across a plan artifact,
+// authorized apply receipts, an independent readback and a second assessment at one revision, and it
+// is not this process's to claim. The exit says "this invocation found nothing outstanding that it
+// could see"; the verdict says what it could see.
+type RetirementRouteTerminal
+  = RouteSettled
+  | RouteRefused { cause: String }
+
+fn retirement_route_terminal(
+  succeeded: Bool,
+  verdict: RetirementAssessmentVerdict,
+) -> RetirementRouteTerminal {
+  if !succeeded {
+    RouteRefused {
+      cause: "not every required subject of this host is settled",
+    }
+  } else if !assessment_is_clear_of_blockers(v: verdict) {
+    RouteRefused {
+      cause: "every required subject is settled and this assessment still carries blockers; exiting zero here would report success over this run's own refusal",
+    }
+  } else {
+    RouteSettled
+  }
+}
+
+fn retirement_route_terminal_wire(t: RetirementRouteTerminal) -> String {
+  match t {
+    RouteSettled => "settled"
+    RouteRefused { cause: c } => join(["REFUSED ", c], "")
+  }
+}
+
+fn retirement_route_terminal_is_settled(t: RetirementRouteTerminal) -> Bool {
+  match t {
+    RouteSettled => true
+    RouteRefused { cause: _ } => false
+  }
+}
+
 fn runner_slot_retire_ci_wet() -> ProcessExit
   uses net: Network
 {
@@ -676,18 +745,22 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                     extra: [build_provenance_blocker(run_id: run_id)],
                     estate: estate_cleanup_standing(standings: retirement_route_estate_standings(run: run)),
                   )
+                  let terminal = retirement_route_terminal(
+                    succeeded: retirement_route_succeeded(run: run),
+                    verdict: verdict,
+                  )
                   let body = join([
                     "runner_slot_retire probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                     "revision=", revision, " run_id=", run_id, "\n",
                     context_receipt,
                     retirement_route_text(run: run),
                     assessment_verdict_text(v: verdict),
-                    "terminal=", if retirement_route_succeeded(run: run) { "settled" } else { "REFUSED" }, "\n",
+                    "terminal=", retirement_route_terminal_wire(t: terminal), "\n",
                   ], "")
                   let w = Filesystem.Write(path: runner_slot_retire_receipt_path, content: body)
                   if w.success == false {
                     exit_failure(reason: join(["runner_slot_retire: receipt write failed: ", w.error, "\n", body], ""))
-                  } else if retirement_route_succeeded(run: run) == false {
+                  } else if retirement_route_terminal_is_settled(t: terminal) == false {
                     exit_failure(reason: body)
                   } else {
                     ExitSuccess

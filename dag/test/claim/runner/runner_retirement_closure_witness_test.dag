@@ -57,6 +57,7 @@ import gunbc.runner_host_retirement {
   ObligationFromCapturedSnapshot,
   ObligationFromSearchBound,
   CaptureUnavailable,
+  surplus_identity_disposition,
   host_retirement_obligation_basis_of,
 }
 import gunbc.runner_retirement_closure {
@@ -661,6 +662,77 @@ test fn a_supplied_extra_blocker_blocks_the_assessment() -> Bool {
       basis: grounded_basis(),
       estate: complete_estate(),
       extra: [ClosureBlocker { subject: "assessment-build-provenance", cause: "unresolved" }],
+    ),
+  )
+}
+
+// ── R7: THE GROUNDED BASIS AND THE ASSESSED POPULATION MUST COVER EACH OTHER ─────────────────
+
+// THE REQUIRED CONTROL: a captured identity omitted from the assessed population. Grounding succeeds
+// because the basis is captured, and the previous verdict inspected only `required` -- so `v`
+// produced no blocker at all.
+test fn a_captured_identity_missing_from_the_assessment_blocks() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: ObligationFromCapturedSnapshot {
+        observed_on: "2026-09-19" as NonEmptyStr,
+        units: [
+          "actions-runner@srv2-01.service" as NonEmptyStr,
+          "actions-runner@srv2-02.service" as NonEmptyStr,
+        ],
+      },
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// AND THE OTHER DIRECTION: an assessed retiree the grounded capture does not support.
+test fn an_assessed_identity_absent_from_the_capture_blocks() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: ObligationFromCapturedSnapshot {
+        observed_on: "2026-09-19" as NonEmptyStr,
+        units: ["actions-runner@srv2-09.service" as NonEmptyStr],
+      },
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// A COMPLETE-EMPTY CAPTURE WITH AN EMPTY ASSESSED POPULATION COVERS EXACTLY, so the coverage join
+// does not make an honestly empty host permanently red.
+test fn a_complete_empty_capture_covers_an_empty_population() -> Bool {
+  assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: [],
+      standings: [],
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: ObligationFromCapturedSnapshot { observed_on: "2026-09-19" as NonEmptyStr, units: [] },
+      estate: complete_estate(),
+      extra: [],
     ),
   )
 }

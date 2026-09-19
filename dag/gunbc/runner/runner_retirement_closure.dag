@@ -23,6 +23,7 @@ import gunbc.runner_slot_retirement {
 import gunbc.runner_host_retirement {
   SurplusIdentityDisposition,
   surplus_identity_disposition,
+  host_retirement_capture,
   surplus_identity_blocks_closure,
   surplus_identity_within_retirement_scope,
   surplus_identity_name,
@@ -32,6 +33,9 @@ import gunbc.runner_host_retirement {
   EstateObligation,
   estate_obligation_wire,
   RetireeObligationBasis,
+  ObligationFromCapturedSnapshot,
+  ObligationFromSearchBound,
+  ObligationAbsent,
   retiree_obligation_ungrounded_cause,
 }
 
@@ -138,6 +142,7 @@ fn roster_surplus_dispositions(
         host: host,
         decoding: decode_registration_slot(reg: r),
         name: r.name,
+        capture: host_retirement_capture(host: host),
       ))
   }
 }
@@ -217,6 +222,39 @@ fn grounding_blockers(host: HostIdentity, basis: RetireeObligationBasis) -> List
         cause: c,
       },
     ]
+  }
+}
+
+// THE GROUNDED BASIS AND THE ASSESSED POPULATION MUST COVER EACH OTHER EXACTLY.
+//
+// The verdict received both `basis` and `required` and checked only the basis's GROUNDING, never
+// joining its captured identities to the population actually assessed. So a complete capture naming
+// [u, v] against a required set of [u] produced no blocker for v: grounding succeeded because the
+// basis was captured, and `retiree_blockers` inspected only `required`. That is the omitted-member
+// shape rebuilt at the boundary added to prevent it, one layer up.
+//
+// The join is by exact identity in BOTH directions. A captured identity missing from the assessment
+// is unassessed; an assessed identity absent from a complete capture is an obligation the grounded
+// evidence does not support, and neither is a discrepancy a count would show.
+fn basis_coverage_blockers(basis: RetireeObligationBasis, required: List<NonEmptyStr>) -> List<ClosureBlocker> {
+  match basis {
+    ObligationAbsent { host: _ } => []
+    ObligationFromSearchBound { units: _, bound: _, cause: _ } => []
+    ObligationFromCapturedSnapshot { observed_on: _, units: us } =>
+      concat(
+        us
+          |> filter(u => !any(required, r => (r as String) == (u as String)))
+          |> map(u => ClosureBlocker {
+              subject: u as String,
+              cause: "this identity is in the grounded owned-identity capture and is absent from the population this assessment covered, so nothing was established about it",
+            }),
+        required
+          |> filter(r => !any(us, u => (u as String) == (r as String)))
+          |> map(r => ClosureBlocker {
+              subject: r as String,
+              cause: "this identity was assessed as a required retiree but is absent from the grounded owned-identity capture, so the evidence does not support the obligation claimed for it",
+            }),
+      )
   }
 }
 
@@ -306,7 +344,10 @@ fn retirement_assessment_verdict(
       ),
     ),
     concat(
-      concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
+      concat(
+        concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
+        basis_coverage_blockers(basis: basis, required: required),
+      ),
       concat(estate_blockers(host: host, estate: estate), extra),
     ),
   )
