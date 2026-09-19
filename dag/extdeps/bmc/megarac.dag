@@ -428,16 +428,16 @@ service megarac.Media {
     }
   }
 
-  operation GetSession {
+  operation ProbeSessionOnMediaRoute {
     input { bmc_host: NonEmptyStr, cookie_jar: NonEmptyStr, csrf_token: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
-      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}/api/session"]
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "-b", "{cookie_jar}", "-H", "X-CSRFTOKEN: {csrf_token}", "-w", "\\n%\{http_code}", "https://{bmc_host}/api/settings/media/remote/configurations"]
     }
     exit {
       0 => Unit
-      nonzero => String "megarac session GET failed"
+      nonzero => String "megarac session probe on the media route failed"
     }
   }
 

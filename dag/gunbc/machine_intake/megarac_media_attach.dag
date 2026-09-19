@@ -79,10 +79,12 @@ import extdeps.languages.json.parse {
 //
 // A LOST OR UNCLASSIFIED GET IS NOT A RELEASED SESSION. CloseSession's own exit is discarded on
 // purpose (this firmware has answered HTTP 401 on DELETE while an independent probe showed the
-// session gone). The standing is the GET that follows. GetSession uses curl --fail-with-body plus
-// a trailing `%{http_code}` write-out, so a timeout (`000`), a drop, and an HTTP 401 are different
-// stdout. Only 401 after a parsed X-CSRFTOKEN is evidence the cookie no longer authenticates;
-// every other failed GET, and any GET that used a sentinel header, stays SessionReleaseRefused.
+// session gone). The standing is the probe that follows, on a route this firmware serves
+// (ProbeSessionOnMediaRoute), with curl --fail-with-body plus a trailing `%{http_code}` write-out,
+// so a timeout (`000`), a drop, and an HTTP 401 are different stdout. Only a 401/403 after a
+// SUCCEEDING probe before the close, under a parsed X-CSRFTOKEN, is evidence the cookie no longer
+// authenticates; every other outcome, and any probe that used a sentinel header, stays
+// SessionReleaseRefused.
 type SessionRelease
   = SessionReleased
   | SessionReleaseRefused { detail: String }
@@ -200,12 +202,14 @@ fn megarac_session_get_writeout_code(get_body: String) -> String {
   }
 }
 
-// WHAT ONE GET /api/session ESTABLISHES, AND NOTHING MORE. A succeeding GET is a session the
-// controller still recognises. A GET the controller refuses with 401 or 404 is a cookie it no
-// longer names -- MegaRAC answers 404 here after DELETE (boot 20, run 35437393331), 401 on some
-// builds -- and either is the ABSENCE observation, but only when the write-out code is the last
-// line: a mid-body code with a different trailer is not a status. Anything else (000, a truncated
-// body, no trailer) is unreadable and is refused, never widened into absent.
+// WHAT ONE COOKIE-BEARING GET ESTABLISHES, AND NOTHING MORE. The probe is a readonly GET on a
+// route THIS firmware serves (the remote-media configurations route, which OpenSession's cookie
+// succeeds on moments earlier), with the HTTP status as the trailing line. A succeeding GET is a
+// session the controller still recognises; a 401 or 403 is a cookie it no longer names -- the
+// ABSENCE observation. GET /api/session is NOT that route on this unit: it answers 404 with a live
+// cookie (boots 20 and 21, runs 35437393331 and 35445470385), so a 404 here is the route missing,
+// not the session, and is refused as unreadable rather than widened into absent. A mid-body code
+// with a different trailer is not a status either.
 type SessionPresence
   = SessionPresent
   | SessionAbsent { code: String }
@@ -216,7 +220,7 @@ fn megarac_session_presence(get_succeeded: Bool, get_body: String) -> SessionPre
     SessionPresent
   } else {
     let code = megarac_session_get_writeout_code(get_body: get_body)
-    if code == "401" || code == "404" {
+    if code == "401" || code == "403" {
       SessionAbsent { code: code }
     } else {
       SessionPresenceUnreadable { detail: get_body }
@@ -236,20 +240,20 @@ fn megarac_session_release_by_reobservation(
 ) -> SessionRelease {
   match csrf {
     SessionCsrfUnreadable =>
-      SessionReleaseRefused { detail: "GET /api/session around CloseSession used a sentinel X-CSRFTOKEN because the token was unreadable; a refusal here does not prove the cookie is gone" }
+      SessionReleaseRefused { detail: "the session probe around CloseSession used a sentinel X-CSRFTOKEN because the token was unreadable; a refusal here does not prove the cookie is gone" }
     SessionCsrfParsed =>
       match before {
         SessionPresent =>
           match after {
             SessionAbsent { code: _ } => SessionReleased
-            SessionPresent => SessionReleaseRefused { detail: "GET /api/session still succeeded after CloseSession" }
+            SessionPresent => SessionReleaseRefused { detail: "the session probe still succeeded after CloseSession" }
             SessionPresenceUnreadable { detail: d } =>
-              SessionReleaseRefused { detail: concat("GET /api/session after CloseSession was unreadable; refusing to treat the session as released: ", d) }
+              SessionReleaseRefused { detail: concat("the session probe after CloseSession was unreadable; refusing to treat the session as released: ", d) }
           }
         SessionAbsent { code: c } =>
-          SessionReleaseRefused { detail: concat("GET /api/session was already refused BEFORE CloseSession (code ", concat(c, "); a refusal after it proves nothing about release -- the route or the cookie was not observable")) }
+          SessionReleaseRefused { detail: concat("the session probe was already refused BEFORE CloseSession (code ", concat(c, "); a refusal after it proves nothing about release -- the route or the cookie was not observable")) }
         SessionPresenceUnreadable { detail: d } =>
-          SessionReleaseRefused { detail: concat("GET /api/session before CloseSession was unreadable; refusing to adjudicate release: ", d) }
+          SessionReleaseRefused { detail: concat("the session probe before CloseSession was unreadable; refusing to adjudicate release: ", d) }
       }
   }
 }
@@ -262,7 +266,7 @@ fn megarac_close_and_reobserve(
 ) -> SessionRelease
   uses net: std.resources.Network
 {
-  let before_get = megarac.Media.GetSession(
+  let before_get = megarac.Media.ProbeSessionOnMediaRoute(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
@@ -273,7 +277,7 @@ fn megarac_close_and_reobserve(
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
   )
-  let after_get = megarac.Media.GetSession(
+  let after_get = megarac.Media.ProbeSessionOnMediaRoute(
     bmc_host: bmc_host,
     cookie_jar: cookie_jar,
     csrf_token: csrf_token,
