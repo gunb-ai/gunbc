@@ -469,35 +469,36 @@ fn slowest_run(runs: List<QualificationRun>) -> QualificationRun? {
   )
 }
 
-fn first_unreadable_run(runs: List<QualificationRun>) -> QualificationRun? {
+// THE UNREADABLE RUN AND ITS REASON ARE ONE FOLD, so no arm has to invent a reason for a run whose
+// bound resolved -- that state is unreachable here by construction rather than by a string.
+type UnreadableRun {
+  run: QualificationRun
+  reason: NonEmptyStr
+}
+
+fn run_unreadable_reason(run: QualificationRun) -> NonEmptyStr? {
+  match run.memory {
+    CgroupMemoryUnreadable { reason: r } => Present { value: r }
+    CgroupMemoryRead { level: _, bound: b, peak: _ } =>
+      match b {
+        HostBudgetUnreadable { reason: r } => Present { value: r }
+        HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => none
+        HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => none
+      }
+  }
+}
+
+fn first_unreadable_run(runs: List<QualificationRun>) -> UnreadableRun? {
   fold(runs, init: none, f: (acc, r) =>
     match acc {
       Present { value: _ } => acc
       Absent =>
-        match r.memory {
-          CgroupMemoryUnreadable { reason: _ } => Present { value: r }
-          CgroupMemoryRead { level: _, bound: b, peak: _ } =>
-            match b {
-              HostBudgetUnreadable { reason: _ } => Present { value: r }
-              HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => acc
-              HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => acc
-            }
+        match run_unreadable_reason(run: r) {
+          Absent => acc
+          Present { value: reason } => Present { value: UnreadableRun { run: r, reason: reason } }
         }
     }
   )
-}
-
-fn unreadable_reason(run: QualificationRun) -> NonEmptyStr {
-  match run.memory {
-    CgroupMemoryUnreadable { reason: r } => r
-    CgroupMemoryRead { level: _, bound: b, peak: _ } =>
-      match b {
-        HostBudgetUnreadable { reason: r } => r
-        HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => r
-        HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } =>
-          "the run's bound resolved" as NonEmptyStr
-      }
-  }
 }
 
 // ── THE FOLD ──────────────────────────────────────────────────────────────────────────────────
@@ -519,8 +520,8 @@ fn qualify_runner_throughput(subject: RunnerThroughputQualification) -> RunnerTh
             Present { value: unreadable } =>
               HostBudgetUnreadableRefusal {
                 host: subject.host,
-                run: unreadable.run,
-                reason: unreadable_reason(run: unreadable),
+                run: unreadable.run.run,
+                reason: unreadable.reason,
               }
             Absent => {
               let receipt = receipt_for_run(subject: subject, run: speaks)
