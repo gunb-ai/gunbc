@@ -1899,7 +1899,10 @@ pub(crate) fn enrolment_margin_standing_for(
                         cause: "no_claim_cost_row_for_a_planned_identity".to_string(),
                     };
                 }
-                _ => {}
+                // The admitting arms are spelled, never a wildcard: a new reading shape must be
+                // given a disposition here rather than default to admit (review 68380).
+                EnrolmentDeclaredCostReading::Observed { .. }
+                | EnrolmentDeclaredCostReading::BoundWithoutCeiling { .. } => {}
             }
         }
         return EnrolmentMarginStanding::ExpensivenessDeclared { ground, reading };
