@@ -13,13 +13,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // in this repository compiles Swift, so it executes only when an operator runs it on a MacBook, and
 // nothing on the merge path has ever compiled the Swift under apps/approve-ios. The equivalence is
 // therefore a claim at the mitigation rung whose only evidence is operator-executed, not an
-// established hold; approve_ios_vector_check_unenrolled_frontier names what would enrol it. TWO
-// things the suite reads land with a separate change to
-// gunbc.auth.approval_device_redemption_fixtures: the stored_request section (stored_request_specimens)
-// and the redemption_response_enrollment_revoked / redemption_response_enrollment_unknown envelopes
-// (redemption_response_of over DeviceEnrollmentRevoked and DeviceEnrollmentUnknown). Against a
-// fixture predating them the RED SET IS EXACTLY testStoredRequestReadMatchesEveryVector and
-// testResponsesDecode; every other test decodes and runs.
+// established hold; approve_ios_vector_check_unenrolled_frontier names what would enrol it. Every
+// section the suite reads is emitted by gunbc.auth.approval_device_redemption_fixtures (the
+// stored_request section by stored_request_specimens; the outcome envelopes through
+// redemption_response_of), so a fixture regenerated from that module carries all of it.
 //
 // WHY HAND-AUTHORED, stated as the §7 frontier row requires: extdeps.languages.swift carries a
 // subject citation and no emit transforms, so the substrate cannot emit this program today. The
