@@ -9,6 +9,7 @@ import v2.std.grammar {
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
+  LiteralTerminal,
   Nonterminal,
   Optional,
   Sequence,
@@ -21,6 +22,7 @@ import v2.std.grammar {
 }
 import v2.compiler.parse {
   ChoiceByToken,
+  ChoiceByWord,
   ChoiceReject,
   ChoiceSharedPrefix,
   ChoiceTokenPrefix,
@@ -379,4 +381,79 @@ test fn prepared_choice_stamp_split_agrees_with_ordered_oracle() -> Bool {
       pcp_observe(expr: stamp_split, tokens: two_a) == oracle_parse_choice(left: stamp_split_left, right: stamp_split_right, tokens: two_a)
     _ => false
   }
+}
+
+// LITERAL TERMINALS: A CLASS PREFIX CANNOT TELL MARKER WORDS APART; THE WORD KEY CAN.
+//
+// Two alternatives led by different exact words of ONE class share every class prefix, so under
+// class-only keying they are ambiguous at any lookahead depth. Keyed on (class, word) they are
+// disjoint. The pair below differs ONLY in its leading word; the control is the same pair with the
+// word dropped (plain class terminals), which must still read as ambiguous. Together they are the
+// evidence that word keying does something -- none of the class-only rows above can show it.
+
+fn pcp_word_token(word: String) -> Token {
+  Token { class: ^pcp_word, lexeme: word, file: ^pcp_file, start: 0, end: 1 }
+}
+
+fn lit(lexeme: Symbol) -> GrammarExpr {
+  LiteralTerminal { token_class: ^pcp_word, lexeme: lexeme }
+}
+
+fn pcp_word_pair() -> GrammarExpr {
+  Choice {
+    left: seq(left: lit(lexeme: ^alpha), right: term(token_class: ^pcp_a)),
+    right: seq(left: lit(lexeme: ^beta), right: term(token_class: ^pcp_b))
+  }
+}
+
+fn pcp_class_pair() -> GrammarExpr {
+  Choice {
+    left: seq(left: term(token_class: ^pcp_word), right: term(token_class: ^pcp_a)),
+    right: seq(left: term(token_class: ^pcp_word), right: term(token_class: ^pcp_b))
+  }
+}
+
+test fn literal_words_sharing_a_class_prefix_validate_without_overlap_residue() -> Bool {
+  pcp_validate_accepts_without_overlap_residue(expr: pcp_word_pair())
+}
+
+test fn the_same_pair_keyed_by_class_alone_leaves_overlap_residue() -> Bool {
+  !pcp_validate_accepts_without_overlap_residue(expr: pcp_class_pair())
+}
+
+test fn the_class_bucket_of_a_word_pair_dispatches_on_the_word() -> Bool {
+  match pcp_plan_on_token(plan: pcp_choice_plan(expr: pcp_word_pair()), token_class: ^pcp_word) {
+    ChoiceByWord { on_word: _, on_other: _ } => true
+    _ => false
+  }
+}
+
+test fn the_second_word_parses_through_its_own_alternative() -> Bool {
+  let tokens = [pcp_word_token(word: "beta"), pcp_token(token_class: ^pcp_b)]
+  let observed = pcp_observe(expr: pcp_word_pair(), tokens: tokens)
+  let consumed_all = match observed {
+    ObservedAccepted { remaining: r, captured: _ } => r == 0
+    ObservedRejected => false
+  }
+  consumed_all
+    && observed == oracle_parse_choice(
+      left: seq(left: lit(lexeme: ^alpha), right: term(token_class: ^pcp_a)),
+      right: seq(left: lit(lexeme: ^beta), right: term(token_class: ^pcp_b)),
+      tokens: tokens
+    )
+}
+
+test fn a_literal_terminal_rejects_a_different_word_of_its_class() -> Bool {
+  pcp_observe_root(root: pcp_root(), expr: lit(lexeme: ^alpha), tokens: [pcp_word_token(word: "gamma")]) == ObservedRejected
+}
+
+// MATCHING IS NOT STAMPING. A literal terminal captures exactly what a StampClass terminal of its
+// class captures on the same token -- the class identity -- and NOT what a StampLexeme terminal
+// captures (the token's own text as atom identity).
+test fn a_literal_terminal_publishes_the_class_identity_not_its_word() -> Bool {
+  let tokens = [pcp_word_token(word: "alpha")]
+  let literal = pcp_observe_root(root: pcp_root(), expr: lit(lexeme: ^alpha), tokens: tokens)
+  let by_class = pcp_observe_root(root: pcp_root(), expr: term(token_class: ^pcp_word), tokens: tokens)
+  let by_lexeme = pcp_observe_root(root: pcp_root(), expr: term_stamp(token_class: ^pcp_word, stamp: StampLexeme), tokens: tokens)
+  literal == by_class && literal != by_lexeme && literal != ObservedRejected
 }

@@ -117,11 +117,13 @@ import v2.std.compilers.lexing {
   Token,
   TokenStream,
   symbol_intern_lexeme,
+  symbol_lexeme,
   token_stream_remaining,
   token_stream_remaining_count
 }
 import v2.std.grammar {
   Choice,
+  LiteralTerminal,
   ParseGrammar,
   GrammarExpr,
   GrammarExprFold,
@@ -288,7 +290,7 @@ type ParseTableRealization {
   memo_misses: Int
   memo_lookup_calls: Int
   nullable_set: List<Symbol>
-  first_rows: Map<Symbol, List<Symbol>>
+  first_rows: Map<Symbol, List<FirstKey>>
   productions_by_name: Map<Symbol, GrammarProduction>
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
 }
@@ -1313,6 +1315,7 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: List<Symbol>) -> 
     expr: expr,
     algebra: GrammarExprFold {
       terminal: fn(_, _) { false },
+      literal_terminal: fn(_, _) { false },
       nonterminal: fn(name) { symbol_list_contains(xs: nullable_set, item: name) },
       sequence: fn(left_nullable, right_nullable) { left_nullable && right_nullable },
       choice: fn(left_nullable, right_nullable) { left_nullable || right_nullable },
@@ -1384,8 +1387,77 @@ fn compute_nullable_set(root: GrammarRoot) -> List<Symbol> {
   )
 }
 
+// A FIRST ELEMENT IS A CLASS, OR ONE EXACT WORD OF A CLASS. The second arm exists for
+// `v2.std.grammar` `LiteralTerminal`: marker words (`input`, `output`, `exit`, ...) are all idents,
+// and alternatives led by different words share EVERY class prefix -- `input {` and `output {` are
+// both [ident, lbrace, ident, colon, ...] -- so no lookahead depth over classes can tell them
+// apart. The word has to be part of the key. Equality, overlap and token admission are each
+// defined ONCE below; a second definition that ignored the word would dispatch to the wrong
+// alternative with every claim still green.
+type FirstKey
+  = FirstAnyOfClass { token_class: Symbol }
+  | FirstExactWord { token_class: Symbol, lexeme: Symbol }
+
+fn first_key_class(key: FirstKey) -> Symbol {
+  match key {
+    FirstAnyOfClass { token_class: c } => c
+    FirstExactWord { token_class: c, lexeme: _ } => c
+  }
+}
+
+// Identity: the same key, word included.
+fn first_key_eq(left: FirstKey, right: FirstKey) -> Bool {
+  match left {
+    FirstAnyOfClass { token_class: lc } =>
+      match right {
+        FirstAnyOfClass { token_class: rc } => lc == rc
+        FirstExactWord { token_class: _, lexeme: _ } => false
+      }
+    FirstExactWord { token_class: lc, lexeme: lw } =>
+      match right {
+        FirstExactWord { token_class: rc, lexeme: rw } => lc == rc && lw == rw
+        FirstAnyOfClass { token_class: _ } => false
+      }
+  }
+}
+
+// Overlap: some single token satisfies both keys. Any-of-class overlaps every word of its class;
+// two exact words overlap only when they are the same word.
+fn first_key_overlaps(left: FirstKey, right: FirstKey) -> Bool {
+  if first_key_class(key: left) == first_key_class(key: right) {
+    match left {
+      FirstAnyOfClass { token_class: _ } => true
+      FirstExactWord { token_class: _, lexeme: lw } =>
+        match right {
+          FirstAnyOfClass { token_class: _ } => true
+          FirstExactWord { token_class: _, lexeme: rw } => lw == rw
+        }
+    }
+  } else {
+    false
+  }
+}
+
+// Admission: this key can start on a token of this class carrying this word.
+fn first_key_admits_word(key: FirstKey, token_class: Symbol, word: String) -> Bool {
+  match key {
+    FirstAnyOfClass { token_class: c } => c == token_class
+    FirstExactWord { token_class: c, lexeme: w } => c == token_class && symbol_lexeme(sym: w) == word
+  }
+}
+
+fn first_keys_classes(keys: List<FirstKey>) -> List<Symbol> {
+  fold_list(xs: keys, empty: std.algebra.Empty, cons: fn(acc, k) {
+    set_symbol_insert(s: acc, item: first_key_class(key: k))
+  })
+}
+
+fn first_keys_contains(xs: List<FirstKey>, item: FirstKey) -> Bool {
+  contains(xs: xs, item: item, eq: fn(a, b) { first_key_eq(left: a, right: b) })
+}
+
 type GrammarExprFirstFold {
-  terminals: List<Symbol>
+  terminals: List<FirstKey>
   nullable: Bool
 }
 
@@ -1416,14 +1488,14 @@ type GrammarExprFirstFold {
 // arm alone.
 type GrammarFirstAnalysis {
   nullable_set: List<Symbol>
-  first_rows: Map<Symbol, List<Symbol>>
+  first_rows: Map<Symbol, List<FirstKey>>
   prepared_exprs: Map<Symbol, PreparedGrammarExpr>
   grammar_digest: Hash
   productions_by_name: Map<Symbol, GrammarProduction>
   choice_residue: List<GrammarChoiceAmbiguityRow>
 }
 
-fn grammar_empty_terminal_list() -> List<Symbol> {
+fn grammar_empty_terminal_list() -> List<FirstKey> {
   std.algebra.Empty
 }
 
@@ -1431,12 +1503,12 @@ fn symbol_list_contains(xs: List<Symbol>, item: Symbol) -> Bool {
   contains(xs: xs, item: item, eq: fn(a, b) { a == b })
 }
 
-fn first_list_union(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
+fn first_list_union(left: List<FirstKey>, right: List<FirstKey>) -> List<FirstKey> {
   fold_list(
     xs: right,
     empty: left,
     cons: fn(acc, sym) {
-      if symbol_list_contains(xs: acc, item: sym) {
+      if first_keys_contains(xs: acc, item: sym) {
         acc
       } else {
         list_snoc_item(xs: acc, item: sym)
@@ -1445,14 +1517,15 @@ fn first_list_union(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
   )
 }
 
-fn first_list_intersect(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
+// The keys of `left` that some key of `right` overlaps -- a token could start both.
+fn first_list_intersect(left: List<FirstKey>, right: List<FirstKey>) -> List<FirstKey> {
   filter(
     xs: left,
-    predicate: fn(sym) { symbol_list_contains(xs: right, item: sym) }
+    predicate: fn(k) { any(xs: right, predicate: fn(r) { first_key_overlaps(left: k, right: r) }) }
   )
 }
 
-fn production_first_row_lookup(rows: Map<Symbol, List<Symbol>>, name: Symbol) -> List<Symbol> {
+fn production_first_row_lookup(rows: Map<Symbol, List<FirstKey>>, name: Symbol) -> List<FirstKey> {
   match v2.std.collection.map_get(m: rows, key: name) {
     Accepted { value: Present { value: terminals }, diagnostics: _ } => terminals
     Accepted { value: Absent, diagnostics: _ } => grammar_empty_terminal_list()
@@ -1462,7 +1535,14 @@ fn production_first_row_lookup(rows: Map<Symbol, List<Symbol>>, name: Symbol) ->
 
 fn expr_first_fold_terminal(token_class: Symbol) -> GrammarExprFirstFold {
   GrammarExprFirstFold {
-    terminals: Cons { head: token_class, tail: std.algebra.Empty },
+    terminals: Cons { head: FirstAnyOfClass { token_class: token_class }, tail: std.algebra.Empty },
+    nullable: false
+  }
+}
+
+fn expr_first_fold_literal(token_class: Symbol, lexeme: Symbol) -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: Cons { head: FirstExactWord { token_class: token_class, lexeme: lexeme }, tail: std.algebra.Empty },
     nullable: false
   }
 }
@@ -1470,7 +1550,7 @@ fn expr_first_fold_terminal(token_class: Symbol) -> GrammarExprFirstFold {
 fn expr_first_fold_nonterminal(
   name: Symbol,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
+  first_rows: Map<Symbol, List<FirstKey>>
 ) -> GrammarExprFirstFold {
   GrammarExprFirstFold {
     terminals: production_first_row_lookup(rows: first_rows, name: name),
@@ -1506,12 +1586,13 @@ fn expr_first_fold_repeat(element: GrammarExprFirstFold) -> GrammarExprFirstFold
 fn expr_first_fold(
   expr: GrammarExpr,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
+  first_rows: Map<Symbol, List<FirstKey>>
 ) -> GrammarExprFirstFold {
   fold_grammar_expr(
     expr: expr,
     algebra: GrammarExprFold {
       terminal: fn(token_class, _) { expr_first_fold_terminal(token_class: token_class) },
+      literal_terminal: fn(token_class, lexeme) { expr_first_fold_literal(token_class: token_class, lexeme: lexeme) },
       nonterminal: fn(name) {
         expr_first_fold_nonterminal(name: name, nullable_set: nullable_set, first_rows: first_rows)
       },
@@ -1524,10 +1605,10 @@ fn expr_first_fold(
 }
 
 fn compute_production_first_row_terminals(
-  rows: Map<Symbol, List<Symbol>>,
+  rows: Map<Symbol, List<FirstKey>>,
   p: GrammarProduction,
   nullable_set: List<Symbol>
-) -> List<Symbol> {
+) -> List<FirstKey> {
   expr_first_fold(
     expr: p.expression,
     nullable_set: nullable_set,
@@ -1538,8 +1619,8 @@ fn compute_production_first_row_terminals(
 fn compute_production_first_rows_round(
   root: GrammarRoot,
   nullable_set: List<Symbol>,
-  rows: Map<Symbol, List<Symbol>>
-) -> Map<Symbol, List<Symbol>> {
+  rows: Map<Symbol, List<FirstKey>>
+) -> Map<Symbol, List<FirstKey>> {
   fold_list(
     xs: root.productions,
     empty: rows,
@@ -1562,7 +1643,7 @@ fn compute_production_first_rows_round(
 // a round adds nothing. Measured on the live `.dag` grammar this one needs MORE than four rounds —
 // unlike nullable — which is why the stopping rule is a measured convergence rather than a
 // constant anybody picked.
-fn production_first_rows_total(root: GrammarRoot, rows: Map<Symbol, List<Symbol>>) -> Int {
+fn production_first_rows_total(root: GrammarRoot, rows: Map<Symbol, List<FirstKey>>) -> Int {
   fold_list(
     xs: root.productions,
     empty: 0,
@@ -1575,10 +1656,10 @@ fn production_first_rows_total(root: GrammarRoot, rows: Map<Symbol, List<Symbol>
 fn compute_production_first_rows_fixpoint(
   root: GrammarRoot,
   nullable_set: List<Symbol>,
-  rows: Map<Symbol, List<Symbol>>,
+  rows: Map<Symbol, List<FirstKey>>,
   seen_total: Int,
   fuel: Int
-) -> Map<Symbol, List<Symbol>> {
+) -> Map<Symbol, List<FirstKey>> {
   if fuel == 0 {
     rows
   } else {
@@ -1601,7 +1682,7 @@ fn compute_production_first_rows_fixpoint(
 fn compute_production_first_rows(
   root: GrammarRoot,
   nullable_set: List<Symbol>
-) -> Map<Symbol, List<Symbol>> {
+) -> Map<Symbol, List<FirstKey>> {
   compute_production_first_rows_fixpoint(
     root: root,
     nullable_set: nullable_set,
@@ -1631,6 +1712,13 @@ type PreparedChoicePlan
       suffix: PreparedChoicePlan
     }
   | ChoiceTokenPrefix { rows: List<TokenPrefixRow> }
+  // Inside one token-class bucket: dispatch on the token's WORD. `on_word` holds, per exact word
+  // some alternative starts with, every alternative that can start on that word (the exact ones
+  // and every any-of-class one, in authored order); `on_other` holds the any-of-class ones alone.
+  | ChoiceByWord {
+      on_word: Map<String, PreparedChoicePlan>
+      on_other: PreparedChoicePlan
+    }
   | ChoiceOrderedBacktrack {
       alternatives: List<PreparedGrammarExpr>
     }
@@ -1639,6 +1727,7 @@ type PreparedChoicePlan
 
 type PreparedGrammarExpr
   = PreparedTerminal { token_class: Symbol, stamp: TerminalStampMode }
+  | PreparedLiteralTerminal { token_class: Symbol, lexeme: Symbol }
   | PreparedNonterminal { production: Symbol }
   | PreparedSequence { left: PreparedGrammarExpr, right: PreparedGrammarExpr }
   | PreparedChoice { plan: PreparedChoicePlan, first: GrammarExprFirstFold }
@@ -1713,6 +1802,14 @@ fn prepared_prefix_atom_eq(left: PreparedGrammarExpr, right: PreparedGrammarExpr
           (lc == rc) && prepared_stamp_eq(left: ls, right: rs)
         _ => false
       }
+    PreparedLiteralTerminal { token_class: lc, lexeme: lw } =>
+      match right {
+        PreparedLiteralTerminal { token_class: rc, lexeme: rw } => first_key_eq(
+          left: FirstExactWord { token_class: lc, lexeme: lw },
+          right: FirstExactWord { token_class: rc, lexeme: rw }
+        )
+        _ => false
+      }
     PreparedNonterminal { production: lp } =>
       match right {
         PreparedNonterminal { production: rp } => lp == rp
@@ -1727,6 +1824,7 @@ fn prepared_sequence_left_atom(expr: PreparedGrammarExpr) -> Optional<PreparedGr
     PreparedSequence { left: left, right: _ } =>
       match left {
         PreparedTerminal { token_class: _, stamp: _ } => optional_present(value: left)
+        PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_present(value: left)
         PreparedNonterminal { production: _ } => optional_present(value: left)
         _ => optional_absent()
       }
@@ -1759,8 +1857,9 @@ fn choice_alts_union_first_from(
   }
 }
 
+// The token CLASSES any alternative can start on; words are dispatched inside a class bucket.
 fn choice_alts_terminal_universe(alts: List<PreparedExprFold>) -> List<Symbol> {
-  choice_alts_union_first(alts: alts).terminals
+  first_keys_classes(keys: choice_alts_union_first(alts: alts).terminals)
 }
 
 // Flattened n-way: a token bucket is every alternative that can start on that token, in authored
@@ -1772,7 +1871,7 @@ fn choice_alts_for_present_token(alts: List<PreparedExprFold>, token_class: Symb
     HeadFound { value: alt } =>
       let first = prepared_expr_fold_first(alt: alt)
       let keep =
-        if symbol_list_contains(xs: first.terminals, item: token_class) {
+        if any(xs: first.terminals, predicate: fn(k) { first_key_class(key: k) == token_class }) {
           true
         } else {
           first.nullable
@@ -1837,6 +1936,9 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
         } else {
           optional_absent()
         }
+      // A class-only prefix cannot represent an exact word, so a literal terminal refuses the
+      // token-prefix row form; its word was already dispatched by ChoiceByWord.
+      PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
       PreparedSequence { left: left, right: right } =>
         match left {
           PreparedTerminal { token_class: token_class, stamp: _ } =>
@@ -1914,7 +2016,7 @@ fn choice_shared_prefix_suffixes(
   alts: List<PreparedExprFold>,
   prefix: PreparedGrammarExpr,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
+  first_rows: Map<Symbol, List<FirstKey>>
 ) -> Optional<List<PreparedExprFold>> {
   choice_shared_prefix_suffixes_from(
     alts: alts,
@@ -1929,7 +2031,7 @@ fn choice_shared_prefix_suffixes_from(
   alts: List<PreparedExprFold>,
   prefix: PreparedGrammarExpr,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>,
+  first_rows: Map<Symbol, List<FirstKey>>,
   suffixes: List<PreparedExprFold>
 ) -> Optional<List<PreparedExprFold>> {
   match list_head(xs: alts) {
@@ -1972,11 +2074,13 @@ fn choice_shared_prefix_suffixes_from(
 fn expr_first_fold_from_prepared(
   expr: PreparedGrammarExpr,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>
+  first_rows: Map<Symbol, List<FirstKey>>
 ) -> GrammarExprFirstFold {
   match expr {
     PreparedTerminal { token_class: token_class, stamp: _ } =>
       expr_first_fold_terminal(token_class: token_class)
+    PreparedLiteralTerminal { token_class: token_class, lexeme: lexeme } =>
+      expr_first_fold_literal(token_class: token_class, lexeme: lexeme)
     PreparedNonterminal { production: production } =>
       expr_first_fold_nonterminal(name: production, nullable_set: nullable_set, first_rows: first_rows)
     PreparedSequence { left: left, right: right } =>
@@ -2011,9 +2115,9 @@ fn ordered_backtrack_row(
   }
   GrammarChoiceAmbiguityRow {
     production: production,
-    left_first_terminals: left.terminals,
-    right_first_terminals: right.terminals,
-    overlap_terminals: first_list_intersect(left: left.terminals, right: right.terminals),
+    left_first_terminals: first_keys_classes(keys: left.terminals),
+    right_first_terminals: first_keys_classes(keys: right.terminals),
+    overlap_terminals: first_keys_classes(keys: first_list_intersect(left: left.terminals, right: right.terminals)),
     both_nullable: left.nullable && right.nullable
   }
 }
@@ -2046,7 +2150,7 @@ fn authored_choice_site_residue(alts: List<PreparedExprFold>, production: Symbol
 fn compile_choice_alts(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>,
+  first_rows: Map<Symbol, List<FirstKey>>,
   token_dispatch: Bool
 ) -> PreparedChoicePlan {
   match length(xs: alts) {
@@ -2095,10 +2199,80 @@ fn compile_choice_alts(
   }
 }
 
+// The exact words of one class that some alternative starts with, in authored order, deduplicated.
+fn class_bucket_words(alts: List<PreparedExprFold>, token_class: Symbol) -> List<Symbol> {
+  fold_list(xs: alts, empty: std.algebra.Empty, cons: fn(acc, alt) {
+    fold_list(xs: prepared_expr_fold_first(alt: alt).terminals, empty: acc, cons: fn(acc2, k) {
+      match k {
+        FirstExactWord { token_class: c, lexeme: w } =>
+          if c == token_class { set_symbol_insert(s: acc2, item: w) } else { acc2 }
+        FirstAnyOfClass { token_class: _ } => acc2
+      }
+    })
+  })
+}
+
+// Alternatives in the bucket that can start on `word` of this class, or match empty.
+fn class_bucket_alts_for_word(alts: List<PreparedExprFold>, token_class: Symbol, word: String) -> List<PreparedExprFold> {
+  filter(xs: alts, predicate: fn(alt) {
+    let first = prepared_expr_fold_first(alt: alt)
+    first.nullable || any(xs: first.terminals, predicate: fn(k) {
+      first_key_admits_word(key: k, token_class: token_class, word: word)
+    })
+  })
+}
+
+// Alternatives in the bucket that can start on ANY word of this class, or match empty.
+fn class_bucket_alts_for_other(alts: List<PreparedExprFold>, token_class: Symbol) -> List<PreparedExprFold> {
+  filter(xs: alts, predicate: fn(alt) {
+    let first = prepared_expr_fold_first(alt: alt)
+    first.nullable || any(xs: first.terminals, predicate: fn(k) {
+      first_key_eq(left: k, right: FirstAnyOfClass { token_class: token_class })
+    })
+  })
+}
+
+// One token-class bucket. With no exact word in it, this is compile_choice_alts unchanged, so a
+// grammar with no LiteralTerminal compiles exactly the plan it compiled before.
+fn compile_class_bucket(
+  alts: List<PreparedExprFold>,
+  token_class: Symbol,
+  nullable_set: List<Symbol>,
+  first_rows: Map<Symbol, List<FirstKey>>,
+  token_dispatch: Bool
+) -> PreparedChoicePlan {
+  let words = class_bucket_words(alts: alts, token_class: token_class)
+  if is_empty(xs: words) {
+    compile_choice_alts(alts: alts, nullable_set: nullable_set, first_rows: first_rows, token_dispatch: token_dispatch)
+  } else {
+    ChoiceByWord {
+      on_word: fold_list(xs: words, empty: empty_map(), cons: fn(acc, w) {
+        let word = symbol_lexeme(sym: w)
+        map_insert(
+          m: acc,
+          key: word,
+          value: compile_choice_alts(
+            alts: class_bucket_alts_for_word(alts: alts, token_class: token_class, word: word),
+            nullable_set: nullable_set,
+            first_rows: first_rows,
+            token_dispatch: token_dispatch
+          )
+        )
+      }),
+      on_other: compile_choice_alts(
+        alts: class_bucket_alts_for_other(alts: alts, token_class: token_class),
+        nullable_set: nullable_set,
+        first_rows: first_rows,
+        token_dispatch: token_dispatch
+      )
+    }
+  }
+}
+
 fn compile_choice_plan(
   alts: List<PreparedExprFold>,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>,
+  first_rows: Map<Symbol, List<FirstKey>>,
   token_dispatch: Bool
 ) -> PreparedChoicePlan {
   if token_dispatch {
@@ -2110,8 +2284,9 @@ fn compile_choice_plan(
           map_insert(
             m: acc,
             key: token_class,
-            value: compile_choice_alts(
+            value: compile_class_bucket(
               alts: choice_alts_for_present_token(alts: alts, token_class: token_class),
+              token_class: token_class,
               nullable_set: nullable_set,
               first_rows: first_rows,
               token_dispatch: token_dispatch
@@ -2138,7 +2313,7 @@ fn compile_choice_plan(
 fn prepare_grammar_expr(
   expr: GrammarExpr,
   nullable_set: List<Symbol>,
-  first_rows: Map<Symbol, List<Symbol>>,
+  first_rows: Map<Symbol, List<FirstKey>>,
   production: Symbol,
   token_dispatch: Bool
 ) -> PreparedExprFold {
@@ -2147,6 +2322,12 @@ fn prepare_grammar_expr(
       PreparedExprFold {
         tree: PreparedTerminal { token_class: token_class, stamp: stamp },
         first: expr_first_fold_terminal(token_class: token_class),
+        residue: std.algebra.Empty
+      }
+    LiteralTerminal { token_class: token_class, lexeme: lexeme } =>
+      PreparedExprFold {
+        tree: PreparedLiteralTerminal { token_class: token_class, lexeme: lexeme },
+        first: expr_first_fold_literal(token_class: token_class, lexeme: lexeme),
         residue: std.algebra.Empty
       }
     Nonterminal { production: production_name } =>
@@ -2413,6 +2594,7 @@ fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: List<Symbol>) -> G
     expr: expr,
     algebra: GrammarExprFold {
       terminal: fn(token_class, _) { expr_corner_fold_terminal(token_class) },
+      literal_terminal: fn(token_class, _) { expr_corner_fold_terminal(token_class) },
       nonterminal: fn(name) { expr_corner_fold_nonterminal(name: name, nullable_set: nullable_set) },
       sequence: expr_corner_fold_sequence,
       choice: expr_corner_fold_choice,
@@ -2570,6 +2752,7 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
     expr: expr,
     algebra: GrammarExprFold {
       terminal: fn(_, _) { false },
+      literal_terminal: fn(_, _) { false },
       nonterminal: fn(p) {
         match grammar_lookup_production(root: root, name: p) {
           Violates { diagnostic: _ } => true
@@ -2958,6 +3141,18 @@ fn parse_choice_plan(
 ) -> ParseExprResult {
   match plan {
     ChoiceReject => ParseExprRejected { diagnostics: [], table: table }
+    ChoiceByWord { on_word: on_word, on_other: on_other } =>
+      match parse_token_first(tokens: tokens) {
+        Absent =>
+          parse_choice_plan(plan: on_other, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+        Present { value: tok } =>
+          match map_lookup(m: on_word, key: tok.lexeme) {
+            Present { value: next } =>
+              parse_choice_plan(plan: next, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+            Absent =>
+              parse_choice_plan(plan: on_other, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov)
+          }
+      }
     ChoiceParseOne { expr: expr } =>
       parse_expr_with_first(
         expr: expr,
@@ -3195,6 +3390,28 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
+    // An exact word is a MATCH constraint in front of an ordinary class terminal: it captures and
+    // publishes exactly what a StampClass terminal of that class does, never its own text.
+    PreparedLiteralTerminal { token_class: token_class, lexeme: lexeme } =>
+      match parse_token_first(tokens: tokens) {
+        Absent => ParseExprRejected { diagnostics: [], table: table }
+        Present { value: tok } =>
+          if first_key_admits_word(
+            key: FirstExactWord { token_class: token_class, lexeme: lexeme },
+            token_class: tok.class,
+            word: tok.lexeme
+          ) {
+            parse_expr_terminal(
+              token_class: token_class,
+              stamp: StampClass,
+              tokens: tokens,
+              table: table,
+              prov: prov
+            )
+          } else {
+            ParseExprRejected { diagnostics: [], table: table }
+          }
+      }
     PreparedNonterminal { production: prod_name } =>
       parse_nonterminal_memoized(
         all_tokens: all_tokens,

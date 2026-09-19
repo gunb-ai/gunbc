@@ -163,6 +163,7 @@ fn namespace_graft_grammar_expr_nonterminal_productions(expr: GrammarExpr) -> Li
     expr: expr,
     algebra: GrammarExprFold {
       terminal: fn(_, _) { [] },
+      literal_terminal: fn(_, _) { [] },
       nonterminal: fn(production) { [production] },
       sequence: fn(left, right) { list_append(left: left, right: right) },
       choice: fn(left, right) { list_append(left: left, right: right) },

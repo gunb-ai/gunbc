@@ -210,8 +210,15 @@ type TerminalStampMode
   | StampBinding { binding: Symbol }
   | StampLexeme
 
+// A LITERAL TERMINAL MATCHES ONE EXACT WORD OF A TOKEN CLASS -- `service` as an ident, not every
+// ident. It is a MATCH constraint, not a stamp: the node it captures publishes the token CLASS
+// exactly as a `StampClass` terminal does, and never its own text as atom identity (that is
+// `StampLexeme`, a different fact). It exists so a marker word can be a grammar row without being
+// minted as a keyword token class: a keyword class taxes every identifier the lexer reads and
+// every name slot the grammar offers, while a literal terminal costs only where it is authored.
 type GrammarExpr
   = Terminal { token_class: Symbol, stamp: TerminalStampMode }
+  | LiteralTerminal { token_class: Symbol, lexeme: Symbol }
   | Nonterminal { production: Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
@@ -234,6 +241,10 @@ fn grammar_expr_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampLexeme }
 }
 
+fn grammar_expr_literal_terminal(token_class: Symbol, lexeme: Symbol) -> GrammarExpr {
+  LiteralTerminal { token_class: token_class, lexeme: lexeme }
+}
+
 fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
   match sym {
     FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
@@ -254,6 +265,7 @@ fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExp
 
 type GrammarExprFold<R> {
   terminal: fn(Symbol, TerminalStampMode) -> R
+  literal_terminal: fn(Symbol, Symbol) -> R
   nonterminal: fn(Symbol) -> R
   sequence: fn(R, R) -> R
   choice: fn(R, R) -> R
@@ -265,6 +277,8 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
   match expr {
     Terminal { token_class: token_class, stamp: stamp } =>
       algebra.terminal(token_class, stamp)
+    LiteralTerminal { token_class: token_class, lexeme: lexeme } =>
+      algebra.literal_terminal(token_class, lexeme)
     Nonterminal { production: production } => algebra.nonterminal(production)
     Sequence { left: left, right: right } =>
       algebra.sequence(
@@ -1607,6 +1621,12 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
               grammar_named_edge(name: ^grammar_terminal_stamp_lexeme_node_projection, target: grammar_atom(identity: ^grammar_terminal_stamp_lexeme))
             ])
         }
+      },
+      literal_terminal: fn(token_class, lexeme) {
+        grammar_expr_node(children: [
+          grammar_named_edge(name: ^grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class)),
+          grammar_named_edge(name: ^grammar_terminal_literal_lexeme_node_projection, target: grammar_atom(identity: lexeme))
+        ])
       },
       nonterminal: fn(production) {
         grammar_expr_node(children: [
