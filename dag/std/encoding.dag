@@ -320,12 +320,28 @@ fn base64_encode_optional(octets: List<QualifiedWord>, variant: Base64Variant) -
   }
 }
 
-// TOTAL, AND THE TOTALITY IS EARNED BY THE PARAMETER RATHER THAN ASSERTED. Every member arrived
-// through base64_octets, so no octet here is out of range; the group is four established octets at
-// Width32, so no shift, mask or packing inside can refuse. The internal Optional survives because
-// the OPERATIONS are total-with-refusal and their type cannot express "cannot refuse given this
-// input" -- so the unreachable arm gets the divergent seam rather than a fabricated "", which would
-// be a legitimate encoding (of the empty input) standing where a failure happened.
+// TOTAL FOR EVERY OCTET THE SANCTIONED CONSTRUCTOR PRODUCES, AND THE ARM BELOW IS NOT UNREACHABLE.
+//
+// An earlier cut of this annotation said the totality was "earned by the parameter" and the arm
+// unreachable. That was false, and std.machine_word says so IN THE SAME PR: QualifiedWord is a
+// record with public fields, so the carrier is a sealed-wrapper convention and "a caller determined
+// to forge QualifiedWord { word: ... } can". A forged member -- one carrying a Width32 word, or a
+// value outside the byte range -- reaches word_from_octets, refuses there correctly, and arrives
+// here. Two annotations in one change cannot disagree about whether a state is writable; this one
+// was the wrong one (review 68594).
+//
+// WHAT IS TRUE: every member produced by base64_octets is an established Width8 octet, so no shift,
+// mask or packing can refuse for any input this module can construct. The arm is reachable ONLY by
+// forging the carrier, which is a deliberate act rather than a mistake a caller can make in
+// passing, and it diverges rather than returning "" -- which would be a legitimate encoding, of the
+// empty input, standing where a failure happened.
+//
+// RUNG, HONESTLY: mitigatable, and the trap is not a typed located diagnostic, which section 5 asks
+// for and this does not provide. The trigger is the one the carrier already names -- sole
+// construction over QualifiedWord -- which makes the forgery unwritable and this arm genuinely
+// unreachable rather than merely unreached. Until then the alternative is returning String? again,
+// which is the widening that was defeated at a caller and rendered an Optional into a URL path;
+// that trade is recorded on the PR rather than settled quietly here.
 fn base64_encode(octets: List<QualifiedWord>, variant: Base64Variant) -> String {
   match base64_encode_optional(octets: octets, variant: variant) {
     Present { value: encoded } => encoded
