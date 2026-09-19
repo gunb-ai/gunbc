@@ -627,7 +627,7 @@ test fn a_masked_retiree_still_running_or_occupied_refuses() -> Bool {
   let show = srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21))
   let running = srv1_population(units: units, retirements: srv1_retirements(active: "deactivating", occupancy: CgroupAbsent), show: show)
   !runner_slot_population_effective(population: running)
-    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: srv1_retirements(active: "inactive", occupancy: CgroupObservedPopulated { count: 3 }), show: show))
+    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: srv1_retirements(active: "inactive", occupancy: CgroupObservedPopulated), show: show))
     && (match running {
       SlotPopulationUnobservable { reason: _ } => false
       SlotPopulationObserved { units: us } => length(filter(us, r => standing_wire_of(st: r.standing) == "retirement-incomplete")) == 9
@@ -686,7 +686,7 @@ test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses
   let omitted = "actions-runner@srv1-21.service"
   let healthy = srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 50))
   let still_running = map(srv1_drained(), st => if retirement_unit(s: st) == omitted {
-    runner_retirement_standing(o: retirement_observation_from_readings(unit: omitted as NonEmptyStr, unit_file_state: "masked", active_state: "active", occupancy: CgroupObservedPopulated { count: 2 }))
+    runner_retirement_standing(o: retirement_observation_from_readings(unit: omitted as NonEmptyStr, unit_file_state: "masked", active_state: "active", occupancy: CgroupObservedPopulated))
   } else { st })
   let running_pop = srv1_population_over_listing(retirements: still_running, show: healthy)
   let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: concat(srv1_unit_names(slot: 13, limit: 20), srv1_unit_names(slot: 22, limit: 50))))
