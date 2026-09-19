@@ -2,7 +2,7 @@ module test.claim.floor_cold_build_receipt_witness_test
 
 import std.types { Bool, String, Int, List }
 import std.decl_ref { DeclarationRef }
-import std.measure { byte_size, byte_size_count, second, second_count, minute, minute_count, seconds_per_minute, gibibyte, gibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size }
+import std.measure { byte_size, byte_size_count, second, second_count, minute, minute_to_second, gibibyte, gibibyte_to_byte_size, mebibyte, mebibyte_to_byte_size }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import gunbc.floor_cold_build_receipt {
   ColdBuildSubject, ColdBuildReceipt, ColdBuildVerdict,
@@ -131,7 +131,7 @@ test fn the_production_standing_is_pending_with_a_cold_plan_against_the_warm_bas
         && second_count(p.cold_proxy_build_step.build_step_wall) > second_count(p.warm_baseline.build_step_wall)
         && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline))
           > second_count(p.warm_baseline.whole_job_wall)
-        && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline)) < minute_count(witness_floor_lane_timeout) * seconds_per_minute()
+        && second_count(cold_wall_prediction_ceiling(warm: p.warm_baseline)) < second_count(minute_to_second(m: witness_floor_lane_timeout))
         && names_declaration(refs: p.instruments, module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobRun")
         && names_declaration(refs: p.instruments, module_path: "extdeps.linux.cgroup_v2_memory", decl_name: "CgroupMemoryInterfaceFile")
         && names_declaration(refs: p.instruments, module_path: "extdeps.tools.stat", decl_name: "stat_allocated_blocks_command")

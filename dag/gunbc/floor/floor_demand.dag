@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.nat { nat_max }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Second, second, EventsPerMinute, events_per_minute, events_per_minute_count,
-  gibibyte_scale_factor_bytes, MeasureSubtraction, measure_sub, Memory, One,
+  gibibyte_scale_factor_bytes, MeasureSubtraction, measure_sub, Memory, One, HardwareThreadCount, hardware_thread_count,
 }
 import std.disposition { Disposition, SingleAuthority }
 import std.checked_arithmetic {
@@ -552,14 +552,14 @@ fn floor_storage_demand() -> FloorStorageDemand {
 type ColdBuildStepWallReceipt {
   invocation: NonEmptyStr
   measured_on: Architecture
-  vcpus: Int
+  vcpus: HardwareThreadCount
   build_step_wall: Second
 }
 
 data gunbc_cold_build_step_wall_x86_64_2026_09_19: ColdBuildStepWallReceipt = ColdBuildStepWallReceipt {
   invocation: "abbc8fb7-69eb-4ef0-b8a4-5504084196c9",
   measured_on: X86_64,
-  vcpus: 6,
+  vcpus: hardware_thread_count(count: 6),
   build_step_wall: second(count: 267),
 }
 

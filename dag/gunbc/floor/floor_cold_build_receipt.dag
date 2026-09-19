@@ -2,7 +2,7 @@ module gunbc.floor_cold_build_receipt
 
 import std.types { NonEmptyStr, Bool, List }
 import std.measure {
-  ByteSize, byte_size_count, Second, second, second_count, Minute, minute_count, seconds_per_minute,
+  ByteSize, byte_size_count, Second, second, second_count, Minute, minute_to_second,
   Mebibyte, mebibyte_to_byte_size,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -72,10 +72,6 @@ fn subject_is_cold(subject: ColdBuildSubject) -> Bool {
     Aarch64 => subject.cargo_home_wiped && !subject.sccache_reachable
     _ => false
   }
-}
-
-fn minute_to_second(m: Minute) -> Second {
-  second(count: minute_count(m) * seconds_per_minute())
 }
 
 fn cold_build_receipt_verdict(
