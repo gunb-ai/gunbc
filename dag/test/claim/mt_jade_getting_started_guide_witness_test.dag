@@ -16,7 +16,6 @@ import gunbc.upstream_document_carriage {
   carriage_permits_facts,
   upstream_fact_carriage,
 }
-import std.content_hash { sha256_digest_wire_form }
 import gunbc.specification_citation_read_provenance {
   DocumentLocatorFetchedAndTextIngested,
   DocumentMirrorLocatorFetchedAndTextIngested,
@@ -38,19 +37,25 @@ import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE DECLARED DIGEST IS JOINED TO WHAT THE READS OBSERVED, not compared to its own literal. The
-// earlier form copied subject.dag's issue and hex back from subject.dag, which is the change
-// detector DESIGN section 5 names (review 68035). The RED here is real: a read receipt recording
-// a digest the extdeps module does not declare reddens this, which is the case a mirror serving
-// different bytes would produce.
+// earlier form copied subject.dag's issue and hex back from subject.dag (review 68035).
+//
+// THE JOIN IS ON THE HEX, NOT ON A FORMATTED STRING, and that is deliberate. A previous revision
+// compared the receipt against sha256_digest_wire_form, which joins "sha256:" + hex with a COLON
+// while every content_digest literal in the corpus uses a SPACE -- so the claim could never be
+// true: a permanently-RED wall, the mirror image of the permanently-green one 68035 removed
+// (review 68056). The hex IS the fact being joined; the delimiter is presentation, and asserting
+// it here would pick one side of a fork this claim has no business deciding. The RED is intact: a
+// receipt recording a hex the extdeps module does not declare reddens this, which is what a
+// mirror serving different bytes produces.
 test fn w_jade_gsg_declared_digest_is_the_digest_both_reads_recorded() -> Bool {
   match mt_jade_gsg_publisher_citation_read_receipt.provenance {
     DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: d, detail: _ } =>
-      d == sha256_digest_wire_form(digest: mt_jade_gsg_content_digest)
+      string_contains(s: d as String, pattern: mt_jade_gsg_content_digest.hex as String)
     _ => false
   }
     && match mt_jade_gsg_drive_mirror_citation_read_receipt.provenance {
       DocumentMirrorLocatorFetchedAndTextIngested { mirror: _, observed_on: _, http_status: _, byte_count: _, content_digest: d, detail: _ } =>
-        d == sha256_digest_wire_form(digest: mt_jade_gsg_content_digest)
+        string_contains(s: d as String, pattern: mt_jade_gsg_content_digest.hex as String)
       _ => false
     }
 }
