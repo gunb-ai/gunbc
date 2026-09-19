@@ -690,21 +690,37 @@ fn spark_authority_held_causes_wire(host: HostIdentity) -> NonEmptyStr {
   }
 }
 
-fn admit_unplaced_host(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
+// THE DECISION TAKES ITS POPULATION AS A SUPPLIED VALUE; THE PRODUCTION SEAM BELOW SUPPLIES THE LIVE ONE.
+// Once every Spark unit carries a standing -- the state after group B's assigned arm claimed its
+// four hosts on 2026-09-18 -- no production host is unplaced, so the admitting arm of this seam
+// cannot be exercised against the live census at all. Supplying the unplaced set keeps that arm
+// authorable as a positive control while every refusal arm still runs the real path through
+// admit_unplaced_host (DESIGN section 3: a witness discriminates at one interface, and the real path
+// keeps one inhabitance claim).
+fn admit_unplaced_host_among(raw: String, purpose: NonEmptyStr, unplaced: List<HostIdentity>, held_causes: fn(HostIdentity) -> String) -> SparkHostAdmission {
   let host = raw as HostIdentity
   if raw == "" {
     SparkHostRefused { cause: join(["no host was named for ", purpose as String, "; this entry takes one and does not pick"], "") as NonEmptyStr }
-  } else if !spark_host_is_unplaced(host: host) {
+  } else if !any(unplaced, h => host_identity_eq(a: h, b: host)) {
     SparkHostRefused {
       cause: join([
         raw, " is not admissible for ", purpose as String, ", because ",
-        spark_authority_held_causes_wire(host: host) as String,
+        held_causes(host),
         ". Unplaced as of this read: ",
-        join(map(spark_unplaced_hosts, h => h as String), ", "),
+        join(map(unplaced, h => h as String), ", "),
         ". This is an eligibility read and not a held claim",
       ], "") as NonEmptyStr,
     }
   } else {
     SparkHostAdmitted { host: host }
   }
+}
+
+fn admit_unplaced_host(raw: String, purpose: NonEmptyStr) -> SparkHostAdmission {
+  admit_unplaced_host_among(
+    raw: raw,
+    purpose: purpose,
+    unplaced: spark_unplaced_hosts,
+    held_causes: h => spark_authority_held_causes_wire(host: h) as String,
+  )
 }

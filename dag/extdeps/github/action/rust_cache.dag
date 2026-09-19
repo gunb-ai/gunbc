@@ -1,0 +1,47 @@
+module extdeps.github.action.rust_cache
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
+  action_manifest_at_commit,
+}
+
+// Swatinem/rust-cache releases this repository has read. It is not used by any workflow step
+// directly: actions-rust-lang/setup-rust-toolchain runs it as a nested step of its composite
+// action, so its declaration is part of what that composite release executes.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/Swatinem/rust-cache"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.rust_cache",
+      decl_name: "rust_cache_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data rust_cache_v2_9_1: ActionRelease = ActionRelease {
+  owner: "Swatinem", repo: "rust-cache", tag: "v2.9.1", commit: "c19371144df3bb44fab255c43d04cbc2ab54d1c4"
+}
+
+// Each declaration below was read from the action.yml blob at the release's commit (the
+// manifest citation on the row), 2026-09-18.
+data rust_cache_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: rust_cache_v2_9_1,
+    declared: JavaScriptAction { node_major: 24 },
+    manifest: action_manifest_at_commit(owner: "Swatinem", repo: "rust-cache", commit: "c19371144df3bb44fab255c43d04cbc2ab54d1c4"),
+  },
+]

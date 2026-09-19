@@ -1,0 +1,49 @@
+module extdeps.github.action.setup_rust_toolchain
+
+import std.types { List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionRelease, ActionManifestReading, JavaScriptAction, CompositeAction, DockerAction,
+  action_manifest_at_commit,
+}
+import extdeps.github.action.rust_cache { rust_cache_v2_9_1 }
+
+// actions-rust-lang/setup-rust-toolchain releases this repository has read. It is a composite
+// action, so its declaration includes the releases its own steps use; the one nested use in
+// v1.16.0's action.yml is Swatinem/rust-cache pinned to c19371144df3bb44fab255c43d04cbc2ab54d1c4
+// (v2.9.1).
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/actions-rust-lang/setup-rust-toolchain"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action.setup_rust_toolchain",
+      decl_name: "setup_rust_toolchain_manifest_readings",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data setup_rust_toolchain_v1_16_0: ActionRelease = ActionRelease {
+  owner: "actions-rust-lang", repo: "setup-rust-toolchain", tag: "v1.16.0", commit: "2b1f5e9b395427c92ee4e3331786ca3c37afe2d7"
+}
+
+// Each declaration below was read from the action.yml blob at the release's commit (the
+// manifest citation on the row), 2026-09-18.
+data setup_rust_toolchain_manifest_readings: List<ActionManifestReading> = [
+  ActionManifestReading {
+    action_release: setup_rust_toolchain_v1_16_0,
+    declared: CompositeAction { nested: [rust_cache_v2_9_1] },
+    manifest: action_manifest_at_commit(owner: "actions-rust-lang", repo: "setup-rust-toolchain", commit: "2b1f5e9b395427c92ee4e3331786ca3c37afe2d7"),
+  },
+]
