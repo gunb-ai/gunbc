@@ -261,9 +261,9 @@ data structural_coverage_gap_value_range_cell_types: List<CoverageClosureEntry> 
 // over it agrees with a request encoding nobody ever sent. That is shape agreement standing in for
 // execution, and the wire is where the two part company.
 //
-// gunbc.review_sheet_sheets value_range_from_derived_write builds the Optional form and has never
-// executed -- it is the caller live_sheets_transport_frontier reserved. It needs this type before
-// its first write, and that is a defect in a landed module rather than a gap in a new one.
+// gunbc.review_sheet_sheets once lowered a write plan to the Optional form, and it never executed
+// -- it was the caller live_sheets_transport_frontier reserved. lower_write_plan now builds this
+// type; the defect was in a landed module rather than a gap in a new one.
 type BatchUpdateSpreadsheetResponse {
   spreadsheetId: String
 }
