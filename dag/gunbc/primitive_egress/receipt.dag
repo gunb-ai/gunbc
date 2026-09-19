@@ -25,7 +25,7 @@ import gunbc.primitive_egress.census {
   SeedGrowthOwnership, SeedGrowthRows, NoSeedGrowthRow, ConsumerTally,
   registry_without_contract, contract_without_interpreter_arm, interpreter_arm_without_contract, emitted_bridge_without_consumer,
   unused_primitives, consumers_with_unresolved_callee, duplicate_realizations, interpreter_arm_without_emitted_route,
-  zero_disposition, multiple_disposition, exactly_one_disposition, unresolved_identities, v2_projection, v1_only_projection,
+  zero_disposition, multiple_disposition, exactly_one_disposition, unresolved_standings, v2_projection, v1_only_projection,
   shared_v1_v2_identities, aliased_identities, compiler_query_without_seed_growth_row, standings_of_class,
   consumer_only_identities, projection_only_identities, seed_growth_only_identities,
   PureDagComputationClass, BoundHostEffectClass, TargetKernelRealizationClass, CompilerQueryFrontierClass, UnresolvedClass,
@@ -41,7 +41,7 @@ fn strs(xs: List<String>) -> JsonValue {
   json_array(elements: xs |> map(x => json_string(s: x)))
 }
 
-fn names(ss: List<IdentityStanding>) -> List<String> {
+fn standing_names(ss: List<IdentityStanding>) -> List<String> {
   ss |> map(s => s.name)
 }
 
@@ -249,33 +249,33 @@ fn absence_population_name(base: String, scope_complete: Bool) -> String {
 }
 
 fn census_receipt_lines(c: PrimitiveCensus, scope: String, scope_complete: Bool, entries_resolved: Int, roster_missing: List<String>, roster_extra: List<String>) -> List<String> {
-  let v1_only = if scope_complete { [population_line(name: "v1_only_projection", members: names(ss: v1_only_projection(c: c)))] } else { [] }
+  let v1_only = if scope_complete { [population_line(name: "v1_only_projection", members: standing_names(ss: v1_only_projection(c: c)))] } else { [] }
   let populations = concat([
-    population_line(name: "expected_identities", members: names(ss: c.standings)),
-    population_line(name: "exactly_one_disposition", members: names(ss: exactly_one_disposition(c: c))),
-    population_line(name: "zero_disposition", members: names(ss: zero_disposition(c: c))),
-    population_line(name: "multiple_disposition", members: names(ss: multiple_disposition(c: c))),
+    population_line(name: "expected_identities", members: standing_names(ss: c.standings)),
+    population_line(name: "exactly_one_disposition", members: standing_names(ss: exactly_one_disposition(c: c))),
+    population_line(name: "zero_disposition", members: standing_names(ss: zero_disposition(c: c))),
+    population_line(name: "multiple_disposition", members: standing_names(ss: multiple_disposition(c: c))),
     population_line(name: "evidence_rows_naming_no_identity", members: c.dispositions_naming_no_identity |> map(r => r.identity.slug as String)),
-    population_line(name: "consumer_only_identities", members: names(ss: consumer_only_identities(c: c))),
-    population_line(name: "projection_only_identities", members: names(ss: projection_only_identities(c: c))),
-    population_line(name: "seed_growth_only_identities", members: names(ss: seed_growth_only_identities(c: c))),
-    population_line(name: "pure_dag_computation", members: names(ss: standings_of_class(c: c, wanted: PureDagComputationClass))),
-    population_line(name: "bound_host_effect", members: names(ss: standings_of_class(c: c, wanted: BoundHostEffectClass))),
-    population_line(name: "target_kernel_realization", members: names(ss: standings_of_class(c: c, wanted: TargetKernelRealizationClass))),
-    population_line(name: "compiler_query_frontier", members: names(ss: standings_of_class(c: c, wanted: CompilerQueryFrontierClass))),
-    population_line(name: "unresolved", members: names(ss: unresolved_identities(c: c))),
-    population_line(name: "registry_without_contract", members: names(ss: registry_without_contract(c: c))),
-    population_line(name: "contract_without_interpreter_arm", members: names(ss: contract_without_interpreter_arm(c: c))),
-    population_line(name: "interpreter_arm_without_contract", members: names(ss: interpreter_arm_without_contract(c: c))),
-    population_line(name: absence_population_name(base: "emitted_bridge_without_consumer", scope_complete: scope_complete), members: names(ss: emitted_bridge_without_consumer(c: c))),
-    population_line(name: absence_population_name(base: "unused_primitives", scope_complete: scope_complete), members: names(ss: unused_primitives(c: c))),
-    population_line(name: "consumers_with_unresolved_callee", members: names(ss: consumers_with_unresolved_callee(c: c))),
-    population_line(name: "duplicate_realizations", members: names(ss: duplicate_realizations(c: c))),
-    population_line(name: "interpreter_arm_without_emitted_route_reached_by_v2", members: names(ss: interpreter_arm_without_emitted_route(c: c))),
-    population_line(name: "compiler_query_without_seed_growth_row", members: names(ss: compiler_query_without_seed_growth_row(c: c))),
-    population_line(name: "v2_projection", members: names(ss: v2_projection(c: c))),
-    population_line(name: "shared_v1_v2", members: names(ss: shared_v1_v2_identities(c: c))),
-    population_line(name: "aliased_identities", members: names(ss: aliased_identities(c: c))),
+    population_line(name: "consumer_only_identities", members: standing_names(ss: consumer_only_identities(c: c))),
+    population_line(name: "projection_only_identities", members: standing_names(ss: projection_only_identities(c: c))),
+    population_line(name: "seed_growth_only_identities", members: standing_names(ss: seed_growth_only_identities(c: c))),
+    population_line(name: "pure_dag_computation", members: standing_names(ss: standings_of_class(c: c, wanted: PureDagComputationClass))),
+    population_line(name: "bound_host_effect", members: standing_names(ss: standings_of_class(c: c, wanted: BoundHostEffectClass))),
+    population_line(name: "target_kernel_realization", members: standing_names(ss: standings_of_class(c: c, wanted: TargetKernelRealizationClass))),
+    population_line(name: "compiler_query_frontier", members: standing_names(ss: standings_of_class(c: c, wanted: CompilerQueryFrontierClass))),
+    population_line(name: "unresolved", members: standing_names(ss: unresolved_standings(c: c))),
+    population_line(name: "registry_without_contract", members: standing_names(ss: registry_without_contract(c: c))),
+    population_line(name: "contract_without_interpreter_arm", members: standing_names(ss: contract_without_interpreter_arm(c: c))),
+    population_line(name: "interpreter_arm_without_contract", members: standing_names(ss: interpreter_arm_without_contract(c: c))),
+    population_line(name: absence_population_name(base: "emitted_bridge_without_consumer", scope_complete: scope_complete), members: standing_names(ss: emitted_bridge_without_consumer(c: c))),
+    population_line(name: absence_population_name(base: "unused_primitives", scope_complete: scope_complete), members: standing_names(ss: unused_primitives(c: c))),
+    population_line(name: "consumers_with_unresolved_callee", members: standing_names(ss: consumers_with_unresolved_callee(c: c))),
+    population_line(name: "duplicate_realizations", members: standing_names(ss: duplicate_realizations(c: c))),
+    population_line(name: "interpreter_arm_without_emitted_route_reached_by_v2", members: standing_names(ss: interpreter_arm_without_emitted_route(c: c))),
+    population_line(name: "compiler_query_without_seed_growth_row", members: standing_names(ss: compiler_query_without_seed_growth_row(c: c))),
+    population_line(name: "v2_projection", members: standing_names(ss: v2_projection(c: c))),
+    population_line(name: "shared_v1_v2", members: standing_names(ss: shared_v1_v2_identities(c: c))),
+    population_line(name: "aliased_identities", members: standing_names(ss: aliased_identities(c: c))),
     population_line(name: "off_surface_call_spellings", members: c.consumer_fold.off_surface_spellings),
     population_line(name: "hand_roster_missing_registry_rows", members: roster_missing),
     population_line(name: "hand_roster_rows_absent_from_registry", members: roster_extra),

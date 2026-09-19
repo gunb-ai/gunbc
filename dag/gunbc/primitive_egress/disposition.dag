@@ -11,7 +11,7 @@ import gunbc.primitive_egress.category { PrimitiveCategory, ReplacementLane, cat
 // graph, what it computes over modeled inputs, whether its refusals are modeled, whether a
 // native realization claims to realize a modeled operation and how that claim is qualified,
 // whether its subject is a compiler product -- each fact a closed coproduct with a located
-// reason. One exhaustive classifier (`derive_disposition`) maps the evidence and the derived
+// reason. One exhaustive classifier (`derive_primitive_disposition`) maps the evidence and the derived
 // seed-growth ownership to exactly one of the five classes. Missing or conflicting evidence
 // CONSTRUCTS Unresolved with a typed cause; there is no arm an author can reach for to select a
 // terminal class, and no default arm at all (the exact-head contract on gunbc#11642).
@@ -259,7 +259,7 @@ fn unresolved(cause: UnresolvedCause, candidates: List<DispositionClass>) -> Pri
   Unresolved { cause: cause, candidate_classes: candidates }
 }
 
-fn q(s: String) -> NonEmptyStr { s as NonEmptyStr }
+fn egress_nonempty(s: String) -> NonEmptyStr { s as NonEmptyStr }
 
 // Which classes the qualified evidence partially supports, read off the standings that ARE present.
 fn partial_candidates(e: QualifiedEvidence) -> List<DispositionClass> {
@@ -275,7 +275,7 @@ fn partial_candidates(e: QualifiedEvidence) -> List<DispositionClass> {
 // admitted only when its OWN verified facts are all present and no other class's facts are;
 // anything else is a typed Unresolved. Every match is exhaustive: a new arm on any premise is a
 // compile refusal here, not a silent default.
-fn derive_disposition(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> PrimitiveDisposition {
+fn derive_primitive_disposition(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> PrimitiveDisposition {
   match e.conflict {
     ConflictDerived { detail: d } => unresolved(cause: ConflictingRealizations { detail: d }, candidates: partial_candidates(e: e))
     NoConflictDerived =>
@@ -295,7 +295,7 @@ fn derive_by_external(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> P
         ExternalClaimedUnverified { detail: d } =>
           match e.computation {
             ComputationVerified { authority: _, inputs: _, result: _, body: _ } =>
-              unresolved(cause: MixedSemanticQuestions { questions: [q(s: concat("which external state is observed or mutated (claimed, not verified: ", d as String, ")")), q(s: "what is computed over what was acquired: a pure fold (or a lens over compiler products) that must take the acquired inventory as an input")] }, candidates: partial_candidates(e: e))
+              unresolved(cause: MixedSemanticQuestions { questions: [egress_nonempty(s: concat("which external state is observed or mutated (claimed, not verified: ", d as String, ")")), egress_nonempty(s: "what is computed over what was acquired: a pure fold (or a lens over compiler products) that must take the acquired inventory as an input")] }, candidates: partial_candidates(e: e))
             NoComputationHalf => unresolved(cause: ExternalSubjectUnverified { detail: d }, candidates: partial_candidates(e: e))
             ComputationNotEstablished { detail: cd } => unresolved(cause: SubjectUnestablished { detail: cd }, candidates: partial_candidates(e: e))
           }
@@ -304,7 +304,7 @@ fn derive_by_external(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> P
             ComputationVerified { authority: a, inputs: _, result: _, body: _ } =>
               match a {
                 AuthorityRequiredHome { home: h } => unresolved(cause: OperationAuthorityAbsent { home: h }, candidates: partial_candidates(e: e))
-                AuthorityUnresolved { reference: ref, cause: c } => unresolved(cause: OwningFactUnresolved { premise: q(s: "operation authority"), reference: ref, cause: c }, candidates: partial_candidates(e: e))
+                AuthorityUnresolved { reference: ref, cause: c } => unresolved(cause: OwningFactUnresolved { premise: egress_nonempty(s: "operation authority"), reference: ref, cause: c }, candidates: partial_candidates(e: e))
                 AuthorityVerified { declaration: _, kind: _ } => unresolved(cause: ExternalSubjectUnverified { detail: d }, candidates: partial_candidates(e: e))
               }
             NoComputationHalf => unresolved(cause: ExternalSubjectUnverified { detail: d }, candidates: partial_candidates(e: e))
@@ -322,15 +322,15 @@ fn derive_by_external(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> P
 // category error.
 fn derive_with_external_subject(e: QualifiedEvidence, op: NonEmptyStr, subj: NonEmptyStr, prov: DeclarationRef, amb: NonEmptyStr) -> PrimitiveDisposition {
   let computation_half = match e.computation {
-    ComputationVerified { authority: _, inputs: _, result: _, body: _ } => Present { value: q(s: "what is computed over what was acquired: a pure fold (or a lens over compiler products) that must take the acquired inventory as an input") }
+    ComputationVerified { authority: _, inputs: _, result: _, body: _ } => Present { value: egress_nonempty(s: "what is computed over what was acquired: a pure fold (or a lens over compiler products) that must take the acquired inventory as an input") }
     NoComputationHalf => none
-    ComputationNotEstablished { detail: d } => Present { value: q(s: concat("the computation half is unestablished: ", d as String)) }
+    ComputationNotEstablished { detail: d } => Present { value: egress_nonempty(s: concat("the computation half is unestablished: ", d as String)) }
   }
   let query_half = match e.compiler_query {
-    QueryOverAcceptedProduct { judgment_subject: s, accepted_compiler_product: _, current_host_producer: _, deletion_trigger: _ } => Present { value: q(s: concat("a compiler-query half: ", s as String)) }
+    QueryOverAcceptedProduct { judgment_subject: s, accepted_compiler_product: _, current_host_producer: _, deletion_trigger: _ } => Present { value: egress_nonempty(s: concat("a compiler-query half: ", s as String)) }
     NotACompilerQuery => none
   }
-  let acquisition = q(s: concat("which external state is observed or mutated: ", subj as String, " (a demand at operation/logical-subject grain, bound at a root)"))
+  let acquisition = egress_nonempty(s: concat("which external state is observed or mutated: ", subj as String, " (a demand at operation/logical-subject grain, bound at a root)"))
   match computation_half {
     Present { value: c } =>
       unresolved(cause: MixedSemanticQuestions { questions: [acquisition, c] }, candidates: partial_candidates(e: e))
@@ -354,7 +354,7 @@ fn derive_without_external_subject(e: QualifiedEvidence, ownership: SeedGrowthOw
     QueryOverAcceptedProduct { judgment_subject: s, accepted_compiler_product: p, current_host_producer: h, deletion_trigger: t } =>
       match e.computation {
         ComputationVerified { authority: _, inputs: _, result: _, body: _ } =>
-          unresolved(cause: MixedSemanticQuestions { questions: [q(s: concat("a compiler-query half: ", s as String)), q(s: "a pure computation half over modeled inputs")] }, candidates: partial_candidates(e: e))
+          unresolved(cause: MixedSemanticQuestions { questions: [egress_nonempty(s: concat("a compiler-query half: ", s as String)), egress_nonempty(s: "a pure computation half over modeled inputs")] }, candidates: partial_candidates(e: e))
         ComputationNotEstablished { detail: d } => unresolved(cause: SubjectUnestablished { detail: d }, candidates: partial_candidates(e: e))
         NoComputationHalf =>
           match e.realization {
@@ -374,21 +374,21 @@ fn derive_without_external_subject(e: QualifiedEvidence, ownership: SeedGrowthOw
           match e.computation {
             ComputationVerified { authority: _, inputs: _, result: _, body: _ } =>
               TargetKernelRealization { semantic_operation_authority: a, required_semantics: sem, target_realization: tr, reference_body: r, equivalence_witness: w }
-            NoComputationHalf => unresolved(cause: SubjectUnestablished { detail: q(s: "a native realization claims a modeled operation, but no computation over modeled inputs is recorded for it") }, candidates: [TargetKernelRealizationClass])
+            NoComputationHalf => unresolved(cause: SubjectUnestablished { detail: egress_nonempty(s: "a native realization claims a modeled operation, but no computation over modeled inputs is recorded for it") }, candidates: [TargetKernelRealizationClass])
             ComputationNotEstablished { detail: d } => unresolved(cause: SubjectUnestablished { detail: d }, candidates: partial_candidates(e: e))
           }
         RealizationUnqualified { detail: d } => unresolved(cause: TargetKernelUnqualified { detail: d }, candidates: [TargetKernelRealizationClass])
         NoRealizationClaim =>
           match e.computation {
             ComputationNotEstablished { detail: d } => unresolved(cause: SubjectUnestablished { detail: d }, candidates: partial_candidates(e: e))
-            NoComputationHalf => unresolved(cause: SubjectUnestablished { detail: q(s: "no evidence claims any class: no external subject, no computation over modeled inputs, no realization relation, no compiler-query subject") }, candidates: [])
+            NoComputationHalf => unresolved(cause: SubjectUnestablished { detail: egress_nonempty(s: "no evidence claims any class: no external subject, no computation over modeled inputs, no realization relation, no compiler-query subject") }, candidates: [])
             ComputationVerified { authority: auth, inputs: i, result: res, body: b } =>
               match auth {
                 AuthorityRequiredHome { home: h } => unresolved(cause: OperationAuthorityAbsent { home: h }, candidates: [PureDagComputationClass])
-                AuthorityUnresolved { reference: ref, cause: c } => unresolved(cause: OwningFactUnresolved { premise: q(s: "operation authority"), reference: ref, cause: c }, candidates: [PureDagComputationClass])
+                AuthorityUnresolved { reference: ref, cause: c } => unresolved(cause: OwningFactUnresolved { premise: egress_nonempty(s: "operation authority"), reference: ref, cause: c }, candidates: [PureDagComputationClass])
                 AuthorityVerified { declaration: decl, kind: _ } =>
                   match b {
-                    BodyUnresolved { reference: ref, cause: c } => unresolved(cause: OwningFactUnresolved { premise: q(s: "dag body"), reference: ref, cause: c }, candidates: [PureDagComputationClass])
+                    BodyUnresolved { reference: ref, cause: c } => unresolved(cause: OwningFactUnresolved { premise: egress_nonempty(s: "dag body"), reference: ref, cause: c }, candidates: [PureDagComputationClass])
                     BodyVerified { declaration: bd } => derive_pure(e: e, decl: decl, i: i, res: res, body: DagBodyExists { declaration: bd })
                     BodyRequired => derive_pure(e: e, decl: decl, i: i, res: res, body: DagBodyRequired)
                   }
@@ -399,11 +399,11 @@ fn derive_without_external_subject(e: QualifiedEvidence, ownership: SeedGrowthOw
 }
 
 fn realization_over_effect(e: QualifiedEvidence) -> PrimitiveDisposition {
-  unresolved(cause: SubjectUnestablished { detail: q(s: "a native-realization claim over an operation with an external subject: a realization relation is a fact about a modeled pure operation, not about an effect") }, candidates: partial_candidates(e: e))
+  unresolved(cause: SubjectUnestablished { detail: egress_nonempty(s: "a native-realization claim over an operation with an external subject: a realization relation is a fact about a modeled pure operation, not about an effect") }, candidates: partial_candidates(e: e))
 }
 
 fn realization_beside_query(e: QualifiedEvidence) -> PrimitiveDisposition {
-  unresolved(cause: SubjectUnestablished { detail: q(s: "a native-realization claim beside a compiler-query claim: a query is realized by the seed by definition, so the realization relation is not a separate fact") }, candidates: partial_candidates(e: e))
+  unresolved(cause: SubjectUnestablished { detail: egress_nonempty(s: "a native-realization claim beside a compiler-query claim: a query is realized by the seed by definition, so the realization relation is not a separate fact") }, candidates: partial_candidates(e: e))
 }
 
 fn derive_pure(e: QualifiedEvidence, decl: DeclarationRef, i: NonEmptyStr, res: NonEmptyStr, body: DagBodyStanding) -> PrimitiveDisposition {
@@ -467,7 +467,7 @@ fn refusals_unmodeled(detail: String) -> RefusalStanding { RefusalsUnmodeled { d
 fn subject_unestablished(detail: String) -> ExternalSubjectStanding { ExternalSubjectUnestablished { detail: detail as NonEmptyStr } }
 fn computation_unestablished(detail: String) -> ComputationStanding { ComputationUnestablished { detail: detail as NonEmptyStr } }
 fn surfaces_disagree(detail: String) -> MeaningConflict { SurfacesDisagree { detail: detail as NonEmptyStr } }
-fn authority(module_path: String, decl_name: String) -> OperationAuthorityStanding { AuthorityDeclared { declaration: decl_ref(module_path: module_path, decl_name: decl_name) } }
+fn declared_authority(module_path: String, decl_name: String) -> OperationAuthorityStanding { AuthorityDeclared { declaration: decl_ref(module_path: module_path, decl_name: decl_name) } }
 fn authority_required(home: String) -> OperationAuthorityStanding { AuthorityRequired { home: home as NonEmptyStr } }
 fn body_at(module_path: String, decl_name: String) -> DagBodyStanding { DagBodyExists { declaration: decl_ref(module_path: module_path, decl_name: decl_name) } }
 fn provider_required(shape: String) -> ProviderInterfaceStanding { ProviderInterfaceRequired { shape: shape as NonEmptyStr } }

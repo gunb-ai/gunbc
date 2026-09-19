@@ -7,7 +7,7 @@ import gunbc.primitive_egress.disposition {
   PrimitiveEvidence, NoExternalSubject, NoPureComputationHalf, RefusalsTyped, RefusalsNotApplicable, NoNativeRealizationClaim,
   NotACompilerQuery, NoMeaningConflict, DagBodyRequired, ReferenceBodyAbsent,
   evidence_row, computes, observes, realizes, queries, refusals_unmodeled, subject_unestablished, computation_unestablished,
-  surfaces_disagree, authority, authority_required, body_at, provider_required, provider_declared, reference_at, unqualified, qualified_by,
+  surfaces_disagree, declared_authority, authority_required, body_at, provider_required, provider_declared, reference_at, unqualified, qualified_by,
 }
 
 // COMPILER-QUERY evidence: the subject is compiler state or a compiler qualification product

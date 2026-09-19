@@ -23,7 +23,7 @@ import gunbc.primitive_egress.qualification { QualificationContext, qualify_evid
 import gunbc.primitive_egress.disposition {
   PrimitiveEvidence, QualifiedEvidence, PrimitiveDisposition, QueryOverAcceptedProduct, NotACompilerQuery, DispositionClass, UnresolvedClass, PureDagComputationClass, BoundHostEffectClass,
   TargetKernelRealizationClass, CompilerQueryFrontierClass, SeedGrowthOwnership, SeedGrowthRows, NoSeedGrowthRow,
-  derive_disposition, disposition_class, disposition_class_label, row_owner_lane,
+  derive_primitive_disposition, disposition_class, disposition_class_label, row_owner_lane,
 }
 import gunbc.primitive_egress.category { category_label }
 
@@ -180,7 +180,7 @@ type ConsumerTally {
   unresolved_callers: List<String>
 }
 
-fn empty_tally() -> ConsumerTally {
+fn empty_consumer_tally() -> ConsumerTally {
   ConsumerTally { v2_sites: 0, v1_sites: 0, dag_sites: 0, test_sites: 0, v2_modules: [], v1_modules: [], unresolved_sites: 0, unresolved_callers: [] }
 }
 
@@ -253,7 +253,7 @@ fn consumer_fold(edges: List<PrimitiveCallEdge>, on_surface: fn(PrimitiveIdentit
       match edge_join(edge: edge, on_surface: on_surface) {
         EstablishedConsumer { identity: id } => {
           let key = identity_name(identity: id)
-          let prior = match map_get(acc.tallies, key) { Present { value: t } => t  Absent => empty_tally() }
+          let prior = match map_get(acc.tallies, key) { Present { value: t } => t  Absent => empty_consumer_tally() }
           ConsumerFold {
             tallies: map_insert(acc.tallies, key, tally_resolved(t: prior, layer: caller_layer(module_path: edge.caller_module), module: edge.caller_module)),
             service_sites: acc.service_sites, off_surface_sites: acc.off_surface_sites, off_surface_spellings: acc.off_surface_spellings,
@@ -261,7 +261,7 @@ fn consumer_fold(edges: List<PrimitiveCallEdge>, on_surface: fn(PrimitiveIdentit
         }
         UnresolvedConsumer { identity: id } => {
           let key = identity_name(identity: id)
-          let prior = match map_get(acc.tallies, key) { Present { value: t } => t  Absent => empty_tally() }
+          let prior = match map_get(acc.tallies, key) { Present { value: t } => t  Absent => empty_consumer_tally() }
           ConsumerFold {
             tallies: map_insert(acc.tallies, key, tally_unresolved(t: prior, caller: concat(edge.caller_module, " ", edge.caller_decl))),
             service_sites: acc.service_sites, off_surface_sites: acc.off_surface_sites, off_surface_spellings: acc.off_surface_spellings,
@@ -315,7 +315,7 @@ fn count_surface(facts: List<JoinedSurfaceFact>, surface: PrimitiveSurfaceAuthor
   count(facts |> filter(f => f.fact.surface == surface))
 }
 
-fn distinct_identities(joined: List<JoinedSurfaceFact>) -> List<PrimitiveIdentity> {
+fn distinct_joined_identities(joined: List<JoinedSurfaceFact>) -> List<PrimitiveIdentity> {
   joined |> fold(init: [], f: fn(acc, j) {
     if acc |> any(id => primitive_identity_eq(left: id, right: j.join.identity)) { acc } else { list_push(acc, j.join.identity) }
   })
@@ -347,7 +347,7 @@ fn disposition_match(rows: List<PrimitiveEvidence>, identity: PrimitiveIdentity,
     match matches |> first {
       Present { value: r } => {
         let qualified = qualify_evidence(e: r, ctx: ctx)
-        ExactlyOneDisposition { evidence: r, qualified: qualified, disposition: derive_disposition(e: qualified, ownership: ownership) }
+        ExactlyOneDisposition { evidence: r, qualified: qualified, disposition: derive_primitive_disposition(e: qualified, ownership: ownership) }
       }
       Absent => NoDisposition
     }
@@ -424,7 +424,7 @@ fn identity_standing(
     modeled_bodies: projection_declarations(rows: projections, identity: identity, wanted: is_modeled),
     host_seams: projection_declarations(rows: projections, identity: identity, wanted: is_host_seam),
     divergent_bodies: projection_declarations(rows: projections, identity: identity, wanted: is_divergent),
-    consumers: match map_get(consumers.tallies, name) { Present { value: t } => t  Absent => empty_tally() },
+    consumers: match map_get(consumers.tallies, name) { Present { value: t } => t  Absent => empty_consumer_tally() },
     disposition: disposition_match(rows: dispositions, identity: identity, ownership: ownership, ctx: qualification_context_for(identity: identity, facts: facts, joined: joined, projections: projections, resolve: resolve, witness_prefixes: witness_prefixes)),
     seed_growth: ownership,
   }
@@ -523,7 +523,7 @@ type IdentityUniverse {
 // identities. An identity from any one of them receives a standing; nothing attached later can
 // introduce or lose one.
 fn identity_universe(joined: List<JoinedSurfaceFact>, edges: List<PrimitiveCallEdge>, projections: List<PrimitiveProjection>, seed_growth_decls: List<DeclarationRef>, evidence: List<PrimitiveEvidence>) -> IdentityUniverse {
-  let surface = distinct_identities(joined: joined)
+  let surface = distinct_joined_identities(joined: joined)
   let step1 = surface |> fold(init: IdentityUniverse { identities: [], origins: [] }, f: fn(u, id) {
     IdentityUniverse { identities: push_identity(acc: u.identities, id: id), origins: list_push(u.origins, IdentityOriginRow { identity: id, origin: OnRealizationSurface }) }
   })
@@ -621,7 +621,7 @@ fn exactly_one_disposition(c: PrimitiveCensus) -> List<IdentityStanding> {
   standings_where(c: c, p: fn(s) { match s.disposition { ExactlyOneDisposition { evidence: _, qualified: _, disposition: _ } => true  MultipleDispositions { rows: _ } => false  NoDisposition => false } })
 }
 
-fn standing_class(s: IdentityStanding) -> DispositionClass? {
+fn standing_disposition_class(s: IdentityStanding) -> DispositionClass? {
   match s.disposition {
     ExactlyOneDisposition { evidence: _, qualified: _, disposition: d } => Present { value: disposition_class(d: d) }
     NoDisposition => none
@@ -649,14 +649,14 @@ fn seed_growth_only_identities(c: PrimitiveCensus) -> List<IdentityStanding> { s
 
 fn standings_of_class(c: PrimitiveCensus, wanted: DispositionClass) -> List<IdentityStanding> {
   standings_where(c: c, p: fn(s) {
-    match standing_class(s: s) {
+    match standing_disposition_class(s: s) {
       Present { value: k } => disposition_class_label(c: k) == disposition_class_label(c: wanted)
       Absent => false
     }
   })
 }
 
-fn unresolved_identities(c: PrimitiveCensus) -> List<IdentityStanding> {
+fn unresolved_standings(c: PrimitiveCensus) -> List<IdentityStanding> {
   standings_of_class(c: c, wanted: UnresolvedClass)
 }
 
