@@ -36,6 +36,8 @@ data generated_workflow_artifacts: List<GeneratedArtifact> = [
   WitnessFloorYamlArtifact,
   FleetConvergeYamlArtifact,
   FleetDesiredAdmissionYamlArtifact,
+  HealWorkflowYamlArtifact,
+  HealPublisherWorkflowYamlArtifact,
 ]
 
 fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProvenance? {
