@@ -93,10 +93,6 @@ fn decode_runner_status(raw: NonEmptyStr) -> GitHubRunnerRegistrationStatus? {
   }
 }
 
-fn optional_member_string(v: JsonValue, key: String) -> NonEmptyStr? {
-  json_member_string(v: v, key: key)
-}
-
 // Labels are objects with a name; a label without one refuses the runner rather than dropping it,
 // because a label set with a member missing is a different label set.
 fn decode_runner_labels(v: JsonValue) -> List<NonEmptyStr>? {
@@ -142,7 +138,7 @@ fn decode_runner_registration(v: JsonValue) -> RunnerRegistrationDecode {
                         status: status,
                         busy: busy,
                         ephemeral: json_member_bool(v: v, key: "ephemeral"),
-                        version: optional_member_string(v: v, key: "version"),
+                        version: json_member_string(v: v, key: "version"),
                         os: os,
                         labels: labels
                       } }
@@ -612,13 +608,6 @@ type OrganizationRunnerIdObservation
 type OrganizationRunnerVisibility
   = RunnersVisible { org: NonEmptyStr, route: OrgRunnerReadRoute }
   | RunnersVisibilityUnestablished { org: NonEmptyStr, reason: NonEmptyStr }
-
-fn runner_visibility_from_page_read(org: NonEmptyStr, route: OrgRunnerReadRoute, read: OrganizationRunnerRosterPageRead) -> OrganizationRunnerVisibility {
-  match read {
-    RosterPageDelivered { page: _, continuation: _ } => RunnersVisible { org: org, route: route }
-    RosterPageFailed { cause } => RunnersVisibilityUnestablished { org: org, reason: cause }
-  }
-}
 
 fn absence_established_for(visibility: OrganizationRunnerVisibility, org: NonEmptyStr) -> NonEmptyStr? {
   match visibility {
