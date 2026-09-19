@@ -9,7 +9,6 @@ import v2.std.grammar {
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
-  LiteralTerminal,
   Nonterminal,
   Optional,
   Sequence,
@@ -18,7 +17,8 @@ import v2.std.grammar {
   Terminal,
   TerminalStampMode,
   grammar_atom,
-  grammar_empty_sync_tokens
+  grammar_empty_sync_tokens,
+  grammar_expr_literal_terminal
 }
 import v2.compiler.parse {
   ChoiceByToken,
@@ -396,7 +396,7 @@ fn pcp_word_token(word: String) -> Token {
 }
 
 fn lit(lexeme: Symbol) -> GrammarExpr {
-  LiteralTerminal { token_class: ^pcp_word, lexeme: lexeme }
+  grammar_expr_literal_terminal(token_class: ^pcp_word, lexeme: lexeme)
 }
 
 fn pcp_word_pair() -> GrammarExpr {
