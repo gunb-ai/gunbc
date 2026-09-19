@@ -58,6 +58,10 @@ data missing_brace_red_source: String = "module m\nservice S\nfn f() -> Int { 1 
 
 data unknown_modifier_red_source: String = "module m\nservice S {\n  operation Op {\n    input { x: Int }\n    volatile\n    transport shell { argv: [\"x\"] }\n  }\n}\n"
 
+data field_default_source: String = "module m\nservice S {\n  operation Op {\n    input { path: String, max_depth: Int = 1 }\n    transport shell { argv: [\"a\"] }\n  }\n}\n"
+
+data field_default_without_expr_red_source: String = "module m\nservice S {\n  operation Op {\n    input { max_depth: Int = }\n  }\n}\n"
+
 data keyword_as_name_source: String = "module m\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
 
 test fn fn_control_still_parses_holds() -> Bool {
@@ -92,4 +96,12 @@ test fn unknown_operation_modifier_still_refuses_holds() -> Bool {
 
 test fn service_keywords_remain_usable_as_names_holds() -> Bool {
   parses(src: keyword_as_name_source)
+}
+
+test fn field_default_parses_holds() -> Bool {
+  parses(src: field_default_source)
+}
+
+test fn field_default_without_expr_still_refuses_holds() -> Bool {
+  refuses(src: field_default_without_expr_red_source)
 }
