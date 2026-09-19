@@ -395,6 +395,8 @@ struct ServerConfig {
     let host: String
     /// apns_environment_wire: "development" | "production".
     let apnsEnvironment: String
+    /// extdeps.apple.apns ApnsTopic: the bundle identifier, read from the bundle and never defaulted.
+    let apnsTopic: String
 
     static func fromBundle() throws -> ServerConfig {
         let info = Bundle.main.infoDictionary ?? [:]
@@ -404,6 +406,9 @@ struct ServerConfig {
         guard let env = info["ApproveApnsEnvironment"] as? String, env == "development" || env == "production" else {
             throw WireError.configMissing("APNS_ENVIRONMENT must be development or production in Config/Team.xcconfig")
         }
+        guard let topic = Bundle.main.bundleIdentifier, !topic.isEmpty else {
+            throw WireError.configMissing("CFBundleIdentifier is missing; the APNs topic cannot be derived")
+        }
         // A configured host is a host: refuse anything URLComponents will not carry as one.
         var probe = URLComponents()
         probe.scheme = "https"
@@ -411,7 +416,7 @@ struct ServerConfig {
         guard probe.url != nil, probe.host == host, !host.contains("/"), !host.contains("?"), !host.contains("#") else {
             throw WireError.configMissing("APPROVE_SERVER_HOST is not a bare host: \(host)")
         }
-        return ServerConfig(host: host, apnsEnvironment: env)
+        return ServerConfig(host: host, apnsEnvironment: env, apnsTopic: topic)
     }
 
     /// path is a Route path whose segments are already base64url; it is set as percentEncodedPath so

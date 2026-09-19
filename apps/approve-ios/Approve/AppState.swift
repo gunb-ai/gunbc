@@ -71,22 +71,17 @@ final class AppState: ObservableObject {
     /// Exit discipline: the loop stops only when the server holds the desired token, when there is
     /// nothing to converge (not enrolled, no token), or when the request for the STILL-desired token
     /// failed — a failure for a token that was superseded while in flight continues at once with the
-    /// newer one. On exit with desired != forwarded, the deferred check restarts the loop once a
-    /// NEWER token has arrived (never a tight retry on the same failed token).
+    /// newer one. After a stop on a failed token, the restart is owned by tokenDelivered: the next
+    /// delivery (a newer token) starts a fresh loop; nothing retries the same failed token.
     func convergePushToken() async {
         guard !converging else { return }
         converging = true
         var failedToken: String?
-        defer {
-            converging = false
-            if case .enrolled(let e) = state, let desired = apnsToken, e.forwarded_apns_token != desired, desired != failedToken {
-                Task { await convergePushToken() }
-            }
-        }
+        defer { converging = false }
         while case .enrolled(let e) = state, let desired = apnsToken, e.forwarded_apns_token != desired, desired != failedToken {
             do {
                 let client = try requireClient()
-                let body = WireEncode.pushUpdate(registration(desired))
+                let body = WireEncode.pushUpdate(registration(client.config, desired))
                 let requestedAt = Self.now()
                 let auth = try await assertion(e, requestedAt: requestedAt,
                                                clientData: devicePushUpdateClientData(enrollmentId: e.enrollment_id, requestedAt: requestedAt, pushBodyJson: body))
@@ -105,12 +100,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func registration(_ token: String) -> ApnsRegistration {
-        ApnsRegistration(
-            environment: config?.apnsEnvironment ?? "",
-            topic: Bundle.main.bundleIdentifier ?? "ai.gunb.approve",
-            token: token
-        )
+    /// Every value from the refusing ServerConfig; no arm of this can fabricate a default.
+    private func registration(_ c: ServerConfig, _ token: String) -> ApnsRegistration {
+        ApnsRegistration(environment: c.apnsEnvironment, topic: c.apnsTopic, token: token)
     }
 
     private func awaitToken() async throws -> String {
@@ -172,7 +164,7 @@ final class AppState: ObservableObject {
             let submission = EnrolmentRequest(
                 code: p.code, platform: .ios, decision_key: p.decision_key_pub,
                 evidence: IosAppAttestBoundDecisionKey(attest_key_id: p.attest_key_id, attestation_b64: p.attestation_b64!),
-                push: registration(token))
+                push: registration(client.config, token))
             try transition(.submissionUnknown(p))   // BEFORE the bytes leave
             let grant = try await client.enrol(submission)
             try adopt(EnrolledDevice(
