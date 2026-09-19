@@ -4,7 +4,8 @@ import std.types { String, Bool, List, Timestamp }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance {
-  process_identity_eq, RunnerSlotIdentity, ProcessIdentity }
+  process_identity_eq, RunnerSlotIdentity, ProcessIdentity, runner_slot_instance_name }
+import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_broker_progress_watchdog {
   RemoteRegistrationEvidence,
@@ -76,7 +77,7 @@ fn fixture_incarnation(slot: RunnerSlotIdentity, pid: Int, start: String) -> Run
       pid: pid,
       start_time: start as NonEmptyStr,
     },
-    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+    unit: fixture_unit_name(slot: slot),
   }
 }
 
@@ -95,10 +96,19 @@ fn remote_offline_evidence() -> RemoteRegistrationEvidence {
   }
 }
 
-fn remote_online_evidence(labels: List<String>) -> RemoteRegistrationEvidence {
+// THE REMOTE'S NAME IS DERIVED FROM THE SPECIMEN SLOT through the registration-name authority
+// (gunbc.build_cache_instance runner_slot_instance_name, gunbc.runner_unit
+// runner_unit_name_of_registration), so an srv4 case observes an srv4-named remote. The
+// postcondition does NOT join the remote name to the slot -- an inherited limitation this fixture
+// does not repair -- so no witness here establishes replacement IDENTITY; they establish labels.
+fn fixture_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
+  runner_unit_name_of_registration(registration_name: runner_slot_instance_name(slot: slot) as NonEmptyStr)
+}
+
+fn remote_online_evidence(slot: RunnerSlotIdentity, labels: List<String>) -> RemoteRegistrationEvidence {
   RemoteRegistrationObserved {
     registration: RunnerRemoteOnline {
-      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
+      runner_name: fixture_unit_name(slot: slot),
       labels: labels,
     },
     registration_id: "reg-1",
@@ -159,7 +169,7 @@ fn connected_snapshot(act_at: Timestamp, pid: Int, start: String) -> RunnerSlotC
       observed_at: act_at,
     },
     remote: RunnerRemoteObservation {
-      evidence: remote_online_evidence(labels: fixture_labels()),
+      evidence: remote_online_evidence(slot: slot, labels: fixture_labels()),
       observed_at: act_at,
       control_plane_error_burst: false,
     },
@@ -412,7 +422,7 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
     observed_at: act,
   }
   let after_remote = RunnerRemoteObservation {
-    evidence: remote_online_evidence(labels: fixture_labels()),
+    evidence: remote_online_evidence(slot: slot, labels: fixture_labels()),
     observed_at: act,
     control_plane_error_burst: false,
   }
@@ -437,7 +447,7 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
     observed_at: act,
   }
   let after_remote = RunnerRemoteObservation {
-    evidence: remote_online_evidence(labels: fixture_labels()),
+    evidence: remote_online_evidence(slot: slot, labels: fixture_labels()),
     observed_at: act,
     control_plane_error_burst: false,
   }
@@ -646,7 +656,7 @@ fn replace_postcondition_with_labels(host: HostIdentity, labels: List<String>) -
     observed_at: act,
   }
   let after_remote = RunnerRemoteObservation {
-    evidence: remote_online_evidence(labels: labels),
+    evidence: remote_online_evidence(slot: slot, labels: labels),
     observed_at: act,
     control_plane_error_burst: false,
   }
@@ -677,4 +687,15 @@ test fn postcondition_refuses_successor_registered_under_another_hosts_label() -
 
 test fn postcondition_accepts_the_srv4_registration_for_an_srv4_slot() -> Bool {
   replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "linux", "arm64", "gunbc-heavy", "srv4"])
+}
+
+// GITHUB LABEL EQUIVALENCE: a mixed-case, shuffled spelling of srv4's own set is the SAME set and
+// must verify -- a case-only difference proposes no repair.
+test fn postcondition_accepts_a_case_and_order_variant_of_the_slots_labels() -> Bool {
+  replace_postcondition_with_labels(host: operator_host_srv4, labels: ["SRV4", "gunbc-heavy", "ARM64", "Self-Hosted", "Linux"])
+}
+
+// ...and case folding does not launder a wrong host: SRV3 is still not srv4.
+test fn postcondition_refuses_a_mixed_case_wrong_host_label() -> Bool {
+  !replace_postcondition_with_labels(host: operator_host_srv4, labels: ["self-hosted", "Linux", "ARM64", "gunbc-heavy", "SRV3"])
 }

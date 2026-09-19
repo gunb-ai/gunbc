@@ -6,6 +6,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, 
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import extdeps.github.actions { runner_labels_equivalent }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
@@ -213,8 +214,11 @@ fn runner_host_label(host: HostIdentity) -> String {
   host as String
 }
 
+// MEMBERSHIP UNDER GITHUB'S LABEL EQUIVALENCE (extdeps.github.actions runner_labels_equivalent),
+// which union, selector satisfaction and set equality below all inherit. Host identities are not
+// folded: only label strings reach this comparison.
 fn runner_label_set_contains(labels: List<String>, label: String) -> Bool {
-  labels |> any(l => l == label)
+  labels |> any(l => runner_labels_equivalent(a: l, b: label))
 }
 
 fn runner_label_set_union(a: List<String>, b: List<String>) -> List<String> {
