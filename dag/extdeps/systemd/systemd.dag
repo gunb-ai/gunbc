@@ -129,6 +129,9 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
 
 data systemd_unit_load_state_not_found_wire: NonEmptyStr = "not-found" as NonEmptyStr
 
+// systemd.unit(5) LoadState `masked`: the unit file is linked to /dev/null, so the manager will not start it.
+data systemd_unit_load_state_masked_wire: NonEmptyStr = "masked" as NonEmptyStr
+
 data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)
 
 data systemd_memory_swap_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemorySwapMax)

@@ -7,7 +7,9 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, systemd_unit_property_wire }
+import extdeps.systemd { systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, systemd_unit_property_wire }
+import extdeps.tools.grep { grep_fixed_string_with_filename_argv }
+import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv }
 import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
 import extdeps.needrestart {
@@ -73,6 +75,23 @@ import gunbc.runner_unit_file {
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
+import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_slot_retirement {
+  RunnerRetirementStanding,
+  RetirementComplete,
+  RetirementPendingDrain,
+  RetirementUnobserved,
+  runner_retirement_standing,
+  retirement_unit,
+  retirement_observation_from_readings,
+  retirement_observation_unreadable,
+  retirement_cgroup_events_path,
+  cgroup_occupancy_from_batched_events,
+  control_group_property_means_cgroup_absent,
+  CgroupEventsBatch,
+  CgroupEventsBatchRead,
+  CgroupEventsBatchUnread,
+}
 import gunbc.runner_host_grants { executor_bootstrap_principal, bootstrap_principal_is_not_the_grantee }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
@@ -263,6 +282,7 @@ type RunnerHostFileSubject {
   host: HostIdentity
   target: SshTarget
   desired_units: List<NonEmptyStr>
+  retired_units: List<NonEmptyStr>
 }
 
 type RunnerHostFileSubjectAdmission
@@ -302,6 +322,7 @@ fn runner_host_file_subject(host: HostIdentity) -> RunnerHostFileSubjectAdmissio
                 principal: executor_bootstrap_principal.login,
               },
               desired_units: units,
+              retired_units: required_retirees_for_host(host: host),
             },
           }
         }
@@ -460,6 +481,8 @@ type RunnerSlotUnitStanding
   | SlotTeardownNotEffective { kill_mode: String, exit_type: String }
   | SlotReloadPending
   | SlotUnitNotLoaded { load_state: String }
+  | SlotRetiredAsDeclared
+  | SlotRetirementIncomplete { cause: String }
   | SlotUnitUnread
 
 // ORDER MATTERS AND IS THE POINT. A unit the manager has not loaded still gets a show block, carrying
@@ -467,7 +490,27 @@ type RunnerSlotUnitStanding
 // certify a slot that does not exist. A loaded unit whose configuration changed on disk reports the
 // OLD values until a reload, so NeedDaemonReload is read before the pair it would otherwise vouch for.
 fn classify_runner_slot_unit(reading: RunnerSlotUnitReading, intent: RunnerUnitLifecycleIntent) -> RunnerSlotUnitStanding {
-  if trim(s: reading.load_state) != "loaded" {
+  classify_runner_slot_unit_against_retirement(reading: reading, intent: intent, retirements: [])
+}
+
+// THE POPULATION IS JUDGED AGAINST THE SLOTS THAT SHOULD EXIST, NOT AGAINST THE GLOB. A masked unit is
+// discharged only by the retirement authority's OWN verdict on it: `retirements` carries
+// gunbc.runner_slot_retirement runner_retirement_standing for each unit the width transition obliges
+// retired, and only RetirementComplete -- mask held, service not running, workload cgroup empty or
+// absent -- reads SlotRetiredAsDeclared. Masked is the inhibit, not the drain: a retiree masked mid-job
+// still holds its worker, so a pending or unobserved retirement refuses as SlotRetirementIncomplete.
+// A masked unit with no retirement standing -- one the authority does NOT retire -- stays not-loaded,
+// because ignoring masked units would hide a slot masked by mistake; a retiree still loaded is still
+// judged on its teardown, because it can still run a job.
+fn classify_runner_slot_unit_against_retirement(reading: RunnerSlotUnitReading, intent: RunnerUnitLifecycleIntent, retirements: List<RunnerRetirementStanding>) -> RunnerSlotUnitStanding {
+  let own = filter(retirements, st => retirement_unit(s: st) == (reading.unit as String))
+  if trim(s: reading.load_state) == (systemd_unit_load_state_masked_wire as String) && length(own) > 0 {
+    fold(own, init: SlotRetiredAsDeclared, f: (acc, st) => match st {
+      RetirementComplete { unit: _ } => acc
+      RetirementPendingDrain { unit: _, cause: c } => SlotRetirementIncomplete { cause: c }
+      RetirementUnobserved { unit: _, cause: c } => SlotRetirementIncomplete { cause: c }
+    })
+  } else if trim(s: reading.load_state) != "loaded" {
     SlotUnitNotLoaded { load_state: trim(s: reading.load_state) }
   } else if trim(s: reading.need_daemon_reload) != "no" {
     SlotReloadPending
@@ -485,6 +528,8 @@ fn runner_slot_unit_standing_wire(standing: RunnerSlotUnitStanding) -> String {
     SlotTeardownNotEffective { kill_mode: k, exit_type: e } => join(["NOT-EFFECTIVE KillMode=", k, " ExitType=", e], "")
     SlotReloadPending => "RELOAD-PENDING"
     SlotUnitNotLoaded { load_state: l } => concat("NOT-LOADED LoadState=", l)
+    SlotRetiredAsDeclared => "retired-as-declared LoadState=masked"
+    SlotRetirementIncomplete { cause: c } => concat("MASKED-RETIREMENT-INCOMPLETE ", c)
     SlotUnitUnread => "UNREAD"
   }
 }
@@ -498,7 +543,9 @@ type RunnerSlotPopulation
   = SlotPopulationObserved { units: List<RunnerSlotUnitResult> }
   | SlotPopulationUnobservable { reason: String }
 
-data runner_slot_show_properties: List<SystemdUnitProperty> = [IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty]
+// The last three are the retirement authority's readings (gunbc.runner_slot_retirement
+// retirement_observation_from_readings), carried by the SAME show so a retiree costs no round trip.
+data runner_slot_show_properties: List<SystemdUnitProperty> = [IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup]
 
 fn runner_unit_name_is_slot(name: String) -> Bool {
   starts_with(s: name, prefix: runner_unit_prefix) && ends_with(s: name, suffix: runner_unit_suffix)
@@ -512,12 +559,16 @@ fn runner_slot_units_from_list_units(stdout: String) -> List<String> {
   )
 }
 
-// THE POPULATION IS THE UNION, DESIRED FIRST. A desired slot the manager does not hold must be seen as
-// NOT-LOADED rather than skipped, and a loaded slot outside the desired roster -- a leftover
-// incarnation, a slot added by hand -- is still a unit a restart can orphan from. list-units names each
-// unit the manager holds once, so the loaded half needs no de-duplication of its own.
-fn runner_slot_population_units(desired: List<NonEmptyStr>, loaded: List<String>) -> List<NonEmptyStr> {
-  concat(desired, map(filter(loaded, l => !any(desired, d => (d as String) == l)), l => l as NonEmptyStr))
+// THE POPULATION IS THE UNION, DESIRED FIRST, THEN THE REQUIRED RETIREES, THEN LOADED EXTRAS. A
+// desired slot the manager does not hold must be seen as NOT-LOADED rather than skipped, and a loaded
+// slot outside both rosters -- a leftover incarnation, a slot added by hand -- is still a unit a
+// restart can orphan from. A required retiree is a member BY DECLARATION, never by listing: absence
+// from list-units is not retirement, whose completion is the retirement authority's verdict over
+// inhibition, a stopped service and an empty or absent cgroup. list-units names each unit the manager
+// holds once, so the loaded half needs no de-duplication of its own.
+fn runner_slot_population_units(desired: List<NonEmptyStr>, retired: List<NonEmptyStr>, loaded: List<String>) -> List<NonEmptyStr> {
+  let declared = concat(desired, filter(retired, r => !any(desired, d => (d as String) == (r as String))))
+  concat(declared, map(filter(loaded, l => !any(declared, d => (d as String) == l)), l => l as NonEmptyStr))
 }
 
 fn show_block_value(lines: List<String>, property: SystemdUnitProperty) -> String? {
@@ -559,7 +610,7 @@ fn parse_runner_slot_show_block(block: String) -> RunnerSlotUnitReading? {
 
 // Each requested unit is joined to the block that NAMES it; a unit with no block of its own is UNREAD,
 // never borrowed from a neighbour's.
-fn classify_runner_slot_population(units: List<NonEmptyStr>, show_stdout: String, intent: RunnerUnitLifecycleIntent) -> List<RunnerSlotUnitResult> {
+fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<RunnerRetirementStanding>, show_stdout: String, intent: RunnerUnitLifecycleIntent) -> List<RunnerSlotUnitResult> {
   let readings = flat_map(split(s: show_stdout, delimiter: "\n\n"), b => match parse_runner_slot_show_block(block: b) {
     Present { value: r } => [r]
     Absent => []
@@ -568,7 +619,7 @@ fn classify_runner_slot_population(units: List<NonEmptyStr>, show_stdout: String
     RunnerSlotUnitResult {
       unit: u,
       standing: fold(readings, init: SlotUnitUnread, f: (acc, r) =>
-        if (r.unit as String) == (u as String) { classify_runner_slot_unit(reading: r, intent: intent) } else { acc }),
+        if (r.unit as String) == (u as String) { classify_runner_slot_unit_against_retirement(reading: r, intent: intent, retirements: retirements) } else { acc }),
     })
 }
 
@@ -581,6 +632,8 @@ fn runner_slot_population_owes_reload(population: RunnerSlotPopulation) -> Bool 
         SlotTeardownEffective => false
         SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false
         SlotUnitNotLoaded { load_state: _ } => false
+        SlotRetiredAsDeclared => false
+        SlotRetirementIncomplete { cause: _ } => false
         SlotUnitUnread => false
       })
   }
@@ -590,8 +643,11 @@ fn runner_slot_population_effective(population: RunnerSlotPopulation) -> Bool {
   match population {
     SlotPopulationUnobservable { reason: _ } => false
     SlotPopulationObserved { units: us } =>
-      length(us) > 0 && all(us, r => match r.standing {
+      any(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false })
+        && all(us, r => match r.standing {
         SlotTeardownEffective => true
+        SlotRetiredAsDeclared => true
+        SlotRetirementIncomplete { cause: _ } => false
         SlotReloadPending => false
         SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false
         SlotUnitNotLoaded { load_state: _ } => false
@@ -610,6 +666,8 @@ fn runner_slot_population_read_completely(population: RunnerSlotPopulation) -> B
         SlotReloadPending => true
         SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => true
         SlotUnitNotLoaded { load_state: _ } => true
+        SlotRetiredAsDeclared => true
+        SlotRetirementIncomplete { cause: _ } => true
       })
   }
 }
@@ -729,6 +787,66 @@ fn observe_runner_host_file(
   }
 }
 
+// ── Every required retiree, read from the population's own two reads ────────────────────────────────
+
+// A RETIREE'S THREE RETIREMENT READINGS OUT OF THE BATCHED SHOW, OR NOTHING. A retiree whose block is
+// missing, or whose block lacks any of the three keys, is `RetireeNotShown` and reads unobserved --
+// never retired: absence from an output is not retirement, exactly as absence from list-units is not.
+type RetireeShowReading
+  = RetireeShown { unit: NonEmptyStr, unit_file_state: String, active_state: String, control_group: String }
+  | RetireeNotShown { unit: NonEmptyStr }
+
+fn runner_retiree_show_reading(unit: NonEmptyStr, show_stdout: String) -> RetireeShowReading {
+  fold(split(s: show_stdout, delimiter: "\n\n"), init: RetireeNotShown { unit: unit }, f: (acc, b) => {
+    let lines = map(split(s: b, delimiter: "\n"), l => trim(s: l))
+    match show_block_value(lines: lines, property: IdProperty) {
+      Absent => acc
+      Present { value: id } =>
+        if trim(s: id) != (unit as String) {
+          acc
+        } else {
+          match show_block_value(lines: lines, property: UnitFileState) {
+            Absent => acc
+            Present { value: fs } =>
+              match show_block_value(lines: lines, property: ActiveState) {
+                Absent => acc
+                Present { value: act } =>
+                  match show_block_value(lines: lines, property: ControlGroup) {
+                    Absent => acc
+                    Present { value: cg } => RetireeShown { unit: unit, unit_file_state: fs, active_state: act, control_group: cg }
+                  }
+              }
+          }
+        }
+    }
+  })
+}
+
+fn runner_retiree_show_readings(retired: List<NonEmptyStr>, show_stdout: String) -> List<RetireeShowReading> {
+  map(retired, r => runner_retiree_show_reading(unit: r, show_stdout: show_stdout))
+}
+
+// THE ONE EVENTS READ, OR NONE. Every retiree still holding a workload cgroup contributes its
+// `cgroup.events` path to a SINGLE argv; a population whose retirees all report a blank ControlGroup
+// needs no read at all. So the observation costs list-units + show + at most this one exec, whatever
+// the number of retirees.
+fn runner_retiree_cgroup_events_argv(readings: List<RetireeShowReading>) -> List<String>? {
+  let paths = flat_map(readings, r => match r {
+    RetireeNotShown { unit: _ } => []
+    RetireeShown { unit: _, unit_file_state: _, active_state: _, control_group: cg } =>
+      if control_group_property_means_cgroup_absent(value: cg) { [] } else { [retirement_cgroup_events_path(control_group: cg)] }
+  })
+  if length(paths) == 0 { none } else { Present { value: grep_fixed_string_with_filename_argv(pattern: cgroup_v2_events_populated_key, paths: paths) } }
+}
+
+fn runner_retiree_standings(readings: List<RetireeShowReading>, batch: CgroupEventsBatch) -> List<RunnerRetirementStanding> {
+  map(readings, r => runner_retirement_standing(o: match r {
+    RetireeNotShown { unit: u } => retirement_observation_unreadable(unit: u, cause: "systemctl show returned no complete block for this required retiree")
+    RetireeShown { unit: u, unit_file_state: fs, active_state: act, control_group: cg } =>
+      retirement_observation_from_readings(unit: u, unit_file_state: fs, active_state: act, occupancy: cgroup_occupancy_from_batched_events(control_group: cg, batch: batch))
+  }))
+}
+
 fn observe_runner_slot_population(
   subject: RunnerHostFileSubject,
   context: FleetSshExecutionContext,
@@ -741,14 +859,24 @@ fn observe_runner_slot_population(
       if !listed.success {
         SlotPopulationUnobservable { reason: join(["systemctl list-units exit=", to_string(listed.exit_code), " ", trim(s: listed.stderr)], "") }
       } else {
-        let units = runner_slot_population_units(desired: subject.desired_units, loaded: runner_slot_units_from_list_units(stdout: listed.stdout))
+        let units = runner_slot_population_units(desired: subject.desired_units, retired: subject.retired_units, loaded: runner_slot_units_from_list_units(stdout: listed.stdout))
         match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: systemctl_show_properties_argv(units: units, properties: runner_slot_show_properties)) {
           TypedArgvExecRefused { reason: why } => SlotPopulationUnobservable { reason: why }
           TypedArgvExecConverged { result: shown } =>
             if !shown.success {
               SlotPopulationUnobservable { reason: join(["systemctl show exit=", to_string(shown.exit_code), " ", trim(s: shown.stderr)], "") }
             } else {
-              SlotPopulationObserved { units: classify_runner_slot_population(units: units, show_stdout: shown.stdout, intent: gunbc_runner_lifecycle_intent) }
+              let readings = runner_retiree_show_readings(retired: subject.retired_units, show_stdout: shown.stdout)
+              let batch = match runner_retiree_cgroup_events_argv(readings: readings) {
+                Absent => CgroupEventsBatchUnread { cause: "no retiree holds a workload cgroup" }
+                Present { value: argv } =>
+                  match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: argv) {
+                    TypedArgvExecRefused { reason: why } => CgroupEventsBatchUnread { cause: why }
+                    TypedArgvExecConverged { result: ev } => CgroupEventsBatchRead { stdout: ev.stdout, stderr: ev.stderr }
+                  }
+              }
+              let retirements = runner_retiree_standings(readings: readings, batch: batch)
+              SlotPopulationObserved { units: classify_runner_slot_population(units: units, retirements: retirements, show_stdout: shown.stdout, intent: gunbc_runner_lifecycle_intent) }
             }
         }
       }
@@ -1024,7 +1152,8 @@ fn runner_slot_population_text(population: RunnerSlotPopulation) -> String {
     SlotPopulationObserved { units: us } =>
       join([
         "slots observed=", to_string(length(us)),
-        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
+        " effective=", to_string(length(filter(us, r => match r.standing { SlotTeardownEffective => true SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotRetiredAsDeclared => false SlotRetirementIncomplete { cause: _ } => false SlotUnitUnread => false }))),
+        " retired-as-declared=", to_string(length(filter(us, r => match r.standing { SlotRetiredAsDeclared => true SlotRetirementIncomplete { cause: _ } => false SlotTeardownEffective => false SlotReloadPending => false SlotTeardownNotEffective { kill_mode: _, exit_type: _ } => false SlotUnitNotLoaded { load_state: _ } => false SlotUnitUnread => false }))),
         "\n",
         join(map(us, r => join(["slot ", r.unit as String, " ", runner_slot_unit_standing_wire(standing: r.standing), "\n"], "")), ""),
       ], "")

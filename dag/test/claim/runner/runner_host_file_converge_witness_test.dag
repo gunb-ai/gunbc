@@ -1,6 +1,6 @@
 module test.claim.runner_host_file_converge_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int }
+import std.types { Bool, String, NonEmptyStr, Int, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
 import extdeps.needrestart {
@@ -10,6 +10,20 @@ import extdeps.needrestart {
   needrestart_unit_name_prefix_regex,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.runner_slot_population_census { desired_unit_names_range }
+import gunbc.runner_slot_retirement {
+  RunnerRetirementStanding,
+  CgroupOccupancy,
+  CgroupAbsent,
+  CgroupObservedPopulated,
+  runner_retirement_standing,
+  retirement_observation_from_readings,
+  retirement_unit,
+  retirement_is_complete,
+  retirement_is_unobserved,
+  CgroupEventsBatchRead,
+  CgroupEventsBatchUnread,
+}
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
@@ -69,6 +83,8 @@ import gunbc.runner_host_file_converge {
   SlotReloadPending,
   SlotUnitNotLoaded,
   SlotUnitUnread,
+  SlotRetiredAsDeclared,
+  SlotRetirementIncomplete,
   classify_runner_slot_unit,
   RunnerSlotUnitResult,
   RunnerSlotPopulation,
@@ -77,6 +93,9 @@ import gunbc.runner_host_file_converge {
   runner_slot_units_from_list_units,
   runner_slot_population_units,
   classify_runner_slot_population,
+  runner_retiree_show_readings,
+  runner_retiree_cgroup_events_argv,
+  runner_retiree_standings,
   runner_slot_population_owes_reload,
   runner_slot_population_effective,
   runner_slot_population_read_completely,
@@ -404,6 +423,8 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
     SlotTeardownNotEffective { kill_mode: k, exit_type: e } => concat(concat("not-effective:", k), concat(":", e))
     SlotReloadPending => "reload-pending"
     SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
+    SlotRetiredAsDeclared => "retired"
+    SlotRetirementIncomplete { cause: _ } => "retirement-incomplete"
     SlotUnitUnread => "unread"
   }
 }
@@ -449,6 +470,7 @@ test fn the_population_is_desired_units_then_loaded_extras() -> Bool {
   map(
     runner_slot_population_units(
       desired: ["actions-runner@srv1-01.service" as NonEmptyStr, "actions-runner@srv1-03.service" as NonEmptyStr],
+      retired: [],
       loaded: runner_slot_units_from_list_units(stdout: list_units_fixture),
     ),
     u => u as String,
@@ -459,7 +481,7 @@ data show_fixture: String = "Id=actions-runner@srv1-01.service\nLoadState=loaded
 
 fn population_wires(units: List<String>) -> List<String> {
   map(
-    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
+    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retirements: [], show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
     r => standing_wire_of(st: r.standing),
   )
 }
@@ -553,4 +575,210 @@ test fn observe_reports_what_apply_refuses() -> Bool {
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
     && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
+}
+
+// ── The population joined against the retirement authority ──────────────────────────────────────
+
+// srv1's reading in run 35416072847: slots 01..12 loaded with the declared pair, 13..21 masked by
+// gunbc.runner_slot_retirement. Names come from the census authority and the retired set from the
+// width transition itself, so the control exercises the real join rather than a designed roster.
+fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
+  desired_unit_names_range(host: "srv1" as HostIdentity, slot: slot, limit: limit)
+}
+
+fn show_block_of(unit: String, load: String) -> String {
+  join(["Id=", unit, "\nLoadState=", load, "\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"], "")
+}
+
+fn srv1_show_reading(live: List<String>, masked: List<String>) -> String {
+  join(concat(map(live, u => show_block_of(unit: u, load: "loaded")), map(masked, u => show_block_of(unit: u, load: "masked"))), "\n\n")
+}
+
+fn srv1_population(units: List<String>, retirements: List<RunnerRetirementStanding>, show: String) -> RunnerSlotPopulation {
+  SlotPopulationObserved { units: classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retirements: retirements, show_stdout: show, intent: gunbc_runner_lifecycle_intent) }
+}
+
+// The retirement authority's own verdict over the property readings `mask --now` leaves behind, for
+// every unit the real srv1 subject carries as a required retiree. The readings are the boundary; the
+// fold from readings to standing is gunbc.runner_slot_retirement's, not restated here.
+fn srv1_retirements(active: String, occupancy: CgroupOccupancy) -> List<RunnerRetirementStanding> {
+  match witness_subject() {
+    Absent => []
+    Present { value: s } => map(s.retired_units, u => runner_retirement_standing(o: retirement_observation_from_readings(unit: u, unit_file_state: "masked", active_state: active, occupancy: occupancy)))
+  }
+}
+
+fn srv1_drained() -> List<RunnerRetirementStanding> {
+  srv1_retirements(active: "inactive", occupancy: CgroupAbsent)
+}
+
+// POSITIVE CONTROL. The 21-unit reading that refused is effective once each masked unit is joined to
+// the retirement authority's COMPLETE verdict, and the route is the join: every masked unit reads
+// retired, and the same reading with no retirement standing refuses.
+test fn srv1_twelve_live_and_nine_retired_masked_is_effective() -> Bool {
+  let units = srv1_unit_names(slot: 1, limit: 21)
+  let show = srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21))
+  let pop = srv1_population(units: units, retirements: srv1_drained(), show: show)
+  runner_slot_population_effective(population: pop)
+    && (match pop {
+      SlotPopulationUnobservable { reason: _ } => false
+      SlotPopulationObserved { units: us } => length(filter(us, r => standing_wire_of(st: r.standing) == "retired")) == 9
+    })
+    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: [], show: show))
+}
+
+// RED: masked is the inhibit, not the drain. A retiree masked while its worker still runs -- service
+// active, or its cgroup still populated -- is the orphan the retirement exists to prevent, and refuses.
+test fn a_masked_retiree_still_running_or_occupied_refuses() -> Bool {
+  let units = srv1_unit_names(slot: 1, limit: 21)
+  let show = srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21))
+  let running = srv1_population(units: units, retirements: srv1_retirements(active: "deactivating", occupancy: CgroupAbsent), show: show)
+  !runner_slot_population_effective(population: running)
+    && !runner_slot_population_effective(population: srv1_population(units: units, retirements: srv1_retirements(active: "inactive", occupancy: CgroupObservedPopulated), show: show))
+    && (match running {
+      SlotPopulationUnobservable { reason: _ } => false
+      SlotPopulationObserved { units: us } => length(filter(us, r => standing_wire_of(st: r.standing) == "retirement-incomplete")) == 9
+    })
+}
+
+// RED: a masked slot the authority does NOT retire is a slot masked by mistake, not a retirement.
+test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
+  let pop = srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 11), masked: srv1_unit_names(slot: 12, limit: 21)))
+  !runner_slot_population_effective(population: pop)
+    && (match pop {
+      SlotPopulationUnobservable { reason: _ } => false
+      SlotPopulationObserved { units: us } => any(us, r => (r.unit as String) == "actions-runner@srv1-12.service" && standing_wire_of(st: r.standing) == "not-loaded:masked")
+    })
+}
+
+// RED: a declared-live slot missing from the host stays a refusal, retirement notwithstanding.
+test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
+  let missing = "Id=actions-runner@srv1-12.service\nLoadState=not-found\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"
+  let show = join([srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 11), masked: srv1_unit_names(slot: 13, limit: 21)), missing], "\n\n")
+  !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
+}
+
+// RED: a required retiree that list-units OMITS is still observed. Absence from a listing is not
+// retirement, so the population is built from the real srv1 subject's desired and retired rosters
+// (live 01..12, retiring 13..50 per gunbc.runner_width_transition) over a listing that names every
+// slot but 21; slot 21 must still be a member, its retirement standing must still be joined, and
+// forty-nine healthy units must not carry the verdict.
+fn srv1_list_units_without_21() -> String {
+  join(map(concat(srv1_unit_names(slot: 1, limit: 20), srv1_unit_names(slot: 22, limit: 50)), u => concat(u, " loaded active running GitHub Actions runner")), "\n")
+}
+
+fn srv1_population_over_listing(retirements: List<RunnerRetirementStanding>, show: String) -> RunnerSlotPopulation {
+  match witness_subject() {
+    Absent => SlotPopulationUnobservable { reason: "no srv1 subject" }
+    Present { value: s } =>
+      SlotPopulationObserved {
+        units: classify_runner_slot_population(
+          units: runner_slot_population_units(desired: s.desired_units, retired: s.retired_units, loaded: runner_slot_units_from_list_units(stdout: srv1_list_units_without_21())),
+          retirements: retirements,
+          show_stdout: show,
+          intent: gunbc_runner_lifecycle_intent,
+        ),
+      }
+  }
+}
+
+fn population_holds(pop: RunnerSlotPopulation, unit: String, wire: String) -> Bool {
+  match pop {
+    SlotPopulationUnobservable { reason: _ } => false
+    SlotPopulationObserved { units: us } => any(us, r => (r.unit as String) == unit && standing_wire_of(st: r.standing) == wire)
+  }
+}
+
+test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses() -> Bool {
+  let omitted = "actions-runner@srv1-21.service"
+  let healthy = srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 50))
+  let still_running = map(srv1_drained(), st => if retirement_unit(s: st) == omitted {
+    runner_retirement_standing(o: retirement_observation_from_readings(unit: omitted as NonEmptyStr, unit_file_state: "masked", active_state: "active", occupancy: CgroupObservedPopulated))
+  } else { st })
+  let running_pop = srv1_population_over_listing(retirements: still_running, show: healthy)
+  let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: concat(srv1_unit_names(slot: 13, limit: 20), srv1_unit_names(slot: 22, limit: 50))))
+  population_holds(pop: running_pop, unit: omitted, wire: "retirement-incomplete")
+    && !runner_slot_population_effective(population: running_pop)
+    && population_holds(pop: unread_pop, unit: omitted, wire: "unread")
+    && !runner_slot_population_effective(population: unread_pop)
+    && runner_slot_population_effective(population: srv1_population_over_listing(retirements: srv1_drained(), show: healthy))
+}
+
+// ── Every retiree read from the population's two batched reads (review 68628) ────────────────────
+
+// srv1's show block for a retiree after `mask --now`, carrying the retirement authority's three
+// readings in the same block as the teardown pair. `cg` is the ControlGroup value systemd reports.
+fn retiree_block(unit: String, active: String, cg: String) -> String {
+  join(["Id=", unit, "\nLoadState=masked\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group\nUnitFileState=masked\nActiveState=", active, "\nControlGroup=", cg], "")
+}
+
+fn retiree_cg(unit: String) -> String {
+  concat("/system.slice/system-actions\\x2drunner.slice/", unit)
+}
+
+fn events_line(unit: String, populated: String) -> String {
+  join(["/sys/fs/cgroup", retiree_cg(unit: unit), "/cgroup.events:populated ", populated], "")
+}
+
+fn srv1_retired() -> List<NonEmptyStr> {
+  match witness_subject() {
+    Absent => []
+    Present { value: s } => s.retired_units
+  }
+}
+
+fn batched_standings(show: String, events: String) -> List<RunnerRetirementStanding> {
+  runner_retiree_standings(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: show), batch: CgroupEventsBatchRead { stdout: events, stderr: "" })
+}
+
+// COST: the retiree read is ONE argv, whatever the number of retirees. Over the real srv1 subject's 38
+// required retirees, each still holding a cgroup, the events read is a single grep carrying all 38
+// paths -- and over one retiree it is still a single argv. With the list-units and the show, the
+// observation is three execs, where the per-retiree reads were three to five EACH.
+test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool {
+  let all = map(srv1_retired(), r => retiree_block(unit: r as String, active: "active", cg: retiree_cg(unit: r as String)))
+  let many = runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: join(all, "\n\n")))
+  let one = runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: ["actions-runner@srv1-13.service" as NonEmptyStr], show_stdout: join(all, "\n\n")))
+  length(srv1_retired()) == 38
+    && (match many { Absent => false Present { value: argv } => length(argv) == 4 + 38 && any(argv, a => a == "/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-50.service/cgroup.events") })
+    && (match one { Absent => false Present { value: argv } => length(argv) == 5 })
+    && (match runner_retiree_cgroup_events_argv(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "inactive", cg: "")), "\n\n"))) { Absent => true Present { value: _ } => false })
+}
+
+// POSITIVE ROUTE: stopped, masked retirees with no cgroup are complete from the show alone, and running
+// ones are complete only on their own `populated 0` line of the batched read.
+test fn batched_readings_reach_retirement_complete() -> Bool {
+  let stopped = batched_standings(show: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "inactive", cg: "")), "\n\n"), events: "")
+  let drained = batched_standings(
+    show: join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "inactive", cg: retiree_cg(unit: r as String))), "\n\n"),
+    events: join(map(srv1_retired(), r => events_line(unit: r as String, populated: "0")), "\n"),
+  )
+  length(stopped) == 38 && all(stopped, st => retirement_is_complete(s: st))
+    && length(drained) == 38 && all(drained, st => retirement_is_complete(s: st))
+}
+
+fn standings_of(sts: List<RunnerRetirementStanding>, unit: String) -> List<RunnerRetirementStanding> {
+  filter(sts, st => retirement_unit(s: st) == unit)
+}
+
+// RED: absence from a batched output is not retirement. A retiree whose show block is missing, or whose
+// events line is missing, reads unobserved; a populated line reads pending; a refused batch leaves
+// every live cgroup unobserved -- and in each case the other 37 being complete changes nothing.
+test fn a_retiree_missing_from_a_batched_read_is_unobserved_never_retired() -> Bool {
+  let omitted = "actions-runner@srv1-21.service"
+  let others = filter(srv1_retired(), r => (r as String) != omitted)
+  let show_all = join(map(srv1_retired(), r => retiree_block(unit: r as String, active: "inactive", cg: retiree_cg(unit: r as String))), "\n\n")
+  let show_without = join(map(others, r => retiree_block(unit: r as String, active: "inactive", cg: retiree_cg(unit: r as String))), "\n\n")
+  let events_all = join(map(srv1_retired(), r => events_line(unit: r as String, populated: "0")), "\n")
+  let events_without = join(map(others, r => events_line(unit: r as String, populated: "0")), "\n")
+  let events_populated = join(map(srv1_retired(), r => events_line(unit: r as String, populated: if (r as String) == omitted { "1" } else { "0" })), "\n")
+  let not_shown = batched_standings(show: show_without, events: events_all)
+  let not_read = batched_standings(show: show_all, events: events_without)
+  let populated = batched_standings(show: show_all, events: events_populated)
+  let refused = runner_retiree_standings(readings: runner_retiree_show_readings(retired: srv1_retired(), show_stdout: show_all), batch: CgroupEventsBatchUnread { cause: "refused" })
+  length(standings_of(sts: not_shown, unit: omitted)) == 1 && all(standings_of(sts: not_shown, unit: omitted), st => retirement_is_unobserved(s: st))
+    && length(standings_of(sts: not_read, unit: omitted)) == 1 && all(standings_of(sts: not_read, unit: omitted), st => retirement_is_unobserved(s: st))
+    && length(standings_of(sts: populated, unit: omitted)) == 1 && all(standings_of(sts: populated, unit: omitted), st => !retirement_is_complete(s: st) && !retirement_is_unobserved(s: st))
+    && length(filter(not_read, st => retirement_is_complete(s: st))) == 37
+    && all(refused, st => retirement_is_unobserved(s: st))
 }
