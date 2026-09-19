@@ -269,10 +269,19 @@ mod equivalence {
     /// first by construction, so `fx.alpha` resolves the collision to alpha and `fx.beta` to beta,
     /// and the flip is a property of the scope's definition rather than of my reading of it.
     ///
-    /// AND IT REACHES THE ARM THE IMPORT-ORDER FIXTURE COULD NOT. Neither entry imports the other
-    /// colliding module; each arrives through the REFERENCE closure, which is appended AFTER the
-    /// authored region. So the loser is outside that boundary and the ambiguity census is
-    /// exercised for real instead of being pinned at empty.
+    /// WHAT THIS FIXTURE ESTABLISHES ABOUT AMBIGUITY, CORRECTED. Each entry's own declaration wins
+    /// INSIDE the authored region, at rank 0. The later reference-closure claimant is therefore
+    /// skipped by the fold's authored-winner arm, so this corpus establishes ORDINARY SHADOWING and
+    /// an EMPTY ambiguity census -- which is a real assertion, not a weak one: a view that reported
+    /// every collision as ambiguous fails here. `ambiguous_corpus` independently exercises the
+    /// non-empty unauthored-winner arm.
+    ///
+    /// AN EARLIER REVISION OF THIS PARAGRAPH CLAIMED THE OPPOSITE -- that the loser arriving through
+    /// the reference closure made the census "exercised for real instead of being pinned at empty".
+    /// That was reasoned from the closure's position and never traced through `winner_of`; the
+    /// entry declares the colliding name itself, so it always wins authored and the claim could not
+    /// have been true. Recorded rather than deleted because the same wrong reading was relayed to
+    /// two readers before it was traced.
     fn colliding_corpus() -> PreparedRepository {
         prepared_from(&[
             (
