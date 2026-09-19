@@ -190,8 +190,15 @@ fn normalize_admits(src: String) -> Bool {
   }
 }
 
+// The route needs only a service declaration, not a populated one: an empty service still emits
+// dag_surface_service_decl with no lowering producer. The populated smallest_service fixture
+// measured 396ms here against the 302ms enrolment margin (floor run 35440687934), paying to parse
+// and normalize an operation this claim never inspects (DESIGN 3, a witness discriminates at one
+// interface).
+data empty_service_source: String = "module m\nservice S {}\n"
+
 test fn parsed_service_is_refused_at_the_normalized_tree_door_holds() -> Bool {
-  normalize_refuses_for_retention(src: smallest_service_source)
+  normalize_refuses_for_retention(src: empty_service_source)
 }
 
 test fn fn_control_is_admitted_at_the_normalized_tree_door_holds() -> Bool {
