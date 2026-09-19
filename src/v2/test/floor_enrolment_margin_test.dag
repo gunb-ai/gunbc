@@ -7,7 +7,7 @@ import v2.workflow.floor_enrolment_margin {
   EnrolmentMarginStanding,
   EnrolmentWithinMargin, EnrolmentOverMargin, EnrolmentCeilingCensored,
   EnrolmentBoundWithoutCeiling, EnrolmentNotMeasured,
-  EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared,
+  EnrolmentOutsideThisRunsExecution, EnrolmentExpensivenessDeclared, EnrolmentRosterGroundStale,
   EnrolmentExpensivenessNotDeclared, EnrolmentExpensivenessIsDeclared,
   EnrolmentExpensivenessGround, EnrolmentExpensivenessRoster, EnrolmentExpensivenessLongHome,
   enrolment_expensiveness_declaration,
@@ -21,10 +21,6 @@ import v2.workflow.floor_enrolment_margin {
   enrolment_margin_blockers,
 }
 import v2.workflow.required_floor { required_floor_per_subject_cpu_line_ms }
-import v2.workflow.floor_cost_debt_admission {
-  floor_cost_debt_row, floor_cost_debt_row_is_admitted,
-  FloorCostDebtReachedAVerdict,
-}
 import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
   implied_clean_run_budget,
@@ -90,6 +86,7 @@ fn standing_of(reading: EnrolmentCostReading) -> EnrolmentMarginStanding {
   enrolment_margin_standing(
     reading: reading,
     budget_ms: floor_enrolment_margin_budget_ms(),
+    per_subject_line_ms: required_floor_per_subject_cpu_line_ms(),
     declaration: EnrolmentExpensivenessNotDeclared,
   )
 }
@@ -102,6 +99,7 @@ fn standing_declared(
   enrolment_margin_standing(
     reading: reading,
     budget_ms: floor_enrolment_margin_budget_ms(),
+    per_subject_line_ms: required_floor_per_subject_cpu_line_ms(),
     declaration: EnrolmentExpensivenessIsDeclared {
       witness_identity: identity,
       ground: ground,
@@ -118,6 +116,7 @@ fn standing_kind(s: EnrolmentMarginStanding) -> String {
     EnrolmentNotMeasured { witness_identity: _, cause: _ } => "not-measured"
     EnrolmentOutsideThisRunsExecution { witness_identity: _, disposition: _ } => "outside-this-run"
     EnrolmentExpensivenessDeclared { witness_identity: _, ground: _, reading: _ } => "expensiveness-declared"
+    EnrolmentRosterGroundStale { witness_identity: _, observed_cpu_ms: _, line_ms: _ } => "roster-ground-stale"
   }
 }
 
@@ -478,16 +477,75 @@ test fn the_pairing_hole_is_exhaustive_over_standing() -> Bool {
   }
 }
 
-// HALF TWO RED JOINED TO THE CEILING AUTHORITY: 325ms observed against
-// `required_floor_per_subject_cpu_line_ms` cannot mint a cost-debt row. gunbc#10994 is not
-// waiting on a cost-debt line; this is the constructor that would have refused that classification.
-test fn an_observed_row_at_325ms_is_refused_against_the_required_floor_ceiling() -> Bool {
-  !floor_cost_debt_row_is_admitted(
-    standing: floor_cost_debt_row(
-      identity: "fixture.tripwire_325",
-      reading: ObservedCpuReading { cpu_ms: millisecond(count: 325), eval_steps: fixture_incidental_steps() },
-      ceiling_ms: required_floor_per_subject_cpu_line_ms(),
-      verdict: FloorCostDebtReachedAVerdict,
-    )
+// THE ROSTER GROUND IS LIVE-CONDITIONED (gunbc#11622 review 68363). A typed admission carries an
+// identity and a reason, never a reading, so every row below is decided by the reading THIS run
+// supplies, against `required_floor_per_subject_cpu_line_ms`. These rows re-home the behaviours
+// the retired stored-reading constructor used to establish onto the live arms that now own them.
+
+fn roster_standing(reading: EnrolmentCostReading) -> EnrolmentMarginStanding {
+  standing_declared(
+    reading: reading,
+    identity: "fixture.roster",
+    ground: EnrolmentExpensivenessRoster,
   )
+}
+
+// Re-homed from the constructor's "above the ceiling is admitted": a live reading strictly over
+// the line keeps the admission.
+test fn a_roster_admission_over_the_line_stays_declared() -> Bool {
+  let s = roster_standing(reading: observed(cpu_ms: 501))
+  standing_kind(s: s) == "expensiveness-declared"
+    && !enrolment_margin_standing_blocks(standing: s)
+}
+
+// Re-homed from the gunbc#10994 325ms tripwire: a margin crossing under the line cannot hold a
+// Roster admission. It is stale, blocks, and says the row must delete.
+test fn a_roster_admission_at_325ms_is_stale_and_blocks() -> Bool {
+  let s = roster_standing(reading: observed(cpu_ms: 325))
+  standing_kind(s: s) == "roster-ground-stale"
+    && enrolment_margin_standing_blocks(standing: s)
+    && enrolment_margin_blocking_cause(standing: s) == "enrolment_roster_ground_stale"
+}
+
+// The boundary: the line itself is not over the line.
+test fn a_roster_admission_exactly_at_the_line_is_stale() -> Bool {
+  standing_kind(s: roster_standing(reading: observed(cpu_ms: 500))) == "roster-ground-stale"
+    && standing_kind(s: roster_standing(reading: observed(cpu_ms: 501))) == "expensiveness-declared"
+}
+
+// THE HOLE THIS CHANGE CLOSES. A planned Roster identity with no cost row is NotMeasured, exactly
+// as an undeclared one is -- the declaration buys no exemption from being measured. LongHome is
+// the control: the same absent reading is still only reported there (the declared drop
+// `long_home_enrolment_margin_observed_only`), so this row is the Roster arm and not a global
+// change.
+test fn a_roster_admission_with_no_reading_is_not_measured() -> Bool {
+  let absent = EnrolmentCostAbsent {
+    witness_identity: "fixture.roster",
+    cause: "no_claim_cost_row_for_a_planned_identity",
+  }
+  standing_kind(s: roster_standing(reading: absent)) == "not-measured"
+    && enrolment_margin_standing_blocks(standing: roster_standing(reading: absent))
+    && standing_kind(s: standing_declared(
+         reading: absent,
+         identity: "fixture.long_home",
+         ground: EnrolmentExpensivenessLongHome,
+       )) == "expensiveness-declared"
+}
+
+// Re-homed from "a bound with no ceiling mints nothing" and "a censored row at the ceiling is
+// admitted": a lower bound establishes expensiveness only if the bound itself clears the line.
+test fn a_roster_admission_with_a_bound_over_the_line_stays_declared() -> Bool {
+  standing_kind(s: roster_standing(reading: bound_without_ceiling(lower_bound_ms: 514))) == "expensiveness-declared"
+    && standing_kind(s: roster_standing(reading: censored(lower_bound_ms: 514, ceiling_ms: 500))) == "expensiveness-declared"
+}
+
+// Re-homed from "a 1ms censored reading against the 500ms ceiling is refused": a bound at or under
+// the line proves nothing, so it blocks under the same arm an undeclared identity would get.
+test fn a_roster_admission_with_a_bound_under_the_line_blocks_on_its_own_arm() -> Bool {
+  let b = roster_standing(reading: bound_without_ceiling(lower_bound_ms: 1))
+  let c = roster_standing(reading: censored(lower_bound_ms: 1, ceiling_ms: 1))
+  standing_kind(s: b) == "bound-without-ceiling"
+    && enrolment_margin_standing_blocks(standing: b)
+    && standing_kind(s: c) == "ceiling-censored"
+    && enrolment_margin_standing_blocks(standing: c)
 }

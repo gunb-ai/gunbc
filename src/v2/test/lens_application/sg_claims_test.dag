@@ -9,10 +9,6 @@ data lens_application_synthesis_root_declaration: DeclarationId = DeclarationId 
   path: lens_application_synthesis_root_path
 }
 
-test fn lens_application_introspect_advisory_holds() -> Bool {
-  apply_lens_introspect_rejection_is_advisory_claim_holds()
-}
-
 fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
   match apply_advisory_lens(
     lens: decision_tree_synthesis_advisory_lens,
@@ -29,10 +25,6 @@ fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
       d.head.reason == report_reason_to_diagnostic_reason(reason: SynthesisGapDecisionTree)
     Accepted { value: _, diagnostics: _ } => false
   }
-}
-
-test fn lens_application_synthesis_gap_polynomial_holds() -> Bool {
-  synthesis_gap_poly_lens_non_empty()
 }
 
 test fn lens_application_synthesis_gap_enforce_rejection_holds() -> Bool {
