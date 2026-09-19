@@ -292,6 +292,10 @@ type ObservedCgroup { root: NonEmptyStr, readback: CgroupSubtreeReadback }
 
 type ObservedPath { path: String, readback: ResourceReadback }
 
+// DECLARED GAP, NOT YET JOINED: `network` carries no subject. Its subject-bearing readback is
+// gunbc.runner_microvm_network BoundSlotNetworkReadback (gunbc#11675); when that lands, `network`
+// becomes it and gains a SubjectSlotNetwork join against the attempt's slot before its result is
+// mapped onto SlotNetworkQuiescent.
 type ObservedTeardown {
   host: String
   generation: Int
@@ -300,9 +304,6 @@ type ObservedTeardown {
   mounts: ObservedPath
   attempt_storage: ObservedPath
   credential_disk: ObservedPath
-  // DECLARED GAP, NOT YET JOINED: the slot network result carries no subject here. Its subject is
-  // gunbc.runner_microvm_network SlotNetworkSubject (gunbc#11675, on hold); when that lands this
-  // field becomes that module's subject-bearing readback and gains a SubjectSlotNetwork pair.
   network: SlotNetworkQuiescence
 }
 
