@@ -182,14 +182,21 @@ pub fn content_hash_atom(value: String) -> Rc<Fnv1a64Structural> {
     structural_content_hash(v1_rt::atom_identity_hash(value.clone()))
 }
 
+pub fn content_hash_combine_preimage(
+    left: Rc<Fnv1a64Structural>,
+    right: Rc<Fnv1a64Structural>,
+) -> String {
+    v1_rt::concat(
+        v1_rt::concat(left.digest.clone(), v1_rt::from_code_point(0)),
+        right.digest.clone(),
+    )
+}
+
 pub fn content_hash_combine_structural(
     left: Rc<Fnv1a64Structural>,
     right: Rc<Fnv1a64Structural>,
 ) -> Rc<Fnv1a64Structural> {
-    structural_content_hash(v1_rt::hash_combine(
-        left.digest.clone(),
-        right.digest.clone(),
-    ))
+    content_hash_atom(content_hash_combine_preimage(left.clone(), right.clone()))
 }
 
 pub fn content_hash_tagged_structural(
@@ -230,14 +237,6 @@ pub enum ContentHashComparison {
     ContentHashEqual,
     ContentHashDifferent,
     ContentHashCrossFamilyIncomparable,
-}
-
-pub fn content_hash_equal(left: Rc<ContentHash>, right: Rc<ContentHash>) -> bool {
-    match compare_content_hash(left.clone(), right.clone()) {
-        ContentHashComparison::ContentHashEqual => true,
-        ContentHashComparison::ContentHashDifferent => false,
-        ContentHashComparison::ContentHashCrossFamilyIncomparable => false,
-    }
 }
 
 pub fn compare_content_hash(
@@ -302,66 +301,6 @@ pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
         ContentHash::Sha256Hash(d) => sha256_digest_wire_form(d.clone()),
         ContentHash::Sha1Hash(d) => d.hex.clone(),
         ContentHash::Sha512Hash(d) => sha512_digest_wire_form(d.clone()),
-    }
-}
-
-pub fn parse_content_hash_candidate(wire: String) -> Option<Rc<ContentHash>> {
-    if v1_rt::starts_with(wire.clone(), "sha256:".to_string()) {
-        match Rc::new(
-            wire.clone()
-                .split(&"sha256:".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .get((1) as usize)
-        .cloned()
-        {
-            std::option::Option::None => std::option::Option::None,
-            Some(hex) => match sha256_hex_digest(hex.clone()) {
-                std::option::Option::None => std::option::Option::None,
-                Some(d) => Some(as_content_hash_cryptographic(d.clone())),
-            },
-        }
-    } else {
-        if v1_rt::starts_with(wire.clone(), "sha512:".to_string()) {
-            match Rc::new(
-                wire.clone()
-                    .split(&"sha512:".to_string())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            )
-            .get((1) as usize)
-            .cloned()
-            {
-                std::option::Option::None => std::option::Option::None,
-                Some(hex) => match sha512_hex_digest(hex.clone()) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(d) => Some(as_content_hash_sha512(d.clone())),
-                },
-            }
-        } else {
-            if content_hash_validate_lower_hex_length(wire.clone(), 40) {
-                match sha1_hex_digest(wire.clone()) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(d) => Some(as_content_hash_sha1(d.clone())),
-                }
-            } else {
-                content_hash_from_structural_digest(wire.clone())
-            }
-        }
-    }
-}
-
-pub fn parse_content_hash(wire: String) -> Option<Rc<ContentHash>> {
-    match parse_content_hash_candidate(wire.clone()) {
-        std::option::Option::None => std::option::Option::None,
-        Some(parsed) => {
-            if (serialize_content_hash(parsed.clone()) == wire.clone()) {
-                Some(parsed.clone())
-            } else {
-                std::option::Option::None
-            }
-        }
     }
 }
 

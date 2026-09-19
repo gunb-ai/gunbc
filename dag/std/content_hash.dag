@@ -145,10 +145,17 @@ fn content_hash_atom(value: NonEmptyStr) -> Fnv1a64Structural {
   structural_content_hash(digest: atom_identity_hash(value))
 }
 
+// The combine relation is the Fnv1a64Structural family applied to one canonical preimage:
+// left digest, one NUL separator (code point 0), right digest. Byte-identical to the retired
+// host `hash_combine`, so no structural digest or store address moves. The digest over the
+// preimage is the family kernel `content_hash_atom`, a target-kernel realization until the
+// fixed-width word and UTF-8 byte substrates let the kernel itself be modeled (gunbc#11637).
+fn content_hash_combine_preimage(left: Fnv1a64Structural, right: Fnv1a64Structural) -> NonEmptyStr {
+  concat(concat(left.digest as String, from_code_point(0)), right.digest as String) as NonEmptyStr
+}
+
 fn content_hash_combine_structural(left: Fnv1a64Structural, right: Fnv1a64Structural) -> Fnv1a64Structural {
-  structural_content_hash(
-    digest: hash_combine(left.digest as String, right.digest as String),
-  )
+  content_hash_atom(value: content_hash_combine_preimage(left: left, right: right))
 }
 
 fn content_hash_tagged_structural(tag: NonEmptyStr, payload: Fnv1a64Structural) -> Fnv1a64Structural {
