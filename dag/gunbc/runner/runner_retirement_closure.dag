@@ -1,0 +1,385 @@
+module gunbc.runner_retirement_closure
+
+import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_runner_connectivity {
+  decode_registration_slot,
+  OrganizationRunnerRosterEvidence,
+  RosterObserved,
+  RosterObservedPartial,
+  RosterReadUnavailable,
+}
+import gunbc.runner_slot_retirement {
+  authoritative_standing_for,
+  authoritative_standing_is_complete,
+  authoritative_standing_cause,
+  RetirementMethodAvailability,
+  MethodAvailable,
+  MethodUnavailable,
+  RunnerRetirementStanding,
+  retirement_is_complete,
+  retirement_unit,
+}
+import gunbc.runner_host_retirement {
+  SurplusIdentityDisposition,
+  surplus_identity_disposition,
+  host_retirement_capture,
+  surplus_identity_blocks_closure,
+  surplus_identity_within_retirement_scope,
+  surplus_identity_name,
+  EstateCleanupStanding,
+  EstateCleanupComplete,
+  EstateCleanupOutstanding,
+  EstateObligation,
+  estate_obligation_wire,
+  RetireeObligationBasis,
+  retiree_obligation_ungrounded_cause,
+}
+
+// THE CLOSURE CLAIM IS A CONJUNCTION, AND EVERY WAY OF NOT KNOWING IS A CONJUNCT.
+//
+// "At revision R and an explicit obligation set: plan artifact, authorized apply receipts,
+// independent readback, a complete second assessment with no remaining differences, pending actions,
+// refusals, or unobserved required subjects." That sentence is the controlling contract, and this
+// module is the fold that makes each of its clauses a thing that can go red.
+//
+// THE FAILURE THIS EXISTS TO PREVENT IS A GREEN COMPUTED FROM AN ABSENCE. Convergence is normally
+// read off a plan that emitted no operations, and that reading is sound exactly when the planner saw
+// everything and had nothing to do. It is unsound in four ways that all look identical downstream,
+// because all four produce the same empty list:
+//
+//   THE ROSTER WAS UNREADABLE. `RosterReadUnavailable` means the organization's registrations are
+//   UNOBSERVED. Not four confirmed registrations and not zero -- and zero is what an empty list
+//   asserts. A planner handed an unavailable roster emits nothing about GitHub state and is correct
+//   to; the closure that reads its emptiness as convergence is not.
+//
+//   THE ROSTER WAS PARTIAL. The org runners API is paginated, and a prefix that happens to contain
+//   none of our identities is indistinguishable from a complete read that found none. The roster
+//   evidence already computes this distinction at its own boundary; this fold's job is to refuse to
+//   discard it.
+//
+//   AN OWNED SURPLUS IDENTITY WAS FILTERED OUT. An identity outside the committed population decodes
+//   as `RegistrationNamesNoCommittedSlot`, which a consumer can read as "not one of ours" and drop.
+//   The planner then emits nothing about it and the closure claims a convergence that never
+//   accounted for it. `gunbc.runner_host_retirement` types this as its own disposition precisely so
+//   it cannot fall out of a list; here it is a blocker.
+//
+//   GRACEFUL RETIREMENT IS UNIMPLEMENTED. `MethodUnavailable` is an honest refusal and it is not a
+//   discharge. A required retiree whose only admissible method is the unimplemented one has an
+//   outstanding obligation, and the closure must say so rather than inheriting the silence of a
+//   method that declined to run.
+//
+// SO "ZERO HUNKS" IS NOT AN INPUT TO THIS FOLD AT ALL. The planner's disposition is, and a planner
+// that refused or filtered reports that rather than a count. A count of operations is downstream of
+// every one of the four states above and cannot distinguish them; asking for it would rebuild the
+// conflation inside the check meant to close it.
+type PlannerDisposition
+  = PlannerSawCompleteSubject { operations_emitted: Int }
+  | PlannerRefusedAccess { cause: String }
+  | PlannerFilteredSubjects { filtered: List<NonEmptyStr>, cause: String }
+
+fn planner_disposition_wire(d: PlannerDisposition) -> String {
+  match d {
+    PlannerSawCompleteSubject { operations_emitted: n } => join(["complete operations=", to_string(n)], "")
+    PlannerRefusedAccess { cause: _ } => "REFUSED"
+    PlannerFilteredSubjects { filtered: _, cause: _ } => "FILTERED"
+  }
+}
+
+// ONE BLOCKER PER REASON, NAMED, so a reader is told what to restore rather than that something is
+// wrong. A single `converged: Bool` would have carried the same verdict and none of the remedy, and a
+// count of blockers would have carried neither.
+type ClosureBlocker {
+  subject: String
+  cause: String
+}
+
+fn closure_blocker_line(b: ClosureBlocker) -> String {
+  join(["blocker subject=", b.subject, " cause=", b.cause, "\n"], "")
+}
+
+fn roster_blockers(roster: OrganizationRunnerRosterEvidence) -> List<ClosureBlocker> {
+  match roster {
+    RosterObserved { observed_on: _, registrations: _ } => []
+    RosterReadUnavailable { reason: r } => [
+      ClosureBlocker {
+        subject: "github-runner-roster",
+        cause: join(["the organization runner roster could not be read (", r, "), so the remote registrations are UNOBSERVED -- neither confirmed present nor confirmed absent, and an empty operation set over them asserts the second"], ""),
+      },
+    ]
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } => [
+      ClosureBlocker {
+        subject: "github-runner-roster",
+        cause: join(["the organization runner roster read returned ", to_string(seen), " of ", to_string(total), " registrations the authority itself reports; the unread remainder may contain required subjects, so a closure over this read would be a closure over a prefix"], ""),
+      },
+    ]
+  }
+}
+
+// THE DISPOSITIONS ARE DERIVED FROM THE ROSTER SNAPSHOT, NOT SUPPLIED BESIDE IT.
+//
+// The first version took this list as its own parameter while `roster_blockers` accepted
+// `RosterObserved` and threw its registrations away. So a COMPLETE roster carrying an owned surplus
+// registration could be paired with `surplus: []` and every other input satisfied, and the fold
+// converged without ever looking at the member it was supposed to find. A witness passing
+// `PlannerFilteredSubjects` explicitly tests the refusal arm; it establishes nothing about whether a
+// real omission reaches it.
+//
+// One observed roster is now the single source of both answers, so an omission has nowhere to happen:
+// there is no second list a caller could shorten.
+fn roster_surplus_dispositions(
+  host: HostIdentity,
+  roster: OrganizationRunnerRosterEvidence,
+) -> List<SurplusIdentityDisposition> {
+  match roster {
+    RosterReadUnavailable { reason: _ } => []
+    RosterObservedPartial { observed_on: _, registrations: _, observed_count: _, authority_total: _ } => []
+    RosterObserved { observed_on: _, registrations: regs } =>
+      regs |> map(r => surplus_identity_disposition(
+        host: host,
+        decoding: decode_registration_slot(reg: r),
+        name: r.name,
+        capture: host_retirement_capture(host: host),
+      ))
+  }
+}
+
+// THE BLOCKER NAMES WHICH KIND OF OUTSIDER THIS IS, because the remedies differ and a single
+// sentence for all of them sends an operator to the wrong one. An identity inside a declared
+// retirement's scope is owed a retirement; an owned one on a host nobody retired is a surplus
+// somebody must adjudicate; an unresolved or foreign name may not be touched at all.
+fn surplus_blocker_cause(d: SurplusIdentityDisposition) -> String {
+  if surplus_identity_within_retirement_scope(d: d) {
+    "this identity is ours and falls inside a declared retirement's scope, so it is owed a retirement this assessment has not established; the committed-slot decoder not recognizing it is a fact about the decoder, not a discharge"
+  } else {
+    "this identity sits outside the committed population and outside any declared retirement scope, so it may be neither retired under this transaction nor dropped from it; it needs adjudication before anything acts on it"
+  }
+}
+
+fn surplus_blockers(dispositions: List<SurplusIdentityDisposition>) -> List<ClosureBlocker> {
+  dispositions
+    |> filter(d => surplus_identity_blocks_closure(d: d))
+    |> map(d => ClosureBlocker {
+        subject: surplus_identity_name(d: d) as String,
+        cause: surplus_blocker_cause(d: d),
+      })
+}
+
+// A REQUIRED RETIREE IS ITS OWN BLOCKER UNTIL ITS STANDING SAYS `RetirementComplete`, and a required
+// retiree with NO standing at all blocks hardest -- the identity join is over the obligation, so an
+// omitted subject cannot be covered by a neighbour's success or by the shorter list arriving.
+// EVERY REQUIRED RETIREE GOES THROUGH THE SHARED AUTHORITATIVE JOIN. The previous version filtered to
+// the completed standings and asked for membership, which discards a disagreeing reading for the same
+// unit: [Complete(u), Unobserved(u)] produced no blocker in either list order.
+fn retiree_blockers(
+  required: List<NonEmptyStr>,
+  standings: List<RunnerRetirementStanding>,
+) -> List<ClosureBlocker> {
+  required
+    |> filter(u => !authoritative_standing_is_complete(a: authoritative_standing_for(standings: standings, unit: u as String)))
+    |> map(u => ClosureBlocker {
+        subject: u as String,
+        cause: join([
+          "this required retiree has no authoritative RetirementComplete standing in this assessment: ",
+          authoritative_standing_cause(a: authoritative_standing_for(standings: standings, unit: u as String)),
+        ], ""),
+      })
+}
+
+fn method_blockers(
+  unit: String,
+  availability: RetirementMethodAvailability,
+) -> List<ClosureBlocker> {
+  match availability {
+    MethodAvailable { method: _ } => []
+    MethodUnavailable { method_label: l, cause: c } => [
+      ClosureBlocker {
+        subject: unit,
+        cause: join([l, " is the method this subject requires and it is unavailable: ", c, ". An unimplemented method refusing is not a retirement it performed"], ""),
+      },
+    ]
+  }
+}
+
+// A COMPLETE ASSESSMENT WITH WORK REMAINING IS NOT A CONVERGED ONE, and the first version discarded
+// the count that says which it is. `PlannerSawCompleteSubject { operations_emitted: _ } => []` meant
+// the converging control stayed green when its operation count moved from 0 to 1. "Zero hunks alone
+// is insufficient" is a statement that zero is not ENOUGH; it never made a non-zero count harmless.
+// AN UNGROUNDED POPULATION IS A BLOCKER, NOT A MARKER. The basis was reported on the receipt and
+// consumed by nothing: an authored search range reached the obligation consumer with `UNGROUNDED`
+// printed beside it and no consequence, so the assessment could read clear over a set of identities
+// nobody had observed. The blocker names population grounding specifically, so the remedy -- the
+// owned-identity capture -- is what an operator is sent to get.
+fn grounding_blockers(host: HostIdentity, basis: RetireeObligationBasis) -> List<ClosureBlocker> {
+  match retiree_obligation_ungrounded_cause(b: basis) {
+    Absent => []
+    Present { value: c } => [
+      ClosureBlocker {
+        subject: join([host as String, "/population-grounding"], ""),
+        cause: c,
+      },
+    ]
+  }
+}
+
+// THE ASSESSED POPULATION IS COMPARED AGAINST THE WHOLE OBLIGATION AUTHORITY, NOT AGAINST ONE ARM.
+//
+// The first version of this fold compared `required` against the host-retirement CAPTURE alone and
+// labelled every identity it did not contain an obligation the evidence does not support. But the
+// production population is the union of two independent authorities -- declared width transitions and
+// grounded host retirements -- and `transition_required_retiring` deduplicates them by exact
+// identity. So an identity contributed by the WIDTH TRANSITION was reported as unsupported, and the
+// check rejected the very union its own producer constructs. A width-transition declaration supports
+// its retirees exactly as a capture supports its members; neither authority may be rewritten to make
+// the other's comparison pass.
+//
+// THE EXPECTED POPULATION IS THEREFORE DERIVED ONCE, from the same function production consumes, and
+// the join runs in both directions over it: an identity the authority names and the assessment
+// omitted was never established, and an identity the assessment carries that no authority names is an
+// obligation nothing supports.
+//
+// WHAT THIS DOES AND DOES NOT CATCH, said plainly. The production route derives the assessed
+// population and this expected population from ONE call, so they cannot disagree there -- this fold
+// is not reporting a live divergence and would be dishonest to describe as one. It is the wall
+// against a caller that assembles the assessed set some other way, and it is exercised by claims that
+// supply the two separately. The grounding of the capture is a different question and stays with
+// `grounding_blockers`.
+fn obligation_coverage_blockers(
+  obligation_population: List<NonEmptyStr>,
+  required: List<NonEmptyStr>,
+) -> List<ClosureBlocker> {
+  concat(
+    obligation_population
+      |> filter(o => !any(required, r => (r as String) == (o as String)))
+      |> map(o => ClosureBlocker {
+          subject: o as String,
+          cause: "a declared obligation authority -- a width transition or a grounded host retirement -- names this identity as a required retiree, and this assessment did not cover it, so nothing was established about it",
+        }),
+    required
+      |> filter(r => !any(obligation_population, o => (o as String) == (r as String)))
+      |> map(r => ClosureBlocker {
+          subject: r as String,
+          cause: "this identity was assessed as a required retiree but no declared obligation authority names it -- neither a width transition nor a grounded owned-identity capture -- so nothing supports the obligation claimed for it",
+        }),
+  )
+}
+
+fn planner_blockers(d: PlannerDisposition) -> List<ClosureBlocker> {
+  match d {
+    PlannerSawCompleteSubject { operations_emitted: n } =>
+      if n == 0 {
+        []
+      } else {
+        [
+          ClosureBlocker {
+            subject: "retirement-planner",
+            cause: join(["the assessment is complete and ", to_string(n), " operation(s) remain to be executed; a subject with outstanding actions is assessed, not converged"], ""),
+          },
+        ]
+      }
+    PlannerRefusedAccess { cause: c } => [
+      ClosureBlocker {
+        subject: "retirement-planner",
+        cause: join(["the planner refused access rather than completing an assessment (", c, "); it emitted no operations because it saw nothing, which is the opposite of having nothing to do"], ""),
+      },
+    ]
+    PlannerFilteredSubjects { filtered: fs, cause: c } => [
+      ClosureBlocker {
+        subject: "retirement-planner",
+        cause: join(["the planner filtered ", to_string(list_length(items: fs)), " subject(s) out of its assessment (", c, "), so its empty operation set is silent about them rather than settled over them: ", join(map(fs, f => f as String), " ")], ""),
+      },
+    ]
+  }
+}
+
+fn estate_blockers(host: HostIdentity, estate: EstateCleanupStanding) -> List<ClosureBlocker> {
+  match estate {
+    EstateCleanupComplete => []
+    EstateCleanupOutstanding { outstanding: os } =>
+      os |> map(o => ClosureBlocker {
+        subject: join([host as String, "/", estate_obligation_wire(o: o)], ""),
+        cause: "this estate obligation is outstanding; slot retirement standing is evidence about a systemd unit and discharges none of the registration, tree or timer obligations beside it",
+      })
+  }
+}
+
+// THE VERDICT CARRIES THE BLOCKERS RATHER THAN A COUNT OF THEM, and it carries the revision it was
+// established at. A verdict that does not name its own revision is a claim about whichever tree the
+// reader happens to have, which is the one thing the contract's opening clause -- "at revision R" --
+// exists to forbid.
+//
+// THIS FOLD RETURNS AN ASSESSMENT, NOT A CLOSURE, AND THE RENAME IS THE CORRECTION.
+//
+// The controlling contract's package is four joined things at one revision: a plan artifact,
+// authorized apply receipts, an independent readback, and a complete second assessment. This function
+// has inputs for NONE of them -- a revision string names the tree the assessment ran against and
+// supplies no relationship to any of the four. So `ClosureConverged` asserted the whole package from
+// evidence about one pass, which is the strongest sentence in the lane minted by the fold least able
+// to establish it.
+//
+// `AssessmentClearOfBlockers` says exactly what was established: at this revision, over this host,
+// nothing in what was read blocks. Joining that to the plan artifact, the apply receipts and the
+// readback is the closure, and it is a different fold with different inputs that does not exist yet.
+// Naming this one honestly is what keeps a later reader from citing it as the closure.
+type RetirementAssessmentVerdict
+  = AssessmentClearOfBlockers { revision: NonEmptyStr, required_subjects: Int }
+  | AssessmentBlocked { revision: NonEmptyStr, blockers: List<ClosureBlocker> }
+
+fn retirement_assessment_verdict(
+  revision: NonEmptyStr,
+  host: HostIdentity,
+  roster: OrganizationRunnerRosterEvidence,
+  required: List<NonEmptyStr>,
+  standings: List<RunnerRetirementStanding>,
+  method_subjects: List<String>,
+  method_availability: RetirementMethodAvailability,
+  planner: PlannerDisposition,
+  basis: RetireeObligationBasis,
+  obligation_population: List<NonEmptyStr>,
+  estate: EstateCleanupStanding,
+  extra: List<ClosureBlocker>,
+) -> RetirementAssessmentVerdict {
+  let blockers = concat(
+    concat(
+      concat(
+        roster_blockers(roster: roster),
+        surplus_blockers(dispositions: roster_surplus_dispositions(host: host, roster: roster)),
+      ),
+      concat(
+        retiree_blockers(required: required, standings: standings),
+        flat_map(method_subjects, u => method_blockers(unit: u, availability: method_availability)),
+      ),
+    ),
+    concat(
+      concat(
+        concat(planner_blockers(d: planner), grounding_blockers(host: host, basis: basis)),
+        obligation_coverage_blockers(obligation_population: obligation_population, required: required),
+      ),
+      concat(estate_blockers(host: host, estate: estate), extra),
+    ),
+  )
+  if list_length(items: blockers) == 0 {
+    AssessmentClearOfBlockers { revision: revision, required_subjects: list_length(items: required) }
+  } else {
+    AssessmentBlocked { revision: revision, blockers: blockers }
+  }
+}
+
+fn assessment_is_clear_of_blockers(v: RetirementAssessmentVerdict) -> Bool {
+  match v {
+    AssessmentClearOfBlockers { revision: _, required_subjects: _ } => true
+    AssessmentBlocked { revision: _, blockers: _ } => false
+  }
+}
+
+fn assessment_verdict_text(v: RetirementAssessmentVerdict) -> String {
+  match v {
+    AssessmentClearOfBlockers { revision: r, required_subjects: n } =>
+      join(["assessment=CLEAR-OF-BLOCKERS revision=", r as String, " required-subjects=", to_string(n), " (this is one pass over one host; the closure package -- plan artifact, authorized apply receipts, independent readback, second assessment -- is a separate join and is NOT claimed here)\n"], "")
+    AssessmentBlocked { revision: r, blockers: bs } =>
+      join([
+        "assessment=BLOCKED revision=", r as String, " blockers=", to_string(list_length(items: bs)), "\n",
+        join(map(bs, b => closure_blocker_line(b: b)), ""),
+      ], "")
+  }
+}
