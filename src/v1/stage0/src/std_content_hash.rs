@@ -182,14 +182,21 @@ pub fn content_hash_atom(value: String) -> Rc<Fnv1a64Structural> {
     structural_content_hash(v1_rt::atom_identity_hash(value.clone()))
 }
 
+pub fn content_hash_combine_preimage(
+    left: Rc<Fnv1a64Structural>,
+    right: Rc<Fnv1a64Structural>,
+) -> String {
+    v1_rt::concat(
+        v1_rt::concat(left.digest.clone(), v1_rt::from_code_point(0)),
+        right.digest.clone(),
+    )
+}
+
 pub fn content_hash_combine_structural(
     left: Rc<Fnv1a64Structural>,
     right: Rc<Fnv1a64Structural>,
 ) -> Rc<Fnv1a64Structural> {
-    structural_content_hash(v1_rt::hash_combine(
-        left.digest.clone(),
-        right.digest.clone(),
-    ))
+    content_hash_atom(content_hash_combine_preimage(left.clone(), right.clone()))
 }
 
 pub fn content_hash_tagged_structural(

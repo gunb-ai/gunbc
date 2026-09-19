@@ -20,6 +20,16 @@ import std.realization_reconcile {
   reconcile_effect_without_read,
 }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.dissolution {
+  DissolutionCondition,
+  BoundDissolution,
+  UnboundDissolution,
+  DissolutionUnbound,
+  DissolutionPending,
+  DissolutionFired,
+  dissolution_status,
+  unbound_dissolution,
+}
 import gunbc.host_convergence_census {
   ProtocolPhases,
   HostConvergenceCensus,
@@ -244,11 +254,34 @@ type ProtocolDeclaredFrontier {
   trigger_capability: DeclarationRef
 }
 
+// A FRONTIER WHOSE CONSUMER DOES NOT EXIST YET IS A DIFFERENT ROW, NOT A WEAKER ONE.
+// ProtocolDeclaredFrontier names a consumer that calls the declaration and a capability
+// that is still missing; its three predicates refuse a row that names itself. Before C4
+// there was no way to write "declared, consumer not yet built" except by naming a
+// consumer that does not call the declaration (a false citation) or by leaving the row
+// self-referential (a protocol that can never bind). FrontierConsumerAwaiting is that
+// third state, and its discharge inhabits std.dissolution rather than a new trigger
+// vocabulary. It is never read as FrontierHonest.
+type ProtocolFrontierRow
+  = FrontierConsumerNamed { frontier: ProtocolDeclaredFrontier }
+  | FrontierConsumerAwaiting { declaration: DeclarationRef, discharge: DissolutionCondition }
+
+// The population a BoundDissolution discharge is answered against. Unobserved is not an
+// empty population: an empty list would report every DeclarationAppears trigger Pending
+// forever (the hazard gunbc.dissolution_observation records), so a bound discharge with
+// no observed population refuses instead of answering.
+type FrontierPresenceEvidence
+  = FrontierPresenceObserved { present_decls: List<DeclarationRef> }
+  | FrontierPresenceUnobserved
+
 type FrontierStanding
   = FrontierHonest
   | FrontierConsumerIsDeclaration { frontier: ProtocolDeclaredFrontier }
   | FrontierTriggerIsDeclaration { frontier: ProtocolDeclaredFrontier }
   | FrontierTriggerIsTheConsumer { frontier: ProtocolDeclaredFrontier }
+  | FrontierAwaitingDischarge { declaration: DeclarationRef, discharge: DissolutionCondition }
+  | FrontierDischargeFired { declaration: DeclarationRef, discharge: DissolutionCondition }
+  | FrontierDischargeUnobservable { declaration: DeclarationRef, discharge: DissolutionCondition }
 
 type CanonicalProtocolStanding
   = CanonicalProtocolBound { frontiers: List<FrontierStanding> }
@@ -281,7 +314,7 @@ fn inspect_via_host_effect_projection<Subject, Goal, Request, Observed, Evidence
 // trigger_capability is a remaining capability, not the consumer: inspect_via still observes via
 // supplied ObservedMember rather than wet observe_executable. HostEffectDomainProjection is used
 // by admit; fleet_converge_plan_artifact_of_request now consumes LiveDeployConverge.
-// host_effect_decide_apply_frontier is untouched — C4. bind_declared_frontiers stays Unbound.
+// host_effect_decide_apply_frontier is an awaiting row (C4, below).
 data live_deploy_inspect_member_id: DeclarationRef = decl_ref(
   module_path: "gunbc.live_deploy.fleet_request",
   decl_name: "live_deploy_inspect_member",
@@ -310,18 +343,34 @@ data host_effect_decide_plan_frontier: ProtocolDeclaredFrontier = ProtocolDeclar
   trigger_capability: fleet_plan(),
 }
 
-data host_effect_decide_apply_frontier: ProtocolDeclaredFrontier = ProtocolDeclaredFrontier {
+// C4. THE APPLY ROW AWAITS A CONSUMER THAT DOES NOT EXIST. The declaration is
+// HostEffectDomainProjection's decide on the apply side. gunbc.fleet_converge_apply
+// converge_apply_for_host does NOT call it: it calls gunbc.host_effect_realize
+// host_effect_apply directly, so naming it the consumer would be a citation that lies.
+// The row used to carry fleet_apply() as both consumer and trigger, which
+// frontier_trigger_is_not_the_consumer refuses, so the protocol could never bind.
+// The discharge is UNBOUND on purpose. The capability that would discharge it (C8:
+// apply routed through the projection's decide) has no declaration in the corpus yet.
+// A DeclarationAppears trigger on a symbol nobody has declared is the fabricated
+// citation class (DESIGN §3); gunbc.runner.runner_spec_from_offer made the same
+// choice for the same reason. host_effect_apply is not a DeclarationRetires candidate
+// either, because C8 keeps it as the realization and routes to it.
+// NEXT RUNG: when C8 names its projection-routed apply carrier, this row moves to
+// bound_dissolution on that ref, and FrontierDischargeFired becomes mechanically
+// checkable against an observed population.
+data host_effect_decide_apply_frontier: ProtocolFrontierRow = FrontierConsumerAwaiting {
   declaration: decl_ref(
     module_path: "gunbc.host_convergence_protocol",
     decl_name: "HostEffectDomainProjection",
   ),
-  named_consumer: fleet_apply(),
-  trigger_capability: fleet_apply(),
+  discharge: unbound_dissolution(
+    description: "C8: a fleet apply entry that routes the apply-side UpsertDecision through HostEffectDomainProjection.decide and then reconciles through gunbc.host_effect_realize host_effect_apply with independent readback. gunbc.fleet_converge_apply converge_apply_for_host calls host_effect_apply directly today and is not this consumer.",
+  ),
 }
 
-data host_effect_declared_frontiers: List<ProtocolDeclaredFrontier> = [
-  host_effect_observe_frontier,
-  host_effect_decide_plan_frontier,
+data host_effect_declared_frontiers: List<ProtocolFrontierRow> = [
+  FrontierConsumerNamed { frontier: host_effect_observe_frontier },
+  FrontierConsumerNamed { frontier: host_effect_decide_plan_frontier },
   host_effect_decide_apply_frontier,
 ]
 
@@ -376,22 +425,77 @@ fn admit_frontier(f: ProtocolDeclaredFrontier) -> FrontierStanding {
   }
 }
 
+// Awaiting is admitted to the binding only while its discharge has not fired. An
+// Unbound discharge cannot fire and is admitted with its description carried; a bound
+// one needs an observed population, and fired means the capability arrived and nobody
+// discharged the row.
+fn admit_awaiting_frontier(
+  declaration: DeclarationRef,
+  discharge: DissolutionCondition,
+  evidence: FrontierPresenceEvidence,
+) -> FrontierStanding {
+  match discharge {
+    UnboundDissolution { description: _ } =>
+      FrontierAwaitingDischarge { declaration: declaration, discharge: discharge }
+    BoundDissolution { trigger: _ } =>
+      match evidence {
+        FrontierPresenceUnobserved =>
+          FrontierDischargeUnobservable { declaration: declaration, discharge: discharge }
+        FrontierPresenceObserved { present_decls: present } =>
+          match dissolution_status(condition: discharge, present_decls: present) {
+            DissolutionFired =>
+              FrontierDischargeFired { declaration: declaration, discharge: discharge }
+            DissolutionPending =>
+              FrontierAwaitingDischarge { declaration: declaration, discharge: discharge }
+            DissolutionUnbound =>
+              FrontierAwaitingDischarge { declaration: declaration, discharge: discharge }
+          }
+      }
+  }
+}
+
+fn admit_frontier_row(row: ProtocolFrontierRow, evidence: FrontierPresenceEvidence) -> FrontierStanding {
+  match row {
+    FrontierConsumerNamed { frontier: f } => admit_frontier(f: f)
+    FrontierConsumerAwaiting { declaration: d, discharge: c } =>
+      admit_awaiting_frontier(declaration: d, discharge: c, evidence: evidence)
+  }
+}
+
 fn frontier_standing_is_honest(s: FrontierStanding) -> Bool {
   match s {
     FrontierHonest => true
     FrontierConsumerIsDeclaration { frontier: _ } => false
     FrontierTriggerIsDeclaration { frontier: _ } => false
     FrontierTriggerIsTheConsumer { frontier: _ } => false
+    FrontierAwaitingDischarge { declaration: _, discharge: _ } => false
+    FrontierDischargeFired { declaration: _, discharge: _ } => false
+    FrontierDischargeUnobservable { declaration: _, discharge: _ } => false
   }
 }
 
-fn bind_declared_frontiers(frontiers: List<ProtocolDeclaredFrontier>) -> CanonicalProtocolStanding {
-  let standings = fold(frontiers, init: [], f: fn(acc, f) {
-    concat(acc, [admit_frontier(f: f)])
+fn frontier_standing_admits_binding(s: FrontierStanding) -> Bool {
+  match s {
+    FrontierHonest => true
+    FrontierAwaitingDischarge { declaration: _, discharge: _ } => true
+    FrontierConsumerIsDeclaration { frontier: _ } => false
+    FrontierTriggerIsDeclaration { frontier: _ } => false
+    FrontierTriggerIsTheConsumer { frontier: _ } => false
+    FrontierDischargeFired { declaration: _, discharge: _ } => false
+    FrontierDischargeUnobservable { declaration: _, discharge: _ } => false
+  }
+}
+
+fn bind_declared_frontiers(
+  frontiers: List<ProtocolFrontierRow>,
+  evidence: FrontierPresenceEvidence,
+) -> CanonicalProtocolStanding {
+  let standings = fold(frontiers, init: [], f: fn(acc, row) {
+    concat(acc, [admit_frontier_row(row: row, evidence: evidence)])
   })
   if fold(standings, init: true, f: fn(ok, s) {
     if ok {
-      frontier_standing_is_honest(s: s)
+      frontier_standing_admits_binding(s: s)
     } else {
       false
     }
@@ -418,7 +522,37 @@ fn bind_canonical_protocol() -> CanonicalProtocolStanding {
         CanonicalLayerDuplicated { layer: d } =>
           CanonicalLayersUnbound { join: CanonicalLayerDuplicated { layer: d } }
         CanonicalLayersCovered =>
-          bind_declared_frontiers(frontiers: host_effect_declared_frontiers)
+          bind_declared_frontiers(
+            frontiers: host_effect_declared_frontiers,
+            evidence: FrontierPresenceUnobserved,
+          )
       }
+  }
+}
+
+// THE PRODUCTION GATE. gunbc.fleet_converge_plan_cli refuses to plan unless this admits.
+// It STOPS: a malformed census, a missing or duplicated canonical layer, any frontier row
+// naming itself (the three ProtocolDeclaredFrontier defect arms), a discharge that fired
+// without the row being discharged, and a bound discharge with no observed population.
+// It does NOT stop a declared frontier that is openly awaiting an unbuilt consumer.
+type CanonicalProtocolGate
+  = CanonicalProtocolAdmitted { frontiers: List<FrontierStanding> }
+  | CanonicalProtocolRefused { standing: CanonicalProtocolStanding }
+
+fn canonical_protocol_gate(standing: CanonicalProtocolStanding) -> CanonicalProtocolGate {
+  match standing {
+    CanonicalProtocolBound { frontiers: fs } => CanonicalProtocolAdmitted { frontiers: fs }
+    CanonicalFrontiersUnbound { frontiers: _ } => CanonicalProtocolRefused { standing: standing }
+    CanonicalLayersUnbound { join: _ } => CanonicalProtocolRefused { standing: standing }
+    CensusProtocolUnbound { standing: _ } => CanonicalProtocolRefused { standing: standing }
+  }
+}
+
+fn canonical_protocol_standing_label(standing: CanonicalProtocolStanding) -> String {
+  match standing {
+    CanonicalProtocolBound { frontiers: _ } => "CanonicalProtocolBound"
+    CanonicalFrontiersUnbound { frontiers: _ } => "CanonicalFrontiersUnbound"
+    CanonicalLayersUnbound { join: _ } => "CanonicalLayersUnbound"
+    CensusProtocolUnbound { standing: _ } => "CensusProtocolUnbound"
   }
 }
