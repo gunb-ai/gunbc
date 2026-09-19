@@ -103,15 +103,14 @@ fn qualify_authority(a: OperationAuthorityStanding, ctx: QualificationContext) -
 fn qualify_body(b: DagBodyStanding, ctx: QualificationContext) -> QualifiedBody {
   match b {
     DagBodyRequired => BodyRequired
-    DagBodyExists { declaration: d } =>
-      match resolved_kind(r: ctx.resolve(d)) {
+    DagBodyExists { declaration: d } => {
+      let r = ctx.resolve(d)
+      match resolved_kind(r: r) {
         Present { value: k } =>
-          match k {
-            FnItem => BodyVerified { declaration: d }
-            _ => BodyUnresolved { reference: d, cause: "resolves to a declaration that is not a fn" as NonEmptyStr }
-          }
-        Absent => BodyUnresolved { reference: d, cause: resolution_failure(r: ctx.resolve(d)) as NonEmptyStr }
+          if is_fn_kind(k: k) { BodyVerified { declaration: d } } else { BodyUnresolved { reference: d, cause: "resolves to a declaration that is not a fn" as NonEmptyStr } }
+        Absent => BodyUnresolved { reference: d, cause: resolution_failure(r: r) as NonEmptyStr }
       }
+    }
   }
 }
 
@@ -161,16 +160,18 @@ fn qualify_external(e: ExternalSubjectStanding, computation: QualifiedComputatio
           } else {
             ExternalUnverified { detail: concat("provider interface only required: ", s as String) as NonEmptyStr }
           }
-        ProviderInterfaceDeclared { declaration: d } =>
-          match resolved_kind(r: ctx.resolve(d)) {
+        ProviderInterfaceDeclared { declaration: d } => {
+          let r = ctx.resolve(d)
+          match resolved_kind(r: r) {
             Present { value: k } =>
               if is_provider_kind(k: k) {
                 ExternalPresentVerified { operation: op, subject: subj, provider: d, ambient: amb }
               } else {
                 ExternalUnverified { detail: concat("the provider declaration resolves to a ", kind_label(k: k), ", not a service or provider type") as NonEmptyStr }
               }
-            Absent => ExternalUnverified { detail: concat("the provider declaration did not resolve: ", resolution_failure(r: ctx.resolve(d))) as NonEmptyStr }
+            Absent => ExternalUnverified { detail: concat("the provider declaration did not resolve: ", resolution_failure(r: r)) as NonEmptyStr }
           }
+        }
       }
   }
 }
@@ -201,25 +202,28 @@ fn declaration_under_witness_prefix(d: DeclarationRef, prefixes: List<String>) -
 }
 
 fn qualify_witness(a: DeclarationRef, sem: NonEmptyStr, tr: NonEmptyStr, body: DeclarationRef, w: DeclarationRef, ctx: QualificationContext) -> QualifiedRealization {
-  match resolved_kind(r: ctx.resolve(w)) {
-    Absent => RealizationUnqualified { detail: concat("the equivalence witness did not resolve: ", resolution_failure(r: ctx.resolve(w))) as NonEmptyStr }
+  let rw = ctx.resolve(w)
+  match resolved_kind(r: rw) {
+    Absent => RealizationUnqualified { detail: concat("the equivalence witness did not resolve: ", resolution_failure(r: rw)) as NonEmptyStr }
     Present { value: witness_kind } =>
       if !is_fn_kind(k: witness_kind) {
         RealizationUnqualified { detail: "the equivalence witness resolves to a declaration that is not a fn" as NonEmptyStr }
       } else if !declaration_under_witness_prefix(d: w, prefixes: ctx.witness_module_prefixes) {
         RealizationUnqualified { detail: concat("the equivalence witness ", w.module_path as String, " ", w.decl_name as String, " is not under an enrolled witness module prefix") as NonEmptyStr }
       } else {
-        match resolved_kind(r: ctx.resolve(a)) {
+        let ra = ctx.resolve(a)
+        match resolved_kind(r: ra) {
           Present { value: _ } => RealizationVerified { authority: a, required_semantics: sem, target_realization: tr, reference: body, witness: w }
-          Absent => RealizationUnqualified { detail: concat("the semantic operation authority did not resolve: ", resolution_failure(r: ctx.resolve(a))) as NonEmptyStr }
+          Absent => RealizationUnqualified { detail: concat("the semantic operation authority did not resolve: ", resolution_failure(r: ra)) as NonEmptyStr }
         }
       }
   }
 }
 
 fn qualify_reference(a: DeclarationRef, sem: NonEmptyStr, tr: NonEmptyStr, body: DeclarationRef, eq: EquivalenceQualification, ctx: QualificationContext) -> QualifiedRealization {
-  match resolved_kind(r: ctx.resolve(body)) {
-    Absent => RealizationUnqualified { detail: concat("the reference body did not resolve: ", resolution_failure(r: ctx.resolve(body))) as NonEmptyStr }
+  let rb = ctx.resolve(body)
+  match resolved_kind(r: rb) {
+    Absent => RealizationUnqualified { detail: concat("the reference body did not resolve: ", resolution_failure(r: rb)) as NonEmptyStr }
     Present { value: body_kind } =>
       if !is_fn_kind(k: body_kind) {
         RealizationUnqualified { detail: "the reference body resolves to a declaration that is not a fn" as NonEmptyStr }

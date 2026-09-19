@@ -416,6 +416,16 @@ fn decoy_pool_census() -> PrimitiveCallEdgeCensus {
   compile_dag_primitive_call_edges([], ["dag/test/fixture/primitive_egress_decoy"], [])
 }
 
+fn edge_callee_spelling(e: PrimitiveCallEdge) -> String {
+  match e.callee {
+    RuntimePrimitiveCallee { primitive_name: n, projected_from_module: _, projected_from_decl: _ } => n
+    AlgebraMethodCallee { template_name: t } => t
+    ServiceOperationCallee { service_name: s, operation: op } => concat(s, ".", op)
+    PlainMethodCallee { spelling: s } => s
+    UndeterminedFreeCallee { spelling: s } => s
+  }
+}
+
 fn callee_names_primitive(e: PrimitiveCallEdge, name: String) -> Bool {
   match e.callee {
     RuntimePrimitiveCallee { primitive_name: n, projected_from_module: _, projected_from_decl: _ } => n == name
@@ -439,7 +449,7 @@ test fn w_decoy_declaration_is_not_a_primitive_edge_on_the_real_producer() -> Bo
         && count(count_edges) == 2
         && count(edges |> filter(fn(e) { callee_names_primitive(e: e, name: "scan_to_eol") })) == 0
         && count(map_has_edges) == 1
-        && (count_edges |> all(fn(e) { primitive_identity_eq(left: canonical_join(surface: none, spelling: "count").identity, right: primitive_identity_slug(name: "length")) }))
+        && (count_edges |> all(fn(e) { primitive_identity_eq(left: canonical_join(surface: none, spelling: edge_callee_spelling(e: e)).identity, right: primitive_identity_slug(name: "length")) }))
         && primitive_identity_eq(left: canonical_join(surface: none, spelling: "map_has").identity, right: primitive_identity_slug(name: "map_contains_key"))
     }
   }

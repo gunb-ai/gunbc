@@ -1367,11 +1367,23 @@ fn collect_primitive_call_edges(
     let mut pending: Vec<Rc<crate::v1_std_core::Node>> = vec![texpr.clone()];
     while let Some(node) = pending.pop() {
         primitive_call_edge_at(&node, caller_module, caller_decl, source_indices, out);
+        // Every field that can carry an expression node: `children` (arguments, a service's
+        // operations, a type's variants), `body`, `params` (a default argument), `properties`
+        // (a fn's admit props), `transport` (a service transport expression).
         for child in node.children.iter() {
             pending.push(child.clone());
         }
         if let Some(body) = &node.body {
             pending.push(body.clone());
+        }
+        for param in node.params.iter() {
+            pending.push(param.clone());
+        }
+        for property in node.properties.iter() {
+            pending.push(property.clone());
+        }
+        if let Some(transport) = &node.transport {
+            pending.push(transport.clone());
         }
     }
 }
@@ -1384,15 +1396,10 @@ fn primitive_call_edges_from_module(
     let module_name = crate::v1_std_core::authored_name_at(si.clone(), module.module.clone());
     for item in module.items.iter() {
         let decl_name = crate::v1_std_core::authored_name_at(si.clone(), item.clone());
-        if let Some(body) = &item.body {
-            collect_primitive_call_edges(body, &module_name, &decl_name, &si, out);
-        }
-        // A `data` row's initializer is a body too, but a declaration-level default argument
-        // or where-clause reaches the same walk through `params`/`children`, so both are
-        // covered from the item node itself rather than from a second entry point.
-        for param in item.params.iter() {
-            collect_primitive_call_edges(param, &module_name, &decl_name, &si, out);
-        }
+        // The ITEM NODE is the walk root, so every expression-bearing field of a declaration --
+        // body, params (default arguments), children (a service's operations, a type's
+        // variants), properties (admit props), transport -- is inside the denominator.
+        collect_primitive_call_edges(item, &module_name, &decl_name, &si, out);
     }
 }
 
