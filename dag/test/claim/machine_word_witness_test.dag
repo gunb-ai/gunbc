@@ -292,7 +292,7 @@ test fn octet_packing_round_trips_holds() -> Bool {
   match word_to_octets(a: v, endianness: BigEndian) {
     OctetsRefused { cause: _ } => false
     OctetsReady { octets: octets } =>
-      word32_value_or(result: word_from_octets(width: Width32, octets: octets, endianness: BigEndian), fallback: 0 - 1) == 305419896
+      word32_value_or(result: word_from_octets(width: Width32, octets: qualified_words_to_words(octets: octets), endianness: BigEndian), fallback: 0 - 1) == 305419896
   }
 }
 

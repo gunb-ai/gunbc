@@ -210,6 +210,17 @@ fn qualified_word_unwrap(q: QualifiedWord) -> Word {
   q.word
 }
 
+// THE ROUND TRIP NEEDS THIS AND IT IS NOT A HOLE IN THE CARRIER. word_to_octets answers qualified
+// members and word_from_octets takes raw ones -- deliberately, because a caller assembling octets
+// by hand legitimately has raw Words and the entry qualifies them. Feeding one into the other is
+// an ordinary consumer pattern (SHA-2 block packing is exactly this), so the unwrap is exported
+// rather than open-coded per caller. It DISCARDS a proof, which is safe in this direction: every
+// member is re-qualified by word_from_octets, so the worst case is paying the check twice, not
+// skipping it.
+fn qualified_words_to_words(octets: List<QualifiedWord>) -> List<Word> {
+  octets |> map(o => qualified_word_unwrap(q: o))
+}
+
 // The ONE producer of QualifiedWord. word_of_int establishes both facts a helper below here needs:
 // the width is realizable and the value inhabits it.
 fn word_qualified(w: Word) -> QualifiedWordResult {
