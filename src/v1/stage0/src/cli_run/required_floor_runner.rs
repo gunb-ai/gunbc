@@ -1550,6 +1550,14 @@ pub(crate) enum EnrolmentMarginStanding {
         ground: EnrolmentExpensivenessGround,
         reading: EnrolmentDeclaredCostReading,
     },
+    /// Mirror of `EnrolmentRosterGroundStale`. A Roster (typed cost-debt) declaration admits only
+    /// while THIS RUN's live reading is strictly above the per-subject CPU line. A reading at or
+    /// under the line means the identity is no longer expensive, so its row is stale and must
+    /// delete: the declaration cannot outlive the cost that justified it.
+    RosterGroundStale {
+        observed_cpu_ms: u64,
+        line_ms: u64,
+    },
 }
 
 /// Host rendering of `EnrolmentCostReading` beside a declared-expensiveness standing.
@@ -1591,6 +1599,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::NotMeasured { .. } => true,
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => false,
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => false,
+            EnrolmentMarginStanding::RosterGroundStale { .. } => true,
         }
     }
 
@@ -1603,7 +1612,8 @@ impl EnrolmentMarginStanding {
             | EnrolmentMarginStanding::OverMargin { .. }
             | EnrolmentMarginStanding::CeilingCensored { .. }
             | EnrolmentMarginStanding::BoundWithoutCeiling { .. }
-            | EnrolmentMarginStanding::NotMeasured { .. } => EnrolmentPairingHole::None,
+            | EnrolmentMarginStanding::NotMeasured { .. }
+            | EnrolmentMarginStanding::RosterGroundStale { .. } => EnrolmentPairingHole::None,
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => {
                 EnrolmentPairingHole::OutsideExecution
             }
@@ -1625,6 +1635,7 @@ impl EnrolmentMarginStanding {
             EnrolmentMarginStanding::NotMeasured { .. } => "enrolment_not_measured",
             EnrolmentMarginStanding::OutsideThisRunsExecution { .. } => "",
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "",
+            EnrolmentMarginStanding::RosterGroundStale { .. } => "enrolment_roster_ground_stale",
         }
     }
 
@@ -1643,6 +1654,7 @@ impl EnrolmentMarginStanding {
                 "outside_this_runs_execution"
             }
             EnrolmentMarginStanding::ExpensivenessDeclared { .. } => "expensiveness_declared",
+            EnrolmentMarginStanding::RosterGroundStale { .. } => "roster_ground_stale",
         }
     }
 
@@ -1683,26 +1695,66 @@ impl EnrolmentMarginStanding {
                     EnrolmentExpensivenessGround::Roster => "roster",
                     EnrolmentExpensivenessGround::LongHome => "long_home",
                 };
+                // The Roster ground IS decided here, from the live reading; LongHome is reported
+                // and not decided (the declared drop long_home_enrolment_margin_observed_only).
+                let decision = match ground {
+                    EnrolmentExpensivenessGround::Roster => {
+                        "admitted: live reading over the per-subject line"
+                    }
+                    EnrolmentExpensivenessGround::LongHome => "reported; does not decide this gate",
+                };
                 match reading {
                     EnrolmentDeclaredCostReading::Observed { observed_cpu_ms } => format!(
                         "expensiveness_declared ground={ground_name} observed_cpu_ms={observed_cpu_ms} \
-                         (reported; does not decide this gate)"
+                         ({decision})"
                     ),
                     EnrolmentDeclaredCostReading::BoundWithoutCeiling { cpu_lower_bound_ms } => {
                         format!(
                             "expensiveness_declared ground={ground_name} cost=BOUND_WITHOUT_CEILING \
                              cpu_at_least_ms={cpu_lower_bound_ms} \
-                             (reported; does not decide this gate)"
+                             ({decision})"
                         )
                     }
                     EnrolmentDeclaredCostReading::Absent => format!(
                         "expensiveness_declared ground={ground_name} cost=UNMEASURED \
-                         (reported; does not decide this gate)"
+                         ({decision})"
                     ),
                 }
             }
+            EnrolmentMarginStanding::RosterGroundStale {
+                observed_cpu_ms,
+                line_ms,
+            } => format!(
+                "roster ground stale: observed_cpu_ms={observed_cpu_ms} is not above the \
+                 per-subject line line_ms={line_ms}; the typed cost-debt row for this identity \
+                 must delete"
+            ),
         }
     }
+}
+
+/// The per-subject CPU line (`required_floor_per_subject_cpu_line_ms`), read out of the policy
+/// model. One read shared by the enrolment-margin budget, which must sit strictly below it, and by
+/// the Roster expensiveness ground, which admits only a live reading strictly above it.
+pub(crate) fn floor_per_subject_cpu_line_ms(
+    prepared: &crate::cli_run::PreparedRepository,
+) -> Result<u64, String> {
+    let policy_scope = claim_scope_for(prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
+    let policy_ctx = evaluation_frame(
+        &policy_scope,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        None,
+    );
+    // THE CPU LINE, NOT THE WORK ENVELOPE (review 66007). This budget is compared against
+    // an observed CPU reading, so the ceiling it must sit strictly below has to be
+    // denominated on the same clock. `required_floor_claim_work_envelope_ms` is policy in
+    // milliseconds of WORK, consumed only after conversion into eval steps; reading it here
+    // judged a CPU figure against a line from another quantity because both are spelled in
+    // milliseconds, which is the fusion `std.measure` `measure_clock_basis_note` forbids.
+    // The two share the magnitude 500 and that coincidence is exactly how the fork got
+    // written.
+    floor_required_measure_count(&policy_ctx, "required_floor_per_subject_cpu_line_ms")
 }
 
 /// THE MARGIN BUDGET, READ OUT OF THE MODEL. Not a Rust literal and not arithmetic repeated here:
@@ -1723,24 +1775,7 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
     // witness before it evaluates one; a budget at or above the ceiling is the decoration the
     // model's own `the_enrolment_budget_is_strictly_below_the_ceiling` witness exists to forbid,
     // permanently green by construction while still being reported as coverage.
-    let ceiling_ms = {
-        let policy_scope = claim_scope_for(prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
-        let policy_ctx = evaluation_frame(
-            &policy_scope,
-            v1_interpreter::ExecutionMode::Hermetic,
-            None,
-            None,
-        );
-        // THE CPU LINE, NOT THE WORK ENVELOPE (review 66007). This budget is compared against
-        // an observed CPU reading, so the ceiling it must sit strictly below has to be
-        // denominated on the same clock. `required_floor_claim_work_envelope_ms` is policy in
-        // milliseconds of WORK, consumed only after conversion into eval steps; reading it here
-        // judged a CPU figure against a line from another quantity because both are spelled in
-        // milliseconds, which is the fusion `std.measure` `measure_clock_basis_note` forbids.
-        // The two share the magnitude 500 and that coincidence is exactly how the fork got
-        // written.
-        floor_required_measure_count(&policy_ctx, "required_floor_per_subject_cpu_line_ms")?
-    };
+    let ceiling_ms = floor_per_subject_cpu_line_ms(prepared)?;
     match v1_interpreter::run_in_context(&ctx, &qualified, false) {
         Ok(v1_interpreter::Value::Int(n)) if n > 0 && (n as u64) < ceiling_ms => Ok(n as u64),
         Ok(v1_interpreter::Value::Int(n)) => Err(format!(
@@ -1758,7 +1793,7 @@ pub(crate) fn floor_enrolment_margin_budget_ms(
 
 /// `v2.workflow.floor_enrolment_margin` `enrolment_typed_cost_debt_identities`, decoded
 /// from the frame the same way `floor_cost_debt_roster` is. Never a Rust-empty HashSet:
-/// authoring `floor_cost_debt_typed_admission_attempts` must reach this gate (review 65692).
+/// authoring a `floor_cost_debt_typed_admissions` row must reach this gate (review 65692).
 pub(crate) fn floor_enrolment_typed_cost_debt_identities(
     prepared: &crate::cli_run::PreparedRepository,
 ) -> Result<HashSet<String>, String> {
@@ -1851,6 +1886,7 @@ pub(crate) fn enrolment_margin_standing_for(
     claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
     dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
     budget_ms: u64,
+    per_subject_line_ms: u64,
     declared_expensiveness: Option<EnrolmentExpensivenessGround>,
 ) -> EnrolmentMarginStanding {
     // THE EXECUTION JOIN COMES FIRST, AND SKIPPING IT IS THE DEFECT review 64022 FOUND.
@@ -1878,7 +1914,18 @@ pub(crate) fn enrolment_margin_standing_for(
     // THE DECLARATION COMES NEXT, AND IT IS NOT THE COST POPULATION. Consulting `claim_cost`
     // before this point would rebuild review 64022. The caller supplies
     // `enrolment_expensiveness_declaration` (long home, never an ungated string-roster
-    // append). This match decides nothing from the CPU — `ChangedCostDebtVerdictOnly`.
+    // append). For LongHome ground this match decides nothing from the CPU —
+    // `ChangedCostDebtVerdictOnly`, the declared drop `long_home_enrolment_margin_observed_only`.
+    //
+    // THE ROSTER GROUND IS LIVE-CONDITIONED (gunbc#11622 review 68363). A typed cost-debt row
+    // carries an identity and a reason, never a reading, so the only cost that can justify it is
+    // THIS run's: it admits only while the live reading is strictly above the per-subject line.
+    // At or under the line it is stale and refuses. With NO cost row it refuses as NotMeasured,
+    // exactly as an undeclared planned identity does — otherwise the declaration would buy an
+    // exemption from being measured at all, which is the absorbing fallback DESIGN 5 forbids.
+    // A lower bound establishes expensiveness only if the bound itself is over the line; at or
+    // under it the bound proves nothing and blocks as BoundWithoutCeiling, the arm an undeclared
+    // identity with the same reading gets.
     if let Some(ground) = declared_expensiveness {
         let reading = match claim_cost.get(identity) {
             Some(row) => match &row.reading {
@@ -1895,6 +1942,32 @@ pub(crate) fn enrolment_margin_standing_for(
             },
             None => EnrolmentDeclaredCostReading::Absent,
         };
+        if ground == EnrolmentExpensivenessGround::Roster {
+            match reading {
+                EnrolmentDeclaredCostReading::Observed { observed_cpu_ms }
+                    if observed_cpu_ms <= per_subject_line_ms =>
+                {
+                    return EnrolmentMarginStanding::RosterGroundStale {
+                        observed_cpu_ms,
+                        line_ms: per_subject_line_ms,
+                    };
+                }
+                EnrolmentDeclaredCostReading::BoundWithoutCeiling { cpu_lower_bound_ms }
+                    if cpu_lower_bound_ms <= per_subject_line_ms =>
+                {
+                    return EnrolmentMarginStanding::BoundWithoutCeiling { cpu_lower_bound_ms };
+                }
+                EnrolmentDeclaredCostReading::Absent => {
+                    return EnrolmentMarginStanding::NotMeasured {
+                        cause: "no_claim_cost_row_for_a_planned_identity".to_string(),
+                    };
+                }
+                // The admitting arms are spelled, never a wildcard: a new reading shape must be
+                // given a disposition here rather than default to admit (review 68380).
+                EnrolmentDeclaredCostReading::Observed { .. }
+                | EnrolmentDeclaredCostReading::BoundWithoutCeiling { .. } => {}
+            }
+        }
         return EnrolmentMarginStanding::ExpensivenessDeclared { ground, reading };
     }
     let Some(row) = claim_cost.get(identity) else {
@@ -9889,6 +9962,7 @@ pub fn run_required_floor(
     let mut enrolment_budget_ms: Option<u64> = None;
     if let Some(newly_enrolled) = newly_enrolled_witnesses.as_ref() {
         let budget_ms = floor_enrolment_margin_budget_ms(&prepared)?;
+        let per_subject_line_ms = floor_per_subject_cpu_line_ms(&prepared)?;
         enrolment_budget_ms = Some(budget_ms);
         let cost_by_identity = claim_cost_by_identity(&outcome.claim_cost);
         let dispositions: HashMap<&str, &RequiredFloorDisposition> = outcome
@@ -9908,6 +9982,7 @@ pub fn run_required_floor(
                 &cost_by_identity,
                 &dispositions,
                 budget_ms,
+                per_subject_line_ms,
                 declared_expensiveness,
             );
             eprintln!(
@@ -12269,6 +12344,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             &cost_owned,
             &dispositions,
             302,
+            500,
             Some(declared),
         );
         let terminals: Vec<ClaimTerminalRow> = terminal_row.into_iter().collect();
@@ -12502,6 +12578,119 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         );
     }
 
+    /// THE ROSTER GROUND IS LIVE-CONDITIONED (gunbc#11622 review 68363). A typed cost-debt row
+    /// carries no reading, so it admits only on THIS run's reading strictly above the per-subject
+    /// line: over the line admits, at or under it is stale and blocks, and no cost row blocks as
+    /// NotMeasured exactly as an undeclared planned identity does. LongHome is the control that
+    /// the same absent reading is still only reported there (the declared drop).
+    #[test]
+    fn the_roster_ground_admits_only_on_a_live_reading_over_the_line() {
+        let identity = "m.roster";
+        let planned = RequiredFloorDisposition::Planned;
+        let mut dispositions = HashMap::new();
+        dispositions.insert(identity, &planned);
+        let occurrence_at = |cpu: u64| crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "passed".to_string(),
+            reading: crate::cli_run::ClaimCostReading::Observed {
+                observed_cpu_ms: cpu,
+                observed_wall_ms: cpu,
+            },
+            eval_steps: 1,
+            verdict_reached: true,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let roster = Some(EnrolmentExpensivenessGround::Roster);
+
+        let over = occurrence_at(681);
+        let mut over_cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+            HashMap::new();
+        over_cost.insert(identity, &over);
+        let admitted =
+            enrolment_margin_standing_for(identity, &over_cost, &dispositions, 302, 500, roster);
+        assert_eq!(admitted.name(), "expensiveness_declared");
+        assert!(!admitted.blocks());
+
+        let at_line = occurrence_at(500);
+        let mut at_cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+            HashMap::new();
+        at_cost.insert(identity, &at_line);
+        let stale =
+            enrolment_margin_standing_for(identity, &at_cost, &dispositions, 302, 500, roster);
+        assert_eq!(stale.name(), "roster_ground_stale");
+        assert_eq!(stale.cause(), "enrolment_roster_ground_stale");
+        assert!(stale.blocks());
+
+        let absent = enrolment_margin_standing_for(
+            identity,
+            &HashMap::new(),
+            &dispositions,
+            302,
+            500,
+            roster,
+        );
+        assert_eq!(absent.name(), "not_measured");
+        assert!(absent.blocks());
+
+        let bound_at = |bound: u64| crate::cli_run::WitnessExecutionOccurrence {
+            identity: identity.to_string(),
+            module_path: "m".to_string(),
+            outcome: "interrupted".to_string(),
+            reading: crate::cli_run::ClaimCostReading::RightCensored(
+                crate::cli_run::SafetyInterruptReading {
+                    raised_by: crate::cli_run::SafetyInterruptTrigger::WallDeadlineRaised,
+                    elapsed_cpu_at_least_ms: bound,
+                    elapsed_wall_at_least_ms: 8000,
+                    wall_safety_limit_ms: 8000,
+                },
+            ),
+            eval_steps: 1,
+            verdict_reached: false,
+            cost_line_ms: 500,
+            preemption_reachability: "cooperatively_pollable".to_string(),
+        };
+        let bound_over = bound_at(514);
+        let mut bound_over_cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+            HashMap::new();
+        bound_over_cost.insert(identity, &bound_over);
+        let bound_admitted = enrolment_margin_standing_for(
+            identity,
+            &bound_over_cost,
+            &dispositions,
+            302,
+            500,
+            roster,
+        );
+        assert_eq!(bound_admitted.name(), "expensiveness_declared");
+        let bound_under = bound_at(1);
+        let mut bound_under_cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
+            HashMap::new();
+        bound_under_cost.insert(identity, &bound_under);
+        let bound_refused = enrolment_margin_standing_for(
+            identity,
+            &bound_under_cost,
+            &dispositions,
+            302,
+            500,
+            roster,
+        );
+        assert_eq!(bound_refused.name(), "bound_without_ceiling");
+        assert!(bound_refused.blocks());
+
+        let long_home_absent = enrolment_margin_standing_for(
+            identity,
+            &HashMap::new(),
+            &dispositions,
+            302,
+            500,
+            Some(EnrolmentExpensivenessGround::LongHome),
+        );
+        assert_eq!(long_home_absent.name(), "expensiveness_declared");
+        assert!(!long_home_absent.blocks());
+    }
+
     /// THE PAIRING INVARIANT MADE EXECUTABLE. newly_enrolled contains a declared identity
     /// and the changed projection does not. Enrolment does not block; without a changed row
     /// the identity would admit silently. This call is the unpaired production arm
@@ -12519,6 +12708,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             &cost_owned,
             &dispositions,
             302,
+            500,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert_eq!(standing.name(), "expensiveness_declared");
@@ -12545,7 +12735,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
         dispositions.insert(identity, &declined);
         let cost_owned: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> = HashMap::new();
         let standing =
-            enrolment_margin_standing_for(identity, &cost_owned, &dispositions, 302, None);
+            enrolment_margin_standing_for(identity, &cost_owned, &dispositions, 302, 500, None);
         assert_eq!(standing.name(), "outside_this_runs_execution");
         assert!(!standing.blocks());
         let blockers = required_floor_blockers_for(identity, Some(&standing), None);
@@ -12642,6 +12832,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             &cost_owned,
             &dispositions,
             302,
+            500,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         let absent = enrolment_margin_standing_for(
@@ -12649,6 +12840,7 @@ fn lit(l: Light) -> Bool {\n  match l {\n    Red => true\n    Off => false\n  }\
             &HashMap::new(),
             &dispositions,
             302,
+            500,
             Some(EnrolmentExpensivenessGround::LongHome),
         );
         assert!(

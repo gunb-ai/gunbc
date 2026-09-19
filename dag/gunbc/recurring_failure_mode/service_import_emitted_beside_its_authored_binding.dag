@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.service_import_emitted_beside_its_authored_binding
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data service_import_emitted_beside_its_authored_binding: RecurringFailureMode = RecurringFailureMode {
+  identity: "service_import_emitted_beside_its_authored_binding" as NonEmptyStr,
+
+  receipts: [
+    "**a service import is emitted beside the authored import that already binds it** (INVALID STATE: an emitted Rust module carries two `use` lines for one item -- `pub use crate::m::{S};` rendered from the authored `import m { S }`, and `pub use crate::m::S;` rendered as the per-module service import for a service its functions demand -- and rustc refuses the module with E0252, the name is defined multiple times.",
+
+    "MECHANISM: `v1.compiler.emit_rust` assembled use lines from two producers that were never compared. The authored, carrier and reference-derived lines pass through `dedupe_rust_import_lines`; the per-module service imports were appended beside them afterwards. The dedupe already knew a braced line covers a singleton for the same item (`rust_pub_use_singleton_covered`); the service imports simply never reached it.",
+
+    "WHY IT WAS SILENT: it was masked, not absent. While `std.resources` sat in a closure, the bare name `Filesystem` had two candidate providers there -- the `std.resources` resource `Filesystem` and the `extdeps.filesystem.filesystem_io` service `Filesystem` -- so the authored import's line was declined and the service import stood alone. The duplicate appeared the moment the homonym left the closure: first when D13 cut (c) deleted the `uses` rows and with them the only reference to an import of `std.resources`, and earlier on the standalone fixture of `test.claim.self_host_emitted_call_target_realization_witness_test` once the bare-name service reached derived demand. The emitted-closure receipts of that work stayed byte-identical because no rooted closure contains that shape; the fixture and a before/after emission of the affected modules did.",
+
+    "THE RECURRING ROOT, named so it ranks for its own fix: `Filesystem` is ONE NAME FOR TWO MATERIALLY DIFFERENT THINGS -- the `std.resources` RESOURCE (a capability trait) and the `extdeps.filesystem.filesystem_io` SERVICE (a struct of operations). That is a DESIGN 3 meaning fork, and within one program it has now bitten three times at three layers: the interpreter's service detection had to stop gating on a name-keyed lookup because of it; derivation did not stamp a bare service receiver because the service's root became a local by that name (`gunbc.recurring_failure_mode` `bare_imported_service_invisible_to_derived_demand`); and here emission declined an authored import because the name had two providers. Each repair closed its own layer. Resolving the homonym itself is outside this row's repair, and this receipt exists so it is not mistaken for closed.",
+
+    "RUNG FOUND AT: mitigatable -- the defect surfaces as a loud rustc refusal of the emitted crate, never a wrong answer, but only after `gunbc compile` reports success. CEILING: 3, structurally guaranteed: whether an assembled use line is covered by another is decidable from the lines themselves.",
+
+    "REPAIR: `service_import_lines_not_already_bound` drops a service import exactly when a merged line already binds that item -- an identical line, or a braced line naming it -- by the same coverage the merged dedupe applies to itself, so every module without that overlap emits unchanged bytes. The enrolled pair (`test.claim.service_import_dedupe_witness_test`) is the evidence: the authored-import row forbids the second line, and the module-import row requires a service import no authored line binds still to be emitted. Executed when it landed: the deduped fixture crate compiles under `-D warnings`; the same fixture emitted without the repair fails with E0252.",
+
+    "NEXT-RUNG TRIGGER, as the capability: every use line of an emitted Rust module is assembled by ONE producer that sees every candidate line, so no two producers can bind one name -- sufficient that a new source of use lines cannot reintroduce the class by being appended beside the others.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "service_import_lines_not_already_bound", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "dedupe_rust_import_lines", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_pub_use_singleton_covered", field: WholeDeclaration },
+  ],
+}

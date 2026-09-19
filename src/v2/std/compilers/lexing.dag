@@ -8,7 +8,10 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import v2.std.algebra { fold_list, length, list_snoc_item, skip }
 import v2.std.collection {
   List,
-  list_at_optional
+  Map,
+  empty_map,
+  list_at_optional,
+  map_insert
 }
 import v2.std.optional {
   Absent,
@@ -220,6 +223,28 @@ fn lex_artifact_annotations(artifact: LexArtifact) -> List<UnboundSourceAnnotati
 
 fn lex_artifact_new(tokens: TokenStream, annotations: List<UnboundSourceAnnotation>) -> LexArtifact {
   LexArtifact { tokens: tokens, annotations: annotations }
+}
+
+fn lex_rule_set_insert_token_classes(
+  m: Map<Symbol, Bool>,
+  rules: LexRuleSet
+) -> Map<Symbol, Bool> {
+  fold_list(
+    xs: rules.rules,
+    empty: m,
+    cons: fn(acc, rule) {
+      match rule {
+        TokenRule { token_class: c, pattern: _ } =>
+          map_insert(m: acc, key: c, value: true)
+        TriviaRule { pattern: _ } => acc
+        AnnotationRule { annotation_class: _, pattern: _ } => acc
+      }
+    }
+  )
+}
+
+fn lex_rule_set_token_class_map(rules: LexRuleSet) -> Map<Symbol, Bool> {
+  lex_rule_set_insert_token_classes(m: empty_map(), rules: rules)
 }
 
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
