@@ -28,7 +28,7 @@ import gunbc.auth.approval_broker_endpoint {
 import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, HttpMethod, GET, POST, HttpStatus }
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.markup { Fragment, attr }
-import gunbc.site.markup { txt, el, el_attrs }
+import gunbc.site.markup { txt, el, el_attrs, page_render_refusal_body }
 import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8,
   ServeHttpRequest,
@@ -44,7 +44,6 @@ import extdeps.http.server {
   parse_http_method_label,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import gunbc.roadmap_site_surface_render { page_render_refusal_body }
 
 // ── THE APPROVAL BROKER IS ITS OWN SERVED PROCESS ────────────────────────────────────────────
 // WHY THIS MODULE EXISTS AT ALL, stated as the receipt rather than as a preference (side-chat
@@ -111,7 +110,7 @@ fn broker_text_response(status: HttpStatus, content_type: MediaType, body: Strin
 }
 
 // A page render refusal is a TYPED 500 carrying the emitter's reason -- never an empty page and
-// never a dropped route (DESIGN section 5). The refusal BODY is the one gunbc.roadmap_site_surface_render
+// never a dropped route (DESIGN section 5). The refusal BODY is the one gunbc.site.markup
 // already declares: it is a fact about how this corpus reports a rejected HTML emission, not a
 // fact about the roadmap, and a second spelling here would be the fork this extraction exists to
 // avoid rather than one it introduces.

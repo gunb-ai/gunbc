@@ -61,8 +61,8 @@ import gunbc.roadmap_static_site {
   roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
+import gunbc.site.markup { page_render_refusal_body }
 import gunbc.roadmap_site_surface_render {
-  page_render_refusal_body,
   roadmap_site_health_path,
   roadmap_site_roadmap_url_path,
   roadmap_site_dispatch_url_path,
