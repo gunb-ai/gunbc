@@ -145,7 +145,11 @@ fn boot_mode_preimage(mode: ClientNetworkBootMode) -> String {
 // one-to-one over the variant, carrying no firmware family (that lives in
 // boot_mode) and owned by this protocol, so a rename in a diagnostic renderer
 // or an upstream label cannot move the key space. It is a protocol token, not
-// an upstream wire label.
+// an upstream wire label — and not gunbc.devboot.subject architecture_identity_tag
+// either: that table keys a STORE, this one keys SIGNED TICKETS, and the two
+// lifetimes must stay separate. Sharing one table would let a devboot tag
+// version bump silently re-key every issued manifest, and a signing-protocol
+// change orphan every stored devboot artifact.
 fn boot_manifest_architecture_token(arch: Architecture) -> NonEmptyStr {
   match arch {
     X86_64 => "x86_64" as NonEmptyStr
