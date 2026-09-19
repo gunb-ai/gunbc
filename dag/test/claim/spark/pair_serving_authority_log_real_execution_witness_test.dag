@@ -16,11 +16,12 @@ import product.capacity.event_chain { EventId, HeadAbsent, HeadAt }
 import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
 import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
-import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, HostEffectHandle, admit_unplaced_host_over, release_host_effect_over }
+import gunbc.spark.host_commitment { SparkHostAdmitted, SparkHostRefused, HostEffectHandle, GroupPartitionClaim, HostPartitionClaim, admit_unplaced_host_over, release_host_effect_over }
 import product.placement_supply { HostIdentity }
 import std.measure { second }
 import gunbc.spark.pair_serving_authority_log {
-  HostEffectClaim, HostEffectClaimed, HostEffectClaimRefused, pair_serving_host_effect_admit,
+  HostEffectClaim, HostEffectClaimed, HostEffectClaimRefused, pair_serving_host_effect_admit, HostEffectRelease, HostEffectReleasedAt, HostEffectReleaseRefused, pair_serving_host_effect_release,
+  HostEffectsRead, HostEffectsReadAt, HostEffectsUnread, host_effects_on_host, host_effect_admit_on_host, host_effect_release_on_host,
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
   AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
   authority_eq,
@@ -165,10 +166,7 @@ test fn an_unclaimed_group_is_refused_at_the_claim_by_real_execution() -> Bool {
 // current authority (admit_unplaced_host_over, the fold admit_unplaced_host_live runs on the
 // executor's layout) admits srv5 and lands a CLAIM on the group's partition; the operator's
 // re-claim (Released → Active) is then REFUSED at the head -- the same head lease the claim
-// landed under -- until the claim is released; after the release it lands. A claim whose term
-// has expired fences nothing: a transition dated after it lands. And the admission refuses a host
-// of an Active group at the claim (the state read commits it), while a host of no claimed group
-// is admitted with no claim to make.
+// landed under -- until the claim is released; after the release it lands.
 fn alr_srv(s: String) -> HostIdentity {
   s as HostIdentity
 }
@@ -198,28 +196,61 @@ test fn a_live_host_effect_claim_fences_the_reclaim_until_released_by_real_execu
                           })
                   _ => false
                 })
-            && (match admit_unplaced_host_over(raw: "srv10", purpose: "a witness build" as NonEmptyStr, term: second(count: 100), layout: layout, executor: "executor-1" as NonEmptyStr, at: 1005) { SparkHostAdmitted { host: _, claim: Absent } => true  _ => false })
       }
     })
   })
 }
 
-test fn an_expired_host_effect_claim_fences_nothing_by_real_execution() -> Bool {
+// AN OVERDUE CLAIM STILL FENCES. A term-10 claim at 1001 refuses the re-claim at 1005 AND at 1012
+// (the claim is old, the effect is not known gone); a release with a quiescence receipt lands the
+// re-claim; a claim on a host the Active state commits refuses at `committed`; a second claim on a
+// host another live claim holds refuses at `held`.
+test fn an_overdue_host_effect_claim_fences_until_released_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
       let layout = alr_witness_layout(dir: dir)
       let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
-      let srv5 = match get(xs: fabric_group_hosts(g: FabricGroupA), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv8") }
+      let srv = match get(xs: fabric_group_hosts(g: FabricGroupA), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv8") }
       match pair_serving_authority_for(group: FabricGroupA) {
         Absent => false
         Present { value: resting } =>
           alr_witness_remote_ready(dir: dir)
             && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
-            && (match pair_serving_host_effect_admit(layout: layout, group: FabricGroupA, host: srv5, purpose: "a crashed lane" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 10, at: 1001) { HostEffectClaimed { id: _, generation: _ } => true  _ => false })
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1005) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1012) { AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2  _ => false })
-            && (match pair_serving_host_effect_admit(layout: layout, group: FabricGroupA, host: srv5, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 10, at: 1013) { HostEffectClaimRefused { group: _, step: st, reason: _ } => st == "committed"  _ => false })
+            && (match pair_serving_host_effect_admit(layout: layout, group: FabricGroupA, host: srv, purpose: "a crashed lane" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 10, at: 1001) {
+                  HostEffectClaimed { id: claim, generation: _ } =>
+                    (match pair_serving_host_effect_admit(layout: layout, group: FabricGroupA, host: srv, purpose: "a second lane" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term_seconds: 10, at: 1002) { HostEffectClaimRefused { group: _, step: st, reason: _ } => st == "held"  _ => false })
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1005) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1012) { AuthorityTransitionRefused { group: _, step: st, reason: r } => st == "host-effects" && r.contains("OVERDUE")  _ => false })
+                      && (match pair_serving_host_effect_release(layout: layout, group: FabricGroupA, claim: claim, receipt: "operator: no build container or process remains on the host" as String, executor: "operator" as NonEmptyStr, at: 1013) { HostEffectReleasedAt { id: _ } => true  _ => false })
+                      && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1014) { AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2  _ => false })
+                      && (match pair_serving_host_effect_admit(layout: layout, group: FabricGroupA, host: srv, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 10, at: 1015) { HostEffectClaimRefused { group: _, step: st, reason: _ } => st == "committed"  _ => false })
+                  _ => false
+                })
       }
+    })
+  })
+}
+
+// A HOST OF NO CLAIMED GROUP HAS ITS OWN PARTITION. Every production unit carries a standing today
+// (group B's arm claimed its four hosts), so the per-host partition is driven at its own seam with
+// a fixture identity: the first claim lands, a second is refused as held, the release lands, a
+// third claim is admitted again, and a release of a claim that is not live is refused.
+test fn an_ungrouped_host_is_claimed_on_its_own_partition_by_real_execution() -> Bool {
+  alr_with_hash(scenario: fn(h) {
+    alr_with_temp_dir(scenario: fn(dir) {
+      let layout = alr_witness_layout(dir: dir)
+      let host = alr_srv(s: "witness-ungrouped-host")
+      alr_witness_remote_ready(dir: dir)
+        && (match host_effect_admit_on_host(layout: layout, host: host, purpose: "a witness build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term_seconds: 100, at: 1000) {
+              HostEffectClaimed { id: c, generation: g0 } =>
+                g0 == 0
+                  && (match host_effect_admit_on_host(layout: layout, host: host, purpose: "a second build" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term_seconds: 100, at: 1001) { HostEffectClaimRefused { group: _, step: st, reason: _ } => st == "held"  _ => false })
+                  && (match host_effects_on_host(layout: layout, host: host) { HostEffectsReadAt { head: _, records: rs } => length(rs) == 1  _ => false })
+                  && (match host_effect_release_on_host(layout: layout, host: host, claim: c, receipt: "exit 0", executor: "executor-1" as NonEmptyStr, at: 1002) { HostEffectReleasedAt { id: _ } => true  _ => false })
+                  && (match host_effect_release_on_host(layout: layout, host: host, claim: c, receipt: "again", executor: "executor-1" as NonEmptyStr, at: 1003) { HostEffectReleaseRefused { group: _, step: st, reason: _ } => st == "claim"  _ => false })
+                  && (match host_effect_admit_on_host(layout: layout, host: host, purpose: "a third build" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term_seconds: 100, at: 1004) { HostEffectClaimed { id: _, generation: _ } => true  _ => false })
+              _ => false
+            })
     })
   })
 }

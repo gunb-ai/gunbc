@@ -1001,6 +1001,28 @@ fn spark_reachability_line(r: SparkHostReachability) -> String {
 data spark_reachability_attempt_raw: String = "spark-build-host-reachability"
 data spark_reachability_receipt_path: String = "target/spark-build-host-reachability-receipt.txt"
 
+// THE VERDICT IS THREE-VALUED, AND THE EMPTY POPULATION IS ITS OWN ARM. A fold that starts at true
+// answers "every admissible host answered" for a population of zero, which is a success with no
+// evidence behind it -- the same widening this root's annotation below records removing once already.
+// The population is empty exactly when every Spark unit is placed (gunbc.spark.host_commitment
+// spark_unplaced_hosts), which has been the production state since group B's assigned arm claimed its
+// hosts on 2026-09-18. So "nobody was asked" refuses by name, and it is distinguishable from "somebody
+// was asked and did not answer".
+type SparkReachabilityVerdict
+  = SparkReachabilityAllAnswered
+  | SparkReachabilityNoAdmissibleHost
+  | SparkReachabilitySomeUnanswered
+
+fn spark_reachability_verdict(readings: List<SparkHostReachability>) -> SparkReachabilityVerdict {
+  if count(readings) == 0 {
+    SparkReachabilityNoAdmissibleHost
+  } else if fold(readings, init: true, f: (acc, r) => acc && spark_host_answered(r: r)) {
+    SparkReachabilityAllAnswered
+  } else {
+    SparkReachabilitySomeUnanswered
+  }
+}
+
 // THE WHOLE ADMISSIBLE ROSTER IN ONE RUN, because the question a caller actually has is "which of
 // these may I be given", not "is this one alive".
 // A RECEIPT THAT WROTE IS NOT A LINE THAT RAN. An earlier revision of this entry returned success
@@ -1038,10 +1060,14 @@ fn spark_build_host_reachability_wet() -> ProcessExit
               let w = Filesystem.Write(path: spark_reachability_receipt_path, content: body)
               if !w.success {
                 exit_failure(reason: join(["spark reachability receipt write failed: ", w.error], ""))
-              } else if fold(readings, init: true, f: (acc, r) => acc && spark_host_answered(r: r)) {
-                ExitSuccess
               } else {
-                exit_failure(reason: join(["not every admissible build host answered:\n", body], ""))
+                match spark_reachability_verdict(readings: readings) {
+                  SparkReachabilityAllAnswered => ExitSuccess
+                  SparkReachabilityNoAdmissibleHost =>
+                    exit_failure(reason: "no admissible build host: every Spark unit carries a standing, so nothing was probed and no reachability was established")
+                  SparkReachabilitySomeUnanswered =>
+                    exit_failure(reason: join(["not every admissible build host answered:\n", body], ""))
+                }
               }
                 }
               }

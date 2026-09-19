@@ -1,0 +1,39 @@
+module test.claim.bare_service_derived_demand_witness_test
+
+// EXECUTING evidence that a call through a service referenced by its BARE name reaches derived
+// service demand (gunbc.recurring_failure_mode bare_imported_service_invisible_to_derived_demand).
+// The service's own name arrives in scope as its namespace-root LOCAL binding, and before the repair
+// v1.compiler.infer infer_var_binding_kind classified that local LocalValueBinding, so
+// collect_typed_service_calls never saw the call and a function reaching the service without an
+// authored `uses` row was judged pure.
+//
+// THE POSITIVE ARM IS THE RED THE REPAIR TURNS GREEN. A function with NO `uses` row calls a bare
+// service. Derived demand is the only thing that can make it effectful, so the emitted function is
+// `async` and carries the service parameter. Before the repair the same source emitted a sync
+// function whose body was the "unrealized host seam" refusal -- the emitter's answer for a service
+// op in a function the signature authority judged pure -- and the arm excludes exactly that text.
+//
+// THE CONTROLS SAY WHAT THE ARM IS NOT MEASURING. A sibling function that does not call the service
+// stays a plain `fn`: derived demand follows the call, not the module. And a parameter that shares
+// the service's spelling stays a LOCAL -- it carries its own declared type, not the nominal reference
+// the scope fold inserts for the service root -- so its function is not made effectful by the name.
+//
+// The fixture declares its service locally and imports nothing, so each arm is a one-module closure.
+// Its operation uses a shell transport rather than a file transport because the subject is the
+// binding, not the realization; the realization of Filesystem is a later cut (plan D13, E2).
+
+data bsd_service_source: String = "module bsd_probe\n\nservice BsdStore \{\n  operation Ping \{\n    input \{ arg: String \}\n    output \{ exit_code: Int from \"exit_code\" \}\n    readonly\n    transport shell \{ argv: [\"true\", arg] \}\n    exit \{ 0 => Unit  nonzero => Unit }\n    mock_response \{ 0 => \{ exit_code: 0 } \"hermetic\" }\n  }\n}\n\nfn bsd_calls_the_service() -> Int \{\n  BsdStore.Ping(arg: \"x\").exit_code\n}\n\nfn bsd_does_not_call_it(x: Int) -> Int \{\n  x\n}\n"
+
+data bsd_same_spelled_local_source: String = "module bsd_local_probe\n\nservice BsdStore \{\n  operation Ping \{\n    input \{ arg: String \}\n    output \{ exit_code: Int from \"exit_code\" \}\n    readonly\n    transport shell \{ argv: [\"true\", arg] \}\n    exit \{ 0 => Unit  nonzero => Unit }\n    mock_response \{ 0 => \{ exit_code: 0 } \"hermetic\" }\n  }\n}\n\nfn bsd_keeps_the_local(BsdStore: Int) -> Int \{\n  BsdStore\n}\n"
+
+test fn a_bare_service_call_is_in_derived_demand() -> Bool {
+  compile_dag_rust_emit_check(bsd_service_source, "src/bsd_probe.rs", ["async fn bsd_calls_the_service"], ["unrealized host seam"])
+}
+
+test fn a_function_that_does_not_call_the_service_stays_pure() -> Bool {
+  compile_dag_rust_emit_check(bsd_service_source, "src/bsd_probe.rs", ["fn bsd_does_not_call_it"], ["async fn bsd_does_not_call_it"])
+}
+
+test fn a_same_spelled_local_is_not_a_service() -> Bool {
+  compile_dag_rust_emit_check(bsd_same_spelled_local_source, "src/bsd_local_probe.rs", ["fn bsd_keeps_the_local"], ["async fn bsd_keeps_the_local"])
+}

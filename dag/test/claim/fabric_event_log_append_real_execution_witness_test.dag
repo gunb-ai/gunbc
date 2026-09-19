@@ -14,7 +14,9 @@ import gunbc.fabric_event_log {
   event_log_read_partition, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
   mirror_address, partition_push_refspec, partition_push_lease, event_log_ensure_mirror, MirrorReady, MirrorRefused,
   EventRefBackfill, EventRefsBackfilled, EventRefBackfillRefused, event_log_backfill_event_refs,
+  fabric_event_log_event_refs_backfill_over, BackfillReceiptRead, BackfillReceiptAt, BackfillReceiptAbsent, BackfillReceiptUnread, event_log_backfill_receipt,
 }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.git
 import product.capacity.event_chain { HeadExpectation }
 import product.capacity.pool_events { pool_event_decode }
@@ -212,6 +214,33 @@ test fn a_legacy_chain_is_readable_from_a_fresh_mirror_only_after_the_backfill_b
                       EventRefsBackfilled { partition: _, created: c, present: p } => c == 0 && p == 2
                       EventRefBackfillRefused { partition: _, step: _, reason: _ } => false
                     })
+          }
+      }
+    }
+  })
+}
+
+// THE MIGRATION ENTRY, OVER THE PLACED REPOSITORY: the same legacy chain; the entry enumerates the
+// partition from the bare repository's own refs, backfills it, writes the receipt ref naming the
+// head it covered, and exits 0; the fresh mirror then reads both events, and the reader's refusal
+// text before the backfill named the entry. A second run exits 0 again (idempotent) and the
+// receipt reads present at the head.
+test fn the_backfill_entry_receipts_every_partition_and_the_fresh_mirror_reads_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    if !witness_remote_ready(dir: dir) { false } else {
+      let writer = witness_layout(dir: dir)
+      match legacy_append(layout: writer, event: witness_event(parent: none, at: 1000, payload: acquired(reference: "first")), expected: HeadAbsent) {
+        Absent => false
+        Present { value: first } =>
+          match legacy_append(layout: writer, event: witness_event(parent: Present { value: first }, at: 1001, payload: PoolReleased { reference: "first" as NonEmptyStr, reason: "done" as NonEmptyStr }), expected: HeadAt { id: first as EventId }) {
+            Absent => false
+            Present { value: second } =>
+              (match event_log_backfill_receipt(layout: writer, partition: witness_partition()) { BackfillReceiptAbsent => true  _ => false })
+                && (match event_log_read_partition(layout: second_mirror(dir: dir), partition: witness_partition(), budget: 16) { PartitionReadRefused { step: _, reason: why } => why.contains("fabric_event_log_event_refs_backfill_wet")  _ => false })
+                && (match fabric_event_log_event_refs_backfill_over(layout: writer) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+                && (match event_log_backfill_receipt(layout: writer, partition: witness_partition()) { BackfillReceiptAt { head: hd } => hd == second  _ => false })
+                && (match walked_ids_of(layout: second_mirror(dir: dir)) { Present { value: ids } => ids == [first, second]  Absent => false })
+                && (match fabric_event_log_event_refs_backfill_over(layout: writer) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
           }
       }
     }

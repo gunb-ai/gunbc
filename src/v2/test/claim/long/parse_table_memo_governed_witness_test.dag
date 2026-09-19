@@ -2,7 +2,7 @@ module v2.test.long.parse_table_memo_governed_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Governed memo door receipts: Memoize verdict consumed at parse_table_lookup/insert (non-Memoize refuses store); warm==cold content-hash purity on the bisect fixture; RED on bypass insert (Recompute carrier with hand-populated entries). Door fns parse_table_memo_lookup_refuses_store / parse_table_memo_insert_refused are the direct oracle — witnesses call them, not map shape alone. parse_table_memo_door_order_independent composes insert-then-lookup and lookup-then-insert (Case A: seed ParseTableMemo must not serve/populate on non-Memoize — v1_interpreter.rs gated). reconcile-as-lookup-path is the next increment.
+// Governed memo door receipts: Memoize verdict consumed at parse_table_lookup/insert (non-Memoize refuses store); warm==cold content-hash purity on the bisect fixture; RED on bypass insert (Recompute carrier with hand-populated entries). Door fns parse_table_memo_lookup_refuses_store / parse_table_memo_insert_refused are the direct oracle — witnesses call them, not map shape alone. Both doors refuse independently on the Recompute carrier (Case A: seed ParseTableMemo must not serve/populate on non-Memoize — v1_interpreter.rs gated). reconcile-as-lookup-path is the next increment.
 fn governed_witness_probe_key() -> ParsePositionKey {
   ParsePositionKey { position: 0, production: ^governed_witness_probe_prod }
 }
@@ -72,21 +72,6 @@ test fn witness_door_lookup_refused_for_recompute_table() -> Bool {
   )
 }
 
-fn witness_door_insert_then_lookup_refused_for_recompute_table() -> Bool {
-  witness_door_insert_refused_for_recompute_table()
-    && witness_door_lookup_refused_for_recompute_table()
-}
-
-fn witness_door_lookup_then_insert_refused_for_recompute_table() -> Bool {
-  witness_door_lookup_refused_for_recompute_table()
-    && witness_door_insert_refused_for_recompute_table()
-}
-
-fn witness_door_order_independent_for_recompute_table() -> Bool {
-  witness_door_insert_then_lookup_refused_for_recompute_table()
-    && witness_door_lookup_then_insert_refused_for_recompute_table()
-}
-
 fn parse_table_entries_contain_key(table: ParseTable, key: ParsePositionKey) -> Bool {
   match v2.std.collection.map_get(m: table.entries, key: key) {
     Accepted { value: Present { value: _ } } => true
@@ -144,10 +129,6 @@ test fn witness_content_key_subject_stable() -> Bool {
   let a = parse_table_subject(table: table, key: key)
   let b = parse_table_subject(table: table, key: key)
   a == b
-}
-
-test fn parse_table_memo_door_order_independent() -> Bool {
-  witness_door_order_independent_for_recompute_table()
 }
 
 test fn parse_table_memo_bypass_store_reds() -> Bool {
