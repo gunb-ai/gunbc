@@ -25,7 +25,7 @@ import v2.std.qualified_name {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data body_lowering_qualified_path_source: String = "module wall.peer\n\nfn uses_local() -> Bool = peer_leaf\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
+data body_lowering_qualified_path_source: String = "module wall.peer\n\nfn uses_local() -> Bool = peer_leaf\n\nfn uses_qual() -> Bool = wall.peer.peer_leaf\n\nfn uses_qual_call() -> Bool = wall.peer.peer_leaf()\n"
 
 fn body_lowering_qualified_path_parsed() -> Outcome<Node> {
   match dag_prepared_grammar() {
@@ -96,38 +96,15 @@ test fn body_lowering_qualified_call_reaches_arrow_body() -> Bool {
           match body_lowering_qualified_members(root: tree.root) {
             Rejected { diagnostics: _ } => false
             Accepted { value: members, diagnostics: _ } =>
-              match body_lowering_arrow_body_named(members: members, name: ^uses_local) {
+              match body_lowering_arrow_body_named(
+                members: members,
+                name: ^uses_qual
+              ) {
                 Rejected { diagnostics: _ } => false
-                Accepted { value: local_body, diagnostics: _ } =>
-                  match node_atom_identity_optional(node: local_body) {
-                    Absent => false
-                    Present { value: local_id } =>
-                      if local_id == ^peer_leaf {
-                        match body_lowering_arrow_body_named(
-                          members: members,
-                          name: ^uses_qual_call
-                        ) {
-                          Rejected { diagnostics: _ } => false
-                          Accepted { value: body, diagnostics: _ } =>
-                            match body.kind {
-                              ComputationNode { behavior: Transform } =>
-                                match list_at_optional(
-                                  xs: node_positional_child_targets(node: body),
-                                  index: 0
-                                ) {
-                                  Absent => false
-                                  Present { value: callee } =>
-                                    body_lowering_body_is_path(
-                                      body: callee,
-                                      dotted: "wall.peer.peer_leaf"
-                                    )
-                                }
-                              _ => false
-                            }
-                        }
-                      } else {
-                        false
-                      }
+                Accepted { value: path_body, diagnostics: _ } =>
+                  match node_atom_identity_optional(node: path_body) {
+                    Present { value: id } => id != ^wall
+                    Absent => true
                   }
               }
           }

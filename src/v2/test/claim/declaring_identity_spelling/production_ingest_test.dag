@@ -383,6 +383,7 @@ test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
   }
 }
 
+// Brace-body call lowering now keeps `helper` on the normalized tree this census walks.
 test fn a_callee_name_reaches_the_census_holds() -> Bool {
   match census_of(
     path: call_only_path,
