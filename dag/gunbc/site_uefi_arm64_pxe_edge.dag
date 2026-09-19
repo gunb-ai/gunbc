@@ -121,14 +121,6 @@ type BootNetworkReachabilityAxis
   | BootNetworkDefaultRoute
   | BootNetworkGlobalHttps
 
-fn probe_succeeded(probe: BootNetworkProbe) -> Bool {
-  match probe {
-    BootNetworkProbeSucceeded { observation: _, observed_at: _ } => true
-    BootNetworkProbeFailed { observation: _, observed_at: _ } => false
-    BootNetworkProbeUnobserved => false
-  }
-}
-
 // A DEFICIT CARRIES ITS CAUSE: a probe that ran and failed keeps the observation that established the
 // failure, and an axis nobody probed says so. "Not observed" is a missing reading, not the deduced
 // fact "unreachable", so the two are never reported as one.
@@ -159,7 +151,7 @@ fn global_https_reachability_from_boot_network(obs: BootNetworkReachabilityObser
     BootNetworkProbeFailed { observation: _, observed_at: _ } => GlobalHttpsEndpointUnreachable
     BootNetworkProbeUnobserved => GlobalHttpsEndpointUnreachable
     BootNetworkProbeSucceeded { observation: o, observed_at: t } =>
-      if probe_succeeded(probe: obs.dns_resolution) && probe_succeeded(probe: obs.default_route) {
+      if (length(boot_network_reachability_missing(obs: obs)) == 0) {
         GlobalHttpsEndpointReachable { broker_endpoint: obs.broker_endpoint, artifact_origin: obs.artifact_origin, observation: o, observed_at: t }
       } else {
         GlobalHttpsEndpointUnreachable
