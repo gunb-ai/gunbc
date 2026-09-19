@@ -1028,6 +1028,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         TestCodeReferenced { referrer: s(), target: s(), span: no_span() },
         TestCodeReferenceAdmitted { referrer: s(), target: s(), span: no_span() },
         TestCodeReferenceBudgetMismatch { referrer: s(), declared: 0, observed: 0, span: no_span() },
+        TestCodeReferenceRowOrphaned { referrer: s(), span: no_span() },
         MissingField { field: s(), type_name: s(), span: no_span() },
         NonExhaustiveMatch { missing: istrings(), span: no_span() },
         CircularDependency { modules: istrings(), span: no_span() },
@@ -1516,6 +1517,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TestCodeReferenceBudgetMismatch { .. } => {
             "TestCodeReferenceBudgetMismatch"
         }
+        CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. } => "TestCodeReferenceRowOrphaned",
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => {
             "MethodExistenceFrontierAdmitted"
         }
@@ -1609,6 +1611,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TestCodeReferenced { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::TestCodeReferenceAdmitted { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::TestCodeReferenceBudgetMismatch { referrer, .. } => referrer.clone(),
+        CompilerDiagnostic::TestCodeReferenceRowOrphaned { referrer, .. } => referrer.clone(),
         CompilerDiagnostic::MissingField { field, .. } => field.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
         CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),

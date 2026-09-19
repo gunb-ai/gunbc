@@ -4986,6 +4986,45 @@ fn ct_test_reference_import_all_test() -> String {
   )
 }
 
+// THE ORPHAN ARM'S RED, AND WHY IT IS NOT ON THE FLOOR. An orphaned corpus row would refuse every CI
+// compile, so it cannot be authored into the real ledger; the arm is therefore exercised at its own
+// interface, v1.compiler.compile test_reference_unevaluated_row_diag, on synthetic rows. Like every
+// compiler_tests row it runs in no CI step. The floor carries its positive control instead: a
+// census-backed fixture compile raises no orphan (test.claim.test_reference_wall_witness).
+// Next-rung trigger: a census probe that can compile against an injected ledger.
+fn ct_test_reference_orphan_row_test() -> String {
+  concat(
+    "    // THE ORPHAN ARM, at its own interface: a row whose module is not compiled is judged by census\n",
+    "    // knowledge and scope alone, so the pure function is called directly on synthetic rows.\n",
+    "    #[test]\n",
+    "    fn an_orphaned_ledger_row_is_refused_only_when_the_census_is_loaded() {\n",
+    "        use crate::v1_compiler_compile::{CensusKnowledge, TestReferenceDebtRow, TestReferenceRowScope};\n",
+    "        let row = |scope: TestReferenceRowScope| std::rc::Rc::new(TestReferenceDebtRow {\n",
+    "            module_name: \"gone.module\".to_string(),\n",
+    "            referrer: \"caller\".to_string(),\n",
+    "            target: \"gone.module.leaf\".to_string(),\n",
+    "            occurrences: 1,\n",
+    "            scope: std::rc::Rc::new(scope),\n",
+    "            dissolution: crate::v1_compiler_compile::test_reference_debt_dissolution(),\n",
+    "        });\n",
+    "        let loaded = |names: &[&str]| std::rc::Rc::new(CensusKnowledge::CensusLoaded {\n",
+    "            modules: std::rc::Rc::new(names.iter().map(|n| (n.to_string(), true)).collect()),\n",
+    "        });\n",
+    "        let orphaned = |d: &std::rc::Rc<im::Vector<std::rc::Rc<crate::v1_std_core::ErrorNode>>>| d.iter().filter(|e| matches!(e.diagnostic.as_ref(), crate::v1_std_core::CompilerDiagnostic::TestCodeReferenceRowOrphaned { .. })).count();\n",
+    "        let diag = |r, c| crate::v1_compiler_compile::test_reference_unevaluated_row_diag(r, c);\n",
+    "        // RED: census loaded, module in neither the closure nor the census.\n",
+    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), loaded(&[\"other.module\"]))), 1);\n",
+    "        // CONTROL: the module exists, only outside this closure.\n",
+    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), loaded(&[\"gone.module\"]))), 0);\n",
+    "        // CONTROL: no census, so absence proves nothing.\n",
+    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::CorpusDebtRow), std::rc::Rc::new(CensusKnowledge::CensusAbsent))), 0);\n",
+    "        // CONTROL: the fixture control row is exempt by its declared scope.\n",
+    "        assert_eq!(orphaned(&diag(row(TestReferenceRowScope::FixtureControlRow), loaded(&[\"other.module\"]))), 0);\n",
+    "    }\n",
+    "\n"
+  )
+}
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -4997,6 +5036,7 @@ fn compiler_tests_source() -> String {
     ct_test_marker_item_kind_test(),
     ct_test_reference_wall_test(),
     ct_test_reference_import_all_test(),
+    ct_test_reference_orphan_row_test(),
     ct_tco_tail_call_assigns_every_loop_slot_test(),
     ct_pipeline_test(),
     ct_entry_point_absent_refusal_test(),

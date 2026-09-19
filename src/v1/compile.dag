@@ -27,7 +27,7 @@ import v1.std.core {
   field_access_field_at, expr_call_func_at, lambda_param_names_at, record_lit_type_name_at,
   foreach_variable_at, expr_method_name_at, InternTable, empty_intern_table, pre_intern_tokens,
   DeclarationMarker, Unmarked, TestMarked, TestCodeReferenced, TestCodeReferenceAdmitted,
-  TestCodeReferenceBudgetMismatch, FunctionValueBinding, LocalValueBinding, VariantValueBinding,
+  TestCodeReferenceBudgetMismatch, TestCodeReferenceRowOrphaned, FunctionValueBinding, LocalValueBinding, VariantValueBinding,
   MatchBoundBinding, ServiceValueBinding
 }
 
@@ -257,20 +257,32 @@ type TestReferenceOccurrence {
   span: SourceSpan
 }
 
+// WHAT A ROW IS, typed rather than inferred from its module name. A corpus debt row names a corpus
+// module and must be evaluated wherever the corpus is known; the fixture control row names a module
+// that exists only in the wall's own floor fixture and is evaluated only when that fixture compiles.
+type TestReferenceRowScope = CorpusDebtRow | FixtureControlRow
+
 type TestReferenceDebtRow {
   module_name: String
   referrer: String
   target: String
   occurrences: Int
+  scope: TestReferenceRowScope
   dissolution: DissolutionCondition
 }
+
+// WHETHER THIS COMPILE KNOWS THE REST OF THE CORPUS. The compile-clean routes pass every indexed
+// module outside the compile closure as a name-only census (fill = whole tree), so with a census
+// loaded, a module that is neither typed nor in it does not exist. Without one, as in a single-file
+// or fixture compile, absence says nothing and no row can be judged orphaned.
+type CensusKnowledge = CensusLoaded { modules: Map<String, Bool> } | CensusAbsent
 
 fn test_reference_debt_dissolution() -> DissolutionCondition {
   unbound_dissolution(description: "the reference is removed: a roll-up test that only re-asserts enrolled tests is deleted, or the shared logic moves into an ordinary fn that both callers use; the row is then deleted, which the equality budget forces" as NonEmptyStr)
 }
 
 fn test_reference_row(module_name: String, referrer: String, target: String, occurrences: Int) -> TestReferenceDebtRow {
-  TestReferenceDebtRow { module_name: module_name, referrer: referrer, target: target, occurrences: occurrences, dissolution: test_reference_debt_dissolution() }
+  TestReferenceDebtRow { module_name: module_name, referrer: referrer, target: target, occurrences: occurrences, scope: CorpusDebtRow, dissolution: test_reference_debt_dissolution() }
 }
 
 // THE FIRST ROW IS THE WALL'S OWN CONTROL, NOT DEBT. Every other row names a corpus module, so a
@@ -278,10 +290,10 @@ fn test_reference_row(module_name: String, referrer: String, target: String, occ
 // instead of answering -- that is how the paid-down claim passed locally and failed on the floor
 // (review 67402). `wall.fixture.paid_down` exists only in the wall's fixture source, so the
 // paid-down arm of the equality budget has an executing red that cannot be paid down out from
-// under it. It is inert against the corpus: a row whose module is not compiled is skipped.
+// under it. Its scope is FixtureControlRow, so an orphan judgment never applies to it.
 fn test_reference_debt() -> List<TestReferenceDebtRow> {
   [
-    test_reference_row(module_name: "wall.fixture.paid_down", referrer: "reader", target: "wall.fixture.paid_down.leaf", occurrences: 1),
+    TestReferenceDebtRow { module_name: "wall.fixture.paid_down", referrer: "reader", target: "wall.fixture.paid_down.leaf", occurrences: 1, scope: FixtureControlRow, dissolution: test_reference_debt_dissolution() },
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_admission_witness.w_a_coherent_fixture_is_admitted", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness.w_every_recorded_implementation_run_was_accepted", occurrences: 1),
     test_reference_row(module_name: "gunbc.demo.semantic_system_readout", referrer: "<import>", target: "test.claim.compute_board_simulation_receipt_witness.w_every_recorded_run_was_accepted", occurrences: 1),
@@ -643,9 +655,28 @@ fn observed_test_reference_count(counts: Map<String, Int>, key: String) -> Int {
   }
 }
 
-fn test_reference_budget_diag(row: TestReferenceDebtRow, counts: Map<String, Int>, first_spans: Map<String, SourceSpan>, compiled_modules: Map<String, SourceSpan>) -> List<ErrorNode> {
+// A ROW WHOSE MODULE IS NOT COMPILED is not evidence of anything by itself: most compiles are a
+// closure. It becomes a refusal only when the compile knows the whole corpus (a census is loaded)
+// and the module is in neither the typed closure nor the census -- the module is gone, and a row
+// that can never be observed again would otherwise persist forever without refusing (review 67730,
+// operator ruling 2026-09-19). The fixture control row is exempt by its declared scope, not by name.
+fn test_reference_unevaluated_row_diag(row: TestReferenceDebtRow, census: CensusKnowledge) -> List<ErrorNode> {
+  match row.scope {
+    FixtureControlRow => []
+    CorpusDebtRow =>
+      match census {
+        CensusAbsent => []
+        CensusLoaded { modules: known } =>
+          if map_contains_key(known, row.module_name) { [] } else {
+            [make_error_node(diagnostic: TestCodeReferenceRowOrphaned { referrer: concat(row.module_name, ".", row.referrer, " -> ", row.target), span: no_span() }, module_name: row.module_name)]
+          }
+      }
+  }
+}
+
+fn test_reference_budget_diag(row: TestReferenceDebtRow, counts: Map<String, Int>, first_spans: Map<String, SourceSpan>, compiled_modules: Map<String, SourceSpan>, census: CensusKnowledge) -> List<ErrorNode> {
   match map_get(compiled_modules, row.module_name) {
-    Absent => []
+    Absent => test_reference_unevaluated_row_diag(row: row, census: census)
     Present { value: module_span } => {
       let key = test_reference_key(module_name: row.module_name, referrer: row.referrer, target: row.target)
       let observed = observed_test_reference_count(counts: counts, key: key)
@@ -660,7 +691,7 @@ fn test_reference_budget_diag(row: TestReferenceDebtRow, counts: Map<String, Int
   }
 }
 
-fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>, census: CensusKnowledge) -> List<ErrorNode> {
   let test_keys = test_marked_declaration_keys(typed: typed, source_indices: source_indices)
   let modules_by_name = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m))
   let compiled_modules = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m.module.span))
@@ -674,8 +705,14 @@ fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, 
   let debt = test_reference_debt()
   let debt_keys = debt |> fold(init: empty_map(), f: (acc, r) => map_insert(acc, test_reference_key(module_name: r.module_name, referrer: r.referrer, target: r.target), true))
   let occurrence_diags = occurrences |> map(o => test_reference_occurrence_diag(o: o, debt_keys: debt_keys))
-  let budget_diags = debt |> flat_map(r => test_reference_budget_diag(row: r, counts: counts, first_spans: first_spans, compiled_modules: compiled_modules))
+  let budget_diags = debt |> flat_map(r => test_reference_budget_diag(row: r, counts: counts, first_spans: first_spans, compiled_modules: compiled_modules, census: census))
   concat(occurrence_diags, budget_diags)
+}
+
+fn test_reference_census(fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> CensusKnowledge {
+  if (fill_modules |> count) == 0 { CensusAbsent } else {
+    CensusLoaded { modules: fill_modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: census_si, node: m), true)) }
+  }
 }
 
 fn default_compile_pipeline_options() -> CompilePipelineOptions {
@@ -1990,7 +2027,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let all_diags = concat(typed_diags, complexity_diags)
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
-      let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices)
+      let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices, census: test_reference_census(fill_modules: fill.modules, census_si: census_si))
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,

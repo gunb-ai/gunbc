@@ -49,6 +49,7 @@ test fn a_test_used_as_a_value_is_refused() -> Bool {
 test fn a_test_calling_an_ordinary_fn_is_admitted() -> Bool {
   any_class_count_for(source: clean_source, wanted_class: "TestCodeReferenced") == 0
     && any_class_count_for(source: clean_source, wanted_class: "TestCodeReferenceAdmitted") == 0
+    && any_class_count_for(source: clean_source, wanted_class: "TestCodeReferenceRowOrphaned") == 0
 }
 
 // THE RATCHET: a ledger row whose references are gone refuses until the row is deleted.
