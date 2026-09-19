@@ -1,0 +1,526 @@
+module gunbc.machine_intake_bmc_fan_observation
+
+import extdeps.bmc.ipmi
+import std.algebra { trim }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ObservationRoundCount, SdrUndecodedLineCount, Second, observation_round_count_value, sdr_undecoded_line_count_value, second, second_count }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.bmc.ipmi_sdr {
+  SdrFanDuty,
+  SdrFanNoReading,
+  SdrFanReading,
+  SdrFanReadingUnrecognised,
+  SdrFanRpm,
+  SdrTypeLine,
+  SdrTemperaturePublication,
+  TemperaturePublished,
+  TemperatureSensorsSilent,
+  TemperatureUndecodable,
+  sdr_decode_lines,
+  sdr_decoded_lines,
+  sdr_fan_reading,
+  sdr_temperature_publication,
+  sdr_unstructured_count,
+}
+import product.fan_tach { FanTachEndpointIdentity }
+import product.placement_supply { HostIdentity }
+import product.fan_policy_standing {
+  FanDriveDuty,
+  FanDriveReading,
+  FanDriveTachOnly,
+  FanPolicySample,
+  HostPostState,
+  HostPostStateUnobserved,
+  HostPosted,
+  HostPoweredOff,
+  HostPoweredOnPrePost,
+}
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+
+// THE OBSERVATION PRODUCER THAT MAKES THE FAILSAFE-TO-CURVE TRANSITION A MEASUREMENT.
+//
+// The whole reason this module exists is that the bench report - one machine's fans ran at full and
+// never came down - is a narration, and narrations cannot be re-derived. A time series with the
+// machine's own power and thermal-publication state beside each sample can be: it either shows the
+// duty moving after the host starts publishing thermals or it shows the duty flat, and those are
+// different findings with different owners.
+//
+// THE BARE `import extdeps.bmc.ipmi` IS LOAD-BEARING AND ITS ABSENCE IS NOT A COMPILE ERROR.
+// SERVICE OPERATIONS REGISTER FROM THE IMPORT CLOSURE, so a module that calls
+// diagnostic.ipmi.Tool.* without importing the module that declares the service resolves clean,
+// typechecks clean, passes every hermetic witness, and then refuses at RUN TIME with
+// `Unimplemented { what: "unknown service operation: diagnostic.ipmi.Tool.ChassisStatus" }` - a
+// diagnostic that names the operation and not the missing import.
+//
+// MEASURED, NOT ANTICIPATED: fleet-converge run 35401192650 died exactly there, on the first
+// dispatch of this lane, after 30 green witnesses and a green corpus resolve. That is DESIGN §5's
+// specification-without-execution in its purest form - the suite proved the decode, the standing
+// and the refusals, and could not prove that the program reaches a controller at all, because the
+// only thing that establishes it is running it. gunbc.machine_intake_mtcollins1_actuate's own
+// header records the identical failure against shell.Env.Get, which is where the explanation came
+// from; this module simply repeated it.
+//
+// READS ONLY, BY CONSTRUCTION AND NOT BY CONVENTION. Every operation this module reaches is one of
+// the `readonly` arms of diagnostic.ipmi.Tool - SdrTypeList and ChassisStatus. There is no arm here
+// that can write chassis power, boot parameters or SOL; a lane that needs those uses the boot
+// handoff, which owns them. This is stated because the constraint came from the operator as a
+// sentence, and a sentence is not a wall - what makes it one is that the write operations are simply
+// not imported here.
+//
+// THE CREDENTIAL IS A FILE PATH, never a value, for the reason extdeps.bmc.ipmi's own header gives:
+// a password in argv is published to every `ps` on the runner. The caller materializes the file.
+
+// A READ THAT DID NOT HAPPEN HAS NO RESULT, AND THE RECORD SAYS SO IN ONE FIELD RATHER THAN TWO.
+//
+// This round used to carry chassis_readable: Bool beside power_on: Bool, and thermal_readable: Bool
+// beside host_thermal. On a failed read the else branches stored the BENIGN value - power_on false,
+// sensors-silent - so the record held a value no controller produced and the receipt printed
+// `thermal_readable=false host_thermal=sensors-silent`, which states the sensors were silent when
+// nothing was read. The verdict path happened to be safe because post_state_of_round checked the
+// sibling flag first, but that is safety by every consumer remembering a second field, and the
+// rendered series IS this lane's deliverable.
+//
+// It is also the third form of one defect this change has now fixed: the sentinel window zero, the
+// substituted SDR field, and this. The repair is the same each time - the absence gets an arm
+// instead of a plausible value - and doing it here removes the two-field disagreement by
+// construction rather than by a checking order.
+type ChassisPowerObservation
+  = ChassisPowerRead { power_on: Bool }
+  | ChassisUnreadable
+
+type ThermalObservation
+  = ThermalRead { publication: SdrTemperaturePublication, undecoded_line_count: SdrUndecodedLineCount }
+  | ThermalUnreadable
+
+// THE FAN READ GETS THE SAME ARM, AND IT IS THE FOURTH TIME THIS ONE DEFECT HAS BEEN FIXED IN THIS
+// MODULE. The sentinel window zero, the substituted SDR field, the benign chassis and thermal else
+// branches - and then fan_lines, which kept `else { [] }` while the header above declared the class
+// closed. An empty list from a FAILED read is byte-identical to a controller that answered and
+// published no fan sensors: sdr_unstructured_count over the same empty results is 0, so the receipt
+// printed `fan_sensors=0 fan_undecoded_line_count=0` for both, samples_of_round emitted nothing,
+// and the series was still reported as taken.
+//
+// THE UNDECODED COUNTS MOVE INSIDE THEIR READS FOR THE SAME REASON. They were separate fields
+// computed from the decode results whether or not the read succeeded, so a failed read printed a
+// count of zero undecoded lines - a measurement of text nobody received. A count is a property OF a
+// read, not of a round, and putting it inside the arm makes that unwritable rather than merely
+// avoided.
+type FanSensorObservation
+  = FanSensorsRead { lines: List<SdrTypeLine>, undecoded_line_count: SdrUndecodedLineCount }
+  | FanSensorsUnreadable
+
+type FanObservationRound {
+  observed_at: NonEmptyStr
+  round_index: Int
+  chassis: ChassisPowerObservation
+  thermal: ThermalObservation
+  fans: FanSensorObservation
+}
+
+// AN UNREADABLE THERMAL SENSOR LIST IS NOT "THIS HOST PUBLISHES NO THERMALS", AND THE FIRST
+// REVISION OF THIS MODULE GOT THAT EXACTLY BACKWARDS. It wrote `if temps.success { ... } else
+// { false }`, so a transport or authentication failure on one of the three reads was recorded as an
+// absence of host thermals - which post_state_of_round turned into HostPoweredOnPrePost and the
+// standing then turned into FailsafeBeforeHostTelemetry, the arm whose own header says it is the
+// contract working rather than a finding. A failed read therefore SILENTLY DISABLED
+// FailsafeHeldAfterPost, the one standing anybody is looking for.
+//
+// What makes it worth this much prose is that the correct reasoning was already written twenty
+// lines below, for chassis power, and simply not applied here: a machine whose controller did not
+// answer is a machine we know nothing about, and answering with the benign arm puts every such
+// sample where full-duty fans are expected and unremarkable. That is DESIGN §5's absorbing
+// fallback - a failure arm must refuse, never widen - and the module that refuses it in one field
+// and commits it in the next is the specimen worth keeping.
+//
+// So readability is carried BESIDE the reading, both on the round and in the rendered artifact, and
+// the post state refuses rather than guessing.
+//
+// AND THE READING ITSELF IS THREE-STATED FOR THE SAME REASON, which took a second pass to see. The
+// field was host_thermal_published: Bool, and false meant both "every sensor said nothing" (which
+// IS pre-POST) and "the decoder could not read what they said" (which is our gap). The second
+// collapsed onto the benign arm exactly as an unreadable transport once did, one layer down and
+// through a predicate rather than a flag.
+//
+// POST IS INFERRED FROM THERMAL PUBLICATION, AND THIS IS A BET RATHER THAN A READING.
+//
+// Nothing on the IPMI sensor surface reports "this host has completed POST". What is observable is
+// whether any host thermal sensor is producing a number, and a host that has not initialised its
+// sensors publishes none. That is a good proxy and it is not the thing itself: a build could publish
+// a baseboard temperature before POST, and a posted host could have every thermal sensor fail.
+//
+// So this is typed as an inference at the one place a reader would otherwise take it as a fact
+// (DESIGN §4d, do not assert as deduced what is only inferred). The consuming standing does not get
+// to launder it: a FailsafeHeldAfterPost finding derived through this function is a finding about a
+// host that was powered on and publishing thermals, which is what the series can support, and any
+// stronger claim needs a POST observation from a channel that actually sees one - SOL or the SEL
+// firmware-progress records, neither of which this read-only lane touches.
+fn post_state_of_round(round: FanObservationRound) -> HostPostState {
+  match round.chassis {
+    ChassisUnreadable => HostPostStateUnobserved
+    ChassisPowerRead { power_on: on } => if !on {
+      HostPoweredOff
+    } else {
+      match round.thermal {
+        ThermalUnreadable => HostPostStateUnobserved
+        ThermalRead { publication: p, undecoded_line_count: _ } => match p {
+          TemperaturePublished => HostPosted
+          TemperatureSensorsSilent => HostPoweredOnPrePost
+          TemperatureUndecodable => HostPostStateUnobserved
+        }
+      }
+    }
+  }
+}
+
+// CHASSIS POWER, READ FROM THE ONE LINE THAT CARRIES IT. `ipmitool chassis status` prints
+// "System Power         : on". An unreadable status is NOT read as powered-off: a machine whose
+// controller did not answer is a machine we know nothing about, and answering "off" there would put
+// every such sample into the arm where full-duty fans are expected and unremarkable.
+fn chassis_power_on(stdout: String) -> Bool {
+  fold(split(s: stdout, delimiter: "\n"), init: false, f: (acc, line) => {
+    let fields = split(s: line, delimiter: ":") |> map(f => trim(f))
+    if fields.length() < 2 {
+      acc
+    } else {
+      match fields.first() {
+        Absent => acc
+        Present { value: key } => if trim(key) == "System Power" {
+          match fields.skip(n: 1).first() {
+            Absent => acc
+            Present { value: v } => trim(v) == "on"
+          }
+        } else {
+          acc
+        }
+      }
+    }
+  })
+}
+
+// THE SERIES IS A TYPED OUTCOME AND NOT A LIST, so a run that observed nothing cannot be mistaken
+// for a run that observed an empty fleet of fans. The interval travels WITH the rounds because every
+// derivation over this series - elapsed-since-post above all - is denominated in it, and a consumer
+// that had to be told the interval separately could be told the wrong one.
+type FanObservationSeries
+  = FanObservationTaken { rounds: List<FanObservationRound>, interval: Second }
+  | FanObservationRefused { cause: NonEmptyStr }
+
+// ONE ROUND: THREE READS, IN THE ORDER THAT MAKES THE SAMPLE COHERENT. Power is read first because
+// it is the fact that decides what the other two mean; the thermal read comes before the fan read so
+// that a fan reading is never paired with a thermal state observed after it.
+fn observe_fan_round(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  round_index: Int,
+) -> FanObservationRound
+  uses net: std.resources.Network, clock: std.resources.Clock
+{
+  status = diagnostic.ipmi.Tool.ChassisStatus(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+  )
+  temps = diagnostic.ipmi.Tool.SdrTypeList(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    sensor_type: "Temperature",
+  )
+  fans = diagnostic.ipmi.Tool.SdrTypeList(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    sensor_type: "Fan",
+  )
+  let temp_results = sdr_decode_lines(stdout: temps.stdout)
+  let fan_results = sdr_decode_lines(stdout: fans.stdout)
+  return FanObservationRound {
+    observed_at: clock_now_probed_at_or_unknown(),
+    round_index: round_index,
+    chassis: chassis_observation(success: status.success, stdout: status.stdout),
+    thermal: thermal_observation(success: temps.success, results: temp_results),
+    fans: fan_observation(success: fans.success, results: fan_results),
+  }
+}
+
+fn fan_observation(success: Bool, results: List<SdrLineResult>) -> FanSensorObservation {
+  if success {
+    FanSensorsRead {
+      lines: sdr_decoded_lines(results: results),
+      undecoded_line_count: sdr_unstructured_count(results: results),
+    }
+  } else {
+    FanSensorsUnreadable
+  }
+}
+
+fn chassis_was_read(chassis: ChassisPowerObservation) -> Bool {
+  match chassis {
+    ChassisUnreadable => false
+    ChassisPowerRead { power_on: _ } => true
+  }
+}
+
+fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation {
+  if success {
+    ChassisPowerRead { power_on: chassis_power_on(stdout: stdout) }
+  } else {
+    ChassisUnreadable
+  }
+}
+
+fn thermal_observation(success: Bool, results: List<SdrLineResult>) -> ThermalObservation {
+  if success {
+    ThermalRead {
+      publication: sdr_temperature_publication(lines: sdr_decoded_lines(results: results)),
+      undecoded_line_count: sdr_unstructured_count(results: results),
+    }
+  } else {
+    ThermalUnreadable
+  }
+}
+
+// THE SERIES. Recursion rather than a fold because each step has to WAIT, and the wait is an effect
+// that a pure fold has nowhere to put. The sleep is the modeled one (extdeps.tools.sleep), not a
+// spelled argv, so a non-positive interval refuses at that authority rather than turning this into a
+// busy loop against a controller.
+//
+// THE INTERVAL IS A PARAMETER AND THE COUNT IS A PARAMETER, because how long a loop takes to close
+// is exactly what is being measured and a constant here would presuppose the answer.
+//
+// AND THE INTERVAL IS A Second, NOT AN Int NAMED "SECONDS". An earlier revision took
+// interval_seconds: Int and wrapped it into Second two lines later, which is the unit spelled into
+// a name beside a carrier that already exists and is already imported here - DESIGN §3's second
+// name for one concept. std.measure owns the quantity; second_count unwraps it at the one place a
+// transport needs a scalar.
+fn observe_fan_series(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  rounds_remaining: Int,
+  round_index: Int,
+  interval: Second,
+  acc: List<FanObservationRound>,
+) -> List<FanObservationRound>
+  uses net: std.resources.Network, clock: std.resources.Clock
+{
+  if rounds_remaining <= 0 {
+    return acc
+  }
+  let round = observe_fan_round(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    round_index: round_index,
+  )
+  let next = acc.append(round)
+  if rounds_remaining == 1 {
+    return next
+  }
+  let waited = sleep_delay_seconds_second_carrier_projection(duration: interval)
+  return observe_fan_series(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    rounds_remaining: rounds_remaining - 1,
+    round_index: round_index + 1,
+    interval: interval,
+    acc: next,
+  )
+}
+
+// PROJECTING A ROUND ONTO THE PRODUCT-LAYER SAMPLE. One sample per fan endpoint, because a chassis
+// whose PSU fans track and whose system fans sit at full is a real and interesting machine, and a
+// per-host average would erase exactly that.
+fn drive_of_fan_line(line: SdrTypeLine) -> FanDriveReading? {
+  match sdr_fan_reading(reading_text: line.reading_text) {
+    SdrFanRpm { speed: s } => Present { value: FanDriveTachOnly { speed: s } }
+    SdrFanDuty { duty: d } => Present { value: FanDriveDuty { duty: d } }
+    SdrFanNoReading => Absent
+    SdrFanReadingUnrecognised { text: _ } => Absent
+  }
+}
+
+fn samples_of_round(host: HostIdentity, round: FanObservationRound) -> List<FanPolicySample> {
+  fold(round_fan_lines(round: round), init: [], f: (acc, line) => match drive_of_fan_line(line: line) {
+    Absent => acc
+    Present { value: drive } => acc.append(FanPolicySample {
+      observed_at: round.observed_at,
+      endpoint: FanTachEndpointIdentity { host: host, name: line.name },
+      drive: drive,
+      post_state: post_state_of_round(round: round),
+    })
+  })
+}
+
+// HOW LONG THE HOST HAS BEEN PUBLISHING THERMALS, DERIVED FROM THE SERIES ITSELF RATHER THAN FROM A
+// CLOCK DIFFERENCE. The run controls its own interval, so the elapsed time since the first posted
+// round is (rounds since that one) x interval - a quantity this run can defend. Reading two
+// timestamp strings and subtracting them would be a second, weaker way to compute a number this
+// series already knows exactly.
+//
+// Absent MEANS THE RUN NEVER SAW A POSTED ROUND, which the consuming derivation treats as
+// underdetermined rather than as zero. A series that starts with the host already posted also
+// answers from its FIRST round, and that is an honest lower bound rather than a claim about when
+// POST happened - the series cannot see before its own first sample.
+//
+// ELAPSED IS PER ROUND AND MUST NOT BE COMPUTED ONCE FOR THE SERIES. An earlier revision folded the
+// whole list into a single elapsed and stamped every sample with it, which is the elapsed of the
+// LAST round: a sample taken one interval after POST carried the final round's age. Nothing broke
+// while the run was shorter than its window, and that is exactly what made it dangerous - lengthen
+// the series, which this module's own note says a FailsafeHeldAfterPost finding requires, and every
+// sample crosses the window at once, including the ones inside it. A reading would get an answer it
+// did not earn, which is the fabricated output DESIGN §5 forbids, in the arm this lane exists to
+// report.
+//
+// The round already carries what is needed: its own index. Elapsed at a round is its distance from
+// the FIRST POSTED round times the interval, and Absent for any round at or before that one.
+fn first_posted_round_index(rounds: List<FanObservationRound>) -> Int? {
+  fold(rounds, init: Absent, f: (acc, r) => match acc {
+    Present { value: i } => Present { value: i }
+    Absent => match post_state_of_round(round: r) {
+      HostPosted => Present { value: r.round_index }
+      HostPoweredOff => Absent
+      HostPoweredOnPrePost => Absent
+      HostPostStateUnobserved => Absent
+    }
+  })
+}
+
+fn elapsed_at_round(
+  round: FanObservationRound,
+  first_posted_index: Int?,
+  interval: Second,
+) -> Second? {
+  match first_posted_index {
+    Absent => Absent
+    Present { value: first } => if round.round_index < first {
+      none
+    } else {
+      Present { value: second(count: (round.round_index - first) * second_count(s: interval)) }
+    }
+  }
+}
+
+// THE RENDERING. One line per round and one per sample, so the artifact a run uploads is the series
+// and not a summary of it. A summary would be a second authority for the same reading, and the whole
+// point of the artifact is that somebody can re-derive the verdict from it.
+fn render_round(round: FanObservationRound) -> String {
+  join([
+    "round=", to_string(round.round_index),
+    " at=", round.observed_at as String,
+    " chassis=", render_chassis(chassis: round.chassis),
+    " thermal=", render_thermal_detail(thermal: round.thermal),
+    " fans=", render_fan_observation(fans: round.fans),
+  ], "")
+}
+
+// THE LINES A ROUND ACTUALLY HAS, WHICH IS NONE WHEN THE READ FAILED. Callers that only want to
+// walk the sensors use this; callers that need to know WHY there are none match the arm, and the
+// receipt does exactly that so an unread fan list never looks like a fanless chassis.
+fn round_fan_lines(round: FanObservationRound) -> List<SdrTypeLine> {
+  match round.fans {
+    FanSensorsUnreadable => []
+    FanSensorsRead { lines: l, undecoded_line_count: _ } => l
+  }
+}
+
+fn render_fan_observation(fans: FanSensorObservation) -> String {
+  match fans {
+    FanSensorsUnreadable => "UNREAD"
+    FanSensorsRead { lines: l, undecoded_line_count: u } =>
+      join(["sensors=", to_string(l.length()), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u))], "")
+  }
+}
+
+fn render_thermal_detail(thermal: ThermalObservation) -> String {
+  match thermal {
+    ThermalUnreadable => "UNREAD"
+    ThermalRead { publication: p, undecoded_line_count: u } =>
+      join([render_thermal_publication(publication: p), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u))], "")
+  }
+}
+
+fn render_chassis(chassis: ChassisPowerObservation) -> String {
+  match chassis {
+    ChassisUnreadable => "UNREAD"
+    ChassisPowerRead { power_on: on } => if on { "on" } else { "off" }
+  }
+}
+
+fn render_thermal_publication(publication: SdrTemperaturePublication) -> String {
+  match publication {
+    TemperaturePublished => "published"
+    TemperatureSensorsSilent => "sensors-silent"
+    TemperatureUndecodable => "UNDECODABLE"
+  }
+}
+
+fn render_fan_line(round: FanObservationRound, line: SdrTypeLine) -> String {
+  join([
+    "  round=", to_string(round.round_index),
+    " fan=", line.name as String,
+    " status=", line.status as String,
+    " reading=", line.reading_text as String,
+  ], "")
+}
+
+fn render_round_block(round: FanObservationRound) -> String {
+  join([render_round(round: round)]
+    .concat(map(round_fan_lines(round: round), l => render_fan_line(round: round, line: l))), "\n")
+}
+
+fn render_series(rounds: List<FanObservationRound>) -> String {
+  join(map(rounds, r => render_round_block(round: r)), "\n")
+}
+
+// WHAT THIS PRODUCER RETURNS IS THE SERIES, NOT A VERDICT, AND THAT BOUNDARY IS THE MODULE'S WHOLE
+// SHAPE. Which family authority a host runs, what its failsafe duty is, and which site ceiling
+// bounds it are all POLICY facts about a particular machine; a producer that reached a standing
+// would have to carry them, and the next host would need a second producer. The host's own policy
+// module folds the series into standings - see gunbc.machine_intake_mtcollins1_fan_observe.
+//
+// THE UNREADABLE-CHASSIS REFUSAL LIVES HERE RATHER THAN THERE, because it is a fact about the
+// OBSERVATION and not about any host's policy: a series whose power column is empty establishes
+// nothing, whoever reads it.
+//
+// THE ENTRY A HOST POLICY LAYER CALLS. It refuses before the first request when it has no credential
+// path or no host, because a run that contacts a controller with an empty username is a run that
+// produces an authentication failure and reports it as a machine fact.
+fn observe_fan_policy(
+  bmc_host: NonEmptyStr,
+  username: NonEmptyStr,
+  password_file: NonEmptyStr,
+  rounds: ObservationRoundCount,
+  interval: Second,
+) -> FanObservationSeries
+  uses net: std.resources.Network, clock: std.resources.Clock
+{
+  if trim(username as String) == "" {
+    return FanObservationRefused { cause: "no controller username supplied; contacting NO host" }
+  }
+  if trim(password_file as String) == "" {
+    return FanObservationRefused { cause: "no credential file path supplied; contacting NO host" }
+  }
+  if observation_round_count_value(c: rounds) <= 0 {
+    return FanObservationRefused { cause: "a series of zero rounds observes nothing and would report success for it" }
+  }
+  if second_count(s: interval) <= 0 {
+    return FanObservationRefused { cause: "a non-positive interval is not a time series; the modeled sleep refuses it and so does this entry" }
+  }
+  let series = observe_fan_series(
+    bmc_host: bmc_host,
+    username: username,
+    password_file: password_file,
+    rounds_remaining: observation_round_count_value(c: rounds),
+    round_index: 0,
+    interval: interval,
+    acc: [],
+  )
+  return if fold(series, init: false, f: (acc, r) => acc || chassis_was_read(chassis: r.chassis)) {
+    FanObservationTaken { rounds: series, interval: interval }
+  } else {
+    FanObservationRefused { cause: "no round could read chassis status, so no sample has a power state beside it and the series establishes nothing" }
+  }
+}

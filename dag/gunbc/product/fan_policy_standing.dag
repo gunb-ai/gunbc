@@ -1,0 +1,567 @@
+module product.fan_policy_standing
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import std.measure {
+  Percent,
+  percent_count,
+  RevolutionsPerMinute,
+  Second,
+  measure_le,
+  second,
+  rpm_count,
+  second_count,
+}
+import extdeps.units.iec_61672 { AWeightedSoundPressureLevel }
+import product.placement_supply { HostIdentity }
+import product.fan_tach { FanTachEndpointIdentity }
+import product.acoustic_ceiling {
+  AcousticCeiling,
+  AcousticComparison,
+  AcousticOverCeiling,
+  AcousticPositionsIncomparable,
+  AcousticWithinCeiling,
+  FanDatasheetPosition,
+  acoustic_level_against_ceiling,
+}
+
+// WHAT A CONTROLLER IS DOING WITH ITS FANS, AT ONE HOST, AS A STANDING RATHER THAN A STORY.
+//
+// The question this module exists to answer came from a bench observation: one machine powered on
+// with no memory installed ran its fans at full and never came down, and another machine on the same
+// bench did not. Both readings are true and neither explains the other, because 'full duty' is a
+// REPORT and the thing that differs is a POLICY - which conditions make a controller stop tracking
+// host thermals and hold a fixed output.
+//
+// THE FAMILY IS A REFERENCE, NEVER AN ARM. There is no FanControlFamily enum here and there must not
+// be one. The two families this fleet runs are governed by two unrelated upstreams -
+// extdeps.bmc.phosphor_fan_control and extdeps.bmc.megarac_fan_policy - and an enum in this module
+// would make either one editable only by touching a declaration that belongs to the other, which is
+// the fusion DESIGN §3 forbids. What a standing carries instead is a DeclarationRef at the family's
+// own authority, so adding a third family adds a module and changes nothing here.
+
+type FanPolicyAuthority {
+  declaration: DeclarationRef
+}
+
+// THE HOST-SIDE FACT THAT DECIDES WHETHER FAILSAFE IS EXPECTED. A controller has no host thermal
+// sensors to track until the host is far enough through its own startup to publish them, so 'the
+// fans are at full' means something completely different before and after that point. This is a
+// HOST lifecycle fact and lives here rather than in either upstream module, because neither
+// controller's vendor has any notion of POST.
+//
+// HostPoweredOnPrePost AND HostPosted ARE SEPARATE FROM HostPoweredOff for a reason the bench
+// observation makes concrete: a machine with no DIMMs is powered ON and never reaches POST, so it
+// sits in the middle arm indefinitely. Collapsing the middle arm into 'off' would have made that
+// machine's behaviour unrepresentable, and collapsing it into 'posted' would have made its fans a
+// fault.
+// HostPostStateUnobserved IS NOT A FOURTH LIFECYCLE STATE, it is the absence of an observation of
+// one, and it is an arm here because the alternative is what the observing layer originally did:
+// report an unreadable controller as a pre-POST host and collect FailsafeBeforeHostTelemetry for it.
+// A host whose controller did not answer is not a host that has not posted.
+type HostPostState
+  = HostPoweredOff
+  | HostPoweredOnPrePost
+  | HostPosted
+  | HostPostStateUnobserved
+
+// WHAT A SAMPLE ACTUALLY SAW THE FAN DOING, AT THE GRAIN THE TRANSPORT CAN DELIVER.
+//
+// This distinction is not pedantry, it is the whole reason the Mt. Collins reading needed a type
+// before it needed a number. IPMI SDR publishes fan sensors in RPM; it does not publish the duty the
+// controller commanded, unless the build happens to expose a separate PWM sensor. So a reading of
+// '14000 RPM' does NOT establish 'at 100% duty' without the fan's own maximum, and a consumer that
+// treats tach as duty has silently converted a measurement into a policy conclusion.
+//
+// FanDriveTachOnly is therefore not a degraded FanDriveDuty. It is a different observation, and the
+// derivation below refuses to reach a failsafe verdict from it unless a maximum speed is supplied
+// from the fan catalog.
+type FanDriveReading
+  = FanDriveDuty { duty: Percent }
+  | FanDriveTachOnly { speed: RevolutionsPerMinute }
+
+type FanPolicySample {
+  observed_at: NonEmptyStr
+  endpoint: FanTachEndpointIdentity
+  drive: FanDriveReading
+  post_state: HostPostState
+}
+
+// THE FOUR STANDINGS, AND WHY THE FOURTH IS AN ARM AND NOT AN ERROR.
+//
+// FailsafeBeforeHostTelemetry is the EXPECTED state for a controller whose host has not published
+// thermals. It is not a fault and it is not a finding; it is the contract working.
+//
+// PostPostTransition is the bounded window after POST in which the loop has not yet closed. It is
+// bounded because an unbounded one would absorb the finding: if 'the loop has not closed yet' were
+// allowed to stand forever, FailsafeHeldAfterPost could never be reached, and the one state anybody
+// would want to know about would be permanently unreportable. The bound is a parameter, not a
+// constant here, because how long a family's loop takes to close is a fact about that family.
+//
+// SteadyCurve is the controller tracking sensors. It carries the observed drive so a consumer can
+// ask the acoustic question of it.
+//
+// FailsafeHeldAfterPost IS THE FINDING, TYPED RATHER THAN ASSUMED AWAY. A controller that posted and
+// is still holding failsafe past the window is either missing a sensor it expects or running a
+// policy nobody has read. Both are real, both are actionable, and neither is representable if this
+// arm does not exist.
+//
+// RpmWithoutDutyTelemetry is what EVERY posted tach-only reading produces, catalogued maximum or
+// not. It is deliberately not a verdict about policy: it reports a speed and where that speed sits
+// against the part's catalogued ceiling, and stops. Mt. Collins lands here.
+//
+// FanPolicyUnderdetermined is the refusal that remains: a posted host commanding its fixed output
+// whose POST transition this run never saw, so the window cannot be applied. Folding either of these
+// into the four verdicts would be the absorbing fallback DESIGN §5 names - the reading would get an
+// answer it did not earn.
+type FanPolicyStanding
+  = FailsafeBeforeHostTelemetry {
+      host: HostIdentity
+      authority: FanPolicyAuthority
+      post_state: HostPostState
+      drive: FanDriveReading
+    }
+  | PostPostTransition {
+      host: HostIdentity
+      authority: FanPolicyAuthority
+      elapsed_since_post: Second
+      window: Second
+      drive: FanDriveReading
+    }
+  | SteadyCurve {
+      host: HostIdentity
+      authority: FanPolicyAuthority
+      drive: FanDriveReading
+    }
+  | FailsafeHeldAfterPost {
+      host: HostIdentity
+      authority: FanPolicyAuthority
+      elapsed_since_post: Second
+      window: Second
+      drive: FanDriveReading
+    }
+  | RpmWithoutDutyTelemetry {
+      host: HostIdentity
+      authority: FanPolicyAuthority
+      speed: RevolutionsPerMinute
+      catalog_relation: CatalogMaximumRelation
+    }
+  | FanPolicyUnderdetermined {
+      host: HostIdentity
+      cause: NonEmptyStr
+    }
+
+// WHERE A TACH READING SITS RELATIVE TO THE PART'S CATALOGUED CEILING. This is the most a tach-only
+// observation supports, and naming it this way is the point: NearCatalogMaximum is a statement about
+// SPEED, and a reader who wants to conclude "therefore the controller is at 100% duty" has to write
+// that inference down somewhere else, where it can be argued with.
+type CatalogMaximumRelation
+  = NearCatalogMaximum { catalog_maximum: RevolutionsPerMinute }
+  | BelowCatalogMaximum { catalog_maximum: RevolutionsPerMinute }
+  | CatalogMaximumUnknown
+
+// WHETHER A READING IS AT THE CONTROLLER'S FIXED OUTPUT, WHICH IS THE ONE PREDICATE THE WHOLE
+// DERIVATION TURNS ON.
+//
+// For a duty reading it is a comparison against the family's configured failsafe duty, which the
+// caller supplies from that family's own authority - this module never carries a duty literal.
+//
+// For a tach-only reading there is no comparison to make at all, and that is a HARDER limit than an
+// earlier revision of this function admitted. It compared the speed against a catalogued maximum and
+// answered the same Bool the duty arm answers, so a tach reading near maximum flowed into
+// FailsafeHeldAfterPost and one below it into SteadyCurve - both POLICY verdicts about what the
+// controller is COMMANDING, reached from a reading that does not carry a command.
+//
+// WHY THAT IS WRONG AND NOT MERELY IMPRECISE (operator ruling via the hw-first-host lane,
+// 2026-09-18): the speed a fan reaches at a given PWM depends on supply voltage, part-to-part
+// tolerance, static pressure and chassis impedance. An exact catalogued maximum therefore does not
+// turn RPM into duty even in principle, so no tolerance - however tight, however well sourced -
+// converts one into the other. What WOULD establish a commanded duty is direct PWM or duty
+// telemetry, a documented MegaRAC fan-mode readback, or a measured duty-to-RPM curve taken on THIS
+// chassis. None of the three is available here.
+//
+// So the tach arms are their own evidence and are kept apart from the duty arms by construction:
+// there is no value of FixedOutputEvidence that both a tach reading can produce and the failsafe
+// verdicts can consume. The tolerance survives and stays supplied, because it still decides a real
+// and reportable question - is this fan near its catalogued ceiling - but it can no longer mint a
+// claim about policy.
+type FixedOutputEvidence
+  = DutyAtOrAboveFixedOutput
+  | DutyBelowFixedOutput
+  | TachNearCatalogMaximum { speed: RevolutionsPerMinute, catalog_maximum: RevolutionsPerMinute }
+  | TachBelowCatalogMaximum { speed: RevolutionsPerMinute, catalog_maximum: RevolutionsPerMinute }
+  | TachWithoutCatalogMaximum { speed: RevolutionsPerMinute }
+
+// HOW CLOSE TO THE MAXIMUM COUNTS AS NEAR IT IS SUPPLIED, and it is supplied for exactly the reason
+// the header above gives for failsafe_duty. An earlier revision decided that question with a bare
+// `* 95` three lines under a comment promising this module carries no duty literal - an unsourced
+// confidence threshold, which is the smuggled heuristic DESIGN §5 names and the
+// literal-where-a-modeled-value-belongs of §3.
+fn fixed_output_evidence(
+  drive: FanDriveReading,
+  failsafe_duty: Percent,
+  catalog_maximum: RevolutionsPerMinute?,
+  at_maximum_tolerance: Percent,
+) -> FixedOutputEvidence {
+  match drive {
+    FanDriveDuty { duty: d } => if measure_le(a: failsafe_duty, b: d) {
+      DutyAtOrAboveFixedOutput
+    } else {
+      DutyBelowFixedOutput
+    }
+    FanDriveTachOnly { speed: s } => match catalog_maximum {
+      Absent => TachWithoutCatalogMaximum { speed: s }
+      Present { value: maximum } => if rpm_count(r: s) * 100 >= rpm_count(r: maximum) * percent_count(p: at_maximum_tolerance) {
+        TachNearCatalogMaximum { speed: s, catalog_maximum: maximum }
+      } else {
+        TachBelowCatalogMaximum { speed: s, catalog_maximum: maximum }
+      }
+    }
+  }
+}
+
+// THE DERIVATION. It reads the host's own lifecycle state first, because the same drive reading
+// means different things on either side of POST, and it refuses before it concludes.
+//
+// elapsed_since_post IS OPTIONAL AND ITS ABSENCE IS NOT ZERO. A run that observed a posted host but
+// never observed the POST transition cannot say how long ago it happened, and answering zero would
+// place every such reading inside the transition window - turning the finding arm off for exactly
+// the observations least able to defend themselves.
+fn fan_policy_standing_of_sample(
+  host: HostIdentity,
+  authority: FanPolicyAuthority,
+  sample: FanPolicySample,
+  failsafe_duty: Percent,
+  catalog_maximum: RevolutionsPerMinute?,
+  at_maximum_tolerance: Percent,
+  elapsed_since_post: Second?,
+  transition_window: Second,
+) -> FanPolicyStanding {
+  match sample.post_state {
+    HostPostStateUnobserved => FanPolicyUnderdetermined {
+      host: host,
+      cause: "this sample's power or thermal read did not succeed, so the host lifecycle state beside it is unobserved; no standing may be derived from a drive reading whose context is unknown",
+    }
+    HostPoweredOff => FailsafeBeforeHostTelemetry {
+      host: host,
+      authority: authority,
+      post_state: sample.post_state,
+      drive: sample.drive,
+    }
+    HostPoweredOnPrePost => FailsafeBeforeHostTelemetry {
+      host: host,
+      authority: authority,
+      post_state: sample.post_state,
+      drive: sample.drive,
+    }
+    HostPosted => posted_standing(
+      host: host,
+      authority: authority,
+      drive: sample.drive,
+      evidence: fixed_output_evidence(
+        drive: sample.drive,
+        failsafe_duty: failsafe_duty,
+        catalog_maximum: catalog_maximum,
+        at_maximum_tolerance: at_maximum_tolerance,
+      ),
+      elapsed_since_post: elapsed_since_post,
+      transition_window: transition_window,
+    )
+  }
+}
+
+// THE POSTED ARM, WHERE THE EVIDENCE TYPE DOES ITS WORK. Only the two DUTY arms reach a failsafe
+// verdict; both TACH arms land on RpmWithoutDutyTelemetry, which is an OBSERVATION and says so.
+//
+// THE PRE-POST ARMS ABOVE ACCEPT A TACH READING AND THIS ONE DOES NOT, which is not an
+// inconsistency. FailsafeBeforeHostTelemetry is justified by the HOST STATE - a controller with no
+// host thermal sensors has nothing to track, whatever its fans are doing - so it needs no claim
+// about commanded duty. Every verdict below is a claim about what the controller is COMMANDING
+// after it has sensors, and that is the claim a tach reading cannot support.
+fn posted_standing(
+  host: HostIdentity,
+  authority: FanPolicyAuthority,
+  drive: FanDriveReading,
+  evidence: FixedOutputEvidence,
+  elapsed_since_post: Second?,
+  transition_window: Second,
+) -> FanPolicyStanding {
+  match evidence {
+    TachWithoutCatalogMaximum { speed: s } => RpmWithoutDutyTelemetry {
+      host: host,
+      authority: authority,
+      speed: s,
+      catalog_relation: CatalogMaximumUnknown,
+    }
+    TachNearCatalogMaximum { speed: s, catalog_maximum: m } => RpmWithoutDutyTelemetry {
+      host: host,
+      authority: authority,
+      speed: s,
+      catalog_relation: NearCatalogMaximum { catalog_maximum: m },
+    }
+    TachBelowCatalogMaximum { speed: s, catalog_maximum: m } => RpmWithoutDutyTelemetry {
+      host: host,
+      authority: authority,
+      speed: s,
+      catalog_relation: BelowCatalogMaximum { catalog_maximum: m },
+    }
+    DutyBelowFixedOutput => SteadyCurve { host: host, authority: authority, drive: drive }
+    DutyAtOrAboveFixedOutput => match elapsed_since_post {
+      Absent => FanPolicyUnderdetermined {
+        host: host,
+        cause: "host is posted and commanding its fixed output, but this run never observed the POST transition, so it cannot say whether the loop is still inside its window",
+      }
+      Present { value: elapsed } => if second_count(s: elapsed) <= second_count(s: transition_window) {
+        PostPostTransition {
+          host: host,
+          authority: authority,
+          elapsed_since_post: elapsed,
+          window: transition_window,
+          drive: drive,
+        }
+      } else {
+        FailsafeHeldAfterPost {
+          host: host,
+          authority: authority,
+          elapsed_since_post: elapsed,
+          window: transition_window,
+          drive: drive,
+        }
+      }
+    }
+  }
+}
+
+// HOW A FAMILY WOULD ACTUALLY REACH THE CEILING, MODELED RATHER THAN ASSERTED AS A BOOLEAN.
+//
+// An earlier revision took `family_has_converge_route: Bool`, which is the flattening this type
+// exists to undo: it recorded THAT a route exists and nothing about what it is, so the refusal it
+// produced could not tell a reader where to go next, and no reviewer could check the claim. Worse,
+// a Bool is exactly what a caller guesses at - and guessing `true` there silently promotes an
+// unenforceable ceiling into an enforceable one.
+//
+// THE ROUTE IS SUPPLIED BY THE HOST'S POLICY LAYER, never enumerated here, for the same reason the
+// family authority is: enumerating families in this module is the §3 fork the whole standing is
+// shaped to avoid. A host module names its own family's route, and a third family adds a module.
+//
+// THE BOUND ARM CITES SYMBOLS AND NOT PROSE (§3 standing rule). It carries the fold that writes the
+// duty and the transport it writes over, as DeclarationRefs, so the claim "this family can be
+// converged" is checkable by resolving two names rather than by believing a sentence.
+type FanDutyConvergeRoute
+  = ConvergeRouteBound {
+      authority: FanPolicyAuthority
+      write_operation: DeclarationRef
+      transport: DeclarationRef
+      readback: DeclarationRef
+    }
+  | ConvergeRouteUnbound {
+      authority: FanPolicyAuthority
+      read_obligation: NonEmptyStr
+    }
+
+fn converge_route_obligation(route: FanDutyConvergeRoute) -> NonEmptyStr? {
+  match route {
+    ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } => Absent
+    ConvergeRouteUnbound { authority: _, read_obligation: o } => Present { value: o }
+  }
+}
+
+// THE SITE CEILING AS A BOUND ON THE STANDING, WITH THE REFUSAL THE BRIEF ASKED FOR.
+//
+// Two of the four standings are bounded by the ceiling and they are bounded differently, which is
+// why this is not one comparison. SteadyCurve is where a machine spends its life, so a curve above
+// the ceiling is a converge obligation. The failsafe window is a bounded excursion that the family's
+// own contract requires - a controller with no thermal sensors may not be quiet and safe at once -
+// so a failsafe over the ceiling is not a defect to converge away but a DURATION to bound.
+//
+// FanPolicyCeilingUnenforceable is the typed refusal, and it now CARRIES THE OBLIGATION rather than
+// a fixed sentence: the refusal tells its reader what would have to be read or bound for the
+// question to become answerable. It fires when the family has no modeled route to a duty at all,
+// which today is the MegaRAC case - extdeps.bmc.megarac_fan_policy carries its policy as an uncited
+// bet, so there is nothing to converge against. Reading that as 'within ceiling' would be the
+// fabricated-plausible-output failure at the one place the operator's own room is the subject.
+//
+// The OpenBMC side is the contrasting case and it is bound rather than hypothetical: that family's
+// duty is written by extdeps.bmc.openbmc_fan_control's fan-config projection, uploaded over
+// extdeps.ssh.password_session, and read back by its own verify fold - three real declarations, so
+// a ConvergeRouteBound for it cites symbols that resolve.
+type FanPolicyCeilingVerdict
+  = FanPolicyWithinSiteCeiling
+  | FanPolicySteadyCurveOverCeiling { comparison: AcousticComparison }
+  | FanPolicyFailsafeWindowOverCeiling { comparison: AcousticComparison, bound: ExcursionBound }
+  | FanPolicyCeilingUnenforceable { cause: NonEmptyStr }
+  | FanPolicyCeilingUnderdetermined { cause: NonEmptyStr }
+
+fn fan_policy_against_ceiling(
+  standing: FanPolicyStanding,
+  ceiling: AcousticCeiling,
+  level_at_drive: AWeightedSoundPressureLevel?,
+  route: FanDutyConvergeRoute,
+) -> FanPolicyCeilingVerdict {
+  match converge_route_obligation(route: route) {
+    Present { value: obligation } => FanPolicyCeilingUnenforceable {
+      cause: join([
+        "this family carries no modeled route from a target duty to the controller, so no ceiling can be honoured or refused against it. What would bind it: ",
+        obligation as String,
+      ], "") as NonEmptyStr,
+    }
+    Absent => {
+      match level_at_drive {
+      Absent => FanPolicyCeilingUnderdetermined {
+        cause: "no published acoustic level for the observed drive point: the fan's datasheet publishes no level there and this substrate refuses to interpolate one",
+      }
+      Present { value: level } => {
+        let comparison = acoustic_level_against_ceiling(level: level, at: FanDatasheetPosition, ceiling: ceiling)
+        match comparison {
+          AcousticWithinCeiling => FanPolicyWithinSiteCeiling
+          AcousticPositionsIncomparable => FanPolicyCeilingUnderdetermined {
+            cause: "the ceiling is stated at the site listening position and the fan level is a one-metre datasheet figure; those are different quantities sharing a unit and this model refuses to compare them",
+          }
+          AcousticOverCeiling { over_by: _ } => match standing {
+            SteadyCurve { host: _, authority: _, drive: _ } =>
+              FanPolicySteadyCurveOverCeiling { comparison: comparison }
+            PostPostTransition { host: _, authority: _, elapsed_since_post: e, window: w, drive: _ } =>
+              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, bound: WithinPostTransitionWindow { elapsed: e, window: w } }
+            FailsafeBeforeHostTelemetry { host: _, authority: _, post_state: _, drive: _ } =>
+              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, bound: NoPostTransitionWindow }
+            FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: e, window: w, drive: _ } =>
+              FanPolicyFailsafeWindowOverCeiling { comparison: comparison, bound: OutlivedPostTransitionWindow { elapsed: e, window: w } }
+            RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } =>
+              FanPolicyCeilingUnderdetermined {
+                cause: "this controller reports the fan in RPM and not in duty, so no acoustic level can be attributed to a commanded operating point",
+              }
+            FanPolicyUnderdetermined { host: _, cause: c } =>
+              FanPolicyCeilingUnderdetermined { cause: c }
+          }
+        }
+      }
+      }
+    }
+  }
+}
+
+fn fan_policy_standing_label(standing: FanPolicyStanding) -> NonEmptyStr {
+  match standing {
+    FailsafeBeforeHostTelemetry { host: _, authority: _, post_state: _, drive: _ } => "FailsafeBeforeHostTelemetry"
+    PostPostTransition { host: _, authority: _, elapsed_since_post: _, window: _, drive: _ } => "PostPostTransition"
+    SteadyCurve { host: _, authority: _, drive: _ } => "SteadyCurve"
+    FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: _, window: _, drive: _ } => "FailsafeHeldAfterPost"
+    RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } => "RpmWithoutDutyTelemetry"
+    FanPolicyUnderdetermined { host: _, cause: _ } => "FanPolicyUnderdetermined"
+  }
+}
+
+// THE DUTY BOUND, WHICH IS THE ONE A SITE CAN STATE WITHOUT AN INSTRUMENT.
+//
+// The acoustic verdict above is the right shape and it needs a published level at the observed drive
+// point, which a fan catalog supplies only where the fan part is modeled and the position matches. A
+// site owner who says "not at full, sustained" has stated something weaker and completely usable: a
+// bound on duty. That bound is enforceable against any host whose controller reports duty, with no
+// datasheet and no acoustic model in between.
+//
+// THE TACH ARM REFUSES RATHER THAN CONVERTING. An RPM reading is not a duty, and the conversion
+// needs the fan's maximum - which is a catalog fact that may not exist for this host. Answering
+// "within" from a tach reading would be the fabricated-plausible-output failure at the one place the
+// operator's own room is the subject.
+// OVER THE CEILING ON A CURVE AND OVER IT DURING A FAILSAFE ARE TWO VERDICTS, NOT ONE, for the same
+// reason the acoustic fold above splits them - and an earlier revision of this type collapsed them
+// while an annotation elsewhere claimed it did not. That annotation said the consuming function
+// "takes a standing rather than a bare reading" precisely so a pre-POST failsafe would not be read
+// as a ceiling violation; the fold then projected the drive out of the standing and compared it,
+// so a pre-POST failsafe at 100% landed FanDutyOverCeiling - the exact verdict the prose said the
+// standing argument existed to prevent. A comment promising a distinction the code does not make is
+// worse than no comment, and DESIGN §4c says so outright: an annotation is never evidence that a
+// machine claim holds.
+//
+// WHAT THE SPLIT MEANS, and it is not that an excursion is acceptable. A controller with no host
+// thermals has no safe alternative to a high fixed output, so its excursion cannot be converged
+// away by lowering a curve - it is bounded by its DURATION and, in the last resort, by the operator
+// powering the machine off. That is exactly the Mt. Jade complaint: the excursion was unbounded
+// because the host never posted. So the excursion arm carries the window rather than excusing the
+// reading, and a consumer that wants "is this room too loud right now" reads both arms as over.
+// HOW AN EXCURSION IS BOUNDED, AS THREE STATES RATHER THAN A NUMBER THAT IS SOMETIMES A SENTINEL.
+//
+// The window field used to be a bare Second, and a pre-POST failsafe filled it with zero to mean
+// "no post-transition window applies". That zero reached the operator's own receipt verbatim, which
+// rendered `ExcursionOverCeiling(window=0s)` -- a reader sees an excursion with a zero-second budget
+// where the modeled fact is an excursion bounded only by somebody powering the machine off. That is
+// the fabricated plausible output DESIGN §5 forbids, and it is the same defect this model fixed two
+// files over when duty_ceiling_of_result stopped reporting a zero level count.
+//
+// THE SAME FIELD ALSO COLLAPSED TWO STATES THE PROSE CLAIMED IT SEPARATED. An excursion inside its
+// window and one that has outlived it both carried the window and dropped the elapsed, so they
+// emitted byte-identical verdicts while a comment asserted that "the window it carries" said which
+// was which. It did not. The two are now different arms, each carrying both numbers, so the
+// discrimination is in the type rather than in a sentence.
+type ExcursionBound
+  = NoPostTransitionWindow
+  | WithinPostTransitionWindow { elapsed: Second, window: Second }
+  | OutlivedPostTransitionWindow { elapsed: Second, window: Second }
+
+type FanDutyCeilingVerdict
+  = FanDutyWithinCeiling { duty: Percent, ceiling: Percent }
+  | FanDutySteadyCurveOverCeiling { duty: Percent, ceiling: Percent }
+  | FanDutyExcursionOverCeiling { duty: Percent, ceiling: Percent, bound: ExcursionBound }
+  | FanDutyNotReported { cause: NonEmptyStr }
+
+// THE BARE-READING FORM KEEPS ITS OWN NAME AND ITS OWN MEANING: given a duty and a ceiling and no
+// standing, the only honest over-arm is the steady one, because nothing here knows whether an
+// excursion is in progress. It is used where the caller genuinely has no standing - the tach
+// refusal path - and a caller holding a standing must use fan_policy_against_duty_ceiling instead.
+fn fan_drive_against_duty_ceiling(drive: FanDriveReading, ceiling: Percent) -> FanDutyCeilingVerdict {
+  match drive {
+    FanDriveDuty { duty: d } => if measure_le(a: d, b: ceiling) {
+      FanDutyWithinCeiling { duty: d, ceiling: ceiling }
+    } else {
+      FanDutySteadyCurveOverCeiling { duty: d, ceiling: ceiling }
+    }
+    FanDriveTachOnly { speed: _ } => FanDutyNotReported {
+      cause: "this controller reports the fan in RPM and not in duty; converting needs the fan part's catalogued maximum, which is a datasheet fact this host does not carry",
+    }
+  }
+}
+
+fn duty_against_ceiling_in_excursion(
+  drive: FanDriveReading,
+  ceiling: Percent,
+  bound: ExcursionBound,
+) -> FanDutyCeilingVerdict {
+  match fan_drive_against_duty_ceiling(drive: drive, ceiling: ceiling) {
+    FanDutySteadyCurveOverCeiling { duty: d, ceiling: c } =>
+      FanDutyExcursionOverCeiling { duty: d, ceiling: c, bound: bound }
+    FanDutyWithinCeiling { duty: d, ceiling: c } => FanDutyWithinCeiling { duty: d, ceiling: c }
+    FanDutyExcursionOverCeiling { duty: d, ceiling: c, bound: b } =>
+      FanDutyExcursionOverCeiling { duty: d, ceiling: c, bound: b }
+    FanDutyNotReported { cause: cz } => FanDutyNotReported { cause: cz }
+  }
+}
+
+// THE STANDING DECIDES WHICH OVER-ARM, WHICH IS THE WHOLE REASON THIS FUNCTION TAKES ONE. A curve
+// above the ceiling is a converge obligation; a failsafe above it is an excursion, and which KIND
+// of excursion is carried by ExcursionBound rather than by this paragraph - pre-POST bounded only
+// by power-off, inside its post-transition window, or outlived it. FailsafeHeldAfterPost maps to
+// the outlived arm, which carries the elapsed beside the window so a reader can see the overrun.
+//
+// THIS PARAGRAPH PREVIOUSLY SAID THE PRE-POST WINDOW WAS ZERO, and it kept saying so after the
+// change that deleted that sentinel. An annotation orphaned by its own repair is the §4c defect
+// this module has now hit four times, and it is the one that is hardest to catch by reading the
+// diff: the code under review was correct and the sentence above it was describing the version
+// before.
+fn fan_policy_against_duty_ceiling(standing: FanPolicyStanding, ceiling: Percent) -> FanDutyCeilingVerdict {
+  match standing {
+    RpmWithoutDutyTelemetry { host: _, authority: _, speed: _, catalog_relation: _ } => FanDutyNotReported {
+      cause: "this controller reports the fan in RPM and not in duty; no duty ceiling can be applied to a speed",
+    }
+    FanPolicyUnderdetermined { host: _, cause: _ } => FanDutyNotReported {
+      cause: "the standing is underdetermined, so there is no drive reading to bound",
+    }
+    SteadyCurve { host: _, authority: _, drive: d } =>
+      fan_drive_against_duty_ceiling(drive: d, ceiling: ceiling)
+    FailsafeBeforeHostTelemetry { host: _, authority: _, post_state: _, drive: d } =>
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, bound: NoPostTransitionWindow)
+    PostPostTransition { host: _, authority: _, elapsed_since_post: e, window: w, drive: d } =>
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, bound: WithinPostTransitionWindow { elapsed: e, window: w })
+    FailsafeHeldAfterPost { host: _, authority: _, elapsed_since_post: e, window: w, drive: d } =>
+      duty_against_ceiling_in_excursion(drive: d, ceiling: ceiling, bound: OutlivedPostTransitionWindow { elapsed: e, window: w })
+  }
+}
