@@ -5,7 +5,7 @@ import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   harness_unit_model_id, harness_serving_unit_wire,
 }
-import gunbc.spark.glm_canary_converge { glm_canary_arm }
+import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
 
 // ── WHICH MODELS A TURN MAY BE ANSWERED BY, AND WHY THAT IS A SET RATHER THAN A ROW ───────────
 //
@@ -31,25 +31,26 @@ import gunbc.spark.glm_canary_converge { glm_canary_arm }
 //
 // AND ADMITTING A MODEL IS NOT PROMOTING IT. There is no global selector left to promote anything
 // INTO: the row that named one unit for every caller is deleted with this cut, and a placed turn
-// takes the unit of the route that answered, evidenced by that route's own probe. The canary is
+// takes the unit of the route that answered, evidenced by that route's own probe. A deployment is
 // admitted here as a model this harness can speak to; it becomes a default nowhere, because nothing
-// inherits a model any more. Widening an admitted set and promoting a canary to default are two
-// different acts, and only the first is performed here -- which is a stronger statement than the one
-// this annotation made while a selector still stood.
+// inherits a model any more. Widening an admitted set and promoting a deployment to default are two
+// different acts, and only the first is performed here.
 
 // THE ADVERTISED IDS A UNIT MAY ANSWER TO, EXHAUSTIVE OVER THE UNITS. A unit added to the seam
 // without a row here fails to compile rather than silently becoming unadmittable, which is the
 // direction that matters: an unroutable unit is a modelling gap, not a safety property.
 //
 // A UNIT CAN ANSWER TO MORE THAN ONE ID, AND THE SECOND ONE IS NOT A NICKNAME. GLM's own model id is
-// what Zhipu's API answers to; the canary route advertises the SERVED-MODEL ALIAS its launch was
-// given, which is a route name for a particular deployment of that model. Both are cited from the
-// authority that owns them -- the model's upstream module and the canary arm respectively -- so
-// neither is spelled here.
+// what Zhipu's API answers to; a vLLM deployment advertises the SERVED-MODEL ALIAS its launch was
+// given, which is a route name for that deployment. Both are cited from the authority that owns
+// them -- the model's upstream module, and the profile of the arm converged on the fabric group
+// (gunbc.spark.fabric_serving_assignment) -- so neither is spelled here. This used to cite the retired
+// exl3 canary's alias, glm-5.3-flash-exl3-canary, while the arm actually answering advertised
+// glm-5.3-flash (observed at 192.168.1.236:30000, 2026-09-18).
 fn serving_admitted_ids(unit: HarnessServingUnit) -> List<NonEmptyStr> {
   match unit {
     DeepseekV4FlashOnVllm => [harness_unit_model_id(unit: DeepseekV4FlashOnVllm)]
-    Glm53FlashOnVllm => [harness_unit_model_id(unit: Glm53FlashOnVllm), glm_canary_arm.served_model_alias]
+    Glm53FlashOnVllm => [harness_unit_model_id(unit: Glm53FlashOnVllm), glm_group_b_serving_assignment.profile.served_alias]
   }
 }
 
