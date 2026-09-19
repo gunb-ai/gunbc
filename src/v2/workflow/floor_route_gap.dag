@@ -1179,7 +1179,19 @@ fn floor_route_gap_expectation_chunk_15() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_roster_that_could_not_be_read_refuses", operation: "DigestStdin", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_fully_attached_roster_passes_the_gate_and_reaches_the_configuration_check", operation: "DigestStdin", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_earlier_epochs_attached_reading_does_not_clear_a_later_incarnation", operation: "DigestStdin", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.an_earlier_epochs_detached_reading_is_not_a_diagnosis_of_a_later_incarnation", operation: "DigestStdin", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_same_epoch_attached_reading_admits_on_the_production_route", operation: "DigestStdin", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.spark.spark_serving_offer_route_witness_test.a_reading_from_another_head_is_another_epoch", operation: "DigestStdin", ground: NoMockResponse {} },
     tail: Empty {},
+  },
+  },
+  },
+  },
   },
   },
   }
