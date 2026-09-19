@@ -33,6 +33,7 @@ import v2.extdeps.languages.dag {
   dag_resolve_preserve_module_metadata_subtree,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
+  dag_surface_kw_then_ident_from_captured,
   parse_qualified_name_segments_from_capture,
   qualified_name_from_module_node,
 }
@@ -215,30 +216,6 @@ fn body_lower_seq_child(node: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: node, name: name) {
     Accepted { value: child, diagnostics: _ } => Present { value: child }
     Rejected { diagnostics: _ } => Absent
-  }
-}
-
-fn body_lower_fn_decl_ident_from_captured(captured: Node) -> Optional<Symbol> {
-  match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
-    Absent => Absent
-    Present { value: after_kw_fn } =>
-      match body_lower_seq_child(node: after_kw_fn, name: ^grammar_sequence_left_node_projection) {
-        Absent => Absent
-        Present { value: ident_node } =>
-          match dag_binding_branded_atom_identity(node: ident_node) {
-            Present { value: binding } => Present { value: binding }
-            Absent =>
-              match node_atom_identity_optional(node: ident_node) {
-                Present { value: sym } =>
-                  if dag_lex_token_symbol(sym: sym) {
-                    optional_absent()
-                  } else {
-                    optional_present(value: sym)
-                  }
-                Absent => optional_absent()
-              }
-          }
-      }
   }
 }
 
@@ -2169,7 +2146,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                           match body_lower_return_type_from_fn_captured(captured: captured) {
                             Absent => body_lower_wrapper_retained_shell(shell: shell)
                             Present { value: return_type } =>
-                              match body_lower_fn_decl_ident_from_captured(captured: captured) {
+                              match dag_surface_kw_then_ident_from_captured(captured: captured) {
                                 Absent => body_lower_wrapper_retained_shell(shell: shell)
                                 Present { value: fn_name } =>
                                   let arrow = node_synthetic(
@@ -4971,30 +4948,6 @@ fn body_lower_forward_row_apply(shell: Node, emitted: Symbol) -> Outcome<Node> {
   }
 }
 
-fn body_lower_type_decl_ident_from_captured(captured: Node) -> Optional<Symbol> {
-  match body_lower_seq_child(node: captured, name: ^grammar_sequence_right_node_projection) {
-    Absent => Absent
-    Present { value: after_kw_type } =>
-      match body_lower_seq_child(node: after_kw_type, name: ^grammar_sequence_left_node_projection) {
-        Absent => Absent
-        Present { value: ident_node } =>
-          match dag_binding_branded_atom_identity(node: ident_node) {
-            Present { value: binding } => Present { value: binding }
-            Absent =>
-              match node_atom_identity_optional(node: ident_node) {
-                Present { value: sym } =>
-                  if dag_lex_token_symbol(sym: sym) {
-                    optional_absent()
-                  } else {
-                    optional_present(value: sym)
-                  }
-                Absent => optional_absent()
-              }
-          }
-      }
-  }
-}
-
 fn body_lower_edge_names_where_clause(e: Edge) -> Bool {
   match e.label {
     Named { name: n } => n == ^dag_surface_where_refinement_clause
@@ -5021,7 +4974,7 @@ fn body_lower_type_decl(shell: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: shell) {
     Absent => outcome_accepted(value: shell)
     Present { value: captured } =>
-      match body_lower_type_decl_ident_from_captured(captured: captured) {
+      match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => outcome_accepted(value: shell)
         Present { value: type_name } =>
           match body_lower_find_where_host_conj(root: captured) {
