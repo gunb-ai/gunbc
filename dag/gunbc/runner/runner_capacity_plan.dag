@@ -22,6 +22,7 @@ import gunbc.fleet_runner_connectivity {
   RegistrationNamesNoCommittedSlot,
   decode_registration_slot,
   SlotConnectivityDetached,
+  SlotConnectivityLabelsDiverge,
   SlotConnectivityOrphaned,
   SlotConnectivityUnknown,
 }
@@ -232,6 +233,13 @@ fn connectivity_replace_action(
             value: RunnerIncarnationReplace {
               slot: s,
               cause: "GitHub registration offline while local unit remains active"
+            }
+          }
+        SlotConnectivityLabelsDiverge { slot: s, registration_id: _ } =>
+          Present {
+            value: RunnerIncarnationReplace {
+              slot: s,
+              cause: "GitHub registration online under labels other than runner_registration_labels for its host"
             }
           }
         SlotConnectivityOrphaned { slot: s } =>

@@ -1,0 +1,199 @@
+module test.claim.fabric.fabric_control_plane_wet_witness
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.optional { Present, Absent }
+import std.content_hash { content_hash_of_value }
+import extdeps.currency.currency { Usd }
+import std.measure { money_amount_micro }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger }
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest, AccountAdvanced, MoneyRefused, reserve_money }
+import product.fabric.execution { ReservationRef, LeaseIdentity }
+import product.fabric.identity { FabricIdentity, OfferKey, DemandKey }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
+import gunbc.fabric_control_plane {
+  CellReservation, CellReserved, NoCellAdmissible, CellSelectionTieUnresolved, ReservationLost,
+  PermitNamesAnotherUseForCell, StoreUnavailable, AttemptRefused, BudgetRefused,
+  CellHoldEnd, CellHoldEnded, HoldEndBudgetRefused, HoldEndSlotNotHeld,
+  HoldEndLost, HoldEndStoreUnavailable, HoldEndAttemptRefused,
+  reserve_selected_cell, release_reserved_cell_at, fabric_money_reservation_ref,
+}
+
+// THE FABRIC'S RELEASE WALLS ON A REAL STORE. The release reads the slot itself
+// -- there is no form that accepts an observation -- so its walls can only be
+// evidenced by reserving a real cell in a throwaway root and releasing it wrongly
+// and rightly through release_reserved_cell_at, the one production route.
+// Every refusal is checked against the disk as well as the outcome: the
+// generation-2 file must not exist after a refused release. Enrolled on the
+// local-repo wet lane (throwaway temp directory, no network) beside the hold
+// store's own wet rows, which cover the protocol; these rows cover what the
+// fabric adds -- the money transition between assessment and commit.
+
+fn fw_fresh_root() -> String {
+  shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_hold.XXXXXX").path
+}
+
+fn fw_demand(key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: "gunbc", key: key }
+}
+
+fn fw_offer() -> FabricIdentity<NonEmptyStr, OfferKey> {
+  FabricIdentity { principal: "gunbc", key: "offer-1" }
+}
+
+fn fw_reservation(demand: DemandKey) -> ReservationRef {
+  fabric_money_reservation_ref(demand: fw_demand(key: demand), offer: fw_offer())
+}
+
+fn fw_account() -> MoneyAccount {
+  MoneyAccount {
+    account: "fleet-ci",
+    currency: Usd,
+    ledger: EncumbranceLedger { appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000) }, entries: [] },
+    leases: [],
+  }
+}
+
+// A funded account carrying a real hold at lease generation 0, taken through
+// reserve_money rather than authored, so the release path and the reserve path
+// agree about what a hold looks like.
+fn fw_held_account(demand: DemandKey) -> MoneyAccount? {
+  match reserve_money(
+    a: fw_account(),
+    request: MoneyReservationRequest {
+      reference: fw_reservation(demand: demand),
+      generation: 0,
+      maximum_liability: money_amount_micro(count: 1000),
+      currency: Usd,
+    },
+  ) {
+    AccountAdvanced { account: a } => Present { value: a }
+    MoneyRefused { refusal: _ } => none
+  }
+}
+
+fn fw_reserve(root: NonEmptyStr, demand: DemandKey) -> CellReservation {
+  reserve_selected_cell(root: root, slot_key: "srv3-06", demand_id: fw_demand(key: demand), offer_id: fw_offer(), account: fw_account())
+}
+
+fn fw_reserved_at(r: CellReservation, generation: Int) -> Bool {
+  match r {
+    CellReserved { offer: _, slot_key: _, generation: g, account: _ } => g == generation
+    _ => false
+  }
+}
+
+fn fw_release(root: NonEmptyStr, demand: DemandKey, acquired_generation: Int, lease_generation: Int, reason: NonEmptyStr) -> CellHoldEnd? {
+  match fw_held_account(demand: demand) {
+    Absent => none
+    Present { value: a } => Present { value: release_reserved_cell_at(
+      root: root,
+      slot_key: "srv3-06",
+      acquired_generation: acquired_generation,
+      lease: LeaseIdentity { lease_key: "cell-lease-1", resource_fingerprint: content_hash_of_value(value: "srv3-06"), generation: lease_generation },
+      reservation: fw_reservation(demand: demand),
+      reason: reason,
+      released_at: "2026-08-28T02:00:00Z",
+      account: a,
+    ) }
+  }
+}
+
+fn fw_not_held(r: CellHoldEnd?) -> Bool {
+  match r {
+    Present { value: HoldEndSlotNotHeld { slot_key: _, detail: _ } } => true
+    _ => false
+  }
+}
+
+fn fw_budget_refused(r: CellHoldEnd?) -> Bool {
+  match r {
+    Present { value: HoldEndBudgetRefused { slot_key: _, refusal: _ } } => true
+    _ => false
+  }
+}
+
+fn fw_ended_at(r: CellHoldEnd?, generation: Int) -> Bool {
+  match r {
+    Present { value: CellHoldEnded { slot_key: _, generation: g, account: _ } } => g == generation
+    _ => false
+  }
+}
+
+fn fw_slot_bytes(root: NonEmptyStr, generation: Int) -> String {
+  let read = Filesystem.Read(path: cas_file_slot_path(root: root, key: "srv3-06", generation: generation))
+  if read.success { read.content } else { "" }
+}
+
+fn fw_generation_absent(root: NonEmptyStr, generation: Int) -> Bool {
+  !Filesystem.Read(path: cas_file_slot_path(root: root, key: "srv3-06", generation: generation)).success
+}
+
+// THE POSITIVE CONTROL AND THE BYTES: the right reservation at its acquisition
+// generation with an admitted lease releases to free at 2, and what lands on
+// disk is "free|" followed by exactly the reason -- the pre-extraction spelling.
+test fn the_right_reservation_releases_its_cell_to_free_at_the_next_generation_by_real_execution() -> Bool {
+  let root_path = fw_fresh_root()
+  let root = root_path as NonEmptyStr
+  let reserved = fw_reserve(root: root, demand: "demand-7")
+  let ended = fw_release(root: root, demand: "demand-7", acquired_generation: 1, lease_generation: 0, reason: "attempt abandoned before execution")
+  let bytes = fw_slot_bytes(root: root, generation: 2)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  fw_reserved_at(r: reserved, generation: 1)
+    && fw_ended_at(r: ended, generation: 2)
+    && bytes == "free|attempt abandoned before execution"
+    && removed.success
+}
+
+// A CELL HELD BY ANOTHER RESERVATION IS NOT RELEASED, and the slot stays held.
+test fn a_cell_held_by_another_reservation_is_not_released_by_real_execution() -> Bool {
+  let root_path = fw_fresh_root()
+  let root = root_path as NonEmptyStr
+  let reserved = fw_reserve(root: root, demand: "demand-9")
+  let ended = fw_release(root: root, demand: "demand-7", acquired_generation: 1, lease_generation: 0, reason: "not mine")
+  let still_held = fw_generation_absent(root: root, generation: 2) && fw_slot_bytes(root: root, generation: 1) == "held|demand-9|offer-1"
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  fw_reserved_at(r: reserved, generation: 1) && fw_not_held(r: ended) && still_held && removed.success
+}
+
+// AN ALREADY-FREE SLOT IS NOT A NO-OP AND MUST NOT BE FREED AGAIN: no generation 3.
+test fn an_already_free_slot_has_no_hold_to_release_by_real_execution() -> Bool {
+  let root_path = fw_fresh_root()
+  let root = root_path as NonEmptyStr
+  let reserved = fw_reserve(root: root, demand: "demand-7")
+  let first = fw_release(root: root, demand: "demand-7", acquired_generation: 1, lease_generation: 0, reason: "done")
+  let second = fw_release(root: root, demand: "demand-7", acquired_generation: 1, lease_generation: 0, reason: "again")
+  let no_third = fw_generation_absent(root: root, generation: 3)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  fw_reserved_at(r: reserved, generation: 1) && fw_ended_at(r: first, generation: 2) && fw_not_held(r: second) && no_third && removed.success
+}
+
+// THE ABA RELEASE THROUGH THE FABRIC ROUTE: the right reservation presenting the
+// wrong acquisition generation is not this hold. Refused at the slot, before the
+// ledger, so it answers NotHeld and not BudgetRefused -- the lease here is the
+// one the positive control admits.
+test fn the_right_reservation_at_another_acquisition_generation_is_not_released_by_real_execution() -> Bool {
+  let root_path = fw_fresh_root()
+  let root = root_path as NonEmptyStr
+  let reserved = fw_reserve(root: root, demand: "demand-7")
+  let ended = fw_release(root: root, demand: "demand-7", acquired_generation: 2, lease_generation: 0, reason: "stale")
+  let still_held = fw_generation_absent(root: root, generation: 2)
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  fw_reserved_at(r: reserved, generation: 1) && fw_not_held(r: ended) && still_held && removed.success
+}
+
+// THE MONEY FENCE REFUSES BEFORE THE SLOT IS FREED. The hold was taken under
+// lease generation 0; presenting 7 refuses at the budget seam, and the cell must
+// STILL BE HELD afterwards -- a release that freed the slot first and consulted
+// the ledger second would leave generation 2 on disk beside a refusal.
+test fn a_superseded_lease_generation_refuses_at_the_budget_fence_and_the_cell_stays_held_by_real_execution() -> Bool {
+  let root_path = fw_fresh_root()
+  let root = root_path as NonEmptyStr
+  let reserved = fw_reserve(root: root, demand: "demand-7")
+  let ended = fw_release(root: root, demand: "demand-7", acquired_generation: 1, lease_generation: 7, reason: "stale lease")
+  let still_held = fw_generation_absent(root: root, generation: 2) && fw_slot_bytes(root: root, generation: 1) == "held|demand-7|offer-1"
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  fw_reserved_at(r: reserved, generation: 1) && fw_budget_refused(r: ended) && still_held && removed.success
+}
