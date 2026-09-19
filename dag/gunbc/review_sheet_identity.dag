@@ -127,165 +127,171 @@ fn legacy_extent_evidence_subject(e: LegacyExtentEvidence) -> ReviewSheetIdentit
 // current-marked file was FOUND and the legacy extent could not be settled, which is neither a
 // converged single lineage nor an observed conflict. Collapsing it into the former is what reported
 // success over a drive that held two.
-// THE STANDING IS sole_constructor AND EVERY HELPER BELOW IS PRIVATE TO THIS FOLD. Sealing the type
-// alone would not have been enough and an earlier revision of this cut did exactly that: the four
-// helpers were importable declarations each RETURNING an authoritative standing, so a caller could
-// reach one directly and skip the subject-match check at the top of the join. The source SAID the
-// standing is derived by the complete join while the type system permitted three ways around it --
-// direct authorship of an arm, and entry at any helper.
+// TWO TYPES, BECAUSE THE LANGUAGE SEALS ONE SHAPE AND NOT THE OTHER, AND AN EARLIER REVISION OF
+// THIS MODULE CLAIMED A SEAL IT DID NOT HAVE. It wrote `type ReviewSheetIdentityStanding
+// sole_constructor = <coproduct>` and an annotation saying the honest route was the only route.
+// BOTH HALVES OF THAT WERE FALSE and the PR's whole safety claim rested on them:
 //
-// That is the same class gunbc#11656 repaired one lane over: putting the right values together on
-// the honest route is not enough while the dishonest construction stays writable. Here the honest
-// route is the ONLY route.
-type ReviewSheetIdentityStanding sole_constructor
-  = ReviewSheetIdentityAbsent { subject: ReviewSheetIdentitySubject, evidence: LegacyExtentEvidence }
-  | ReviewSheetSingleLineage { subject: ReviewSheetIdentitySubject, file_id: NonEmptyStr, evidence: LegacyExtentEvidence }
-  | ReviewSheetLegacyOnlyLineage { subject: ReviewSheetIdentitySubject, file_id: NonEmptyStr, evidence: LegacyExtentEvidence }
-  | ReviewSheetConflictingLineages {
-      subject: ReviewSheetIdentitySubject,
-      current_file_ids: List<String>,
-      legacy_file_ids: List<String>,
-      evidence: LegacyExtentEvidence,
-    }
-  | CurrentMarkerObservedLegacyExtentUnresolved {
-      subject: ReviewSheetIdentitySubject,
-      file_id: NonEmptyStr,
-      cause: NonEmptyStr,
-      evidence: LegacyExtentEvidence,
-    }
-  | ReviewSheetIdentityUnreadable {
-      subject: ReviewSheetIdentitySubject,
-      cause: NonEmptyStr,
-      evidence: LegacyExtentEvidence,
-    }
+//   sole_constructor IS DISCARDED ON A COPRODUCT RHS. v1.02_parse parse_type_body_after_eq threads
+//   it into the anonymous-record arm and drops it on every other `=` right-hand side -- a leaf
+//   alias, a coproduct -- and says so in its own note. The hole is a declared drop with a live
+//   probe (test.fixture.sole_constructor_variant_probe.definer) and an expected-red row. So any
+//   module could still author an arm directly.
+//
+//   THERE IS NO FUNCTION VISIBILITY IN THIS LANGUAGE. v1.03_resolve get_exported_names exports
+//   every module item unconditionally, so the internal_ prefix those helpers carry is a NAMING
+//   CONVENTION and nothing more. "Private to this fold" was a sentence, not a mechanism.
+//
+// That is rung inflation in the sense DESIGN section 4b(1) names -- a reported guarantee above the
+// one executed evidence establishes -- and it is worse than sitting low, because a wall cited as
+// coverage stops anyone looking for the real one.
+//
+// WHAT THE LANGUAGE ACTUALLY PROVIDES is a seal on RECORDS, enforced by file: infer's
+// sole_constructor_construction_diags refuses a construction whose span.file differs from the
+// declaring type's. So the authority is a sealed RECORD, and the ordinary judgement it carries is a
+// plain coproduct that anyone may build and any claim may test.
+//
+// AND THE HELPER BYPASS IS CLOSED BY WHAT THE HELPERS RETURN, NOT BY HIDING THEM. They are
+// importable and always will be; they now yield a DISPOSITION, which carries no authority. A caller
+// entering at internal_disposition_over_current_hit gets exactly what it computed and cannot make
+// it a standing, because minting one is possible only in this file and only through the route that
+// checks the subject first.
+type ReviewSheetIdentityDisposition
+  = ReviewSheetIdentityAbsent
+  | ReviewSheetSingleLineage { file_id: NonEmptyStr }
+  | ReviewSheetLegacyOnlyLineage { file_id: NonEmptyStr }
+  | ReviewSheetConflictingLineages { current_file_ids: List<String>, legacy_file_ids: List<String> }
+  | CurrentMarkerObservedLegacyExtentUnresolved { file_id: NonEmptyStr, cause: NonEmptyStr }
+  | ReviewSheetIdentityUnreadable { cause: NonEmptyStr }
+
+// THE SUBJECT AND THE EVIDENCE LIVE HERE RATHER THAN ON EVERY ARM, which also retires a repetition
+// the previous shape carried: six arms each restating the same two fields is one fact written six
+// times, and threading provenance through them by hand is how three of them lost it.
+type ReviewSheetIdentityStanding sole_constructor {
+  subject: ReviewSheetIdentitySubject
+  disposition: ReviewSheetIdentityDisposition
+  evidence: LegacyExtentEvidence
+}
 
 // A DECLARATION FOR ANOTHER SUBJECT IS NOT EVIDENCE ABOUT THIS ONE, and this refusal is why the
 // subject is carried in content at all. It is checked BEFORE the observation is read, because a
-// mismatched declaration cannot be made relevant by anything the search returns.
+// mismatched declaration cannot be made relevant by anything the search returns. This is the only
+// mint of a standing anywhere.
 fn review_sheet_identity_standing(
   subject: ReviewSheetIdentitySubject,
   current: ReviewSpreadsheetObservation,
   legacy: LegacyExtentEvidence,
 ) -> ReviewSheetIdentityStanding {
   if review_sheet_identity_subject_matches(a: subject, b: legacy_extent_evidence_subject(e: legacy)) {
-    internal_standing_over_matching_subject(subject: subject, current: current, legacy: legacy)
-  } else {
-    ReviewSheetIdentityUnreadable {
+    ReviewSheetIdentityStanding {
       subject: subject,
-      cause: "the legacy-extent evidence names a different identity subject, so it establishes nothing about this one" as NonEmptyStr,
+      disposition: internal_disposition_over_matching_subject(current: current, legacy: legacy),
+      evidence: legacy,
+    }
+  } else {
+    ReviewSheetIdentityStanding {
+      subject: subject,
+      disposition: ReviewSheetIdentityUnreadable {
+        cause: "the legacy-extent evidence names a different identity subject, so it establishes nothing about this one" as NonEmptyStr,
+      },
       evidence: legacy,
     }
   }
 }
 
-fn internal_standing_over_matching_subject(
+// THE ACCESSOR CONSUMERS AND CLAIMS READ. A standing is a sealed record, so this is how its
+// judgement is reached without anyone being able to mint one.
+fn review_sheet_identity_standing_disposition(
   subject: ReviewSheetIdentitySubject,
   current: ReviewSpreadsheetObservation,
   legacy: LegacyExtentEvidence,
-) -> ReviewSheetIdentityStanding {
+) -> ReviewSheetIdentityDisposition {
+  review_sheet_identity_standing(subject: subject, current: current, legacy: legacy).disposition
+}
+
+fn internal_disposition_over_matching_subject(
+  current: ReviewSpreadsheetObservation,
+  legacy: LegacyExtentEvidence,
+) -> ReviewSheetIdentityDisposition {
   match current {
-    SheetSearchUnreadable { reason: r } =>
-      ReviewSheetIdentityUnreadable { subject: subject, cause: r, evidence: legacy }
+    SheetSearchUnreadable { reason: r } => ReviewSheetIdentityUnreadable { cause: r }
     SheetSearchIncomplete =>
       ReviewSheetIdentityUnreadable {
-        subject: subject,
         cause: "Drive reported incompleteSearch for the current marker, so exactly-one is not established" as NonEmptyStr,
-        evidence: legacy,
       }
     SheetPageIncomplete { next_page_token: _ } =>
       ReviewSheetIdentityUnreadable {
-        subject: subject,
         cause: "the current-marker listing is one page of several, so a second current-marked file may sit unread" as NonEmptyStr,
-        evidence: legacy,
       }
     SheetDuplicated { file_ids: ids } =>
       ReviewSheetConflictingLineages {
-        subject: subject,
         current_file_ids: ids,
         legacy_file_ids: legacy_file_ids_of(evidence: legacy),
-        evidence: legacy,
       }
     SheetObservedOne { file_id: current_id } =>
-      internal_standing_over_current_hit(subject: subject, current_id: current_id, legacy: legacy)
-    SheetAbsent => internal_standing_over_current_absence(subject: subject, legacy: legacy)
+      internal_disposition_over_current_hit(current_id: current_id, legacy: legacy)
+    SheetAbsent => internal_disposition_over_current_absence(legacy: legacy)
   }
 }
 
 // A CURRENT HIT SETTLES NOTHING ON ITS OWN. The legacy extent decides whether the found file is the
 // single lineage, one of two, or a lineage whose sibling cannot be ruled out.
-fn internal_standing_over_current_hit(
-  subject: ReviewSheetIdentitySubject,
+fn internal_disposition_over_current_hit(
   current_id: NonEmptyStr,
   legacy: LegacyExtentEvidence,
-) -> ReviewSheetIdentityStanding {
+) -> ReviewSheetIdentityDisposition {
   match legacy {
     LegacyExtentAbsentByOperator { subject: _, basis: _ } =>
-      ReviewSheetSingleLineage { subject: subject, file_id: current_id, evidence: legacy }
+      ReviewSheetSingleLineage { file_id: current_id }
     LegacyExtentUnresolved { subject: _, cause: c } =>
-      CurrentMarkerObservedLegacyExtentUnresolved { subject: subject, file_id: current_id, cause: c, evidence: legacy }
+      CurrentMarkerObservedLegacyExtentUnresolved { file_id: current_id, cause: c }
     LegacySearchObserved { subject: _, observation: o, visibility_basis: v } =>
-      internal_standing_over_current_hit_and_search(subject: subject, current_id: current_id, observation: o, visibility: v, legacy: legacy)
+      internal_disposition_over_current_hit_and_search(current_id: current_id, observation: o, visibility: v)
   }
 }
 
 // AN EMPTY LEGACY SEARCH IS ONLY ABSENCE WHEN SOMETHING ESTABLISHED THAT THIS CLIENT COULD HAVE SEEN
 // IT. Otherwise the extent is UNRESOLVED -- not absent -- which is the distinction the original
 // incident turned on.
-fn internal_standing_over_current_hit_and_search(
-  subject: ReviewSheetIdentitySubject,
+fn internal_disposition_over_current_hit_and_search(
   current_id: NonEmptyStr,
   observation: ReviewSpreadsheetObservation,
   visibility: LegacySearchVisibilityBasis,
-  legacy: LegacyExtentEvidence,
-) -> ReviewSheetIdentityStanding {
+) -> ReviewSheetIdentityDisposition {
   match observation {
     SheetObservedOne { file_id: legacy_id } =>
       if (legacy_id as String) == (current_id as String) {
-        ReviewSheetSingleLineage { subject: subject, file_id: current_id, evidence: legacy }
+        ReviewSheetSingleLineage { file_id: current_id }
       } else {
         ReviewSheetConflictingLineages {
-          subject: subject,
           current_file_ids: [current_id as String],
           legacy_file_ids: [legacy_id as String],
-          evidence: legacy,
         }
       }
     SheetDuplicated { file_ids: ids } =>
-      ReviewSheetConflictingLineages {
-        subject: subject,
-        current_file_ids: [current_id as String],
-        legacy_file_ids: ids,
-        evidence: legacy,
-      }
+      ReviewSheetConflictingLineages { current_file_ids: [current_id as String], legacy_file_ids: ids }
     SheetAbsent =>
       match visibility {
-        ClientIdentityObservedCompatible { basis: _ } =>
-          ReviewSheetSingleLineage { subject: subject, file_id: current_id, evidence: legacy }
+        ClientIdentityObservedCompatible { basis: _ } => ReviewSheetSingleLineage { file_id: current_id }
         PositiveFindEstablishesVisibility =>
           CurrentMarkerObservedLegacyExtentUnresolved {
-            subject: subject,
             file_id: current_id,
             cause: "the legacy search returned nothing and the only visibility basis on offer was a positive find, which this observation did not make" as NonEmptyStr,
-            evidence: legacy,
           }
         SearchVisibilityUnresolved { cause: c } =>
-          CurrentMarkerObservedLegacyExtentUnresolved { subject: subject, file_id: current_id, cause: c, evidence: legacy }
+          CurrentMarkerObservedLegacyExtentUnresolved { file_id: current_id, cause: c }
       }
     SheetSearchUnreadable { reason: r } =>
-      CurrentMarkerObservedLegacyExtentUnresolved { subject: subject, file_id: current_id, cause: r, evidence: legacy }
+      CurrentMarkerObservedLegacyExtentUnresolved { file_id: current_id, cause: r }
     SheetSearchIncomplete =>
       CurrentMarkerObservedLegacyExtentUnresolved {
-        subject: subject,
         file_id: current_id,
         cause: "Drive reported incompleteSearch for the superseded marker" as NonEmptyStr,
-        evidence: legacy,
       }
     SheetPageIncomplete { next_page_token: _ } =>
       CurrentMarkerObservedLegacyExtentUnresolved {
-        subject: subject,
         file_id: current_id,
         cause: "the superseded-marker listing is one page of several" as NonEmptyStr,
-        evidence: legacy,
       }
   }
 }
@@ -293,46 +299,34 @@ fn internal_standing_over_current_hit_and_search(
 // NO CURRENT-MARKED FILE. A legacy file found here is the sheet, carrying only the old marker; a
 // legacy extent that cannot be settled is UNREADABLE rather than absent, because creating on it is
 // how the duplicate was minted.
-fn internal_standing_over_current_absence(
-  subject: ReviewSheetIdentitySubject,
+fn internal_disposition_over_current_absence(
   legacy: LegacyExtentEvidence,
-) -> ReviewSheetIdentityStanding {
+) -> ReviewSheetIdentityDisposition {
   match legacy {
-    LegacyExtentAbsentByOperator { subject: _, basis: _ } =>
-      ReviewSheetIdentityAbsent { subject: subject, evidence: legacy }
-    LegacyExtentUnresolved { subject: _, cause: c } =>
-      ReviewSheetIdentityUnreadable { subject: subject, cause: c, evidence: legacy }
+    LegacyExtentAbsentByOperator { subject: _, basis: _ } => ReviewSheetIdentityAbsent
+    LegacyExtentUnresolved { subject: _, cause: c } => ReviewSheetIdentityUnreadable { cause: c }
     LegacySearchObserved { subject: _, observation: o, visibility_basis: v } =>
       match o {
-        SheetObservedOne { file_id: legacy_id } =>
-          ReviewSheetLegacyOnlyLineage { subject: subject, file_id: legacy_id, evidence: legacy }
+        SheetObservedOne { file_id: legacy_id } => ReviewSheetLegacyOnlyLineage { file_id: legacy_id }
         SheetDuplicated { file_ids: ids } =>
-          ReviewSheetConflictingLineages { subject: subject, current_file_ids: [], legacy_file_ids: ids, evidence: legacy }
+          ReviewSheetConflictingLineages { current_file_ids: [], legacy_file_ids: ids }
         SheetAbsent =>
           match v {
-            ClientIdentityObservedCompatible { basis: _ } =>
-              ReviewSheetIdentityAbsent { subject: subject, evidence: legacy }
+            ClientIdentityObservedCompatible { basis: _ } => ReviewSheetIdentityAbsent
             PositiveFindEstablishesVisibility =>
               ReviewSheetIdentityUnreadable {
-                subject: subject,
                 cause: "neither marker found a file, and the only visibility basis on offer was a positive find this observation did not make, so absence is not established" as NonEmptyStr,
-                evidence: legacy,
               }
-            SearchVisibilityUnresolved { cause: c } =>
-              ReviewSheetIdentityUnreadable { subject: subject, cause: c, evidence: legacy }
+            SearchVisibilityUnresolved { cause: c } => ReviewSheetIdentityUnreadable { cause: c }
           }
-        SheetSearchUnreadable { reason: r } => ReviewSheetIdentityUnreadable { subject: subject, cause: r, evidence: legacy }
+        SheetSearchUnreadable { reason: r } => ReviewSheetIdentityUnreadable { cause: r }
         SheetSearchIncomplete =>
           ReviewSheetIdentityUnreadable {
-            subject: subject,
             cause: "Drive reported incompleteSearch for the superseded marker, so absence is not established" as NonEmptyStr,
-            evidence: legacy,
           }
         SheetPageIncomplete { next_page_token: _ } =>
           ReviewSheetIdentityUnreadable {
-            subject: subject,
             cause: "the superseded-marker listing is one page of several, so absence is not established" as NonEmptyStr,
-            evidence: legacy,
           }
       }
   }
