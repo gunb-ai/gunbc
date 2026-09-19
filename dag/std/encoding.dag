@@ -581,14 +581,15 @@ fn utf8_step(d: Utf8DecodeState, o: Int) -> Utf8DecodeState {
 // in review, so the two are correct separately and refuse together. A semantic conflict, not a
 // textual one: nothing overlaps in the diff and the merge is clean.
 //
-// The replacement is the seam that already exists for base64's own octets: base64_octet_word admits
-// the member through word_of_int at Width8, so a value outside the byte range REFUSES instead of
-// being renamed. Utf8Refused is the honest destination for that -- a decoder handed something that
+// The replacement admits the member through word_of_int at Width8, so a value outside the byte
+// range REFUSES instead of being renamed. It admits ONE member rather than going through
+// base64_octets, which admits a whole list: this fold already visits members one at a time and
+// already has a per-member refusal state to land on. Utf8Refused is the honest destination for that -- a decoder handed something that
 // is not an octet has not been handed UTF-8 -- and it is the state this fold already uses for every
 // other malformed input, so no new refusal vocabulary is minted for a case the model already had a
 // word for.
 fn utf8_admit_octet(d: Utf8DecodeState, b: UInt8) -> Utf8DecodeState {
-  match base64_octet_word(b: b) {
+  match word_of_int(width: Width8, value: b + 0) {
     WordRefused { cause: _ } => Utf8Refused
     WordReady { word: w } => utf8_step(d: d, o: w.value)
   }
