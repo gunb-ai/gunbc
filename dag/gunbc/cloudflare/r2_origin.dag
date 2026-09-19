@@ -375,3 +375,14 @@ fn fabric_boot_origin_standing() -> R2OriginStanding {
       }
   }
 }
+
+// ONE STANDING PER PURPOSE, SELECTED BY AN EXHAUSTIVE MATCH, so a third purpose cannot be allocated
+// without stating its standing -- and every consumer that walks the allocation roster (the bucket
+// converge in gunbc.cloudflare.r2_bucket_ensure) reaches each purpose's declared jurisdiction here
+// rather than defaulting it at the call site.
+fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
+  match purpose {
+    FabricDurableOrigin {} => fabric_durable_origin_standing()
+    FabricBootOrigin {} => fabric_boot_origin_standing()
+  }
+}
