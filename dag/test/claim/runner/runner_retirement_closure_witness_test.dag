@@ -61,13 +61,22 @@ import gunbc.runner_host_retirement {
   host_retirement_obligation_basis_of,
 }
 import gunbc.build_provenance_join {
+  RunningSeedIdentityReading,
   RunningSeedIdentityRead,
   RunningSeedIdentityUnreadable,
+  DeliveredByRunBuildJob,
   join_build_provenance,
 }
-import gunbc.cli_dispatch_surface { CliCleanSourceCommit }
-import gunbc.runner_slot_retire_run { build_provenance_blockers }
+import gunbc.cli_dispatch_surface { CliCleanSourceCommit, CliDirtySourceCommit }
+import gunbc.runner_slot_retire_run {
+  build_provenance_blockers,
+  retirement_route_terminal,
+  retirement_route_terminal_is_settled,
+  RouteSettled,
+  RouteRefused,
+}
 import gunbc.runner_retirement_closure {
+  RetirementAssessmentVerdict,
   ClosureBlocker,
   PlannerSawCompleteSubject,
   PlannerRefusedAccess,
@@ -667,6 +676,7 @@ test fn an_executable_built_from_another_revision_blocks_the_assessment() -> Boo
           reading: RunningSeedIdentityRead {
             identity: CliCleanSourceCommit { commit: "7261964510969c72ab874e908e8cc3fc80b880aa" },
           },
+          route: DeliveredByRunBuildJob { workflow_path: ".github/workflows/fleet-converge.yml", job_id: "runner-slot-retire", run_id: "35416075835" },
         ),
         run_id: "35416075835",
       ),
@@ -692,6 +702,7 @@ test fn an_unobserved_executable_identity_blocks_the_assessment() -> Bool {
         verdict: join_build_provenance(
           expected: "4e6e066f88fcabe0058a683f9cb634de4f8abff3",
           reading: RunningSeedIdentityUnreadable { cause: "the running gunbc did not report its version" },
+          route: DeliveredByRunBuildJob { workflow_path: ".github/workflows/fleet-converge.yml", job_id: "runner-slot-retire", run_id: "35416296362" },
         ),
         run_id: "35416296362",
       ),
@@ -719,8 +730,98 @@ test fn an_executable_built_from_the_selected_revision_leaves_the_assessment_cle
           reading: RunningSeedIdentityRead {
             identity: CliCleanSourceCommit { commit: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" },
           },
+          route: DeliveredByRunBuildJob { workflow_path: ".github/workflows/fleet-converge.yml", job_id: "runner-slot-retire", run_id: "35416075835" },
         ),
         run_id: "35416075835",
+      ),
+    ),
+  )
+}
+
+// ── BP-1: THE PROVENANCE REFUSAL REACHES THE PROCESS TERMINAL, NOT ONLY THE RECEIPT ──────────
+//
+// Blocking the assessment is not enough if the step still exits zero: the production terminal is
+// `retirement_route_terminal(succeeded, verdict)`, the signed-off conjunction of "every required
+// subject settled" AND "the assessment is clear of blockers". These claims run that real terminal
+// over a verdict carrying the real provenance producer's blockers, with subjects SETTLED, so the
+// only thing standing between the run and ExitSuccess is the join. No local exit rule is written.
+fn settled_verdict_with_provenance(reading: RunningSeedIdentityReading) -> RetirementAssessmentVerdict {
+  retirement_assessment_verdict(
+    revision: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" as NonEmptyStr,
+    host: operator_host_srv2,
+    roster: observed_roster(),
+    required: one_required(),
+    standings: settled_standings(),
+    method_subjects: [],
+    method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+    planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+    basis: grounded_basis(),
+    obligation_population: one_required(),
+    estate: complete_estate(),
+    extra: build_provenance_blockers(
+      verdict: join_build_provenance(
+        expected: "4e6e066f88fcabe0058a683f9cb634de4f8abff3",
+        reading: reading,
+        route: DeliveredByRunBuildJob { workflow_path: ".github/workflows/fleet-converge.yml", job_id: "runner-slot-retire", run_id: "35416075835" },
+      ),
+      run_id: "35416075835",
+    ),
+  )
+}
+
+test fn a_mismatched_executable_identity_forces_a_refused_terminal_over_settled_subjects() -> Bool {
+  !retirement_route_terminal_is_settled(
+    t: retirement_route_terminal(
+      succeeded: true,
+      verdict: settled_verdict_with_provenance(
+        reading: RunningSeedIdentityRead { identity: CliCleanSourceCommit { commit: "7261964510969c72ab874e908e8cc3fc80b880aa" } },
+      ),
+    ),
+  )
+}
+
+test fn a_dirty_executable_identity_forces_a_refused_terminal_over_settled_subjects() -> Bool {
+  !retirement_route_terminal_is_settled(
+    t: retirement_route_terminal(
+      succeeded: true,
+      verdict: settled_verdict_with_provenance(
+        reading: RunningSeedIdentityRead { identity: CliDirtySourceCommit { commit: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" } },
+      ),
+    ),
+  )
+}
+
+test fn an_unobserved_executable_identity_forces_a_refused_terminal_over_settled_subjects() -> Bool {
+  !retirement_route_terminal_is_settled(
+    t: retirement_route_terminal(
+      succeeded: true,
+      verdict: settled_verdict_with_provenance(
+        reading: RunningSeedIdentityUnreadable { cause: "the running gunbc did not report its version" },
+      ),
+    ),
+  )
+}
+
+// THE POSITIVE CONTROL: a joined identity clears ONLY this obligation, and the terminal settles.
+test fn a_joined_executable_identity_lets_settled_subjects_reach_a_settled_terminal() -> Bool {
+  retirement_route_terminal_is_settled(
+    t: retirement_route_terminal(
+      succeeded: true,
+      verdict: settled_verdict_with_provenance(
+        reading: RunningSeedIdentityRead { identity: CliCleanSourceCommit { commit: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" } },
+      ),
+    ),
+  )
+}
+
+// AND ONLY THIS OBLIGATION: a joined identity over an unrelated blocker (here, unsettled required
+// subjects) does not buy a settled terminal.
+test fn a_joined_executable_identity_does_not_clear_an_unrelated_refusal() -> Bool {
+  !retirement_route_terminal_is_settled(
+    t: retirement_route_terminal(
+      succeeded: false,
+      verdict: settled_verdict_with_provenance(
+        reading: RunningSeedIdentityRead { identity: CliCleanSourceCommit { commit: "4e6e066f88fcabe0058a683f9cb634de4f8abff3" } },
       ),
     ),
   )

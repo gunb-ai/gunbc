@@ -65,6 +65,7 @@ import gunbc.fleet_workflow_steps {
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.runner_slot_retire_run {
+  runner_slot_retire_job_id,
   runner_retirement_executor_env_name,
   runner_retirement_target_env_name,
   runner_slot_retire_dispatch_mode_env,
@@ -574,7 +575,7 @@ data fleet_converge_runner_slot_retire_step_if: String = fleet_converge_mode_ste
 
 fn fleet_converge_runner_slot_retire_job() -> Job {
   Job {
-    id: "runner-slot-retire",
+    id: runner_slot_retire_job_id,
     name: none,
     runner: fleet_converge_retirement_executor_runner_spec(),
     steps: concat(

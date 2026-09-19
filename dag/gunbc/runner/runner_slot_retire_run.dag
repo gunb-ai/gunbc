@@ -108,6 +108,7 @@ import gunbc.output_policy { ExpectSuccess }
 import gunbc.build_provenance_join {
   BuildProvenanceJoin,
   observe_running_seed_identity,
+  observe_build_delivery_route,
   join_build_provenance,
   build_provenance_join_holds,
   build_provenance_join_text,
@@ -154,6 +155,11 @@ data runner_retirement_executor_env_name: String = "RUNNER_RETIREMENT_EXECUTOR"
 data runner_retirement_target_env_name: String = "RUNNER_RETIREMENT_TARGET"
 data runner_slot_retire_attempt_raw: String = "runner-slot-retire-ci"
 data runner_slot_retire_receipt_path: String = "target/runner-slot-retire-receipt.txt"
+
+// THE JOB THIS ROUTE RUNS AS, declared here and consumed by gunbc.fleet_converge_workflow for the
+// job's id, so the id the workflow emits and the id the build-provenance join expects the runner
+// to report (GITHUB_JOB) are one fact. The workflow imports this module, not the reverse.
+data runner_slot_retire_job_id: String = "runner-slot-retire"
 
 // ── THE DISPATCH ADMISSION, WHICH RUNS IN THE BUILD JOB AND NOT IN THIS ONE ──────────────────
 //
@@ -748,7 +754,11 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                 FleetSshContextRefused { cause: c } => exit_failure(reason: join(["runner_slot_retire: ", c], ""))
                 FleetSshContextReady { context: context, receipt: context_receipt } => {
                   let run = run_retirement_route(subject: subject, context: context)
-                  let provenance = join_build_provenance(expected: revision, reading: observe_running_seed_identity())
+                  let provenance = join_build_provenance(
+                    expected: revision,
+                    reading: observe_running_seed_identity(),
+                    route: observe_build_delivery_route(consumer_job_id: runner_slot_retire_job_id),
+                  )
                   let verdict = retirement_assessment_verdict(
                     revision: revision as NonEmptyStr,
                     host: subject.target,
