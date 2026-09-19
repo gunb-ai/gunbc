@@ -666,9 +666,25 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.docs_projection_gate_test",
     "test.claim.if_join_pool_binding_witness_test",
     "test.claim.runner_slot_provision",
+    "test.claim.runner_capacity_plan_witness",
+    "test.claim.runner_capacity_realize_witness",
     "test.claim.action_use_admission_witness",
   ]
 }
+
+// THE RUNNER CAPACITY PLANNER AND ITS APPLY SEAM ARE ADMITTED AT EXACT MODULE GRAIN, by the same
+// test that admitted runner_slot_provision: they are the executable statement of the convergence
+// planner -- gunbc.runner_capacity_plan is what gunbc.apply and gunbc.runner_capacity_realize
+// drive -- and their reds were invisible. On run 35439332979 (green, 2026-09-19) the disposition
+// artifact listed every identity in both modules `declined_outside_gate_closure / not_executed`
+// while two claims in the first and two in the second were FALSE on main: #11204 deleted srv2's
+// committed width and the pinned org roster's srv2 registrations stopped decoding, so the planner
+// refused every whole-org plan, and nothing asked. A partial climb under
+// `gunbc.rung_drop` `required_gate_bankruptcy`, not its retirement; the drop's trigger is unchanged.
+// Preparation growth is the two modules' closure beyond what runner_slot_provision already carries:
+// gunbc.runner_capacity_plan, gunbc.runner_capacity_realize and gunbc.fleet_runner_connectivity.
+// Both modules declare SubstrateInputsOnly and their controls run against authored rosters.
+// (No `data` note row beside this: the annotation is the record, per DESIGN 4c.)
 
 // THE ALLOCATION-TO-DEPLOY SEAM IS ADMITTED AT MODULE GRAIN, AND THE ROW THAT FORCED IT IS
 // `no_deploy_row_out_commits_the_memory_budget`.
