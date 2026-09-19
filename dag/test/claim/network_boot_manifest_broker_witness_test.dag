@@ -1,10 +1,10 @@
 module test.claim.network_boot_manifest_broker_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String, list_length }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Architecture, Aarch64, Wasm32, X86, X86_64 }
+import extdeps.toolchain.types { Architecture, X86_64, X86, Aarch64, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
 import extdeps.provisioning.network_boot { UefiHttpBoot, LegacyBiosPxe }
 import extdeps.uri { uri_https }
 import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_implementation }
@@ -36,6 +36,7 @@ import gunbc.network_boot_delivery {
 import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.network_boot_manifest_broker {
+  boot_manifest_architecture_token,
   network_boot_manifest_broker_frontier_rows,
   SignedBootManifestClaims,
   SignedBootManifestTicket,
@@ -462,6 +463,16 @@ test fn x86_ticket_does_not_redeem_as_x86_64() -> Bool {
       }
     BootManifestIssuanceRefused { cause: _ } => false
   }
+}
+
+data every_architecture: List<Architecture> = [X86_64, X86, Aarch64, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32]
+
+// The signing token must be one-to-one over the variant, or two identities
+// differing only in architecture share a preimage.
+test fn architecture_signing_token_is_injective() -> Bool {
+  let tokens = every_architecture |> map(a => boot_manifest_architecture_token(arch: a) as String)
+  list_length(tokens) == 11
+    && all(tokens, t => list_length(tokens |> filter(u => u == t)) == 1)
 }
 
 fn broker_census_has_frontier_subject(row: FrontierRow) -> Bool {
