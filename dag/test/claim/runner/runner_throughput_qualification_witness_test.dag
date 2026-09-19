@@ -333,7 +333,7 @@ fn owned_route() -> ProviderRoute {
   ProviderRoute {
     provider: decl_ref(module_path: "gunbc.fleet_intent_network", decl_name: "operator_host_mtcollins1"),
     service: decl_ref(module_path: "gunbc.fabric_witness_run", decl_name: "floor_execution_requirements"),
-    region: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_hostname_allocations"),
+    region: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
   }
 }
 
