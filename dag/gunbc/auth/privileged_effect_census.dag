@@ -1,0 +1,552 @@
+module gunbc.auth.privileged_effect_census
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key, declaration_ref_in_list }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision }
+import gunbc.spark.bootstrap_provision {
+  fleet_cloud_principal_standing,
+  CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
+}
+import gunbc.cloudflare.r2_token_mint { cloudflare_account_token_bootstrap_intervention }
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ProviderSurface, ApiSurface, HumanSurfaceOnly,
+  WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
+  MintsNoCredential, MintsResourceScopedCredential, MintsProjectWideCredential,
+  ReversibleByReapply, IrreversibleEffect,
+  BillsExternally, NoBillingConsequence,
+  AuthorizationPattern, FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep,
+  OperatorOwnSession, PastedOperatorToken,
+  AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
+  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
+  select_authorization_pattern, selection_text, pattern_label,
+}
+
+// ── EVERY PRIVILEGED-EFFECT SITE IN dag/, CLASSIFIED BY EXECUTING THE SELECTION ──────────────
+//
+// THE VERDICT IS DERIVED, NOT AUTHORED. Each row supplies the site (module and symbol), the
+// effect's characteristics, and what the site REALIZES today; the fold runs
+// gunbc.auth.authorization_pattern_selection over the characteristics and compares. A row's author
+// may state a reason for a divergence; the author may not state the verdict. That is §3b's
+// three-valued answer made mechanical: conforms when the realized pattern is the selected one;
+// diverges-with-reason when they differ and the row says why; diverges when they differ and the
+// row is silent. Only the third is red, and the witness makes it red.
+//
+// THE POPULATION IS THE SITES THAT CHOOSE A CREDENTIAL. Kernels parameterized by a token source
+// (gunbc.auth.gcp_secret_access secret_access_ensure_for, gunbc.auth.secret_ref_credential
+// fetch_secret_ref_credential, gunbc.auth.secret_rotation, gunbc.secret_provision_actuator,
+// gunbc.fleet_printer_access) choose nothing and are not rows; the entries that bind their
+// token_source are. Module names below were read from each file's `module` line, not from its path
+// (gunbc.fleet_printer_access lives under dag/gunbc/fleet/ and is not gunbc.fleet.*).
+//
+// COMPLETENESS IS NOT CLAIMED BY THIS ROSTER. The population was enumerated by grepping every
+// gcp.SecretManager.*, gcp.STS.*, gcp.IAM.*, shell.GCloud.*, cloudflare.AccountTokens.* and
+// access_token_source consumer in dag/ on 2026-09-19; a discovery join that refuses an unrostered
+// site is the next rung, and it is the same trigger gunbc.host_convergence_census names for itself.
+
+// WHAT A SITE REALIZES TODAY, read off its token-source binding.
+//   RealizedRunSelected -- gunbc.auth.access_token_source select_access_token_source /
+//     resolve_access_token: the federated arm in a dispatched run, the operator's file in a session.
+//     Classified as the federated pattern, because that is the arm that executes unattended and the
+//     file arm is the operator's own workstation realization of the same entry.
+type OperatorSessionArm
+  = GcloudInteractive
+  | OperatorTokenFile
+
+type RealizedAuthorization
+  = RealizedFederatedGrant
+  | RealizedRunSelected
+  | RealizedApprovalCapability
+  | RealizedHumanStep
+  | RealizedOperatorSession { arm: OperatorSessionArm }
+
+type PrivilegedEffectSite {
+  site: DeclarationRef
+  effect: PrivilegedEffect
+  realized: RealizedAuthorization
+  divergence_reason: NonEmptyStr?
+}
+
+type SiteConformance
+  = Conforms
+  | DivergesWithReason { reason: NonEmptyStr }
+  | Diverges
+  | SiteNotDecidable { standing: AuthorizationPatternSelection }
+
+type SiteVerdict {
+  site: DeclarationRef
+  selection: AuthorizationPatternSelection
+  conformance: SiteConformance
+}
+
+fn realized_matches(selected: AuthorizationPattern, realized: RealizedAuthorization) -> Bool {
+  match selected {
+    FederatedScopedGrant =>
+      match realized {
+        RealizedFederatedGrant => true
+        RealizedRunSelected => true
+        RealizedApprovalCapability => false
+        RealizedHumanStep => false
+        RealizedOperatorSession { arm: _ } => false
+      }
+    OperatorApprovedCapability =>
+      match realized {
+        RealizedApprovalCapability => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedHumanStep => false
+        RealizedOperatorSession { arm: _ } => false
+      }
+    HumanOnlyStep { step: _ } =>
+      match realized {
+        RealizedHumanStep => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedApprovalCapability => false
+        RealizedOperatorSession { arm: _ } => false
+      }
+    OperatorOwnSession =>
+      match realized {
+        RealizedOperatorSession { arm: _ } => true
+        RealizedFederatedGrant => false
+        RealizedRunSelected => false
+        RealizedApprovalCapability => false
+        RealizedHumanStep => false
+      }
+    PastedOperatorToken => false
+  }
+}
+
+fn divergence(row: PrivilegedEffectSite) -> SiteConformance {
+  match row.divergence_reason {
+    Present { value: r } => DivergesWithReason { reason: r }
+    Absent => Diverges
+  }
+}
+
+fn site_conformance(row: PrivilegedEffectSite, selection: AuthorizationPatternSelection) -> SiteConformance {
+  match selection {
+    PatternSelected { pattern: p, receipt: _ } =>
+      if realized_matches(selected: p, realized: row.realized) { Conforms } else { divergence(row: row) }
+    ManualStepRequired { step: s, receipt: _ } =>
+      if realized_matches(selected: HumanOnlyStep { step: s }, realized: row.realized) { Conforms } else { divergence(row: row) }
+    NoAdmissiblePattern { causes: _, scope: _ } => SiteNotDecidable { standing: selection }
+    PatternSelectionNeedsEvidence { needs: _ } => SiteNotDecidable { standing: selection }
+    PatternSelectionNeedsPolicy { survivors: _ } => SiteNotDecidable { standing: selection }
+    PatternSelectionRefused { defects: _ } => SiteNotDecidable { standing: selection }
+  }
+}
+
+fn site_verdict(row: PrivilegedEffectSite) -> SiteVerdict {
+  let selection = select_authorization_pattern(e: row.effect)
+  SiteVerdict { site: row.site, selection: selection, conformance: site_conformance(row: row, selection: selection) }
+}
+
+// ── Shared characteristics ───────────────────────────────────────────────────────────────────
+fn site(module_path: String, decl_name: String) -> DeclarationRef {
+  decl_ref(module_path: module_path, decl_name: decl_name)
+}
+
+// THE MEMBER IS RESOLVED FROM THE STANDING, never spelled: an unallocated principal is an
+// unbindable identity, which is the truthful input to the selection rather than a member string
+// that cannot exist (the same refusal gunbc.auth.gcp_secret_access makes before writing a policy).
+fn convergence_principal() -> WorkloadIdentityStanding {
+  match fleet_cloud_principal_standing() {
+    CloudPrincipalAllocated { principal: _, member: m, readback: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
+    CloudPrincipalReported { principal: _, reported_member: m, source: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
+    CloudPrincipalUnallocated { principal: _ } =>
+      WorkloadIdentityUnbindable { cause: "no allocated member is recorded for the fleet cloud principal" as NonEmptyStr }
+  }
+}
+
+// THE GRANT ADMINISTRATOR IS UNBINDABLE BY CONSTRUCTION, not by omission: a principal that can both
+// grant and read escalates itself to every secret in the project.
+data grant_administrator_unbindable: WorkloadIdentityStanding = WorkloadIdentityUnbindable {
+  cause: "setIamPolicy is FleetCloudGrantAdministrator's operation and the workload may not hold it (gunbc.auth.gcp_secret_access no_principal_can_both_grant_and_read)" as NonEmptyStr,
+}
+
+// A credential READ that a converge performs every time it runs.
+fn recurring_credential_read(subject: NonEmptyStr) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: subject,
+    frequency: EveryProvision,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: convergence_principal(),
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+  }
+}
+
+// A one-off accessor-cell grant (getIamPolicy + setIamPolicy on one secret).
+fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: subject,
+    frequency: FleetOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: grant_administrator_unbindable,
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+  }
+}
+
+// THE DIVERGENCE REASONS THAT RECUR, each stated once.
+data interim_gcp_iam_adapter_unlanded: NonEmptyStr = "the approval loop's authority adapter for GCP IAM and Secret Manager effects is not landed on main (gunbc#11484 carries the first executing consumer, mtcollins1_boot); until it lands the grant administrator's own session on the grant administrator's own workstation is the interim realization, and relaying that token through chat or a message is the refused pattern" as NonEmptyStr
+
+data interim_cloudflare_adapter_unlanded: NonEmptyStr = "the approval loop has no authority adapter for Cloudflare account-token mints; the operator's workflow_dispatch of the mint stood as the informal witness on 2026-09-19, and the token this run resolved in a session was relayed into its file from chat -- the refused pattern, invisible to the file arm" as NonEmptyStr
+
+data approval_bootstrap_circularity: NonEmptyStr = "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17" as NonEmptyStr
+
+data workstation_wet_run_frontier: NonEmptyStr = "gunbc.spark.credential_workflow spark_credential_access_token_frontier_note (2026-08-13) wired GcloudPrintToken for operator-workstation wet runs because no federated arm existed; the WorkloadIdentityToken arm has since landed, so this reason's trigger has fired and the site should move to resolve_access_token" as NonEmptyStr
+
+data eager_bootstrap_fork_declared: NonEmptyStr = "gunbc.auth.access_token_source ensure_access_token_eager_bootstrap_fork_dissolve_on declares this eager gcloud call as a §3 fork with its dissolution condition" as NonEmptyStr
+
+// ── The roster ───────────────────────────────────────────────────────────────────────────────
+data privileged_effect_census: List<PrivilegedEffectSite> = [
+  // (a) exemplars: dispatched runs under the federated identity.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.patterns", decl_name: "credential_chain"),
+    effect: recurring_credential_read(subject: "GitHub OIDC -> STS exchange -> Secret Manager AccessVersion for a workflow credential" as NonEmptyStr),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.heal_publisher_federation", decl_name: "heal_publisher_wif_pool"),
+    effect: recurring_credential_read(subject: "heal publisher reads the gunbai-bot App key under its own pool and provider" as NonEmptyStr),
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
+    effect: PrivilegedEffect {
+      subject: "mint a GitHub App installation token from the App key fetched over WIF, then generate a JIT runner config" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  // Run-selected reads: federated in a dispatched run, the operator's own file in a session.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.tools.bmc_health_reader_converge", decl_name: "bmc_health_reader_converge"),
+    effect: recurring_credential_read(subject: "BMC health reader credential read" as NonEmptyStr),
+    realized: RealizedRunSelected,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential_selected"),
+    effect: PrivilegedEffect {
+      subject: "converge a BMC credential: add a version, read it back, apply it to the BMC" as NonEmptyStr,
+      frequency: DeviceOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedRunSelected,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.r2_permission_group_observe", decl_name: "observe_account_permission_groups_standing"),
+    effect: recurring_credential_read(subject: "read the Cloudflare bootstrap token to list permission groups" as NonEmptyStr),
+    realized: RealizedRunSelected,
+    divergence_reason: none,
+  },
+  // THE TRIGGER. Irreversible, value-returned-once, so a human witnesses it; the run resolved the
+  // federated arm when dispatched and a relayed token in a session.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "r2_mint_bootstrap"),
+    effect: PrivilegedEffect {
+      subject: "cloudflare.AccountTokens.Create for an R2 origin token, then AddVersion into custody" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: IrreversibleEffect { what_is_lost: "a token minted and not stored exists on the account with nobody holding it" as NonEmptyStr },
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedRunSelected,
+    divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
+  },
+  // One-off accessor-cell grants: the grant administrator's session, never the workload.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.r2_mint_secret_access", decl_name: "r2_mint_bootstrap_read_access_converge"),
+    effect: accessor_grant(subject: "the four R2 mint cells (bootstrap read, container read, version add, readback)" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.fleet_secret_accessor_roster", decl_name: "fleet_accessor_grants_converge_with_supplied_token"),
+    effect: accessor_grant(subject: "the fleet accessor roster: spark administrator password, mtcollins1 BMC credential, both approval MAC keys" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.secret_access_ensure", decl_name: "spark_secret_access_converge"),
+    effect: accessor_grant(subject: "spark administrator password accessor cell (interactive entry)" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.org_actions_converge", decl_name: "org_admin_app_key_access_converge_with_supplied_token"),
+    effect: accessor_grant(subject: "gunbai-ci App key accessor cell" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "heal_publisher_federation_provision_with_supplied_token"),
+    effect: PrivilegedEffect {
+      subject: "create the heal publisher's pool, provider and service account, then bind its one accessor cell" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.approval_mac_key_provision", decl_name: "provision_approval_mac_keys"),
+    effect: PrivilegedEffect {
+      subject: "create the two approval MAC key secrets, add their first versions, bind their accessor cells" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: Present { value: approval_bootstrap_circularity },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.printer_credential_migration_run", decl_name: "run"),
+    effect: PrivilegedEffect {
+      subject: "migrate a printer credential: GetSecret on the old and new containers, DeleteSecret on the old" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: IrreversibleEffect { what_is_lost: "the deleted secret and every version under it" as NonEmptyStr },
+      surface: ApiSurface,
+      workload_identity: grant_administrator_unbindable,
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: Present { value: interim_gcp_iam_adapter_unlanded },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),
+    effect: PrivilegedEffect {
+      subject: "deliver a printer credential: read the fleet printer secret and write it to the host" as NonEmptyStr,
+      frequency: DeviceOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: none,
+  },
+  // Interactive gcloud bound at the call site: the binding gunbc.auth.access_token_source names as
+  // "not a selection". The federated arm now exists, so each of these is a follow-up.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
+    effect: recurring_credential_read(subject: "BMC credential read for the fan converge" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
+    effect: recurring_credential_read(subject: "srv3 BMC login password read" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),
+    effect: PrivilegedEffect {
+      subject: "read the spark administrator password before applying managed access over SSH" as NonEmptyStr,
+      frequency: DeviceOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: Present { value: workstation_wet_run_frontier },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
+    effect: recurring_credential_read(subject: "read the in-run fleet key for a read-only multi-principal probe" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: Present { value: workstation_wet_run_frontier },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "tools.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
+    effect: recurring_credential_read(subject: "read the R2 origin credential for the M0 origin-object probe" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: OperatorTokenFile },
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
+    effect: PrivilegedEffect {
+      subject: "srv3/srv4 onboarding credential converge on the interactive entries" as NonEmptyStr,
+      frequency: DeviceOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.assimilate.bmc_bootstrap_provision", decl_name: "bmc_bootstrap_provision_srv3"),
+    effect: accessor_grant(subject: "srv3 BMC secret IAM bindings, written on every run (the known converge bypass)" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: Present { value: eager_bootstrap_fork_declared },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.credentials", decl_name: "gcp_secret_credential"),
+    effect: recurring_credential_read(subject: "eager gcloud print-access-token then AccessVersion (legacy pattern)" as NonEmptyStr),
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.gcp_estate_read_instrument", decl_name: "gcloud_read_argv"),
+    effect: PrivilegedEffect {
+      subject: "estate reads: projects, services, IAM policies, pools, providers, keys" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: WorkloadIdentityUnbindable { cause: "no fleet service account holds organization-wide read; the operator's identity is the only reader" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedOperatorSession { arm: GcloudInteractive },
+    divergence_reason: none,
+  },
+  // (c) exemplar: the Cloudflare bootstrap token has no API.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "cloudflare_account_token_bootstrap_intervention"),
+    effect: PrivilegedEffect {
+      subject: "create the account-owned bootstrap API token in the Cloudflare dashboard" as NonEmptyStr,
+      frequency: FleetOnce,
+      reversibility: IrreversibleEffect { what_is_lost: "the value is shown once" as NonEmptyStr },
+      surface: HumanSurfaceOnly { step: cloudflare_account_token_bootstrap_intervention() },
+      workload_identity: WorkloadIdentityUnbindable { cause: "no API creates an account-owned token without an existing one" as NonEmptyStr },
+      minted_reach: MintsProjectWideCredential,
+      billing: NoBillingConsequence,
+    },
+    realized: RealizedHumanStep,
+    divergence_reason: none,
+  },
+]
+
+// ── THE FOLLOW-UPS, RANKED, AS A MONOTONE DEBT CONTRACT AT IDENTITY GRAIN ────────────────────
+// The unreasoned divergences the census finds today are rostered here BY SITE IDENTITY and in the
+// order they should be worked (widest credential first, then the recurring reads bound to an
+// interactive session). The witness joins this roster against the census in both directions: a new
+// site that diverges with no reason and is not rostered is red, and a rostered site that no longer
+// diverges is red until its row is removed with the migration that fixed it. That is DESIGN §5's
+// admitted debt shape -- an independently enumerated, closed subject universe, membership at
+// identity grain, every removal carried by the change that earns it -- and not a count.
+data follow_up_sites: List<DeclarationRef> = [
+  site(module_path: "gunbc.gcp_estate_read_instrument", decl_name: "gcloud_read_argv"),
+  site(module_path: "gunbc.auth.credentials", decl_name: "gcp_secret_credential"),
+  site(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
+  site(module_path: "gunbc.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
+  site(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
+  site(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),
+  site(module_path: "tools.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
+]
+
+// ── Consumers ────────────────────────────────────────────────────────────────────────────────
+fn census_verdicts() -> List<SiteVerdict> {
+  map(privileged_effect_census, row => site_verdict(row: row))
+}
+
+fn verdict_is_unreasoned_divergence(v: SiteVerdict) -> Bool {
+  match v.conformance {
+    Diverges => true
+    Conforms => false
+    DivergesWithReason { reason: _ } => false
+    SiteNotDecidable { standing: _ } => false
+  }
+}
+
+fn verdict_is_undecidable(v: SiteVerdict) -> Bool {
+  match v.conformance {
+    SiteNotDecidable { standing: _ } => true
+    Conforms => false
+    DivergesWithReason { reason: _ } => false
+    Diverges => false
+  }
+}
+
+fn unreasoned_divergences() -> List<SiteVerdict> {
+  filter(census_verdicts(), v => verdict_is_unreasoned_divergence(v: v))
+}
+
+fn undecidable_sites() -> List<SiteVerdict> {
+  filter(census_verdicts(), v => verdict_is_undecidable(v: v))
+}
+
+fn conformance_text(c: SiteConformance) -> String {
+  match c {
+    Conforms => "conforms"
+    DivergesWithReason { reason: r } => concat("diverges with reason: ", r as String)
+    Diverges => "DIVERGES (no reason stated)"
+    SiteNotDecidable { standing: s } => concat("not decidable: ", selection_text(s: s))
+  }
+}
+
+fn verdict_line(v: SiteVerdict) -> String {
+  join([
+    declaration_ref_display_key(ref: v.site), " | ", selection_text(s: v.selection), " | ", conformance_text(c: v.conformance),
+  ], "")
+}
+
+fn render_census() -> String {
+  join(map(census_verdicts(), v => verdict_line(v: v)), "\n")
+}
+
+// THE IDENTITY JOIN between what the census finds unreasoned and what the follow-up roster admits.
+// Both directions: a found site the roster does not name is undeclared debt; a rostered site the
+// census no longer finds is a paid debt whose row was not retired.
+fn unrostered_unreasoned_divergences() -> List<DeclarationRef> {
+  filter(map(unreasoned_divergences(), v => v.site), s => !declaration_ref_in_list(target: s, refs: follow_up_sites))
+}
+
+fn rostered_but_not_diverging() -> List<DeclarationRef> {
+  let found = map(unreasoned_divergences(), v => v.site)
+  filter(follow_up_sites, s => !declaration_ref_in_list(target: s, refs: found))
+}
+
+// THE GATE, runnable as an entry: `gunbc run --source-root dag --source-root src/v2 --entry
+// dag/gunbc/auth/privileged_effect_census.dag --function census_gate`. Exit 0 when every site is
+// decidable and the follow-up join holds; otherwise the rendered census is the reason.
+fn census_gate() -> ProcessExit {
+  let undecidable = undecidable_sites()
+  let unrostered = unrostered_unreasoned_divergences()
+  let stale = rostered_but_not_diverging()
+  if (undecidable |> count) == 0 && (unrostered |> count) == 0 && (stale |> count) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join([
+      "privileged effect census: undecidable=", to_string((undecidable |> count)),
+      " unrostered-unreasoned=", to_string((unrostered |> count)),
+      " rostered-but-conforming=", to_string((stale |> count)),
+      "\n", render_census(),
+    ], ""))
+  }
+}
