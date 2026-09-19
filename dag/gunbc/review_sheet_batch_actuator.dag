@@ -70,13 +70,16 @@ import gunbc.review_sheet_values_actuator {
 // here checks that the plan came from review_sheet_ensure rather than from a hand, because a
 // TabBoundWritePlan is an ordinary record and the corpus cannot yet make its constructor private.
 //
-// MUTATION STANDING IS A SUM, AND AMBIGUOUS IS NOT REFUSED. extdeps.transports.rest already rules
-// that a mutation with no response, a 5xx, or an undecodable body is RestExchangeCommitAmbiguous:
-// the write may have landed. This module consumes that ruling rather than re-deciding it, so the
-// only arm in which the sheet is known untouched by CONSTRUCTION is BatchNotIssued -- the plan
-// could not be lowered and no request was built. A 4xx is BatchRefused, the remote's decision
-// before committing. Committed and CommitAmbiguous both oblige a re-read, and the receipt below
-// keeps the ambiguity beside a converged readback rather than laundering it into a plain success.
+// MUTATION STANDING IS TWO LEVELS, AND THE LEVELS ARE THE POINT. extdeps.transports.rest already
+// rules that a mutation with no response, a 5xx, or an undecodable body is
+// RestExchangeCommitAmbiguous: the write may have landed. This module consumes that ruling rather
+// than re-deciding it. The top level says whether the sheet MAY have changed: BatchMayHaveCommitted
+// carries a BatchCommitStanding (committed, or ambiguous), and both oblige a fresh read;
+// BatchDidNotCommit carries a BatchNonCommitStanding (a 4xx decision before commit, or a plan that
+// could not be lowered so nothing was sent -- the one arm in which the sheet is untouched by
+// CONSTRUCTION). The receipt's verified and unverified arms take a BatchCommitStanding and nothing
+// wider, so "refused, but the readback converged" is not a value this module can build: an earlier
+// cut matched only the readback and would have minted WriteVerifiedConverged over a refused write.
 //
 // VERIFICATION IS A WHOLE-TAB REASSESSMENT, NOT A PER-RANGE ECHO. Reading back each written range
 // and comparing it to what was sent proves the request was applied; it does not prove the sheet
@@ -113,23 +116,36 @@ fn batch_values_request(spreadsheet_id: NonEmptyStr, bound: TabBoundWritePlan) -
   }
 }
 
-type BatchMutationStanding
+type BatchCommitStanding
   = BatchCommitted { total_updated_cells: Int? }
-  | BatchRefused { status: HttpStatus, body: String }
-  | BatchNotIssued { refusals: List<WritePlanRefusal> }
   | BatchCommitAmbiguous { detail: NonEmptyStr }
+
+type BatchNonCommitStanding
+  = BatchRefused { status: HttpStatus, body: String }
+  | BatchNotIssued { refusals: List<WritePlanRefusal> }
+
+type BatchMutationStanding
+  = BatchMayHaveCommitted { commit: BatchCommitStanding }
+  | BatchDidNotCommit { cause: BatchNonCommitStanding }
 
 fn perform_batch_write(
   spreadsheet_id: NonEmptyStr,
   bound: TabBoundWritePlan,
 ) -> BatchMutationStanding uses net: Network {
   match batch_values_request(spreadsheet_id: spreadsheet_id, bound: bound) {
-    BatchRequestUnlowerable { refusals: rs } => BatchNotIssued { refusals: rs }
+    BatchRequestUnlowerable { refusals: rs } => BatchDidNotCommit { cause: BatchNotIssued { refusals: rs } }
     BatchRequestBuilt { request: req } => issue_batch_request(request: req)
   }
 }
 
-fn issue_batch_request(request: BatchValuesRequest) -> BatchMutationStanding uses net: Network {
+// SEALED TO ITS ONE CALLER. This is the function that puts bytes on the wire, and it takes the
+// request record; unsealed, any module could build a BatchValuesRequest of its own ranges and skip
+// lower_write_plan. admit_callers confines the call edge to perform_batch_write, which takes only a
+// plan, so the only route to the wire runs through the lowering. The witness compiles an outside
+// caller and asserts ConstructorCallAdmissionRefused at this callee by name.
+fn issue_batch_request(request: BatchValuesRequest) -> BatchMutationStanding uses net: Network admit_callers: [
+  decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "perform_batch_write")
+] {
   let written = sheets.Spreadsheets.BatchUpdateValues(
     spreadsheet_id: request.spreadsheet_id as String,
     value_input_option: request.value_input_option,
@@ -137,60 +153,72 @@ fn issue_batch_request(request: BatchValuesRequest) -> BatchMutationStanding use
     include_values_in_response: false,
   )
   match classify_rest_outcome(standing: RestMutationExchange { rest: written.outcome }) {
-    RestExchangeSucceeded => BatchCommitted { total_updated_cells: written.total_updated_cells }
-    RestExchangeStatusRefused { status, body } => BatchRefused { status: status, body: body }
-    RestExchangeCommitAmbiguous { detail } => BatchCommitAmbiguous { detail: detail }
+    RestExchangeSucceeded =>
+      BatchMayHaveCommitted { commit: BatchCommitted { total_updated_cells: written.total_updated_cells } }
+    RestExchangeStatusRefused { status, body } =>
+      BatchDidNotCommit { cause: BatchRefused { status: status, body: body } }
+    RestExchangeCommitAmbiguous { detail } =>
+      BatchMayHaveCommitted { commit: BatchCommitAmbiguous { detail: detail } }
     RestExchangeUnreached { cause } =>
-      BatchCommitAmbiguous {
-        detail: join(["classify_rest_outcome answered Unreached for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+      BatchMayHaveCommitted {
+        commit: BatchCommitAmbiguous {
+          detail: join(["classify_rest_outcome answered Unreached for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+        }
       }
     RestExchangeUndecodable { status, cause } =>
-      BatchCommitAmbiguous {
-        detail: join(["classify_rest_outcome answered Undecodable(", to_string(status), ") for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+      BatchMayHaveCommitted {
+        commit: BatchCommitAmbiguous {
+          detail: join(["classify_rest_outcome answered Undecodable(", to_string(status), ") for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+        }
       }
   }
 }
 
-fn batch_mutation_obliges_readback(standing: BatchMutationStanding) -> Bool {
+// THE DISPATCH AFTER THE MUTATION, pure: a standing that may have committed owes a readback and
+// hands the commit standing forward; one that did not is settled here, with no read.
+type WriteDispatch
+  = ReadbackOwed { commit: BatchCommitStanding }
+  | ReceiptSettled { receipt: ReviewSheetWriteReceipt }
+
+fn write_dispatch(standing: BatchMutationStanding) -> WriteDispatch {
   match standing {
-    BatchCommitted { total_updated_cells: _ } => true
-    BatchCommitAmbiguous { detail: _ } => true
-    BatchRefused { status: _, body: _ } => false
-    BatchNotIssued { refusals: _ } => false
+    BatchMayHaveCommitted { commit: c } => ReadbackOwed { commit: c }
+    BatchDidNotCommit { cause: k } => ReceiptSettled { receipt: WriteNotCommitted { cause: k } }
   }
 }
 
 type ReviewSheetWriteReceipt
-  = WriteVerifiedConverged { mutation_standing: BatchMutationStanding, observed: ObservedSheet }
+  = WriteVerifiedConverged { commit: BatchCommitStanding, observed: ObservedSheet }
   | WriteUnverified {
-      mutation_standing: BatchMutationStanding
+      commit: BatchCommitStanding
       readback_assessment: ReviewSheetEnsureAssessment
     }
-  | WriteNotCommitted { mutation_standing: BatchMutationStanding }
+  | WriteNotCommitted { cause: BatchNonCommitStanding }
 
-// THE PURE HALF OF VERIFICATION: given the mutation standing and the fresh whole-tab assessment,
-// decide. Converged is the only success. A Committed or CommitAmbiguous standing rides inside
-// the receipt either way, so a consumer that wants to know whether the success rests on an
-// ambiguous commit reads it there.
+// THE PURE HALF OF VERIFICATION: given a commit standing and the fresh whole-tab assessment,
+// decide. Converged is the only success. Committed or CommitAmbiguous rides inside the receipt
+// either way, so a consumer that wants to know whether the success rests on an ambiguous commit
+// reads it there. A refused or not-issued write cannot reach this function: its input is
+// BatchCommitStanding, and write_dispatch settles the other level without a read.
 fn review_sheet_write_receipt(
-  mutation_standing: BatchMutationStanding,
+  commit: BatchCommitStanding,
   readback_assessment: ReviewSheetEnsureAssessment,
 ) -> ReviewSheetWriteReceipt {
   match readback_assessment {
     ReviewSheetProjectionClassified { observed: o, tab: _, classification: c } =>
       match c {
-        ReviewSheetConverged => WriteVerifiedConverged { mutation_standing: mutation_standing, observed: o }
+        ReviewSheetConverged => WriteVerifiedConverged { commit: commit, observed: o }
         ReviewSheetNeedsWrite { plan: _ } =>
-          WriteUnverified { mutation_standing: mutation_standing, readback_assessment: readback_assessment }
+          WriteUnverified { commit: commit, readback_assessment: readback_assessment }
         ReviewSheetConflict { conflict: _ } =>
-          WriteUnverified { mutation_standing: mutation_standing, readback_assessment: readback_assessment }
+          WriteUnverified { commit: commit, readback_assessment: readback_assessment }
         ReviewSheetUnreadable { reason: _ } =>
-          WriteUnverified { mutation_standing: mutation_standing, readback_assessment: readback_assessment }
+          WriteUnverified { commit: commit, readback_assessment: readback_assessment }
       }
     ReviewSheetRequestRejected { cause: _ } =>
-      WriteUnverified { mutation_standing: mutation_standing, readback_assessment: readback_assessment }
+      WriteUnverified { commit: commit, readback_assessment: readback_assessment }
     ReviewSheetReadbackRejected { reason: _ } =>
-      WriteUnverified { mutation_standing: mutation_standing, readback_assessment: readback_assessment }
+      WriteUnverified { commit: commit, readback_assessment: readback_assessment }
   }
 }
 
@@ -227,34 +255,38 @@ fn write_and_verify_review_sheet(
   projection: ReviewSheetProjection,
   erasures: List<DerivedPayloadErasure>,
 ) -> ReviewSheetWriteReceipt uses net: Network {
-  let standing = perform_batch_write(spreadsheet_id: spreadsheet_id, bound: bound)
-  if batch_mutation_obliges_readback(standing: standing) {
-    review_sheet_write_receipt(
-      mutation_standing: standing,
-      readback_assessment: reassess_after_write(
-        spreadsheet_id: spreadsheet_id,
-        tab: bound.tab,
-        projection: projection,
-        erasures: erasures,
-      ),
-    )
-  } else {
-    WriteNotCommitted { mutation_standing: standing }
+  match write_dispatch(standing: perform_batch_write(spreadsheet_id: spreadsheet_id, bound: bound)) {
+    ReceiptSettled { receipt: r } => r
+    ReadbackOwed { commit: c } =>
+      review_sheet_write_receipt(
+        commit: c,
+        readback_assessment: reassess_after_write(
+          spreadsheet_id: spreadsheet_id,
+          tab: bound.tab,
+          projection: projection,
+          erasures: erasures,
+        ),
+      )
   }
 }
 
-fn batch_mutation_standing_text(standing: BatchMutationStanding) -> String {
-  match standing {
+fn batch_commit_standing_text(commit: BatchCommitStanding) -> String {
+  match commit {
     BatchCommitted { total_updated_cells: n } =>
       match n {
         Present { value: c } => join(["values.batchUpdate committed, ", to_string(c), " cells updated"], "")
         Absent => "values.batchUpdate committed, no cell count reported"
       }
+    BatchCommitAmbiguous { detail: d } => join(["values.batchUpdate left the write ambiguous: ", d as String], "")
+  }
+}
+
+fn batch_non_commit_standing_text(cause: BatchNonCommitStanding) -> String {
+  match cause {
     BatchRefused { status: s, body: b } =>
       join(["values.batchUpdate refused with status ", to_string(s), ": ", b], "")
     BatchNotIssued { refusals: rs } =>
       join(["the plan could not be lowered, nothing was sent: ", join(map(rs, r => write_plan_refusal_text(refusal: r)), "; ")], "")
-    BatchCommitAmbiguous { detail: d } => join(["values.batchUpdate left the write ambiguous: ", d as String], "")
   }
 }
 
@@ -275,11 +307,11 @@ fn readback_assessment_text(a: ReviewSheetEnsureAssessment) -> String {
 
 fn review_sheet_write_receipt_text(receipt: ReviewSheetWriteReceipt) -> String {
   match receipt {
-    WriteVerifiedConverged { mutation_standing: s, observed: _ } =>
-      join(["VERIFIED by whole-tab reassessment (", batch_mutation_standing_text(standing: s), ")"], "")
-    WriteUnverified { mutation_standing: s, readback_assessment: a } =>
-      join(["UNVERIFIED: ", batch_mutation_standing_text(standing: s), "; readback: ", readback_assessment_text(a: a)], "")
-    WriteNotCommitted { mutation_standing: s } => join(["NOT COMMITTED: ", batch_mutation_standing_text(standing: s)], "")
+    WriteVerifiedConverged { commit: c, observed: _ } =>
+      join(["VERIFIED by whole-tab reassessment (", batch_commit_standing_text(commit: c), ")"], "")
+    WriteUnverified { commit: c, readback_assessment: a } =>
+      join(["UNVERIFIED: ", batch_commit_standing_text(commit: c), "; readback: ", readback_assessment_text(a: a)], "")
+    WriteNotCommitted { cause: k } => join(["NOT COMMITTED: ", batch_non_commit_standing_text(cause: k)], "")
   }
 }
 
@@ -287,7 +319,7 @@ fn review_sheet_write_receipt_text(receipt: ReviewSheetWriteReceipt) -> String {
 // strategy.buyer_review_live (H2), whose write permit wraps perform_batch_write; it cannot live in
 // this repository because the buyer roster is private. Until it lands, every declaration on the
 // network route below is a declared frontier: consumed by a named consumer in a named later
-// change. The pure folds -- lower_write_plan, batch_values_request, review_sheet_write_receipt --
+// change. The pure folds -- lower_write_plan, batch_values_request, write_dispatch, review_sheet_write_receipt --
 // are executed by test.claim.review_sheet_converge_witness and are not rows here.
 //
 // WHY review_sheet_converge_cli DOES NOT CONSUME THIS TODAY. That entry point converges the

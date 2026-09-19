@@ -35,7 +35,11 @@ import gunbc.review_sheet_sheets {
   WritePlanRefusal,
   EmptyWritePlan,
   TabTitleUnquotable,
+  PatchMalformed,
+  PatchColumnUnreadable,
+  PatchRowBelowOrigin,
   AppendRunMalformed,
+  AppendRunRowBelowOrigin,
   AppendRunSpanNotOneRow,
   AppendRunOffListingRow,
   AppendRunSpanColumnUnreadable,
@@ -52,21 +56,32 @@ import gunbc.review_sheet_batch_actuator {
   BatchRequestBuilt,
   BatchRequestUnlowerable,
   BatchMutationStanding,
+  BatchMayHaveCommitted,
+  BatchDidNotCommit,
+  BatchCommitStanding,
   BatchCommitted,
+  BatchCommitAmbiguous,
+  BatchNonCommitStanding,
   BatchRefused,
   BatchNotIssued,
-  BatchCommitAmbiguous,
-  batch_mutation_obliges_readback,
+  write_dispatch,
+  ReadbackOwed,
+  ReceiptSettled,
   review_sheet_write_receipt,
   WriteVerifiedConverged,
   WriteUnverified,
   WriteNotCommitted,
 }
 import extdeps.google.sheets { ValueRange, ValueRangeWrite, InputRaw, InputUserEntered }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_count_at_key,
+}
 
-// THE SUBJECT IS THREE PURE INTERFACES: the lowering (plan -> ranges), the request build
-// (plan -> one batch request), and the receipt (mutation standing x whole-tab assessment ->
-// receipt). Every input is SUPPLIED at its boundary (DESIGN §3, a witness discriminates at one
+// THE SUBJECT IS FOUR PURE INTERFACES: the lowering (plan -> ranges), the request build
+// (plan -> one batch request), the dispatch (mutation standing -> readback owed or settled), and
+// the receipt (commit standing x whole-tab assessment -> receipt). Every input is SUPPLIED at its boundary (DESIGN §3, a witness discriminates at one
 // interface). The network route -- perform_batch_write, reassess_after_write,
 // write_and_verify_review_sheet -- is not executed here and is a declared frontier in
 // gunbc.review_sheet_batch_actuator, whose named consumer is private.
@@ -162,6 +177,33 @@ test fn the_identity_join_rejects_a_dropped_and_a_duplicated_range() -> Bool {
     && is_identity_join(expected: e, lowered: ["c", "a", "b"])
 }
 
+fn refusal_tag(r: WritePlanRefusal) -> String {
+  match r {
+    EmptyWritePlan => "empty"
+    TabTitleUnquotable { tab: _ } => "tab"
+    PatchMalformed { listing_id: id, a1: c, defect: d } =>
+      join(["patch:", id as String, ":", a1_cell_wire(cell: c), ":", match d {
+        PatchColumnUnreadable => "column-unreadable"
+        PatchRowBelowOrigin => "row-below-origin"
+      }], "")
+    AppendRunMalformed { listing_id: id, span: s, defect: d } =>
+      join(["append:", id as String, ":", a1_row_span_wire(span: s), ":", match d {
+        AppendRunRowBelowOrigin => "row-below-origin"
+        AppendRunSpanNotOneRow => "not-one-row"
+        AppendRunOffListingRow { sheet_row: r } => join(["off-row-", to_string(r)], "")
+        AppendRunSpanColumnUnreadable => "column-unreadable"
+        AppendRunWidthMismatch { cell_count: c, span_width: w } => join(["width-", to_string(c), "-of-", to_string(w)], "")
+      }], "")
+  }
+}
+
+fn sole_refusal_tag(b: TabBoundWritePlan) -> String {
+  match sole_refusal(b: b) {
+    Present { value: r } => refusal_tag(r: r)
+    Absent => "<not a sole refusal>"
+  }
+}
+
 fn sole_refusal(b: TabBoundWritePlan) -> WritePlanRefusal? {
   match lower_write_plan(bound: b) {
     WritePlanLowered { ranges: _ } => none
@@ -178,20 +220,7 @@ test fn lowering_refuses_a_run_whose_cells_do_not_fit_its_span() -> Bool {
     patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")],
     appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma"])])],
   )
-  match sole_refusal(b: b) {
-    Present { value: AppendRunMalformed { listing_id: id, span: s, defect: d } } =>
-      (id as String) == "L3"
-        && a1_row_span_wire(span: s) == "A4:C4"
-        && match d {
-          AppendRunWidthMismatch { cell_count: c, span_width: w } => c == 2 && w == 3
-          AppendRunSpanNotOneRow => false
-          AppendRunOffListingRow { sheet_row: _ } => false
-          AppendRunSpanColumnUnreadable => false
-        }
-    Present { value: EmptyWritePlan } => false
-    Present { value: TabTitleUnquotable { tab: _ } } => false
-    Absent => false
-  }
+  sole_refusal_tag(b: b) == "append:L3:A4:C4:width-2-of-3"
 }
 
 test fn lowering_refuses_a_run_off_its_listing_row() -> Bool {
@@ -200,18 +229,7 @@ test fn lowering_refuses_a_run_off_its_listing_row() -> Bool {
     patches: [],
     appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "B", row: 5, cells: ["L3", "gamma"])])],
   )
-  match sole_refusal(b: b) {
-    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: d } } =>
-      match d {
-        AppendRunOffListingRow { sheet_row: r } => r == 4
-        AppendRunWidthMismatch { cell_count: _, span_width: _ } => false
-        AppendRunSpanNotOneRow => false
-        AppendRunSpanColumnUnreadable => false
-      }
-    Present { value: EmptyWritePlan } => false
-    Present { value: TabTitleUnquotable { tab: _ } } => false
-    Absent => false
-  }
+  sole_refusal_tag(b: b) == "append:L3:A5:B5:off-row-4"
 }
 
 test fn lowering_refuses_a_run_spanning_two_rows() -> Bool {
@@ -221,31 +239,48 @@ test fn lowering_refuses_a_run_spanning_two_rows() -> Bool {
     patches: [],
     appends: [append(listing_id: "L3", sheet_row: 4, runs: [AppendCellRun { a1: two_rows, cells: ["L3", "gamma"], columns: [] }])],
   )
-  match sole_refusal(b: b) {
-    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: AppendRunSpanNotOneRow } } => true
-    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: _ } } => false
-    Present { value: EmptyWritePlan } => false
-    Present { value: TabTitleUnquotable { tab: _ } } => false
-    Absent => false
-  }
+  sole_refusal_tag(b: b) == "append:L3:A4:B5:not-one-row"
 }
 
 test fn lowering_refuses_an_empty_plan_rather_than_building_a_zero_range_batch() -> Bool {
-  match sole_refusal(b: bound(tab: "Review", patches: [], appends: [])) {
-    Present { value: EmptyWritePlan } => true
-    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: _ } } => false
-    Present { value: TabTitleUnquotable { tab: _ } } => false
-    Absent => false
-  }
+  sole_refusal_tag(b: bound(tab: "Review", patches: [], appends: [])) == "empty"
 }
 
 test fn lowering_refuses_a_tab_title_it_cannot_qualify() -> Bool {
   let b = bound(tab: "Bob's", patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")], appends: [])
-  match sole_refusal(b: b) {
-    Present { value: TabTitleUnquotable { tab: t } } => (t as String) == "Bob's"
-    Present { value: EmptyWritePlan } => false
-    Present { value: AppendRunMalformed { listing_id: _, span: _, defect: _ } } => false
-    Absent => false
+  sole_refusal_tag(b: b) == "tab"
+}
+
+// COORDINATES ARE CHECKED, NOT TRUSTED. A patch at AA2 or B0, or an append on row 0, names no cell
+// Sheets has; each refuses the whole plan before any request is built.
+test fn lowering_refuses_a_patch_at_an_unreadable_column() -> Bool {
+  let b = bound(tab: "Review", patches: [patch(listing_id: "L1", letter: "AA", row: 2, value: "alpha")], appends: [])
+  sole_refusal_tag(b: b) == "patch:L1:AA2:column-unreadable"
+}
+
+test fn lowering_refuses_a_patch_below_row_one() -> Bool {
+  let b = bound(tab: "Review", patches: [patch(listing_id: "L1", letter: "B", row: 0, value: "alpha")], appends: [])
+  sole_refusal_tag(b: b) == "patch:L1:B0:row-below-origin"
+}
+
+test fn lowering_refuses_an_append_below_row_one() -> Bool {
+  let b = bound(
+    tab: "Review",
+    patches: [],
+    appends: [append(listing_id: "L3", sheet_row: 0, runs: [run(start_letter: "A", end_letter: "C", row: 0, cells: ["L3", "gamma", "Observed"])])],
+  )
+  sole_refusal_tag(b: b) == "append:L3:A0:C0:row-below-origin"
+}
+
+test fn a_malformed_patch_refuses_the_whole_plan_beside_a_good_append() -> Bool {
+  let b = bound(
+    tab: "Review",
+    patches: [patch(listing_id: "L1", letter: "B", row: 0, value: "alpha")],
+    appends: [append(listing_id: "L3", sheet_row: 4, runs: [run(start_letter: "A", end_letter: "C", row: 4, cells: ["L3", "gamma", "Observed"])])],
+  )
+  match batch_values_request(spreadsheet_id: "sheet-1" as NonEmptyStr, bound: b) {
+    BatchRequestBuilt { request: _ } => false
+    BatchRequestUnlowerable { refusals: rs } => count(rs) == 1
   }
 }
 
@@ -344,12 +379,20 @@ fn converged_rows() -> List<List<String>> {
   [observed_row(listing_id: "L1", title: "alpha"), observed_row(listing_id: "L2", title: "beta")]
 }
 
-fn committed() -> BatchMutationStanding {
+fn committed() -> BatchCommitStanding {
   BatchCommitted { total_updated_cells: Present { value: 4 } }
 }
 
-fn ambiguous() -> BatchMutationStanding {
+fn ambiguous() -> BatchCommitStanding {
   BatchCommitAmbiguous { detail: "no response arrived for a mutation" as NonEmptyStr }
+}
+
+fn refused() -> BatchNonCommitStanding {
+  BatchRefused { status: 400, body: "bad range" }
+}
+
+fn not_issued() -> BatchNonCommitStanding {
+  BatchNotIssued { refusals: [EmptyWritePlan] }
 }
 
 test fn the_fixture_readback_classifies_as_converged() -> Bool {
@@ -362,17 +405,15 @@ test fn the_fixture_readback_classifies_as_converged() -> Bool {
 }
 
 test fn a_converged_readback_after_a_committed_write_is_verified() -> Bool {
-  match review_sheet_write_receipt(mutation_standing: committed(), readback_assessment: w_assess(rows: converged_rows())) {
-    WriteVerifiedConverged { mutation_standing: s, observed: o } =>
+  match review_sheet_write_receipt(commit: committed(), readback_assessment: w_assess(rows: converged_rows())) {
+    WriteVerifiedConverged { commit: c, observed: o } =>
       count(o.rows) == 2
-        && match s {
+        && match c {
           BatchCommitted { total_updated_cells: _ } => true
           BatchCommitAmbiguous { detail: _ } => false
-          BatchRefused { status: _, body: _ } => false
-          BatchNotIssued { refusals: _ } => false
         }
-    WriteUnverified { mutation_standing: _, readback_assessment: _ } => false
-    WriteNotCommitted { mutation_standing: _ } => false
+    WriteUnverified { commit: _, readback_assessment: _ } => false
+    WriteNotCommitted { cause: _ } => false
   }
 }
 
@@ -381,10 +422,10 @@ test fn a_converged_readback_after_a_committed_write_is_verified() -> Bool {
 // the ranges that were sent could not have said this.
 test fn a_readback_missing_a_range_is_unverified_with_the_assessment() -> Bool {
   match review_sheet_write_receipt(
-    mutation_standing: committed(),
+    commit: committed(),
     readback_assessment: w_assess(rows: [observed_row(listing_id: "L1", title: "alpha")]),
   ) {
-    WriteUnverified { mutation_standing: _, readback_assessment: a } =>
+    WriteUnverified { commit: _, readback_assessment: a } =>
       match a {
         ReviewSheetProjectionClassified { observed: _, tab: _, classification: c } =>
           match c {
@@ -402,8 +443,8 @@ test fn a_readback_missing_a_range_is_unverified_with_the_assessment() -> Bool {
         ReviewSheetRequestRejected { cause: _ } => false
         ReviewSheetReadbackRejected { reason: _ } => false
       }
-    WriteVerifiedConverged { mutation_standing: _, observed: _ } => false
-    WriteNotCommitted { mutation_standing: _ } => false
+    WriteVerifiedConverged { commit: _, observed: _ } => false
+    WriteNotCommitted { cause: _ } => false
   }
 }
 
@@ -411,51 +452,112 @@ test fn a_readback_missing_a_range_is_unverified_with_the_assessment() -> Bool {
 // not convergence even after a committed write.
 test fn a_conflicting_readback_is_unverified() -> Bool {
   match review_sheet_write_receipt(
-    mutation_standing: committed(),
+    commit: committed(),
     readback_assessment: w_assess(rows: [observed_row(listing_id: "L1", title: "someone else's title"), observed_row(listing_id: "L2", title: "beta")]),
   ) {
-    WriteUnverified { mutation_standing: _, readback_assessment: a } =>
+    WriteUnverified { commit: _, readback_assessment: a } =>
       match a {
         ReviewSheetProjectionClassified { observed: _, tab: _, classification: ReviewSheetConflict { conflict: _ } } => true
         ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => false
         ReviewSheetRequestRejected { cause: _ } => false
         ReviewSheetReadbackRejected { reason: _ } => false
       }
-    WriteVerifiedConverged { mutation_standing: _, observed: _ } => false
-    WriteNotCommitted { mutation_standing: _ } => false
+    WriteVerifiedConverged { commit: _, observed: _ } => false
+    WriteNotCommitted { cause: _ } => false
   }
 }
 
 test fn a_rejected_readback_is_unverified_not_a_success() -> Bool {
   match review_sheet_write_receipt(
-    mutation_standing: committed(),
+    commit: committed(),
     readback_assessment: ReviewSheetReadbackRejected { reason: "values.get refused with status 429" as NonEmptyStr },
   ) {
-    WriteUnverified { mutation_standing: _, readback_assessment: ReviewSheetReadbackRejected { reason: r } } =>
+    WriteUnverified { commit: _, readback_assessment: ReviewSheetReadbackRejected { reason: r } } =>
       (r as String) == "values.get refused with status 429"
-    WriteUnverified { mutation_standing: _, readback_assessment: _ } => false
-    WriteVerifiedConverged { mutation_standing: _, observed: _ } => false
-    WriteNotCommitted { mutation_standing: _ } => false
+    WriteUnverified { commit: _, readback_assessment: _ } => false
+    WriteVerifiedConverged { commit: _, observed: _ } => false
+    WriteNotCommitted { cause: _ } => false
   }
 }
 
 // COMMIT-AMBIGUOUS PLUS A CONVERGED READBACK IS A SUCCESS, and the ambiguity stays in the receipt:
 // the sheet is what the projection says, and the receipt still says the remote never confirmed it.
 test fn an_ambiguous_commit_with_a_converged_readback_is_verified_and_keeps_the_ambiguity() -> Bool {
-  match review_sheet_write_receipt(mutation_standing: ambiguous(), readback_assessment: w_assess(rows: converged_rows())) {
-    WriteVerifiedConverged { mutation_standing: BatchCommitAmbiguous { detail: d }, observed: _ } =>
+  match review_sheet_write_receipt(commit: ambiguous(), readback_assessment: w_assess(rows: converged_rows())) {
+    WriteVerifiedConverged { commit: BatchCommitAmbiguous { detail: d }, observed: _ } =>
       (d as String) == "no response arrived for a mutation"
-    WriteVerifiedConverged { mutation_standing: _, observed: _ } => false
-    WriteUnverified { mutation_standing: _, readback_assessment: _ } => false
-    WriteNotCommitted { mutation_standing: _ } => false
+    WriteVerifiedConverged { commit: _, observed: _ } => false
+    WriteUnverified { commit: _, readback_assessment: _ } => false
+    WriteNotCommitted { cause: _ } => false
   }
 }
 
-// AMBIGUOUS IS NOT REFUSED. Committed and ambiguous both oblige the fresh read; refused (a 4xx
-// decision before commit) and not-issued (nothing was sent) do not.
-test fn committed_and_ambiguous_oblige_a_readback_while_refused_and_not_issued_do_not() -> Bool {
-  batch_mutation_obliges_readback(standing: committed())
-    && batch_mutation_obliges_readback(standing: ambiguous())
-    && !batch_mutation_obliges_readback(standing: BatchRefused { status: 400, body: "bad range" })
-    && !batch_mutation_obliges_readback(standing: BatchNotIssued { refusals: [EmptyWritePlan] })
+// AMBIGUOUS IS NOT REFUSED. Committed and ambiguous both owe the fresh read and hand the commit
+// standing forward; refused (a 4xx decision before commit) and not-issued (nothing was sent) are
+// settled as WriteNotCommitted with no read. The two invalid cross-products the earlier cut could
+// mint -- refused + converged readback, not-issued + converged readback -- are now unwritable:
+// review_sheet_write_receipt takes BatchCommitStanding, which has no refused or not-issued arm.
+fn dispatch_tag(d: WriteDispatch) -> String {
+  match d {
+    ReadbackOwed { commit: c } =>
+      match c {
+        BatchCommitted { total_updated_cells: _ } => "readback-owed:committed"
+        BatchCommitAmbiguous { detail: _ } => "readback-owed:ambiguous"
+      }
+    ReceiptSettled { receipt: r } =>
+      match r {
+        WriteNotCommitted { cause: k } =>
+          match k {
+            BatchRefused { status: st, body: _ } => join(["settled:not-committed:refused-", to_string(st)], "")
+            BatchNotIssued { refusals: rs } => join(["settled:not-committed:not-issued-", to_string(count(rs))], "")
+          }
+        WriteVerifiedConverged { commit: _, observed: _ } => "settled:verified"
+        WriteUnverified { commit: _, readback_assessment: _ } => "settled:unverified"
+      }
+  }
+}
+
+test fn a_committed_write_owes_a_readback() -> Bool {
+  dispatch_tag(d: write_dispatch(standing: BatchMayHaveCommitted { commit: committed() })) == "readback-owed:committed"
+}
+
+test fn an_ambiguous_write_owes_a_readback_exactly_as_a_committed_one() -> Bool {
+  dispatch_tag(d: write_dispatch(standing: BatchMayHaveCommitted { commit: ambiguous() })) == "readback-owed:ambiguous"
+}
+
+test fn a_refused_write_is_settled_not_committed_without_a_readback() -> Bool {
+  dispatch_tag(d: write_dispatch(standing: BatchDidNotCommit { cause: refused() })) == "settled:not-committed:refused-400"
+}
+
+test fn a_not_issued_write_is_settled_not_committed_without_a_readback() -> Bool {
+  dispatch_tag(d: write_dispatch(standing: BatchDidNotCommit { cause: not_issued() })) == "settled:not-committed:not-issued-1"
+}
+
+// ---- the seal on the wire function ----
+
+// AN OUTSIDE MODULE CANNOT REACH issue_batch_request. The probe is a module an outside author would
+// write: import the request record and the wire function, build a request of its own ranges, call.
+// The census is keyed (class, subject_name, blocking) -- subject_name is the CALLEE's decl name --
+// because a CensusObserved carries the whole closure's rows and a class-only count is attributable
+// to the wrong subject (gunbc.compile_diagnostic_census). The green control is the same shape
+// calling the public perform_batch_write: zero refusals at that key, so the red is the seal firing
+// and not the import failing or the census refusing to run.
+fn seal_refusals_at_wire_fn(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "ConstructorCallAdmissionRefused", subject_name: "issue_batch_request", blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data outside_caller_of_the_wire_fn_source: String = "module probe_batch_wire_outside_caller\nimport std.types { NonEmptyStr, String }\nimport std.resources { Network }\nimport extdeps.google.sheets { ValueRangeWrite, InputRaw }\nimport gunbc.review_sheet_batch_actuator { BatchValuesRequest, BatchMutationStanding, issue_batch_request }\nfn probe_forge(spreadsheet_id: NonEmptyStr) -> BatchMutationStanding uses net: Network {\n  issue_batch_request(request: BatchValuesRequest { spreadsheet_id: spreadsheet_id, value_input_option: InputRaw, data: [ValueRangeWrite { range: \"Review!Z99\", majorDimension: \"ROWS\", values: [[\"forged\"]] }] })\n}\n"
+
+data outside_caller_of_the_plan_fn_source: String = "module probe_batch_plan_outside_caller\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.review_sheet_sheets { TabBoundWritePlan }\nimport gunbc.review_sheet_batch_actuator { BatchMutationStanding, perform_batch_write }\nfn probe_plan(spreadsheet_id: NonEmptyStr, bound: TabBoundWritePlan) -> BatchMutationStanding uses net: Network {\n  perform_batch_write(spreadsheet_id: spreadsheet_id, bound: bound)\n}\n"
+
+test fn an_outside_module_calling_the_wire_fn_is_refused_at_that_callee() -> Bool {
+  seal_refusals_at_wire_fn(source: outside_caller_of_the_wire_fn_source) >= 1
+}
+
+test fn an_outside_module_calling_the_plan_fn_is_not_refused() -> Bool {
+  seal_refusals_at_wire_fn(source: outside_caller_of_the_plan_fn_source) == 0
 }

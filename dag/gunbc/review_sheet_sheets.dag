@@ -310,7 +310,10 @@ type TabBoundWritePlan {
 // count does not equal its span width would write cells past, or short of, the frontier the
 // classification chose; a run whose span is not one row, or not on the listing's sheet_row, was
 // not produced by the projection fold (a1_row_span_cols builds one row on sheet_row) and so is a
-// hand-authored plan; a span letter outside a1_column_letters has no width; a tab title carrying
+// hand-authored plan; a span letter outside a1_column_letters has no width; a patch or run at a
+// row below 1, or a patch at a column letter outside a1_column_letters, names no cell Sheets has
+// (A0 and AA are refused on the wire, and refusing here keeps the refusal typed and before any
+// request exists); a tab title carrying
 // an apostrophe cannot be spelled in the A1 form this module qualifies with (a1_readback_standing
 // refuses the same title on the read side, so the write side may not accept it); and a plan with
 // nothing in it would issue a zero-range batch that Sheets answers 200 to, which is a success
@@ -319,8 +322,13 @@ type WritePlanLowering
   = WritePlanLowered { ranges: List<ValueRangeWrite> }
   | WritePlanUnlowerable { refusals: List<WritePlanRefusal> }
 
+type PatchDefect
+  = PatchColumnUnreadable
+  | PatchRowBelowOrigin
+
 type AppendRunDefect
-  = AppendRunSpanNotOneRow
+  = AppendRunRowBelowOrigin
+  | AppendRunSpanNotOneRow
   | AppendRunOffListingRow { sheet_row: Int }
   | AppendRunSpanColumnUnreadable
   | AppendRunWidthMismatch { cell_count: Int, span_width: Int }
@@ -328,6 +336,7 @@ type AppendRunDefect
 type WritePlanRefusal
   = EmptyWritePlan
   | TabTitleUnquotable { tab: NonEmptyStr }
+  | PatchMalformed { listing_id: NonEmptyStr, a1: A1Cell, defect: PatchDefect }
   | AppendRunMalformed { listing_id: NonEmptyStr, span: A1RowSpan, defect: AppendRunDefect }
 
 type LoweringAcc {
@@ -343,6 +352,29 @@ fn patch_value_range_write(write: DerivedCellWrite, tab: NonEmptyStr) -> ValueRa
   }
 }
 
+fn patch_defect(write: DerivedCellWrite) -> PatchDefect? {
+  if write.a1.row < 1 {
+    Present { value: PatchRowBelowOrigin }
+  } else {
+    match a1_letter_index(letter: write.a1.column.letter as String) {
+      Absent => Present { value: PatchColumnUnreadable }
+      Present { value: _ } => none
+    }
+  }
+}
+
+fn lower_patch(acc: LoweringAcc, write: DerivedCellWrite, tab: NonEmptyStr) -> LoweringAcc {
+  match patch_defect(write: write) {
+    Present { value: defect } =>
+      LoweringAcc {
+        ranges: acc.ranges,
+        refusals: concat(acc.refusals, [PatchMalformed { listing_id: write.listing_id, a1: write.a1, defect: defect }]),
+      }
+    Absent =>
+      LoweringAcc { ranges: concat(acc.ranges, [patch_value_range_write(write: write, tab: tab)]), refusals: acc.refusals }
+  }
+}
+
 fn append_run_span_width(span: A1RowSpan) -> Int? {
   match a1_letter_index(letter: span.start.column.letter as String) {
     Absent => none
@@ -355,7 +387,9 @@ fn append_run_span_width(span: A1RowSpan) -> Int? {
 }
 
 fn append_run_defect(run: AppendCellRun, sheet_row: Int) -> AppendRunDefect? {
-  if run.a1.start.row != run.a1.end.row {
+  if sheet_row < 1 || run.a1.start.row < 1 || run.a1.end.row < 1 {
+    Present { value: AppendRunRowBelowOrigin }
+  } else if run.a1.start.row != run.a1.end.row {
     Present { value: AppendRunSpanNotOneRow }
   } else if run.a1.start.row != sheet_row {
     Present { value: AppendRunOffListingRow { sheet_row: sheet_row } }
@@ -396,14 +430,15 @@ fn lower_append_row(acc: LoweringAcc, row: AppendListingRow, tab: NonEmptyStr) -
 }
 
 fn lower_write_plan(bound: TabBoundWritePlan) -> WritePlanLowering {
-  let patched = LoweringAcc {
-    ranges: map(bound.plan.patches, w => patch_value_range_write(write: w, tab: bound.tab)),
+  let start = LoweringAcc {
+    ranges: [],
     refusals: if string_contains(s: bound.tab as String, pattern: "'") {
       [TabTitleUnquotable { tab: bound.tab }]
     } else {
       []
     },
   }
+  let patched = fold(bound.plan.patches, init: start, f: fn(acc, w) { lower_patch(acc: acc, write: w, tab: bound.tab) })
   let lowered = fold(bound.plan.appends, init: patched, f: fn(acc, row) {
     lower_append_row(acc: acc, row: row, tab: bound.tab)
   })
@@ -424,10 +459,19 @@ fn write_plan_refusal_text(refusal: WritePlanRefusal) -> String {
     EmptyWritePlan => "the write plan carries no patch and no append run, so there is nothing to send"
     TabTitleUnquotable { tab: t } =>
       concat("the tab title carries an apostrophe and cannot be spelled as an A1 qualifier: ", t as String)
+    PatchMalformed { listing_id: id, a1: c, defect: d } =>
+      concat(
+        concat("patch for listing ", concat(id as String, concat(" at ", a1_cell_wire(cell: c)))),
+        match d {
+          PatchColumnUnreadable => " names a column letter outside the modeled A1 columns"
+          PatchRowBelowOrigin => " names a row below 1"
+        },
+      )
     AppendRunMalformed { listing_id: id, span: s, defect: d } =>
       concat(
         concat("append run for listing ", concat(id as String, concat(" at ", a1_row_span_wire(span: s)))),
         match d {
+          AppendRunRowBelowOrigin => " names a row below 1"
           AppendRunSpanNotOneRow => " spans more than one row"
           AppendRunOffListingRow { sheet_row: r } => concat(" is not on the listing's sheet row ", to_string(r))
           AppendRunSpanColumnUnreadable => " names a column letter outside the modeled A1 columns"
