@@ -386,3 +386,18 @@ fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
     FabricBootOrigin {} => fabric_boot_origin_standing()
   }
 }
+
+// THE BUCKET-ADMIN CREDENTIAL IS THE FLEET'S, NOT A BUCKET'S. It is account-scoped (bucket creation is
+// an account operation) and is spent only by gunbc.cloudflare.r2_bucket_ensure, so it hangs off no
+// R2OriginBucket; it inhabits the same OriginCredentialStanding, and its custody locus is disjoint
+// from the bootstrap's so the bucket converge never holds the key that mints.
+data cloudflare_r2_bucket_admin_secret_id: NonEmptyStr = "cloudflare-r2-bucket-admin-token"
+
+fn fleet_r2_bucket_admin_credential() -> OriginCredentialStanding {
+  OriginCredentialUnminted {
+    mint_entry: decl_ref(
+      module_path: "gunbc.cloudflare.r2_token_mint_run",
+      decl_name: "run_bucket_admin",
+    ),
+  }
+}

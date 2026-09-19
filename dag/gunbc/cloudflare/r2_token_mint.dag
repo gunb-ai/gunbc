@@ -27,9 +27,11 @@ import extdeps.cloudflare.r2 {
   r2_object_read_create_request,
   r2_object_read_grant,
   r2_object_write_create_request,
-  r2_object_write_grant
+  r2_object_write_grant,
+  r2_account_storage_grant,
+  r2_account_storage_create_request
 }
-import gunbc.cloudflare.r2_permission_group_observe { r2_bucket_item_write_permission_group }
+import gunbc.cloudflare.r2_permission_group_observe { r2_bucket_item_write_permission_group, r2_storage_write_permission_group }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import std.roster_frontier { frontier_row_decl }
@@ -56,6 +58,13 @@ import std.roster_frontier { frontier_row_decl }
 // gunbc.secret_provision, and the write credential pinned in gunbc.cloudflare.r2_origin -- and on
 // nothing weaker.
 data cloudflare_r2_token_mint_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_bucket_admin_api_mint"),
+    reason: "the bucket-admin mint is admitted by the pure fold and has an executing entry (gunbc.cloudflare.r2_token_mint_run run_bucket_admin) that has not yet performed AccountTokens.Create against the account",
+    dissolution: unbound_dissolution(
+      description: "dissolves when run_bucket_admin has executed with ExitSuccess, the token value is stored through gunbc.secret_provision, and gunbc.cloudflare.r2_origin fleet_r2_bucket_admin_credential is OriginCredentialPinned at the stored version; a witness that the admission fold answers Admitted does not fire this"
+    )
+  ),
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "admit_r2_object_write_api_mint"),
     reason: "the object-write mint is admitted by the pure fold and has an executing entry (gunbc.cloudflare.r2_token_mint_run run_object_write) that has not yet performed AccountTokens.Create against the account",
@@ -178,6 +187,33 @@ fn admit_r2_object_write_api_mint(
       account_id: account_id,
       jurisdiction: jurisdiction,
       bucket_name: bucket_name
+    )
+  )
+}
+
+// THE BUCKET-ADMIN SHAPE: ONE ACCOUNT-SCOPED STORAGE GRANT, SPENT ONLY BY THE BUCKET CONVERGE.
+// gunbc.cloudflare.r2_bucket_ensure signs its bucket Get and Create with this token and with nothing
+// else. It is a third minted token rather than a widened bootstrap because the bootstrap's one power
+// is minting, and a credential that both mints and manages storage turns every bucket call into a
+// use of the key that can issue any other key (operator ruling, 2026-09-19). It holds no object
+// grant: it can create a bucket and cannot read or write what the origin stores in it.
+fn cloudflare_r2_bucket_admin_token_shape() -> CloudflareAccountTokenShape {
+  CloudflareAccountTokenShape {
+    kind: AccountOwnedApiToken,
+    grants: [r2_account_storage_grant(storage_group: r2_storage_write_permission_group())],
+    acquisition: CreatedViaAccountTokensApi,
+    lifetime: NoExpiryUntilRevoked,
+    revocation: AccountApiTokensSurface
+  }
+}
+
+fn admit_r2_bucket_admin_api_mint(name: String, account_id: String) -> AccountTokenApiMintStanding {
+  admit_account_token_api_mint(
+    shape: cloudflare_r2_bucket_admin_token_shape(),
+    request: r2_account_storage_create_request(
+      name: name,
+      storage_group: r2_storage_write_permission_group(),
+      account_id: account_id
     )
   )
 }

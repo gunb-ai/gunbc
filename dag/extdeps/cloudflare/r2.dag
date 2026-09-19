@@ -1,14 +1,6 @@
 module extdeps.cloudflare.r2
 
-import std.types { NonEmptyStr, String, List, Timestamp, Map, Secret, HttpStatus }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
-import extdeps.cloudflare.client_v4 {
-  cloudflare_client_v4_base,
-  CloudflareApiError,
-  cloudflare_error_codes,
-  CloudflareErrorCodesListed,
-  CloudflareErrorEnvelopeUnreadable,
-}
+import std.types { NonEmptyStr, String, List, Timestamp, Map }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
@@ -365,6 +357,38 @@ fn r2_object_write_create_request(
   )
 }
 
+// THE ACCOUNT-SCOPED STORAGE GRANT: BUCKET MANAGEMENT IS AN ACCOUNT OPERATION. Creating or reading a
+// bucket's metadata is not an item operation on a bucket that may not yet exist, so no bucket-scoped
+// resource can carry it; the grant names the ACCOUNT resource (r2_account_resource_name). Like the
+// item-write grant, the group id is an observation the workflow layer supplies
+// (gunbc.cloudflare.r2_permission_group_observe), never an id authored here.
+fn r2_account_storage_grant(storage_group: PermissionGroupRef) -> CloudflarePermissionGrant {
+  PermissionGroupGrant { group: storage_group }
+}
+
+fn r2_account_resources(account_id: String) -> Map<String, String> {
+  map_insert(empty_map(), r2_account_resource_name(account_id: account_id), "*")
+}
+
+fn r2_account_storage_create_request(
+  name: String,
+  storage_group: PermissionGroupRef,
+  account_id: String
+) -> CreateAccountTokenRequest {
+  CreateAccountTokenRequest {
+    name: name,
+    policies: [
+      AccountTokenPolicy {
+        effect: PolicyAllow,
+        permission_groups: permission_groups_from_grants(grants: [r2_account_storage_grant(storage_group: storage_group)]),
+        resources: r2_account_resources(account_id: account_id)
+      }
+    ],
+    not_before: none,
+    expires_on: none
+  }
+}
+
 // THE S3 OBJECT ADDRESS AND THE SIGNATURE REGION, CITED TO THE R2 S3 API DOCUMENT
 // (developers.cloudflare.com/r2/api/s3/api, r2_s3_api_citation above). R2 serves the S3 API at
 // <account_id>.r2.cloudflarestorage.com and addresses objects PATH-STYLE, /<bucket>/<key>, so the
@@ -586,150 +610,6 @@ data r2_not_entitled_error_code: NonEmptyStr = "10042"
 
 data r2_no_such_bucket_error_code: NonEmptyStr = "10006"
 
-// THE BUCKET AS GET AND CREATE RETURN IT. `name` is the identity the readback compares; jurisdiction
-// is the wire token r2_jurisdiction_wire spells, optional on the wire (r2_get_bucket_location_reading)
-// and parsed rather than trusted.
-type R2BucketResponse {
-  name: String
-  jurisdiction: String?
-  location: String?
-}
-
-fn parse_r2_jurisdiction(raw: String) -> R2Jurisdiction? {
-  if raw == "default" {
-    Present { value: R2JurisdictionDefault }
-  } else if raw == "eu" {
-    Present { value: R2JurisdictionEu }
-  } else if raw == "fedramp" {
-    Present { value: R2JurisdictionFedramp }
-  } else if raw == "fedramp-high" {
-    Present { value: R2JurisdictionFedrampHigh }
-  } else if raw == "us" {
-    Present { value: R2JurisdictionUs }
-  } else {
-    none
-  }
-}
-
-// THE JURISDICTION HEADER IS NOT CARRIED, AND THAT IS WHY BOTH OPERATIONS ARE DEFAULT-ONLY. Create
-// and Get take jurisdiction as the cf-r2-jurisdiction HEADER (r2_create_bucket_location_hint_reading),
-// and this service surface has no header slot; a request without it addresses the default
-// jurisdiction. A caller that wants another jurisdiction must refuse before calling rather than
-// create a default bucket under a non-default name -- the converge does exactly that.
-//
-// CREATE IS NOT IDEMPOTENT ON THE WIRE: a second Create of an existing name is refused (10073
-// BucketConflict on the error-code page), so the converge observes first, creates only on an
-// established absence, and reads back through Get rather than trusting the Create response.
-service cloudflare.R2Buckets {
-  config {
-    endpoint: cloudflare_client_v4_base
-    auth: Bearer
-    auth_input: auth_token
-  }
-
-  operation Get {
-    input {
-      auth_token: Secret
-      account_id: String
-      bucket_name: String
-    }
-    output {
-      name: String from "result/name"
-      jurisdiction: String? from "result/jurisdiction"
-      location: String? from "result/location"
-      outcome: RestOutcome
-    }
-    readonly
-    transport rest {
-      method: GET,
-      path: "/accounts/\{account_id\}/r2/buckets/\{bucket_name\}"
-    }
-    response {
-      200 => R2BucketResponse
-      401 => CloudflareApiError
-      403 => CloudflareApiError
-      404 => CloudflareApiError
-      5xx => CloudflareApiError
-    }
-  }
-
-  operation Create {
-    input {
-      auth_token: Secret
-      account_id: String
-      name: String
-    }
-    output {
-      name: String from "result/name"
-      jurisdiction: String? from "result/jurisdiction"
-      location: String? from "result/location"
-      outcome: RestOutcome
-    }
-    transport rest {
-      method: POST,
-      path: "/accounts/\{account_id\}/r2/buckets",
-      body: {
-        name: name
-      }
-    }
-    response {
-      200 => R2BucketResponse
-      400 => CloudflareApiError
-      401 => CloudflareApiError
-      403 => CloudflareApiError
-      409 => CloudflareApiError
-      5xx => CloudflareApiError
-    }
-  }
-}
-
-// ONE BUCKET READ, CLASSIFIED. The three facts the Get can establish -- the bucket, its absence, the
-// account's lack of entitlement -- are arms; everything else is a refusal carrying the status and the
-// codes it did carry. An entitlement is observed as a BYPRODUCT of any bucket answer: a 200 or an
-// exact NoSuchBucket means the account answered about R2 resources, which an unentitled one does not.
-type R2BucketRead
-  = R2BucketPresent { bucket: R2BucketResponse }
-  | R2BucketAbsent
-  | R2AccountNotEntitled
-  | R2BucketReadRefused { cause: NonEmptyStr }
-
-fn r2_codes_text(codes: List<String>) -> String {
-  if codes.length() == 0 { "no codes" } else { join(codes, ",") }
-}
-
-fn classify_r2_bucket_refusal(status: HttpStatus, body: String) -> R2BucketRead {
-  match cloudflare_error_codes(body: body) {
-    CloudflareErrorEnvelopeUnreadable { cause: cause } =>
-      R2BucketReadRefused {
-        cause: join(["status ", to_string(status), " with an unreadable error envelope: ", cause as String], "") as NonEmptyStr
-      }
-    CloudflareErrorCodesListed { codes: codes } =>
-      if status == 403 && contains(codes, r2_not_entitled_error_code as String) {
-        R2AccountNotEntitled
-      } else if status == 404 && contains(codes, r2_no_such_bucket_error_code as String) {
-        R2BucketAbsent
-      } else {
-        R2BucketReadRefused {
-          cause: join(["status ", to_string(status), " carrying ", r2_codes_text(codes: codes), ", which names neither NotEntitled nor NoSuchBucket"], "") as NonEmptyStr
-        }
-      }
-  }
-}
-
-fn classify_r2_bucket_get(outcome: RestOutcome, bucket: R2BucketResponse) -> R2BucketRead {
-  match outcome {
-    RestOk => R2BucketPresent { bucket: bucket }
-    RestStatusRefused { status: status, body: body } => classify_r2_bucket_refusal(status: status, body: body)
-    RestTransportRefused { cause: cause } =>
-      R2BucketReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
-    RestBodyUndecodable { status: status, cause: cause } =>
-      R2BucketReadRefused {
-        cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr
-      }
-  }
-}
-
-
 // THE r2_s3_endpoint_url ROW IS RETIRED: gunbc.cloudflare.r2_origin_object reaches it through
 // r2_object_url on the executing put_origin_object and fetch_origin_object entries, which is the
 // consumer the row named. The list is the membership of what remains. r2_tokens_doc_as_of stays:
@@ -738,7 +618,7 @@ fn classify_r2_bucket_get(outcome: RestOutcome, bucket: R2BucketResponse) -> R2B
 data cloudflare_r2_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.cloudflare.r2", decl_name: "r2_account_resource_name"),
-    reason: "account IAM resource name has no executing consumer; object-read policy uses the bucket resource name",
+    reason: "account IAM resource name is consumed by r2_account_storage_create_request, whose mint entry (gunbc.cloudflare.r2_token_mint_run run_bucket_admin) has not yet executed against the account",
     dissolution: unbound_dissolution(
       description: "dissolves when a gunbc declaration consumes r2_account_resource_name in an executing token policy or S3 IAM grant; a witness that the fold exists does not fire this"
     )

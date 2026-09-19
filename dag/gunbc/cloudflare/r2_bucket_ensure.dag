@@ -2,17 +2,22 @@ module gunbc.cloudflare.r2_bucket_ensure
 
 import std.types { String, NonEmptyStr, Secret, List, Bool }
 import std.resources { Network }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.upsert_decision {
   ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused,
-  UpsertDecision, Noop, Apply, Refuse,
+  Noop, Apply, Refuse,
   UpsertClassification,
   upsert_decision_label,
+  observation_verdict_label,
 }
 import extdeps.cloudflare.r2 {
   R2Jurisdiction, R2JurisdictionDefault,
   r2_jurisdiction_wire,
+}
+import extdeps.cloudflare.r2_buckets
+import extdeps.cloudflare.r2_buckets {
   parse_r2_jurisdiction,
   R2BucketResponse,
   R2BucketRead, R2BucketPresent, R2BucketAbsent, R2AccountNotEntitled, R2BucketReadRefused,
@@ -21,15 +26,14 @@ import extdeps.cloudflare.r2 {
 import gunbc.cloudflare.r2_origin {
   CloudflareAccountId,
   BucketPurpose,
-  R2BucketAllocation,
   bucket_purpose_key,
   bucket_purpose_origin_standing,
   gunbc_fleet_r2_bucket_allocations,
   R2OriginStanding, R2OriginAllocated, R2OriginUnallocated,
   FleetCloudflareAccountStanding, CloudflareAccountAllocated, CloudflareAccountUnallocated,
-  BootstrapCustodyStanding, BootstrapCustodyPinned, BootstrapCustodyUnrecorded,
+  OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
   fleet_cloudflare_account_standing,
-  fleet_cloudflare_bootstrap_custody,
+  fleet_r2_bucket_admin_credential,
 }
 import gunbc.auth.access_token_source {
   resolve_access_token,
@@ -149,21 +153,45 @@ fn classify_r2_bucket_ensure(desired: R2OriginStanding, read: R2BucketRead) -> U
 // ── THE EFFECTFUL HALF ───────────────────────────────────────────────────────────────────────────
 
 type R2EnsureCredentials
-  = R2EnsureCredentialsReady { account_id: CloudflareAccountId, bootstrap: Secret }
+  = R2EnsureCredentialsReady { account_id: CloudflareAccountId, admin: Secret }
   | R2EnsureCredentialsRefused { cause: NonEmptyStr }
 
-// THE SAME CUSTODY LADDER THE MINT RUNS (gunbc.cloudflare.r2_token_mint_run r2_mint_bootstrap),
-// WITHOUT THE MINT: account standing, then the pinned bootstrap locus, then the exact-version read
-// through the run's resolved GCP identity. Each absence refuses before any Cloudflare call.
+// THE BUCKET CALLS ARE SIGNED BY THE BUCKET-ADMIN TOKEN AND BY NOTHING ELSE. The bootstrap token's one
+// power is minting; it has no R2 grant (the first live run of this entry read 403/10000 through it)
+// and is deliberately not widened to get one (operator ruling, 2026-09-19). So the locus this entry
+// reads is gunbc.cloudflare.r2_origin fleet_r2_bucket_admin_credential, and an unminted credential
+// refuses here, naming its mint entry, before any network call. PURE, so the arm is witnessable.
+type R2EnsureSigningLocus
+  = R2EnsureSigningPinned { locus: SecretRef }
+  | R2EnsureSigningRefused { cause: NonEmptyStr }
+
+fn r2_ensure_signing_locus(credential: OriginCredentialStanding) -> R2EnsureSigningLocus {
+  match credential {
+    OriginCredentialPinned { access_key_id: _, token_value: locus } => R2EnsureSigningPinned { locus: locus }
+    OriginCredentialUnminted { mint_entry: entry } =>
+      R2EnsureSigningRefused {
+        cause: join([
+          "THE BUCKET-ADMIN TOKEN IS NOT MINTED, NOTHING CALLED: run ", entry.module_path, " ", entry.decl_name,
+          " (fleet-converge mode r2_bucket_admin_mint) and pin its stored version in gunbc.cloudflare.r2_origin fleet_r2_bucket_admin_credential; this entry never signs with the bootstrap token",
+        ], "") as NonEmptyStr
+      }
+    OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
+      R2EnsureSigningRefused {
+        cause: concat("THE BUCKET-ADMIN TOKEN HAS NO MINT ENTRY, NOTHING CALLED: its custody locus is ", secret_id as String) as NonEmptyStr
+      }
+  }
+}
+
+// THE CUSTODY LADDER: account standing, then the pinned bucket-admin locus, then the exact-version
+// read through the run's resolved GCP identity. Each absence refuses before any Cloudflare call.
 fn r2_ensure_credentials() -> R2EnsureCredentials uses net: Network {
   match fleet_cloudflare_account_standing() {
     CloudflareAccountUnallocated { company: _, intervention: intervention } =>
       R2EnsureCredentialsRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
     CloudflareAccountAllocated { company: _, account_id: account_id } =>
-      match fleet_cloudflare_bootstrap_custody() {
-        BootstrapCustodyUnrecorded { intervention: intervention } =>
-          R2EnsureCredentialsRefused { cause: concat("NO BOOTSTRAP TOKEN IN CUSTODY: ", intervention.instruction as String) as NonEmptyStr }
-        BootstrapCustodyPinned { locus: locus } =>
+      match r2_ensure_signing_locus(credential: fleet_r2_bucket_admin_credential()) {
+        R2EnsureSigningRefused { cause: cause } => R2EnsureCredentialsRefused { cause: cause }
+        R2EnsureSigningPinned { locus: locus } =>
           match resolve_access_token() {
             AccessTokenUpsertRequired { plan: plan } =>
               R2EnsureCredentialsRefused { cause: concat("NO GCP ACCESS TOKEN: ", access_token_upsert_required_reason(plan: plan)) as NonEmptyStr }
@@ -172,26 +200,26 @@ fn r2_ensure_credentials() -> R2EnsureCredentials uses net: Network {
             AccessTokenReady { token: gcp_token } =>
               match fetch_secret_ref_credential_with_token(secret_ref: locus, access_token: gcp_token) {
                 SecretCredentialAccessUpsertRequired { plan: _ } =>
-                  R2EnsureCredentialsRefused { cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication this run cannot perform" as NonEmptyStr }
+                  R2EnsureCredentialsRefused { cause: "THE BUCKET-ADMIN TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication this run cannot perform" as NonEmptyStr }
                 SecretCredentialFetchRefused { reason: reason } =>
-                  R2EnsureCredentialsRefused { cause: concat("THE BOOTSTRAP TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
+                  R2EnsureCredentialsRefused { cause: concat("THE BUCKET-ADMIN TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
                 SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
-                  R2EnsureCredentialsRefused { cause: "THE BOOTSTRAP TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
+                  R2EnsureCredentialsRefused { cause: "THE BUCKET-ADMIN TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
                 SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
                   R2EnsureCredentialsRefused {
-                    cause: join(["THE BOOTSTRAP READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr
+                    cause: join(["THE BUCKET-ADMIN READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr
                   }
-                SecretCredentialReady { credential: bootstrap, resolved_version: _ } =>
-                  R2EnsureCredentialsReady { account_id: account_id, bootstrap: bootstrap }
+                SecretCredentialReady { credential: admin, resolved_version: _ } =>
+                  R2EnsureCredentialsReady { account_id: account_id, admin: admin }
               }
           }
       }
   }
 }
 
-fn read_r2_bucket(bootstrap: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2BucketRead uses net: Network {
+fn read_r2_bucket(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2BucketRead uses net: Network {
   let got = cloudflare.R2Buckets.Get(
-    auth_token: bootstrap,
+    auth_token: admin,
     account_id: account_id as String,
     bucket_name: bucket_name as String,
   )
@@ -208,20 +236,15 @@ type R2PurposeEnsureOutcome {
   held: Bool
 }
 
-fn purpose_line(purpose: BucketPurpose, verdict: String, decision: String, detail: String) -> String {
-  join([bucket_purpose_key(purpose: purpose), verdict, decision, detail], "\t")
+fn purpose_line(purpose: BucketPurpose, classified: UpsertClassification<R2BucketCreatePlan>, detail: String) -> String {
+  join([
+    bucket_purpose_key(purpose: purpose),
+    observation_verdict_label(verdict: classified.verdict),
+    upsert_decision_label(decision: classified.decision),
+    detail,
+  ], "\t")
 }
 
-fn observation_verdict_label(verdict: ObservationVerdict) -> String {
-  match verdict {
-    Converged => "converged"
-    Absent => "absent"
-    Drifted => "drifted"
-    Conflict => "conflict"
-    Inaccessible => "inaccessible"
-    UnknownRefused => "unknown-refused"
-  }
-}
 
 // THE CREATE IS NEVER ITS OWN EVIDENCE. Its response is discarded for classification purposes; a
 // second Get must answer Converged. A Create whose outcome is unknown (transport or 5xx) is followed
@@ -229,18 +252,19 @@ fn observation_verdict_label(verdict: ObservationVerdict) -> String {
 fn apply_r2_bucket_create(
   purpose: BucketPurpose,
   desired: R2OriginStanding,
-  bootstrap: Secret,
+  admin: Secret,
   account_id: CloudflareAccountId,
+  observed: UpsertClassification<R2BucketCreatePlan>,
   plan: R2BucketCreatePlan,
 ) -> R2PurposeEnsureOutcome uses net: Network {
   let created = cloudflare.R2Buckets.Create(
-    auth_token: bootstrap,
+    auth_token: admin,
     account_id: account_id as String,
     name: plan.bucket_name as String,
   )
   let readback = classify_r2_bucket_ensure(
     desired: desired,
-    read: read_r2_bucket(bootstrap: bootstrap, account_id: account_id, bucket_name: plan.bucket_name),
+    read: read_r2_bucket(admin: admin, account_id: account_id, bucket_name: plan.bucket_name),
   )
   let create_status = match created.outcome {
     RestOk => "create ok"
@@ -251,17 +275,17 @@ fn apply_r2_bucket_create(
   match readback.decision {
     Noop =>
       R2PurposeEnsureOutcome {
-        line: purpose_line(purpose: purpose, verdict: "absent", decision: "apply", detail: concat(create_status, "; readback converged")),
+        line: purpose_line(purpose: purpose, classified: observed, detail: concat(create_status, "; readback converged")),
         held: true,
       }
     Apply { plan: _ } =>
       R2PurposeEnsureOutcome {
-        line: purpose_line(purpose: purpose, verdict: "absent", decision: "apply", detail: concat(create_status, "; READBACK STILL ABSENT")),
+        line: purpose_line(purpose: purpose, classified: observed, detail: concat(create_status, "; READBACK STILL ABSENT")),
         held: false,
       }
     Refuse { reason: reason } =>
       R2PurposeEnsureOutcome {
-        line: purpose_line(purpose: purpose, verdict: "absent", decision: "apply", detail: join([create_status, "; READBACK REFUSED: ", reason as String], "")),
+        line: purpose_line(purpose: purpose, classified: observed, detail: join([create_status, "; READBACK REFUSED: ", reason as String], "")),
         held: false,
       }
   }
@@ -269,7 +293,7 @@ fn apply_r2_bucket_create(
 
 fn ensure_r2_purpose_bucket(
   purpose: BucketPurpose,
-  bootstrap: Secret,
+  admin: Secret,
   account_id: CloudflareAccountId,
 ) -> R2PurposeEnsureOutcome uses net: Network {
   let desired = bucket_purpose_origin_standing(purpose: purpose)
@@ -280,27 +304,31 @@ fn ensure_r2_purpose_bucket(
   match name {
     Absent =>
       R2PurposeEnsureOutcome {
-        line: purpose_line(purpose: purpose, verdict: "unknown-refused", decision: "refuse", detail: "no bucket allocated"),
+        line: purpose_line(
+          purpose: purpose,
+          classified: r2_ensure_refuse(verdict: UnknownRefused, reason: "no bucket allocated"),
+          detail: "no bucket allocated",
+        ),
         held: false,
       }
     Present { value: bucket_name } => {
       let classified = classify_r2_bucket_ensure(
         desired: desired,
-        read: read_r2_bucket(bootstrap: bootstrap, account_id: account_id, bucket_name: bucket_name),
+        read: read_r2_bucket(admin: admin, account_id: account_id, bucket_name: bucket_name),
       )
       match classified.decision {
         Noop =>
           R2PurposeEnsureOutcome {
-            line: purpose_line(purpose: purpose, verdict: observation_verdict_label(verdict: classified.verdict), decision: "noop", detail: bucket_name as String),
+            line: purpose_line(purpose: purpose, classified: classified, detail: bucket_name as String),
             held: true,
           }
         Refuse { reason: reason } =>
           R2PurposeEnsureOutcome {
-            line: purpose_line(purpose: purpose, verdict: observation_verdict_label(verdict: classified.verdict), decision: "refuse", detail: reason as String),
+            line: purpose_line(purpose: purpose, classified: classified, detail: reason as String),
             held: false,
           }
         Apply { plan: plan } =>
-          apply_r2_bucket_create(purpose: purpose, desired: desired, bootstrap: bootstrap, account_id: account_id, plan: plan)
+          apply_r2_bucket_create(purpose: purpose, desired: desired, admin: admin, account_id: account_id, observed: classified, plan: plan)
       }
     }
   }
@@ -316,10 +344,10 @@ data r2_bucket_ensure_receipt_path: String = "target/r2-bucket-ensure-receipt.tx
 fn ensure() -> ProcessExit uses net: Network {
   match r2_ensure_credentials() {
     R2EnsureCredentialsRefused { cause: cause } => exit_failure(reason: cause as String)
-    R2EnsureCredentialsReady { account_id: account_id, bootstrap: bootstrap } => {
+    R2EnsureCredentialsReady { account_id: account_id, admin: admin } => {
       let outcomes = map(
         gunbc_fleet_r2_bucket_allocations,
-        row => ensure_r2_purpose_bucket(purpose: row.purpose, bootstrap: bootstrap, account_id: account_id),
+        row => ensure_r2_purpose_bucket(purpose: row.purpose, admin: admin, account_id: account_id),
       )
       let text = join(map(outcomes, o => o.line), "\n")
       let written = Filesystem.Write(path: r2_bucket_ensure_receipt_path, content: text)

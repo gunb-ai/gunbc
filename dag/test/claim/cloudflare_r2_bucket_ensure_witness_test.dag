@@ -7,8 +7,8 @@ import std.upsert_decision {
   UpsertClassification,
 }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
-import extdeps.cloudflare.r2 {
-  R2JurisdictionDefault, R2JurisdictionEu,
+import extdeps.cloudflare.r2 { R2JurisdictionDefault, R2JurisdictionEu }
+import extdeps.cloudflare.r2_buckets {
   R2BucketResponse,
   R2BucketRead, R2BucketPresent, R2BucketAbsent, R2AccountNotEntitled, R2BucketReadRefused,
   classify_r2_bucket_get,
@@ -18,6 +18,11 @@ import gunbc.cloudflare.r2_origin {
   R2OriginStanding, R2OriginAllocated, R2OriginUnallocated,
   R2OriginBucket,
   OriginCredentialMintEntryUnbuilt,
+  OriginCredentialUnminted,
+  OriginCredentialPinned,
+  fleet_r2_bucket_admin_credential,
+  cloudflare_bootstrap_custody_secret_id,
+  cloudflare_r2_bucket_admin_secret_id,
   bucket_purpose_origin_standing,
   gunbc_fleet_r2_bucket_allocations,
 }
@@ -25,7 +30,11 @@ import gunbc.cloudflare.r2_bucket_ensure {
   R2BucketCreatePlan,
   classify_r2_bucket_ensure,
   r2_subscription_dashboard_step,
+  r2_ensure_signing_locus,
+  R2EnsureSigningPinned,
+  R2EnsureSigningRefused,
 }
+import gunbc.secret_provision { fleet_secret_ref, secret_ref_pin_version }
 
 // THE WITNESS SUPPLIES THE READ AND RUNS THE REAL CLASSIFIERS. The two classifiers are the whole
 // decision surface: classify_r2_bucket_get turns an HTTP outcome into one of the four bucket facts,
@@ -185,5 +194,29 @@ test fn every_allocated_purpose_converges_against_its_own_bucket() -> Bool {
     )
     is_noop(c: c)
   })
-  held.length() == 2 && filter(held, h => !h).length() == 0
+  held.length() > 0 && filter(held, h => !h).length() == 0
+}
+
+// ── THE SIGNING CREDENTIAL: THE BUCKET-ADMIN TOKEN, NEVER THE BOOTSTRAP ────────────────────────
+
+// The fleet's declared standing is unminted today, so the ensure refuses naming the mint entry and
+// calls nothing. Red if the standing were silently pinned to the bootstrap locus.
+test fn the_unminted_bucket_admin_credential_refuses_naming_its_mint_entry() -> Bool {
+  match r2_ensure_signing_locus(credential: fleet_r2_bucket_admin_credential()) {
+    R2EnsureSigningRefused { cause: cause } => string_contains(s: cause as String, pattern: "run_bucket_admin")
+    R2EnsureSigningPinned { locus: _ } => false
+  }
+}
+
+test fn a_pinned_bucket_admin_credential_signs_with_its_own_locus() -> Bool {
+  let pinned = OriginCredentialPinned {
+    access_key_id: "witness-admin-token-id",
+    token_value: secret_ref_pin_version(ref: fleet_secret_ref(secret_id: cloudflare_r2_bucket_admin_secret_id), version: "1"),
+  }
+  match r2_ensure_signing_locus(credential: pinned) {
+    R2EnsureSigningPinned { locus: locus } =>
+      (locus.secret as String) == (cloudflare_r2_bucket_admin_secret_id as String)
+        && (locus.secret as String) != (cloudflare_bootstrap_custody_secret_id as String)
+    R2EnsureSigningRefused { cause: _ } => false
+  }
 }

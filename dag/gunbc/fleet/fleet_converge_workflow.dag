@@ -19,7 +19,7 @@ import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
-  r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite,
+  r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
 }
 import gunbc.roadmap_execution_contract { CargoCapability }
 import gunbc.toolchain_home_standing {
@@ -75,6 +75,7 @@ import gunbc.ci_spec {
   gunbc_ci_app_control_plane_converge_invoke,
   gunbc_ci_r2_mint_preflight_invoke,
   gunbc_ci_r2_bucket_ensure_invoke,
+  gunbc_ci_r2_bucket_admin_mint_invoke,
   gunbc_ci_r2_object_write_mint_invoke,
   gunbc_ci_runner_guest_image_observe_invoke,
   gunbc_ci_runner_guest_image_converge_invoke,
@@ -189,6 +190,7 @@ type FleetConvergeWorkflowMode
   | RunnerPasswordSessionToolConverge
   | R2MintPreflight
   | R2BucketEnsure
+  | R2BucketAdminMint
   | R2ObjectWriteMint
 
 fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String {
@@ -215,6 +217,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2BucketEnsure => "r2_bucket_ensure"
+    R2BucketAdminMint => "r2_bucket_admin_mint"
     R2ObjectWriteMint => "r2_object_write_mint"
   }
 }
@@ -240,7 +243,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2BucketEnsure, R2ObjectWriteMint]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkRuntimeImageProbe, DashboardDeploy, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, RunnerHostFileConverge, RunnerPasswordSessionToolConverge, R2MintPreflight, R2BucketEnsure, R2BucketAdminMint, R2ObjectWriteMint]
 
 // WHICH SCOPE A MODE SELECTS, WHERE IT SELECTS ONE AT ALL.
 //
@@ -286,6 +289,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerPasswordSessionToolConverge => none
     R2MintPreflight => none
     R2BucketEnsure => none
+    R2BucketAdminMint => none
     R2ObjectWriteMint => none
   }
 }
@@ -1111,6 +1115,7 @@ fn fleet_converge_app_control_plane_step() -> Step {
 // gunbc.auth.access_token_source rather than interpolated into a command line.
 data fleet_converge_r2_mint_preflight_step_if: String = fleet_converge_mode_step_if(mode: R2MintPreflight)
 data fleet_converge_r2_bucket_ensure_step_if: String = fleet_converge_mode_step_if(mode: R2BucketEnsure)
+data fleet_converge_r2_bucket_admin_mint_step_if: String = fleet_converge_mode_step_if(mode: R2BucketAdminMint)
 data fleet_converge_r2_object_write_mint_step_if: String = fleet_converge_mode_step_if(mode: R2ObjectWriteMint)
 
 fn fleet_converge_r2_mint_preflight_step() -> Step {
@@ -1183,6 +1188,46 @@ fn fleet_converge_r2_bucket_ensure_receipt_upload_step() -> Step {
     ] },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_bucket_ensure_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE BUCKET-ADMIN MINT IS THE OBJECT-WRITE MINT'S STEP AT ANOTHER PROFILE: same fold, same custody
+// bracket, same attempt-scoped orphan receipt, a disjoint container. It precedes r2_bucket_ensure,
+// which signs with the token this mints and refuses naming this mode until it is pinned.
+fn fleet_converge_r2_bucket_admin_mint_step() -> Step {
+  RunStep {
+    name: Present { value: "R2 bucket-admin token mint (AccountTokens.Create + Secret Manager custody)" },
+    id: Present { value: "r2_bucket_admin_mint" },
+    run: gunbc_ci_r2_bucket_admin_mint_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_r2_bucket_admin_mint_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_r2_bucket_admin_mint_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload R2 bucket-admin mint receipt (token id + custody version resource; no secret)" },
+    id: Present { value: "r2_bucket_admin_mint_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "r2-bucket-admin-mint-receipt")),
+      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+        scope: fleet_converge_r2_mint_receipt_scope(),
+        profile: R2AccountBucketAdmin,
+      ))),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_r2_bucket_admin_mint_step_if], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -1584,6 +1629,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_app_control_plane_receipt_upload_step(),
         fleet_converge_r2_mint_preflight_step(),
         fleet_converge_r2_mint_preflight_receipt_upload_step(),
+        fleet_converge_r2_bucket_admin_mint_step(),
+        fleet_converge_r2_bucket_admin_mint_receipt_upload_step(),
         fleet_converge_r2_bucket_ensure_step(),
         fleet_converge_r2_bucket_ensure_receipt_upload_step(),
         fleet_converge_r2_object_write_mint_step(),

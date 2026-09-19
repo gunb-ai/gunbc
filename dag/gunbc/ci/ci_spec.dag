@@ -786,6 +786,11 @@ data gunbc_ci_r2_bucket_ensure_target: GunbcRunStepTarget = GunbcRunStepTarget {
   function: "ensure",
 }
 
+data gunbc_ci_r2_bucket_admin_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
+  function: "run_bucket_admin",
+}
+
 data gunbc_ci_r2_object_write_mint_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/cloudflare/r2_token_mint_run.dag",
   function: "run_object_write",
@@ -1010,6 +1015,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_org_actions_converge_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
+    gunbc_ci_r2_bucket_admin_mint_target,
     gunbc_ci_r2_object_write_mint_target,
     gunbc_ci_runner_guest_image_observe_target,
     gunbc_ci_runner_guest_image_converge_target,
@@ -1791,6 +1797,16 @@ fn gunbc_ci_r2_bucket_ensure_invoke() -> String {
     function: gunbc_ci_r2_bucket_ensure_target.function,
     claim_run: false,
     receipt_rel: r2_bucket_ensure_receipt_path
+  )
+}
+
+fn gunbc_ci_r2_bucket_admin_mint_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_r2_bucket_admin_mint_target.entry,
+    function: gunbc_ci_r2_bucket_admin_mint_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

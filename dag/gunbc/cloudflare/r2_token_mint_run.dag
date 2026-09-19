@@ -35,6 +35,7 @@ import extdeps.cloudflare.r2 {
 import gunbc.cloudflare.r2_token_mint {
   admit_r2_object_read_api_mint,
   admit_r2_object_write_api_mint,
+  admit_r2_bucket_admin_api_mint,
   cloudflare_r2_token_human_burden,
 }
 import gunbc.cloudflare.r2_origin {
@@ -56,6 +57,8 @@ import gunbc.cloudflare.r2_origin {
   fleet_cloudflare_bootstrap_custody,
   fabric_durable_origin_read_secret_id,
   fabric_durable_origin_write_secret_id,
+  cloudflare_r2_bucket_admin_secret_id,
+  fleet_r2_bucket_admin_credential,
   OriginCredentialStanding,
   OriginCredentialPinned,
   OriginCredentialUnminted,
@@ -158,9 +161,15 @@ type R2MintPreconditions
 // would have put the five-arm precondition ladder in two places, drifting on the first arm either
 // copy learned about. The profile is decided at the entry (run / run_object_write), which is the
 // dispatch-is-realization seam DESIGN section 3 names.
+//
+// THE BUCKET-ADMIN PROFILE IS THE SAME FOLD WITH AN ACCOUNT-SCOPED GRANT. It differs from the object
+// profiles in exactly the three facts a profile carries -- grant, name, custody container -- and in
+// one more the match below makes explicit: its grant names the ACCOUNT, so the bucket fields of the
+// admitted origin do not enter its policy and its name does not carry a bucket.
 type R2OriginTokenProfile
   = R2OriginObjectRead
   | R2OriginObjectWrite
+  | R2AccountBucketAdmin
 
 // THE PROFILE'S NAME SUFFIX IS ITS OWN FACT, because two things need it and only one of them has a
 // bucket: the token NAME is bucket + suffix, and the receipt GLOB is prefix + wildcard + suffix,
@@ -170,17 +179,27 @@ fn r2_origin_token_name_suffix(profile: R2OriginTokenProfile) -> String {
   match profile {
     R2OriginObjectRead => "-object-read"
     R2OriginObjectWrite => "-object-write"
+    R2AccountBucketAdmin => "-bucket-admin"
   }
 }
 
+// THE ACCOUNT-SCOPED TOKEN'S NAME STEM. The object tokens are named for their bucket; the bucket-admin
+// token manages every bucket and is named for the fleet, with the same suffix the receipt glob reads.
+data r2_account_token_name_stem: String = "gunbc-fleet-r2"
+
 fn r2_origin_token_name(profile: R2OriginTokenProfile, bucket: R2OriginBucket) -> String {
-  join([bucket.bucket_name as String, r2_origin_token_name_suffix(profile: profile)], "")
+  match profile {
+    R2AccountBucketAdmin => join([r2_account_token_name_stem, r2_origin_token_name_suffix(profile: profile)], "")
+    R2OriginObjectRead => join([bucket.bucket_name as String, r2_origin_token_name_suffix(profile: profile)], "")
+    R2OriginObjectWrite => join([bucket.bucket_name as String, r2_origin_token_name_suffix(profile: profile)], "")
+  }
 }
 
 fn r2_origin_token_secret_id(profile: R2OriginTokenProfile) -> NonEmptyStr {
   match profile {
     R2OriginObjectRead => fabric_durable_origin_read_secret_id
     R2OriginObjectWrite => fabric_durable_origin_write_secret_id
+    R2AccountBucketAdmin => cloudflare_r2_bucket_admin_secret_id
   }
 }
 
@@ -188,6 +207,7 @@ fn r2_origin_token_credential(profile: R2OriginTokenProfile, bucket: R2OriginBuc
   match profile {
     R2OriginObjectRead => bucket.read_credential
     R2OriginObjectWrite => bucket.write_credential
+    R2AccountBucketAdmin => fleet_r2_bucket_admin_credential()
   }
 }
 
@@ -205,6 +225,8 @@ fn admit_r2_origin_token_mint(
     R2OriginObjectWrite =>
       admit_r2_object_write_api_mint(
         name: name, account_id: account_id, jurisdiction: jurisdiction, bucket_name: bucket_name)
+    R2AccountBucketAdmin =>
+      admit_r2_bucket_admin_api_mint(name: name, account_id: account_id)
   }
 }
 
@@ -915,6 +937,10 @@ fn run() -> ProcessExit uses net: Network {
 
 fn run_object_write() -> ProcessExit uses net: Network {
   mint_origin_token_and_store(profile: R2OriginObjectWrite)
+}
+
+fn run_bucket_admin() -> ProcessExit uses net: Network {
+  mint_origin_token_and_store(profile: R2AccountBucketAdmin)
 }
 
 fn origin_credential_already_pinned(profile: R2OriginTokenProfile, origin: R2OriginStanding) -> Bool {
