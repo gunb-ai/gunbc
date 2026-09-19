@@ -1,5 +1,6 @@
 module gunbc.spark.glm_group_b_launch
 
+import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
 import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { Second, second, second_count, Mebibyte, mebibyte, mebibyte_count }
@@ -7,10 +8,9 @@ import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.vllm.environment {
   VllmEngineReadyTimeoutSeconds, VllmSparseIndexerMaxLogitsMb, vllm_environment_variable_name,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
+import gunbc.spark.fabric_switch_observed { FabricGroup }
 import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4,
-  glm_native_concurrent_profile, ArmIntent,
+  ArmIntent,
 }
 import gunbc.spark.serving_arm_launch { ArmLaunchPlan, plan_arm_launch_for }
 
@@ -62,7 +62,7 @@ import gunbc.spark.serving_arm_launch { ArmLaunchPlan, plan_arm_launch_for }
 // the caller's declaration of whether it is asking for normal serving or for the bounded experiment that
 // EARNS the receipt normal serving requires. The rendered spec is identical under both; the intent only
 // decides whether gunbc.spark.serving_arm_launch admits the plan at all.
-data glm_group_b_group: FabricGroup = FabricGroupB
+data glm_group_b_group: FabricGroup = glm_group_b_serving_assignment.group
 
 // ── THIS DEPLOYMENT'S VALUES FOR TWO vLLM ENVIRONMENT VARIABLES ───────────────────────────────
 //
@@ -116,19 +116,25 @@ fn glm_group_b_deployment_env() -> List<DockerEnvAssignment> {
   ]
 }
 
+// THE PLAN EVERY GROUP-B REALIZATION PROJECTS FROM, AND ITS TUPLE IS THE FABRIC ASSIGNMENT'S. The
+// checkpoint, runtime, topology, group and profile are read off gunbc.spark.fabric_serving_assignment
+// glm_group_b_serving_assignment -- the one row the launch and every client (enrollment, admitted
+// model, placement) read -- so what is launched and what clients are routed to cannot be two facts.
+//
 // THE PLAN EVERY GROUP-B REALIZATION PROJECTS FROM. A consumer that wants the arm's containers calls
 // this and reads `container` off each rank; a consumer that wants a unit file calls this and projects
 // the same spec through extdeps.docker.cli's foreground verb. Neither may assemble a launch of its own,
 // and the equality between the two projections is claimed rather than assumed --
 // dag/test/claim/spark/glm_group_b_launch_authority_witness_test.dag.
 fn glm_group_b_launch_plan(intent: ArmIntent) -> ArmLaunchPlan {
+  let a = glm_group_b_serving_assignment
   plan_arm_launch_for(
-    checkpoint: Glm53NativeFp8,
-    runtime: GunbcGlm53DerivedGb10,
-    topology: FourSparkTp4,
-    group: glm_group_b_group,
+    checkpoint: a.checkpoint,
+    runtime: a.runtime,
+    topology: a.topology,
+    group: a.group,
     intent: intent,
-    profile: glm_native_concurrent_profile,
+    profile: a.profile,
     deployment_env: glm_group_b_deployment_env(),
   )
 }

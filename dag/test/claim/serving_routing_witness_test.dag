@@ -43,16 +43,14 @@ import product.fabric.demand { ObservationReceiptRef }
 
 // ── 1. BOTH GROUPS ARE ENROLLED, AND EACH ROUTE CARRIES ITS OWN FRONT DOOR ────────────────────
 //
-// THE DISCRIMINATING HALF IS NO LONGER THE PORT, AND SAYING SO IS THE POINT. This asserted that group
-// B answers on :30001, which was true while that route named the canary arm. Group B now serves the
-// native four-rank arm on :30000 -- the same port group A uses, on a different host -- so a port
-// comparison would now be asserting something FALSE about a correct configuration, and a port
-// comparison that happened to stay green would be asserting nothing.
+// THE DISCRIMINATING HALF IS THE ENDPOINT, not the count. A roster of two whose routes shared one
+// endpoint row would pass a membership count and would still be a defect: each route answers on its own
+// head. Both routes now serve on port 30000, so the endpoints differ by ADDRESS -- group A's pair head
+// and group B's rank-zero head of the arm converged on it -- and each is asserted to resolve.
 //
-// SO THE PROPERTY MOVES TO THE WHOLE ENDPOINT, which is what "its own front door" always meant: two
-// routes must not resolve to the same address:port pair. That still cannot be satisfied by a single
-// shared row -- the original defect -- and it survives two arms legitimately sharing a port number,
-// which the old spelling did not.
+// GROUP B'S PORT IS THE CONVERGED ARM'S. This claim used to pin ":30001", the retired exl3 canary's
+// port, so the witness certified the very value a real dispatch refused on (2026-09-18: nothing
+// listening at 192.168.1.236:30001, while the native arm answered at :30000).
 fn w_endpoint(group: FabricGroup) -> String {
   match serving_route(group: group) {
     ServingRouteUnresolved { group: _, obligation: _ } => "unresolved"
@@ -71,38 +69,24 @@ test fn both_groups_are_enrolled_and_each_route_has_its_own_front_door() -> Bool
 
 // ── 2. A ROUTE'S CEILING IS A DECLARED DECISION, AND THE TWO ROUTES DISAGREE ──────────────────
 //
-// Asserting the counts alone would go green on a single shared row, so the row that matters is that
-// the two routes carry ceilings from DIFFERENT AUTHORITIES. That property got STRONGER when group B's
-// route stopped naming the canary: group A carries a ceiling somebody DECIDED for the route, and group
-// B now carries the sequence bound its engine was LAUNCHED with, so the two are different VARIANTS and
-// BOTH ROUTES NOW CARRY A DECLARED POLICY, AND THE GROUP-B ARM IS THE ONE THAT CHANGED. It minted
-// CeilingFromRouteLaunch from the native arm's DESIRED profile while consulting no live argv producer
-// anywhere on the path -- a provenance carrier answering "from the launch" about a launch nobody had
-// observed. The row is now what it honestly is, and the arm it asserts against is its basis rather
-// than its variant: a basis that stops naming itself desired configuration is this claim's red, and
-// so is a re-minted CeilingFromRouteLaunch, because the producer that would justify one still does
-// not exist. gunbc.serving.serving_enrollment names the join that retires this.
-//
-// not merely different numbers. The counts once coincided at 1, which is exactly why the variant
-// check below carries the discrimination and the counts alone would not; group B's count has since
-// moved to the operator's chosen 16 (gunbc.spark.serving_arm glm_native_initial_profile), and the
-// variant check is still what keeps the two routes' ceilings from being confused.
+// Asserting the counts alone would go green on a single shared row, so what matters is that the two
+// routes read DIFFERENT attributed rows -- group A's allocation decided 2026-09-11 and group B's decided
+// 2026-09-18 -- which no single constant can produce even though both allocate four.
 fn w_ceiling(group: FabricGroup) -> Nat {
   serving_route_turn_ceiling_count(c: serving_route_ceiling(group: group))
 }
 
 test fn each_route_declares_its_own_turn_ceiling_and_none_of_them_is_a_measurement() -> Bool {
   w_ceiling(group: FabricGroupA) == 4
-    && w_ceiling(group: FabricGroupB) == 16
-    && w_ceiling(group: FabricGroupA) != w_ceiling(group: FabricGroupB)
+    && w_ceiling(group: FabricGroupB) == 4
     && (match serving_route_ceiling(group: FabricGroupA) {
           CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
             (d as String) != "" && (on as String) == "2026-09-11"
           CeilingFromRouteLaunch { count: _, basis: _ } => false
         })
     && (match serving_route_ceiling(group: FabricGroupB) {
-          CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: b } =>
-            (d as String) != "" && (on as String) != "" && string_contains(s: b as String, pattern: "DESIRED CONFIGURATION")
+          CeilingByDeclaredPolicy { count: _, decider: d, decided_on: on, basis: _ } =>
+            (d as String) != "" && (on as String) == "2026-09-18"
           CeilingFromRouteLaunch { count: _, basis: _ } => false
         })
 }
@@ -132,8 +116,8 @@ fn w_unit_is_glm(id: String) -> Bool {
 test fn a_route_advertising_an_admitted_model_other_than_the_selectors_is_taken() -> Bool {
   w_admits(id: harness_unit_model_id(unit: DeepseekV4FlashOnVllm) as String)
     && w_admits(id: harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
-    && w_admits(id: "glm-5.3-flash-exl3-canary")
-    && w_unit_is_glm(id: "glm-5.3-flash-exl3-canary")
+    && w_admits(id: "glm-5.3-flash")
+    && w_unit_is_glm(id: "glm-5.3-flash")
     && !w_admits(id: "tinyllama-1.1b")
     && !w_admits(id: "")
     && (harness_unit_model_id(unit: DeepseekV4FlashOnVllm) as String) != (harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
@@ -142,8 +126,8 @@ test fn a_route_advertising_an_admitted_model_other_than_the_selectors_is_taken(
 // THE FIRST ADMITTED ID IN THE ROUTE'S OWN ORDER WINS, and a list carrying nothing admitted refuses
 // with the whole list rather than with a bare fact of mismatch.
 test fn an_advertised_list_resolves_to_its_first_admitted_member_or_refuses_with_the_list() -> Bool {
-  (match serving_admit_advertised(advertised: ["tinyllama-1.1b", "glm-5.3-flash-exl3-canary"]) {
-     ServingModelAdmitted { id: i, unit: _ } => (i as String) == "glm-5.3-flash-exl3-canary"
+  (match serving_admit_advertised(advertised: ["tinyllama-1.1b", "glm-5.3-flash"]) {
+     ServingModelAdmitted { id: i, unit: _ } => (i as String) == "glm-5.3-flash"
      ServingModelNotAdmitted { advertised: _ } => false
    })
     && (match serving_admit_advertised(advertised: ["tinyllama-1.1b", "nomic-embed"]) {
@@ -161,7 +145,7 @@ test fn an_advertised_list_resolves_to_its_first_admitted_member_or_refuses_with
 // THIS IS THE CONTROL FOR A DEFECT THAT SHIPPED IN THIS BRANCH AND WAS CAUGHT IN REVIEW. A consumer
 // held the resolved UNIT and re-derived the request's model field from it by name, which is correct
 // for group A by coincidence and wrong for group B in the way that matters: its engine is launched
-// with --served-model-name glm-5.3-flash-exl3-canary and answers to that alias alone, so a turn
+// with --served-model-name glm-5.3-flash and answers to that alias alone, so a turn
 // naming the unit's canonical Zhipu id is refused at the request -- the exact failure this branch
 // exists to remove, reintroduced one layer further in.
 //
@@ -169,14 +153,14 @@ test fn an_advertised_list_resolves_to_its_first_admitted_member_or_refuses_with
 // one. An equality against the alias alone would stay green on a build that had gone back to
 // deriving the id from the unit, if the two ever coincided.
 test fn the_admitted_id_is_the_advertised_one_and_not_the_units_canonical_id() -> Bool {
-  (match serving_admits_id(id: "glm-5.3-flash-exl3-canary") {
+  (match serving_admits_id(id: "glm-5.3-flash") {
      ServingModelAdmitted { id: i, unit: u } =>
-       (i as String) == "glm-5.3-flash-exl3-canary"
+       (i as String) == "glm-5.3-flash"
          && (i as String) != (harness_unit_model_id(unit: Glm53FlashOnVllm) as String)
          && (match u { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false })
      ServingModelNotAdmitted { advertised: _ } => false
    })
-    && (harness_unit_model_id(unit: Glm53FlashOnVllm) as String) != "glm-5.3-flash-exl3-canary"
+    && (harness_unit_model_id(unit: Glm53FlashOnVllm) as String) != "glm-5.3-flash"
 }
 
 // ── 4. MEMBERSHIP IS OBSERVED: A ROUTE THAT DOES NOT ANSWER IS NOT SELECTABLE ─────────────────
@@ -338,14 +322,14 @@ test fn each_class_holds_its_own_pool_and_the_quality_seat_is_still_one() -> Boo
 // ── A CEILING THAT MOVES NAMES A DIFFERENT POOL, WHICH IS THE POINT OF PUTTING IT IN THE NAME ──
 //
 // THE FAILURE THIS FORBIDS. The tolerant ceiling is derived from rows in OTHER modules -- the
-// declared allocation for group A, the canary arm's bound for group B -- so the author who moves it
+// declared allocations for group A and group B -- so the author who moves one
 // is editing a file that never mentions this partition. If the name did not carry the ceiling,
 // acquire events written under the old one would be replayed against the new root and reinterpreted
 // rather than continued, which is the module's own invariant violated by an edit made somewhere that
 // gives no reason to think about it.
 //
 // AN EARLIER VERSION OF THIS BLOCK SAID THE CEILING MOVES WITH NO EDIT AT ALL, which is not true
-// today: the canary's bound is a static row and nothing observes the running container. It becomes
+// today: both allocations are static rows and nothing observes the running container. It becomes
 // true when CeilingFromRouteLaunch has a producer, and this control is what makes that landing safe
 // rather than silent.
 //
@@ -378,7 +362,7 @@ test fn an_exact_model_requirement_still_refuses_a_route_serving_another_model()
 
 // ── 8. THE WORKING WINDOW FOLLOWS THE BOUND UNIT ──────────────────────────────────────────────
 //
-// A turn placed on the canary must not be sized by the pair route's engine cap. The two units'
+// A turn placed on group B must not be sized by the pair route's engine cap. The two units'
 // budgets are asserted to be no larger than their own declared ceilings, which is the property that
 // was structurally unavailable while one global row answered for every route.
 test fn the_context_budget_never_exceeds_the_bound_units_own_declared_ceiling() -> Bool {

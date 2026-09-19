@@ -1,0 +1,244 @@
+module gunbc.spark.group_b_node_qualification
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { ByteSize, Bandwidth, Nanosecond, gibibyte, gibibyte_to_byte_size, nanosecond, byte_size }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+}
+import extdeps.ethernet.link_mode { ieee_100gbase_cr2, ieee_50gbase_cr2 }
+import extdeps.storage.types { PcieLink, Gen5 }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
+import product.fabric.node_qualification {
+  HostAdvertisedDelivery, HostMeasuredDelivery,
+  CollectiveGroupAdvertised, CollectiveGroupMeasured,
+  AdvertisedSparkConnectX7PerPort, CollectiveProtocol, CollectiveObservationIdentity, AdvertisedPcie,
+  CountUnread, ByteSizeUnread, LinkModeRead, PcieLinkRead,
+  GpuDirectReceiptUnread,
+  CollectiveCurveRead, CollectiveSample, NcclTestsAllReducePerf, NcclTestsAllToAllPerf,
+  SmallMessageStepThenPlateau, SmallMessageShapeUncharacterized,
+  EngineBufferModeUnestablished, PerLayerAllReduceCountUnestablished,
+  EachRankContributesTheSizeColumn, TotalBufferSplitPerPeer, NcclTestsHalf,
+  SuppliedHistoricalDemonstration,
+  CollectivePrimitiveAttribution, CollectivePrimitiveMeasuredOnDifferentRuntime,
+  NcclLibraryVersion, ServingNcclIdentity,
+  HostRegisteredIbFallbackStanding, HostRegisteredIbFallbackCitedOnMeasuredNcclOnly,
+  EthtoolLinkModes, LspciLnkSta, WindowSharedWithDeclaredTraffic,
+  GroupQualificationAdmission, HostQualificationAdmission,
+  qualify_host, qualify_collective_group, admit_qualified_host, admit_qualified_group,
+  OfferDeliveryClaim, OfferClaimsNodeDelivery, nccl_tests_busbw_from_printed_gbs,
+}
+
+// GROUP B AS TWO SUBJECTS, READ 2026-09-18.
+//
+// A Spark host is one GB10, one rail, one ConnectX-7 per-port attachment. Four of those hosts
+// are the serving group that ran the 4-rank collective. Those are not one HostIdentity.
+// GPUDirect is a measured platform fact (succeeding query 0 → DeviceUnsupported), not an
+// advertised service floor. The advertised PCIe is the Spark platform per-port attachment.
+
+data group_b_fabric_node: HostIdentity = operator_host_srv9
+
+data advertised_spark_connectx7_per_port: AdvertisedPcie = AdvertisedSparkConnectX7PerPort
+
+data group_b_expected_ranks: List<HostIdentity> = [
+  operator_host_srv9, operator_host_srv10, operator_host_srv11, operator_host_srv12,
+]
+
+data group_b_nccl_tests: NcclLibraryVersion = NcclLibraryVersion { major: 2, minor: 31, patch: 2 }
+data group_b_torch_built_nccl: NcclLibraryVersion = NcclLibraryVersion { major: 2, minor: 29, patch: 7 }
+data group_b_loaded_runtime_nccl: NcclLibraryVersion = NcclLibraryVersion { major: 2, minor: 30, patch: 7 }
+
+data group_b_serving_nccl: ServingNcclIdentity = ServingNcclIdentity {
+  torch_built_against: group_b_torch_built_nccl,
+  loaded_runtime: group_b_loaded_runtime_nccl,
+}
+
+data group_b_primitive_attribution: CollectivePrimitiveAttribution = CollectivePrimitiveMeasuredOnDifferentRuntime {
+  measured_with: group_b_nccl_tests,
+  serving: group_b_serving_nccl,
+}
+
+data group_b_host_registered_ib_fallback: HostRegisteredIbFallbackStanding = HostRegisteredIbFallbackCitedOnMeasuredNcclOnly {
+  measured_with: group_b_nccl_tests,
+  serving_revisions_not_censused: group_b_serving_nccl,
+}
+
+// 4-RANK all_reduce_perf ON THE LIVE GLM TP=4 ARM, 2026-09-18T03:48Z UTC.
+// Shared window with serving (vLLM glm-native-tp4, gpu_memory_utilization 0.84); latencies are an
+// UPPER BOUND, not an idle floor. dtype=half, -c 0, 10 warmup + 40 iters. BOTH in-place and
+// out-of-place columns are carried: vLLM's tensor-parallel all-reduce buffer mode is unestablished,
+// so the receipt does not pick a column. Per-layer all-reduce count is likewise unestablished
+// (dense-TP 45x2 vs MoE replacing the second with expert-parallel all-to-all). Do not collapse
+// those into a single millisecond figure. Transport env copied from the serving container:
+// NCCL_SOCKET_IFNAME=enp1s0f1np1, NCCL_IB_HCA=rocep1s0f1, RoCEv2. nccl-tests is NCCL 2.31.2;
+// that is a fabric characterization under a different library than the engine (torch built
+// 2.29.7, loaded runtime 2.30.7). First sample is 8192 B. nccl-tests size for all_reduce is what EACH RANK CONTRIBUTES, not a
+// total-buffer figure comparable to alltoall_perf's size column (that one is the total buffer,
+// split per peer as size/nRanks). The 8KB->16KB step then 16-32KB plateau is recorded as a
+// protocol-boundary candidate (LL/LL128/Simple), not smoothed as bandwidth. Engine-side message
+// sizes and operation counts are not derived here.
+
+fn group_b_all_reduce_sample(
+  message_bytes: ByteSize,
+  in_place: Nanosecond,
+  out_of_place: Nanosecond,
+  bus_bandwidth: Bandwidth,
+) -> CollectiveSample {
+  CollectiveSample {
+    message_bytes: message_bytes,
+    bus_bandwidth: bus_bandwidth,
+    in_place_latency: in_place,
+    out_of_place_latency: out_of_place,
+  }
+}
+
+fn group_b_all_reduce_half_curve() -> List<CollectiveSample> {
+  [
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 8192), in_place: nanosecond(count: 108420), out_of_place: nanosecond(count: 179540), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 110000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 16384), in_place: nanosecond(count: 180250), out_of_place: nanosecond(count: 184410), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 140000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 24576), in_place: nanosecond(count: 189010), out_of_place: nanosecond(count: 202200), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 200000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 32768), in_place: nanosecond(count: 187860), out_of_place: nanosecond(count: 188750), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 260000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 65536), in_place: nanosecond(count: 295520), out_of_place: nanosecond(count: 302540), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 330000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 131072), in_place: nanosecond(count: 516750), out_of_place: nanosecond(count: 510550), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 380000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 262144), in_place: nanosecond(count: 945330), out_of_place: nanosecond(count: 950000), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 420000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 524288), in_place: nanosecond(count: 1978540), out_of_place: nanosecond(count: 2070680), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 400000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 1048576), in_place: nanosecond(count: 4494060), out_of_place: nanosecond(count: 4614400), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 350000000)),
+  ]
+}
+
+fn group_b_all_to_all_half_curve() -> List<CollectiveSample> {
+  [
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 8192), in_place: nanosecond(count: 20150), out_of_place: nanosecond(count: 24500), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 300000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 16384), in_place: nanosecond(count: 29940), out_of_place: nanosecond(count: 24670), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 410000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 24576), in_place: nanosecond(count: 30380), out_of_place: nanosecond(count: 29220), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 610000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 32768), in_place: nanosecond(count: 30620), out_of_place: nanosecond(count: 35230), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 800000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 65536), in_place: nanosecond(count: 45420), out_of_place: nanosecond(count: 56310), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 1080000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 131072), in_place: nanosecond(count: 85760), out_of_place: nanosecond(count: 81790), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 1150000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 262144), in_place: nanosecond(count: 147740), out_of_place: nanosecond(count: 149530), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 1330000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 524288), in_place: nanosecond(count: 261730), out_of_place: nanosecond(count: 267380), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 1500000000)),
+    group_b_all_reduce_sample(message_bytes: byte_size(count: 1048576), in_place: nanosecond(count: 537720), out_of_place: nanosecond(count: 513310), bus_bandwidth: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 1460000000)),
+  ]
+}
+
+data group_b_all_reduce_protocol: CollectiveProtocol = CollectiveProtocol {
+  instrument: NcclTestsAllReducePerf,
+  size_semantics: EachRankContributesTheSizeColumn,
+  dtype: NcclTestsHalf,
+  rank_count: 4,
+}
+
+data group_b_all_to_all_protocol: CollectiveProtocol = CollectiveProtocol {
+  instrument: NcclTestsAllToAllPerf,
+  size_semantics: TotalBufferSplitPerPeer { rank_count: 4 },
+  dtype: NcclTestsHalf,
+  rank_count: 4,
+}
+
+data group_b_all_reduce_observation: CollectiveObservationIdentity = CollectiveObservationIdentity {
+  protocol: group_b_all_reduce_protocol,
+  run_identity: "group-b-all-reduce-half-2026-09-18" as NonEmptyStr,
+  ranks: group_b_expected_ranks,
+  samples: group_b_all_reduce_half_curve(),
+  provenance: SuppliedHistoricalDemonstration,
+}
+
+data group_b_all_to_all_observation: CollectiveObservationIdentity = CollectiveObservationIdentity {
+  protocol: group_b_all_to_all_protocol,
+  run_identity: "group-b-all-to-all-half-2026-09-18" as NonEmptyStr,
+  ranks: group_b_expected_ranks,
+  samples: group_b_all_to_all_half_curve(),
+  provenance: SuppliedHistoricalDemonstration,
+}
+
+data group_b_host_advertised: HostAdvertisedDelivery = HostAdvertisedDelivery {
+  accelerator_count: 1,
+  usable_memory: gibibyte_to_byte_size(g: gibibyte(count: 121)),
+  rail_link_mode: ieee_100gbase_cr2,
+  nic_pcie: AdvertisedSparkConnectX7PerPort,
+  gpu_direct_platform: spark_gb10_platform,
+}
+
+data group_b_group_advertised: CollectiveGroupAdvertised = CollectiveGroupAdvertised {
+  expected_ranks: group_b_expected_ranks,
+  latency_ceiling: nanosecond(count: 100000),
+  latency_message_bytes: byte_size(count: 8192),
+  all_reduce_protocol: group_b_all_reduce_protocol,
+  bandwidth_floor: nccl_tests_busbw_from_printed_gbs(printed_times_1e9: 10000000000),
+  bandwidth_message_bytes: byte_size(count: 8192),
+  all_to_all_latency_ceiling: nanosecond(count: 100000),
+  all_to_all_message_bytes: byte_size(count: 8192),
+  all_to_all_protocol: group_b_all_to_all_protocol,
+}
+
+data group_b_host_measured: HostMeasuredDelivery = HostMeasuredDelivery {
+  accelerator_count: CountUnread {
+    because: "cudaGetDeviceCount was not executed for this receipt; serving process presence is not a device-count reading" as NonEmptyStr,
+  },
+  usable_memory: ByteSizeUnread {
+    because: "a succeeding CUDA/torch memory query was not executed for this receipt; NVML unsupported-on-unified is not a zero-byte reading" as NonEmptyStr,
+  },
+  rail_link_mode: LinkModeRead {
+    mode: ieee_50gbase_cr2,
+    instrument: EthtoolLinkModes,
+  },
+  nic_pcie: PcieLinkRead {
+    link: PcieLink { generation: Gen5, lane_count: 4 },
+    instrument: LspciLnkSta,
+  },
+  gpu_direct: GpuDirectReceiptUnread {
+    because: "observe_rank_gpu_direct_capability was not executed for this historical demonstration; a catalog GB10 row is not a RankGpuDirectCapabilityReceipt" as NonEmptyStr,
+  },
+}
+
+data group_b_group_measured: CollectiveGroupMeasured = CollectiveGroupMeasured {
+  collective: CollectiveCurveRead {
+    observation: group_b_all_reduce_observation,
+    small_message_shape: SmallMessageStepThenPlateau { step_at: byte_size(count: 16384) },
+    engine_buffer_mode: EngineBufferModeUnestablished,
+    per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
+    primitive_attribution: group_b_primitive_attribution,
+    window: WindowSharedWithDeclaredTraffic,
+  },
+  all_to_all: CollectiveCurveRead {
+    observation: group_b_all_to_all_observation,
+    small_message_shape: SmallMessageShapeUncharacterized,
+    engine_buffer_mode: EngineBufferModeUnestablished,
+    per_layer_all_reduce_count: PerLayerAllReduceCountUnestablished,
+    primitive_attribution: group_b_primitive_attribution,
+    window: WindowSharedWithDeclaredTraffic,
+  },
+  host_registered_ib_fallback: group_b_host_registered_ib_fallback,
+  ranks: [],
+}
+
+fn group_b_host_admission() -> HostQualificationAdmission {
+  admit_qualified_host(
+    receipt: qualify_host(
+      node: group_b_fabric_node,
+      advertised: group_b_host_advertised,
+      measured: group_b_host_measured,
+    ),
+  )
+}
+
+data group_b_claimed_offer: FabricIdentity<NonEmptyStr, OfferKey> = FabricIdentity {
+  principal: "gunbc",
+  key: "group-b-historical",
+}
+
+fn group_b_group_admission() -> GroupQualificationAdmission<NonEmptyStr> {
+  admit_qualified_group(
+    receipt: qualify_collective_group(
+      offer: group_b_claimed_offer,
+      advertised: group_b_group_advertised,
+      measured: group_b_group_measured,
+      host_admissions: [],
+    ),
+  )
+}
+
+data group_b_delivery_claim: OfferDeliveryClaim<NonEmptyStr> = OfferClaimsNodeDelivery {
+  offer: group_b_claimed_offer,
+  admission: group_b_group_admission(),
+}

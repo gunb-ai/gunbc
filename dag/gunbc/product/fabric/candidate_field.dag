@@ -2,7 +2,7 @@ module product.fabric.candidate_field
 
 import std.types { List, EpochSecs }
 import std.decl_ref { DeclarationRef }
-import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
 import product.fabric.provider_admission {
   RouteScopeSanction, ProviderUseScope, ProviderUseRefusal, admit_provider_use,
@@ -21,6 +21,11 @@ import product.fabric.selection {
   CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
   PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork,
   PermitNamesAnotherDemand,
+}
+import product.fabric.node_qualification {
+  OfferDeliveryClaim, OfferDoesNotClaimNodeDelivery, OfferClaimsNodeDelivery,
+  QualificationRefusal, claimed_delivery_check, ClaimedDeliveryHolds,
+  ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
 }
 
 // THE CANDIDATE FIELD IS ASSEMBLED BEFORE ANY PRICE EXISTS, AND THIS MODULE'S IMPORT LIST IS THE
@@ -87,6 +92,7 @@ import product.fabric.selection {
 type FieldRequest<P> {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
+  delivery: OfferDeliveryClaim<P>
 }
 
 // ONE ARM PER PRODUCER, which is why there is no single NotAdmitted arm. Each of these is reached
@@ -112,6 +118,19 @@ type FieldExclusionCause<P>
       permit_demand: FabricIdentity<P, DemandKey>,
       subject_demand: FabricIdentity<P, DemandKey>,
     }
+  | FieldNodeNotQualified { refusals: List<QualificationRefusal> }
+  | FieldDeliveryClaimNamesAnotherOffer { claim_names: FabricIdentity<P, OfferKey> }
+  | FieldDeliveryClaimReceiptMismatch {
+      claim_names: FabricIdentity<P, OfferKey>,
+      receipt_names: FabricIdentity<P, OfferKey>,
+    }
+
+// FieldNodeNotQualified is minted when FieldRequest.delivery is OfferClaimsNodeDelivery of the
+// SAME offer identity and a GroupNotQualified admission. A claim naming another offer is
+// FieldDeliveryClaimNamesAnotherOffer. Group B is a historical demonstration bound to
+// group_b_claimed_offer. TRIGGER: a Spark rail SupplierOffer carries OfferClaimsNodeDelivery of
+// its own FabricIdentity. SUFFICIENT FOR: an unqualified group is excluded by name, and a claim
+// cannot ride a different offer.
 
 type FieldExclusion<P> {
   offer: FabricIdentity<P, OfferKey>
@@ -179,12 +198,47 @@ fn field_entry<P>(
             offer: request.offer.id,
             cause: FieldRouteExerciseExpired { route: r, latest_valid_through: v, at: t },
           )
-        RouteReady { exercise: _ } => field_entry_admitted(
+        RouteReady { exercise: _ } => field_entry_delivery(
           sanctions: sanctions, active: active, scope: scope,
           decision_receipt: decision_receipt, facts: facts, request: request)
-        RouteAdmittedForItsOwnExercise { route: _ } => field_entry_admitted(
+        RouteAdmittedForItsOwnExercise { route: _ } => field_entry_delivery(
           sanctions: sanctions, active: active, scope: scope,
           decision_receipt: decision_receipt, facts: facts, request: request)
+      }
+  }
+}
+
+fn field_entry_delivery<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  request: FieldRequest<P>,
+) -> FieldEntry<P> {
+  match request.delivery {
+    OfferDoesNotClaimNodeDelivery => field_entry_admitted(
+      sanctions: sanctions, active: active, scope: scope,
+      decision_receipt: decision_receipt, facts: facts, request: request)
+    OfferClaimsNodeDelivery { offer: named, admission: _ } =>
+      if fabric_identity_eq(left: request.offer.id, right: named) {
+        match claimed_delivery_check(claim: request.delivery) {
+          ClaimedDeliveryHolds => field_entry_admitted(
+            sanctions: sanctions, active: active, scope: scope,
+            decision_receipt: decision_receipt, facts: facts, request: request)
+          ClaimedDeliveryUnqualified { refusals: r } =>
+            excluded_entry(offer: request.offer.id, cause: FieldNodeNotQualified { refusals: r })
+          ClaimedDeliveryOfferMismatch { claim_names: c, receipt_names: rec } =>
+            excluded_entry(
+              offer: request.offer.id,
+              cause: FieldDeliveryClaimReceiptMismatch { claim_names: c, receipt_names: rec },
+            )
+        }
+      } else {
+        excluded_entry(
+          offer: request.offer.id,
+          cause: FieldDeliveryClaimNamesAnotherOffer { claim_names: named },
+        )
       }
   }
 }

@@ -88,7 +88,7 @@ import gunbc.compiler_frontend_program_status {
   MissingInstrument,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
-  RepairInputOriginRosterProducer,
+  ResolverBoundDeclaringIdentity,
   ExactOccurrenceResidualCensus,
   all_missing_instruments,
   conditionally_awaited_instruments,
@@ -573,23 +573,31 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
 }
 
 // F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR, AND IT MAY NOT READ CLEAR OFF AN INSTRUMENT
-// THAT IS EMPTY ON THE CORPUS.
+// WHOSE DECLARING IDENTITIES ARE SPELLED RATHER THAN BOUND.
 //
-// THIS PROBE HAS NOW BEEN FALSIFIED TWICE AND BOTH FALSIFICATIONS ARE THE SAME RULE. The original
-// arm read gunbc.namespace_cut_subject_roster's unobservable host probes, so repairing probe
-// observability would have flipped XL-0 while no denominator existed. A later arm -- landed on this
-// branch and withdrawn on it -- read a STAGE DELIVERY RECEIPT, which was earned against hand-built
-// Node trees while the producer returned NO sites over the tree production actually yields. Both
-// made XL-0's standing a function of something that is not the denominator.
+// THIS PROBE HAS BEEN FALSIFIED THREE TIMES AND ALL THREE ARE ONE RULE. The original arm read
+// gunbc.namespace_cut_subject_roster's unobservable host probes; a later arm read a STAGE DELIVERY
+// RECEIPT earned against hand-built Node trees while the producer returned NO sites over the tree
+// production actually yields; and on gunbc#11582 one head read a delivery receipt discriminated on
+// the production route whose RepairInputDeclared arm was derived from the authored SPELLING while
+// the compiler resolver refused the same reference (review 67708). Each made XL-0's standing a
+// function of something that is not the denominator.
 //
-// So the assertion is NOT-DERIVABLE with this exact cause, which is the one statement that survives
-// both: a rewiring onto any other observable population has to abandon the cause to move the
-// standing, and a receipt re-landed before the producer answers non-empty reds this witness.
-test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bool {
+// So the assertion is NOT-DERIVABLE with this exact cause -- the resolver answering a qualified
+// reference with an exact declaring identity, from which the roster's `declaring` is derived --
+// and it names the stage: a rewiring onto any other observable population has to abandon the
+// cause to move the standing, and a receipt landed before the resolver binds reds this witness.
+//
+// THE THIRD CONJUNCT THE PREDECESSOR ROW CARRIED -- that no MILESTONE cites the instrument -- is
+// dropped, and the reason is cost rather than truth: milestones_awaiting derives every milestone's
+// standing (114k eval steps on gunbc#11582 run 35355538762, refused against the 72,300-step line
+// for a witness identity that is new because this row is renamed), while the stage-side join
+// costs ~1k. The stage assertion is the one this row exists for; the milestone side is the
+// instrument roster's own coherence, held by every_declared_instrument_is_distinct_and_awaited beside it.
+test fn xl0_is_not_derivable_and_awaits_resolver_bound_declaring_identity() -> Bool {
   standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
-    && any(stages_awaiting(i: RepairInputOriginRosterProducer),
+    && any(stages_awaiting(i: ResolverBoundDeclaringIdentity),
          l => l == namespace_cut_stage_label(s: StageXL0Denominator))
-    && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
 }
 
 // XL-3 stays NotDerivable while the usable class -- qualified cross-module
@@ -942,3 +950,4 @@ test fn a_mixed_prerequisite_set_preserves_both_identities() -> Bool {
         && any(blocking, b => b == "the emitter milestone")
   }
 }
+

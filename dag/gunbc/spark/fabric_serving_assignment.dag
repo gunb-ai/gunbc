@@ -1,0 +1,72 @@
+module gunbc.spark.fabric_serving_assignment
+
+import std.types { NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import product.placement_supply { HostIdentity }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB }
+import gunbc.spark.serving_arm {
+  ServingCheckpoint, ServingRuntime, ServingTopology, ServingLaunchProfile,
+  Glm53NativeFp8, GunbcGlm53DerivedGb10, FourSparkTp4,
+  glm_native_concurrent_profile, serving_topology_rank_count,
+}
+import gunbc.spark.serving_arm_launch { arm_node_roster, ArmNodesResolved, ArmNodeRosterRefused }
+
+// WHICH SERVING ARM IS CONVERGED ON A FABRIC GROUP, AS ONE ROW THAT BOTH THE LAUNCH AND EVERY CLIENT
+// READ. Before this module the fact had two authors that disagreed. The group B relaunch actuator
+// spelled its own tuple inline and launched the native GLM arm on port 30000, while
+// gunbc.serving.serving_enrollment, gunbc.serving.admitted_model and gunbc.spark.serving_arm_placement
+// still read the retired exl3 canary -- its host, its port 30001, its sequence bound and its served
+// alias. A real dispatch on 2026-09-18 probed 192.168.1.236:30001, found nothing listening, and
+// refused group B with "no serving offer was admissible", while the arm the actuator had converged
+// answered on 192.168.1.236:30000 as glm-5.3-flash.
+//
+// THE ROW IS THE PLANNER'S INPUT LESS ITS INTENT. plan_arm_launch_for takes exactly these five fields
+// plus an ArmIntent, and the intent is a property of one launch -- whether an unrun subject may be
+// started for a bounded experiment -- not of what the group is assigned to serve. So the actuator
+// supplies its intent at the call and reads everything else here.
+type FabricServingAssignment sole_constructor {
+  group: FabricGroup
+  checkpoint: ServingCheckpoint
+  runtime: ServingRuntime
+  topology: ServingTopology
+  profile: ServingLaunchProfile
+}
+
+// THE RUNTIME IS GunbcGlm53DerivedGb10, THE IMAGE THE ARM IS ACTUALLY SERVING (sha256:c7d63d15...,
+// read from the running glm-native-tp4 container on srv9, 2026-09-18). This row first named
+// GunbcGlm53NopeDerivedGb10, whose pin is the OLDER 2026-09-12 hand build (sha256:41366caf...); a
+// relaunch planned from it would have moved group B backwards onto an image it no longer serves.
+// The NoPE row stays in gunbc.spark.serving_arm as history, not as an alternative (#11565).
+data glm_group_b_serving_assignment: FabricServingAssignment = FabricServingAssignment {
+  group: FabricGroupB,
+  checkpoint: Glm53NativeFp8,
+  runtime: GunbcGlm53DerivedGb10,
+  topology: FourSparkTp4,
+  profile: glm_native_concurrent_profile,
+}
+
+type FabricServingHead
+  = FabricServingHeadResolved { host: HostIdentity }
+  | FabricServingHeadRefused { cause: NonEmptyStr }
+
+// THE HEAD IS THE RANK THAT SERVES HTTP, DERIVED FROM THE SAME ROSTER THE LAUNCH IS PLANNED FROM.
+// gunbc.spark.serving_arm_launch arm_headless_argv passes --headless to every node whose node_rank is
+// not zero, so rank zero is the only process with a front door. Taking it from arm_node_roster rather
+// than from a host row means the rank order the launch assigns and the host a client asks cannot be two
+// facts. This is deliberately NOT the plan's `master`, which is the head's fabric RAIL address for the
+// NCCL rendezvous and is not where a client connects; the LAN address is the fleet topology's, and
+// gunbc.serving.serving_enrollment resolves it.
+//
+// A ROSTER THAT REFUSES YIELDS NO HEAD, NEVER A GUESSED ONE. A group whose members lack a rail address,
+// or whose count disagrees with the arm's tensor-parallel degree, cannot be launched, so it has no
+// serving rank to ask; the cause travels forward unedited.
+fn fabric_serving_head(a: FabricServingAssignment) -> FabricServingHead {
+  match arm_node_roster(group: a.group, expected_ranks: serving_topology_rank_count(t: a.topology)) {
+    ArmNodeRosterRefused { cause: c } => FabricServingHeadRefused { cause: c }
+    ArmNodesResolved { nodes: ns, master: _ } =>
+      match filter(ns, n => n.node_rank == 0).first() {
+        Absent => FabricServingHeadRefused { cause: "the arm's roster resolved with no node at rank zero, so no rank serves the front door" as NonEmptyStr }
+        Present { value: n } => FabricServingHeadResolved { host: n.host }
+      }
+  }
+}
