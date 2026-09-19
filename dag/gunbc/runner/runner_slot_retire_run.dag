@@ -179,7 +179,51 @@ data runner_slot_retire_receipt_path: String = "target/runner-slot-retire-receip
 // the entry and refuse there. Checking both in one place means an operator fixes one dispatch rather
 // than two.
 data runner_slot_retire_dispatch_mode_env: String = "GUNBC_RUNNER_RETIRE_DISPATCH_MODE"
+// THIS IS THE ONE SPELLING OF THIS MODE'S WIRE WORD, and the direction is forced rather than chosen:
+// `gunbc.fleet_converge_workflow` already imports this module, so the workflow's mode-wire fold
+// consumes this datum and cannot be imported back. Holding it twice was not cosmetic -- the admission
+// gate below compares the DISPATCHED mode against it, so editing either spelling would send every
+// real dispatch down the not-this-mode arm, which exits SUCCESSFULLY. The fork's failure mode is a
+// silently green wall, which is exactly what this gate exists to prevent.
 data runner_slot_retire_dispatch_mode_wire: String = "runner_slot_retire"
+
+// THE EXECUTOR/TARGET PAIR RULE, HELD ONCE FOR ITS TWO CONSUMERS. Both the pre-dispatch admission
+// gate and the route's own entry must refuse the same three shapes, and they were refusing them
+// twice with separately hand-written causes -- one concept, two authorities, so a repair to either
+// would leave the other admitting what it now refuses. The cause belongs to the defect rather than to
+// the site that noticed it: each caller adds only where it was reading from.
+type RetirementPairing
+  = RetirementPairNamed { executor: String, target: String }
+  | RetirementPairRefused { cause: String }
+
+fn retirement_executor_target_pairing(executor_raw: String, target_raw: String) -> RetirementPairing {
+  let executor = trim(s: executor_raw)
+  let target = trim(s: target_raw)
+  if executor == "" {
+    RetirementPairRefused {
+      cause: join([
+        runner_retirement_executor_env_name,
+        " is empty. The executor label decides where this process runs and cannot be defaulted to the target: the retirement job interpolates it into runs-on, so an empty value asks for a runner label no machine carries and the job queues until its backstop with no receipt. Name the RETAINED host whose runner should execute the job -- not the host being retired",
+      ], ""),
+    }
+  } else if target == "" {
+    RetirementPairRefused {
+      cause: join([
+        runner_retirement_target_env_name,
+        " is empty; a retirement route with no subject would read whichever host it happened to land on",
+      ], ""),
+    }
+  } else if executor == target {
+    RetirementPairRefused {
+      cause: join([
+        "the retirement executor and the retirement target are both ", target,
+        ": this run would select its own execution slot, so the last slot it retired would be the one it is standing on and the readback would die with the runner that was taking it",
+      ], ""),
+    }
+  } else {
+    RetirementPairNamed { executor: executor, target: target }
+  }
+}
 
 type RetirementDispatchAdmission
   = RetirementDispatchNotThisMode { mode: String }
@@ -189,29 +233,14 @@ type RetirementDispatchAdmission
 fn admit_retirement_dispatch(mode: String, executor: String, target: String) -> RetirementDispatchAdmission {
   if trim(s: mode) != runner_slot_retire_dispatch_mode_wire {
     RetirementDispatchNotThisMode { mode: trim(s: mode) }
-  } else if trim(s: executor) == "" {
-    RetirementDispatchUnnamed {
-      cause: join([
-        "mode=", runner_slot_retire_dispatch_mode_wire, " was dispatched without ", runner_retirement_executor_env_name,
-        ": the retirement job's runs-on interpolates that label, so an empty value asks for a runner label no machine carries and the job queues until its backstop with no receipt. Re-dispatch naming the RETAINED host whose runner should execute the job -- not the host being retired",
-      ], ""),
-    }
-  } else if trim(s: target) == "" {
-    RetirementDispatchUnnamed {
-      cause: join([
-        "mode=", runner_slot_retire_dispatch_mode_wire, " was dispatched without ", runner_retirement_target_env_name,
-        ": a retirement route with no subject would read whichever host it happened to land on",
-      ], ""),
-    }
-  } else if trim(s: executor) == trim(s: target) {
-    RetirementDispatchUnnamed {
-      cause: join([
-        "mode=", runner_slot_retire_dispatch_mode_wire, " names ", trim(s: target),
-        " as both executor and target: this run would select its own execution slot. Refused before anything is scheduled, because the job would otherwise be pinned to the machine it is retiring",
-      ], ""),
-    }
   } else {
-    RetirementDispatchAdmitted { executor: trim(s: executor), target: trim(s: target) }
+    match retirement_executor_target_pairing(executor_raw: executor, target_raw: target) {
+      RetirementPairRefused { cause: c } =>
+        RetirementDispatchUnnamed {
+          cause: join(["mode=", runner_slot_retire_dispatch_mode_wire, " was dispatched and ", c], ""),
+        }
+      RetirementPairNamed { executor: e, target: t } => RetirementDispatchAdmitted { executor: e, target: t }
+    }
   }
 }
 
@@ -252,38 +281,23 @@ type RetirementRouteAdmission
 // retirement has no obligation for this route to assess, and reading one anyway would put a
 // retirement-shaped receipt beside a host nobody retired.
 fn retirement_route_admission(executor_raw: String, target_raw: String) -> RetirementRouteAdmission {
-  let executor = trim(s: executor_raw)
-  let target = trim(s: target_raw)
-  if executor == "" {
-    RetirementRouteRefused {
-      cause: join([runner_retirement_executor_env_name, " is empty; the executor label decides where this process runs and cannot be defaulted to the target"], ""),
-    }
-  } else if target == "" {
-    RetirementRouteRefused {
-      cause: join([runner_retirement_target_env_name, " is empty; a retirement route with no subject would read whichever host it happened to land on"], ""),
-    }
-  } else if executor == target {
-    RetirementRouteRefused {
-      cause: join([
-        "the retirement executor and the retirement target are both ", target,
-        ": this run would select its own execution slot, so the last slot it retired would be the one it is standing on and the readback would die with the runner that was taking it",
-      ], ""),
-    }
-  } else {
-    match host_retirement_standing(host: target as HostIdentity) {
-      HostNotRetiring { host: _, cause: c } => RetirementRouteRefused { cause: c }
-      HostRetirementDeclared { retirement: r } =>
-        RetirementRouteAdmitted {
-          subject: RetirementRouteSubject {
-            executor: executor as NonEmptyStr,
-            target: r.host,
-            ssh_target: SshTarget {
-              endpoint: fleet_probe_endpoint_for(host: r.host as String) as NonEmptyStr,
-              principal: executor_bootstrap_principal.login,
+  match retirement_executor_target_pairing(executor_raw: executor_raw, target_raw: target_raw) {
+    RetirementPairRefused { cause: c } => RetirementRouteRefused { cause: c }
+    RetirementPairNamed { executor: executor, target: target } =>
+      match host_retirement_standing(host: target as HostIdentity) {
+        HostNotRetiring { host: _, cause: c } => RetirementRouteRefused { cause: c }
+        HostRetirementDeclared { retirement: r } =>
+          RetirementRouteAdmitted {
+            subject: RetirementRouteSubject {
+              executor: executor as NonEmptyStr,
+              target: r.host,
+              ssh_target: SshTarget {
+                endpoint: fleet_probe_endpoint_for(host: r.host as String) as NonEmptyStr,
+                principal: executor_bootstrap_principal.login,
+              },
             },
-          },
-        }
-    }
+          }
+      }
   }
 }
 

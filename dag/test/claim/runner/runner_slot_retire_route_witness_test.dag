@@ -91,6 +91,17 @@ test fn a_self_targeting_dispatch_refuses_before_anything_is_scheduled() -> Bool
   }
 }
 
+// THE DISPATCH GATE AND THE ROUTE ENTRY NOW REFUSE THE SAME THREE SHAPES BECAUSE THEY ASK THE SAME
+// FOLD. This is the third of them at the dispatch boundary -- the route side already claims it -- and
+// the pair is what would have drifted while each site held its own copy of the rule.
+test fn an_unnamed_target_refuses_at_dispatch() -> Bool {
+  match admit_retirement_dispatch(mode: runner_slot_retire_dispatch_mode_wire, executor: "srv3", target: "") {
+    RetirementDispatchUnnamed { cause: _ } => true
+    RetirementDispatchAdmitted { executor: _, target: _ } => false
+    RetirementDispatchNotThisMode { mode: _ } => false
+  }
+}
+
 // ANOTHER MODE'S DISPATCH IS NOT THIS GATE'S BUSINESS, and it exits SUCCESSFULLY rather than
 // skipping -- a gate that silently declines to run reads as a pass to anyone looking at the job list.
 test fn another_mode_passes_the_retirement_dispatch_gate() -> Bool {

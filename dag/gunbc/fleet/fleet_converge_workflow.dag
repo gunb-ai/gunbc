@@ -68,6 +68,7 @@ import gunbc.runner_slot_retire_run {
   runner_retirement_executor_env_name,
   runner_retirement_target_env_name,
   runner_slot_retire_dispatch_mode_env,
+  runner_slot_retire_dispatch_mode_wire,
   runner_slot_retire_receipt_path,
 }
 import gunbc.runner_host_retirement { declared_host_retirements }
@@ -220,7 +221,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerHostFileObserve => "runner_host_file_observe"
     RunnerHostFileConverge => "runner_host_file_converge"
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
-    RunnerSlotRetire => "runner_slot_retire"
+    RunnerSlotRetire => runner_slot_retire_dispatch_mode_wire
     R2MintPreflight => "r2_mint_preflight"
     R2ObjectWriteMint => "r2_object_write_mint"
   }
