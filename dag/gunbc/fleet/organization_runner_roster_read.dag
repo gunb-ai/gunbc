@@ -536,6 +536,23 @@ fn roster_evidence_arm(e: OrganizationRunnerRosterEvidence) -> String {
   }
 }
 
+// ONE LINE PER REGISTRATION THE READ SAW, so a reader of the receipt can answer "is this id in the
+// organization" from the observation itself rather than from a count.
+fn roster_registration_lines(e: OrganizationRunnerRosterEvidence) -> String {
+  let regs = match e {
+    RosterObserved { observed_on: _, registrations: rs } => rs
+    RosterObservedPartial { observed_on: _, registrations: rs, observed_count: _, authority_total: _ } => rs
+    RosterReadUnavailable { reason: _ } => []
+  }
+  join(map(regs, r => join([
+    "registration id=", to_string(r.id),
+    " name=", r.name as String,
+    " status=", match r.status { GitHubRunnerOnline => "online", GitHubRunnerOffline => "offline" },
+    " busy=", if r.busy { "true" } else { "false" },
+    "\n"
+  ], "")), "")
+}
+
 fn organization_runner_roster_observe_wet() -> ProcessExit {
   let report = organization_runner_roster_report(org: organization_runner_roster_org())
   let receipt = join([
@@ -544,7 +561,7 @@ fn organization_runner_roster_observe_wet() -> ProcessExit {
     " roster=", roster_evidence_arm(e: report.evidence),
     " note=", report.note, "\n"
   ], "")
-  let wrote = Filesystem.Write(path: organization_runner_roster_receipt_path, content: receipt)
+  let wrote = Filesystem.Write(path: organization_runner_roster_receipt_path, content: concat(receipt, roster_registration_lines(e: report.evidence)))
   if !wrote.success {
     exit_failure(reason: concat("OrgRunnerRosterReceiptWriteRefused: ", wrote.error))
   } else {
