@@ -48,13 +48,6 @@ pub struct Uri {
     pub locator: NonEmptyStr,
 }
 
-pub fn uri_http(locator: String) -> Rc<Uri> {
-    Rc::new(Uri {
-        scheme: UriScheme::Http,
-        locator: locator.clone(),
-    })
-}
-
 pub fn uri_https(locator: String) -> Rc<Uri> {
     Rc::new(Uri {
         scheme: UriScheme::Https,

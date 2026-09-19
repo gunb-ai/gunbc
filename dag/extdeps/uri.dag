@@ -25,17 +25,6 @@ type Uri {
   locator: NonEmptyStr
 }
 
-// The plain-HTTP constructor beside uri_https. Its consumer today is the not-HTTPS refusal's red-side
-// input in test.claim.cloudflare_boot_origin_witness: a bare Http literal does not evaluate in a
-// closure that also declares v2.extdeps.coordination CoordinationEffectKind.Http, and building the
-// value here, in this module's scope, keeps that refusal exercised on the real fold.
-fn uri_http(locator: NonEmptyStr) -> Uri {
-  Uri {
-    scheme: Http
-    locator: locator
-  }
-}
-
 fn uri_https(locator: NonEmptyStr) -> Uri {
   Uri {
     scheme: Https

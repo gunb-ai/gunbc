@@ -24,7 +24,12 @@ import gunbc.network_boot_delivery {
   BootBundleAvailabilityReceipt,
   BootBundleAvailabilityStanding,
   BootBundleAvailable,
+  BootBundleRefused,
   BootBundleUnobserved,
+  BootBundleObservedRefusal,
+  BootBundleReadBackServedOtherBytes,
+  BootBundleKeyOccupiedByOtherBytes,
+  BootBundleMemberInWrongSlot,
 }
 import gunbc.cloudflare.r2_origin {
   FabricDurableOrigin,
@@ -238,27 +243,65 @@ type BootBundleMemberEvidence {
   readback: BootReadbackVerdict
 }
 
-fn boot_publish_holds(verdict: BootPublishVerdict) -> Bool {
-  match verdict {
-    BootObjectPublished { key: _ } => true
-    BootObjectAlreadyIdentical { key: _ } => true
-    BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } => false
-    BootObjectPublishFailed { key: _, cause: _ } => false
+// AN OBSERVATION THAT REFUSES IS NOT AN ABSENT ONE (review 68011). A member whose key holds other
+// bytes, whose readback served another digest, or which sits in another member's slot was observed and
+// found wrong, and becomes gunbc.network_boot_delivery BootBundleRefused naming the member, the cause
+// and the observation that saw it. Only a failed PUT or an unserved readback is absence (Unobserved).
+type BootMemberVerdict
+  = BootMemberHolds
+  | BootMemberAbsent
+  | BootMemberRefused { member: BootBundleMember, cause: BootBundleObservedRefusal, observation: DeclarationRef }
+
+fn classify_boot_member(
+  evidence: BootBundleMemberEvidence,
+  slot: BootBundleMember,
+  publication_observation: DeclarationRef,
+  readback_observation: DeclarationRef,
+) -> BootMemberVerdict {
+  if evidence.object.member != slot {
+    BootMemberRefused { member: slot, cause: BootBundleMemberInWrongSlot, observation: publication_observation }
+  } else {
+    match evidence.publish {
+      BootObjectOccupiedByDifferentBytes { key: _, occupant: _ } =>
+        BootMemberRefused { member: slot, cause: BootBundleKeyOccupiedByOtherBytes, observation: publication_observation }
+      BootObjectPublishFailed { key: _, cause: _ } => BootMemberAbsent
+      BootObjectPublished { key: _ } => classify_boot_member_readback(verdict: evidence.readback, slot: slot, readback_observation: readback_observation)
+      BootObjectAlreadyIdentical { key: _ } => classify_boot_member_readback(verdict: evidence.readback, slot: slot, readback_observation: readback_observation)
+    }
   }
 }
 
-fn boot_readback_holds(verdict: BootReadbackVerdict) -> Bool {
+fn classify_boot_member_readback(verdict: BootReadbackVerdict, slot: BootBundleMember, readback_observation: DeclarationRef) -> BootMemberVerdict {
   match verdict {
-    BootObjectReadBackConfirmed { key: _ } => true
-    BootObjectReadBackMismatch { key: _, served: _ } => false
-    BootObjectReadBackUnavailable { key: _, cause: _ } => false
+    BootObjectReadBackConfirmed { key: _ } => BootMemberHolds
+    BootObjectReadBackMismatch { key: _, served: _ } =>
+      BootMemberRefused { member: slot, cause: BootBundleReadBackServedOtherBytes, observation: readback_observation }
+    BootObjectReadBackUnavailable { key: _, cause: _ } => BootMemberAbsent
   }
 }
 
-fn boot_member_evidence_holds(evidence: BootBundleMemberEvidence, slot: BootBundleMember) -> Bool {
-  evidence.object.member == slot
-    && boot_publish_holds(verdict: evidence.publish)
-    && boot_readback_holds(verdict: evidence.readback)
+fn boot_member_holds(verdict: BootMemberVerdict) -> Bool {
+  match verdict {
+    BootMemberHolds => true
+    BootMemberAbsent => false
+    BootMemberRefused { member: _, cause: _, observation: _ } => false
+  }
+}
+
+// A refusal on any member wins, in kernel, initrd, root order so the first located cause is reported;
+// then any absence leaves the bundle Unobserved; only three holding members mint the receipt.
+fn first_boot_member_refusal(verdicts: List<BootMemberVerdict>) -> BootBundleAvailabilityStanding? {
+  fold(verdicts, init: none, f: (acc, v) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match v {
+          BootMemberRefused { member: m, cause: c, observation: o } =>
+            Present { value: BootBundleRefused { member: m, cause: c, observation: o } }
+          BootMemberHolds => none
+          BootMemberAbsent => none
+        }
+    })
 }
 
 fn boot_bundle_availability(
@@ -269,21 +312,28 @@ fn boot_bundle_availability(
   publication_observation: DeclarationRef,
   readback_observation: DeclarationRef,
 ) -> BootBundleAvailabilityStanding {
-  if boot_member_evidence_holds(evidence: kernel, slot: BootBundleKernel)
-    && boot_member_evidence_holds(evidence: initrd, slot: BootBundleInitrd)
-    && boot_member_evidence_holds(evidence: root, slot: BootBundleRoot) {
-    BootBundleAvailable {
-      receipt: BootBundleAvailabilityReceipt {
-        kernel_digest: Sha256Hash(kernel.object.digest),
-        initrd_digest: Sha256Hash(initrd.object.digest),
-        root_digest: Sha256Hash(root.object.digest),
-        served_from: fleet.origin_custom_domain,
-        publication_observation: publication_observation,
-        readback_observation: readback_observation,
+  let verdicts = [
+    classify_boot_member(evidence: kernel, slot: BootBundleKernel, publication_observation: publication_observation, readback_observation: readback_observation),
+    classify_boot_member(evidence: initrd, slot: BootBundleInitrd, publication_observation: publication_observation, readback_observation: readback_observation),
+    classify_boot_member(evidence: root, slot: BootBundleRoot, publication_observation: publication_observation, readback_observation: readback_observation),
+  ]
+  match first_boot_member_refusal(verdicts: verdicts) {
+    Present { value: refused } => refused
+    Absent =>
+      if all(verdicts, v => boot_member_holds(verdict: v)) {
+        BootBundleAvailable {
+          receipt: BootBundleAvailabilityReceipt {
+            kernel_digest: Sha256Hash(kernel.object.digest),
+            initrd_digest: Sha256Hash(initrd.object.digest),
+            root_digest: Sha256Hash(root.object.digest),
+            served_from: fleet.origin_custom_domain,
+            publication_observation: publication_observation,
+            readback_observation: readback_observation,
+          }
+        }
+      } else {
+        BootBundleUnobserved
       }
-    }
-  } else {
-    BootBundleUnobserved
   }
 }
 

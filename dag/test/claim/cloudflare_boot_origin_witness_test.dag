@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String, list_length }
 import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.uri { Uri, uri_http, uri_https }
+import extdeps.uri { Uri, uri_https, uri_from_wire }
 import gunbc.network_boot_delivery {
   FleetBootServiceReceipt,
   BootBundleKernel,
@@ -12,7 +12,13 @@ import gunbc.network_boot_delivery {
   BootBundleRoot,
   BootBundleMember,
   BootBundleAvailable,
+  BootBundleRefused,
   BootBundleUnobserved,
+  BootBundleAvailabilityStanding,
+  BootBundleObservedRefusal,
+  BootBundleReadBackServedOtherBytes,
+  BootBundleKeyOccupiedByOtherBytes,
+  BootBundleMemberInWrongSlot,
 }
 import gunbc.cloudflare.r2_origin {
   fabric_boot_origin_standing,
@@ -220,12 +226,18 @@ test fn boot_origin_credentials_are_disjoint_and_have_no_mint_entry() -> Bool {
   disjoint && standing
 }
 
+// The plain-HTTP receipt is parsed by extdeps.uri uri_from_wire, the production parser, rather than
+// built from a bare scheme literal.
 test fn readback_refuses_plain_http() -> Bool {
-  match boot_readback_locator(receipt: receipt_at(domain: uri_http(locator: "boot-origin.example.test")), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
-    BootReadbackAt { url: _ } => false
-    BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
-    BootReadbackRefusedNotHttps {} => true
-    BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
+  match uri_from_wire(url: "http://boot-origin.example.test") {
+    Absent => false
+    Present { value: plain } =>
+      match boot_readback_locator(receipt: receipt_at(domain: plain), key: boot_object_key(digest: digest(hex: digest_a_hex))) {
+        BootReadbackAt { url: _ } => false
+        BootReadbackRefusedR2Dev { locator: _, ground: _ } => false
+        BootReadbackRefusedNotHttps {} => true
+        BootReadbackRefusedNotAHostName { locator: _, cause: _ } => false
+      }
   }
 }
 
@@ -285,47 +297,80 @@ fn fleet_at_origin() -> FleetBootServiceReceipt {
   receipt_at(domain: uri_https(locator: "boot-origin.example.test"))
 }
 
-fn availability(kernel: BootBundleMemberEvidence, initrd: BootBundleMemberEvidence, root: BootBundleMemberEvidence) -> Bool {
-  match boot_bundle_availability(
+fn standing(kernel: BootBundleMemberEvidence, initrd: BootBundleMemberEvidence, root: BootBundleMemberEvidence) -> BootBundleAvailabilityStanding {
+  boot_bundle_availability(
     fleet: fleet_at_origin(),
     kernel: kernel,
     initrd: initrd,
     root: root,
-    publication_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
-    readback_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
-  ) {
-    BootBundleAvailable { receipt: _ } => true
-    BootBundleUnobserved => false
+    publication_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "publication_fixture"),
+    readback_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "readback_fixture"),
+  )
+}
+
+fn is_unobserved(st: BootBundleAvailabilityStanding) -> Bool {
+  match st {
+    BootBundleAvailable { receipt: _ } => false
+    BootBundleRefused { member: _, cause: _, observation: _ } => false
+    BootBundleUnobserved => true
   }
+}
+
+// A refusal on the expected member, with the expected cause, carried by the expected observation.
+fn is_refused(st: BootBundleAvailabilityStanding, member: BootBundleMember, cause: BootBundleObservedRefusal, observation_decl: String) -> Bool {
+  match st {
+    BootBundleAvailable { receipt: _ } => false
+    BootBundleUnobserved => false
+    BootBundleRefused { member: m, cause: c, observation: o } =>
+      m == member && c == cause && (o.decl_name as String) == observation_decl
+  }
+}
+
+fn kernel_ok() -> BootBundleMemberEvidence {
+  member_evidence(slot: BootBundleKernel, hex: digest_a_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
+}
+
+fn initrd_ok() -> BootBundleMemberEvidence {
+  member_evidence(slot: BootBundleInitrd, hex: digest_b_hex, publish_answer: BootPutCreated {}, served_hex: digest_b_hex)
 }
 
 // All three members published (or found identical) and read back at their digest: available, with the
 // receipt's served_from being the fleet receipt's custom domain.
 test fn bundle_available_when_every_member_is_published_and_read_back() -> Bool {
-  let k = member_evidence(slot: BootBundleKernel, hex: digest_a_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
   let i = member_evidence(slot: BootBundleInitrd, hex: digest_b_hex, publish_answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_b_hex) }, served_hex: digest_b_hex)
   let r = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
-  let served_ok = match boot_bundle_availability(
-    fleet: fleet_at_origin(), kernel: k, initrd: i, root: r,
-    publication_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
-    readback_observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "member_evidence"),
-  ) {
+  match standing(kernel: kernel_ok(), initrd: i, root: r) {
     BootBundleAvailable { receipt: rc } => (rc.served_from.locator as String) == "boot-origin.example.test"
+    BootBundleRefused { member: _, cause: _, observation: _ } => false
     BootBundleUnobserved => false
   }
-  served_ok
 }
 
-// Each way one member can fall short leaves the whole bundle Unobserved.
-test fn bundle_unobserved_when_any_member_falls_short() -> Bool {
-  let k = member_evidence(slot: BootBundleKernel, hex: digest_a_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
-  let i = member_evidence(slot: BootBundleInitrd, hex: digest_b_hex, publish_answer: BootPutCreated {}, served_hex: digest_b_hex)
-  let r = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
+// Absence is a failed PUT or an unserved readback, and only absence is Unobserved.
+test fn bundle_unobserved_only_when_a_member_is_absent() -> Bool {
+  let failed_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutFailed { cause: "503" }, served_hex: digest_c_hex)
+  let root_object = BootBundleObject { member: BootBundleRoot, digest: digest(hex: digest_c_hex) }
+  let unserved_root = BootBundleMemberEvidence {
+    object: root_object,
+    publish: classify_boot_publish(object: root_object, answer: BootPutCreated {}),
+    readback: classify_boot_readback(object: root_object, observation: BootReadbackUnserved { cause: "404" }),
+  }
+  is_unobserved(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: failed_root))
+    && is_unobserved(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: unserved_root))
+}
+
+// review 68011, one failing input per cause: each observed mismatch refuses naming the member.
+test fn bundle_refuses_a_readback_that_served_other_bytes() -> Bool {
   let stale_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_a_hex)
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: stale_root), member: BootBundleRoot, cause: BootBundleReadBackServedOtherBytes, observation_decl: "readback_fixture")
+}
+
+test fn bundle_refuses_a_key_occupied_by_other_bytes() -> Bool {
   let occupied_root = member_evidence(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutKeyOccupied { occupant_digest: digest(hex: digest_a_hex) }, served_hex: digest_c_hex)
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: occupied_root), member: BootBundleRoot, cause: BootBundleKeyOccupiedByOtherBytes, observation_decl: "publication_fixture")
+}
+
+test fn bundle_refuses_a_member_in_the_wrong_slot() -> Bool {
   let swapped = member_evidence(slot: BootBundleInitrd, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
-  availability(kernel: k, initrd: i, root: r)
-    && !availability(kernel: k, initrd: i, root: stale_root)
-    && !availability(kernel: k, initrd: i, root: occupied_root)
-    && !availability(kernel: k, initrd: i, root: swapped)
+  is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: swapped), member: BootBundleRoot, cause: BootBundleMemberInWrongSlot, observation_decl: "publication_fixture")
 }
