@@ -1,6 +1,9 @@
 module std.machine_word
 
 import std.induction { int_pow_bounded }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
 
@@ -60,6 +63,7 @@ type WordRefusal
   | OctetCountMismatch { width: WordWidth, expected: Int, observed: Int }
   | OctetWidthMismatch { observed: WordWidth }
   | IntegerDoesNotFitOctets { value: Int, octets: Int }
+  | OctetCountOutOfRange { observed: Int }
 
 type WordResult
   = WordReady { word: Word }
@@ -90,14 +94,45 @@ type CarryingSumResult
 // exceeds the Int bound to be REPRESENTED and operated on -- at which point Width64 stops refusing
 // and the big-integer substrate P-256/P-384 needs is the same carrier, not a second one.
 //
-// The power is int_pow_bounded rather than a literal table because std.induction already owns
-// integer exponentiation; a table of 2^8/2^16/2^32 here would be a second representation of a
-// derived constant, and a stale copy of a modulus is a silently wrong answer rather than an error.
-// COST SHAPE, stated rather than left to be discovered: int_pow_bounded is linear in the exponent,
-// so every operation below pays O(bits) multiplications to learn its own modulus on top of whatever
-// it does. That is a real cost on the interpreter route and it is reported, not bypassed.
+// THE MODULUS IS DERIVED ONCE PER WIDTH, NOT ONCE PER OPERATION, AND THAT IS A CORRECTNESS-GRADE
+// FIX RATHER THAN A TUNING ONE. The first cut called int_pow_bounded here, which is a non-tail
+// linear recursion with a checked multiply per step, so EVERY operation -- including shifts and
+// rotates that are otherwise a division -- paid a walk proportional to its width just to learn a
+// constant. WordWidth is a CLOSED four-member coproduct, so the fact being recomputed is one of
+// four numbers, and DESIGN section 2 is explicit that when repeated demands share a least common
+// ancestor the repetition is authored duplication to be carried rather than made cheap; section 6
+// forecloses the "n is small here" defence outright. Stating the shape in an annotation, which the
+// first cut did, is not discharging it.
+//
+// THE VALUES ARE DERIVED, NOT TRANSCRIBED, AND THE DERIVATION IS CHECKED BY EXECUTION. The reason
+// to avoid a literal table is that a second representation of a derived constant can go stale
+// silently; that objection is against TRANSCRIBING a value, not against materialising one. So
+// std.induction int_pow_bounded remains the authority for what 2^bits IS, and
+// word_modulus_agrees_with_the_power_authority_holds runs this function against it for every
+// member of the closed set, including Width64 where both must answer with nothing. A wrong number
+// here reds that claim; it does not wait to be noticed.
 fn word_modulus(w: WordWidth) -> Int? {
-  int_pow_bounded(base: 2, exp: word_width_bits(w: w))
+  match w {
+    Width8 => Present { value: 256 }
+    Width16 => Present { value: 65536 }
+    Width32 => Present { value: 4294967296 }
+    Width64 => none
+  }
+}
+
+// THE SPLIT POINT OF A WIDTH, DERIVED ONCE FOR THE SAME REASON THE MODULUS IS. word_wrapping_multiply
+// splits its left operand at half the width and walked int_pow_bounded per call to find where. The
+// reviewer named word_modulus, but the defect is the CLASS -- a constant over a closed coproduct
+// recomputed per demand -- and fixing only the instance that was cited would be repairing the
+// symptom rather than the boundary (DESIGN section 6b). Checked against the authority by
+// word_half_radix_agrees_with_the_power_authority_holds, exactly as the modulus is.
+fn word_half_radix(w: WordWidth) -> Int? {
+  match w {
+    Width8 => Present { value: 16 }
+    Width16 => Present { value: 256 }
+    Width32 => Present { value: 65536 }
+    Width64 => none
+  }
 }
 
 fn word_of_int(width: WordWidth, value: Int) -> WordResult {
@@ -112,16 +147,53 @@ fn word_of_int(width: WordWidth, value: Int) -> WordResult {
   }
 }
 
-fn word_zero(width: WordWidth) -> WordResult {
-  word_of_int(width: width, value: 0)
+// EVERY EXPORTED OPERATION QUALIFIES ITS WORD ARGUMENTS, BECAUSE THE CARRIER CANNOT STOP A CALLER
+// BUILDING A LIE.
+//
+// Word { width, value } is an ordinary record and .dag has no module-private construction, so
+// `Word { width: Width8, value: 256 }` is writable anywhere. The first cut said word_of_int was the
+// "sanctioned entry" and left it there, which is an unfalsifiable claim: nothing refuses the other
+// route, so the sanction existed only in prose. The consequence was silent and exported --
+// word_shift_right(Word { width: Width8, value: 256 }, 1) answered WordReady 128, a number the
+// operation computed from an input its own type says cannot exist, and no arm fired because the
+// OUTPUT was in range. An operation that trusts an unqualified operand is validating its result
+// instead of its premise.
+//
+// So qualification is a PREMISE CHECK at every exported boundary, not a constructor convention: the
+// operand is re-established against its own declared width before any arithmetic reads it, and a
+// word that was never inhabitable refuses with WordValueOutOfRange naming the value. This is
+// mitigation, and it is honest about being mitigation -- the invalid state is still writable.
+// NEXT-RUNG TRIGGER, unchanged and now load-bearing rather than decorative: sole construction over
+// this carrier, at which point the premise holds by construction and every one of these checks
+// DELETES rather than being kept as belt-and-braces.
+fn word_qualified(w: Word) -> WordResult {
+  word_of_int(width: w.width, value: w.value)
+}
+
+type WordPairResult
+  = WordPairReady { left: Word, right: Word }
+  | WordPairRefused { cause: WordRefusal }
+
+// The width disagreement is decided BEFORE either operand is qualified, because a mismatch is a
+// fact about the call and an out-of-range value is a fact about one operand; reporting the operand
+// first would answer a narrower question than the one that is wrong.
+fn word_pair_qualified(a: Word, b: Word) -> WordPairResult {
+  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
+    WordPairRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
+  } else {
+    match word_qualified(w: a) {
+      WordRefused { cause: c } => WordPairRefused { cause: c }
+      WordReady { word: qa } =>
+        match word_qualified(w: b) {
+          WordRefused { cause: c } => WordPairRefused { cause: c }
+          WordReady { word: qb } => WordPairReady { left: qa, right: qb }
+        }
+    }
+  }
 }
 
 fn word_int_value(w: Word) -> Int {
   w.value
-}
-
-fn word_equal(a: Word, b: Word) -> Bool {
-  word_width_bits(w: a.width) == word_width_bits(w: b.width) && a.value == b.value
 }
 
 // BITWISE OPERATIONS ARE ONE FOLD, NOT THREE. The three connectives differ only in the two-bit
@@ -158,17 +230,13 @@ fn bitwise_fold(op: BitwiseOp, a: Int, b: Int, remaining: Int, place: Int, acc: 
 }
 
 fn word_bitwise(op: BitwiseOp, a: Word, b: Word) -> WordResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    WordRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: _ } =>
-        word_of_int(
-          width: a.width,
-          value: bitwise_fold(op: op, a: a.value, b: b.value, remaining: word_width_bits(w: a.width), place: 1, acc: 0)
-        )
-    }
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      word_of_int(
+        width: x.width,
+        value: bitwise_fold(op: op, a: x.value, b: y.value, remaining: word_width_bits(w: x.width), place: 1, acc: 0)
+      )
   }
 }
 
@@ -188,9 +256,13 @@ fn word_xor(a: Word, b: Word) -> WordResult {
 // value. It needs no bit walk: every place flips, and flipping every place of a residue below 2^w
 // is exactly subtracting it from the all-ones value.
 fn word_not(a: Word) -> WordResult {
-  match word_modulus(w: a.width) {
-    Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: m } => word_of_int(width: a.width, value: m - 1 - a.value)
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } => word_of_int(width: x.width, value: m - 1 - x.value)
+      }
   }
 }
 
@@ -207,35 +279,39 @@ fn word_not(a: Word) -> WordResult {
 // whatever the realization did about an overflow it had already suffered. Dropping the bits that
 // the shift discards FIRST keeps every intermediate inside the width.
 fn word_shift_left(a: Word, amount: Int) -> WordResult {
-  match word_modulus(w: a.width) {
-    Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: _ } =>
-      if amount < 0 || amount >= word_width_bits(w: a.width) {
-        WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
-      } else {
-        match int_pow_bounded(base: 2, exp: amount) {
-          Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-          Present { value: factor } =>
-            match int_pow_bounded(base: 2, exp: word_width_bits(w: a.width) - amount) {
-              Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-              Present { value: kept } => word_of_int(width: a.width, value: (a.value % kept) * factor)
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } =>
+          if amount < 0 || amount >= word_width_bits(w: x.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: x.width, amount: amount } }
+          } else {
+            match int_pow_bounded(base: 2, exp: amount) {
+              Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+              Present { value: factor } => word_of_int(width: x.width, value: (x.value % (m / factor)) * factor)
             }
-        }
+          }
       }
   }
 }
 
 fn word_shift_right(a: Word, amount: Int) -> WordResult {
-  match word_modulus(w: a.width) {
-    Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: _ } =>
-      if amount < 0 || amount >= word_width_bits(w: a.width) {
-        WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
-      } else {
-        match int_pow_bounded(base: 2, exp: amount) {
-          Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-          Present { value: factor } => word_of_int(width: a.width, value: a.value / factor)
-        }
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: _ } =>
+          if amount < 0 || amount >= word_width_bits(w: x.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: x.width, amount: amount } }
+          } else {
+            match int_pow_bounded(base: 2, exp: amount) {
+              Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+              Present { value: factor } => word_of_int(width: x.width, value: x.value / factor)
+            }
+          }
       }
   }
 }
@@ -245,40 +321,54 @@ fn word_shift_right(a: Word, amount: Int) -> WordResult {
 // disjunction agree and addition does not walk the bits. The zero amount is its own arm because
 // the complementary shift would then be by the full width, which shifts refuse.
 fn word_rotate_left(a: Word, amount: Int) -> WordResult {
-  match word_modulus(w: a.width) {
-    Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: _ } =>
-      if amount < 0 || amount >= word_width_bits(w: a.width) {
-        WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
-      } else {
-        if amount == 0 {
-          WordReady { word: a }
-        } else {
-          match word_shift_left(a: a, amount: amount) {
-            WordRefused { cause: c } => WordRefused { cause: c }
-            WordReady { word: high } =>
-              match word_shift_right(a: a, amount: word_width_bits(w: a.width) - amount) {
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: _ } =>
+          if amount < 0 || amount >= word_width_bits(w: x.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: x.width, amount: amount } }
+          } else {
+            if amount == 0 {
+              WordReady { word: x }
+            } else {
+              match word_shift_left(a: x, amount: amount) {
                 WordRefused { cause: c } => WordRefused { cause: c }
-                WordReady { word: low } => word_of_int(width: a.width, value: high.value + low.value)
+                WordReady { word: high } =>
+                  match word_shift_right(a: x, amount: word_width_bits(w: x.width) - amount) {
+                    WordRefused { cause: c } => WordRefused { cause: c }
+                    WordReady { word: low } => word_of_int(width: x.width, value: high.value + low.value)
+                  }
               }
+            }
           }
-        }
       }
   }
 }
 
+// THE WIDTH IS ESTABLISHED BEFORE THE AMOUNT, which is what the other three shift and rotate arms
+// already did and this one did not: a Width64 rotate by 64 reported ShiftAmountOutOfRange, naming
+// the amount, when the width itself is the thing that cannot exist. Two operations disagreeing
+// about which refusal a caller sees for the same malformed call is a fork in the refusal
+// vocabulary, and the narrower answer is the wrong one.
 fn word_rotate_right(a: Word, amount: Int) -> WordResult {
-  if amount < 0 || amount >= word_width_bits(w: a.width) {
-    WordRefused { cause: ShiftAmountOutOfRange { width: a.width, amount: amount } }
-  } else {
-    if amount == 0 {
-      match word_modulus(w: a.width) {
-        Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-        Present { value: _ } => WordReady { word: a }
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => WordRefused { cause: c }
+    WordReady { word: x } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: _ } =>
+          if amount < 0 || amount >= word_width_bits(w: x.width) {
+            WordRefused { cause: ShiftAmountOutOfRange { width: x.width, amount: amount } }
+          } else {
+            if amount == 0 {
+              WordReady { word: x }
+            } else {
+              word_rotate_left(a: x, amount: word_width_bits(w: x.width) - amount)
+            }
+          }
       }
-    } else {
-      word_rotate_left(a: a, amount: word_width_bits(w: a.width) - amount)
-    }
   }
 }
 
@@ -287,24 +377,24 @@ fn word_rotate_right(a: Word, amount: Int) -> WordResult {
 // undefined; these functions ARE that rule applied at the declared width, and a caller that wants
 // the crossing reported instead uses word_carrying_add, which returns the carry as a value.
 fn word_wrapping_add(a: Word, b: Word) -> WordResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    WordRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: m } => word_of_int(width: a.width, value: (a.value + b.value) % m)
-    }
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } => word_of_int(width: x.width, value: (x.value + y.value) % m)
+      }
   }
 }
 
 fn word_wrapping_subtract(a: Word, b: Word) -> WordResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    WordRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: m } => word_of_int(width: a.width, value: (a.value - b.value + m) % m)
-    }
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } => word_of_int(width: x.width, value: (x.value - y.value + m) % m)
+      }
   }
 }
 
@@ -314,38 +404,38 @@ fn word_wrapping_subtract(a: Word, b: Word) -> WordResult {
 // products at most bits + bits/2 wide, and reducing the high partial product before scaling it
 // keeps the scaled term inside the width. Every width here is even, so the half is exact.
 fn word_wrapping_multiply(a: Word, b: Word) -> WordResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    WordRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: m } =>
-        match int_pow_bounded(base: 2, exp: word_width_bits(w: a.width) / 2) {
-          Absent => WordRefused { cause: WordWidthUnrealizable { width: a.width } }
-          Present { value: half } => {
-            let low_term = ((a.value % half) * b.value) % m
-            let high_term = (((a.value / half) * b.value) % half) * half
-            word_of_int(width: a.width, value: (low_term + high_term) % m)
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => WordRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_modulus(w: x.width) {
+        Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } =>
+          match word_half_radix(w: x.width) {
+            Absent => WordRefused { cause: WordWidthUnrealizable { width: x.width } }
+            Present { value: half } => {
+              let low_term = ((x.value % half) * y.value) % m
+              let high_term = (((x.value / half) * y.value) % half) * half
+              word_of_int(width: x.width, value: (low_term + high_term) % m)
+            }
           }
-        }
-    }
+      }
   }
 }
 
 fn word_carrying_add(a: Word, b: Word) -> CarryingSumResult {
-  if word_width_bits(w: a.width) != word_width_bits(w: b.width) {
-    CarryingSumRefused { cause: WordWidthMismatch { left: a.width, right: b.width } }
-  } else {
-    match word_modulus(w: a.width) {
-      Absent => CarryingSumRefused { cause: WordWidthUnrealizable { width: a.width } }
-      Present { value: m } => {
-        let total = a.value + b.value
-        match word_of_int(width: a.width, value: total % m) {
-          WordRefused { cause: c } => CarryingSumRefused { cause: c }
-          WordReady { word: s } => CarryingSumReady { result: CarryingSum { sum: s, carry: total >= m } }
+  match word_pair_qualified(a: a, b: b) {
+    WordPairRefused { cause: c } => CarryingSumRefused { cause: c }
+    WordPairReady { left: x, right: y } =>
+      match word_modulus(w: x.width) {
+        Absent => CarryingSumRefused { cause: WordWidthUnrealizable { width: x.width } }
+        Present { value: m } => {
+          let total = x.value + y.value
+          match word_of_int(width: x.width, value: total % m) {
+            WordRefused { cause: c } => CarryingSumRefused { cause: c }
+            WordReady { word: sum } => CarryingSumReady { result: CarryingSum { sum: sum, carry: total >= m } }
+          }
         }
       }
-    }
   }
 }
 
@@ -359,8 +449,13 @@ fn octet_bit_width() -> Int {
   bits_per_byte()
 }
 
+// AN OCTET'S RADIX IS THE Width8 MODULUS. It was a separate int_pow_bounded walk, paid by every
+// packing and unpacking call, to arrive at a number this module already answers. That is the same
+// closed-set recomputation review 68053 named at word_modulus, one function along, and it is fixed
+// by REUSE rather than by a second constant: nothing new is introduced here, so nothing new can go
+// stale. octet_radix_is_the_width8_modulus_holds is its executing check.
 fn octet_radix() -> Int? {
-  int_pow_bounded(base: 2, exp: octet_bit_width())
+  word_modulus(w: Width8)
 }
 
 fn word_octet_count(w: WordWidth) -> Int {
@@ -387,6 +482,17 @@ fn octets_little_endian_accumulate(value: Int, remaining: Int, radix: Int, acc: 
 // represent, every nonnegative Int is BELOW it by construction, so the honest answer is that it
 // fits -- an absent capacity here is ignorance about the bound, not an answer about the value, and
 // the two are only interchangeable in the direction that happens to be safe.
+// AN ABSENT CAPACITY HAS TWO CAUSES AND ONLY ONE OF THEM IS SAFE TO READ AS "IT FITS". The
+// annotation below already said an absent capacity is ignorance about the bound rather than an
+// answer about the value -- and this function then treated EVERY absent capacity as "does not
+// exceed". int_pow_bounded answers Absent both when the power overflows the Int bound (where every
+// representable value genuinely is below it) and when the EXPONENT IS NEGATIVE, which is not a
+// statement about capacity at all. So count = -1 fell through to an accumulator that stops at
+// remaining <= 0 and returned OctetsReady [] -- a successful empty rendering of a nonsense request,
+// which is the fabricated plausible output DESIGN section 5 forbids, produced by the exact
+// conflation the neighbouring annotation warned about. The count is now decided on its own terms
+// BEFORE the capacity is asked, so the remaining Absent has only the one meaning the reading
+// assumes.
 fn int_exceeds_octet_capacity(value: Int, count: Int, radix: Int) -> Bool {
   match int_pow_bounded(base: radix, exp: count) {
     Absent => false
@@ -402,7 +508,9 @@ fn int_to_octets(value: Int, count: Int, endianness: Endianness) -> OctetsResult
   match octet_radix() {
     Absent => OctetsRefused { cause: WordWidthUnrealizable { width: Width8 } }
     Present { value: radix } =>
-      if value < 0 || int_exceeds_octet_capacity(value: value, count: count, radix: radix) {
+      if count < 0 {
+        OctetsRefused { cause: OctetCountOutOfRange { observed: count } }
+      } else if value < 0 || int_exceeds_octet_capacity(value: value, count: count, radix: radix) {
         OctetsRefused { cause: IntegerDoesNotFitOctets { value: value, octets: count } }
       } else {
         let little = octets_little_endian_accumulate(value: value, remaining: count, radix: radix, acc: [])
@@ -415,9 +523,9 @@ fn int_to_octets(value: Int, count: Int, endianness: Endianness) -> OctetsResult
 }
 
 fn word_to_octets(a: Word, endianness: Endianness) -> OctetsResult {
-  match word_modulus(w: a.width) {
-    Absent => OctetsRefused { cause: WordWidthUnrealizable { width: a.width } }
-    Present { value: _ } => int_to_octets(value: a.value, count: word_octet_count(w: a.width), endianness: endianness)
+  match word_qualified(w: a) {
+    WordRefused { cause: c } => OctetsRefused { cause: c }
+    WordReady { word: x } => int_to_octets(value: x.value, count: word_octet_count(w: x.width), endianness: endianness)
   }
 }
 
@@ -429,14 +537,21 @@ fn octets_big_endian_value(octets: List<Word>, radix: Int, acc: Int) -> Int {
   }
 }
 
-fn octets_first_non_octet_width(octets: List<Word>) -> WordWidth? {
+// THE MEMBERS ARE QUALIFIED, NOT JUST MEASURED. The first cut checked each member's WIDTH and
+// trusted its VALUE, so word_from_octets(Width16, [Word{Width8,1}, Word{Width8,256}]) packed to 512
+// -- an answer assembled from an octet that cannot exist, and in range for the target width, so
+// nothing downstream fired. Width agreement is not inhabitance.
+fn octets_first_unqualified(octets: List<Word>) -> WordRefusal? {
   match octets.first() {
     Absent => none
     Present { value: head } =>
-      if word_width_bits(w: head.width) == octet_bit_width() {
-        octets_first_non_octet_width(octets: octets.skip(n: 1))
+      if word_width_bits(w: head.width) != octet_bit_width() {
+        Present { value: OctetWidthMismatch { observed: head.width } }
       } else {
-        Present { value: head.width }
+        match word_qualified(w: head) {
+          WordRefused { cause: c } => Present { value: c }
+          WordReady { word: _ } => octets_first_unqualified(octets: octets.skip(n: 1))
+        }
       }
   }
 }
@@ -446,14 +561,38 @@ fn octets_first_non_octet_width(octets: List<Word>) -> WordWidth? {
 // two different fabricated answers to the same malformed input. The per-octet width check is what
 // makes the List<Word> argument mean what its type says: a caller can still build a Word record
 // directly, so the shape is checked at the boundary that consumes it.
+// THE WIDTH IS REFUSED BEFORE ANY OCTET IS ACCUMULATED, AND THE ORDER IS THE WHOLE POINT.
+//
+// This was the one exported operation that did arithmetic before guarding on its own width. It
+// guarded on octet_radix, which asks about Width8 and therefore always answers, so a Width64 call
+// passed the count check (8 == 8), passed the per-octet check, and then ran
+// octets_big_endian_value eight times to a value up to 2^64 - 1 IN THE Int THE SEED REALIZES AS
+// i64 -- and only then did word_of_int refuse. The refusal was inspecting a number the realization
+// had already wrapped or trapped on, which is the exact thing word_wrapping_multiply's annotation
+// forbids in the same file ("an overflow inspected after the fact rather than a check") and which
+// makes the module's own Width64 sentence false: every operation refuses a Width64 word, except
+// that this one computed first and refused afterwards (review 68118).
+//
+// Guarding on word_modulus(width) first also means a Width64 call with the WRONG octet count now
+// reports WordWidthUnrealizable rather than OctetCountMismatch. That is the right order of
+// refusals: the width having no residue this carrier can hold is the more fundamental fact, and
+// reporting a count mismatch for a width that cannot exist would answer a narrower question than
+// the one that is actually wrong.
 fn word_from_octets(width: WordWidth, octets: List<Word>, endianness: Endianness) -> WordResult {
+  match word_modulus(w: width) {
+    Absent => WordRefused { cause: WordWidthUnrealizable { width: width } }
+    Present { value: _ } => word_from_octets_realizable(width: width, octets: octets, endianness: endianness)
+  }
+}
+
+fn word_from_octets_realizable(width: WordWidth, octets: List<Word>, endianness: Endianness) -> WordResult {
   let expected = word_octet_count(w: width)
   let observed = list_length(items: octets)
   if observed != expected {
     WordRefused { cause: OctetCountMismatch { width: width, expected: expected, observed: observed } }
   } else {
-    match octets_first_non_octet_width(octets: octets) {
-      Present { value: offender } => WordRefused { cause: OctetWidthMismatch { observed: offender } }
+    match octets_first_unqualified(octets: octets) {
+      Present { value: offender } => WordRefused { cause: offender }
       Absent =>
         match octet_radix() {
           Absent => WordRefused { cause: WordWidthUnrealizable { width: Width8 } }
@@ -472,3 +611,79 @@ fn word_from_octets(width: WordWidth, octets: List<Word>, endianness: Endianness
 fn octet_int_values(octets: List<Word>) -> List<Int> {
   octets |> map(o => o.value)
 }
+
+// THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.
+//
+// DESIGN section 3c admits exactly three states for a new declaration: consumed by execution here,
+// consumed by a named later change with the trigger stated beside it, or dangling -- and only the
+// third is red. The operations below are the second state, and the first cut of this module put
+// that claim in a `//` block naming SHA-256 and P-256. Section 4c rules that an annotation is never
+// evidence a machine claim holds, because no Accepted program can read one, so a frontier stated in
+// prose is indistinguishable from a dangling declaration to everything except a human reader who
+// happens to look.
+//
+// DECLARING THE ROWS IS HALF OF IT; BEING FOLDED IS THE OTHER HALF, AND THE FIRST CUT OF THIS
+// ROSTER HAD ONLY THE FIRST. It asserted in prose that gunbc.dissolution_census reads these rows
+// while the census folded one roster this was not a member of, so the expiry of every row below
+// was computed by nothing -- an inert lens, and the same 4c violation this roster exists to
+// correct, committed in the sentence claiming to correct it (review 68088). Membership is
+// gunbc.census_closure_frontier census_closure_frontier_row_groups, which this roster is now
+// enrolled in; that enrolment, not this annotation, is what makes the expiry a computed fact.
+//
+// EVERY ROW IS UNBOUND, AND THE REASON IS A GATE, NOT A PREFERENCE. std.dissolution
+// bound_dissolution takes a DeclarationRef, and a DeclarationRef is a CITATION: the required
+// declarations phase resolves it against THE TREE IT RUNS IN and refuses CITED-MODULE-ABSENT when
+// the module is not there. extdeps.crypto.sha2 exists on gunbc#11647 and nowhere else, so binding
+// these four rows to its symbols refused the whole parse phase -- "the symbol exists on a branch"
+// is not a fact this tree can check, and seeing it on a branch is exactly what made the citation
+// look safe. DeclarationAppears is still the right shape for a forward reference to a declaration
+// in a module that ALREADY EXISTS; it is the absent MODULE that cannot be cited. The consuming
+// symbols are named in prose in each description instead, where they are a reader's pointer rather
+// than a resolvable reference this tree would have to honour. Where the consuming change is named but
+// has authored no declaration to point at, the row is unbound and says so -- a forward reference to
+// a name nobody has written would be a citation that can never resolve, which is worse than an
+// honest description (DESIGN section 3: cite the symbol, not the position, and do not cite what
+// does not exist).
+//
+// WHAT IS NOT HERE IS AS DELIBERATE AS WHAT IS. word_rotate_left carries no row because
+// word_rotate_right consumes it inside this module -- it is executed, not awaited. word_zero and
+// word_equal were DELETED rather than given rows: no change named either one, and section 3c's
+// remedy for a declaration with no consumer at all is to remove it, not to describe it. They cost
+// one line each to reintroduce beside the first caller that wants them.
+data machine_word_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_add"),
+    reason: "SHA-256 T1/T2, the message schedule and the feed-forward are additions modulo 2^32; the consumer is extdeps.crypto.sha2 sha256_add_all on gunbc#11647, ~1,000 calls per compression block.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_add_all (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_rotate_right"),
+    reason: "SHA-256 Sigma0/Sigma1 rotate three times each and sigma0/sigma1 twice each; the consumer is extdeps.crypto.sha2 sha256_sigma on gunbc#11647, the one fold all four go through.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_sigma (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_xor"),
+    reason: "Every SHA-256 Sigma/sigma term and the Ch/Maj mixing are exclusive-or; the consumer is extdeps.crypto.sha2 sha256_xor3 on gunbc#11647.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_xor3 (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_not"),
+    reason: "SHA-256 Ch complements its selector word; the consumer is extdeps.crypto.sha2 sha256_ch on gunbc#11647, the only consumer of complement in that algorithm.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_ch (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_multiply"),
+    reason: "The FNV-1a kernel CONTENT-HASH-0 (gunbc#11637) models is a wrapping multiply against a prime, which is why the split-product form exists here at all. It is UNBOUND rather than bound to a symbol because that lane has authored no declaration to cite, and because FNV runs at Width64, which this substrate refuses until the multi-limb carrier lands -- so this row is retired by the FNV kernel consuming this function, not by the carrier alone.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the FNV-1a kernel in CONTENT-HASH-0 (gunbc#11637) calls word_wrapping_multiply. Not discharged by the multi-limb carrier landing, which is a precondition rather than the consumer.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_subtract"),
+    reason: "Multi-limb subtraction borrows, which is this operation at limb width. UNBOUND: the limb carrier is this module's own next cut and has authored no declaration to cite.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the multi-limb magnitude carrier in std.machine_word calls word_wrapping_subtract for limb borrow. If that carrier lands without consuming it, this declaration is deleted rather than re-described.")
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "std.machine_word", decl_name: "word_carrying_add"),
+    reason: "Multi-limb addition propagates carry between limbs, which is what makes the carry an answer rather than a discarded overflow; CarryingSum and CarryingSumResult exist only to give it one. UNBOUND for the same reason as the borrow.",
+    dissolution: unbound_dissolution(description: "dissolve-on: the multi-limb magnitude carrier in std.machine_word calls word_carrying_add to propagate carry between limbs. If that carrier lands without consuming it, this declaration and CarryingSum/CarryingSumResult are deleted rather than re-described.")
+  ),
+]
