@@ -164,10 +164,13 @@ type QualifiedComputation
   | NoComputationHalf
   | ComputationNotEstablished { detail: NonEmptyStr }
 
+// ExternalUnverified is an authored ABSENCE no fact owns; ExternalClaimedUnverified is an authored
+// PRESENCE whose provider did not resolve. They are different facts with different causes.
 type QualifiedExternal
   = ExternalAbsentVerified { by: NonEmptyStr }
   | ExternalPresentVerified { operation: NonEmptyStr, subject: NonEmptyStr, provider: DeclarationRef, ambient: NonEmptyStr }
   | ExternalUnverified { detail: NonEmptyStr }
+  | ExternalClaimedUnverified { detail: NonEmptyStr }
 
 type QualifiedRefusals
   = RefusalsVerified { by: NonEmptyStr }
@@ -260,7 +263,7 @@ fn q(s: String) -> NonEmptyStr { s as NonEmptyStr }
 
 // Which classes the qualified evidence partially supports, read off the standings that ARE present.
 fn partial_candidates(e: QualifiedEvidence) -> List<DispositionClass> {
-  let a = match e.external { ExternalPresentVerified { operation: _, subject: _, provider: _, ambient: _ } => [BoundHostEffectClass]  ExternalAbsentVerified { by: _ } => []  ExternalUnverified { detail: _ } => [] }
+  let a = match e.external { ExternalPresentVerified { operation: _, subject: _, provider: _, ambient: _ } => [BoundHostEffectClass]  ExternalClaimedUnverified { detail: _ } => [BoundHostEffectClass]  ExternalAbsentVerified { by: _ } => []  ExternalUnverified { detail: _ } => [] }
   let b = match e.computation { ComputationVerified { authority: _, inputs: _, result: _, body: _ } => [PureDagComputationClass]  NoComputationHalf => []  ComputationNotEstablished { detail: _ } => [] }
   let c = match e.realization { RealizationVerified { authority: _, required_semantics: _, target_realization: _, reference: _, witness: _ } => [TargetKernelRealizationClass]  RealizationUnqualified { detail: _ } => [TargetKernelRealizationClass]  NoRealizationClaim => [] }
   let d = match e.compiler_query { QueryOverAcceptedProduct { judgment_subject: _, accepted_compiler_product: _, current_host_producer: _, deletion_trigger: _ } => [CompilerQueryFrontierClass]  NotACompilerQuery => [] }
@@ -289,10 +292,21 @@ fn derive_disposition(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> P
 // computation half the unverified subject is the cause itself.
 fn derive_by_external(e: QualifiedEvidence, ownership: SeedGrowthOwnership) -> PrimitiveDisposition {
       match e.external {
-        ExternalUnverified { detail: d } =>
+        ExternalClaimedUnverified { detail: d } =>
           match e.computation {
             ComputationVerified { authority: _, inputs: _, result: _, body: _ } =>
               unresolved(cause: MixedSemanticQuestions { questions: [q(s: concat("which external state is observed or mutated (claimed, not verified: ", d as String, ")")), q(s: "what is computed over what was acquired: a pure fold (or a lens over compiler products) that must take the acquired inventory as an input")] }, candidates: partial_candidates(e: e))
+            NoComputationHalf => unresolved(cause: ExternalSubjectUnverified { detail: d }, candidates: partial_candidates(e: e))
+            ComputationNotEstablished { detail: cd } => unresolved(cause: SubjectUnestablished { detail: cd }, candidates: partial_candidates(e: e))
+          }
+        ExternalUnverified { detail: d } =>
+          match e.computation {
+            ComputationVerified { authority: a, inputs: _, result: _, body: _ } =>
+              match a {
+                AuthorityRequiredHome { home: h } => unresolved(cause: OperationAuthorityAbsent { home: h }, candidates: partial_candidates(e: e))
+                AuthorityUnresolved { reference: ref, cause: c } => unresolved(cause: OwningFactUnresolved { premise: q(s: "operation authority"), reference: ref, cause: c }, candidates: partial_candidates(e: e))
+                AuthorityVerified { declaration: _, kind: _ } => unresolved(cause: ExternalSubjectUnverified { detail: d }, candidates: partial_candidates(e: e))
+              }
             NoComputationHalf => unresolved(cause: ExternalSubjectUnverified { detail: d }, candidates: partial_candidates(e: e))
             ComputationNotEstablished { detail: cd } => unresolved(cause: SubjectUnestablished { detail: cd }, candidates: partial_candidates(e: e))
           }

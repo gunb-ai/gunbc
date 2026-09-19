@@ -19,7 +19,7 @@ import gunbc.primitive_egress.disposition {
   QualifiedEvidence, QualifiedAuthority, AuthorityVerified, AuthorityRequiredHome, AuthorityUnresolved,
   QualifiedBody, BodyVerified, BodyRequired, BodyUnresolved,
   QualifiedComputation, ComputationVerified, NoComputationHalf, ComputationNotEstablished,
-  QualifiedExternal, ExternalAbsentVerified, ExternalPresentVerified, ExternalUnverified,
+  QualifiedExternal, ExternalAbsentVerified, ExternalPresentVerified, ExternalUnverified, ExternalClaimedUnverified,
   QualifiedRefusals, RefusalsVerified, RefusalsUnverified,
   QualifiedRealization, NoRealizationClaim, RealizationVerified, RealizationUnqualified,
   QualifiedConflict, NoConflictDerived, ConflictDerived,
@@ -156,9 +156,9 @@ fn qualify_external(e: ExternalSubjectStanding, computation: QualifiedComputatio
       match prov {
         ProviderInterfaceRequired { shape: s } =>
           if ctx.has_service_dispatch_form {
-            ExternalUnverified { detail: concat("the ServiceDispatch form establishes an external operation, but its provider interface is only required: ", s as String) as NonEmptyStr }
+            ExternalClaimedUnverified { detail: concat("the ServiceDispatch form establishes an external operation, but its provider interface is only required: ", s as String) as NonEmptyStr }
           } else {
-            ExternalUnverified { detail: concat("provider interface only required: ", s as String) as NonEmptyStr }
+            ExternalClaimedUnverified { detail: concat("provider interface only required: ", s as String) as NonEmptyStr }
           }
         ProviderInterfaceDeclared { declaration: d } => {
           let r = ctx.resolve(d)
@@ -167,9 +167,9 @@ fn qualify_external(e: ExternalSubjectStanding, computation: QualifiedComputatio
               if is_provider_kind(k: k) {
                 ExternalPresentVerified { operation: op, subject: subj, provider: d, ambient: amb }
               } else {
-                ExternalUnverified { detail: concat("the provider declaration resolves to a ", kind_label(k: k), ", not a service or provider type") as NonEmptyStr }
+                ExternalClaimedUnverified { detail: concat("the provider declaration resolves to a ", kind_label(k: k), ", not a service or provider type") as NonEmptyStr }
               }
-            Absent => ExternalUnverified { detail: concat("the provider declaration did not resolve: ", resolution_failure(r: r)) as NonEmptyStr }
+            Absent => ExternalClaimedUnverified { detail: concat("the provider declaration did not resolve: ", resolution_failure(r: r)) as NonEmptyStr }
           }
         }
       }
