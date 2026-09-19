@@ -5,7 +5,7 @@ import std.integer { UInt8 }
 import std.encoding { base64_decode, base64_encode, Standard, UrlSafe }
 import std.octet_span {
   OctetSpan, OctetSpanReady, OctetSpanRefused, OctetUnsignedReady, OctetUnsignedRefused, OctetInputTruncated,
-  octet_span_read, octet_span_octets, octet_span_is, octet_span_length, octet_at, octet_bit_is_set, octet_read_unsigned_be,
+  octet_span_read, octet_span_octets, octet_span_is, octet_span_length, octet_at, octet_in_span, octet_bit_is_set, octet_read_unsigned_be,
 }
 import extdeps.ietf.cbor {
   CborItem, CborEntry, CborRefusal, CborMap, CborBytes, CborText, CborArray, CborUnsigned,
@@ -352,7 +352,7 @@ fn app_attest_auth_data(input: List<UInt8>, span: OctetSpan, reads_credential: B
     AppAttestAuthDataRefused { cause: AppAttestAuthDataTruncated { needed: 37, available: octet_span_length(span: span) } }
   } else {
     let rp_id_hash = OctetSpan { start: span.start, end: span.start + 32 }
-    match octet_at(input: input, at: span.start + 32) {
+    match octet_in_span(input: input, span: span, at: span.start + 32) {
       Absent => AppAttestAuthDataRefused { cause: AppAttestAuthDataTruncated { needed: 37, available: 32 } }
       Present { value: flags } =>
         match octet_read_unsigned_be(input: input, at: span.start + 33, octets: 4) {

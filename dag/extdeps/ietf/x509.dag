@@ -1,7 +1,7 @@
 module extdeps.ietf.x509
 
 import std.integer { UInt8 }
-import std.octet_span { OctetSpan, octet_span_octets, octet_span_length, octet_span_equals, octet_at, octet_bit_is_set }
+import std.octet_span { OctetSpan, octet_span_octets, octet_span_length, octet_span_equals, octet_at, octet_in_span, octet_bit_is_set }
 import extdeps.itu.der {
   DerElement, DerRefusal, DerRead, DerReadReady, DerReadRefused, DerChildren, DerChildrenReady, DerChildrenRefused,
   DerContextSpecific, DerUniversal, DerUnexpectedElement,
@@ -200,7 +200,7 @@ fn x509_civil_from(input: List<UInt8>, at: Int, year: Int) -> CivilDateTime? {
 }
 
 fn x509_ends_in_z(input: List<UInt8>, element: DerElement) -> Bool {
-  match octet_at(input: input, at: element.content.end - 1) {
+  match octet_in_span(input: input, span: element.content, at: element.content.end - 1) {
     Present { value: z } => z == 90
     Absent => false
   }
@@ -649,7 +649,7 @@ fn x509_key_usage_permits_cert_sign(input: List<UInt8>, ext: X509Extension) -> B
       match der_bit_string(input: input, element: e) {
         DerBitStringRefused { cause: _ } => false
         DerBitStringReady { value: bits } =>
-          match octet_at(input: input, at: bits.bits.start) {
+          match octet_in_span(input: input, span: bits.bits, at: bits.bits.start) {
             Absent => false
             Present { value: first } => octet_bit_is_set(octet: first, bit: 2)
           }

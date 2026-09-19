@@ -12,6 +12,7 @@ import extdeps.itu.der {
   DerBitStringReady, DerBitStringRefused, DerContextSpecific,
   der_read_element, der_read_exact, der_children, der_integer_content, der_boolean, der_bit_string, der_object_identifier,
 }
+import extdeps.ietf.x509 { X509Extension, x509_key_usage_permits_cert_sign }
 import extdeps.time.posix_epoch { CivilDateTime, civil_epoch_seconds, days_from_civil }
 import extdeps.time.rfc3339 { rfc3339_epoch_seconds }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -166,6 +167,29 @@ test fn bit_strings_carry_their_unused_bit_count() -> Bool {
     Present { value: e } => match der_bit_string(input: bad, element: e) { DerBitStringRefused { cause: DerBitStringMalformed { at: _ } } => true _ => false }
     Absent => false
   }
+}
+
+// review 68531: an EMPTY BIT STRING (03 00) has no unused-bits octet. It must refuse, not read the
+// next element's first byte (05 here, which is <= 7) as its own.
+test fn an_empty_bit_string_is_refused_and_never_reads_its_neighbour() -> Bool {
+  let input: List<UInt8> = [3, 0, 5, 0]
+  match der_read_element(input: input, at: 0) {
+    DerReadRefused { cause: _ } => false
+    DerReadReady { element: e } =>
+      match der_bit_string(input: input, element: e) {
+        DerBitStringRefused { cause: DerBitStringMalformed { at: a } } => a == 0
+        _ => false
+      }
+  }
+}
+
+// review 68531: KeyUsage 03 01 00 names NO bits, so it does not permit keyCertSign -- even when the
+// octet after it (04) has the keyCertSign bit set. The positive control 03 02 01 04 names it.
+test fn an_empty_key_usage_does_not_grant_cert_sign_from_the_next_byte() -> Bool {
+  let empty: List<UInt8> = [3, 1, 0, 4]
+  let named: List<UInt8> = [3, 2, 1, 4]
+  !x509_key_usage_permits_cert_sign(input: empty, ext: X509Extension { oid: [2, 5, 29, 15], critical: true, value: OctetSpan { start: 0, end: 3 } })
+    && x509_key_usage_permits_cert_sign(input: named, ext: X509Extension { oid: [2, 5, 29, 15], critical: true, value: OctetSpan { start: 0, end: 4 } })
 }
 
 test fn object_identifiers_decode_the_x690_example_and_a_multi_octet_arc() -> Bool {

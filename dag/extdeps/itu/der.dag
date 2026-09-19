@@ -4,7 +4,7 @@ import std.integer { UInt8 }
 import std.octet_span {
   OctetSpan, OctetReadRefusal, OctetInputTruncated, OctetUnsignedTooWide, OctetWordRefused,
   OctetUnsignedReady, OctetUnsignedRefused, OctetSpanReady, OctetSpanRefused,
-  octet_at, octet_bit_field, octet_bit_is_set, octet_read_unsigned_be, octet_span_read, octet_span_length,
+  octet_at, octet_in_span, octet_bit_field, octet_bit_is_set, octet_read_unsigned_be, octet_span_read, octet_span_length,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -237,10 +237,10 @@ fn der_integer_content(input: List<UInt8>, element: DerElement) -> DerRead {
       } else if octet_span_length(span: e.content) == 1 {
         DerReadReady { element: e }
       } else {
-        match octet_at(input: input, at: e.content.start) {
+        match octet_in_span(input: input, span: e.content, at: e.content.start) {
           Absent => DerReadRefused { cause: DerNoncanonicalInteger { at: e.whole.start } }
           Present { value: first } =>
-            match octet_at(input: input, at: e.content.start + 1) {
+            match octet_in_span(input: input, span: e.content, at: e.content.start + 1) {
               Absent => DerReadRefused { cause: DerNoncanonicalInteger { at: e.whole.start } }
               Present { value: second } =>
                 if (first == 0 && second < 128) || (first == 255 && second >= 128) {
@@ -263,7 +263,7 @@ fn der_small_unsigned(input: List<UInt8>, element: DerElement) -> DerSmallIntege
   match der_integer_content(input: input, element: element) {
     DerReadRefused { cause: c } => DerSmallIntegerRefused { cause: c }
     DerReadReady { element: e } =>
-      match octet_at(input: input, at: e.content.start) {
+      match octet_in_span(input: input, span: e.content, at: e.content.start) {
         Absent => DerSmallIntegerRefused { cause: DerNoncanonicalInteger { at: e.whole.start } }
         Present { value: first } =>
           if first >= 128 {
@@ -289,7 +289,7 @@ fn der_boolean(input: List<UInt8>, element: DerElement) -> DerBoolean {
       if octet_span_length(span: e.content) != 1 {
         DerBooleanRefused { cause: DerNoncanonicalBoolean { at: e.whole.start } }
       } else {
-        match octet_at(input: input, at: e.content.start) {
+        match octet_in_span(input: input, span: e.content, at: e.content.start) {
           Absent => DerBooleanRefused { cause: DerNoncanonicalBoolean { at: e.whole.start } }
           Present { value: b } =>
             if b == 0 {
@@ -317,7 +317,7 @@ fn der_bit_string(input: List<UInt8>, element: DerElement) -> DerBitStringRead {
   match der_expect_universal(element: element, tag: der_tag_bit_string) {
     DerReadRefused { cause: c } => DerBitStringRefused { cause: c }
     DerReadReady { element: e } =>
-      match octet_at(input: input, at: e.content.start) {
+      match octet_in_span(input: input, span: e.content, at: e.content.start) {
         Absent => DerBitStringRefused { cause: DerBitStringMalformed { at: e.whole.start } }
         Present { value: unused } =>
           if unused > 7 || (unused > 0 && octet_span_length(span: e.content) == 1) {

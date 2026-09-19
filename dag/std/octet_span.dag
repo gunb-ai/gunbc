@@ -70,6 +70,15 @@ fn octet_at(input: List<UInt8>, at: Int) -> UInt8? {
   if at < 0 { none } else { input |> get(at) }
 }
 
+// THE READ A PARSER USES INSIDE A FIELD. octet_at knows only the input, so a reader that indexes
+// into an element's content with it silently reads the NEXT element when the content is shorter
+// than it assumed -- an empty BIT STRING's missing unused-bits octet, or an empty KeyUsage's
+// missing first octet, became whatever byte followed (review 68531). This read is bounded by the
+// span it is reading, and an offset outside that span is absent rather than a neighbour's byte.
+fn octet_in_span(input: List<UInt8>, span: OctetSpan, at: Int) -> UInt8? {
+  if at < span.start || at >= span.end { none } else { octet_at(input: input, at: at) }
+}
+
 fn octet_word(octet: UInt8) -> WordResult {
   word_of_int(width: Width8, value: octet + 0)
 }
