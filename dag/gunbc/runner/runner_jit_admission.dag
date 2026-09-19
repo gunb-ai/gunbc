@@ -29,8 +29,17 @@ type JitAdmissionAxis
   | BootBindingAxis
   | AttemptBindingAxis
 
+// HostMintAdmission REPLACES X's HostEnvelopeNonemptyAndFresh, and the rename is the point (§3: a
+// materially different check needs a different name). X's checker read a blob a host FETCHED and
+// asked whether it was nonempty and fresh. There is no fetch now: the credential is minted on the
+// host by gunbc.github_effect_perform under an RS256 App JWT signed with the controller's key, and
+// gunbc.runner_attempt_launch admit_jit_credential admits it only from that performance's delivered
+// arm, bound to the attempt, within the byte floor and ceiling. SIGNATURE is therefore the App path
+// (GitHub minted it for our authenticated App; the blob is opaque and carries none for a host to
+// check); EXPIRY is freshness by construction -- minted in the attempt that stages it, immediately
+// before staging, and generate-jitconfig reports no expiry to check against.
 type JitAdmissionChecker
-  = HostEnvelopeNonemptyAndFresh
+  = HostMintAdmission
   | GitHubMintRequestName
 
 type JitAdmissionAxisStanding
@@ -40,8 +49,8 @@ type JitAdmissionAxisStanding
 
 fn jit_admission_axis_standing(axis: JitAdmissionAxis) -> JitAdmissionAxisStanding {
   match axis {
-    SignatureAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
-    ExpiryAxis => AxisRequired { checker: HostEnvelopeNonemptyAndFresh }
+    SignatureAxis => AxisRequired { checker: HostMintAdmission }
+    ExpiryAxis => AxisRequired { checker: HostMintAdmission }
     ReplayAxis => AxisDeferred { trigger: "host cannot detect a second consumer of a minted encoded_jit_config; a generate-jitconfig 409 on a duplicate name is a different question" as NonEmptyStr }
     UnitBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
     BootBindingAxis => AxisDissolvedInto { into: AttemptBindingAxis }
