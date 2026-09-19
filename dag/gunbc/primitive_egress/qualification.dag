@@ -2,7 +2,7 @@ module gunbc.primitive_egress.qualification
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
-import v2.std.decl_index { ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem }
+import v2.std.decl_index { ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem, decl_facts_is_fn_like }
 import v2.std.decl_ref_resolution {
   DeclarationRefResolution, DeclarationRefResolved, DeclarationRefModuleAbsent, DeclarationRefDeclarationAbsent,
   DeclarationRefFieldAbsent, DeclarationRefAmbiguous, DeclarationIdentity,
@@ -79,10 +79,6 @@ fn is_dag_computation_kind(k: ItemKind) -> Bool {
   match k { FnItem => true  DataItem => true  TypeItem => false  ServiceItem => false  OtherItem => false }
 }
 
-fn is_fn_kind(k: ItemKind) -> Bool {
-  match k { FnItem => true  DataItem => false  TypeItem => false  ServiceItem => false  OtherItem => false }
-}
-
 fn is_provider_kind(k: ItemKind) -> Bool {
   match k { ServiceItem => true  TypeItem => true  FnItem => false  DataItem => false  OtherItem => false }
 }
@@ -119,7 +115,7 @@ fn qualify_body(b: DagBodyStanding, ctx: QualificationContext) -> QualifiedBody 
       let r = ctx.resolve(d)
       match resolved_kind(r: r) {
         Present { value: k } =>
-          if is_fn_kind(k: k) { BodyVerified { declaration: d } } else { BodyUnresolved { reference: d, cause: "resolves to a declaration that is not a fn" as NonEmptyStr } }
+          if decl_facts_is_fn_like(kind: k) { BodyVerified { declaration: d } } else { BodyUnresolved { reference: d, cause: "resolves to a declaration that is not a fn" as NonEmptyStr } }
         Absent => BodyUnresolved { reference: d, cause: resolution_failure(r: r) as NonEmptyStr }
       }
     }
@@ -218,7 +214,7 @@ fn qualify_witness(a: DeclarationRef, sem: NonEmptyStr, tr: NonEmptyStr, body: D
   match resolved_kind(r: rw) {
     Absent => RealizationUnqualified { detail: concat("the equivalence witness did not resolve: ", resolution_failure(r: rw)) as NonEmptyStr }
     Present { value: witness_kind } =>
-      if !is_fn_kind(k: witness_kind) {
+      if !decl_facts_is_fn_like(kind: witness_kind) {
         RealizationUnqualified { detail: "the equivalence witness resolves to a declaration that is not a fn" as NonEmptyStr }
       } else if !declaration_under_witness_prefix(d: w, prefixes: ctx.witness_module_prefixes) {
         RealizationUnqualified { detail: concat("the equivalence witness ", w.module_path as String, " ", w.decl_name as String, " is not under an enrolled witness module prefix") as NonEmptyStr }
@@ -237,7 +233,7 @@ fn qualify_reference(a: DeclarationRef, sem: NonEmptyStr, tr: NonEmptyStr, body:
   match resolved_kind(r: rb) {
     Absent => RealizationUnqualified { detail: concat("the reference body did not resolve: ", resolution_failure(r: rb)) as NonEmptyStr }
     Present { value: body_kind } =>
-      if !is_fn_kind(k: body_kind) {
+      if !decl_facts_is_fn_like(kind: body_kind) {
         RealizationUnqualified { detail: "the reference body resolves to a declaration that is not a fn" as NonEmptyStr }
       } else {
         match eq {
@@ -281,7 +277,7 @@ fn qualify_conflict(authored: MeaningConflict, computation: QualifiedComputation
           ComputationVerified { authority: a, inputs: _, result: _, body: _ } =>
             match a {
               AuthorityVerified { declaration: d, kind: k } =>
-                if ctx.has_interpreter_arm && is_fn_kind(k: k) && !ctx.has_algebra_template
+                if ctx.has_interpreter_arm && decl_facts_is_fn_like(kind: k) && !ctx.has_algebra_template
                   && !(ctx.projection_declarations |> any(p => declaration_ref_eq(a: p, b: d))) {
                   ConflictDerived { detail: concat("the operation authority resolves to a modeled .dag ", kind_label(k: k), " (", d.module_path as String, " ", d.decl_name as String, ") AND an interpreter arm realizes the same identity, with no std.primitive_projection row relating them") as NonEmptyStr }
                 } else {
