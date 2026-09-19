@@ -12,7 +12,14 @@ import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolReleased, poo
 import gunbc.fabric_event_log {
   RemoteLocalPath, EventLogLayout, event_log_layout, PartitionReadOk, PartitionReadRefused,
   event_log_read_partition, EventAppended, EventAppendStale, EventAppendRefused, event_log_append,
+  mirror_address, partition_push_refspec, partition_push_lease, event_log_ensure_mirror, MirrorReady, MirrorRefused,
+  EventRefBackfill, EventRefsBackfilled, EventRefBackfillRefused, event_log_backfill_event_refs,
+  fabric_event_log_event_refs_backfill_over, BackfillReceiptRead, BackfillReceiptAt, BackfillReceiptAbsent, BackfillReceiptUnread, event_log_backfill_receipt,
 }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.git
+import product.capacity.event_chain { HeadExpectation }
+import product.capacity.pool_events { pool_event_decode }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -130,6 +137,110 @@ test fn two_appends_chain_oldest_first_by_real_execution() -> Bool {
             EventAppendStale { expected: _, observed: _ } => false
             EventAppended { id: second } =>
               match walked_ids(dir: dir) { Present { value: ids } => ids == [first as String, second as String]  Absent => false }
+          }
+      }
+    }
+  })
+}
+
+// ── A LEGACY CHAIN, AND THE BACKFILL THAT MAKES IT FETCHABLE ────────────────────────────────────
+//
+// Two events are written THE OLD WAY -- the object hashed into the writer's mirror and the head
+// ref pushed under its lease, no per-event ref -- as every event before this transport existed
+// was. The writer reads its own chain (its mirror holds both blobs). A fresh second mirror over
+// the same remote fetches the head, walks to the parent and REFUSES naming the backfill; after
+// event_log_backfill_event_refs runs against the placed repository by its local path, the same
+// fresh mirror reads both events oldest-first; a second backfill creates nothing and counts both
+// present.
+fn legacy_append(layout: EventLogLayout, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> String? {
+  match event_log_ensure_mirror(layout: layout) {
+    MirrorRefused { step: _, reason: _ } => none
+    MirrorReady => legacy_append_in_mirror(layout: layout, event: event, expected: expected)
+  }
+}
+
+fn legacy_append_in_mirror(layout: EventLogLayout, event: ChainEvent<PoolEvent>, expected: HeadExpectation) -> String? {
+  let h = git.Plumbing.HashObjectWriteStdin(address: mirror_address(layout: layout), content: pool_event_wire_text(event: event))
+  if h.exit_code != 0 { none } else {
+    let oid = trim(s: h.oid)
+    let p = git.Core.PushRefWithLeaseInRepo(repo: layout.mirror, remote: join([layout_remote_path(layout: layout)], ""), refspec: partition_push_refspec(oid: oid, partition: witness_partition()), lease: partition_push_lease(partition: witness_partition(), expected: expected))
+    if p.exit_code == 0 { Present { value: oid } } else { none }
+  }
+}
+
+fn layout_remote_path(layout: EventLogLayout) -> String {
+  match layout.remote {
+    RemoteLocalPath { path: p } => p as String
+    _ => ""
+  }
+}
+
+fn second_mirror(dir: FilePath) -> EventLogLayout {
+  event_log_layout(root: join([dir as String, "/second"], "") as FilePath, remote: RemoteLocalPath { path: join([dir as String, "/remote.git"], "") as FilePath })
+}
+
+fn walked_ids_of(layout: EventLogLayout) -> List<String>? {
+  match event_log_read_partition(layout: layout, partition: witness_partition(), budget: 16) {
+    PartitionReadOk { head: _, walk: ChainWalked { oldest_first: envs } } => Present { value: map(envs, e => e.id as String) }
+    _ => none
+  }
+}
+
+fn read_refuses_naming_backfill(layout: EventLogLayout) -> Bool {
+  match event_log_read_partition(layout: layout, partition: witness_partition(), budget: 16) {
+    PartitionReadRefused { step: _, reason: why } => why.contains("event_log_backfill_event_refs")
+    _ => false
+  }
+}
+
+test fn a_legacy_chain_is_readable_from_a_fresh_mirror_only_after_the_backfill_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    if !witness_remote_ready(dir: dir) { false } else {
+      let writer = witness_layout(dir: dir)
+      match legacy_append(layout: writer, event: witness_event(parent: none, at: 1000, payload: acquired(reference: "first")), expected: HeadAbsent) {
+        Absent => false
+        Present { value: first } =>
+          match legacy_append(layout: writer, event: witness_event(parent: Present { value: first }, at: 1001, payload: PoolReleased { reference: "first" as NonEmptyStr, reason: "done" as NonEmptyStr }), expected: HeadAt { id: first as EventId }) {
+            Absent => false
+            Present { value: second } =>
+              (match walked_ids_of(layout: writer) { Present { value: ids } => ids == [first, second]  Absent => false })
+                && read_refuses_naming_backfill(layout: second_mirror(dir: dir))
+                && (match event_log_backfill_event_refs(layout: writer, partition: witness_partition(), budget: 16, decode: fn(text) { pool_event_decode(text: text) }) {
+                      EventRefsBackfilled { partition: _, created: c, present: p } => c == 2 && p == 0
+                      EventRefBackfillRefused { partition: _, step: _, reason: _ } => false
+                    })
+                && (match walked_ids_of(layout: second_mirror(dir: dir)) { Present { value: ids } => ids == [first, second]  Absent => false })
+                && (match event_log_backfill_event_refs(layout: writer, partition: witness_partition(), budget: 16, decode: fn(text) { pool_event_decode(text: text) }) {
+                      EventRefsBackfilled { partition: _, created: c, present: p } => c == 0 && p == 2
+                      EventRefBackfillRefused { partition: _, step: _, reason: _ } => false
+                    })
+          }
+      }
+    }
+  })
+}
+
+// THE MIGRATION ENTRY, OVER THE PLACED REPOSITORY: the same legacy chain; the entry enumerates the
+// partition from the bare repository's own refs, backfills it, writes the receipt ref naming the
+// head it covered, and exits 0; the fresh mirror then reads both events, and the reader's refusal
+// text before the backfill named the entry. A second run exits 0 again (idempotent) and the
+// receipt reads present at the head.
+test fn the_backfill_entry_receipts_every_partition_and_the_fresh_mirror_reads_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    if !witness_remote_ready(dir: dir) { false } else {
+      let writer = witness_layout(dir: dir)
+      match legacy_append(layout: writer, event: witness_event(parent: none, at: 1000, payload: acquired(reference: "first")), expected: HeadAbsent) {
+        Absent => false
+        Present { value: first } =>
+          match legacy_append(layout: writer, event: witness_event(parent: Present { value: first }, at: 1001, payload: PoolReleased { reference: "first" as NonEmptyStr, reason: "done" as NonEmptyStr }), expected: HeadAt { id: first as EventId }) {
+            Absent => false
+            Present { value: second } =>
+              (match event_log_backfill_receipt(layout: writer, partition: witness_partition()) { BackfillReceiptAbsent => true  _ => false })
+                && (match event_log_read_partition(layout: second_mirror(dir: dir), partition: witness_partition(), budget: 16) { PartitionReadRefused { step: _, reason: why } => why.contains("fabric_event_log_event_refs_backfill_wet")  _ => false })
+                && (match fabric_event_log_event_refs_backfill_over(layout: writer) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
+                && (match event_log_backfill_receipt(layout: writer, partition: witness_partition()) { BackfillReceiptAt { head: hd } => hd == second  _ => false })
+                && (match walked_ids_of(layout: second_mirror(dir: dir)) { Present { value: ids } => ids == [first, second]  Absent => false })
+                && (match fabric_event_log_event_refs_backfill_over(layout: writer) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
           }
       }
     }

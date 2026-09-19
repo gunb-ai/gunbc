@@ -25,6 +25,8 @@ type ProcfsPath
   | ProcSelfStatus
   | ProcSelfCgroup
   | ProcNetUnix
+  | ProcNetTcp
+  | ProcNetTcp6
   | ProcSwaps
   | ProcSysKernelHostname
 
@@ -35,6 +37,8 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcSelfStatus => "/proc/self/status"
     ProcSelfCgroup => "/proc/self/cgroup"
     ProcNetUnix => "/proc/net/unix"
+    ProcNetTcp => "/proc/net/tcp"
+    ProcNetTcp6 => "/proc/net/tcp6"
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
   }
@@ -99,6 +103,40 @@ service linux.Procfs {
     }
     mock_response {
       0 => { value: "1 (cat) R 0 1 1 0 -1 4194304 0 0 0 0 0 0 0 0 20 0 1 0 100 0 0 18446744073709551615 0 0 0 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n", success: true } "hermetic linux.Procfs.ReadPidStat"
+    }
+  }
+
+  operation ReadNetTcp {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/net/tcp"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/net/tcp read failed"
+    }
+    mock_response {
+      0 => { value: "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", success: true } "hermetic linux.Procfs.ReadNetTcp: a socket table with no rows"
+    }
+  }
+
+  operation ReadNetTcp6 {
+    input {}
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["cat", "/proc/net/tcp6"] }
+    exit {
+      0 => Unit
+      nonzero => String "/proc/net/tcp6 read failed"
+    }
+    mock_response {
+      0 => { value: "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n", success: true } "hermetic linux.Procfs.ReadNetTcp6: a socket table with no rows"
     }
   }
 

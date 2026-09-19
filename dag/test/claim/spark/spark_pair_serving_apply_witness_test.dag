@@ -2,17 +2,27 @@ module test.claim.spark.spark_pair_serving_apply_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { host_identity_eq }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8, operator_host_srv9, operator_host_srv12 }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import gunbc.spark.pair_serving_realization { spark_pair_realizations }
 import gunbc.spark.pair_serving_apply {
   SparkPairApplyPlan, SparkPairApplyPlanned, SparkPairApplyRefused, SparkPairHostApplyPlan,
-  spark_pair_apply_plan, spark_pair_apply_plans, spark_pair_apply_plan_refusals,
+  spark_pair_apply_plan_current, spark_pair_apply_plans_current, spark_pair_apply_plan_refusals,
+}
+import gunbc.spark.pair_serving_authority { spark_pair_serving_authorities, pair_serving_authority_group }
+import gunbc.spark.pair_serving_authority_log { CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, AuthorityTransitionRecord }
+import product.capacity.event_chain { HeadAbsent }
+
+// THE CURRENT AUTHORITY IS SUPPLIED: the resting row of every claimed group at generation 0, which
+// is exactly what the log folds to when no transition has been recorded. The live read of the log
+// is executed by test.claim.spark.spark_pair_serving_apply_wet_witness on the local-repo wet lane.
+fn w_current() -> List<CurrentAuthority> {
+  map(spark_pair_serving_authorities, a => CurrentAuthorityRead { authority: a, head: HeadAbsent, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord> })
 }
 
 fn w_plan() -> SparkPairApplyPlan {
   match first(spark_pair_realizations()) {
     Absent => SparkPairApplyRefused { cause: "no realization" }
-    Present { value: r } => spark_pair_apply_plan(r: r)
+    Present { value: r } => spark_pair_apply_plan_current(r: r, current: w_current())
   }
 }
 
@@ -56,15 +66,27 @@ test fn the_script_is_made_of_the_rendered_argv_and_carries_the_cache_over() -> 
   })
 }
 
-// BOTH PROMOTED GROUPS PLAN, NONE REFUSES, AND THE SECOND PLAN IS GROUP B: srv9's head with three
-// workers including srv12, so one apply carries the whole desired roster.
-test fn every_promoted_group_plans_and_the_second_is_group_b_headed_by_srv9() -> Bool {
-  let plans = spark_pair_apply_plans()
-  length(plans) == 2 && length(spark_pair_apply_plan_refusals(plans: plans)) == 0
-    && any(plans, p => match p {
-         SparkPairApplyRefused { cause: _ } => false
-         SparkPairApplyPlanned { workers: ws, head: h } =>
-           length(ws) == 3 && host_identity_eq(a: h.host, b: operator_host_srv9)
-             && any(ws, w => host_identity_eq(a: w.host, b: operator_host_srv12))
-       })
+// EVERY CLAIMED GROUP PLANS AND NONE REFUSES: one plan per authority row, so one apply carries
+// the whole claimed roster. The roster is the authority population -- Group A alone since the
+// membership became a projection of gunbc.spark.pair_serving_authority (#11501) -- and this claim
+// reads its expected count from that population rather than from a literal, so an earlier
+// spelling that named a second group headed by srv9 with srv12 was measuring a roster that no
+// longer exists. The head-and-workers shape of the one plan is the claim above.
+test fn every_claimed_group_plans_and_none_refuses() -> Bool {
+  let plans = spark_pair_apply_plans_current(current: w_current())
+  length(plans) == length(spark_pair_serving_authorities) && length(plans) >= 1
+    && length(spark_pair_apply_plan_refusals(plans: plans)) == 0
+}
+
+// RED -- AN UNREADABLE AUTHORITY IS NEVER PLANNED FROM THE RESTING ROW. The supplied roster says the
+// log could not be read for the claimed group; the plan for that group is a refusal carrying the
+// read's cause, and nothing renders. Folding the unread arm back onto the source row would plan
+// the incumbent here and turn this red.
+test fn an_unread_authority_refuses_the_plan_with_the_reads_cause() -> Bool {
+  let unread = map(spark_pair_serving_authorities, a => CurrentAuthorityUnread { group: pair_serving_authority_group(a: a), step: "fetch" as String, reason: "witness: the partition could not be fetched" as String })
+  let plans = spark_pair_apply_plans_current(current: unread)
+  let refusals = spark_pair_apply_plan_refusals(plans: plans)
+  length(plans) == length(spark_pair_serving_authorities) && length(plans) >= 1
+    && length(refusals) == length(plans)
+    && all(refusals, r => string_contains(s: r, pattern: "the serving authority could not be read") && string_contains(s: r, pattern: "witness: the partition could not be fetched"))
 }

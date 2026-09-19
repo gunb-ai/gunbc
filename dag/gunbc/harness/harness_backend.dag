@@ -38,6 +38,7 @@ import gunbc.spark.vllm_observed {
 }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, harness_serving_unit_wire }
 import extdeps.http.client
+import extdeps.http.client { curl_exit_connect_failed, curl_exit_deadline }
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
 }
@@ -69,6 +70,35 @@ data harness_front_door_probe_bound: Second = second(count: 10)
 fn harness_bounded_get(url: String) -> HarnessBoundedRead {
   let read = http.Client.GetWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
   HarnessBoundedRead { body: read.body, success: read.success }
+}
+
+// PRESENCE, NOT CONTENT: whether ANY HTTP response came back within the front-door bound, and
+// with what status. Consumed by the Cut D D0 incumbent question, for which a 401 or a 500 is an
+// incumbent that answered and -f's failure would have read as absence.
+//
+// "NO RESPONSE" IS THREE READINGS, NOT ONE, AND NONE OF THEM IS ABSENCE. curl 7 ("failed to
+// connect to host or proxy") covers a refused connection, an unreachable host and a proxy that
+// would not connect -- it is not the operating system's ECONNREFUSED and proves no listener absent;
+// curl 28 is the deadline, which says something may have accepted and did not answer; every other
+// code is a transport that could not be read. The arms carry exactly what curl established and no
+// more; whether an incumbent is absent is the consumer's to establish from a host-side reading.
+type HarnessBoundedPresence
+  = HarnessResponded { status: String }
+  | HarnessConnectFailed { url: String, curl_exit: Int }
+  | HarnessDeadline { url: String }
+  | HarnessTransportUnread { url: String, curl_exit: Int }
+
+fn harness_bounded_presence(url: String) -> HarnessBoundedPresence {
+  let read = http.Client.StatusWithin(url: url as NonEmptyStr, max_seconds: to_string(second_count(s: harness_front_door_probe_bound)) as NonEmptyStr)
+  if read.success {
+    HarnessResponded { status: trim(s: read.status) }
+  } else if read.exit_code == curl_exit_connect_failed {
+    HarnessConnectFailed { url: url, curl_exit: read.exit_code }
+  } else if read.exit_code == curl_exit_deadline {
+    HarnessDeadline { url: url }
+  } else {
+    HarnessTransportUnread { url: url, curl_exit: read.exit_code }
+  }
 }
 
 type HarnessBoundedRead {
