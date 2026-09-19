@@ -277,6 +277,23 @@ pub enum AdmissionSubject {
         /// whose presence could hide unexpected candidates.
         expected_candidates: Vec<String>,
     },
+    /// ONE DECLARATION MOVED BETWEEN MODULES, ADMITTED ONCE FOR EVERY BINDING IT REPOINTS.
+    ///
+    /// A relocation repoints every reference to the moved leaf, so under `Binding` it costs one
+    /// row per reference site: gunbc#10994 needed seventeen for one move, and the count grows
+    /// with the number of CONSUMERS rather than with the size of the change. This subject admits
+    /// the move itself and is still bounded BY ENUMERATED IDENTITY, never by a predicate (the
+    /// grain paragraph on `TransitionAdmission`): it admits exactly the binding deltas whose leaf
+    /// is `spelling` AND whose declarer set was exactly `{from_module}` at the base and exactly
+    /// `{to_module}` at the head (`relocation_moves_this_binding`). A consumer repointed anywhere
+    /// else, a second declarer appearing, or the name ceasing to resolve all fall outside it and
+    /// refuse as before. Validity at the head and consumption at the base are the declaration
+    /// itself having moved: declared in `to_module` and not in `from_module`.
+    Relocation {
+        spelling: String,
+        from_module: String,
+        to_module: String,
+    },
 }
 
 pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubject) -> bool {
@@ -305,6 +322,13 @@ pub fn admission_subject_matches(pattern: &AdmissionSubject, subject: &DeltaSubj
                 && in_declaration == observed_declaration
                 && spelling == observed_spelling
         }
+        (
+            AdmissionSubject::Relocation { spelling, .. },
+            DeltaSubject::Binding {
+                spelling: observed_spelling,
+                ..
+            },
+        ) => spelling == observed_spelling,
         _ => false,
     }
 }
@@ -320,6 +344,11 @@ pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
             spelling,
             expected_candidates,
         } => format!("binding {module}::{in_declaration} `{spelling}` -> {expected_candidates:?}"),
+        AdmissionSubject::Relocation {
+            spelling,
+            from_module,
+            to_module,
+        } => format!("relocation `{spelling}` {from_module} -> {to_module}"),
     }
 }
 
@@ -1061,10 +1090,23 @@ pub fn adjudicate(
             if admission_subject_matches(&admission.subject, &delta.subject)
                 && admission.disposition == delta.disposition
             {
-                if matches!(admission.subject, AdmissionSubject::Binding { .. }) {
+                if matches!(
+                    admission.subject,
+                    AdmissionSubject::Binding { .. } | AdmissionSubject::Relocation { .. }
+                ) {
                     if let Err(mismatch) = admission_satisfied_at(admission, head, &head_membership)
                     {
                         invalid_admissions.insert(i, format!("head {mismatch}"));
+                        continue;
+                    }
+                }
+                if let AdmissionSubject::Relocation {
+                    from_module,
+                    to_module,
+                    ..
+                } = &admission.subject
+                {
+                    if !relocation_moves_this_binding(delta, from_module, to_module, base, head) {
                         continue;
                     }
                 }
@@ -1215,7 +1257,52 @@ fn admission_satisfied_at(
                 )),
             }
         }
+        AdmissionSubject::Relocation {
+            spelling,
+            from_module,
+            to_module,
+        } => {
+            let declares = |module: &str| {
+                index_get(index, module).is_some_and(|record| {
+                    record.declared.contains(spelling) || record.variants.contains(spelling)
+                })
+            };
+            match (declares(to_module), declares(from_module)) {
+                (true, false) => Ok(()),
+                (in_to, in_from) => Err(format!(
+                    "expected `{spelling}` declared in {to_module} and not in {from_module}, \
+                     found declared-in-to={in_to} declared-in-from={in_from}"
+                )),
+            }
+        }
     }
+}
+
+/// Whether one binding delta is exactly the move a `Relocation` row names: its declarer set was
+/// `{from_module}` at the base and is `{to_module}` at the head, read from the same
+/// `binding_rows` the delta itself was computed from. Anything else -- a different declarer on
+/// either side, two declarers, none -- is not this move and stays unadmitted.
+fn relocation_moves_this_binding(
+    delta: &NamespaceDelta,
+    from_module: &str,
+    to_module: &str,
+    base: &DeclarationIndex,
+    head: &DeclarationIndex,
+) -> bool {
+    let DeltaSubject::Binding {
+        module,
+        in_declaration,
+        spelling,
+    } = &delta.subject
+    else {
+        return false;
+    };
+    let key = (in_declaration.clone(), spelling.clone());
+    let row = |index: &DeclarationIndex| {
+        index_get(index, module).and_then(|record| binding_rows(index, record).get(&key).cloned())
+    };
+    row(base) == Some(BTreeSet::from([from_module.to_string()]))
+        && row(head) == Some(BTreeSet::from([to_module.to_string()]))
 }
 
 /// Which disposition a changed candidate SET carries.
@@ -1779,6 +1866,34 @@ fn parse_admission_subject(
             Ok(AdmissionSubject::Membership {
                 module: expr_string(from_module)?,
                 target: expr_string(target_module)?,
+            })
+        }
+        "Relocation" => {
+            let Some(to) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr.clone(),
+                "to".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Relocation is missing field `to`".to_string());
+            };
+            let Some(from_module) = crate::v1_std_core::record_lit_named_field_value_optional(
+                expr,
+                "from_module".to_string(),
+                source_indices.clone(),
+            ) else {
+                return Err("Relocation is missing field `from_module`".to_string());
+            };
+            let (to_module, spelling) = parse_decl_ref(to, source_indices)?;
+            let from_module = expr_string(from_module)?;
+            if from_module == to_module {
+                return Err(format!(
+                    "Relocation moves `{spelling}` from {from_module} to itself; a relocation names two different modules"
+                ));
+            }
+            Ok(AdmissionSubject::Relocation {
+                spelling,
+                from_module,
+                to_module,
             })
         }
         other => Err(format!("unknown AdmissionSubject `{other}`")),

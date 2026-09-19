@@ -45,6 +45,14 @@ import gunbc.compiler_frontend_program_interlock { NamespaceDeltaDisposition }
 // author those six files onto an unlanded #11345: they would refuse against a
 // main that does not yet carry the relocation.
 
+// Relocation: one declaration moved between modules, admitted once for every binding it repoints.
+// A move repoints every reference to its leaf, so as Binding rows it costs one row per reference
+// site -- gunbc#10994 needed seventeen for one move, growing with the consumer count rather than
+// with the change. The row stays an enumeration, never a predicate: it admits exactly the bindings
+// whose declarer set was {from_module} at the base and {to_module} at the head, and nothing else.
+// `to` is a DeclarationRef because it resolves once the move lands; `from_module` is text because
+// after the move nothing declares the leaf there, and a DeclarationRef to it would be refused.
+//
 // Binding.expected_candidates: candidate declaring identities, same type as enclosing. The wall
 // join is module_path. decl_name must equal Binding.spelling (the relocated leaf); load refuses a
 // mismatch so a phantom leaf cannot pass.
@@ -57,6 +65,10 @@ type AdmissionSubject
   | Membership {
       from_module: NonEmptyStr
       target_module: NonEmptyStr
+    }
+  | Relocation {
+      to: DeclarationRef
+      from_module: NonEmptyStr
     }
 
 type DeletionFollowUp
