@@ -85,7 +85,7 @@ import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_custody_container_intervention,
   r2_orphan_receipt_content,
   NothingWasWritten, WriteOutcomeUnknown, VersionLandedUnverified,
-  ObserveCustodyContainer, CustodyContainerNotNeeded,
+  EnsureCustodyContainer, CustodyContainerNotNeeded,
   r2_mint_container_not_required_reason,
   r2_mint_receipt_path_in, r2_mint_receipt_glob_in, r2_mint_receipt_scope,
   r2_mint_receipt_dir_root, r2_mint_receipt_dir,
@@ -620,7 +620,7 @@ test fn a_non_writing_entry_waives_the_container_with_a_stated_reason() -> Bool 
   match CustodyContainerNotNeeded { reason: r2_mint_container_not_required_reason } {
     CustodyContainerNotNeeded { reason: reason } =>
       string_contains(s: reason as String, pattern: "writes no Secret Manager version")
-    ObserveCustodyContainer => false
+    EnsureCustodyContainer => false
   }
 }
 

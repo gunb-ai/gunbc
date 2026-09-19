@@ -239,7 +239,7 @@ fn admit_r2_origin_token_mint(
 type R2MintCustodyContainerStanding
   = R2MintCustodyContainerPresent { container: ObservedSecretContainer }
   | R2MintCustodyContainerNotObserved { reason: NonEmptyStr }
-  | R2MintCustodyContainerUnobserved { intervention: HumanIntervention }
+  | R2MintCustodyContainerNotEnsured { intervention: HumanIntervention }
 
 // THE PURE FOLD TAKES THE VERDICT, NOT THE SEAL, AND THAT IS WHAT KEEPS IT WITNESSABLE.
 // ObservedSecretContainer is sole_constructor, so no module but gunbc.secret_provision_actuator can
@@ -267,9 +267,9 @@ type R2MintContainerAdmission
 
 // WHAT THE ENTRY ASKS THE BRACKET TO DO ABOUT THE CONTAINER. This is the caller's statement of its
 // own effects, not a switch: an entry that will add a Secret Manager version asks for the
-// observation, and an entry that only reads the account's tokens says so and carries the reason.
+// container to be ensured (observed, and created when absent), and an entry that only reads the account's tokens says so and carries the reason.
 type R2MintContainerRequirement
-  = ObserveCustodyContainer
+  = EnsureCustodyContainer
   | CustodyContainerNotNeeded { reason: NonEmptyStr }
 
 data r2_mint_container_not_required_reason: NonEmptyStr = "this entry reads the account's tokens through the Cloudflare bootstrap credential and writes no Secret Manager version, so the custody container is not its precondition" as NonEmptyStr
@@ -278,7 +278,7 @@ fn r2_mint_container_admission(standing: R2MintCustodyContainerStanding) -> R2Mi
   match standing {
     R2MintCustodyContainerPresent { container: _ } => ContainerAdmitted
     R2MintCustodyContainerNotObserved { reason: reason } => ContainerNotRequired { reason: reason }
-    R2MintCustodyContainerUnobserved { intervention: intervention } =>
+    R2MintCustodyContainerNotEnsured { intervention: intervention } =>
       ContainerAbsent { intervention: intervention }
   }
 }
@@ -306,7 +306,7 @@ fn r2_mint_custody_container_intervention(secret_id: NonEmptyStr, cause: NonEmpt
     frequency: FleetOnce,
     subject: join(["the Secret Manager custody container ", secret_id as String], "") as NonEmptyStr,
     instruction: join([
-      "THE CUSTODY CONTAINER COULD NOT BE OBSERVED: ", cause as String,
+      "THE CUSTODY CONTAINER COULD NOT BE ENSURED: ", cause as String,
       " -- the mint flow creates ", secret_id as String,
       " in ", fleet_secrets_gcp_project as String,
       " itself when its identity holds ", r2_mint_container_create_permission as String,
@@ -315,13 +315,13 @@ fn r2_mint_custody_container_intervention(secret_id: NonEmptyStr, cause: NonEmpt
     completion_evidence: DischargedAt {
       evidence: decl_ref(
         module_path: "gunbc.cloudflare.r2_token_mint_run",
-        decl_name: "observe_r2_mint_custody_container",
+        decl_name: "ensure_r2_mint_custody_container",
       ),
     },
   }
 }
 
-fn observe_r2_mint_custody_container(
+fn ensure_r2_mint_custody_container(
   profile: R2OriginTokenProfile,
   gcp_token: Secret,
 ) -> R2MintCustodyContainerStanding uses net: Network {
@@ -332,7 +332,7 @@ fn observe_r2_mint_custody_container(
     token: gcp_token,
   ) {
     SecretObservationRefused { cause: cause } =>
-      R2MintCustodyContainerUnobserved {
+      R2MintCustodyContainerNotEnsured {
         intervention: r2_mint_custody_container_intervention(secret_id: secret_id, cause: cause),
       }
     SecretContainerAbsent { project: project, secret_id: _ } =>
@@ -340,7 +340,7 @@ fn observe_r2_mint_custody_container(
         SecretContainerCreated { container: container } =>
           R2MintCustodyContainerPresent { container: container }
         SecretContainerCreationRefused { cause: cause } =>
-          R2MintCustodyContainerUnobserved {
+          R2MintCustodyContainerNotEnsured {
             intervention: r2_mint_custody_container_intervention(
               secret_id: secret_id,
               cause: join([
@@ -353,7 +353,7 @@ fn observe_r2_mint_custody_container(
             ),
           }
         SecretContainerCreationOutcomeUnknown { cause: cause } =>
-          R2MintCustodyContainerUnobserved {
+          R2MintCustodyContainerNotEnsured {
             intervention: r2_mint_custody_container_intervention(
               secret_id: secret_id,
               cause: concat("the container create's outcome is unknown and is not retried, because a later GET cannot establish absence: ", cause as String) as NonEmptyStr,
@@ -385,12 +385,12 @@ fn observe_r2_mint_custody_container(
 // against a copy of the whole ladder would be the same fold twice, and the two would drift.
 // THE SEAL TRAVELS AS AN OPTIONAL BECAUSE ONLY SOME ENTRIES HAVE ONE, and the writer is where its
 // absence refuses. List and revoke legitimately carry none: they were never going to add a version.
-// The mint path asks for the observation and therefore refuses on none at the point it would write.
+// The mint path asks for the ensure and therefore refuses on none at the point it would write.
 fn observed_container_or_none(standing: R2MintCustodyContainerStanding) -> ObservedSecretContainer? {
   match standing {
     R2MintCustodyContainerPresent { container: container } => Present { value: container }
     R2MintCustodyContainerNotObserved { reason: _ } => none
-    R2MintCustodyContainerUnobserved { intervention: _ } => none
+    R2MintCustodyContainerNotEnsured { intervention: _ } => none
   }
 }
 
@@ -511,7 +511,7 @@ fn r2_mint_bootstrap(
     AccessTokenReady { token: gcp_token } => {
       let container_standing = match requirement {
         CustodyContainerNotNeeded { reason: reason } => R2MintCustodyContainerNotObserved { reason: reason }
-        ObserveCustodyContainer => observe_r2_mint_custody_container(profile: profile, gcp_token: gcp_token)
+        EnsureCustodyContainer => ensure_r2_mint_custody_container(profile: profile, gcp_token: gcp_token)
       }
       match classify_r2_mint(
     profile: profile,
@@ -1195,7 +1195,7 @@ fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit use
       "THE ORIGIN ALREADY PINS THIS CREDENTIAL TO AN EXACT VERSION, NOTHING CREATED: a second mint would leave a token on the account that no declaration names; rotate by editing the pin in gunbc.cloudflare.r2_origin first -- ",
       r2_origin_token_secret_id(profile: profile) as String))
   } else {
-  match r2_mint_bootstrap(profile: profile, requirement: ObserveCustodyContainer) {
+  match r2_mint_bootstrap(profile: profile, requirement: EnsureCustodyContainer) {
     R2MintBootstrapRefused { cause: cause } =>
       exit_failure(reason: concat(concat(
         cause as String, ", NOTHING CREATED || the dashboard ceremony this is waiting on: "),
@@ -1210,7 +1210,7 @@ fn mint_origin_token_and_store(profile: R2OriginTokenProfile) -> ProcessExit use
     } =>
       match container {
         Absent =>
-          exit_failure(reason: "THE CUSTODY CONTAINER WAS NOT OBSERVED FOR A RUN THAT WOULD WRITE ONE, NOTHING CREATED: the mint asked for the observation and the bracket returned none, so this run cannot show the destination exists and will not spend a Create to find out")
+          exit_failure(reason: "THE CUSTODY CONTAINER WAS NOT ENSURED FOR A RUN THAT WOULD WRITE ONE, NOTHING CREATED: the mint asked for the ensure and the bracket returned none, so this run cannot show the destination exists and will not spend a Create to find out")
         Present { value: container } =>
       match ensure_r2_mint_receipt_dir(scope: r2_mint_receipt_scope_for_this_run()) {
         R2MintReceiptDirRefused { cause: dir_cause } =>
