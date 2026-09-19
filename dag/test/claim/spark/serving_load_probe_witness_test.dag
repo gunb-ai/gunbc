@@ -2,6 +2,7 @@ module test.claim.spark.serving_load_probe_witness
 
 import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import extdeps.prometheus.client { prometheus_sample_value_reading, SampleValueExact, SampleValueNotFinite, SampleValueUnreadable }
 import std.measure { token_count_value, millisecond, millisecond_count }
@@ -32,7 +33,7 @@ import gunbc.spark.serving_load_probe {
   CorroborationNotApplicable, CorroborationUnread, SuccessfulClientRequestSecondBucketPeak, ClientItlDistributionObserved, ClientItlDistributionUnread,
   client_itl_text, client_bucket_peak_text, ledger_from_bench_stdout, client_output_from_bench_stdout, scrape_millis_from_bench_stdout,
   client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout, glm_native_protected_subject, protected_subject_key, bench_serve_from_remote,
-  BenchServeExecution, bench_serve_completed_output, glm_native_live_subject, arrival_text,
+  BenchServeExecution, bench_serve_interval, bench_serve_completed_output, glm_native_live_subject, arrival_text,
   ArrivalSkewObserved,
 }
 import gunbc.spark.serving_performance_subject { serving_subject_standing, ServingPerformanceSubjectStanding }
@@ -651,4 +652,58 @@ test fn arrival_unread_and_observed_render_distinguishably() -> Bool {
   string_contains(s: t, pattern: "arrival: unread ")
     && string_contains(s: observed, pattern: "observed max_stagger_ms=250")
     && !string_contains(s: observed, pattern: "unread")
+}
+
+fn retained_stdout_replays_the_execution(e: BenchServeExecution, retained: String) -> Bool {
+  match bench_serve_interval(e: e) {
+    Absent => false
+    Present { value: ia } =>
+      match scrape_millis_from_bench_stdout(body: retained) {
+        Absent => false
+        Present { value: ib } =>
+          millisecond_count(m: ia) == millisecond_count(m: ib)
+            && match bench_serve_completed_output(e: e) {
+              ClientOutputTokensUnread { cause: _ } => false
+              ClientOutputTokensObserved { tokens: a } =>
+                match client_output_from_bench_stdout(body: retained) {
+                  ClientOutputTokensUnread { cause: _ } => false
+                  ClientOutputTokensObserved { tokens: b } => a == b
+                }
+            }
+      }
+  }
+}
+
+fn digest_of(kind: String, body: String) -> String {
+  serialize_content_hash(hash: content_hash_of_value(value: join([kind, "\n", body], "") as NonEmptyStr)) as String
+}
+
+test fn the_retained_evidence_is_the_execution_it_was_captured_from() -> Bool {
+  let stderr = "fixture stderr diagnostic"
+  let bench = bench_serve_from_remote(protocol: glm_native_smoke_protocol, remote: RemoteRan { exit_code: 0, stdout: fx_bench_stdout, stderr: stderr })
+  let obs = serving_load_observation(
+    subject: glm_native_live_subject_standing(),
+    window: window_from_drain(drain: DrainObservedIdle),
+    continuity: counter_continuity(before: fx_launch(), after: fx_launch()),
+    occupancy: occupancy_trace_from_endpoint_scrapes(before_body: fx_idle, after_body: fx_after),
+    before_body: fx_idle,
+    after_body: fx_after,
+    before_incarnation: fx_same_incarnation(),
+    after_incarnation: fx_same_incarnation(),
+    bench: bench,
+  )
+  let ev = obs.evidence
+  ev.metrics_before.body == fx_idle
+    && ev.metrics_after.body == fx_after
+    && ev.bench_stdout.body == fx_bench_stdout
+    && ev.bench_stderr.body == stderr
+    && (serialize_content_hash(hash: ev.bench_stdout.digest) as String) == digest_of(kind: "bench-stdout", body: fx_bench_stdout)
+    && (serialize_content_hash(hash: ev.metrics_before.digest) as String) == digest_of(kind: "metrics-before", body: fx_idle)
+    && retained_stdout_replays_the_execution(e: obs.execution, retained: ev.bench_stdout.body)
+}
+
+test fn a_truncated_retained_stdout_does_not_replay_the_execution() -> Bool {
+  let bench = fx_bench_receipt(stdout: fx_bench_stdout)
+  retained_stdout_replays_the_execution(e: bench, retained: fx_bench_stdout)
+    && !retained_stdout_replays_the_execution(e: bench, retained: "Total generated tokens:                  512\n")
 }
