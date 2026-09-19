@@ -1,0 +1,175 @@
+module test.claim.organization_runner_roster_read_witness
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Int, List }
+import std.page_fold {
+  PageBound, PageObservation, ContinuationClosed, ContinuationNext, LinkNext,
+  page_fold_begin, page_fold_observe
+}
+import extdeps.github.pagination { github_listing_subject, github_first_page_cursor }
+import extdeps.github.cli_api_include { GhApiIncludedParsed, GhApiIncludedUnreadable, parse_gh_api_included }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration }
+import gunbc.fleet_runner_connectivity { RosterObserved, RosterObservedPartial, RosterReadUnavailable }
+import gunbc.fleet.organization_runner_roster_read {
+  OrganizationRunnerRosterPage,
+  OrganizationRunnerRosterWalk,
+  RosterPageDelivered,
+  RosterPageFailed,
+  RunnerIdPresent,
+  RunnerIdAbsent,
+  RunnerIdUnobserved,
+  RunnersVisible,
+  RunnersVisibilityUnestablished,
+  roster_page_read_from_included,
+  classify_roster_walk,
+  runner_id_observation_from_included
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// EVERY INPUT BELOW IS A SUPPLIED `gh api --include` STDOUT, shaped as gh printed it on 2026-09-19
+// (status line, headers, blank line, body). These claims discriminate at the response boundary;
+// the network route is exercised by the fleet-converge mode org_runner_roster_observe.
+
+data runner_one_json: String = "\{\"id\":11,\"name\":\"srv3-01\",\"os\":\"Linux\",\"status\":\"online\",\"busy\":false,\"ephemeral\":true,\"labels\":[\{\"name\":\"self-hosted\"}]}"
+data runner_two_json: String = "\{\"id\":12,\"name\":\"srv3-02\",\"os\":\"Linux\",\"status\":\"offline\",\"busy\":false,\"labels\":[\{\"name\":\"self-hosted\"}]}"
+
+fn page_body(total: Int, runners: List<String>) -> String {
+  join(["\{\"total_count\":", to_string(total), ",\"runners\":[", join(runners, ","), "]}"], "")
+}
+
+fn included(status_line: String, link: String, body: String) -> String {
+  let head = if link == "" { [status_line, "Content-Type: application/json"] } else { [status_line, concat("Link: ", link), "Content-Type: application/json"] }
+  join(concat(head, ["", body]), "\n")
+}
+
+data next_link: String = "<https://api.github.com/organizations/1/actions/runners?per_page=100&page=2>; rel=\"next\", <https://api.github.com/organizations/1/actions/runners?per_page=100&page=2>; rel=\"last\""
+
+test fn a_page_with_a_next_link_continues() -> Bool {
+  match roster_page_read_from_included(stdout: included(status_line: "HTTP/2.0 200 OK", link: next_link, body: page_body(total: 2, runners: [runner_one_json])), stderr: "") {
+    RosterPageDelivered { page, continuation: ContinuationNext { cursor: LinkNext { target: _ } } } => page.total_count == 2 && length(xs: page.registrations) == 1
+    _ => false
+  }
+}
+
+test fn a_page_without_a_link_header_closes_the_listing() -> Bool {
+  match roster_page_read_from_included(stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: page_body(total: 1, runners: [runner_one_json])), stderr: "") {
+    RosterPageDelivered { page: _, continuation: ContinuationClosed } => true
+    _ => false
+  }
+}
+
+test fn an_optional_field_absent_upstream_stays_absent() -> Bool {
+  match roster_page_read_from_included(stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: page_body(total: 1, runners: [runner_two_json])), stderr: "") {
+    RosterPageDelivered { page, continuation: _ } => match page.registrations {
+      Cons { head: r, tail: _ } => match r.ephemeral { Absent => true, Present { value: _ } => false }
+      Empty {} => false
+    }
+    _ => false
+  }
+}
+
+test fn a_forbidden_page_is_a_failure_not_an_empty_page() -> Bool {
+  match roster_page_read_from_included(stdout: included(status_line: "HTTP/2.0 403 Forbidden", link: "", body: "\{\"message\":\"Resource not accessible by integration\"}"), stderr: "gh: Resource not accessible by integration (HTTP 403)") {
+    RosterPageFailed { cause: _ } => true
+    RosterPageDelivered { page: _, continuation: _ } => false
+  }
+}
+
+test fn output_without_a_status_line_observed_no_response() -> Bool {
+  match parse_gh_api_included(stdout: "error connecting to api.github.com") {
+    GhApiIncludedUnreadable { reason: _ } => true
+    GhApiIncludedParsed { response: _ } => false
+  }
+}
+
+// THE WALK CLASSIFICATION, OVER PAGES SUPPLIED AS A TRANSPORT WOULD HAVE DELIVERED THEM.
+
+fn delivered_page(body: String, link: String) -> OrganizationRunnerRosterPage? {
+  match roster_page_read_from_included(stdout: included(status_line: "HTTP/2.0 200 OK", link: link, body: body), stderr: "") {
+    RosterPageDelivered { page, continuation: _ } => Present { value: page }
+    RosterPageFailed { cause: _ } => none
+  }
+}
+
+// The fold state is driven as a closing listing; a failure, where supplied, is what the classifier
+// reads first, exactly as the pump leaves it when a later fetch fails.
+fn walk_over(pages: List<OrganizationRunnerRosterPage>, failure: NonEmptyStr?) -> OrganizationRunnerRosterWalk {
+  let begun = page_fold_begin(subject: github_listing_subject(operation: "ListOrgSelfHostedRunners"), bound: PageBound { max_pages: 60 }, first: github_first_page_cursor)
+  let state = fold(pages, init: begun, f: fn(st, p) {
+    page_fold_observe(state: st, page: PageObservation { items: p.registrations, continuation: ContinuationClosed })
+  })
+  OrganizationRunnerRosterWalk { state: state, pages: pages, failure: failure }
+}
+
+test fn a_closed_listing_whose_distinct_ids_meet_total_count_is_observed() -> Bool {
+  match delivered_page(body: page_body(total: 2, runners: [runner_one_json, runner_two_json]), link: "") {
+    Absent => false
+    Present { value: p } => match classify_roster_walk(walk: walk_over(pages: [p], failure: none), observed_on: "2026-09-19" as NonEmptyStr).evidence {
+      RosterObserved { observed_on: _, registrations: regs } => length(xs: regs) == 2
+      _ => false
+    }
+  }
+}
+
+// A REPEATED ROW IS NOT COVERAGE: two rows, one distinct id, against a total of two.
+test fn a_repeated_runner_id_does_not_count_toward_completeness() -> Bool {
+  match delivered_page(body: page_body(total: 2, runners: [runner_one_json, runner_one_json]), link: "") {
+    Absent => false
+    Present { value: p } => match classify_roster_walk(walk: walk_over(pages: [p], failure: none), observed_on: "2026-09-19" as NonEmptyStr).evidence {
+      RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } => seen == 1 && total == 2
+      _ => false
+    }
+  }
+}
+
+// A LATER PAGE FAILING KEEPS THE EARLIER MEMBERS AS PARTIAL -- never a population-wide absence.
+test fn a_failed_later_page_keeps_earlier_members_as_partial() -> Bool {
+  match delivered_page(body: page_body(total: 2, runners: [runner_one_json]), link: next_link) {
+    Absent => false
+    Present { value: p } => match classify_roster_walk(walk: walk_over(pages: [p], failure: Present { value: "org runners page answered HTTP 502" as NonEmptyStr }), observed_on: "2026-09-19" as NonEmptyStr).evidence {
+      RosterObservedPartial { observed_on: _, registrations: regs, observed_count: seen, authority_total: total } => length(xs: regs) == 1 && seen == 1 && total == 2
+      _ => false
+    }
+  }
+}
+
+test fn a_failed_first_page_is_unavailable() -> Bool {
+  match classify_roster_walk(walk: walk_over(pages: [], failure: Present { value: "org runners page answered HTTP 403" as NonEmptyStr }), observed_on: "2026-09-19" as NonEmptyStr).evidence {
+    RosterReadUnavailable { reason: _ } => true
+    _ => false
+  }
+}
+
+// PER-ID: 404 IS ABSENCE ONLY WHERE THE TOKEN WAS SHOWN ABLE TO LIST THE ORGANIZATION'S RUNNERS.
+
+data not_found: String = "HTTP/2.0 404 Not Found\nContent-Type: application/json\n\n\{\"message\":\"Not Found\"}"
+
+test fn a_404_under_an_established_listing_is_absent() -> Bool {
+  match runner_id_observation_from_included(org: "gunb-ai" as NonEmptyStr, visibility: RunnersVisible, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
+    RunnerIdAbsent { org: o, runner_id: id } => (o as String) == "gunb-ai" && id == 11
+    _ => false
+  }
+}
+
+test fn a_404_without_an_established_listing_is_unobserved() -> Bool {
+  match runner_id_observation_from_included(org: "gunb-ai" as NonEmptyStr, visibility: RunnersVisibilityUnestablished { reason: "org runners page answered HTTP 403" as NonEmptyStr }, runner_id: 11, stdout: not_found, stderr: "gh: Not Found (HTTP 404)") {
+    RunnerIdUnobserved { org: _, runner_id: id, reason: _ } => id == 11
+    _ => false
+  }
+}
+
+test fn a_200_for_the_requested_id_is_present_in_its_org() -> Bool {
+  match runner_id_observation_from_included(org: "gunb-ai" as NonEmptyStr, visibility: RunnersVisible, runner_id: 11, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json), stderr: "") {
+    RunnerIdPresent { org: o, registration: r } => (o as String) == "gunb-ai" && (r.name as String) == "srv3-01"
+    _ => false
+  }
+}
+
+test fn a_200_for_a_different_id_is_unobserved() -> Bool {
+  match runner_id_observation_from_included(org: "gunb-ai" as NonEmptyStr, visibility: RunnersVisible, runner_id: 12, stdout: included(status_line: "HTTP/2.0 200 OK", link: "", body: runner_one_json), stderr: "") {
+    RunnerIdUnobserved { org: _, runner_id: _, reason: _ } => true
+    _ => false
+  }
+}

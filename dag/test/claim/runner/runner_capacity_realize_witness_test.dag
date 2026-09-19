@@ -9,7 +9,7 @@ import gunbc.runner_capacity_plan {
   PlanRefused,
 }
 import gunbc.fleet_runner_connectivity {
-  organization_runner_roster_evidence,
+  incident_2026_08_06_roster_fixture,
   organization_runner_roster_materialized_slots_online_evidence,
 }
 import gunbc.runner_capacity_realize {
@@ -54,7 +54,7 @@ test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() ->
   let plan = runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
-    roster: organization_runner_roster_evidence(),
+    roster: incident_2026_08_06_roster_fixture(),
   )
   match plan {
     PlanReady { hosts: _ } =>
@@ -119,7 +119,7 @@ test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
     plan: runner_capacity_plan(
       srv3_width: 6,
       srv4_width: 6,
-      roster: organization_runner_roster_evidence(),
+      roster: incident_2026_08_06_roster_fixture(),
     ),
   )
   match outcome {
