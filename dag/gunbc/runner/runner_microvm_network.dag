@@ -388,9 +388,18 @@ fn grant_rule(g: GuestEgressGrant) -> NftRule {
   )
 }
 
+// THE TAP-SCOPED DEFAULT-DENY COVERS BOTH DIRECTIONS OF THE TAP. From a tap: everything no grant
+// admitted. Toward a tap: everything the reply-direction established accept above did not admit --
+// a new flow routed to a guest from the uplink or any other interface would otherwise fall through
+// to the chain's accept policy (review 68643). Guest flows still complete, because their replies
+// match that established accept before reaching this row. Under HostChainDefaultDrop the chain policy
+// is already the drop for both directions.
 fn final_drop_rules(g: ForwardDenyGrain) -> List<NftRule> {
   match g {
-    TapScopedFinalDrop { chain_policy_reason: _ } => [from_guest_tap(m: [], verdict: NftDrop)]
+    TapScopedFinalDrop { chain_policy_reason: _ } => [
+      from_guest_tap(m: [], verdict: NftDrop),
+      NftRule { matches: [NftOutputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix }], verdict: NftDrop },
+    ]
     HostChainDefaultDrop => []
   }
 }

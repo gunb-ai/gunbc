@@ -216,7 +216,7 @@ test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
 test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
-    && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
+    && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" drop\n  }")
     && string_contains(s: text, pattern: "policy accept")
     && !string_contains(s: text, pattern: "policy drop")
 }
@@ -574,4 +574,14 @@ test fn the_rendered_table_drops_ipv6_egress_toward_the_tap() -> Bool {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "hook forward priority 0; policy accept;\n    iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n")
     && string_contains(s: text, pattern: "type filter hook output priority 0; policy accept;\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n  }")
+}
+
+// NOTHING NEW REACHES A TAP UNSOLICITED. On the shared hosts the forward chain's policy is accept, so
+// the tap-scoped deny must name the toward-a-tap direction too: the chain ends in an oifname drop
+// below the reply-direction established accept. The red is the previous chain, which ended at the
+// iifname drop and let a new flow routed to 172.30.x.2 from the uplink fall through to accept
+// (review 68643).
+test fn a_new_flow_toward_a_tap_is_dropped_on_the_shared_hosts() -> Bool {
+  let text = runner_microvm_shared_host_nft_ruleset_text()
+  string_contains(s: text, pattern: "    iifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" drop\n  }\n  chain output")
 }
