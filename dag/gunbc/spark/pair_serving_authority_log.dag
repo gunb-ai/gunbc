@@ -118,6 +118,9 @@ type PairAuthorityEvent
       transaction: NonEmptyStr
       body: String
     }
+  | AuthorityAppendCancelled {
+      preparation: EventId
+    }
   | HostEffectAdmitted {
       host: HostIdentity
       purpose: NonEmptyStr
@@ -139,6 +142,7 @@ type PairAuthorityEvent
   | PlacementAppendClaimed {
       preparation: EventId
       claimant: NonEmptyStr
+      expected_head: HeadExpectation
     }
   | PlacementFinalized {
       preparation: PlacementPreparationRef
@@ -226,8 +230,8 @@ type HostEffectRecord {
 // Aborted: the fence is down.
 type PreparationState
   = Prepared
-  | AppendClaimed { claimant: NonEmptyStr }
-  | Finalized { authority_event: EventId }
+  | AppendClaimed { claimant: NonEmptyStr, expected_head: HeadExpectation }
+  | Finalized { authority_event: EventId, finalized_by: EventId }
   | Aborted
 
 type PlacementPreparationRecord {
@@ -306,7 +310,7 @@ fn same_host_set(a: List<HostIdentity>, b: List<HostIdentity>) -> Bool {
 }
 
 fn preparation_is_pending(r: PlacementPreparationRecord) -> Bool {
-  match r.state { Prepared => true  AppendClaimed { claimant: _ } => true  _ => false }
+  match r.state { Prepared => true  AppendClaimed { claimant: _, expected_head: _ } => true  _ => false }
 }
 
 fn preparation_ref_of(r: PlacementPreparationRecord) -> PlacementPreparationRef {
@@ -325,7 +329,7 @@ fn preparation_ref_expected(id: EventId, group: FabricGroup, previous: List<Host
 // THE GROUP'S LIVE COMMITMENT: the next population of its newest finalized preparation (none
 // before the first finalization).
 fn group_live_commitment(preps: List<PlacementPreparationRecord>, group: FabricGroup) -> List<HostIdentity> {
-  match last(filter(preps, r => same_group(a: r.group, b: group) && (match r.state { Finalized { authority_event: _ } => true  _ => false }))) {
+  match last(filter(preps, r => same_group(a: r.group, b: group) && (match r.state { Finalized { authority_event: _, finalized_by: _ } => true  _ => false }))) {
     Absent => [] as List<HostIdentity>
     Present { value: r } => r.next_hosts
   }
@@ -537,14 +541,16 @@ fn pair_authority_event_members(e: PairAuthorityEvent) -> List<JsonKeyValue> {
       concat([kv(prefix: "", key: "transaction", value: t as String)], concat(preparation_ref_members(r: pp), concat(lifecycle_members(l: lc), concat(authority_members(prefix: "prev_", a: p), concat(authority_members(prefix: "next_", a: n), concat(grant_members(g: g), entry_state_members(d: d)))))))
     EntryStateRecorded { transaction: t, body: b } =>
       [kv(prefix: "", key: "transaction", value: t as String), kv(prefix: "", key: "body", value: b)]
+    AuthorityAppendCancelled { preparation: pr } =>
+      [kv(prefix: "", key: "preparation", value: pr as String)]
     HostEffectAdmitted { host: h, purpose: p, executor: x, term: t, residue: rs } =>
       concat([kv(prefix: "", key: "host", value: h as String), kv(prefix: "", key: "purpose", value: p as String), kv(prefix: "", key: "executor", value: x as String), json_kv(key: "term_seconds", value: json_int(n: second_count(s: t)))], residue_spec_members(prefix: "residue_", s: rs))
     HostEffectReleased { admitted_by: a, evidence: ev, provenance: pv } =>
       concat([kv(prefix: "", key: "admitted_by", value: a as String)], concat(quiescence_evidence_members(e: ev), release_provenance_members(p: pv)))
     PlacementPrepared { operation: o, group: g, previous_hosts: ph, next_hosts: nh } =>
       [kv(prefix: "", key: "operation", value: o as String), kv(prefix: "", key: "group", value: fabric_group_wire(g: g) as String), hosts_member(prefix: "previous_", hs: ph), hosts_member(prefix: "next_", hs: nh)]
-    PlacementAppendClaimed { preparation: pr, claimant: c } =>
-      [kv(prefix: "", key: "preparation", value: pr as String), kv(prefix: "", key: "claimant", value: c as String)]
+    PlacementAppendClaimed { preparation: pr, claimant: c, expected_head: eh } =>
+      [kv(prefix: "", key: "preparation", value: pr as String), kv(prefix: "", key: "claimant", value: c as String), kv(prefix: "", key: "expected_head", value: match eh { HeadAbsent => ""  HeadAt { id: h } => h as String })]
     PlacementFinalized { preparation: pr, authority_event: ae } =>
       concat(preparation_ref_members(r: pr), [kv(prefix: "", key: "authority_event", value: ae as String)])
     PlacementAborted { preparation: pr, reason: r, provenance: pv } =>
@@ -560,7 +566,8 @@ fn pair_authority_event_kind(e: PairAuthorityEvent) -> String {
     HostEffectAdmitted { host: _, purpose: _, executor: _, term: _, residue: _ } => "host-effect-admitted"
     HostEffectReleased { admitted_by: _, evidence: _, provenance: _ } => "host-effect-released"
     PlacementPrepared { operation: _, group: _, previous_hosts: _, next_hosts: _ } => "placement-prepared"
-    PlacementAppendClaimed { preparation: _, claimant: _ } => "placement-append-claimed"
+    PlacementAppendClaimed { preparation: _, claimant: _, expected_head: _ } => "placement-append-claimed"
+    AuthorityAppendCancelled { preparation: _ } => "append-cancelled"
     PlacementFinalized { preparation: _, authority_event: _ } => "placement-finalized"
     PlacementAborted { preparation: _, reason: _, provenance: _ } => "placement-aborted"
   }
@@ -775,8 +782,17 @@ fn pair_authority_kind_decode(doc: JsonValue, word: String) -> PairAuthorityEven
       Present { value: pr } =>
         match member_nonempty(doc: doc, key: "claimant") {
           Absent => none
-          Present { value: c } => Present { value: PlacementAppendClaimed { preparation: (pr as String) as EventId, claimant: c } }
+          Present { value: c } =>
+            match member_string(doc: doc, key: "expected_head") {
+              Absent => none
+              Present { value: eh } => Present { value: PlacementAppendClaimed { preparation: (pr as String) as EventId, claimant: c, expected_head: if eh == "" { HeadAbsent } else { HeadAt { id: eh as EventId } } } }
+            }
         }
+    }
+  } else if word == "append-cancelled" {
+    match member_nonempty(doc: doc, key: "preparation") {
+      Absent => none
+      Present { value: pr } => Present { value: AuthorityAppendCancelled { preparation: (pr as String) as EventId } }
     }
   } else if word == "placement-finalized" {
     match preparation_ref_decode(doc: doc) {
@@ -906,9 +922,26 @@ fn pair_authority_event_decode(text: String) -> EventDecode<PairAuthorityEvent> 
 // established state is generation 0). Host placement is never on a group partition; a placement
 // event here is a lying document and refuses.
 type AuthorityFold
-  = AuthorityUnestablished
-  | AuthorityFolded { current: PairServingGroupAuthority, generation: Nat, grant: LeaseGrant?, entry_state: ContentHash?, previous: PairServingGroupAuthority?, admitted_by: EventId?, transitions: List<AuthorityTransitionRecord>, preparations_consumed: List<PlacementPreparationRef> }
+  = AuthorityUnestablished { cancelled: List<EventId> }
+  | AuthorityFolded { current: PairServingGroupAuthority, generation: Nat, grant: LeaseGrant?, entry_state: ContentHash?, previous: PairServingGroupAuthority?, admitted_by: EventId?, transitions: List<AuthorityTransitionRecord>, preparations_consumed: List<ConsumedPreparation>, cancelled: List<EventId> }
   | AuthorityFoldRefused { at_event: EventId, reason: String }
+
+// A preparation an authority event consumed: the copy the event carried and the event's id. The
+// fold refuses a second consumer of one preparation and a consumer of a cancelled one.
+type ConsumedPreparation {
+  preparation: PlacementPreparationRef
+  authority_event: EventId
+}
+
+fn consumption_refusal(consumed: List<ConsumedPreparation>, cancelled: List<EventId>, carried: PlacementPreparationRef) -> String? {
+  if any(consumed, c => (c.preparation.id as String) == (carried.id as String)) {
+    Present { value: join(["the event consumes preparation ", carried.id as String, ", which an earlier authority event already consumed"], "") }
+  } else if any(cancelled, c => (c as String) == (carried.id as String)) {
+    Present { value: join(["the event consumes preparation ", carried.id as String, ", whose append was cancelled on this partition"], "") }
+  } else {
+    none
+  }
+}
 
 // EVERY ADMITTED TRANSITION, OLDEST FIRST, BY THE TRANSACTION THAT WROTE IT. A transaction that
 // recovers after a crash has to know whether IT ever moved this authority and what its last write
@@ -921,6 +954,7 @@ type AuthorityTransitionRecord {
   transaction: NonEmptyStr
   lifecycle: ContentHash?
   next: PairServingGroupAuthority
+  placement: PlacementPreparationRef
 }
 
 // THE SELECTION IS BY LIFECYCLE, NOT BY THE TRANSACTION WORD: a record belongs to a lifecycle only
@@ -1013,8 +1047,9 @@ data placement_event_on_group_partition: String = "a host-placement event on a g
 fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent>) -> AuthorityFold {
   match acc {
     AuthorityFoldRefused { at_event: _, reason: _ } => acc
-    AuthorityUnestablished =>
+    AuthorityUnestablished { cancelled: xs } =>
       match env.event.payload {
+        AuthorityAppendCancelled { preparation: pr } => AuthorityUnestablished { cancelled: concat(xs, [pr]) }
         AuthorityEstablished { authority: a, placement: pp } =>
           if (env.event.partition as String) != (pair_authority_partition(group: pair_serving_authority_group(a: a)) as String) {
             AuthorityFoldRefused { at_event: env.id, reason: join(["the established authority names ", fabric_group_wire(g: pair_serving_authority_group(a: a)) as String, ", which is not this partition's group"], "") }
@@ -1024,7 +1059,11 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
               Absent =>
                 match preparation_ref_refusal(carried: pp, group: pair_serving_authority_group(a: a), previous: [] as List<HostIdentity>, next: committed_population(a: a), operation: establishment_operation(group: pair_serving_authority_group(a: a))) {
                   Present { value: why } => AuthorityFoldRefused { at_event: env.id, reason: why }
-                  Absent => AuthorityFolded { current: a, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord>, preparations_consumed: [pp] }
+                  Absent =>
+                    match consumption_refusal(consumed: [] as List<ConsumedPreparation>, cancelled: xs, carried: pp) {
+                      Present { value: why } => AuthorityFoldRefused { at_event: env.id, reason: why }
+                      Absent => AuthorityFolded { current: a, generation: 0, grant: none, entry_state: none, previous: none, admitted_by: none, transitions: [] as List<AuthorityTransitionRecord>, preparations_consumed: [ConsumedPreparation { preparation: pp, authority_event: env.id }], cancelled: xs }
+                    }
                 }
             }
           }
@@ -1034,12 +1073,14 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
           AuthorityFoldRefused { at_event: env.id, reason: "an entry state was recorded before any authority was established on this partition" }
         _ => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
       }
-    AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, preparations_consumed: pcs } =>
+    AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, preparations_consumed: pcs, cancelled: xs } =>
       match env.event.payload {
         AuthorityEstablished { authority: _, placement: _ } =>
           AuthorityFoldRefused { at_event: env.id, reason: "an authority is already established on this partition; the state moves by transition" }
         EntryStateRecorded { transaction: _, body: _ } =>
-          AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, preparations_consumed: pcs }
+          AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, preparations_consumed: pcs, cancelled: xs }
+        AuthorityAppendCancelled { preparation: pr } =>
+          AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, preparations_consumed: pcs, cancelled: concat(xs, [pr]) }
         AuthorityTransitioned { previous: p, next: n, transaction: t, lifecycle: lc, grant: gr, entry_state: es, placement: pp } =>
           if !authority_eq(a: p, b: cur) {
             AuthorityFoldRefused { at_event: env.id, reason: join(["the event leaves state ", authority_wire(a: p), " but the current state was ", authority_wire(a: cur)], "") }
@@ -1050,18 +1091,23 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
           } else {
           match preparation_ref_refusal(carried: pp, group: pair_serving_authority_group(a: cur), previous: committed_population(a: cur), next: committed_population(a: n), operation: t) {
             Present { value: why } => AuthorityFoldRefused { at_event: env.id, reason: why }
+            Absent =>
+          match consumption_refusal(consumed: pcs, cancelled: xs, carried: pp) {
+            Present { value: why } => AuthorityFoldRefused { at_event: env.id, reason: why }
             Absent => {
-            let recorded = concat(recs, [AuthorityTransitionRecord { id: env.id, transaction: t, lifecycle: lc, next: n }])
+            let recorded = concat(recs, [AuthorityTransitionRecord { id: env.id, transaction: t, lifecycle: lc, next: n, placement: pp }])
+            let consumed = concat(pcs, [ConsumedPreparation { preparation: pp, authority_event: env.id }])
             match gr {
-              Absent => AuthorityFolded { current: n, generation: g + 1, grant: none, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id }, transitions: recorded, preparations_consumed: concat(pcs, [pp]) }
+              Absent => AuthorityFolded { current: n, generation: g + 1, grant: none, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id }, transitions: recorded, preparations_consumed: consumed, cancelled: xs }
               Present { value: grant } =>
                 match grant_genealogy(gr: grant, next: n, transaction: t, admitted_by: cab) {
-                  GrantGenealogyAgrees => AuthorityFolded { current: n, generation: g + 1, grant: gr, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id }, transitions: recorded, preparations_consumed: concat(pcs, [pp]) }
+                  GrantGenealogyAgrees => AuthorityFolded { current: n, generation: g + 1, grant: gr, entry_state: es, previous: Present { value: p }, admitted_by: Present { value: env.id }, transitions: recorded, preparations_consumed: consumed, cancelled: xs }
                   GrantWithoutLease => AuthorityFoldRefused { at_event: env.id, reason: "the event carries a grant into a state that holds no lease" }
                   GrantGenealogyDisagrees { join: j } => AuthorityFoldRefused { at_event: env.id, reason: join(["the event's grant is not its lease's: ", j], "") }
                 }
             }
             }
+          }
           }
           }
         _ => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
@@ -1072,7 +1118,7 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
 // From the unestablished genesis through the establishment and every recorded transition, oldest
 // first.
 fn authority_fold(oldest_first: List<ChainEnvelope<PairAuthorityEvent>>) -> AuthorityFold {
-  fold(oldest_first, init: AuthorityUnestablished, f: (acc, env) => authority_fold_step(acc: acc, env: env))
+  fold(oldest_first, init: AuthorityUnestablished { cancelled: [] as List<EventId> }, f: (acc, env) => authority_fold_step(acc: acc, env: env))
 }
 
 // ── THE PLACEMENT FOLD ─────────────────────────────────────────────────────────────────────────
@@ -1098,7 +1144,7 @@ fn pending_preparation_of(preps: List<PlacementPreparationRecord>, preparation: 
 fn abort_provenance_covers(state: PreparationState, preparation: EventId, provenance: ReleaseProvenance, actor: NonEmptyStr) -> Bool {
   match state {
     Prepared => (match provenance { ClaimantTerminal { claim: c, claimant_executor: _ } => (c as String) == (preparation as String)  RecoveryAuthorized { claim: c, claimant: _, authorized_by: _, receipt: _ } => (c as String) == (preparation as String) })
-    AppendClaimed { claimant: cl } => release_provenance_covers(p: provenance, claim: preparation, claimant: cl, actor: actor)
+    AppendClaimed { claimant: cl, expected_head: _ } => release_provenance_covers(p: provenance, claim: preparation, claimant: cl, actor: actor)
     _ => false
   }
 }
@@ -1126,20 +1172,20 @@ fn placement_fold_step(acc: PlacementFold, env: ChainEnvelope<PairAuthorityEvent
             Present { value: why } => PlacementFoldRefused { at_event: env.id, reason: join(["a preparation is refused: ", why], "") }
             Absent => PlacementFolded { effects: effs, preparations: concat(preps, [PlacementPreparationRecord { id: env.id, operation: o, group: g, previous_hosts: ph, next_hosts: nh, recorded_at: env.event.recorded_at, state: Prepared }]) }
           }
-        PlacementAppendClaimed { preparation: pr, claimant: c } =>
+        PlacementAppendClaimed { preparation: pr, claimant: c, expected_head: eh } =>
           match pending_preparation_of(preps: preps, preparation: pr) {
-            Present { value: PlacementPreparationRecord { state: Prepared } } => PlacementFolded { effects: effs, preparations: map(preps, r => if (r.id as String) == (pr as String) { preparation_with_state(r: r, state: AppendClaimed { claimant: c }) } else { r }) }
+            Present { value: PlacementPreparationRecord { state: Prepared } } => PlacementFolded { effects: effs, preparations: map(preps, r => if (r.id as String) == (pr as String) { preparation_with_state(r: r, state: AppendClaimed { claimant: c, expected_head: eh }) } else { r }) }
             _ => PlacementFoldRefused { at_event: env.id, reason: join(["an append claim names no Prepared preparation ", pr as String], "") }
           }
         PlacementFinalized { preparation: pr, authority_event: ae } =>
           match pending_preparation_of(preps: preps, preparation: pr.id) {
             Present { value: r } =>
               match r.state {
-                AppendClaimed { claimant: _ } =>
+                AppendClaimed { claimant: _, expected_head: _ } =>
                   if !preparation_ref_eq(a: pr, b: preparation_ref_of(r: r)) {
                     PlacementFoldRefused { at_event: env.id, reason: join(["a finalization's copy of preparation ", pr.id as String, " is not the record: ", preparation_line(r: r)], "") }
                   } else {
-                    PlacementFolded { effects: effs, preparations: map(preps, x => if (x.id as String) == (pr.id as String) { preparation_with_state(r: x, state: Finalized { authority_event: ae }) } else { x }) }
+                    PlacementFolded { effects: effs, preparations: map(preps, x => if (x.id as String) == (pr.id as String) { preparation_with_state(r: x, state: Finalized { authority_event: ae, finalized_by: env.id }) } else { x }) }
                   }
                 _ => PlacementFoldRefused { at_event: env.id, reason: join(["a finalization names preparation ", pr.id as String, " whose append was never claimed"], "") }
               }
@@ -1245,15 +1291,46 @@ fn read_group_partition(layout: EventLogLayout, group: FabricGroup) -> GroupPart
 // THE CURRENT AUTHORITY OF A GROUP. A group whose partition carries no establishment is not claimed
 // and has no authority to read (absence is not permission); every failure to read is Unread with
 // its step, and no arm answers the source row when the log could not be read.
+// THE CURRENT AUTHORITY IS A JOINED READ: the group fold alone is one chain's word, so every
+// preparation it consumed is looked up on the placement chain and must be there, append-claimed
+// or finalized (finalized by THIS event), with a copy equal to the record. A group history that
+// names a preparation the placement chain never saw, or one finalized to another event, is
+// unread -- never an authority.
 fn current_pair_serving_authority(layout: EventLogLayout, group: FabricGroup, at: EpochSecs) -> CurrentAuthority {
   match read_group_partition(layout: layout, group: group) {
     GroupPartitionUnread { step: s, reason: why } => CurrentAuthorityUnread { group: group, step: s, reason: why }
     GroupPartitionAt { head: head, fold: f } =>
       match f {
         AuthorityFoldRefused { at_event: e, reason: why } => CurrentAuthorityUnread { group: group, step: "fold", reason: join(["event ", e as String, " refused: ", why], "") }
-        AuthorityUnestablished => CurrentAuthorityUnread { group: group, step: "claim", reason: "no authority has been established on this group's partition (the source row is desired, not established)" }
-        AuthorityFolded { current: cur, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs } =>
-          CurrentAuthorityRead { authority: authority_with_lease_observed(a: cur, grant: gr, at: at), head: head, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs }
+        AuthorityUnestablished { cancelled: _ } => CurrentAuthorityUnread { group: group, step: "claim", reason: "no authority has been established on this group's partition (the source row is desired, not established)" }
+        AuthorityFolded { current: cur, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs, preparations_consumed: pcs } =>
+          match placement_fold_read(layout: layout) {
+            PlacementUnread { step: st, reason: why } => CurrentAuthorityUnread { group: group, step: join(["placement/", st], ""), reason: why }
+            PlacementReadAt { head: _, effects: _, preparations: preps } =>
+              match first(flat_map(pcs, c => consumed_preparation_gap(consumed: c, preps: preps))) {
+                Present { value: gap } => CurrentAuthorityUnread { group: group, step: "join", reason: gap }
+                Absent => CurrentAuthorityRead { authority: authority_with_lease_observed(a: cur, grant: gr, at: at), head: head, generation: g, grant: gr, entry_state: es, previous: pv, admitted_by: ab, transitions: recs }
+              }
+          }
+      }
+  }
+}
+
+// The placement chain's word on one consumed preparation: present, claimed or finalized to this
+// event, and the record.
+fn consumed_preparation_gap(consumed: ConsumedPreparation, preps: List<PlacementPreparationRecord>) -> List<String> {
+  match first(filter(preps, r => (r.id as String) == (consumed.preparation.id as String))) {
+    Absent => [join(["authority event ", consumed.authority_event as String, " consumes preparation ", consumed.preparation.id as String, ", which is not on the placement chain"], "")]
+    Present { value: r } =>
+      if !preparation_ref_eq(a: consumed.preparation, b: preparation_ref_of(r: r)) {
+        [join(["authority event ", consumed.authority_event as String, " carries a copy of preparation ", r.id as String, " that is not the record"], "")]
+      } else {
+        match r.state {
+          AppendClaimed { claimant: _, expected_head: _ } => [] as List<String>
+          Finalized { authority_event: ae, finalized_by: _ } => if (ae as String) == (consumed.authority_event as String) { [] as List<String> } else { [join(["preparation ", r.id as String, " was finalized to authority event ", ae as String, ", not to ", consumed.authority_event as String], "")] }
+          Prepared => [join(["authority event ", consumed.authority_event as String, " consumes preparation ", r.id as String, " whose append was never claimed"], "")]
+          Aborted => [join(["authority event ", consumed.authority_event as String, " consumes preparation ", r.id as String, ", which is aborted"], "")]
+        }
       }
   }
 }
@@ -1264,7 +1341,62 @@ type PlacementRead
   = PlacementReadAt { head: HeadExpectation, effects: List<HostEffectRecord>, preparations: List<PlacementPreparationRecord> }
   | PlacementUnread { step: String, reason: String }
 
+// THE JOINED PLACEMENT READ: the placement fold, then every finalized preparation's authority
+// event looked up on its group's chain -- it must exist and carry the record's copy. A
+// finalization naming an event that is not there, or one carrying another copy, is unread.
 fn placement_read(layout: EventLogLayout) -> PlacementRead {
+  match placement_fold_read(layout: layout) {
+    PlacementUnread { step: st, reason: why } => PlacementUnread { step: st, reason: why }
+    PlacementReadAt { head: head, effects: effs, preparations: preps } =>
+      match first(flat_map([FabricGroupA, FabricGroupB], g => finalization_gaps(layout: layout, group: g, preps: preps))) {
+        Present { value: gap } => PlacementUnread { step: "join", reason: gap }
+        Absent => PlacementReadAt { head: head, effects: effs, preparations: preps }
+      }
+  }
+}
+
+fn finalization_gaps(layout: EventLogLayout, group: FabricGroup, preps: List<PlacementPreparationRecord>) -> List<String> {
+  let finalized = filter(preps, r => same_group(a: r.group, b: group) && (match r.state { Finalized { authority_event: _, finalized_by: _ } => true  _ => false }))
+  if length(finalized) == 0 { [] as List<String> } else {
+    match group_chain(layout: layout, group: group) {
+      GroupChainUnread { step: st, reason: why } => [join([fabric_group_wire(g: group) as String, "'s chain could not be read at ", st, ": ", why], "")]
+      GroupChainAt { oldest_first: xs } =>
+        flat_map(finalized, r =>
+          match r.state {
+            Finalized { authority_event: ae, finalized_by: _ } =>
+              match first(filter(xs, env => (env.id as String) == (ae as String))) {
+                Absent => [join(["preparation ", r.id as String, " is finalized to authority event ", ae as String, ", which is not on ", fabric_group_wire(g: group) as String, "'s chain"], "")]
+                Present { value: env } =>
+                  match carried_preparation_of(env: env) {
+                    Absent => [join(["preparation ", r.id as String, " is finalized to event ", ae as String, ", which is not an authority event"], "")]
+                    Present { value: pp } => if preparation_ref_eq(a: pp, b: preparation_ref_of(r: r)) { [] as List<String> } else { [join(["authority event ", ae as String, " carries a copy of preparation ", r.id as String, " that is not the record"], "")] }
+                  }
+              }
+            _ => [] as List<String>
+          })
+    }
+  }
+}
+
+// One group's chain, walked: the envelopes an authority event is looked up in.
+type GroupChain
+  = GroupChainAt { oldest_first: List<ChainEnvelope<PairAuthorityEvent>> }
+  | GroupChainUnread { step: String, reason: String }
+
+fn group_chain(layout: EventLogLayout, group: FabricGroup) -> GroupChain {
+  match event_log_read_partition_with(layout: layout, partition: pair_authority_partition(group: group), budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
+    PartitionReadRefused { step: st, reason: why } => GroupChainUnread { step: st, reason: why }
+    PartitionReadOk { head: _, walk: walk } =>
+      match walk {
+        ChainIncomplete { missing: m, newest_first_so_far: _ } => GroupChainUnread { step: "chain", reason: join(["partition chain is missing event ", m as String], "") }
+        ChainBudgetExhausted { at: a } => GroupChainUnread { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") }
+        ChainWalked { oldest_first: xs } => GroupChainAt { oldest_first: xs }
+      }
+  }
+}
+
+// The placement fold alone (no cross-chain join): what the joined reads start from.
+fn placement_fold_read(layout: EventLogLayout) -> PlacementRead {
   match event_log_read_partition_with(layout: layout, partition: host_placement_partition, budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
     PartitionReadRefused { step: s, reason: why } => PlacementUnread { step: s, reason: why }
     PartitionReadOk { head: head, walk: walk } =>
@@ -1343,13 +1475,13 @@ type PlacementAppendClaim
   | PlacementAppendClaimStale
   | PlacementAppendClaimRefused { step: String, reason: String }
 
-fn placement_claim_append(layout: EventLogLayout, preparation: EventId, claimant: NonEmptyStr, at: EpochSecs) -> PlacementAppendClaim {
+fn placement_claim_append(layout: EventLogLayout, preparation: EventId, claimant: NonEmptyStr, expected_head: HeadExpectation, at: EpochSecs) -> PlacementAppendClaim {
   match placement_read(layout: layout) {
     PlacementUnread { step: st, reason: why } => PlacementAppendClaimRefused { step: join(["placement/", st], ""), reason: why }
     PlacementReadAt { head: head, effects: _, preparations: preps } =>
       match pending_preparation_of(preps: preps, preparation: preparation) {
         Present { value: PlacementPreparationRecord { state: Prepared } } =>
-          match placement_append(layout: layout, head: head, payload: PlacementAppendClaimed { preparation: preparation, claimant: claimant }, actor: claimant, at: at) {
+          match placement_append(layout: layout, head: head, payload: PlacementAppendClaimed { preparation: preparation, claimant: claimant, expected_head: expected_head }, actor: claimant, at: at) {
             EventAppended { id: h } => PlacementAppendClaimedAt { id: h }
             EventAppendStale { expected: _, observed: _ } => PlacementAppendClaimStale
             EventAppendRefused { step: st, reason: why } => PlacementAppendClaimRefused { step: st, reason: why }
@@ -1366,7 +1498,7 @@ fn placement_claim_append(layout: EventLogLayout, preparation: EventId, claimant
 // it -- and an event that cannot be found is NotConsumed, never a fabricated identity.
 type PreparationConsumption
   = PreparationConsumedBy { preparation: PlacementPreparationRef, authority_event: EventId, state: PreparationState }
-  | PreparationNotConsumed { preparation: PlacementPreparationRef, state: PreparationState }
+  | PreparationNotConsumed { preparation: PlacementPreparationRef, state: PreparationState, group_head: HeadExpectation, cancelled: Bool }
   | PreparationAbsent
   | PreparationConsumptionUnread { step: String, reason: String }
 
@@ -1395,21 +1527,23 @@ fn preparation_consumption(layout: EventLogLayout, preparation: EventId) -> Prep
           let ref = preparation_ref_of(r: r)
           match event_log_read_partition_with(layout: layout, partition: pair_authority_partition(group: r.group), budget: pair_authority_read_budget, decode: fn(text) { pair_authority_event_decode(text: text) }) {
             PartitionReadRefused { step: st, reason: why } => PreparationConsumptionUnread { step: st, reason: why }
-            PartitionReadOk { head: _, walk: walk } =>
+            PartitionReadOk { head: ghead, walk: walk } =>
               match walk {
                 ChainIncomplete { missing: m, newest_first_so_far: _ } => PreparationConsumptionUnread { step: "chain", reason: join([fabric_group_wire(g: r.group) as String, "'s chain is missing event ", m as String], "") }
                 ChainBudgetExhausted { at: a } => PreparationConsumptionUnread { step: "chain", reason: join([fabric_group_wire(g: r.group) as String, "'s chain exceeded the read budget at ", a as String], "") }
-                ChainWalked { oldest_first: xs } =>
+                ChainWalked { oldest_first: xs } => {
+                  let cancelled = any(xs, env => match env.event.payload { AuthorityAppendCancelled { preparation: c } => (c as String) == (preparation as String)  _ => false })
                   match first(filter(xs, env => envelope_carries_preparation(env: env, preparation: preparation))) {
-                    Absent => PreparationNotConsumed { preparation: ref, state: r.state }
+                    Absent => PreparationNotConsumed { preparation: ref, state: r.state, group_head: ghead, cancelled: cancelled }
                     Present { value: env } =>
                       match carried_preparation_of(env: env) {
-                        Absent => PreparationNotConsumed { preparation: ref, state: r.state }
+                        Absent => PreparationNotConsumed { preparation: ref, state: r.state, group_head: ghead, cancelled: cancelled }
                         Present { value: pp } =>
                           if preparation_ref_eq(a: pp, b: ref) { PreparationConsumedBy { preparation: ref, authority_event: env.id, state: r.state } }
                           else { PreparationConsumptionUnread { step: "join", reason: join(["authority event ", env.id as String, " carries a copy of preparation ", preparation as String, " that is not the record"], "") } }
                       }
                   }
+                }
               }
           }
         }
@@ -1423,8 +1557,10 @@ fn preparation_consumption(layout: EventLogLayout, preparation: EventId) -> Prep
 // is STILL FENCING.
 fn placement_finalize(layout: EventLogLayout, consumed: PreparationConsumption, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
   match consumed {
+    PreparationConsumedBy { preparation: ref, authority_event: ae, state: Finalized { authority_event: fae, finalized_by: fb } } =>
+      if (fae as String) == (ae as String) { PlacementFinalizedAt { preparation: ref.id, id: fb } } else { PlacementCleanupStillFencing { preparation: ref.id, cause: join(["the preparation is finalized to authority event ", fae as String, ", not to its consumer ", ae as String], "") } }
     PreparationConsumedBy { preparation: ref, authority_event: ae, state: _ } => placement_finalize_attempt(layout: layout, preparation: ref, authority_event: ae, actor: actor, at: at, attempts_left: 3)
-    PreparationNotConsumed { preparation: ref, state: _ } => PlacementCleanupStillFencing { preparation: ref.id, cause: "no authority event consumed this preparation; it is aborted, not finalized" }
+    PreparationNotConsumed { preparation: ref, state: _, group_head: _, cancelled: _ } => PlacementCleanupStillFencing { preparation: ref.id, cause: "no authority event consumed this preparation; it is aborted, not finalized" }
     PreparationAbsent => PlacementCleanupStillFencing { preparation: "unknown" as EventId, cause: "the preparation is not on the placement chain" }
     PreparationConsumptionUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: "unknown" as EventId, cause: join(["the join could not be read at ", st, ": ", why], "") }
   }
@@ -1435,7 +1571,7 @@ fn placement_finalize_attempt(layout: EventLogLayout, preparation: PlacementPrep
     PlacementUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation.id, cause: join(["the finalization could not read the placement partition at ", st, ": ", why], "") }
     PlacementReadAt { head: head, effects: _, preparations: preps } =>
       match pending_preparation_of(preps: preps, preparation: preparation.id) {
-        Present { value: PlacementPreparationRecord { state: AppendClaimed { claimant: _ } } } =>
+        Present { value: PlacementPreparationRecord { state: AppendClaimed { claimant: _, expected_head: _ } } } =>
           match placement_append(layout: layout, head: head, payload: PlacementFinalized { preparation: preparation, authority_event: authority_event }, actor: actor, at: at) {
             EventAppended { id: h } => PlacementFinalizedAt { preparation: preparation.id, id: h }
             EventAppendStale { expected: _, observed: _ } =>
@@ -1453,33 +1589,107 @@ fn placement_finalize_attempt(layout: EventLogLayout, preparation: PlacementPrep
 // is the writer's own (ClaimantTerminal, when its group append did not land) or an operator's
 // recovery naming the preparation; the fold refuses one that does not cover the record's state.
 fn placement_abort_at(layout: EventLogLayout, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
+  placement_abort_attempt(layout: layout, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at, attempts_left: 2)
+}
+
+fn placement_abort_attempt(layout: EventLogLayout, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs, attempts_left: Int) -> PlacementCleanup {
   match preparation_consumption(layout: layout, preparation: preparation) {
     PreparationConsumptionUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort could not read the join at ", st, ": ", why], "") }
     PreparationAbsent => PlacementCleanupStillFencing { preparation: preparation, cause: "the preparation is not on the placement chain" }
     PreparationConsumedBy { preparation: _, authority_event: ae, state: _ } => PlacementCleanupStillFencing { preparation: preparation, cause: join(["the preparation was consumed by authority event ", ae as String, "; it is finalized, not aborted"], "") }
-    PreparationNotConsumed { preparation: _, state: _ } =>
-      match read {
-        PlacementUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort could not read the placement partition at ", st, ": ", why], "") }
-        PlacementReadAt { head: head, effects: _, preparations: preps } =>
-          match pending_preparation_of(preps: preps, preparation: preparation) {
-            Absent => PlacementCleanupStillFencing { preparation: preparation, cause: "the abort names no pending preparation" }
-            Present { value: r } =>
-              if !abort_provenance_covers(state: r.state, preparation: preparation, provenance: provenance, actor: actor) {
-                PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort's provenance does not cover the preparation's state (", preparation_line(r: r), "): an append-claimed preparation is aborted by its claimant or by a recovery authorization naming it"], "") }
-              } else {
-                match placement_append(layout: layout, head: head, payload: PlacementAborted { preparation: preparation, reason: reason, provenance: provenance }, actor: actor, at: at) {
-                  EventAppended { id: h } => PlacementAbortedAt { preparation: preparation, id: h }
-                  EventAppendStale { expected: _, observed: _ } => PlacementCleanupStillFencing { preparation: preparation, cause: "the placement partition moved while the abort was being appended (an append claim may have landed); re-decide from a fresh read" }
-                  EventAppendRefused { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort was refused at ", st, ": ", why], "") }
-                }
+    PreparationNotConsumed { preparation: ref, state: st, group_head: ghead, cancelled: cancelled } =>
+      match st {
+        AppendClaimed { claimant: _, expected_head: eh } =>
+          if !cancelled && head_expectation_eq(a: eh, b: ghead) {
+            if attempts_left <= 0 {
+              PlacementCleanupStillFencing { preparation: preparation, cause: "the group head kept moving while the claimed append was being cancelled; re-decide from a fresh read" }
+            } else {
+              match cancel_claimed_append(layout: layout, group: ref.group, head: ghead, preparation: preparation, actor: actor, at: at) {
+                CancellationRefused { cause: c } => PlacementCleanupStillFencing { preparation: preparation, cause: c }
+                _ => placement_abort_attempt(layout: layout, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at, attempts_left: attempts_left - 1)
               }
+            }
+          } else {
+            placement_abort_append(layout: layout, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
+          }
+        _ => placement_abort_append(layout: layout, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
+      }
+  }
+}
+
+// THE CLAIMED APPEND COULD STILL LAND while the group head is the one the claim named: its
+// compare-and-set is against that very head. So the abort of an append-claimed preparation first
+// moves that head with a cancellation naming the preparation, then aborts; a cancellation that is
+// stale means the head moved -- by the claimed append (consumed: finalize, never abort) or by
+// something else (the claimed append can never land: the abort is safe) -- decided by a fresh
+// join. The abort's own append, against the supplied placement read, follows.
+fn placement_abort_append(layout: EventLogLayout, read: PlacementRead, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
+  match read {
+    PlacementUnread { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort could not read the placement partition at ", st, ": ", why], "") }
+    PlacementReadAt { head: head, effects: _, preparations: preps } =>
+      match pending_preparation_of(preps: preps, preparation: preparation) {
+        Absent => PlacementCleanupStillFencing { preparation: preparation, cause: "the abort names no pending preparation" }
+        Present { value: r } =>
+          if !abort_provenance_covers(state: r.state, preparation: preparation, provenance: provenance, actor: actor) {
+            PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort's provenance does not cover the preparation's state (", preparation_line(r: r), "): an append-claimed preparation is aborted by its claimant or by a recovery authorization naming it"], "") }
+          } else {
+            match placement_append(layout: layout, head: head, payload: PlacementAborted { preparation: preparation, reason: reason, provenance: provenance }, actor: actor, at: at) {
+              EventAppended { id: h } => PlacementAbortedAt { preparation: preparation, id: h }
+              EventAppendStale { expected: _, observed: _ } => PlacementCleanupStillFencing { preparation: preparation, cause: "the placement partition moved while the abort was being appended (an append claim may have landed); re-decide from a fresh read" }
+              EventAppendRefused { step: st, reason: why } => PlacementCleanupStillFencing { preparation: preparation, cause: join(["the abort was refused at ", st, ": ", why], "") }
+            }
           }
       }
   }
 }
 
+// A CANCELLATION ON THE GROUP PARTITION at the head the claimed append expects: once it lands,
+// that append's compare-and-set can never succeed. Stale is not a failure -- the head moved, and
+// the caller re-joins to learn by what.
+type Cancellation
+  = CancellationLanded { id: EventId }
+  | CancellationStale
+  | CancellationRefused { cause: String }
+
+fn cancel_claimed_append(layout: EventLogLayout, group: FabricGroup, head: HeadExpectation, preparation: EventId, actor: NonEmptyStr, at: EpochSecs) -> Cancellation {
+  let event = ChainEvent {
+    partition: pair_authority_partition(group: group),
+    parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
+    recorded_at: at,
+    actor: actor,
+    payload: AuthorityAppendCancelled { preparation: preparation },
+  }
+  match event_log_append_with(layout: layout, partition: pair_authority_partition(group: group), event: event, expected: head, encode: fn(e) { pair_authority_event_wire_text(event: e) }) {
+    EventAppended { id: h } => CancellationLanded { id: h }
+    EventAppendStale { expected: _, observed: _ } => CancellationStale
+    EventAppendRefused { step: st, reason: why } => CancellationRefused { cause: join(["the cancellation of the claimed append was refused at ", st, ": ", why], "") }
+  }
+}
+
 fn placement_abort(layout: EventLogLayout, preparation: EventId, reason: String, provenance: ReleaseProvenance, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup {
   placement_abort_at(layout: layout, read: placement_read(layout: layout), preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
+}
+
+// A GROUP'S PENDING PREPARATION, REPAIRED WHERE THE JOIN ALLOWS: none pending is nothing to do;
+// a pending one an authority event consumed is finalized (a saga that died after its group
+// append); a pending one no authority event consumed is left for the operator's abort -- this
+// caller cannot know the claimant's standing -- and reported as still fencing. A transaction
+// that resumes on a group calls this before its own saga, because one saga is pending at a time.
+fn placement_repair_pending(layout: EventLogLayout, group: FabricGroup, actor: NonEmptyStr, at: EpochSecs) -> PlacementCleanup? {
+  match placement_fold_read(layout: layout) {
+    PlacementUnread { step: st, reason: why } => Present { value: PlacementCleanupStillFencing { preparation: "unknown" as EventId, cause: join(["the placement partition could not be read at ", st, ": ", why], "") } }
+    PlacementReadAt { head: _, effects: _, preparations: preps } =>
+      match first(filter(preps, r => same_group(a: r.group, b: group) && preparation_is_pending(r: r))) {
+        Absent => none
+        Present { value: r } =>
+          match preparation_consumption(layout: layout, preparation: r.id) {
+            PreparationConsumedBy { preparation: _, authority_event: _, state: _ } => Present { value: placement_finalize(layout: layout, consumed: preparation_consumption(layout: layout, preparation: r.id), actor: actor, at: at) }
+            PreparationNotConsumed { preparation: _, state: _, group_head: _, cancelled: _ } => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: join(["preparation ", r.id as String, " (", preparation_line(r: r), ") is pending and no authority event consumed it; an operator aborts it with host_placement_abort_wet"], "") } }
+            PreparationAbsent => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: "the pending preparation vanished between two reads" } }
+            PreparationConsumptionUnread { step: st, reason: why } => Present { value: PlacementCleanupStillFencing { preparation: r.id, cause: join(["the join could not be read at ", st, ": ", why], "") } }
+          }
+      }
+  }
 }
 
 fn placement_cleanup_line(c: PlacementCleanup) -> String {
@@ -1561,12 +1771,12 @@ fn pair_serving_authority_establish(layout: EventLogLayout, group: FabricGroup, 
         match f {
           AuthorityFoldRefused { at_event: e, reason: why } => AuthorityEstablishmentRefused { group: group, step: "fold", reason: join(["event ", e as String, " refused: ", why], ""), placement: none }
           AuthorityFolded { current: cur } => AuthorityEstablishmentRefused { group: group, step: "established", reason: join(["an authority is already established: ", authority_wire(a: cur)], ""), placement: none }
-          AuthorityUnestablished =>
+          AuthorityUnestablished { cancelled: _ } =>
             match establishment_refusal(a: authority) {
               Present { value: why } => AuthorityEstablishmentRefused { group: group, step: "subject", reason: why, placement: none }
               Absent => {
                 let operation = establishment_operation(group: group)
-                match saga_prepare_and_claim(layout: layout, group: group, previous_hosts: [] as List<HostIdentity>, next_hosts: committed_population(a: authority), operation: operation, actor: actor, at: at) {
+                match saga_prepare_and_claim(layout: layout, group: group, group_head: head, previous_hosts: [] as List<HostIdentity>, next_hosts: committed_population(a: authority), operation: operation, actor: actor, at: at) {
                   SagaRefused { step: st, reason: why, placement: pl } => AuthorityEstablishmentRefused { group: group, step: st, reason: why, placement: pl }
                   SagaClaimed { preparation: ref } => {
                     let event = ChainEvent {
@@ -1597,12 +1807,12 @@ type SagaEntry
   = SagaClaimed { preparation: PlacementPreparationRef }
   | SagaRefused { step: String, reason: String, placement: PlacementCleanup? }
 
-fn saga_prepare_and_claim(layout: EventLogLayout, group: FabricGroup, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, operation: NonEmptyStr, actor: NonEmptyStr, at: EpochSecs) -> SagaEntry {
+fn saga_prepare_and_claim(layout: EventLogLayout, group: FabricGroup, group_head: HeadExpectation, previous_hosts: List<HostIdentity>, next_hosts: List<HostIdentity>, operation: NonEmptyStr, actor: NonEmptyStr, at: EpochSecs) -> SagaEntry {
   match placement_prepare(layout: layout, group: group, previous_hosts: previous_hosts, next_hosts: next_hosts, operation: operation, actor: actor, at: at) {
     PlacementPreparationRefused { step: st, reason: why } => SagaRefused { step: st, reason: why, placement: none }
     PlacementPreparationStale => SagaRefused { step: "placement-stale", reason: "the placement partition moved between its read and the preparation; nothing was written -- re-decide from a fresh read", placement: none }
     PlacementPreparedAt { id: prep } =>
-      match placement_claim_append(layout: layout, preparation: prep, claimant: actor, at: at) {
+      match placement_claim_append(layout: layout, preparation: prep, claimant: actor, expected_head: group_head, at: at) {
         PlacementAppendClaimedAt { id: _ } => SagaClaimed { preparation: preparation_ref_expected(id: prep, group: group, previous: previous_hosts, next: next_hosts, operation: operation) }
         PlacementAppendClaimStale => SagaRefused { step: "placement-stale", reason: "the placement partition moved between the preparation and the append claim; nothing was written to the group", placement: Present { value: saga_abort_own(layout: layout, preparation: prep, reason: "the append claim did not land", actor: actor, at: at) } }
         PlacementAppendClaimRefused { step: st, reason: why } => SagaRefused { step: st, reason: why, placement: Present { value: saga_abort_own(layout: layout, preparation: prep, reason: why, actor: actor, at: at) } }
@@ -1746,7 +1956,7 @@ fn pair_serving_authority_transition_at(
             GrantWithoutLease => AuthorityTransitionRefused { group: group, step: "grant", reason: "a grant may only be carried into a state that holds a lease", placement: none }
             GrantGenealogyDisagrees { join: j } => AuthorityTransitionRefused { group: group, step: "grant", reason: join(["the grant is not this transition's lease's: ", j], ""), placement: none }
             GrantGenealogyAgrees =>
-              match saga_prepare_and_claim(layout: layout, group: group, previous_hosts: committed_population(a: cur), next_hosts: committed_population(a: next), operation: transaction, actor: actor, at: at) {
+              match saga_prepare_and_claim(layout: layout, group: group, group_head: head, previous_hosts: committed_population(a: cur), next_hosts: committed_population(a: next), operation: transaction, actor: actor, at: at) {
                 SagaRefused { step: st, reason: why, placement: pl } => AuthorityTransitionRefused { group: group, step: st, reason: why, placement: pl }
                 SagaClaimed { preparation: ref } =>
                   match authority_transition_append(layout: layout, group: group, head: head, current: cur, next: next, transaction: transaction, lifecycle: lifecycle, grant: grant, entry_state: entry_state, preparation: ref, actor: actor, at: at) {

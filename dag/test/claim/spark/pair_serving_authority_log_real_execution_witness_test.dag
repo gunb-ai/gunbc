@@ -12,7 +12,7 @@ import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest }
 import std.temporal_effect { held_lease, LeaseEpoch, LeaseRunningExpected }
 import product.capacity.lease { LeaseGrant, LeasePolicy, QuiescenceRequired, lease_grant, lease_fence_of }
 import gunbc.spark.released_baseline { QuiescentReservedBaseline }
-import product.capacity.event_chain { EventId, HeadAbsent, HeadAt }
+import product.capacity.event_chain { EventId, HeadAbsent, HeadAt, head_expectation_eq }
 import gunbc.fabric_event_log { RemoteLocalPath, EventLogLayout, event_log_layout }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_authority_for, pair_serving_successor_may_launch }
@@ -460,8 +460,11 @@ test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Boo
   })
 }
 
-// THE SAGA NEVER FREES A HOST EARLY, ABORT AND APPEND CONTEND ON ONE HEAD, AND A CONSUMED
-// PREPARATION CANNOT BE ABORTED. Group A is Active over its four hosts. (1) A release (Active →
+// THE SAGA NEVER FREES A HOST EARLY, ABORT AND APPEND CONTEND ON ONE HEAD (the placement head
+// while the preparation is Prepared; the GROUP head once its append is claimed -- a recovery
+// abort of a claimed preparation first lands a cancellation at the head the claim named, so the
+// claimed append can never land: driven both ways below), AND A CONSUMED PREPARATION CANNOT BE
+// ABORTED. Group A is Active over its four hosts. (1) A release (Active →
 // ReleasedToFleet) that dies after its preparation: the old hosts stay fenced -- group B cannot
 // prepare over one, an effect cannot claim one -- the authority still reads Active, a second
 // preparation for A refuses (one saga at a time), and the operator's abort (a recovery naming the
@@ -495,24 +498,31 @@ test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_abo
                       && (match host_effect_admit(layout: layout, host: srv, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1005) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
                   _ => false
                 })
-            && (match placement_prepare(layout: layout, group: FabricGroupA, previous_hosts: a_hosts, next_hosts: [] as List<HostIdentity>, operation: "tx-race" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1006) {
-                  PlacementPreparedAt { id: prep } => {
-                    let abort_read = placement_read(layout: layout)
-                    (match placement_claim_append(layout: layout, preparation: prep, claimant: "witness" as NonEmptyStr, at: 1007) { PlacementAppendClaimedAt { id: _ } => true  _ => false })
-                      && (match placement_abort_at(layout: layout, read: abort_read, preparation: prep, reason: "read it Prepared" as String, provenance: alr_recovery(preparation: prep), actor: "operator" as NonEmptyStr, at: 1008) { PlacementCleanupStillFencing { preparation: _, cause: c } => c.contains("moved")  _ => false })
-                      && (match placement_abort(layout: layout, preparation: prep, reason: "not mine" as String, provenance: ClaimantTerminal { claim: prep, claimant_executor: "someone-else" as NonEmptyStr }, actor: "someone-else" as NonEmptyStr, at: 1009) { PlacementCleanupStillFencing { preparation: _, cause: c } => c.contains("does not cover")  _ => false })
-                      && (match placement_abort(layout: layout, preparation: prep, reason: "the writer died after its claim", provenance: alr_recovery(preparation: prep), actor: "operator" as NonEmptyStr, at: 1010) { PlacementAbortedAt { preparation: _, id: _ } => true  _ => false })
-                  }
+            && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1006) {
+                  CurrentAuthorityRead { authority: cur, head: ghead } =>
+                    (match placement_prepare(layout: layout, group: FabricGroupA, previous_hosts: a_hosts, next_hosts: [] as List<HostIdentity>, operation: "tx-race" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1006) {
+                      PlacementPreparedAt { id: prep } => {
+                        let abort_read = placement_read(layout: layout)
+                        (match placement_claim_append(layout: layout, preparation: prep, claimant: "witness" as NonEmptyStr, expected_head: ghead, at: 1007) { PlacementAppendClaimedAt { id: _ } => true  _ => false })
+                          && (match placement_abort_at(layout: layout, read: abort_read, preparation: prep, reason: "read it Prepared" as String, provenance: alr_recovery(preparation: prep), actor: "operator" as NonEmptyStr, at: 1008) { PlacementCleanupStillFencing { preparation: _, cause: c } => c.contains("moved")  _ => false })
+                          && (match placement_abort(layout: layout, preparation: prep, reason: "not mine" as String, provenance: ClaimantTerminal { claim: prep, claimant_executor: "someone-else" as NonEmptyStr }, actor: "someone-else" as NonEmptyStr, at: 1009) { PlacementCleanupStillFencing { preparation: _, cause: c } => c.contains("does not cover")  _ => false })
+                          && (match placement_abort(layout: layout, preparation: prep, reason: "the writer died after its claim", provenance: alr_recovery(preparation: prep), actor: "operator" as NonEmptyStr, at: 1010) { PlacementAbortedAt { preparation: _, id: _ } => true  _ => false })
+                          && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1010) { CurrentAuthorityRead { authority: _, head: h2, generation: g0 } => g0 == 0 && !head_expectation_eq(a: h2, b: ghead)  _ => false })
+                          && (match authority_transition_append(layout: layout, group: FabricGroupA, head: ghead, current: cur, next: released, transaction: "tx-race" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, preparation: preparation_ref_expected(id: prep, group: FabricGroupA, previous: a_hosts, next: [] as List<HostIdentity>, operation: "tx-race" as NonEmptyStr), actor: "witness" as NonEmptyStr, at: 1010) { EventAppendStale { expected: _, observed: _ } => true  _ => false })
+                          && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1010), expected: resting, generation: 0)
+                      }
+                      _ => false
+                    })
                   _ => false
                 })
             && (match placement_prepare(layout: layout, group: FabricGroupA, previous_hosts: a_hosts, next_hosts: [] as List<HostIdentity>, operation: "tx-release" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1011) {
                   PlacementPreparedAt { id: prep } =>
-                    (match placement_claim_append(layout: layout, preparation: prep, claimant: "witness" as NonEmptyStr, at: 1011) { PlacementAppendClaimedAt { id: _ } => true  _ => false })
-                      && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1012) {
-                           CurrentAuthorityRead { authority: cur, head: head } =>
-                             (match authority_transition_append(layout: layout, group: FabricGroupA, head: head, current: cur, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, preparation: preparation_ref_expected(id: prep, group: FabricGroupA, previous: a_hosts, next: [] as List<HostIdentity>, operation: "tx-release" as NonEmptyStr), actor: "witness" as NonEmptyStr, at: 1012) { EventAppended { id: _ } => true  _ => false })
-                           _ => false
-                         })
+                    (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1012) {
+                       CurrentAuthorityRead { authority: cur, head: head } =>
+                         (match placement_claim_append(layout: layout, preparation: prep, claimant: "witness" as NonEmptyStr, expected_head: head, at: 1011) { PlacementAppendClaimedAt { id: _ } => true  _ => false })
+                           && (match authority_transition_append(layout: layout, group: FabricGroupA, head: head, current: cur, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, preparation: preparation_ref_expected(id: prep, group: FabricGroupA, previous: a_hosts, next: [] as List<HostIdentity>, operation: "tx-release" as NonEmptyStr), actor: "witness" as NonEmptyStr, at: 1012) { EventAppended { id: _ } => true  _ => false })
+                       _ => false
+                     })
                       && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1013), expected: released, generation: 1)
                       && (match host_effect_admit(layout: layout, host: srv, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1013) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
                       && (match placement_abort(layout: layout, preparation: prep, reason: "wrongly assumed stranded" as String, provenance: alr_recovery(preparation: prep), actor: "operator" as NonEmptyStr, at: 1014) { PlacementCleanupStillFencing { preparation: _, cause: c } => c.contains("consumed by authority event")  _ => false })

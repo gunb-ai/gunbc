@@ -621,7 +621,7 @@ fn group_standing_over(layout: EventLogLayout, group: FabricGroup, at: EpochSecs
     GroupPartitionAt { head: _, fold: f } =>
       match f {
         AuthorityFoldRefused { at_event: e, reason: why } => GroupStandingUnread { cause: join([fabric_group_wire(g: group) as String, " at fold: event ", e as String, " refused: ", why], "") }
-        AuthorityUnestablished =>
+        AuthorityUnestablished { cancelled: _ } =>
           match pair_serving_authority_for(group: group) {
             Absent => GroupStandingUnclaimed
             Present { value: _ } => GroupStandingUnread { cause: join([fabric_group_wire(g: group) as String, ": the source roster declares an authority that has not been established on the log (pair_serving_authority_establish_wet); its hosts are not free"], "") }

@@ -325,11 +325,11 @@ test fn a_rerun_resumes_its_own_pending_state_and_restores_the_exact_active_by_r
                 })
             && (match d0_transaction(layout: layout, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: other_tx, transaction: "tx-other" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1001, now: "2026-09-18T00:00:01Z", observe: fn(g) { d0r_w_observe(group: g) }) {
                   D0Refused { cause: _ } => true
-                  D0Settled { decision: _, generation: _, receipt_path: _, entry_state: _ } => false
+                  _ => false
                 })
             && (match d0_transaction(layout: layout, group: FabricGroupA, current_hosts: fabric_group_hosts(g: FabricGroupA), admitted: other_grant_same_tx, transaction: "tx-d0" as NonEmptyStr, executor: "witness" as NonEmptyStr, at: 1001, now: "2026-09-18T00:00:01Z", observe: fn(g) { d0r_w_observe(group: g) }) {
                   D0Refused { cause: _ } => true
-                  D0Settled { decision: _, generation: _, receipt_path: _, entry_state: _ } => false
+                  _ => false
                 })
             && d0r_claim_is_lost(a: d0r_w_admit(layout: layout, successor: h, tx: "tx-d0" as NonEmptyStr, escalation: "esc-d0-witness" as NonEmptyStr, executor: "witness" as NonEmptyStr))
             && (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1001) {
