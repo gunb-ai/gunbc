@@ -383,10 +383,10 @@ fn release_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   match e.release_readback {
     ReleaseNotReadBack { detail: d } => Present { value: ReleaseUnreadable { detail: d } }
     ReleaseReadBack { revision: r } =>
-      if (r as String) == (e.expected_release as String) {
-        Absent
-      } else {
+      if !((r as String) == (e.expected_release as String)) {
         Present { value: ReleaseDoesNotMatchCandidate { expected: e.expected_release, observed: r } }
+      } else {
+        Absent
       }
   }
 }
