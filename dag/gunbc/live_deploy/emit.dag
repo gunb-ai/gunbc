@@ -68,6 +68,9 @@ import gunbc.live_deploy.spec {
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
+  ProviderStateRootDirectory, ProviderStateMemberStanding, ProviderStateMemberCarried,
+  ProviderStateMemberAbsent, ProviderStateMemberDuplicated, ProviderStateMemberWrongOwner,
+  ProviderStateMemberNotADirectory, deployment_provider_state_standing,
   DeploymentArtifactStep,
   ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, ComputeRoot, FabricEventLogRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperTimerUnit,
   deployment_belt_service_unit_name,
@@ -903,7 +906,10 @@ fn identity_member_of_step(step: DeploymentStep) -> ConvergedMember? {
       FabricEventLogRoot => Present { value: DirectoryRoot { path: art.path } }
       _ => none
     }
-    Dependency { step: _ } => none
+    Dependency { step: dep } => match dep.kind {
+      ProviderStateRootDirectory => Present { value: DirectoryRoot { path: ensured_subject_identity(subject: dep.subject) } }
+      _ => none
+    }
   }
 }
 
@@ -1973,7 +1979,36 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
   )
 }
 
+// A SPEC WITHOUT ITS PROVIDER-STATE MEMBER IS REFUSED BEFORE ANYTHING IS EMITTED (C7). The member
+// is what creates the directory the provider login writes into, and the launcher that used to create
+// it is being deleted. So an apply that skipped a missing member would lose that creation silently,
+// which is the loss this refusal exists to make loud. The marker is not valid shell, the same
+// contract as every other poison in this module.
+data live_deploy_provider_state_refused_poison_prefix: String = "__GUNBC_DEPLOY_REFUSED__ live-deploy apply NOT EMITTED: the deployment spec does not carry exactly one provider-state root owned by its service principal (gunbc.live_deploy.spec deployment_provider_state_step). Without it no deploy creates the directory the provider login writes into, so the apply refuses rather than skip it (DESIGN 5: refuse, never widen). standing="
+
+fn provider_state_refusal_poison(detail: String) -> String {
+  concat(live_deploy_provider_state_refused_poison_prefix, detail)
+}
+
 fn live_deploy_apply_script_for(
+  spec: DeploymentSpec,
+  plan: ReleaseEffectPlan,
+  cap_authorization: CapConvergeDecision,
+) -> String {
+  match deployment_provider_state_standing(spec: spec) {
+    ProviderStateMemberAbsent => provider_state_refusal_poison(detail: "absent")
+    ProviderStateMemberDuplicated { count: n } =>
+      provider_state_refusal_poison(detail: concat("duplicated count=", to_string(n)))
+    ProviderStateMemberWrongOwner { path, owner } =>
+      provider_state_refusal_poison(detail: join(["wrong-owner path=", path as String, " owner=", owner as String], ""))
+    ProviderStateMemberNotADirectory { subject } =>
+      provider_state_refusal_poison(detail: concat("not-a-directory subject=", subject as String))
+    ProviderStateMemberCarried { path: _ } =>
+      live_deploy_apply_script_with_provider_state(spec: spec, plan: plan, cap_authorization: cap_authorization)
+  }
+}
+
+fn live_deploy_apply_script_with_provider_state(
   spec: DeploymentSpec,
   plan: ReleaseEffectPlan,
   cap_authorization: CapConvergeDecision,

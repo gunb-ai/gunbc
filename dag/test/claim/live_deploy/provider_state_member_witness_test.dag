@@ -1,0 +1,120 @@
+module test.claim.live_deploy.provider_state_member_witness_test
+
+import std.types { Bool, String }
+import gunbc.live_deploy.spec {
+  DeploymentSpec, DeploymentStep, ArtifactStep, Dependency,
+  ProviderStateRootDirectory, gunbc_service_user,
+  deployment_provider_state_standing,
+  ProviderStateMemberCarried, ProviderStateMemberDuplicated,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1, spec_owned_identities }
+import gunbc.host_axis_caps { CapConvergeWithheld }
+import gunbc.live_deploy.emit {
+  install_d_owned_for_user, live_deploy_apply_script_for,
+  live_deploy_provider_state_refused_poison_prefix,
+}
+import gunbc.live_deploy.member_identity { DirectoryRoot }
+import gunbc.live_deploy.member_observe { deployment_member_roster }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_provider_state_root }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+import test.claim.live_deploy.apply_emission_projection { apply_emitted_steps_text }
+
+// THE PROVIDER-STATE ROOT IS CREATED ON THE PRODUCTION ROUTE, AND A SPEC WITHOUT IT IS REFUSED
+// (CONVERGENCE-ONE C7). The expected path and owner come from the model: the instance's own
+// provider-state projection and the service principal. They are not literals, so these claims
+// follow the model if either value moves.
+
+fn srv1_provider_state_root() -> String {
+  dashboard_instance_provider_state_root(instance: srv1_live_dashboard_instance()) as String
+}
+
+fn step_is_provider_state(st: DeploymentStep) -> Bool {
+  match st {
+    ArtifactStep { step: _ } => false
+    Dependency { step: dep } => match dep.kind {
+      ProviderStateRootDirectory => true
+      _ => false
+    }
+  }
+}
+
+fn spec_without_provider_state(spec: DeploymentSpec) -> DeploymentSpec {
+  match spec {
+    DeploymentSpec { target: t, steps: s, service: svc, names: n, instance_id: iid } =>
+      DeploymentSpec {
+        target: t,
+        steps: filter(s, st => !step_is_provider_state(st: st)),
+        service: svc,
+        names: n,
+        instance_id: iid,
+      }
+  }
+}
+
+fn spec_with_provider_state_twice(spec: DeploymentSpec) -> DeploymentSpec {
+  match spec {
+    DeploymentSpec { target: t, steps: s, service: svc, names: n, instance_id: iid } =>
+      DeploymentSpec {
+        target: t,
+        steps: concat(s, filter(s, st => step_is_provider_state(st: st))),
+        service: svc,
+        names: n,
+        instance_id: iid,
+      }
+  }
+}
+
+// PRESENCE IN THE EMITTED MEMBER SET, read from production's step dispatch (apply_step_effects via
+// the shared projection) over the production spec. The needle is the owned install command the
+// ensured-directory arm lowers to, built from the model's owner and path.
+test fn the_production_apply_emits_the_provider_state_root_install() -> Bool {
+  let spec = deployment_spec_srv1()
+  let emitted = apply_emitted_steps_text(spec: spec, plan: deploy_witness_full_install_plan(spec: spec))
+  string_contains(
+    s: emitted,
+    pattern: install_d_owned_for_user(user: gunbc_service_user, path: srv1_provider_state_root()),
+  )
+}
+
+// The same member is read back as a DirectoryRoot, the route that turns an absent directory into a
+// CreateRoot and keeps an existing one from being re-created.
+test fn the_provider_state_root_is_a_read_back_directory_member() -> Bool {
+  any(deployment_member_roster(spec: deployment_spec_srv1()), m => match m {
+    DirectoryRoot { path } => (path as String) == srv1_provider_state_root()
+    _ => false
+  })
+}
+
+// Ensured, not owned: retract never tears down the provider login.
+test fn retract_never_owns_the_provider_state_root() -> Bool {
+  !any(spec_owned_identities(spec: deployment_spec_srv1()), id => string_contains(s: id, pattern: srv1_provider_state_root()))
+}
+
+// THE CONTROL: the production spec carries exactly one member, owned by its service principal.
+test fn the_production_spec_carries_one_provider_state_member() -> Bool {
+  match deployment_provider_state_standing(spec: deployment_spec_srv1()) {
+    ProviderStateMemberCarried { path } => (path as String) == srv1_provider_state_root()
+    _ => false
+  }
+}
+
+// ABSENCE IS REFUSED, NOT SKIPPED. The apply script for a spec with the member removed is the
+// refusal marker, not a script without the member. The claim reads the marker's prefix at the
+// production entry point, so a fallback that emitted the rest of the apply would red here.
+test fn an_apply_without_the_provider_state_member_is_refused() -> Bool {
+  let spec = spec_without_provider_state(spec: deployment_spec_srv1())
+  let script = live_deploy_apply_script_for(
+    spec: spec,
+    plan: deploy_witness_full_install_plan(spec: spec),
+    cap_authorization: CapConvergeWithheld { cause: "provider-state refusal precedes cap authorization" },
+  )
+  starts_with(s: script, prefix: live_deploy_provider_state_refused_poison_prefix)
+    && string_contains(s: script, pattern: "standing=absent")
+}
+
+test fn a_duplicated_provider_state_member_is_refused() -> Bool {
+  match deployment_provider_state_standing(spec: spec_with_provider_state_twice(spec: deployment_spec_srv1())) {
+    ProviderStateMemberDuplicated { count: n } => n == 2
+    _ => false
+  }
+}
