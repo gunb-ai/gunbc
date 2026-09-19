@@ -1238,8 +1238,30 @@ fn floor_route_gap_expectation_chunk_16() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// The four test.claim.shell_spawn_refused_real_execution_witness identities. Their subject IS the
+// host spawn -- whether argv[0] can be executed, and whether the shell transport turns a failed
+// spawn into ShellOutcome.ShellSpawnRefused instead of aborting the evaluation -- so
+// test.ShellSpawnProbe.Observed carries no mock_response and can carry none: a mocked refusal would
+// let the discriminating red pass without a spawn ever failing. Triple enrollment, the same shape
+// as chunk_12: this expectation, WetScheduledClaim rows in local_repo_wet_schedule, and the
+// gunbc.ci_layer_roots witness_exclusion_frontier LocalRepoWetLane row for
+// shell_spawn_refused_real_execution_witness_test.dag. Floor run 35470010097 measured the
+// unenrolled Observed / NoMockResponse gap on each identity while all four passed on the wet lane.
+fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.shell_spawn_refused_real_execution_witness.absent_binary_is_a_typed_spawn_refusal", operation: "Observed", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.shell_spawn_refused_real_execution_witness.a_refusal_after_a_success_keeps_the_earlier_result", operation: "Observed", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.shell_spawn_refused_real_execution_witness.present_binary_exits", operation: "Observed", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.shell_spawn_refused_real_execution_witness.nonzero_exit_is_not_a_spawn_refusal", operation: "Observed", ground: NoMockResponse {} },
+    tail: Empty {}
+  }  }  }  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Empty {} } } } } } } } } } } } } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Cons { head: floor_route_gap_expectation_chunk_06(), tail: Cons { head: floor_route_gap_expectation_chunk_07(), tail: Cons { head: floor_route_gap_expectation_chunk_08(), tail: Cons { head: floor_route_gap_expectation_chunk_09(), tail: Cons { head: floor_route_gap_expectation_chunk_10(), tail: Cons { head: floor_route_gap_expectation_chunk_11(), tail: Cons { head: floor_route_gap_expectation_chunk_12(), tail: Cons { head: floor_route_gap_expectation_chunk_13(), tail: Cons { head: floor_route_gap_expectation_chunk_14(), tail: Cons { head: floor_route_gap_expectation_chunk_15(), tail: Cons { head: floor_route_gap_expectation_chunk_16(), tail: Cons { head: floor_route_gap_expectation_chunk_17(), tail: Empty {} } } } } } } } } } } } } } } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
