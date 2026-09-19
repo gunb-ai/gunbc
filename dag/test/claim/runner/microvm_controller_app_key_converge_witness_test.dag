@@ -3,7 +3,7 @@ module test.claim.microvm_controller_app_key_converge_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.github_effect_perform { lifecycle_controller_app_key_path }
+import gunbc.github_effect_perform { lifecycle_controller_app_key }
 import gunbc.runner_host_file_converge {
   HostFileIdentical,
   HostFileDiffers,
@@ -14,6 +14,7 @@ import gunbc.microvm_controller_app_key_converge {
   ControllerAppKeyPlaced,
   ControllerAppKeyPlacementRefused,
   controller_app_key_placement,
+  signing_key_file_path,
   KeyPathFindReading,
   KeyFileRootOwnerRead,
   KeyFileWrongOwner,
@@ -167,10 +168,10 @@ test fn a_writable_ancestor_refuses_before_any_write() -> Bool {
 
 // ── placement ───────────────────────────────────────────────────────────────────────────────────
 
-// THE REAL PATH, not a fixture: this reddens if lifecycle_controller_app_key_path moves somewhere
+// THE REAL PATH, not a fixture: this reddens if lifecycle_controller_app_key moves somewhere
 // with no dedicated root-only directory or into the fabric-cell tree.
 test fn the_modeled_key_path_places_in_its_own_directory_under_etc() -> Bool {
-  match controller_app_key_placement(key_path: lifecycle_controller_app_key_path) {
+  match controller_app_key_placement(key_path: signing_key_file_path(key: lifecycle_controller_app_key)) {
     ControllerAppKeyPlaced { key_path: _, key_dir: d, upper_ancestors: ua } =>
       (d as String) == "/etc/gunbc/microvm-controller" && ua == ["/etc", "/etc/gunbc"]
     ControllerAppKeyPlacementRefused { cause: _ } => false

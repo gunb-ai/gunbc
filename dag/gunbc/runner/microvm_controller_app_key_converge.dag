@@ -24,7 +24,8 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
-import gunbc.github_effect_perform { lifecycle_controller_app_key_path }
+import gunbc.github_effect_perform { lifecycle_controller_app_key }
+import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
 import gunbc.fabric_cell_converge { fabric_cell_base_dir }
 import gunbc.typed_remote_file_write {
   RemoteFileModeOwnerRead,
@@ -72,7 +73,7 @@ import gunbc.runner_host_file_converge {
 // THE MICROVM LIFECYCLE CONTROLLER'S COPY OF THE gunbai-ci APP KEY, DELIVERED AND READ BACK.
 //
 // gunbc.github_effect_perform perform_organization_jit_mint signs its App JWT with the file at
-// lifecycle_controller_app_key_path and refuses at the signer when that file is absent; this module
+// lifecycle_controller_app_key and refuses at the signer when that file is absent; this module
 // is the converge entry that note names. It moves the key from Secret Manager (gunbc.auth.github_apps
 // gunbai_ci_app_pem_secret) to that path on ONE runner host per dispatch, as root:root 0400 in a
 // root:root directory with no group or other bits at all, and it answers with a readback receipt that
@@ -120,6 +121,17 @@ import gunbc.runner_host_file_converge {
 // cleanup-is-part-of-the-mint rule of gunbc.secret_provision_actuator).
 
 // ── Placement (pure) ─────────────────────────────────────────────────────────────────────────────
+
+// THE SUBJECT IS THE SIGNER'S OWN KEY REFERENCE, read through gunbc.github_effect_perform
+// lifecycle_controller_app_key rather than re-spelling its path: the file this delivers is exactly
+// the file perform_organization_jit_mint signs with, and HostKeyFile is the only arm that names one
+// on this host -- a later arm (an agent, a KMS handle) would have no path for a converge to write,
+// so it must refuse here rather than be given a fabricated one.
+fn signing_key_file_path(key: JwsSigningKeyRef) -> NonEmptyStr {
+  match key {
+    HostKeyFile { path: p } => p
+  }
+}
 
 data controller_app_key_forbidden_tree: FileTreeScope = FileTreeScope { root_path: fabric_cell_base_dir as NonEmptyStr }
 
@@ -697,7 +709,7 @@ fn microvm_controller_app_key_converge_ci_wet() -> ProcessExit
       match runner_host_file_subject(host: raw_host as HostIdentity) {
         RunnerHostFileSubjectRefused { cause: c } => write_receipt_then_exit(body: concat(c, "\n"), ok: false)
         RunnerHostFileSubjectAdmitted { subject: subject } =>
-          match controller_app_key_placement(key_path: lifecycle_controller_app_key_path) {
+          match controller_app_key_placement(key_path: signing_key_file_path(key: lifecycle_controller_app_key)) {
             ControllerAppKeyPlacementRefused { cause: c } => write_receipt_then_exit(body: concat(c as String, "\n"), ok: false)
             ControllerAppKeyPlaced { key_path: kp, key_dir: kd, upper_ancestors: ua } =>
               match fetch_secret_ref_credential(secret_ref: gunbai_ci_app_pem_secret, token_source: WorkloadIdentityToken) {
