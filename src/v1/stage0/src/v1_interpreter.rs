@@ -19622,69 +19622,6 @@ macro_rules! v1_builtin_arms {
                 None => Ok(None),
             },
 
-            // THE ONE PLACE A MAC IS ACTUALLY COMPUTED, and it is a host builtin rather than a
-            // shell transport for a specific reason: every shell form of HMAC
-            // (`openssl dgst -hmac <key>`) puts the KEY IN THE ARGV, which is the exposure
-            // gunbc.credential_argv_exposure exists to forbid. A process listing is enough to
-            // learn a signing key, and with a symmetric MAC the signing key is also the
-            // verification key, so leaking it forges approvals rather than merely reading them.
-            //
-            // The comparison is RustCrypto's `verify_slice`, not an equality on bytes we
-            // computed. That is the whole reason extdeps.crypto.mac exposes no accessor for a
-            // computed tag: an ordinary `==` over MAC bytes leaks, through timing, how many
-            // leading bytes of a forged tag were correct, which turns forging a 32-byte tag from
-            // infeasible into a few thousand requests.
-            //
-            // Key and tag arrive as lowercase hex because the corpus already models digests that
-            // way (extdeps.crypto.hash Digest.hex) and hex has one spelling per value -- base64
-            // has several, and a decoder that accepts more spellings than it should is how one
-            // envelope acquires two representations.
-            //
-            // Every malformed input answers FALSE rather than raising: a caller cannot tell a
-            // bad key encoding from a wrong tag, which is correct here, because both mean the
-            // same thing to the only consumer -- this message is not authenticated.
-            arm "free_call.hmac_sha256_verify_hex" { "hmac_sha256_verify_hex" } => {
-                use hmac::{Hmac, Mac};
-                use sha2::Sha256;
-                let key_hex = expect_value_str($positional.first().copied(), "hmac_sha256_verify_hex key")?;
-                let message = expect_value_str($positional.get(1).copied(), "hmac_sha256_verify_hex message")?;
-                let tag_hex = expect_value_str($positional.get(2).copied(), "hmac_sha256_verify_hex tag")?;
-                let key = match hex::decode(key_hex.as_str()) {
-                    Ok(k) => k,
-                    Err(_) => return Ok(Some(Value::Bool(false))),
-                };
-                let tag = match hex::decode(tag_hex.as_str()) {
-                    Ok(t) => t,
-                    Err(_) => return Ok(Some(Value::Bool(false))),
-                };
-                let mut mac = match Hmac::<Sha256>::new_from_slice(&key) {
-                    Ok(m) => m,
-                    Err(_) => return Ok(Some(Value::Bool(false))),
-                };
-                mac.update(message.as_str().as_bytes());
-                Ok(Some(Value::Bool(mac.verify_slice(&tag).is_ok())))
-            },
-
-            // ISSUANCE, THE KEY HOLDER'S OWN OPERATION, and a second primitive rather than a
-            // widening of verify: the verify arm above deliberately yields one bit, so a verifier
-            // is never handed a computed tag to compare in variable time. Minting is the only
-            // purpose a computed tag has, and with a symmetric MAC only the key holder (the
-            // broker) can perform it (extdeps.crypto.mac symmetric_verification_is_issuance_note).
-            //
-            // Same RustCrypto Hmac<Sha256>, same hex key spelling as verify. A key that is not
-            // hex answers ABSENT (the optional's null), never a tag: there is no key to have
-            // signed with, and a fabricated tag would be a plausible output standing where a
-            // refusal belongs. extdeps.crypto.mac mac_sign turns that absence into its typed arm.
-            arm "free_call.hmac_sha256_hex" { "hmac_sha256_hex" } => {
-                Ok(Some(match hmac_sha256_hex_tag(
-                    expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
-                    expect_value_str($positional.get(1).copied(), "hmac_sha256_hex message")?.as_str(),
-                ) {
-                    Some(tag) => str_value(tag),
-                    None => Value::Null,
-                }))
-            },
-
             arm "free_call.string_length" { "string_length" } => {
                 let s = expect_value_str($positional.first().copied(), "string_length")?;
                 Ok(Some(Value::Int(s.string_length())))
@@ -22332,48 +22269,6 @@ fn expect_string(val: &Value, context: &str) -> InterpResult<String> {
         _ => Err(InterpError::TypeError {
             msg: format!("{} expects a string, got {}", context, val.type_label()),
         }),
-    }
-}
-
-/// The `hmac_sha256_hex` builtin's computation: the lowercase hex HMAC-SHA256 tag of `message`
-/// under the hex-encoded key, or `None` when the key is not hex -- no key, no tag.
-fn hmac_sha256_hex_tag(key_hex: &str, message: &str) -> Option<String> {
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-    let key = hex::decode(key_hex).ok()?;
-    let mut mac = Hmac::<Sha256>::new_from_slice(&key).ok()?;
-    mac.update(message.as_bytes());
-    Some(hex::encode(mac.finalize().into_bytes()))
-}
-
-#[cfg(test)]
-mod hmac_sha256_hex_tests {
-    use super::hmac_sha256_hex_tag;
-
-    // RFC 4231 publishes these so an implementation is checked against values it did not produce.
-    #[test]
-    fn rfc4231_case1_tag_is_produced() {
-        assert_eq!(
-            hmac_sha256_hex_tag("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b", "Hi There").as_deref(),
-            Some("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"),
-        );
-    }
-
-    #[test]
-    fn rfc4231_case2_tag_is_produced() {
-        assert_eq!(
-            hmac_sha256_hex_tag("4a656665", "what do ya want for nothing?").as_deref(),
-            Some("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"),
-        );
-    }
-
-    #[test]
-    fn a_key_that_is_not_hex_yields_no_tag() {
-        assert_eq!(
-            hmac_sha256_hex_tag("Jefe", "what do ya want for nothing?"),
-            None
-        );
-        assert_eq!(hmac_sha256_hex_tag("0b0", "Hi There"), None);
     }
 }
 

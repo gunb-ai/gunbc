@@ -266,7 +266,10 @@ fn npm_registry_integrity_from_decode(
 }
 
 fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<UInt8>) -> Bool {
-  encoded == base64_encode(octets: octets, variant: Standard)
+  match base64_encode(octets: octets, variant: Standard) {
+    Present { value: canonical } => encoded == canonical
+    Absent => false
+  }
 }
 
 fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {

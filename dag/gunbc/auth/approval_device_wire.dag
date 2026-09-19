@@ -12,7 +12,7 @@ import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
 import std.encoding { base64_encode, base64_decode, UrlSafe, utf8_decode_octets }
-import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.bytes { utf8_encode_bytes, bytes_octets, pure_dag_seam_unreachable_string }
 import std.integer { UInt8 }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.languages.json.parse {
@@ -826,8 +826,27 @@ fn device_push_update_client_data(enrollment_id: NonEmptyStr, requested_at: Time
 // utf8_encode_bytes / bytes_octets for UTF-8 and std.encoding base64_encode for base64url.
 data path_segment_prefix: String = "id-"
 
+// base64_encode GAINED A REFUSAL CHANNEL in gunbc#11643, which landed the modeled word substrate
+// under std.encoding: an octet outside the byte range used to be multiplied into a plausible wrong
+// string and now refuses. This call site arrived on main from gunbc#11660 while that PR was in
+// review, so the two are correct separately and wrong together -- nothing overlaps textually, the
+// merge is clean, and the Optional was being joined into the path segment itself.
+//
+// THE ARM IS UNREACHABLE HERE, and that is a statement about this call rather than about
+// base64_encode: the octets are the UTF-8 encoding of a String, so every member is a byte by
+// construction. THE DECLARED CONTRACT IS TOTALITY -- the annotation above says this segment is
+// total and injective and never refused, and every identity the store admits has a route -- so
+// threading an Optional out of here would not be honesty, it would be a different and weaker
+// contract at a route-identity boundary, rippling into decode_path_segment and the wire model.
+// std.bytes' divergent seam is the corpus's declared idiom for an arm that cannot be reached: it
+// diverges rather than fabricating, which keeps the totality claim true instead of quietly false.
+// Same treatment, same reason, as extdeps.cloud.gcp.secret_manager
+// encode_sm_access_version_payload_wire in that same PR.
 fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
-  join([path_segment_prefix, base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s as String)), variant: UrlSafe)], "") as NonEmptyStr
+  match base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s as String)), variant: UrlSafe) {
+    Present { value: encoded } => join([path_segment_prefix, encoded], "") as NonEmptyStr
+    Absent => pure_dag_seam_unreachable_string() as NonEmptyStr
+  }
 }
 
 // THE SERVER'S INVERSE, typed and consuming the raw route suffix exactly once. The route takes the

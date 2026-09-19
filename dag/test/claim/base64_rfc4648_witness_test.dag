@@ -3,8 +3,21 @@ module test.claim.base64_rfc4648_witness
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// base64_encode gained a refusal channel when NUMERIC-BIT-0 (gunbc#11627) switched its packing to
+// std.machine_word: an octet outside the byte range used to be multiplied into a plausible wrong
+// string, and now refuses. This projection discharges that channel with a sentinel that no valid
+// encoding can produce, so a refusal reds a golden vector rather than being read as an empty
+// string -- "" is base64_encode's answer for the empty input and is therefore not available as a
+// failure marker. The refusal itself is claimed directly in machine_word_witness_test.
 fn b64_std_of_utf8(s: String) -> String {
-  base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)
+  base64_encode_or_refused(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)
+}
+
+fn base64_encode_or_refused(octets: List<std.integer.UInt8>, variant: Base64Variant) -> String {
+  match base64_encode(octets: octets, variant: variant) {
+    Present { value: encoded } => encoded
+    Absent => "REFUSED"
+  }
 }
 
 data url_witness_octets: List<std.integer.UInt8> = [251, 255, 191]
@@ -20,7 +33,7 @@ test fn utf8_total_direction_holds() -> Bool {
 
 test fn base64_octet_roundtrip_holds() -> Bool {
   let o = bytes_octets(b: utf8_encode_bytes(s: "foobar"))
-  match base64_decode(s: base64_encode(octets: o, variant: Standard), variant: Standard) {
+  match base64_decode(s: base64_encode_or_refused(octets: o, variant: Standard), variant: Standard) {
     Present { value: d } => d == o
     Absent => false
   }
@@ -73,13 +86,43 @@ test fn base64_rfc4648_golden_vectors_holds() -> Bool {
 }
 
 test fn base64url_alphabet_golden_holds() -> Bool {
-  base64_encode(octets: url_witness_octets, variant: Standard) == "+/+/"
-    && base64_encode(octets: url_witness_octets, variant: UrlSafe) == "-_-_"
+  base64_encode_or_refused(octets: url_witness_octets, variant: Standard) == "+/+/"
+    && base64_encode_or_refused(octets: url_witness_octets, variant: UrlSafe) == "-_-_"
 }
 
 test fn base64url_roundtrip_holds() -> Bool {
-  match base64_decode(s: base64_encode(octets: url_witness_octets, variant: UrlSafe), variant: UrlSafe) {
+  match base64_decode(s: base64_encode_or_refused(octets: url_witness_octets, variant: UrlSafe), variant: UrlSafe) {
     Present { value: d } => d == url_witness_octets
     Absent => false
+  }
+}
+
+// THE OCTET ADMISSION CONTROL FOR utf8_decode_octets, and the input that discriminates.
+//
+// This fold read each member through base64_octet_int, the `b + 0` identity NUMERIC-BIT-0 deleted;
+// it now admits through base64_octet_word, which refuses a value outside the byte range. The two
+// agree on 256 -- the old path reached utf8_step and refused there anyway -- so 256 proves nothing.
+// A NEGATIVE member is the discriminator: the old identity handed -1 straight to utf8_step, where
+// `o < 128` is TRUE, so it was decoded as an ASCII scalar and appended to the output as a code
+// point of -1. Admission refuses it instead. Reverting to the identity turns this Absent into a
+// Present carrying that fabricated scalar.
+test fn utf8_decode_octets_refuses_a_negative_octet_holds() -> Bool {
+  match utf8_decode_octets(octets: [0 - 1]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn utf8_decode_octets_still_decodes_ascii_holds() -> Bool {
+  match utf8_decode_octets(octets: [102, 111, 111]) {
+    Present { value: cps } => cps == [102, 111, 111]
+    Absent => false
+  }
+}
+
+test fn utf8_decode_octets_still_refuses_a_bad_lead_holds() -> Bool {
+  match utf8_decode_octets(octets: [255]) {
+    Absent => true
+    Present { value: _ } => false
   }
 }

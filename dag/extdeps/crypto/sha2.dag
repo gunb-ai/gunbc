@@ -1,0 +1,486 @@
+module extdeps.crypto.sha2
+
+import std.error_primitives { Result, Ok, Err }
+import std.integer { UInt8 }
+import std.machine_word {
+  Word, Width8, Width32,
+  WordResult, WordReady, WordRefused, WordRefusal,
+  OctetsResult, OctetsReady, OctetsRefused,
+  word_of_int, word_and, word_xor, word_not,
+  word_shift_right, word_rotate_right, word_wrapping_add,
+  word_to_octets, word_from_octets, int_to_octets, octet_int_values,
+}
+import extdeps.toolchain.architecture_profile { BigEndian }
+import extdeps.numeric.base16 { base16_decode_lower }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// SHA-256 AS AN ALGORITHM, per FIPS 180-4 §4.1.2 (functions), §4.2.2 (constants), §5.1.1
+// (padding), §5.3.3 (initial value) and §6.2 (computation). extdeps.crypto.hash cites the same
+// standard for the DIGEST VALUE a pin carries; this module is the computation that produces one.
+// Every operation below is a std.machine_word operation at Width32: there is no bit primitive
+// underneath and no host routine beside it, so what this file says SHA-256 is, is what runs.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "csrc.nist.gov/pubs/fips/180-4/upd1/final"
+  }
+}
+
+// Every way the computation can fail to produce a digest. A word refusal is carried with its cause
+// rather than flattened, because it can only arise from a defect in this module or the substrate
+// (every word is constructed at Width32 from checked octets), and a defect should arrive located.
+type Sha256Refusal
+  = Sha256WordRefused { cause: WordRefusal }
+  | Sha256ConstantNotHex { hex: String }
+  | Sha256OctetOutOfRange { value: Int }
+  | Sha256ScheduleLengthMismatch { round_constants: Int, schedule_words: Int }
+  | Sha256BlockMisaligned { octets: Int }
+
+fn sha256_lift(r: WordResult) -> Result<Word, Sha256Refusal> {
+  match r {
+    WordReady { word: w } => Ok { value: w }
+    WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+  }
+}
+
+// ── Constants, spelled as FIPS 180-4 prints them ────────────────────────────────────────────
+// The corpus has no hexadecimal integer literal, and transcribing these into decimal would make
+// every row unreadable against the standard it is copied from. So they are the standard's own
+// lowercase hex, decoded through the one base16 codec and packed big-endian through the substrate,
+// and a malformed row refuses (Sha256ConstantNotHex) rather than becoming a plausible word.
+
+// §5.3.3: the first 32 bits of the fractional parts of the square roots of the first 8 primes.
+data sha256_initial_hash_hex: List<String> = [
+  "6a09e667", "bb67ae85", "3c6ef372", "a54ff53a",
+  "510e527f", "9b05688c", "1f83d9ab", "5be0cd19",
+]
+
+// §4.2.2: the first 32 bits of the fractional parts of the cube roots of the first 64 primes.
+data sha256_round_constant_hex: List<String> = [
+  "428a2f98", "71374491", "b5c0fbcf", "e9b5dba5", "3956c25b", "59f111f1", "923f82a4", "ab1c5ed5",
+  "d807aa98", "12835b01", "243185be", "550c7dc3", "72be5d74", "80deb1fe", "9bdc06a7", "c19bf174",
+  "e49b69c1", "efbe4786", "0fc19dc6", "240ca1cc", "2de92c6f", "4a7484aa", "5cb0a9dc", "76f988da",
+  "983e5152", "a831c66d", "b00327c8", "bf597fc7", "c6e00bf3", "d5a79147", "06ca6351", "14292967",
+  "27b70a85", "2e1b2138", "4d2c6dfc", "53380d13", "650a7354", "766a0abb", "81c2c92e", "92722c85",
+  "a2bfe8a1", "a81a664b", "c24b8b70", "c76c51a3", "d192e819", "d6990624", "f40e3585", "106aa070",
+  "19a4c116", "1e376c08", "2748774c", "34b0bcb5", "391c0cb3", "4ed8aa4a", "5b9cca4f", "682e6ff3",
+  "748f82ee", "78a5636f", "84c87814", "8cc70208", "90befffa", "a4506ceb", "bef9a3f7", "c67178f2",
+]
+
+// Octets arrive as plain integers (UInt8 is Compose<UInt, MachineWidth<8>>, and base16 decodes to
+// it); the substrate's packing takes Width8 words, so each octet is admitted at Width8 first and an
+// out-of-range integer refuses there rather than being reduced.
+fn sha256_octet_words(octets: List<UInt8>, acc: List<Word>) -> Result<List<Word>, Sha256Refusal> {
+  match octets.first() {
+    Absent => Ok { value: acc }
+    Present { value: o } =>
+      match word_of_int(width: Width8, value: o) {
+        WordRefused { cause: _ } => Err { value: Sha256OctetOutOfRange { value: o } }
+        WordReady { word: w } => sha256_octet_words(octets: octets.skip(n: 1), acc: acc |> list_push(w))
+      }
+  }
+}
+
+// Big-endian packing of whole 4-octet groups into Width32 words (§3.1 item 2: SHA-256 is
+// big-endian). A trailing partial group refuses rather than being padded -- padding is §5.1.1's
+// job and happens once, before this is ever called.
+fn sha256_words_of_octets(octets: List<UInt8>, acc: List<Word>) -> Result<List<Word>, Sha256Refusal> {
+  let n = list_length(items: octets)
+  if n == 0 {
+    Ok { value: acc }
+  } else {
+    if n < 4 {
+      Err { value: Sha256BlockMisaligned { octets: n } }
+    } else {
+      match sha256_octet_words(octets: octets.take(n: 4), acc: []) {
+        Err { value: e } => Err { value: e }
+        Ok { value: group } =>
+          match sha256_lift(r: word_from_octets(width: Width32, octets: group, endianness: BigEndian)) {
+            Err { value: e } => Err { value: e }
+            Ok { value: w } => sha256_words_of_octets(octets: octets.skip(n: 4), acc: acc |> list_push(w))
+          }
+      }
+    }
+  }
+}
+
+fn sha256_words_of_hex(rows: List<String>, acc: List<Word>) -> Result<List<Word>, Sha256Refusal> {
+  match rows.first() {
+    Absent => Ok { value: acc }
+    Present { value: hex } =>
+      match base16_decode_lower(hex: hex) {
+        Absent => Err { value: Sha256ConstantNotHex { hex: hex } }
+        Present { value: octets } =>
+          match sha256_words_of_octets(octets: octets, acc: []) {
+            Err { value: e } => Err { value: e }
+            Ok { value: ws } =>
+              if list_length(items: ws) != 1 {
+                Err { value: Sha256ConstantNotHex { hex: hex } }
+              } else {
+                sha256_words_of_hex(rows: rows.skip(n: 1), acc: concat(acc, ws))
+              }
+          }
+      }
+  }
+}
+
+// ── §4.1.2 functions ────────────────────────────────────────────────────────────────────────
+// The four sigma functions are one shape -- three terms of x, XORed -- differing only in the
+// three amounts and in whether the third term is a rotation (the two upper-case Σ) or a plain
+// shift (the two lower-case σ). One function with the distinction TYPED, rather than four copies.
+type Sha256ThirdTerm
+  = ThirdRotates
+  | ThirdShifts
+
+fn sha256_xor3(a: Word, b: Word, c: Word) -> WordResult {
+  match word_xor(a: a, b: b) {
+    WordRefused { cause: e } => WordRefused { cause: e }
+    WordReady { word: ab } => word_xor(a: ab, b: c)
+  }
+}
+
+fn sha256_third(x: Word, amount: Int, third: Sha256ThirdTerm) -> WordResult {
+  match third {
+    ThirdRotates => word_rotate_right(a: x, amount: amount)
+    ThirdShifts => word_shift_right(a: x, amount: amount)
+  }
+}
+
+fn sha256_sigma(x: Word, p: Int, q: Int, r: Int, third: Sha256ThirdTerm) -> WordResult {
+  match word_rotate_right(a: x, amount: p) {
+    WordRefused { cause: e } => WordRefused { cause: e }
+    WordReady { word: xp } =>
+      match word_rotate_right(a: x, amount: q) {
+        WordRefused { cause: e } => WordRefused { cause: e }
+        WordReady { word: xq } =>
+          match sha256_third(x: x, amount: r, third: third) {
+            WordRefused { cause: e } => WordRefused { cause: e }
+            WordReady { word: xr } => sha256_xor3(a: xp, b: xq, c: xr)
+          }
+      }
+  }
+}
+
+// (4.4)-(4.7).
+fn sha256_big_sigma_0(x: Word) -> WordResult { sha256_sigma(x: x, p: 2, q: 13, r: 22, third: ThirdRotates) }
+fn sha256_big_sigma_1(x: Word) -> WordResult { sha256_sigma(x: x, p: 6, q: 11, r: 25, third: ThirdRotates) }
+fn sha256_small_sigma_0(x: Word) -> WordResult { sha256_sigma(x: x, p: 7, q: 18, r: 3, third: ThirdShifts) }
+fn sha256_small_sigma_1(x: Word) -> WordResult { sha256_sigma(x: x, p: 17, q: 19, r: 10, third: ThirdShifts) }
+
+// (4.2) Ch(x, y, z) = (x ∧ y) ⊕ (¬x ∧ z).
+fn sha256_ch(x: Word, y: Word, z: Word) -> WordResult {
+  match word_and(a: x, b: y) {
+    WordRefused { cause: e } => WordRefused { cause: e }
+    WordReady { word: xy } =>
+      match word_not(a: x) {
+        WordRefused { cause: e } => WordRefused { cause: e }
+        WordReady { word: nx } =>
+          match word_and(a: nx, b: z) {
+            WordRefused { cause: e } => WordRefused { cause: e }
+            WordReady { word: nxz } => word_xor(a: xy, b: nxz)
+          }
+      }
+  }
+}
+
+// (4.3) Maj(x, y, z) = (x ∧ y) ⊕ (x ∧ z) ⊕ (y ∧ z).
+fn sha256_maj(x: Word, y: Word, z: Word) -> WordResult {
+  match word_and(a: x, b: y) {
+    WordRefused { cause: e } => WordRefused { cause: e }
+    WordReady { word: xy } =>
+      match word_and(a: x, b: z) {
+        WordRefused { cause: e } => WordRefused { cause: e }
+        WordReady { word: xz } =>
+          match word_and(a: y, b: z) {
+            WordRefused { cause: e } => WordRefused { cause: e }
+            WordReady { word: yz } => sha256_xor3(a: xy, b: xz, c: yz)
+          }
+      }
+  }
+}
+
+// Addition modulo 2^32 over several terms, as §6.2.2 writes every multi-term sum.
+fn sha256_add_all(terms: List<Word>, acc: Word) -> WordResult {
+  match terms.first() {
+    Absent => WordReady { word: acc }
+    Present { value: t } =>
+      match word_wrapping_add(a: acc, b: t) {
+        WordRefused { cause: e } => WordRefused { cause: e }
+        WordReady { word: s } => sha256_add_all(terms: terms.skip(n: 1), acc: s)
+      }
+  }
+}
+
+// ── §5.1.1 padding ──────────────────────────────────────────────────────────────────────────
+// Append the bit "1" (the octet 0x80, since the message is whole octets), then k zero bits with
+// ℓ + 1 + k ≡ 448 (mod 512), then ℓ as a 64-bit big-endian integer. In octets: zeros until the
+// length is 56 mod 64, then eight octets. The length field is rendered from an ordinary Int by
+// std.machine_word int_to_octets, which is how a 64-bit field is served without a Width64 word.
+fn sha256_zero_octets(count: Int, acc: List<UInt8>) -> List<UInt8> {
+  if count <= 0 { acc } else { sha256_zero_octets(count: count - 1, acc: acc |> list_push(0)) }
+}
+
+fn sha256_pad(message: List<UInt8>) -> Result<List<UInt8>, Sha256Refusal> {
+  let n = list_length(items: message)
+  let marked = message |> list_push(128)
+  let zeros = (119 - (n % 64)) % 64
+  match int_to_octets(value: n * 8, count: 8, endianness: BigEndian) {
+    OctetsRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+    OctetsReady { octets: length_field } =>
+      Ok { value: concat(sha256_zero_octets(count: zeros, acc: marked), octet_int_values(octets: length_field)) }
+  }
+}
+
+// ── §6.2.2 step 1: the message schedule ─────────────────────────────────────────────────────
+// W_t = M_t for 0 ≤ t ≤ 15, and σ1(W_{t-2}) + W_{t-7} + σ0(W_{t-15}) + W_{t-16} for 16 ≤ t ≤ 63.
+fn sha256_schedule_at(ws: List<Word>, index: Int) -> Result<Word, Sha256Refusal> {
+  match get(xs: ws, index: index) {
+    Present { value: w } => Ok { value: w }
+    Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 64, schedule_words: list_length(items: ws) } }
+  }
+}
+
+fn sha256_schedule_extend(ws: List<Word>, t: Int) -> Result<List<Word>, Sha256Refusal> {
+  if t >= 64 {
+    Ok { value: ws }
+  } else {
+    match sha256_schedule_at(ws: ws, index: t - 2) {
+      Err { value: e } => Err { value: e }
+      Ok { value: w2 } =>
+        match sha256_schedule_at(ws: ws, index: t - 7) {
+          Err { value: e } => Err { value: e }
+          Ok { value: w7 } =>
+            match sha256_schedule_at(ws: ws, index: t - 15) {
+              Err { value: e } => Err { value: e }
+              Ok { value: w15 } =>
+                match sha256_schedule_at(ws: ws, index: t - 16) {
+                  Err { value: e } => Err { value: e }
+                  Ok { value: w16 } =>
+                    match sha256_small_sigma_1(x: w2) {
+                      WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+                      WordReady { word: s1 } =>
+                        match sha256_small_sigma_0(x: w15) {
+                          WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+                          WordReady { word: s0 } =>
+                            match sha256_add_all(terms: [w7, s0, w16], acc: s1) {
+                              WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+                              WordReady { word: wt } => sha256_schedule_extend(ws: ws |> list_push(wt), t: t + 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// ── §6.2.2 steps 2-4: the compression ───────────────────────────────────────────────────────
+type Sha256Working {
+  a: Word
+  b: Word
+  c: Word
+  d: Word
+  e: Word
+  f: Word
+  g: Word
+  h: Word
+}
+
+// One round: T1 = h + Σ1(e) + Ch(e,f,g) + K_t + W_t; T2 = Σ0(a) + Maj(a,b,c); then the eight
+// registers shift down with a ← T1 + T2 and e ← d + T1.
+fn sha256_round_step(s: Sha256Working, k: Word, w: Word) -> Result<Sha256Working, Sha256Refusal> {
+  match sha256_big_sigma_1(x: s.e) {
+    WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+    WordReady { word: s1 } =>
+      match sha256_ch(x: s.e, y: s.f, z: s.g) {
+        WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+        WordReady { word: ch } =>
+          match sha256_add_all(terms: [s1, ch, k, w], acc: s.h) {
+            WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+            WordReady { word: t1 } =>
+              match sha256_big_sigma_0(x: s.a) {
+                WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+                WordReady { word: s0 } =>
+                  match sha256_maj(x: s.a, y: s.b, z: s.c) {
+                    WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+                    WordReady { word: mj } =>
+                      match sha256_add_all(terms: [s0, mj], acc: t1) {
+                        WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+                        WordReady { word: next_a } =>
+                          match word_wrapping_add(a: s.d, b: t1) {
+                            WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+                            WordReady { word: next_e } =>
+                              Ok {
+                                value: Sha256Working {
+                                  a: next_a, b: s.a, c: s.b, d: s.c,
+                                  e: next_e, f: s.e, g: s.f, h: s.g,
+                                }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn sha256_rounds(s: Sha256Working, ks: List<Word>, ws: List<Word>) -> Result<Sha256Working, Sha256Refusal> {
+  match ks.first() {
+    Absent => Ok { value: s }
+    Present { value: k } =>
+      match ws.first() {
+        Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: list_length(items: ks), schedule_words: 0 } }
+        Present { value: w } =>
+          match sha256_round_step(s: s, k: k, w: w) {
+            Err { value: e } => Err { value: e }
+            Ok { value: next } => sha256_rounds(s: next, ks: ks.skip(n: 1), ws: ws.skip(n: 1))
+          }
+      }
+  }
+}
+
+fn sha256_working_of(h: List<Word>) -> Result<Sha256Working, Sha256Refusal> {
+  if list_length(items: h) != 8 {
+    Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: list_length(items: h) } }
+  } else {
+    match get(xs: h, index: 0) {
+      Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: 0 } }
+      Present { value: a } =>
+        match get(xs: h, index: 1) {
+          Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: 1 } }
+          Present { value: b } =>
+            match get(xs: h, index: 2) {
+              Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: 2 } }
+              Present { value: c } =>
+                match get(xs: h, index: 3) {
+                  Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: 3 } }
+                  Present { value: d } =>
+                    match get(xs: h, index: 4) {
+                      Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: 4 } }
+                      Present { value: e } =>
+                        match get(xs: h, index: 5) {
+                          Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: 5 } }
+                          Present { value: f } =>
+                            match get(xs: h, index: 6) {
+                              Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: 6 } }
+                              Present { value: g } =>
+                                match get(xs: h, index: 7) {
+                                  Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: 7 } }
+                                  Present { value: hh } =>
+                                    Ok { value: Sha256Working { a: a, b: b, c: c, d: d, e: e, f: f, g: g, h: hh } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// Step 4: H_i ← working_i + H_i, as one fold over the eight registers in order.
+fn sha256_feed_forward(s: Sha256Working, h: List<Word>) -> Result<List<Word>, Sha256Refusal> {
+  sha256_pairwise_add(xs: [s.a, s.b, s.c, s.d, s.e, s.f, s.g, s.h], ys: h, acc: [])
+}
+
+fn sha256_pairwise_add(xs: List<Word>, ys: List<Word>, acc: List<Word>) -> Result<List<Word>, Sha256Refusal> {
+  match xs.first() {
+    Absent => Ok { value: acc }
+    Present { value: x } =>
+      match ys.first() {
+        Absent => Err { value: Sha256ScheduleLengthMismatch { round_constants: 8, schedule_words: list_length(items: acc) } }
+        Present { value: y } =>
+          match word_wrapping_add(a: x, b: y) {
+            WordRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+            WordReady { word: z } => sha256_pairwise_add(xs: xs.skip(n: 1), ys: ys.skip(n: 1), acc: acc |> list_push(z))
+          }
+      }
+  }
+}
+
+fn sha256_block(h: List<Word>, ks: List<Word>, block: List<UInt8>) -> Result<List<Word>, Sha256Refusal> {
+  match sha256_words_of_octets(octets: block, acc: []) {
+    Err { value: e } => Err { value: e }
+    Ok { value: m } =>
+      match sha256_schedule_extend(ws: m, t: 16) {
+        Err { value: e } => Err { value: e }
+        Ok { value: ws } =>
+          if list_length(items: ws) != list_length(items: ks) {
+            Err { value: Sha256ScheduleLengthMismatch { round_constants: list_length(items: ks), schedule_words: list_length(items: ws) } }
+          } else {
+            match sha256_working_of(h: h) {
+              Err { value: e } => Err { value: e }
+              Ok { value: start } =>
+                match sha256_rounds(s: start, ks: ks, ws: ws) {
+                  Err { value: e } => Err { value: e }
+                  Ok { value: done } => sha256_feed_forward(s: done, h: h)
+                }
+            }
+          }
+      }
+  }
+}
+
+fn sha256_blocks(h: List<Word>, ks: List<Word>, padded: List<UInt8>) -> Result<List<Word>, Sha256Refusal> {
+  let n = list_length(items: padded)
+  if n == 0 {
+    Ok { value: h }
+  } else {
+    if n < 64 {
+      Err { value: Sha256BlockMisaligned { octets: n } }
+    } else {
+      match sha256_block(h: h, ks: ks, block: padded.take(n: 64)) {
+        Err { value: e } => Err { value: e }
+        Ok { value: next } => sha256_blocks(h: next, ks: ks, padded: padded.skip(n: 64))
+      }
+    }
+  }
+}
+
+fn sha256_render(h: List<Word>, acc: List<UInt8>) -> Result<List<UInt8>, Sha256Refusal> {
+  match h.first() {
+    Absent => Ok { value: acc }
+    Present { value: w } =>
+      match word_to_octets(a: w, endianness: BigEndian) {
+        OctetsRefused { cause: c } => Err { value: Sha256WordRefused { cause: c } }
+        OctetsReady { octets: os } => sha256_render(h: h.skip(n: 1), acc: concat(acc, octet_int_values(octets: os)))
+      }
+  }
+}
+
+// THE CONSTANT TABLES AS WORDS, DERIVED ONCE. They are facts of the standard, not of any message,
+// so they are established once at module scope and every digest reads the same value (DESIGN §2:
+// a fact established once is never rebuilt per consumer). Decoding them inside sha256_octets
+// re-derived all 72 words on every call -- twice per HMAC. A malformed row still refuses: the
+// Result is the row's value, and every digest carries the refusal forward.
+data sha256_initial_hash_words: Result<List<Word>, Sha256Refusal> = sha256_words_of_hex(rows: sha256_initial_hash_hex, acc: [])
+data sha256_round_constant_words: Result<List<Word>, Sha256Refusal> = sha256_words_of_hex(rows: sha256_round_constant_hex, acc: [])
+
+// THE DIGEST: the 32 octets H_0 ‖ … ‖ H_7 of the final hash value, big-endian.
+fn sha256_octets(message: List<UInt8>) -> Result<List<UInt8>, Sha256Refusal> {
+  match sha256_initial_hash_words {
+    Err { value: e } => Err { value: e }
+    Ok { value: h0 } =>
+      match sha256_round_constant_words {
+        Err { value: e } => Err { value: e }
+        Ok { value: ks } =>
+          match sha256_pad(message: message) {
+            Err { value: e } => Err { value: e }
+            Ok { value: padded } =>
+              match sha256_blocks(h: h0, ks: ks, padded: padded) {
+                Err { value: e } => Err { value: e }
+                Ok { value: h } => sha256_render(h: h, acc: [])
+              }
+          }
+      }
+  }
+}
+
+// The two SHA-256 parameters HMAC (RFC 2104 §2) needs: the block size B and the output size L, in
+// octets. They are this module's facts, so HMAC reads them here rather than restating 64 and 32.
+fn sha256_block_octets() -> Int { 64 }
+fn sha256_digest_octets() -> Int { 32 }
