@@ -10,6 +10,7 @@ import extdeps.needrestart {
   needrestart_unit_name_prefix_regex,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
@@ -69,6 +70,7 @@ import gunbc.runner_host_file_converge {
   SlotReloadPending,
   SlotUnitNotLoaded,
   SlotUnitUnread,
+  SlotRetiredAsDeclared,
   classify_runner_slot_unit,
   RunnerSlotUnitResult,
   RunnerSlotPopulation,
@@ -404,6 +406,7 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
     SlotTeardownNotEffective { kill_mode: k, exit_type: e } => concat(concat("not-effective:", k), concat(":", e))
     SlotReloadPending => "reload-pending"
     SlotUnitNotLoaded { load_state: l } => concat("not-loaded:", l)
+    SlotRetiredAsDeclared => "retired"
     SlotUnitUnread => "unread"
   }
 }
@@ -459,7 +462,7 @@ data show_fixture: String = "Id=actions-runner@srv1-01.service\nLoadState=loaded
 
 fn population_wires(units: List<String>) -> List<String> {
   map(
-    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
+    classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retired: [], show_stdout: show_fixture, intent: gunbc_runner_lifecycle_intent),
     r => standing_wire_of(st: r.standing),
   )
 }
@@ -553,4 +556,62 @@ test fn observe_reports_what_apply_refuses() -> Bool {
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadRefused { reason: "exit=1" }, slots: good)
     && !settled_run(mode: RunnerHostFilesApply, reload: ManagerReloadOwedNotAttempted { reason: "privilege refused" }, slots: good)
     && !settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: population_of(standings: [SlotUnitUnread]))
+}
+
+// ── The population joined against the retirement authority ──────────────────────────────────────
+
+// srv1's reading in run 35416072847: slots 01..12 loaded with the declared pair, 13..21 masked by
+// gunbc.runner_slot_retirement. Names come from the census authority and the retired set from the
+// width transition itself, so the control exercises the real join rather than a designed roster.
+fn srv1_unit_names(slot: Int, limit: Int) -> List<String> {
+  desired_unit_names_range(host: "srv1" as HostIdentity, slot: slot, limit: limit)
+}
+
+fn show_block_of(unit: String, load: String) -> String {
+  join(["Id=", unit, "\nLoadState=", load, "\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"], "")
+}
+
+fn srv1_show_reading(live: List<String>, masked: List<String>) -> String {
+  join(concat(map(live, u => show_block_of(unit: u, load: "loaded")), map(masked, u => show_block_of(unit: u, load: "masked"))), "\n\n")
+}
+
+fn srv1_population(units: List<String>, retired: List<NonEmptyStr>, show: String) -> RunnerSlotPopulation {
+  SlotPopulationObserved { units: classify_runner_slot_population(units: map(units, u => u as NonEmptyStr), retired: retired, show_stdout: show, intent: gunbc_runner_lifecycle_intent) }
+}
+
+fn srv1_retired() -> List<NonEmptyStr> {
+  match witness_subject() {
+    Absent => []
+    Present { value: s } => s.retired_units
+  }
+}
+
+// POSITIVE CONTROL. The 21-unit reading that refused is effective once each masked unit is joined to
+// the retirement the authority declared, and the route is the join: every masked unit reads retired.
+test fn srv1_twelve_live_and_nine_retired_masked_is_effective() -> Bool {
+  let units = srv1_unit_names(slot: 1, limit: 21)
+  let pop = srv1_population(units: units, retired: srv1_retired(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21)))
+  runner_slot_population_effective(population: pop)
+    && (match pop {
+      SlotPopulationUnobservable { reason: _ } => false
+      SlotPopulationObserved { units: us } => length(filter(us, r => standing_wire_of(st: r.standing) == "retired")) == 9
+    })
+    && !runner_slot_population_effective(population: srv1_population(units: units, retired: [], show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 21))))
+}
+
+// RED: a masked slot the authority does NOT retire is a slot masked by mistake, not a retirement.
+test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
+  let pop = srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retired: srv1_retired(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 11), masked: srv1_unit_names(slot: 12, limit: 21)))
+  !runner_slot_population_effective(population: pop)
+    && (match pop {
+      SlotPopulationUnobservable { reason: _ } => false
+      SlotPopulationObserved { units: us } => any(us, r => (r.unit as String) == "actions-runner@srv1-12.service" && standing_wire_of(st: r.standing) == "not-loaded:masked")
+    })
+}
+
+// RED: a declared-live slot missing from the host stays a refusal, retirement notwithstanding.
+test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
+  let missing = join(["Id=actions-runner@srv1-12.service\nLoadState=not-found\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"], "")
+  let show = join([srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 11), masked: srv1_unit_names(slot: 13, limit: 21)), missing], "\n\n")
+  !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retired: srv1_retired(), show: show))
 }
