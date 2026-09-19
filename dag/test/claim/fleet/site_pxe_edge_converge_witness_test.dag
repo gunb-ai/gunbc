@@ -3,23 +3,30 @@ module test.claim.fleet.site_pxe_edge_converge_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Aarch64 }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.placement_supply { HostIdentity }
-import gunbc.network_boot_delivery { ArchitectureChainloader, DhcpFilenameHint }
 import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
-import extdeps.uri { Uri, Tftp }
 import extdeps.network.ipv4 { ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, MacWrongOctetCount }
 import gunbc.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
   SitePxeEdgeChainloaderPinned,
   SitePxeEdgeChainloaderUnpinned,
-  SitePxeEdgeChainloaderTarget,
+  SitePxeEdgeChainloaderBuildReceipt,
   ChainloaderDigestObserved,
   ChainloaderDigestUnobservable,
   SitePxeEdgeProbeHeld,
-  SitePxeEdgeProbeRefused,
+  SitePxeEdgeProbeObservedNegative,
+  SitePxeEdgeProbeUnobservable,
+  SitePxeEdgeApply,
+  SitePxeEdgePostActivation,
+  PostActivationNotRead,
+  PostActivationDigestHeld,
+  PostActivationDigestDiffers,
+  PostActivationUnobservable,
+  site_pxe_edge_post_activation,
   SitePxeEdgeSubjectAdmitted,
   SitePxeEdgeSubjectRefused,
   site_pxe_edge_chainloader_pin,
@@ -39,7 +46,11 @@ import gunbc.site_pxe_edge_converge {
   ChainloaderUnobservable,
   ChainloaderDigestMismatch,
   ChainloaderNotTheIpxeArm64Build,
-  DnsmasqBinaryRefused,
+  ChainloaderBuildTargetNotIpxeArm64,
+  ChainloaderArchitectureNotAarch64,
+  DnsmasqBinaryAbsent,
+  DnsmasqBinaryUnobservable,
+  AdministratorPrivilegeUnobservable,
   AdministratorPrivilegeRefused,
   site_pxe_edge_digest_observation,
   site_pxe_edge_desired_files,
@@ -56,19 +67,22 @@ data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: hex_a })
 
 data digest_b: ContentHash = Sha256Hash(Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" })
 
+fn build(filename: NonEmptyStr, target: IpxeBuildTarget, architecture: Architecture, digest: ContentHash) -> SitePxeEdgeChainloaderBuildReceipt {
+  SitePxeEdgeChainloaderBuildReceipt {
+    upstream_revision: "ipxe-fixture-revision",
+    build_target: target,
+    architecture: architecture,
+    digest: digest,
+    installed_filename: filename,
+  }
+}
+
 fn pinned(digest: ContentHash) -> SitePxeEdgeChainloaderPin {
   pinned_as(filename: "snponly.efi", digest: digest)
 }
 
 fn pinned_as(filename: NonEmptyStr, digest: ContentHash) -> SitePxeEdgeChainloaderPin {
-  SitePxeEdgeChainloaderPinned {
-    transport: ArchitectureChainloader {
-      architecture: Aarch64,
-      filename_hint: DhcpFilenameHint { filename: filename },
-      chainloader_digest: digest,
-      tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
-    },
-  }
+  SitePxeEdgeChainloaderPinned { build: build(filename: filename, target: ipxe_arm64_efi_snponly, architecture: Aarch64, digest: digest) }
 }
 
 fn known_macs() -> List<Eui48Address> {
@@ -78,10 +92,10 @@ fn known_macs() -> List<Eui48Address> {
   }
 }
 
-fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget {
+fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderBuildReceipt {
   match site_pxe_edge_chainloader_target(pin: pin) {
     Present { value: t } => t
-    Absent => SitePxeEdgeChainloaderTarget { filename: "unreachable", digest: digest_b }
+    Absent => build(filename: "unreachable", target: ipxe_arm64_efi_snponly, architecture: Aarch64, digest: digest_b)
   }
 }
 
@@ -118,7 +132,11 @@ test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
       ChainloaderUnobservable { reason: _ } => false
       ChainloaderDigestMismatch { observed: _, pinned: _ } => false
       ChainloaderNotTheIpxeArm64Build { pinned: _, expected: _ } => false
-      DnsmasqBinaryRefused { reason: _ } => false
+      ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
+      ChainloaderArchitectureNotAarch64 { architecture: _ } => false
+      DnsmasqBinaryAbsent { reason: _ } => false
+      DnsmasqBinaryUnobservable { reason: _ } => false
+      AdministratorPrivilegeUnobservable { reason: _ } => false
       AdministratorPrivilegeRefused { reason: _ } => false
     }
     Absent => false
@@ -156,9 +174,9 @@ test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
     roster: first_onboarding_known_client_mac,
     pin: pinned(digest: digest_a),
     chainloader: ChainloaderDigestUnobservable { reason: "no such file" },
-    dnsmasq_binary: SitePxeEdgeProbeRefused { reason: "absent" },
+    dnsmasq_binary: SitePxeEdgeProbeObservedNegative { reason: "absent" },
     privilege: SitePxeEdgeProbeHeld,
-  ) == [ChainloaderUnobservable { reason: "no such file" }, DnsmasqBinaryRefused { reason: "absent" }]
+  ) == [ChainloaderUnobservable { reason: "no such file" }, DnsmasqBinaryAbsent { reason: "absent" }]
 }
 
 test fn sha256sum_line_parses_to_the_pinned_hash() -> Bool {
@@ -251,19 +269,39 @@ test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
         ChainloaderUnpinned { obligation: _ } => false
         ChainloaderUnobservable { reason: _ } => false
         ChainloaderDigestMismatch { observed: _, pinned: _ } => false
-        DnsmasqBinaryRefused { reason: _ } => false
+        ChainloaderBuildTargetNotIpxeArm64 { pinned: _, expected: _ } => false
+        ChainloaderArchitectureNotAarch64 { architecture: _ } => false
+        DnsmasqBinaryAbsent { reason: _ } => false
+        DnsmasqBinaryUnobservable { reason: _ } => false
+        AdministratorPrivilegeUnobservable { reason: _ } => false
         AdministratorPrivilegeRefused { reason: _ } => false
       }
   }
 }
 
 fn observe_run(causes: List<SitePxeEdgeGateCause>) -> SitePxeEdgeRun {
+  observe_run_with_unit(causes: causes, unit_active: SitePxeEdgeProbeObservedNegative { reason: "ActiveState=inactive" })
+}
+
+fn observe_run_with_unit(causes: List<SitePxeEdgeGateCause>, unit_active: SitePxeEdgeProbe) -> SitePxeEdgeRun {
   SitePxeEdgeRun {
     mode: SitePxeEdgeObserveOnly,
     gate_causes: causes,
     files: [],
-    activation: SitePxeEdgeProbeRefused { reason: "observe-only" },
-    unit_active: SitePxeEdgeProbeRefused { reason: "inactive" },
+    activation: SitePxeEdgeProbeObservedNegative { reason: "observe-only: not attempted" },
+    unit_active: unit_active,
+    post_activation: PostActivationNotRead { reason: "observe-only" },
+  }
+}
+
+fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
+  SitePxeEdgeRun {
+    mode: SitePxeEdgeApply,
+    gate_causes: [],
+    files: [],
+    activation: SitePxeEdgeProbeHeld,
+    unit_active: SitePxeEdgeProbeHeld,
+    post_activation: post,
   }
 }
 
@@ -317,4 +355,53 @@ test fn an_unparseable_segment_network_closes_the_gate() -> Bool {
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
   ) == [SegmentNetworkUnparseable { error: Ipv4WrongOctetCount { observed_count: 1 } }]
+}
+
+// PROVENANCE: an x86 build installed under the expected basename with a digest that agrees is still
+// refused -- the receipt's architecture is checked, not only the filename and digest.
+test fn a_non_arm64_build_with_the_expected_name_and_digest_is_refused() -> Bool {
+  site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
+    roster: first_onboarding_known_client_mac,
+    pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: ipxe_arm64_efi_snponly, architecture: X86_64, digest: digest_a) },
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  ) == [ChainloaderArchitectureNotAarch64 { architecture: X86_64 }]
+}
+
+// PROVENANCE: a receipt naming a different iPXE build target is refused even when its installed name and
+// digest agree.
+test fn a_different_ipxe_build_target_is_refused() -> Bool {
+  let x86_target = IpxeBuildTarget { platform: "bin-x86_64-efi", image: "snponly.efi" }
+  site_pxe_edge_gate_causes(
+    tftp_server: site_pxe_edge_tftp_server_address,
+    segment: site_pxe_edge_segment_network,
+    roster: first_onboarding_known_client_mac,
+    pin: SitePxeEdgeChainloaderPinned { build: build(filename: "snponly.efi", target: x86_target, architecture: Aarch64, digest: digest_a) },
+    chainloader: ChainloaderDigestObserved { digest: digest_a },
+    dnsmasq_binary: SitePxeEdgeProbeHeld,
+    privilege: SitePxeEdgeProbeHeld,
+  ) == [ChainloaderBuildTargetNotIpxeArm64 { pinned: x86_target, expected: ipxe_arm64_efi_snponly }]
+}
+
+// POST-ACTIVATION BYTES: the gate's digest agreed, but the file digested after restart differs, so the
+// apply is refused; the same run with the post-activation digest holding succeeds.
+test fn a_post_activation_digest_that_differs_refuses_the_apply() -> Bool {
+  site_pxe_edge_post_activation(pin: pinned(digest: digest_a), observation: ChainloaderDigestObserved { digest: digest_b })
+      == PostActivationDigestDiffers { observed: digest_b, pinned: digest_a }
+    && !site_pxe_edge_run_succeeded(run: apply_run(post: site_pxe_edge_post_activation(pin: pinned(digest: digest_a), observation: ChainloaderDigestObserved { digest: digest_b })))
+    && site_pxe_edge_run_succeeded(run: apply_run(post: site_pxe_edge_post_activation(pin: pinned(digest: digest_a), observation: ChainloaderDigestObserved { digest: digest_a })))
+    && !site_pxe_edge_run_succeeded(run: apply_run(post: PostActivationUnobservable { reason: "sha256sum exit=1" }))
+}
+
+// OBSERVE SEMANTICS: a probe that ran and found no (dnsmasq absent, unit inactive) is a finding and
+// observe succeeds; a probe that could not run (dnsmasq or the unit read unobservable) refuses observe.
+test fn observe_keeps_observed_negatives_and_refuses_unobservable_probes() -> Bool {
+  site_pxe_edge_run_succeeded(run: observe_run(causes: [DnsmasqBinaryAbsent { reason: "test -x dnsmasq exit=1" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [DnsmasqBinaryUnobservable { reason: "ssh leg refused" }]))
+    && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
+    && site_pxe_edge_run_succeeded(run: observe_run_with_unit(causes: [], unit_active: SitePxeEdgeProbeObservedNegative { reason: "ActiveState=inactive" }))
+    && !site_pxe_edge_run_succeeded(run: observe_run_with_unit(causes: [], unit_active: SitePxeEdgeProbeUnobservable { reason: "ssh leg refused" }))
 }
