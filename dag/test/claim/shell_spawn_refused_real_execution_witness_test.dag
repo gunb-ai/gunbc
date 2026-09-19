@@ -1,0 +1,73 @@
+module test.claim.shell_spawn_refused_real_execution_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WET, AND IT HAS TO BE: whether a program can be spawned is a fact about the host, and the
+// defect this file pins lived exactly at the spawn. The operation below carries no mock_response,
+// so this file is excluded from hermetic discovery and enrolled in bin_witness_wet_entries
+// (gunbc.ci_layer_roots). Local recipe: claim_batch --wet --source-root dag --source-root src/v2
+// --entry dag/test/claim/shell_spawn_refused_real_execution_witness_test.dag
+service test.ShellSpawnProbe {
+  operation Observed {
+    input { program: NonEmptyStr }
+    output {
+      outcome: ShellOutcome
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+    }
+    readonly
+    transport shell { argv: [program] }
+  }
+}
+
+data absent_program: NonEmptyStr = "gunbc-shell-spawn-probe-absent-binary" as NonEmptyStr
+
+fn spawn_refused_names(outcome: ShellOutcome, program: NonEmptyStr) -> Bool {
+  match outcome {
+    ShellSpawnRefused { program: refused, cause } => refused == program && cause as String != ""
+    ShellExited => false
+  }
+}
+
+fn exited(outcome: ShellOutcome) -> Bool {
+  match outcome {
+    ShellExited => true
+    ShellSpawnRefused { program: _, cause: _ } => false
+  }
+}
+
+// DISCRIMINATING RED: an absent binary reaches the caller as ShellSpawnRefused naming the program,
+// as a VALUE. Before this arm existed the call aborted the evaluation, so this function could not
+// return at all.
+test fn absent_binary_is_a_typed_spawn_refusal() -> Bool {
+  let r = test.ShellSpawnProbe.Observed(program: absent_program)
+  spawn_refused_names(outcome: r.outcome, program: absent_program)
+}
+
+// THE EVALUATION CONTINUES PAST THE REFUSAL, and what was read before it is kept. This is the
+// shape of a paginated read whose later request fails: the earlier result is still in hand, so a
+// caller can report it as partial evidence instead of losing it with the evaluation.
+test fn a_refusal_after_a_success_keeps_the_earlier_result() -> Bool {
+  let first = test.ShellSpawnProbe.Observed(program: "true" as NonEmptyStr)
+  let later = test.ShellSpawnProbe.Observed(program: absent_program)
+  exited(outcome: first.outcome) && first.success
+    && spawn_refused_names(outcome: later.outcome, program: absent_program)
+}
+
+// POSITIVE CONTROL: a present program spawns and is ShellExited, so the red above is caused by the
+// absent binary and not by the operation's shape.
+test fn present_binary_exits() -> Bool {
+  let r = test.ShellSpawnProbe.Observed(program: "true" as NonEmptyStr)
+  exited(outcome: r.outcome) && r.success
+}
+
+// A NONZERO EXIT IS AN ANSWER, NOT A SPAWN REFUSAL: `false` ran and said no. Collapsing the two
+// would report 'there was no program' for 'the program refused', which have different remedies.
+test fn nonzero_exit_is_not_a_spawn_refusal() -> Bool {
+  let r = test.ShellSpawnProbe.Observed(program: "false" as NonEmptyStr)
+  exited(outcome: r.outcome) && !r.success
+}
