@@ -1,0 +1,45 @@
+module gunbc.recurring_failure_mode.annotation_authored_at_a_grain_the_model_does_not_carry
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data annotation_authored_at_a_grain_the_model_does_not_carry: RecurringFailureMode = RecurringFailureMode {
+  identity: "annotation_authored_at_a_grain_the_model_does_not_carry" as NonEmptyStr,
+
+  receipts: [
+    "annotation authored at a grain the model does not carry: an author writes a source annotation BESIDE the thing it explains -- above an operation inside a service, above a field inside an output, above a let inside a function body -- and the parser refuses it, because DESIGN section 4c models annotations at MODULE-ITEM grain only. The refusal is correct. What makes it recur is that the refused position is the one authoring instinct reaches for first, and nothing objects until a compile that may be minutes away.",
+
+    "FOUR INSTANCES IN ONE DAY BY ONE AUTHOR, 2026-09-17, which is why this is a row and not a note. (1) extdeps.cloud.gcp.iam_admin: a block explaining the two service-account policy operations, written inside the service body. (2) the same file again, a block above operation CreateWorkloadIdentityPool stating the 32-character display-name cap, still inside the service. (3) the same file a third time, a block above the output field of GetServiceAccountIamPolicy explaining why bindings and version are optional. (4) gunbc.auth.heal_publisher_provision, a block above a `let` inside bind_publisher_impersonation explaining what an absent bindings array means.",
+
+    "THE FOURTH ONE REACHED CI, AND THE REASON IS THE TRANSFERABLE PART. The first three were caught by local compile sweeps. The fourth was added AFTER the last local compile of that file and the file was never recompiled before commit, so the refusal first appeared in the required-witnesses-floor lane -- where it did not present as an annotation defect at all. It presented as `ArmSetConsumerPlanningUnavailable: no parse-phase declaration index was lent to the floor`, because a parse refusal denies the floor its index and the floor reports the CONSEQUENCE. Six parse-FAIL lines were in the same log, above the refusal, and a reader watching for the floor's own vocabulary would scroll past them.",
+
+    "A FIFTH INSTANCE, SAME DAY, DIFFERENT ARM, AND IT LANDED AFTER THIS ROW WAS FILED. A closing note
+explaining what a witness module deliberately does NOT claim was written at END OF FILE, below the
+last declaration. The refusal is a different sentence -- `source annotation names no subject: no
+module item follows it` -- because the rule is not only about being INSIDE a body: an annotation
+must ATTACH to a module item, so a trailing block attaches to nothing. Twenty-four lines refused at
+once. The authoring instinct is the same one in a new position: the note was about the module as a
+whole, and end-of-file reads like where a summary goes. It belongs at the top, on the module's first
+item.",
+
+    "AND THE MITIGATION THIS ROW ORIGINALLY PRESCRIBED DID NOT CATCH IT, which is worth more than the
+instance. The row said to recompile any file whose diff adds a `//` line; that was followed, and the
+run still reported nothing, because the reader filtered its output through an allow-list of
+anticipated failure shapes and `source annotation names no subject` was not among them. Two rows
+compound here: this one and a_result_filter_admits_only_anticipated_failures. A mitigation that
+depends on READING the output of the check it prescribes inherits every defect of how that output is
+read, so the recompile habit is only as good as the exit code being consumed.",
+
+    "WHY HOISTING IS A REAL LOSS AND NOT JUST A CHORE: the annotation exists to sit beside its subject. Moved to module-item grain it becomes a paragraph naming the operation or field it used to be adjacent to -- which is a positional citation in prose, the thing DESIGN section 3's standing rule says decays. The corpus accepts that cost today because the alternative is annotations the compiler cannot see at all; it is not a cost-free relocation and should not be written up as one.",
+
+    "ATTAINABLE CEILING: structurally impossible at the point of authoring, by carrying annotation grain the model admits where authors actually write -- operation, field, arm -- so the natural position parses and the hoist is unnecessary. That is a language change, not a corpus change. NEXT-RUNG TRIGGER: annotation capture at declaration-member grain in the .dag realization, with occurrence identity still disjoint from semantic identity (adding, deleting or moving one may not alter any semantic hash), and a discriminating red showing a member-grain annotation parsed and erased rather than refused.",
+
+    "A SIXTH INSTANCE, AND IT FALSIFIED THIS ROW'S MITIGATION A SECOND TIME -- BY NAMING THE WRONG TOOL. Same trailing-block arm as the fifth: removing a claim left its explanatory block below the last declaration. The row already said to recompile any file whose diff adds a // line, and that WAS done -- with claim_batch, which resolved the file and reported 12/12 at exit 0. The required floor's parse phase refuses the same bytes with `source annotation names no subject`. CLAIM_BATCH DOES NOT ENFORCE THE ANNOTATION-SUBJECT RULE; `gunbc compile` DOES. A mitigation that says recompile is worthless if the tool reached for cannot express the failure.",
+
+    "THAT IS THE THIRD DISTINCT SHAPE OF ONE ERROR IN A SINGLE SESSION: evidence gathered through a channel that cannot carry the red. A filter matching only anticipated failure shapes (a_result_filter_admits_only_anticipated_failures), a grep that silently exceeded its engine's complexity limit and returned zero, and now a verification tool that does not implement the rule being verified. All three produced output indistinguishable from success. The generalisation worth carrying: before trusting a check, ask what it would PRINT if the thing you fear were true, and whether this tool is even the one that decides it.",
+
+    "UNTIL THEN, THE CHEAP MITIGATION IS A HABIT WITH A MECHANICAL TRIGGER, not vigilance: any edit that ADDS a `//` line must be followed by `gunbc compile` OF THAT FILE -- not a claim run, which does not enforce this rule -- before commit, because this class is invisible to every other check and its CI presentation names a different subsystem. The review tell is a diff that adds comment lines inside a `service`, `operation`, `type` or `fn` body; the grep is a `//` at an indentation greater than zero.",
+  ],
+
+  evidence: [],
+}
