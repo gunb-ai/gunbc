@@ -62,6 +62,14 @@ data field_default_source: String = "module m\nservice S {\n  operation Op {\n  
 
 data field_default_without_expr_red_source: String = "module m\nservice S {\n  operation Op {\n    input { max_depth: Int = }\n  }\n}\n"
 
+// The service body of dag/extdeps/access/posix_effective_principal_read_op.dag, the first native
+// fatal this family exists to clear: newline-separated output fields, exit, mock_response.
+data posix_effective_principal_service_source: String = "module m\nservice access.PosixEffectivePrincipal {\n  operation Read {\n    input { read: EffectivePosixPrincipalRead }\n    output {\n      exit_code: Int from \"exit_code\"\n      success: Bool from \"exit_success\"\n      stdout: String from \"stdout\"\n      stderr: String from \"stderr\"\n    }\n    readonly\n\n    transport shell { argv: [\"whoami\"] }\n    exit {\n      0 => Unit\n      nonzero => String \"whoami failed\"\n    }\n    mock_response {\n      0 => { exit_code: 1, success: false, stdout: \"\", stderr: \"unavailable\" } \"hermetic refuses\"\n    }\n  }\n}\n"
+
+data remaining_arms_service_source: String = "module m\nservice S {\n  transport rest { base: \"u\" }\n  operation Op {\n    input { x: Int }\n    idempotent\n    hermetic\n    response {\n      200 => Int\n      404 => String \"missing\"\n    }\n  }\n}\n"
+
+data exit_entry_without_arrow_red_source: String = "module m\nservice S {\n  operation Op {\n    exit {\n      0 Unit\n    }\n  }\n}\n"
+
 data keyword_as_name_source: String = "module m\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
 
 test fn fn_control_still_parses_holds() -> Bool {
@@ -104,4 +112,16 @@ test fn field_default_parses_holds() -> Bool {
 
 test fn field_default_without_expr_still_refuses_holds() -> Bool {
   refuses(src: field_default_without_expr_red_source)
+}
+
+test fn posix_effective_principal_service_parses_holds() -> Bool {
+  parses(src: posix_effective_principal_service_source)
+}
+
+test fn remaining_service_arms_parse_holds() -> Bool {
+  parses(src: remaining_arms_service_source)
+}
+
+test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
+  refuses(src: exit_entry_without_arrow_red_source)
 }
