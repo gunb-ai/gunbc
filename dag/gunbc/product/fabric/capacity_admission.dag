@@ -118,7 +118,6 @@ type RouteExercisePlacement<P> sole_constructor {
   work: FabricIdentity<P, WorkKey>
   requirements: ExecutionRequirements
   permit: ProviderUsePermit<P>
-  route: ProviderRoute
 }
 
 type CapacityAdmission<P>
@@ -316,7 +315,6 @@ fn admit_use_for<P>(
                     work: scope.work,
                     requirements: requirements,
                     permit: permit,
-                    route: facts.route,
                   },
                 }
             }
