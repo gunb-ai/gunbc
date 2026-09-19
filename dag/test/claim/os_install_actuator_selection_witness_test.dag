@@ -47,6 +47,15 @@ data unsatisfiable_actuator_selection_fixture: OsInstallActuatorSelection = Actu
   reason: "fixture: no candidate host satisfies the srv3 actuator requirement conjunction",
 }
 
+// A SUPPLIED resolved image, so the actuator selection is the only thing here that can refuse.
+data srv3_resolved_image_fixture: SeededImageResolution = SeededImageResolved {
+  built: ubuntu_seeded_install_media_built(
+    input: srv3_seeded_install_media_input,
+    output_digest: "abababababababababababababababababababababababababababababababab",
+  ),
+  path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-srv3-seeded-abababababababab.iso",
+}
+
 test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
   match actuator_step_realization_under(
     step: os_install_actuator_steps(
@@ -54,12 +63,14 @@ test fn unsatisfiable_selection_refuses_the_nbd_proxy_serve_step() -> Bool {
       export: srv3_nbd_proxy_export_placeholder,
     ).first(),
     selection: unsatisfiable_actuator_selection_fixture,
+    image: srv3_resolved_image_fixture,
   ) {
     ActuatorStepRefused { cause: c } =>
       match c {
         ActuatorStepActuatorHostUnsatisfiable { step: _, reason: why } =>
           string_contains(s: why, pattern: "fixture: no candidate host")
         ActuatorStepRealizationAbsent { step: _ } => false
+        ActuatorStepImageUnresolved { step: _, reason: _ } => false
       }
     ActuatorStepReady { intent: _ } => false
   }
@@ -95,6 +106,7 @@ test fn unsatisfiable_selection_names_the_selection_not_the_inventory() -> Bool 
     kind: OsInstallActuator,
     host: operator_host_srv3,
     selection: unsatisfiable_actuator_selection_fixture,
+    image: srv3_resolved_image_fixture,
   ) {
     ReachActuatorUnsatisfiable { reason: why } =>
       string_contains(s: why, pattern: "fixture: no candidate host")

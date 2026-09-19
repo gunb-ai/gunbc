@@ -37,7 +37,13 @@ import gunbc.os_install_actuator_selection {
   ActuatorSelected, ActuatorUnsatisfiable,
 }
 import gunbc.fleet_intent { srv3_host, ComputeHost }
-import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
+import gunbc.seeded_install_media_publish {
+  SeededImageResolution,
+  SeededImageResolved,
+  SeededImageNotBuilt,
+  SeededImageRecordDiverged,
+  SeededImageUnobservable,
+}
 import gunbc.os_install_mechanism {
   OsInstallMechanism,
   VirtualMediaInstall,
@@ -156,12 +162,13 @@ type OsInstallActuatorPlanStanding
 fn os_install_actuator_plan_standing_for(
   solution: OsInstallMechanismSolution,
   export: NbdProxyServeInterface,
+  image: SeededImageResolution,
 ) -> OsInstallActuatorPlanStanding {
   match solution {
     OsInstallMechanismSelected { mechanism: m } =>
       match os_install_actuator_plan(mechanism: m, export: export) {
         p =>
-          match actuator_plan_realization(steps: p.steps) {
+          match actuator_plan_realization(steps: p.steps, image: image) {
             ActuatorPlanRealized { intents: xs } => ActuatorPlanReady { plan: p, intents: xs }
             ActuatorPlanUnrealized { refusals: rs } =>
               ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: rs } }
@@ -172,10 +179,13 @@ fn os_install_actuator_plan_standing_for(
   }
 }
 
-data srv3_os_install_actuator_plan_standing: OsInstallActuatorPlanStanding = os_install_actuator_plan_standing_for(
-  solution: srv3_install_mechanism_solution,
-  export: srv3_nbd_proxy_export_placeholder
-)
+fn srv3_os_install_actuator_plan_standing(image: SeededImageResolution) -> OsInstallActuatorPlanStanding {
+  os_install_actuator_plan_standing_for(
+    solution: srv3_install_mechanism_solution,
+    export: srv3_nbd_proxy_export_placeholder,
+    image: image,
+  )
+}
 
 // An unrealized step is a REFUSAL, not an absence. The Optional form below returned Absent for
 // the three steps with no realization, and Absent is indistinguishable from "this step needs no
@@ -186,6 +196,7 @@ data srv3_os_install_actuator_plan_standing: OsInstallActuatorPlanStanding = os_
 type ActuatorStepRefusal
   = ActuatorStepRealizationAbsent { step: OsInstallActuatorStep }
   | ActuatorStepActuatorHostUnsatisfiable { step: OsInstallActuatorStep, reason: String }
+  | ActuatorStepImageUnresolved { step: OsInstallActuatorStep, reason: String }
 
 type ActuatorStepRealization
   = ActuatorStepReady { intent: HostEffectIntent }
@@ -197,12 +208,12 @@ type ActuatorPlanRealization
 
 // Accumulates every unrealized step rather than stopping at the first: which effects are missing
 // is the actionable fact, and reporting one of three hides the size of the gap.
-fn actuator_plan_realization(steps: List<OsInstallActuatorStep>) -> ActuatorPlanRealization {
+fn actuator_plan_realization(steps: List<OsInstallActuatorStep>, image: SeededImageResolution) -> ActuatorPlanRealization {
   fold(
     steps,
     init: ActuatorPlanRealized { intents: [] },
     f: fn(acc, step) {
-      match actuator_step_realization(step: step) {
+      match actuator_step_realization(step: step, image: image) {
         ActuatorStepReady { intent: i } =>
           match acc {
             ActuatorPlanRealized { intents: xs } =>
@@ -220,13 +231,27 @@ fn actuator_plan_realization(steps: List<OsInstallActuatorStep>) -> ActuatorPlan
   )
 }
 
-fn actuator_step_realization(step: OsInstallActuatorStep) -> ActuatorStepRealization {
-  actuator_step_realization_under(step: step, selection: srv3_os_install_actuator_selection)
+fn actuator_step_realization(step: OsInstallActuatorStep, image: SeededImageResolution) -> ActuatorStepRealization {
+  actuator_step_realization_under(step: step, selection: srv3_os_install_actuator_selection, image: image)
+}
+
+// WHICH BYTES THE NBD STEP SERVES is the seeded image the actuator host's derivation record resolves
+// to, re-measured at resolution. An image that is not built, whose record disagrees with its bytes,
+// or that cannot be observed is a refusal of the serve step -- never a path the step serves anyway.
+fn actuator_image_unresolved_reason(image: SeededImageResolution) -> String {
+  match image {
+    SeededImageResolved { built: _, path: p } => concat("resolved at ", p as String)
+    SeededImageNotBuilt { record_path: r } => concat("no derivation record at ", r as String)
+    SeededImageRecordDiverged { path: p, recorded: r, observed: o } =>
+      concat("record names ", r as String, " but ", p as String, " reads ", o)
+    SeededImageUnobservable { reason: r } => r
+  }
 }
 
 fn actuator_step_realization_under(
   step: OsInstallActuatorStep,
   selection: OsInstallActuatorSelection,
+  image: SeededImageResolution,
 ) -> ActuatorStepRealization {
   match step {
     ActuatorBootOnce { target: t, enabled: e } =>
@@ -263,23 +288,33 @@ fn actuator_step_realization_under(
             }
           }
         ActuatorSelected { host: actuator_host } =>
-          ActuatorStepReady {
-            intent: HostEffectIntent {
-              target: HostOs { node: actuator_host },
-              effect: Srv3NbdProxyServe {
-                intent: nbd_proxy_serve_transport_intent(
-                  bmc_host: asrock_srv3_live_bmc_host,
-                  session_token: bmcweb_session_token_env_ref,
-                  ws_path: bmcweb_nbd_proxy_ws_path(variant: ep, slot: s, index: i),
-                  iso_path: srv3_actuator_virtual_media_iso_install_path,
-                  local_nbd_port: srv3_nbd_proxy_local_port,
-                ),
-                lease_key: srv3_nbd_proxy_lease_key,
-              },
-              evidence: host_effect_identity_evidence,
-              transport: LocalShell,
-              privilege_denial: none,
-            }
+          match image {
+            SeededImageResolved { built: _, path: iso_path } =>
+              ActuatorStepReady {
+                intent: HostEffectIntent {
+                  target: HostOs { node: actuator_host },
+                  effect: Srv3NbdProxyServe {
+                    intent: nbd_proxy_serve_transport_intent(
+                      bmc_host: asrock_srv3_live_bmc_host,
+                      session_token: bmcweb_session_token_env_ref,
+                      ws_path: bmcweb_nbd_proxy_ws_path(variant: ep, slot: s, index: i),
+                      iso_path: iso_path,
+                      local_nbd_port: srv3_nbd_proxy_local_port,
+                    ),
+                    lease_key: srv3_nbd_proxy_lease_key,
+                  },
+                  evidence: host_effect_identity_evidence,
+                  transport: LocalShell,
+                  privilege_denial: none,
+                }
+              }
+            _ =>
+              ActuatorStepRefused {
+                cause: ActuatorStepImageUnresolved {
+                  step: ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: exp },
+                  reason: actuator_image_unresolved_reason(image: image),
+                }
+              }
           }
       }
     ActuatorRedfishInsertMedia =>

@@ -54,3 +54,14 @@ type UbuntuAutoinstallPayload {
   ssh_password_auth: Bool
   storage_policy: AutoinstallStoragePolicy
 }
+
+// A LIVE-SESSION autoinstall: upstream's `early-commands` run in the live installer environment
+// before any other autoinstall step, and `interactive-sections: ["*"]` hands every section after them
+// to a human. So the commands are the whole unattended content of the seed, and nothing that writes
+// storage runs unless someone at the console drives it. Both keys and their semantics are the
+// autoinstall reference's (module anchor); the type carries no identity or storage because an
+// all-interactive session asks for them at the console instead.
+type UbuntuAutoinstallLiveCommands {
+  autoinstall_version: Int
+  early_commands: List<NonEmptyStr>
+}

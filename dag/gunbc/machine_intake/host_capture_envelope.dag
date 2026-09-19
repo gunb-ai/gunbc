@@ -1,0 +1,221 @@
+module gunbc.machine_intake_host_capture_envelope
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import v2.std.optional { Present }
+
+// ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
+// this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
+// independently -- the parser as literals in gunbc.machine_intake_mtcollins1_boot_run, the emitter as
+// a program that was never committed at all -- so a renamed section or a changed separator would
+// have left a capture the verdict could not read, reported as a hardware refusal. Every token below
+// is consumed by a renderer AND by a parser; neither side authors a spelling of its own.
+//
+// THE SHAPE IS A RECONSTRUCTION, and it says what from. The only surviving evidence of the earlier
+// census is its output, artifacts/bmc/mtcollins1-host-capture.txt (attempt=3, committed in #10965);
+// the seed and program that produced it are in no commit. The framing, section names and argv here
+// are read off that file's ENVELOPE, ----SECTION, ----ARGV and ----EXIT lines, so a capture from the
+// new image parses the same way that one does.
+
+data host_capture_envelope_tag: NonEmptyStr = "GUNBC-HOST-CAPTURE"
+
+data host_capture_envelope_rule: String = "====="
+
+data host_capture_section_open: String = "----SECTION "
+
+data host_capture_argv_open: String = "----ARGV "
+
+data host_capture_exit_open: String = "----EXIT "
+
+data host_capture_line_close: String = "----"
+
+// The edac stages print one `<path> == <value>` line per counter file, which is what lets the
+// verdict read mc0's ce_count and ue_count out of a section without trusting a whole-tree summary.
+data host_capture_counter_separator: String = " == "
+
+data host_capture_edac_root: String = "/sys/devices/system/edac"
+
+data host_capture_edac_mc0: String = "/sys/devices/system/edac/mc/mc0/"
+
+data host_capture_workload_write_rc_token: String = "workload-write-rc="
+
+data host_capture_workload_stable_token: String = "workload-digest-stable=yes"
+
+type HostCaptureEnvelopeMarker = HostCaptureBegin | HostCaptureEnd
+
+fn host_capture_marker_word(marker: HostCaptureEnvelopeMarker) -> String {
+  match marker {
+    HostCaptureBegin => "begin"
+    HostCaptureEnd => "end"
+  }
+}
+
+// A stage is one section of the envelope: the name the verdict looks it up by, and the command the
+// program runs. The command is printed VERBATIM on the ARGV line, so what a reader sees is what ran.
+type HostCaptureStage {
+  name: NonEmptyStr
+  command: NonEmptyStr
+}
+
+fn host_capture_edac_counters_command() -> NonEmptyStr {
+  concat(
+    "find ", host_capture_edac_root,
+    " -type f -name '*count' | sort | while read -r f; do echo \"$f",
+    host_capture_counter_separator,
+    "$(cat \"$f\")\"; done",
+  ) as NonEmptyStr
+}
+
+// The workload is the one from attempt=3 and it tests the DATA rather than the controller's account
+// of it: urandom-seeded tmpfs chunks hashed in two passes that must agree. Its two tokens are what
+// the verdict reads; a failed write prints a nonzero rc and a disagreeing pass prints no stable line.
+fn host_capture_workload_command() -> NonEmptyStr {
+  concat(
+    "mkdir -p /dev/shm/gunbc && rc=0; for i in 0 1 2 3; do ",
+    "dd if=/dev/urandom of=/dev/shm/gunbc/chunk$i bs=1M count=16384 status=none || rc=1; done; ",
+    "echo ", host_capture_workload_write_rc_token, "$rc; ",
+    "a=$(sha256sum /dev/shm/gunbc/chunk* | sort); b=$(sha256sum /dev/shm/gunbc/chunk* | sort); ",
+    "echo \"$a\"; [ \"$rc\" = 0 ] && [ \"$a\" = \"$b\" ] && echo ", host_capture_workload_stable_token,
+    "; rm -rf /dev/shm/gunbc; [ \"$rc\" = 0 ] && [ \"$a\" = \"$b\" ]",
+  ) as NonEmptyStr
+}
+
+// The census roster, in run order. The envelope's END marker follows the last stage and is the only
+// thing that may precede the halt; it is not a section, because a section can fail and still be
+// followed by more output, whereas END is the program's statement that it wrote everything.
+data host_capture_census_stages: List<HostCaptureStage> = [
+  HostCaptureStage { name: "subject-system", command: "dmidecode --type 1" },
+  HostCaptureStage { name: "subject-baseboard", command: "dmidecode --type 2" },
+  HostCaptureStage { name: "subject-chassis", command: "dmidecode --type 3" },
+  HostCaptureStage { name: "boot-media", command: "ls -l /dev/disk/by-label; blkid" },
+  HostCaptureStage { name: "nproc", command: "nproc" },
+  HostCaptureStage { name: "edac-before", command: host_capture_edac_counters_command() },
+  HostCaptureStage { name: "workload", command: host_capture_workload_command() },
+  HostCaptureStage { name: "edac-after", command: host_capture_edac_counters_command() },
+]
+
+fn host_capture_marker_line(machine: NonEmptyStr, marker: HostCaptureEnvelopeMarker) -> String {
+  concat(
+    host_capture_envelope_rule, host_capture_envelope_tag as String, " ", machine as String,
+    " attempt=$GUNBC_ATTEMPT ", host_capture_marker_word(marker: marker),
+    " $(date -u +%Y-%m-%dT%H:%M:%SZ)", host_capture_envelope_rule,
+  )
+}
+
+fn host_capture_sh_quote(s: String) -> String {
+  concat("'", join(split(s: s, delimiter: "'"), "'\\''"), "'")
+}
+
+fn host_capture_stage_program(stage: HostCaptureStage) -> String {
+  let name = stage.name as String
+  concat(
+    "echo ", host_capture_sh_quote(s: concat(host_capture_section_open, name, host_capture_line_close)), "\n",
+    "echo ", host_capture_sh_quote(s: concat(host_capture_argv_open, name, ": ", stage.command as String)), "\n",
+    "sh -c ", host_capture_sh_quote(s: stage.command as String), " 2>&1\n",
+    "echo \"", host_capture_exit_open, name, ": $?\"\n",
+  )
+}
+
+// The whole program. Output goes to the console device ONLY, so the envelope is what the BMC's SOL
+// collector records; `sync` then the halt run only after END is echoed. The halt is a parameter
+// because it is the one line whose effect is on the machine rather than the envelope: the census
+// image halts with a forced power-off, and an execution witness renders the same program with a
+// halt that returns.
+fn host_capture_program(
+  machine: NonEmptyStr,
+  console_device: NonEmptyStr,
+  stages: List<HostCaptureStage>,
+  halt_command: NonEmptyStr,
+) -> NonEmptyStr {
+  concat(
+    "#!/bin/sh\n",
+    "exec >", console_device as String, " 2>&1\n",
+    "GUNBC_ATTEMPT=$(cat /proc/sys/kernel/random/boot_id)\n",
+    "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureBegin), "\"\n",
+    join(map(stages, s => host_capture_stage_program(stage: s)), ""),
+    "echo \"", host_capture_marker_line(machine: machine, marker: HostCaptureEnd), "\"\n",
+    "sync\n",
+    halt_command as String, "\n",
+  ) as NonEmptyStr
+}
+
+fn host_capture_section(capture: String, name: String) -> String? {
+  fold(
+    split(s: capture, delimiter: host_capture_section_open),
+    init: none,
+    f: (acc, part) => match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if starts_with(s: part, prefix: concat(name, host_capture_line_close)) {
+          Present { value: part }
+        } else {
+          none
+        }
+    },
+  )
+}
+
+fn host_capture_exit_zero_line(name: String) -> String {
+  concat(host_capture_exit_open, name, ": 0")
+}
+
+fn host_capture_section_exit_zero(capture: String, name: String) -> Bool {
+  match host_capture_section(capture: capture, name: name) {
+    Absent => false
+    Present { value: section } => string_contains(s: section, pattern: host_capture_exit_zero_line(name: name))
+  }
+}
+
+fn host_capture_has_marker(capture: String, machine: NonEmptyStr, marker: HostCaptureEnvelopeMarker) -> Bool {
+  fold(
+    split(s: capture, delimiter: "\n"),
+    init: false,
+    f: (acc, line) =>
+      acc || (
+        string_contains(s: line, pattern: concat(host_capture_envelope_tag as String, " ", machine as String, " "))
+          && string_contains(s: line, pattern: concat(" ", host_capture_marker_word(marker: marker), " "))
+      ),
+  )
+}
+
+fn host_capture_envelope_complete(capture: String, machine: NonEmptyStr) -> Bool {
+  host_capture_has_marker(capture: capture, machine: machine, marker: HostCaptureBegin)
+    && host_capture_has_marker(capture: capture, machine: machine, marker: HostCaptureEnd)
+}
+
+// The count must be the WHOLE output line of the nproc section, immediately before that section's
+// zero exit: a 160 printed anywhere else in the capture, or inside nproc beside other text, is not
+// a reading of nproc.
+fn host_capture_nproc_exact(capture: String, threads: String) -> Bool {
+  match host_capture_section(capture: capture, name: "nproc") {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: concat("\n", threads, "\n", host_capture_exit_zero_line(name: "nproc")))
+  }
+}
+
+fn host_capture_mc0_counter(section: String, counter: String, value: String) -> Bool {
+  string_contains(s: section, pattern: concat(host_capture_edac_mc0, counter, host_capture_counter_separator, value, "\n"))
+}
+
+fn host_capture_edac_clean_section(capture: String, name: String) -> Bool {
+  match host_capture_section(capture: capture, name: name) {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: host_capture_exit_zero_line(name: name))
+        && host_capture_mc0_counter(section: section, counter: "ce_count", value: "0")
+        && host_capture_mc0_counter(section: section, counter: "ue_count", value: "0")
+  }
+}
+
+// Both tokens are matched as WHOLE OUTPUT LINES. The ARGV line prints the workload command verbatim
+// and that command contains both tokens, so a substring match reads the program text as its own
+// result and a failed workload passes.
+fn host_capture_workload_stable(capture: String) -> Bool {
+  match host_capture_section(capture: capture, name: "workload") {
+    Absent => false
+    Present { value: section } =>
+      string_contains(s: section, pattern: host_capture_exit_zero_line(name: "workload"))
+        && string_contains(s: section, pattern: concat("\n", host_capture_workload_write_rc_token, "0\n"))
+        && string_contains(s: section, pattern: concat("\n", host_capture_workload_stable_token, "\n"))
+  }
+}

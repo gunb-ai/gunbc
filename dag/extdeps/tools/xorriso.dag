@@ -62,22 +62,23 @@ service xorriso.Iso {
     }
   }
 
-  operation ReplayBuildWithTwoMaps {
+  operation ReplayBuildPinnedDates {
     input {
       stock_iso_path: NonEmptyStr,
       output_path: NonEmptyStr,
       volume_id: NonEmptyStr,
-      map_one_source: NonEmptyStr,
-      map_one_iso_path: NonEmptyStr,
-      map_two_source: NonEmptyStr,
-      map_two_iso_path: NonEmptyStr,
+      volume_uuid: NonEmptyStr,
+      file_date: NonEmptyStr,
+      seed_source: NonEmptyStr,
+      seed_iso_path: NonEmptyStr,
+      grub_cfg_source: NonEmptyStr,
     }
     output { success: Bool from "exit_success" }
     transport shell {
-      argv: ["xorriso", "-indev", "{stock_iso_path}", "-outdev", "{output_path}", "-boot_image", "any", "replay", "-volid", "{volume_id}", "-map", "{map_one_source}", "{map_one_iso_path}", "-map", "{map_two_source}", "{map_two_iso_path}", "-commit"]
+      argv: ["xorriso", "-indev", "{stock_iso_path}", "-outdev", "{output_path}", "-boot_image", "any", "replay", "-volid", "{volume_id}", "-volume_date", "uuid", "{volume_uuid}", "-volume_date", "all_file_dates", "{file_date}", "-map", "{seed_source}", "{seed_iso_path}", "-map", "{grub_cfg_source}", "/boot/grub/grub.cfg", "-commit"]
     }
     exit {
-      0 => Unit
+      0 => Unit "-volume_date uuid fixes the volume creation/modification dates (and the medium's UUID); -volume_date all_file_dates overrides every file's timestamps, so the build instant does not reach the bytes"
       nonzero => String "xorriso -boot_image any replay build failed"
     }
   }

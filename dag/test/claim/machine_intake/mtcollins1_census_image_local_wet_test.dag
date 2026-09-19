@@ -1,0 +1,80 @@
+module test.claim.mtcollins1_census_image_local_wet
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, List }
+import extdeps.exec.command { LocalExec }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.command_runner { run_shell_command_observe }
+import gunbc.machine_intake_host_capture_envelope {
+  HostCaptureStage,
+  host_capture_program,
+  host_capture_envelope_complete,
+  host_capture_nproc_exact,
+  host_capture_edac_clean_section,
+  host_capture_workload_stable,
+  host_capture_section_exit_zero,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE HALF OF test.claim.mtcollins1_census_image (DESIGN §3: a supplied input owes one
+// claim that the real producer emits that shape). The hermetic file hands the parser designed
+// captures; these two claims run the real producers. The first reads the one capture a census host
+// has actually written. The second executes the PROGRAM THE RENDERER WRITES under a real shell and
+// hands its real output to the parser, so the route asserted is render -> run -> parse and not a
+// string built from the same tokens the parser reads.
+//
+// It is local-wet for the reason the precedent in test.claim.spark_snapshot_verify_wrapper_local_wet
+// gives: shell.Exec.RunArgv and Filesystem.Read carry no mock_response, and their subject here is the
+// output of a real process and the bytes of a real file. Nothing leaves the host; there is no network.
+//
+// attempt=3 was written by the program this grammar reconstructs, so the grammar must read it on
+// every axis the census verdict uses. A reconstruction that drifted from the real framing fails here.
+test fn the_attempt_three_capture_parses_under_the_reconstructed_grammar() -> Bool {
+  let read = Filesystem.Read(path: "artifacts/bmc/mtcollins1-host-capture.txt")
+  let capture = read.content
+  read.success
+    && host_capture_envelope_complete(capture: capture, machine: "mtcollins1")
+    && host_capture_nproc_exact(capture: capture, threads: "160")
+    && host_capture_edac_clean_section(capture: capture, name: "edac-before")
+    && host_capture_edac_clean_section(capture: capture, name: "edac-after")
+    && host_capture_workload_stable(capture: capture)
+    && host_capture_section_exit_zero(capture: capture, name: "boot-media")
+}
+
+// A roster whose stages print what the census stages print, cheaply: the nproc reading, mc0's counter
+// lines, the workload's two result tokens, and one stage that FAILS so the exit framing is exercised
+// on a nonzero status as well as zero. The halt returns, so running it halts nothing.
+data census_round_trip_stages: List<HostCaptureStage> = [
+  HostCaptureStage { name: "nproc", command: "echo 160" },
+  HostCaptureStage {
+    name: "edac-before",
+    command: "printf '/sys/devices/system/edac/mc/mc0/ce_count == 0\\n/sys/devices/system/edac/mc/mc0/ue_count == 0\\n'",
+  },
+  HostCaptureStage { name: "workload", command: "echo workload-write-rc=0; echo workload-digest-stable=yes" },
+  HostCaptureStage { name: "boot-media", command: "echo 'it'\\''s quoted'; exit 3" },
+]
+
+test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> Bool {
+  let program = host_capture_program(
+    machine: "witness",
+    console_device: "/dev/stdout",
+    stages: census_round_trip_stages,
+    halt_command: "true",
+  )
+  let obs = run_shell_command_observe(
+    command: posix_sh_program_command(script: program as String),
+    transport: LocalExec,
+  )
+  let out = obs.stdout
+  obs.exit_code == 0
+    && host_capture_envelope_complete(capture: out, machine: "witness")
+    && host_capture_nproc_exact(capture: out, threads: "160")
+    && host_capture_edac_clean_section(capture: out, name: "edac-before")
+    && host_capture_workload_stable(capture: out)
+    && host_capture_section_exit_zero(capture: out, name: "boot-media") == false
+    && string_contains(s: out, pattern: "----EXIT boot-media: 3")
+    && string_contains(s: out, pattern: "\nit's quoted\n")
+}
