@@ -619,11 +619,7 @@ fn run_witnesses(
     ctx.set_witness_eval_budget(eval_budget_ms);
     for function in &group.functions {
         run_claim_timed(&ctx, &closure_subject, function, timings);
-        // The eval-call memo's eviction scope is the witness frame, not this
-        // shared per-entry ctx — ctx-lifetime retention of argument+result
-        // values across witnesses is byte-unbounded (20GiB-class kills).
         v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
-        v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
     }
     Ok(())
 }
@@ -913,11 +909,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         ctx.set_witness_eval_budget(eval_budget_ms);
         for function in &group.functions {
             run_claim_timed(&ctx, &closure_subject, function, &mut timings);
-            // Witness frame exit on the single-entry fast path too — this is
-            // the exact path the 6-witness 20GiB-kill recipe runs (the memo
-            // must not retain values across witnesses sharing this ctx).
             v1_compiler::v1_interpreter::print_eval_recompute_trace(&ctx);
-            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
         }
         if stats_requested {
             print_interp_stats(&ctx, flatten_baseline);

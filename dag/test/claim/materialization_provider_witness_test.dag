@@ -710,8 +710,8 @@ test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
   ))
 }
 
-test fn consumer_target_frontier_names_seven_caches_with_typed_binds() -> Bool {
-  (materialization_provider_target_count() == 7)
+test fn consumer_target_frontier_names_six_caches_with_typed_binds() -> Bool {
+  (materialization_provider_target_count() == 6)
     && materialization_provider_targets_contain(id: resolved_graph_cache_id)
     && materialization_provider_targets_all_bound()
 }

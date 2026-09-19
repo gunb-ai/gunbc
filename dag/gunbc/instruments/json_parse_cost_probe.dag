@@ -1,0 +1,57 @@
+module tools.json_parse_cost_probe
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text }
+import extdeps.languages.json.emit { serialize_json }
+import v2.std.algebra { list_snoc_item }
+
+// THE INSTRUMENT for gunbc.recurring_failure_mode.memo_key_rehashes_a_growing_persistent_value's
+// second instance: a document threaded whole through every recursive parse call, at a series of
+// sizes, so the cost curve of the seed's pure-call path is re-derived by running this rather than
+// transcribed. One document per member count is synthesized (Redfish-event-shaped members, each
+// distinct by Id), parsed with parse_json_document, and its result -- the serialized value on a
+// parse, the gap text on a refusal -- is written beside a BEGIN marker; the pair's modification
+// times bracket the parse and the .out files are the semantic receipt, byte-comparable across
+// binaries (memo-on seed versus admission-first seed). Three refusal subjects ride the same
+// route so refusal equality is part of the same comparison: malformed, truncated, and trailing.
+//
+// gunbc run --source-root dag --source-root src/v2 \
+//   --entry dag/gunbc/instruments/json_parse_cost_probe.dag --function probe --arg report=/tmp/json-parse-cost
+// Peak retained memory is read by the shell around that invocation (/usr/bin/time -v), not here.
+fn event_member(n: Int) -> String {
+  join(["{\"@odata.id\":\"/redfish/v1/Managers/bmc/LogServices/EventLog/Entries/", to_string(n),
+        "\",\"Id\":\"", to_string(n),
+        "\",\"Severity\":\"OK\",\"EntryType\":\"Event\",\"Created\":\"2026-09-19T00:00:00+00:00\",\"Message\":\"Sensor threshold crossed and returned to normal\",\"MessageArgs\":[\"Temp_", to_string(n),
+        "\",\"42.5\"],\"Resolved\":false}"], "")
+}
+fn members_loop(n: Int, acc: List<String>) -> List<String> {
+  if n == 0 { acc } else { members_loop(n: n - 1, acc: list_snoc_item(xs: acc, item: event_member(n: n))) }
+}
+fn event_log(members: Int) -> String {
+  join(["{\"Members\":[", join(members_loop(n: members, acc: []), ","), "],\"Members@odata.count\":", to_string(members), "}"], "")
+}
+fn parse_receipt(s: String) -> String {
+  match parse_json_document(s: s) {
+    JsonDocumentParsed { value: v } => join(["PARSED ", serialize_json(v: v)], "")
+    JsonDocumentUnreadable { gap: g } => join(["REFUSED ", json_document_gap_text(gap: g)], "")
+  }
+}
+fn measure(label: String, doc: String, report: String) -> Bool {
+  let begin = Filesystem.Write(path: join([report, label, "begin"], "."), content: to_string(doc.length()))
+  let out = Filesystem.Write(path: join([report, label, "out"], "."), content: parse_receipt(s: doc))
+  begin.success && out.success
+}
+fn probe(report: String) -> ProcessExit {
+  let truncated_source = event_log(members: 50)
+  if measure(label: "malformed", doc: "{\"Members\":[1, 2,, 3]}", report: report)
+    && measure(label: "truncated", doc: substring(truncated_source, 0, truncated_source.length() - 40), report: report)
+    && measure(label: "trailing", doc: join([event_log(members: 3), " ]"], ""), report: report)
+    && measure(label: "m0250", doc: event_log(members: 250), report: report)
+    && measure(label: "m0500", doc: event_log(members: 500), report: report)
+    && measure(label: "m1000", doc: event_log(members: 1000), report: report)
+    && measure(label: "m2000", doc: event_log(members: 2000), report: report)
+    && measure(label: "m4000", doc: event_log(members: 4000), report: report) {
+    ExitSuccess
+  } else { exit_failure(reason: "json parse cost probe output refused") }
+}

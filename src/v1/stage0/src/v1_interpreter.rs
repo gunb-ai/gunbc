@@ -2103,6 +2103,7 @@ fn cross_claim_args_hash(ctx: &InterpContext, args: &[(Option<String>, Value)]) 
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     args.len().hash(&mut hasher);
     for (name, value) in args {
+        note_argument_identity_derived(ctx);
         name.hash(&mut hasher);
         eval_recompute_arg_key(&mut hash_memo, &interner, value)?.hash(&mut hasher);
     }
@@ -4229,72 +4230,18 @@ pub fn refresh_eval_recompute_trace_enabled_cache_for_tests() {
     eval_recompute_trace_refresh_cache();
 }
 
-// The eval-frame memo: the ladder's single-site discharge provider, realized in the seed.
-// Buckets by the ledger key (fn identity x argument identity), serves only after the stored
-// call's argument names AND values verify equal — a collision degrades to recompute, never a
-// wrong value. Eviction is ScopeExit at the WITNESS frame: batch surfaces share one ctx across
-// an entry's witnesses and call eval_call_memo_frame_exit after each claim fn (ctx-lifetime
-// retention of argument+result values is byte-unbounded — the 2026-07-10 20GiB-class
-// regression). Admission stops at the entry cap with the refusal COUNTED (overflow). Default
-// ON everywhere; GUNBC_EVAL_MEMO=0 is a diagnostic realization switch (recompute instead of
-// serve, semantics identical), and the receipt discloses hits/misses so a disabled memo shows
-// as memo_hits=0, never assumed working.
-struct EvalCallMemo {
-    // Per-ctx realization switch (GUNBC_EVAL_MEMO read at ctx construction, not a
-    // process-wide latch): provider-attribution tests pin the outer eval-frame provider off on
-    // their own ctx so an inner provider's hit counters stay discriminating; semantics are
-    // identical either way.
-    enabled: bool,
-    map: std::collections::HashMap<EvalRecomputeKey, Vec<(Vec<(Option<String>, Value)>, Value)>>,
-    // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
-    // (same discipline as EvalRecomputeTrace.keepalive_fns).
-    keepalive_fns: Vec<Rc<Node>>,
-    hits: u64,
-    misses: u64,
-    overflow: u64,
+/// How many argument identities this frame has derived so far (see the field). Zero on the
+/// production route: no keying site runs for an undeclared single demand.
+pub fn argument_identities_derived(ctx: &InterpContext) -> u64 {
+    ctx.argument_identities_derived.get()
 }
 
-impl Default for EvalCallMemo {
-    fn default() -> Self {
-        EvalCallMemo {
-            enabled: eval_call_memo_env_default(),
-            map: std::collections::HashMap::new(),
-            keepalive_fns: Vec::new(),
-            hits: 0,
-            misses: 0,
-            overflow: 0,
-        }
-    }
-}
-
-const EVAL_CALL_MEMO_ENTRY_CAP: usize = 1_000_000;
-
-fn eval_call_memo_env_default() -> bool {
-    std::env::var("GUNBC_EVAL_MEMO")
-        .map(|v| v != "0")
-        .unwrap_or(true)
-}
-
-/// Realization switch, per ctx: an inner provider's by-execution receipt suite (e.g. the
-/// parse-table MemoTier's amortization tests) pins the eval-frame provider off so pass-2
-/// demands re-execute and the inner door's hit counters keep discriminating. Values are
-/// identical either way.
-pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
-    ctx.eval_call_memo.borrow_mut().enabled = enabled;
-}
-
-/// Frame exit for the eval-call memo: eviction scope is the WITNESS frame, not the ctx. Batch
-/// surfaces (claim_batch, claim_executor) share one ctx across an entry's witnesses for the
-/// resolve-side ReferenceTier share, but the memo stores full argument+result VALUES, so
-/// ctx-lifetime retention across N witnesses is byte-unbounded (measured 2026-07-10: one
-/// witness plateaus ~3.4GiB, six in one ctx pass ~20GiB to SIGKILL). Called after each claim
-/// function; map and keepalives drain, counters stay CUMULATIVE so receipts remain honest.
-/// Cross-witness serving is an outer-frame promotion that must arrive as a conscious provider
-/// row with byte-bounded admission — never a default.
-pub fn eval_call_memo_frame_exit(ctx: &InterpContext) {
-    let mut m = ctx.eval_call_memo.borrow_mut();
-    m.map.clear();
-    m.keepalive_fns.clear();
+/// One argument position reached `eval_recompute_arg_key`. Called from the three keying sites
+/// (`eval_recompute_key`, `eval_recompute_partial_key`, `cross_claim_args_hash`) and nowhere
+/// else, so the odometer's unit is stated by those call sites rather than by convention.
+fn note_argument_identity_derived(ctx: &InterpContext) {
+    ctx.argument_identities_derived
+        .set(ctx.argument_identities_derived.get().wrapping_add(1));
 }
 
 #[derive(Default, Clone)]
@@ -5010,8 +4957,7 @@ pub struct InterpContext {
     // per call (authored_name_at). Memoized per fn_node pointer. The pointer alone is unsound:
     // the ctx does not own fn_nodes (borrowed `Rc<Node>`s droppable while the ctx lives), so a
     // freed address can be reused and collide. keepalive_fns retains the `Rc<Node>` behind each
-    // key for the ctx's lifetime (as PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns
-    // / EvalCallMemo.keepalive_fns), and the cache dies with the ctx (as data_cache).
+    // key for the ctx's lifetime (as PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns), and the cache dies with the ctx (as data_cache).
     // Value = (filtered named-param list, all-param list), matching call_function's two uses.
     param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
     param_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
@@ -5038,14 +4984,19 @@ pub struct InterpContext {
     pure_call_memo: std::cell::RefCell<PureCallMemo>,
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
-    eval_call_memo: std::cell::RefCell<EvalCallMemo>,
-    // Effect-dispatch odometer, incremented per service-operation dispatch. The eval-call memo
-    // compares it across a named call and refuses to memoize any call during which it advanced
-    // — a WorldRead/effect is never served stale (the uses-empty purity gate is vacuous
-    // corpus-wide: no corpus func declares `uses`, so every effectful wrapper was memo-eligible;
+    // Effect-dispatch odometer, incremented per service-operation dispatch. The cross-claim
+    // tier compares it across a named call and refuses to store any call during which it
+    // advanced — a WorldRead/effect is never served stale (the uses-empty purity gate is vacuous
+    // corpus-wide: no corpus func declares `uses`, so every effectful wrapper was store-eligible;
     // found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
+    // Odometer of ARGUMENT IDENTITIES DERIVED in this frame -- one per argument position that
+    // reached `eval_recompute_arg_key`, whichever keying site asked (the recompute-trace ledger
+    // or the cross-claim tier). It exists so the fact that an undeclared single demand derives
+    // NO identity is executable rather than asserted: the enrolled control reads it back at zero
+    // on the production route and would go red if unconditional keying were restored.
+    argument_identities_derived: std::cell::Cell<u64>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
@@ -5465,9 +5416,9 @@ impl InterpContext {
             pure_call_memo: std::cell::RefCell::new(PureCallMemo::default()),
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
-            eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
             effect_dispatch_count: std::cell::Cell::new(0),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
+            argument_identities_derived: std::cell::Cell::new(0),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new({
                 let mut interner = SymbolInterner::default();
@@ -8419,13 +8370,28 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     call_function(ctx, &fn_node, &args, env)
 }
 
-/// Pure named-fn calls flow through here: the demand ledger records every keyed call, and the
-/// eval-frame memo (the ladder's single-site discharge provider) serves repeats from the first
-/// evaluation. A hit still records the DEMAND — the receipt counts plurality; the provider
-/// changes cost, never count. Soundness: hash-bucketed on the ledger key but served only after
-/// argument names AND values verify equal (Value::eq, the one equality authority) — a collision
-/// degrades to recompute, never a wrong value. Unkeyed calls (closure args) stay unmemoized
-/// and are counted.
+/// Pure named-fn calls flow through here, and ADMISSION PRECEDES IDENTITY. A demand is judged
+/// before any key is built for it, and the judgment is the one `std.materialization_ladder`
+/// already states: a pure demand with no declared plural obligation is AcceptedSingleRecompute,
+/// whose prescription is Recompute -- so it constructs, looks up and retains NO result-memo key
+/// merely because its callee is pure. Two provider tiers still serve, and both are admitted by a
+/// declared judgment consumed BEFORE their key is derived: the cross-claim tier (a roster of
+/// producers whose demands are plural across the floor's isolated claim frames --
+/// `try_cross_claim_pure_memo`, admission by resolved declaration identity, then the content
+/// hash) and the parse-table memo (`try_parse_table_memo_dispatch`, admission by the Memoize
+/// verdict carried on the table). The eval-frame result memo that used to stand here keyed EVERY
+/// pure call in case a second, undeclared demand arrived: a provider whose scope was one
+/// shared-state frame, which the ladder never discharges into (a within-frame repeat is
+/// AuthoredDuplication, prescribed Share, never Memoize), so its admitted population was empty by
+/// construction and the key it built per call was pure cost -- O(|argument|) per call, which on
+/// a fold threading a document through every recursive call is O(n^2)
+/// (gunbc.recurring_failure_mode.memo_key_rehashes_a_growing_persistent_value). It is deleted,
+/// not gated: a gate over an empty admitted set is dead weight of the same kind.
+///
+/// The only remaining keying on this path is the recompute-trace LEDGER, and it is not a
+/// provider: it is the DESIGN section 5 stopped-line audit that measures demand plurality so an
+/// unexpected recurrence can be declared for the next run (ladder rule 4). It keys only under
+/// GUNBC_RECOMPUTE_TRACE=1, which the floor sets for itself, and it serves nothing.
 fn eval_pure_named_call(
     ctx: &InterpContext,
     call_node: &Rc<Node>,
@@ -8445,9 +8411,8 @@ fn eval_pure_named_call(
     } else {
         None
     };
-    let trace_on = eval_recompute_trace_enabled();
-    let memo_on = ctx.eval_call_memo.borrow().enabled;
-    if !trace_on && !memo_on {
+    if !eval_recompute_trace_enabled() {
+        // The production route: no identity is derived for an undeclared single demand.
         let effects_before = ctx.effect_dispatch_count.get();
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
@@ -8471,9 +8436,6 @@ fn eval_pure_named_call(
     let key = match eval_recompute_key(ctx, fn_node, args) {
         Some(key) => key,
         None => {
-            if !trace_on {
-                return call_function(ctx, fn_node, args, env);
-            }
             // TIMED, not merely counted: the composite-argument bucket feeds the cross-claim
             // census, which ranks by duration. Recording after the call is what makes the two
             // buckets comparable; the earlier count-only form could name a producer it could
@@ -8490,21 +8452,6 @@ fn eval_pure_named_call(
             return result;
         }
     };
-    if memo_on {
-        if let Some(v) = eval_call_memo_get(ctx, &key, args) {
-            if trace_on {
-                eval_recompute_record(
-                    ctx,
-                    call_node,
-                    fn_node,
-                    func_name,
-                    key,
-                    started.elapsed().as_nanos(),
-                );
-            }
-            return Ok(v);
-        }
-    }
     let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
@@ -8513,21 +8460,14 @@ fn eval_pure_named_call(
                 store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
         }
     }
-    if memo_on && ctx.effect_dispatch_count.get() == effects_before {
-        if let Ok(v) = &result {
-            eval_call_memo_put(ctx, fn_node, key.clone(), args, v.clone());
-        }
-    }
-    if trace_on {
-        eval_recompute_record(
-            ctx,
-            call_node,
-            fn_node,
-            func_name,
-            key,
-            started.elapsed().as_nanos(),
-        );
-    }
+    eval_recompute_record(
+        ctx,
+        call_node,
+        fn_node,
+        func_name,
+        key,
+        started.elapsed().as_nanos(),
+    );
     result
 }
 
@@ -9102,6 +9042,7 @@ fn eval_recompute_key(
     let interner = ctx.symbols.borrow();
     let mut keys = Vec::with_capacity(args.len());
     for (_, v) in args {
+        note_argument_identity_derived(ctx);
         keys.push(eval_recompute_arg_key(&mut memo, &interner, v)?);
     }
     Some(EvalRecomputeKey {
@@ -9130,6 +9071,7 @@ fn eval_recompute_partial_key(
     let mut keys = Vec::with_capacity(args.len());
     let mut unkeyable = 0usize;
     for (_, v) in args {
+        note_argument_identity_derived(ctx);
         match eval_recompute_arg_key(&mut memo, &interner, v) {
             Some(k) => keys.push(k),
             None => {
@@ -9280,13 +9222,14 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
         .collect();
     duplicated.sort_by(|a, b| b.1.cmp(&a.1));
     eprintln!(
-        "[recompute-trace] keyed_calls={} unkeyed_calls={} overflow_calls={} distinct_keys={} duplicated_keys={} wasted_ms={} (durations inclusive of callees)",
+        "[recompute-trace] keyed_calls={} unkeyed_calls={} overflow_calls={} distinct_keys={} duplicated_keys={} wasted_ms={} argument_identities_derived={} (durations inclusive of callees)",
         totals.keyed_calls,
         totals.unkeyed_calls,
         totals.overflow_calls,
         totals.distinct_keys,
         totals.duplicated_keys,
-        totals.wasted_ns_total / 1_000_000
+        totals.wasted_ns_total / 1_000_000,
+        argument_identities_derived(ctx)
     );
     eprintln!(
         "[recompute-trace] gap: single_site_keys={} wasted_ms={} (same call expression re-hit — value-coincident/loop-borne, memoize/Share territory) | multi_site_keys={} wasted_ms={} (cross-site duplicate demand — static rewire candidates)",
@@ -9331,11 +9274,6 @@ pub fn print_eval_recompute_trace(ctx: &InterpContext) {
             site
         );
     }
-    let (hits, misses, overflow) = eval_call_memo_counters(ctx);
-    eprintln!(
-        "[recompute-trace] eval-memo: hits={} misses={} overflow={} (verified-hit serve; a hit still counts as a demand above)",
-        hits, misses, overflow
-    );
 }
 
 // Everything a re-evaluated key cost beyond one evaluation's amortized share.
@@ -9648,8 +9586,8 @@ fn cross_claim_demand_absorb_one(
 /// no-op unless `GUNBC_RECOMPUTE_TRACE=1`, which the floor sets for itself.
 ///
 /// THE CALLER MUST OWN A FRESH FRAME PER CLAIM, and that is a real precondition rather than a
-/// style note. The ledger accumulates for the lifetime of its `InterpContext` and is NOT
-/// cleared by `eval_call_memo_frame_exit`, so a surface that shares one context across several
+/// style note. The ledger accumulates for the lifetime of its `InterpContext`, so a surface
+/// that shares one context across several
 /// claims — `claim_batch` shares one per ENTRY — would fold each claim's ledger again on the
 /// next call, inflating both `evals` and `total_ns` and, worse, reporting cross-claim demand
 /// where there is only one frame's. The required floor builds a frame per claim
@@ -9821,9 +9759,6 @@ pub struct EvalRecomputeTotals {
     pub wasted_ns_total: u128,
     pub wasted_ns_single_site: u128,
     pub wasted_ns_multi_site: u128,
-    pub memo_hits: u64,
-    pub memo_misses: u64,
-    pub memo_overflow: u64,
 }
 
 impl EvalRecomputeTotals {
@@ -9838,9 +9773,6 @@ impl EvalRecomputeTotals {
         self.wasted_ns_total += o.wasted_ns_total;
         self.wasted_ns_single_site += o.wasted_ns_single_site;
         self.wasted_ns_multi_site += o.wasted_ns_multi_site;
-        self.memo_hits += o.memo_hits;
-        self.memo_misses += o.memo_misses;
-        self.memo_overflow += o.memo_overflow;
     }
 }
 
@@ -9871,12 +9803,7 @@ fn trace_totals(t: &EvalRecomputeTrace) -> EvalRecomputeTotals {
 }
 
 pub fn eval_recompute_totals(ctx: &InterpContext) -> EvalRecomputeTotals {
-    let mut out = trace_totals(&ctx.eval_recompute_trace.borrow());
-    let m = ctx.eval_call_memo.borrow();
-    out.memo_hits = m.hits;
-    out.memo_misses = m.misses;
-    out.memo_overflow = m.overflow;
-    out
+    trace_totals(&ctx.eval_recompute_trace.borrow())
 }
 
 // Process-wide accumulator fed by InterpContext::drop, so EVERY eval path lands in the receipt
@@ -9928,76 +9855,6 @@ fn value_rc_identity(v: &Value) -> Option<usize> {
     }
 }
 
-// Same-allocation composites are equal without a walk; everything else takes
-// the full structural equality (Value::eq, the one equality authority).
-fn value_fast_eq(a: &Value, b: &Value) -> bool {
-    if let (Some(x), Some(y)) = (value_rc_identity(a), value_rc_identity(b)) {
-        if x == y {
-            return true;
-        }
-    }
-    a == b
-}
-
-// A stored call matches only when argument NAMES and values both agree —
-// names participate in parameter binding, so value-equal args under different
-// labels are a different call, never served.
-fn eval_call_memo_args_match(
-    stored: &[(Option<String>, Value)],
-    args: &[(Option<String>, Value)],
-) -> bool {
-    stored.len() == args.len()
-        && stored
-            .iter()
-            .zip(args.iter())
-            .all(|((sn, sv), (an, av))| sn == an && value_fast_eq(sv, av))
-}
-
-fn eval_call_memo_get(
-    ctx: &InterpContext,
-    key: &EvalRecomputeKey,
-    args: &[(Option<String>, Value)],
-) -> Option<Value> {
-    let mut m = ctx.eval_call_memo.borrow_mut();
-    let mm = &mut *m;
-    if let Some(bucket) = mm.map.get(key) {
-        for (stored_args, value) in bucket {
-            if eval_call_memo_args_match(stored_args, args) {
-                mm.hits += 1;
-                return Some(value.clone());
-            }
-        }
-    }
-    None
-}
-
-fn eval_call_memo_put(
-    ctx: &InterpContext,
-    fn_node: &Rc<Node>,
-    key: EvalRecomputeKey,
-    args: &[(Option<String>, Value)],
-    value: Value,
-) {
-    let mut m = ctx.eval_call_memo.borrow_mut();
-    // Counter invariant: a miss means the call was NOT served (it evaluated), so a cap-refused
-    // store is still a miss — overflow ⊆ misses, and hits + misses == keyed Ok-resulting calls
-    // through the memo path, including under overflow. `misses` is NOT "entries stored".
-    m.misses += 1;
-    if m.map.len() >= EVAL_CALL_MEMO_ENTRY_CAP && !m.map.contains_key(&key) {
-        m.overflow += 1;
-        return;
-    }
-    m.keepalive_fns.push(fn_node.clone());
-    let stored_args: Vec<(Option<String>, Value)> = args.to_vec();
-    m.map.entry(key).or_default().push((stored_args, value));
-}
-
-/// Per-ctx memo counters (hits, misses, overflow) — for witnesses and
-/// diagnostics; the process receipt aggregates these via ctx Drop.
-pub fn eval_call_memo_counters(ctx: &InterpContext) -> (u64, u64, u64) {
-    let m = ctx.eval_call_memo.borrow();
-    (m.hits, m.misses, m.overflow)
-}
 fn pure_call_memo_key(
     fn_node: &Rc<Node>,
     func_name: &str,
