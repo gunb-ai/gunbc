@@ -7,6 +7,7 @@ import extdeps.tailscale.serve {
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import gunbc.auth.approval_ntfy_deployment { srv1_tailnet_base_url_from }
 import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.serve_liveness { serve_liveness_path }
 
 // ── WHERE THE APPROVAL BROKER ANSWERS ────────────────────────────────────────────────────────
 // ONE FACT, FOUR READERS. The four approval paths are read by the broker's route table
@@ -80,6 +81,24 @@ fn approval_broker_submit_url(port: Port) -> NonEmptyStr {
 // because they are one collection and its member: the status route IS the submit path plus an
 // escalation segment, which is exactly what approval_broker_status_path_template declares. Two
 // literals would agree until one of them moved.
+// THE URL THE CUTOVER'S RELEASE READBACK PROBES, and it lives here with the other loopback builders
+// rather than in the plan that consumes it (review 68306). It was declared in
+// gunbc.auth.approval_broker_cutover as "THE URL STAGE 2 PROBES" while the production probe in
+// gunbc.live_deploy.readiness hand-joined the same host, port and path -- two producers of one
+// string, with the surviving one having no production consumer and a claim asserting the join
+// through the fold production does not call.
+//
+// THAT IS THE THIRD TIME THIS EXACT CLASS APPEARED IN THIS CHANGE (reviews 68036, 68172, and this
+// one), which is why the repair is placement and not just a call: a builder that sits with the
+// plan invites a consumer elsewhere to rebuild it, while one that sits with
+// approval_broker_loopback_base_url is found by anyone already composing a broker address.
+fn approval_broker_liveness_url(port: Port) -> NonEmptyStr {
+  join([
+    approval_broker_loopback_base_url(port: port) as String,
+    serve_liveness_path as String,
+  ], "") as NonEmptyStr
+}
+
 fn approval_broker_status_url(port: Port, escalation_id: NonEmptyStr) -> NonEmptyStr {
   join([
     approval_broker_loopback_base_url(port: port) as String,

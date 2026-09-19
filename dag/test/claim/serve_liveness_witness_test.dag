@@ -14,9 +14,8 @@ import gunbc.running_release_identity { running_release_revision_key }
 import gunbc.auth.approval_broker_cutover {
   ReleaseReadback, ReleaseReadBack, ReleaseNotReadBack,
   release_readback_from_read,
-  approval_broker_liveness_url,
 }
-import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_liveness_url }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -115,9 +114,16 @@ test fn the_cutover_release_evidence_is_decided_by_the_served_document() -> Bool
   good && bad
 }
 
-// THE PROBE URL IS THE LIVENESS PATH ON THE BROKER'S ONE PORT. The broker binds the same address
-// from its dark install onward, so this probe reaches the same process at every stage -- which is
-// what makes a release readback taken here describe the process that later serves.
+// THE PROBE URL IS THE LIVENESS PATH ON THE BROKER'S ONE PORT, and this claim is now over the fold
+// PRODUCTION CALLS. It used to assert the join through gunbc.auth.approval_broker_cutover's own
+// copy while gunbc.live_deploy.readiness hand-built the same string, so changing the base or the
+// path would have moved the declaration and left the probe reaching wherever its literal pointed,
+// with this claim still green (review 68306 -- the third appearance of that class in this change).
+// live_deploy_liveness_get_local now calls this builder, so the two cannot diverge.
+//
+// The broker binds the same address from its dark install onward, so the probe reaches the same
+// process at every stage -- which is what makes a release readback taken here describe the process
+// that later serves.
 test fn the_stage_two_probe_targets_the_liveness_path_on_the_broker_port() -> Bool {
   let url = approval_broker_liveness_url(port: approval_broker_listen_port) as String
   string_contains(s: url, pattern: serve_liveness_path as String)

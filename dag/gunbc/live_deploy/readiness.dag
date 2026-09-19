@@ -79,8 +79,9 @@ import gunbc.typed_argv_exec {
 import extdeps.http.client
 import extdeps.http.client { http_client_get_argv, http_client_max_time_flag }
 import gunbc.serve_liveness {
-  serve_liveness_path, ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe,
+  ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe,
 }
+import gunbc.auth.approval_broker_endpoint { approval_broker_liveness_url }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type ServiceReadyEvidence {
@@ -259,6 +260,12 @@ fn live_deploy_healthz_get_for_port(port: Int, spec: DeploymentSpec, transport: 
 // which is answered out of the evaluator (gunbc.serve_liveness) and therefore still answerable when
 // the render path is not.
 //
+// THE URL IS THE ENDPOINT MODULE'S, NOT REBUILT HERE (review 68306). This function used to join the
+// loopback host, the port and the liveness path itself while gunbc.auth.approval_broker_endpoint
+// declared the same composition -- so changing the base or the path would have moved the
+// declaration and left this probe reaching wherever its literal pointed, with the claim over the
+// declaration still green.
+//
 // It reuses this module's probe deadline rather than declaring one: the bound on how long to wait
 // for a local HTTP answer is one fact about this deployment, and the liveness answer is cheaper
 // than the healthz answer it was derived from, so the derived bound is an over-allowance rather
@@ -268,7 +275,7 @@ fn live_deploy_healthz_get_for_port(port: Int, spec: DeploymentSpec, transport: 
 // gunbc.serve_liveness serve_liveness_read_from_probe, so this function contributes the one fact
 // only the caller has -- whether anything answered -- and decides nothing about the bytes.
 fn live_deploy_liveness_get_local(port: Int, spec: DeploymentSpec) -> ServeLivenessRead {
-  let url = join(["http://127.0.0.1:", to_string(port), serve_liveness_path as String], "") as NonEmptyStr
+  let url = approval_broker_liveness_url(port: port)
   match live_deploy_healthz_probe_deadline(spec: spec) {
     Absent => ServeLivenessUnreachable { detail: healthz_probe_deadline_ungrounded as NonEmptyStr }
     Present { value: deadline } => {

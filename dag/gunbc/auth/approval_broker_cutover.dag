@@ -11,7 +11,7 @@ import gunbc.serve_liveness {
   observe_serve_liveness, serve_liveness_read_reason,
 }
 import gunbc.auth.approval_broker_endpoint {
-  approval_broker_loopback_base_url,
+  approval_broker_loopback_base_url, approval_broker_liveness_url,
   approval_broker_listen_port,
   approval_broker_confirm_path_template, approval_broker_submit_path,
   approval_broker_status_path_template,
@@ -214,16 +214,6 @@ type DarkDeploymentStanding
 type ReleaseReadback
   = ReleaseNotReadBack { detail: NonEmptyStr }
   | ReleaseReadBack { revision: NonEmptyStr }
-
-// THE URL STAGE 2 PROBES. It is loopback and it names the liveness path from its authority, so a
-// rename of either moves the probe with it. The PORT is the argument because stage 2 runs against
-// the DARK broker: probing the serving port would be probing whatever is already there.
-fn approval_broker_liveness_url(port: Port) -> NonEmptyStr {
-  join([
-    approval_broker_loopback_base_url(port: port) as String,
-    serve_liveness_path as String,
-  ], "") as NonEmptyStr
-}
 
 // THE ONLY WAY TO BUILD THE ADMITTING ARM. Every refusing arm of the read maps to
 // ReleaseNotReadBack carrying that read's own reason; only an observed, 40-hex-validated revision
