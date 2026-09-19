@@ -3,7 +3,7 @@ module std.machine_word
 import std.induction { int_pow_bounded }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
-import std.dissolution { bound_dissolution, unbound_dissolution }
+import std.dissolution { unbound_dissolution }
 import std.measure { bits_per_byte }
 import extdeps.toolchain.architecture_profile { Endianness, BigEndian, LittleEndian }
 
@@ -542,10 +542,16 @@ fn octet_int_values(octets: List<Word>) -> List<Int> {
 // gunbc.census_closure_frontier census_closure_frontier_row_groups, which this roster is now
 // enrolled in; that enrolment, not this annotation, is what makes the expiry a computed fact.
 //
-// TWO SHAPES, AND THE DIFFERENCE IS WHETHER THE CONSUMER CAN BE CITED YET. Where the consuming
-// declaration EXISTS on a branch, the row uses std.dissolution bound_dissolution, which takes the
-// DeclarationRef itself and does the DeclarationAppears wrapping -- the appearance of that symbol
-// retires the row, and nothing else does. Where the consuming change is named but
+// EVERY ROW IS UNBOUND, AND THE REASON IS A GATE, NOT A PREFERENCE. std.dissolution
+// bound_dissolution takes a DeclarationRef, and a DeclarationRef is a CITATION: the required
+// declarations phase resolves it against THE TREE IT RUNS IN and refuses CITED-MODULE-ABSENT when
+// the module is not there. extdeps.crypto.sha2 exists on gunbc#11647 and nowhere else, so binding
+// these four rows to its symbols refused the whole parse phase -- "the symbol exists on a branch"
+// is not a fact this tree can check, and seeing it on a branch is exactly what made the citation
+// look safe. DeclarationAppears is still the right shape for a forward reference to a declaration
+// in a module that ALREADY EXISTS; it is the absent MODULE that cannot be cited. The consuming
+// symbols are named in prose in each description instead, where they are a reader's pointer rather
+// than a resolvable reference this tree would have to honour. Where the consuming change is named but
 // has authored no declaration to point at, the row is unbound and says so -- a forward reference to
 // a name nobody has written would be a citation that can never resolve, which is worse than an
 // honest description (DESIGN section 3: cite the symbol, not the position, and do not cite what
@@ -559,23 +565,23 @@ fn octet_int_values(octets: List<Word>) -> List<Int> {
 data machine_word_consumer_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_add"),
-    reason: "SHA-256 T1/T2, the message schedule and the feed-forward are additions modulo 2^32; extdeps.crypto.sha2 sha256_add_all is the fold that consumes this, ~1,000 calls per compression block.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_add_all"))
+    reason: "SHA-256 T1/T2, the message schedule and the feed-forward are additions modulo 2^32; the consumer is extdeps.crypto.sha2 sha256_add_all on gunbc#11647, ~1,000 calls per compression block.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_add_all (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_rotate_right"),
-    reason: "SHA-256 Sigma0/Sigma1 rotate three times each and sigma0/sigma1 twice each; extdeps.crypto.sha2 sha256_sigma is the one fold all four go through.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_sigma"))
+    reason: "SHA-256 Sigma0/Sigma1 rotate three times each and sigma0/sigma1 twice each; the consumer is extdeps.crypto.sha2 sha256_sigma on gunbc#11647, the one fold all four go through.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_sigma (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_xor"),
-    reason: "Every SHA-256 Sigma/sigma term and the Ch/Maj mixing are exclusive-or; extdeps.crypto.sha2 sha256_xor3 is the three-way form they share.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_xor3"))
+    reason: "Every SHA-256 Sigma/sigma term and the Ch/Maj mixing are exclusive-or; the consumer is extdeps.crypto.sha2 sha256_xor3 on gunbc#11647.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_xor3 (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_not"),
-    reason: "SHA-256 Ch complements its selector word; extdeps.crypto.sha2 sha256_ch is the only consumer of complement in that algorithm.",
-    dissolution: bound_dissolution(ref: decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_ch"))
+    reason: "SHA-256 Ch complements its selector word; the consumer is extdeps.crypto.sha2 sha256_ch on gunbc#11647, the only consumer of complement in that algorithm.",
+    dissolution: unbound_dissolution(description: "dissolve-on: extdeps.crypto.sha2 sha256_ch (gunbc#11647) calls this operation. UNBOUND rather than a DeclarationAppears citation because extdeps.crypto.sha2 does not exist in THIS tree -- the citation gate resolves against the tree it runs in, not against any branch, and a DeclarationRef to an absent module is refused as CITED-MODULE-ABSENT.")
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "std.machine_word", decl_name: "word_wrapping_multiply"),
