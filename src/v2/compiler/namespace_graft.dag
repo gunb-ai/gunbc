@@ -37,7 +37,6 @@ import v2.std.grammar {
   node_atom_identity_optional
 }
 import v2.extdeps.languages.dag {
-  dag_lex_token_symbol,
   dag_named_edge,
   dag_surface_module_header_metadata_edge,
   dag_grammar_root,
@@ -51,6 +50,7 @@ import v2.extdeps.languages.dag {
   parse_subtree_locate_production,
   dag_resolve_preserve_module_metadata_subtree,
   dag_surface_kw_then_ident_from_captured,
+  dag_surface_kw_then_ident_rest_from_captured,
   qualified_name_from_module_node
 }
 
@@ -289,29 +289,17 @@ fn namespace_graft_type_decl_name(unit: Node) -> Symbol? {
   }
 }
 
-fn namespace_graft_symbol_is_grammar_machinery(
-  productions: List<GrammarProduction>,
-  sym: Symbol
-) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      if found {
-        true
-      } else {
-        match namespace_graft_production_emitted_identity_optional(production: production) {
-          Present { value: emitted } => (production.name == sym) || (emitted == sym)
-          Absent => production.name == sym
-        }
-      }
-    }
-  )
-}
-
-fn namespace_graft_is_machinery_symbol(productions: List<GrammarProduction>, sym: Symbol) -> Bool {
-  dag_lex_token_symbol(sym: sym)
-    || namespace_graft_symbol_is_grammar_machinery(productions: productions, sym: sym)
+// Machinery is decided by PROVENANCE, not spelling (review 68542): a flattened Named
+// edge whose target is a parse production shell (it carries an identity projection) is
+// structure the parse left at module level; a member's target is lowered content.
+// Deciding by the label's lexeme dropped any user declaration that happened to spell a
+// production name or emitted identity -- a silent narrow in the one path this module
+// exists to keep loud.
+fn namespace_graft_target_is_production_shell(edge: Edge) -> Bool {
+  match parse_production_emitted_identity_optional(node: edge.target) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn namespace_graft_unit_captured(unit: Node) -> Node? {
@@ -358,12 +346,16 @@ fn namespace_graft_kw_ident_named_edge(unit: Node) -> Edge? {
       match dag_surface_kw_then_ident_from_captured(captured: captured) {
         Absent => optional_absent()
         Present { value: name } =>
-          optional_present(
-            value: Edge {
-              label: Named { name: name },
-              target: captured
-            }
-          )
+          match dag_surface_kw_then_ident_rest_from_captured(captured: captured) {
+            Absent => optional_absent()
+            Present { value: rest } =>
+              optional_present(
+                value: Edge {
+                  label: Named { name: name },
+                  target: rest
+                }
+              )
+          }
       }
   }
 }
@@ -468,17 +460,14 @@ fn namespace_graft_partition_decl_units(units: List<Node>) -> NamespaceGraftDecl
 // carries field_decl_block is the same skip as type_decl_named_edge (record or
 // fielded variant), not a flatten member. Atom targets stay: the graft-shape
 // fixture is two Named atoms.
-fn namespace_graft_keep_flattened_member_edge(
-  productions: List<GrammarProduction>,
-  edge: Edge
-) -> Bool {
+fn namespace_graft_keep_flattened_member_edge(edge: Edge) -> Bool {
   match edge.label {
     Named { name: sym } =>
       if namespace_graft_parse_projection_edge(name: sym) {
         false
       } else if namespace_graft_is_metadata_edge(name: sym) {
         false
-      } else if namespace_graft_is_machinery_symbol(productions: productions, sym: sym) {
+      } else if namespace_graft_target_is_production_shell(edge: edge) {
         false
       } else {
         match edge.target.kind {
@@ -497,12 +486,9 @@ fn namespace_graft_keep_flattened_member_edge(
   }
 }
 
-fn namespace_graft_flattened_member_edges(
-  productions: List<GrammarProduction>,
-  edges: List<Edge>
-) -> List<Edge> {
+fn namespace_graft_flattened_member_edges(edges: List<Edge>) -> List<Edge> {
   fold(edges, init: [], f: fn(acc, edge) {
-    if namespace_graft_keep_flattened_member_edge(productions: productions, edge: edge) {
+    if namespace_graft_keep_flattened_member_edge(edge: edge) {
       list_snoc_item(xs: acc, item: edge)
     } else {
       acc
@@ -537,7 +523,21 @@ fn namespace_graft_flatten_minus_decl_names(from_decls: List<Edge>, flattened: L
   })
 }
 
-fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
+// The graft body and its loss verdict come out of ONE partition, and the loss is a
+// CONSERVATION check, never a shape predicate. Every dag_surface_top_level_item shell in
+// the working root reaches the body one of three ways: as a collected UNIT (then Named,
+// residual, or dissolved -- imports are Admission.imports' fact), or, when lowering has
+// already rehomed its content (a fn_decl becomes an Arrow, a where-alias a Named host),
+// as a FLATTENED member. So the only thing that can be lost is an item that became
+// neither: items_seen > units + flattened_kept. Emptiness is never the question: an
+// import-only module has one item, one unit, one dissolution and an empty body that
+// is its true body.
+type NamespaceGraftBody {
+  edges: List<Edge>
+  loss: Bool
+}
+
+fn namespace_graft_body_for_graft(root: Node) -> NamespaceGraftBody {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   let productions = dag_grammar_root().productions
   let unit_ids = namespace_graft_top_level_item_alternative_emitted_ids(productions: productions)
@@ -547,22 +547,20 @@ fn namespace_graft_body_edges_for_graft(root: Node) -> List<Edge> {
   let flattened = namespace_graft_flatten_minus_decl_names(
     from_decls: from_decls,
     flattened: namespace_graft_flattened_member_edges(
-      productions: productions,
       edges: namespace_graft_collect_body_edges_from_node(node: working, unit_ids: unit_ids)
     )
   )
   let combined = concat(from_decls, flattened)
   let residuals = partitioned.residual_units
-  if count(combined) == 0 {
-    if count(residuals) == 0 {
-      []
-    } else {
-      namespace_graft_reconstruct_declaration_forest(units: residuals)
-    }
-  } else if count(residuals) == 0 {
+  let edges = if count(residuals) == 0 {
     combined
   } else {
     concat(combined, namespace_graft_reconstruct_declaration_forest(units: residuals))
+  }
+  NamespaceGraftBody {
+    edges: edges,
+    loss: namespace_graft_subtree_count_atom(n: working, sym: ^dag_surface_top_level_item)
+      > (count(units) + count(flattened))
   }
 }
 
@@ -586,37 +584,14 @@ fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
 // An empty flatten with surviving top-level-item alternatives reconstructs one Named forest
 // (Cardinality of those units as Positional children, interiors kept). Empty flatten, no units,
 // and a leftover dag_surface_top_level_item is a genuine loss and still refuses.
-fn namespace_graft_subtree_contains_atom(n: Node, sym: Symbol) -> Bool {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      if id == sym {
-        true
-      } else {
-        namespace_graft_children_contain_atom(n: n, sym: sym)
-      }
-    _ => namespace_graft_children_contain_atom(n: n, sym: sym)
+fn namespace_graft_subtree_count_atom(n: Node, sym: Symbol) -> Int {
+  let here = match n.kind {
+    TypeNode { connective: Atom { identity: id } } => if id == sym { 1 } else { 0 }
+    _ => 0
   }
-}
-
-fn namespace_graft_children_contain_atom(n: Node, sym: Symbol) -> Bool {
-  fold(n.children, init: false, f: fn(found, e) {
-    if found {
-      true
-    } else {
-      namespace_graft_subtree_contains_atom(n: e.target, sym: sym)
-    }
+  fold(n.children, init: here, f: fn(acc, e) {
+    acc + namespace_graft_subtree_count_atom(n: e.target, sym: sym)
   })
-}
-
-fn namespace_graft_body_dissolved(root: Node, body_edges: List<Edge>) -> Bool {
-  if count(body_edges) == 0 {
-    namespace_graft_subtree_contains_atom(
-      n: namespace_graft_unwrap_module_working_root(root: root),
-      sym: ^dag_surface_top_level_item
-    )
-  } else {
-    false
-  }
 }
 
 // The body carries its identity projection first (namespace_graft_module_body_identity):
@@ -753,15 +728,15 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
               correction: Unavailable { reason: ExternalContractUnknown }
             })
           Cons { head: _, tail: _ } => {
-            let body_edges = namespace_graft_body_edges_for_graft(root: root)
-            if namespace_graft_body_dissolved(root: root, body_edges: body_edges) {
+            let graft_body = namespace_graft_body_for_graft(root: root)
+            if graft_body.loss {
               outcome_rejected(Diagnostic {
                 reason: ^namespace_graft_body_dissolved_refused,
                 at: node_locus(node: root),
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
             } else {
-              let body = namespace_graft_build_body_conj(edges: body_edges)
+              let body = namespace_graft_build_body_conj(edges: graft_body.edges)
               let spine = namespace_graft_fold_spine(qn: qn, body: body)
               outcome_accepted(value: namespace_graft_wrap_module_shell(captured: spine))
             }

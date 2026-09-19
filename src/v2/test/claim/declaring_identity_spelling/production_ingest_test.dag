@@ -348,14 +348,17 @@ test fn ingest_fill_does_not_index_the_same_module_data_name_today() -> Bool {
   }
 }
 
-// Retracted as a compiler fact. Kept as an index-path measurement: the census
-// row is Unbound because fill missed, not because the name cannot compile.
-test fn a_bare_value_mention_outside_a_call_is_unbound_today() -> Bool {
+// FLIPPED 2026-09-19 (DESIGN 4b(4)): `marker` is a data declaration of the same module;
+// while the graft Named only fn declarations its mention in `go()` stayed IdentityUnbound.
+// gunbc#11574 Names data declarations, so the mention binds. Permanent control.
+test fn a_bare_value_mention_outside_a_call_is_bound_holds() -> Bool {
   match census_of(
     path: value_outside_call_path,
     unit: ^xl3_value_outside_call
   ) {
-    Present { value: census } => authored_unbound(census: census, spelling: "marker")
+    Present { value: census } =>
+      authored_is(census: census, spelling: "marker")
+        && !authored_unbound(census: census, spelling: "marker")
     Absent => false
   }
 }
@@ -396,16 +399,18 @@ test fn a_callee_name_reaches_the_census_holds() -> Bool {
   }
 }
 
-// Census-row spelling "Int": kernel types have no corpus declaration. Not a
-// type-position collector miss and not a lowering class.
-test fn a_kernel_type_position_name_is_absent_from_the_census_today() -> Bool {
+// FLIPPED 2026-09-19 (DESIGN 4b(4)): the kernel type `Int` reaches the census from the
+// data declaration's own type position (`data marker: Int`) once gunbc#11574 Names the
+// data declaration at its content (the `: Int = 0` remainder). Before, the data shell was
+// not a graft member and its type annotation reached no collector. Permanent control.
+test fn a_kernel_type_position_name_reaches_the_census_holds() -> Bool {
   match census_of(
     path: value_outside_call_path,
     unit: ^xl3_value_outside_call
   ) {
     Present { value: census } =>
       authored_is(census: census, spelling: "marker")
-        && !authored_is(census: census, spelling: "Int")
+        && authored_is(census: census, spelling: "Int")
     Absent => false
   }
 }

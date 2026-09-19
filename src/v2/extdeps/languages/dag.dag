@@ -4875,6 +4875,22 @@ fn dag_surface_kw_then_ident_node_from_captured(captured: Node) -> Outcome<Node>
   }
 }
 
+// The declaration's CONTENT: the sequence to the right of the name on the same
+// kw-then-ident spine the decoder walks. A Named graft edge targets this, never the
+// captured shell, so the declaring identifier is not walked as a mention of itself
+// (measured: a data declaration's own name reached the reference-site census as a
+// site when the edge targeted the whole captured shell).
+fn dag_surface_kw_then_ident_rest_from_captured(captured: Node) -> Optional<Node> {
+  match find_named_child(root: captured, name: ^grammar_sequence_right_node_projection) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: after_kw, diagnostics: _ } =>
+      match find_named_child(root: after_kw, name: ^grammar_sequence_right_node_projection) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: rest, diagnostics: _ } => Present { value: rest }
+      }
+  }
+}
+
 fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
   match dag_surface_kw_then_ident_node_from_captured(captured: captured) {
     Rejected { diagnostics: _ } => Absent
