@@ -7,6 +7,16 @@ import gunbc.runner_host_deploy { RunnerHostSpec, srv2_runner_host_spec }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import std.nat { Nat, nat_range_inclusive }
+import gunbc.runner_registration_name {
+  RegistrationNameMatch,
+  MatchedBareSlotName,
+  MatchedJitInstance,
+  RegistrationNameNoMatch,
+  match_registration_name_to_slot,
+  match_registration_name_to_any,
+  registration_name_match_is_slot,
+  registration_name_match_wire,
+}
 import extdeps.systemd {
   SystemdUnitActiveState,
   Active, Inactive, Activating, Deactivating, Reloading, Failed,
@@ -360,16 +370,47 @@ type RegistrationOwnership
 // canonical name outside it is not a name this estate has ever issued.
 data registration_discovery_bound: Nat = 50
 
+// RECOGNITION ACCEPTS THE FORM THE FLEET ACTUALLY EMITS, WHICH EXACT EQUALITY DID NOT.
+//
+// This compared a candidate against `host_registration_name_for_slot` for equality, and the live
+// estate never produces that string: srv2's `.runner` files carry `srv2-02-1789774588-3693107`, the
+// slot instance plus jit-runner.sh's epoch and pid. Measured before the repair, that name reached
+// `OwnershipCandidateUnresolved` -- fail-closed, so nothing was destroyed -- and, worse, it stayed
+// unresolved even when handed a COMPLETE capture that listed it, because recognition gates ownership
+// and recognition could not place it. The grounding path could not be grounded by real data.
+//
+// The comparison now goes through `gunbc.runner_registration_name`, which anchors on the FULL
+// canonical slot name and requires the remainder to be exactly the producer's two numeric fields.
 fn canonical_slot_index_of(host: HostIdentity, name: NonEmptyStr) -> Nat? {
   fold(
     nat_range_inclusive(lo: 1, hi: registration_discovery_bound),
     init: none,
     f: (acc, i) =>
-      if (host_registration_name_for_slot(host: host, slot_index: i) as String) == (name as String) {
-        Present { value: i }
-      } else {
-        acc
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if registration_name_match_is_slot(
+            m: match_registration_name_to_slot(
+              name: name,
+              slot_instance: host_registration_name_for_slot(host: host, slot_index: i) as String,
+            ),
+          ) {
+            Present { value: i }
+          } else {
+            none
+          }
       },
+  )
+}
+
+// THE DECODED FORM, CARRIED SO A CONSUMER CAN SEE WHICH INCARNATION IT READ. Two registrations for
+// one slot differ only in the epoch and pid, and a consumer reconciling an estate needs to tell a
+// stale incarnation from the current one -- which a Nat index alone cannot say.
+fn canonical_slot_match_of(host: HostIdentity, name: NonEmptyStr) -> RegistrationNameMatch {
+  match_registration_name_to_any(
+    name: name,
+    slot_instances: nat_range_inclusive(lo: 1, hi: registration_discovery_bound)
+      |> map(i => host_registration_name_for_slot(host: host, slot_index: i) as String),
   )
 }
 
@@ -422,7 +463,7 @@ fn registration_ownership(
               host: host,
               slot_index: i,
               observed_on: on,
-              basis: join(["this name equals ", host as String, "'s own canonical registration name at slot ", to_string(i), ", AND an owned-identity capture taken on ", on as String, " lists it"], ""),
+              basis: join(["this name denotes ", host as String, "'s canonical slot ", to_string(i), " (", registration_name_match_wire(m: canonical_slot_match_of(host: host, name: name)), "), AND an owned-identity capture taken on ", on as String, " lists it"], ""),
             }
           Absent =>
             OwnershipCanonicalUnresolved {
@@ -436,7 +477,7 @@ fn registration_ownership(
           name: name,
           slot_index: i,
           cause: join([
-            name as String, " is ", host as String, "'s canonical registration name at slot ", to_string(i),
+            name as String, " denotes ", host as String, "'s canonical slot ", to_string(i),
             ", which says what the name DENOTES and not that this estate issued the registration: ",
             capture_unresolved_cause(capture: capture),
           ], ""),

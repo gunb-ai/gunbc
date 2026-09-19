@@ -1,0 +1,159 @@
+module gunbc.runner_registration_name
+
+import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.algebra { trim }
+
+// THE REGISTRATION NAME THE RUNNING FLEET ACTUALLY USES, AND THE MODEL THAT SAID OTHERWISE.
+//
+// THE PRODUCER. srv2's live `.runner` files carry AgentName values like
+// `srv2-02-1789774588-3693107` (census 2026-09-19 10:34Z, AgentId 251463). They are written by the
+// host-resident `/opt/actions-runner/jit-runner.sh`, which comes from the ctrl repository rather than
+// from gunbc, and whose lines 58-59 are:
+//
+//     RUNNER_NAME="${RUNNER_NAME_PREFIX}-$(date +%s)-$$"
+//
+// So the shape is SLOT INSTANCE, then unix epoch SECONDS, then the shell's PID -- three parts joined
+// by the same delimiter the slot instance itself uses, which is why the decoding below anchors on a
+// candidate slot name rather than counting segments.
+//
+// THE MODEL AND THE REALIZATION DISAGREE, AND THIS ROW DOES NOT PICK A SIDE.
+// `gunbc.runner_jit_mint` `jit_runner_name_for` states that the runner name IS the unit name -- no
+// suffix -- and gives a real reason: a second naming scheme makes an orphaned registration
+// unattributable to a host. That is sound, and the fleet does not obey it, because the fleet's
+// runners are minted by ctrl's script and not by that function. Recording the gap rather than
+// papering over it: this module decodes what the RUNNING ESTATE emits so that estate can be observed
+// at all, and it does not amend, bless, or delete `jit_runner_name_for`'s intent. Which producer the
+// fleet should use is a separate decision, and closing the divergence by quietly conforming the model
+// to the script would destroy the argument the script never answered.
+//
+// WHY THIS IS NOT `extdeps/`. GitHub accepts whatever name the registration request carries, so the
+// suffix is not an upstream spec -- it is a fact about a deployment realization we read as ground
+// truth (`gunbc.runner_lifecycle` records that ctrl's installer is read that way). The upstream shape
+// is "a runner has a name"; this is what one fleet's script puts in it.
+
+// THE DECODING IS RELATIVE TO A CANDIDATE SLOT INSTANCE, WHICH IS WHAT MAKES IT UNAMBIGUOUS.
+//
+// A segment count cannot separate the two forms on its own: `srv2-02` is two segments and
+// `srv2-02-1789774588-3693107` is four, but nothing in the model says a host label carries no
+// delimiter, so peeling "the last two segments" would silently mis-split a host that did. Anchoring
+// on the full canonical slot name removes the guess -- the remainder after that exact prefix either
+// is the producer's two numeric fields or it is not.
+//
+// THIS IS NOT THE BARE-PREFIX PROMOTION THAT WAS REFUSED EARLIER IN THIS LANE. That one tested
+// `starts_with(name, host + "-")`, which admits `srv2-anything`. This tests the FULL canonical slot
+// name followed by the delimiter AND requires the remainder to be exactly two non-negative integers,
+// so `srv2-02-notanumber` and `srv2-021` both fail.
+type RegistrationNameMatch
+  = MatchedBareSlotName { slot_instance: String }
+  | MatchedJitInstance { slot_instance: String, epoch_seconds: Int, pid: Int }
+  | RegistrationNameNoMatch { name: String, slot_instance: String, cause: String }
+
+fn parse_nonneg_int_field(text: String) -> Int? {
+  if trim(s: text) == "" {
+    none
+  } else {
+    match parse_int(s: trim(s: text)) {
+      Absent => none
+      Present { value: n } => if n >= 0 { Present { value: n } } else { none }
+    }
+  }
+}
+
+// THE SUFFIX IS EXACTLY TWO FIELDS. A name carrying one, or three, is not what the producer writes,
+// and admitting it would make this decoder a general-purpose splitter over a shape nobody declared.
+fn decode_jit_suffix(slot_instance: String, name: String, suffix: String) -> RegistrationNameMatch {
+  let parts = split(s: suffix, delimiter: "-")
+  if list_length(items: parts) != 2 {
+    RegistrationNameNoMatch {
+      name: name,
+      slot_instance: slot_instance,
+      cause: join([
+        "the text after `", slot_instance, "-` is `", suffix, "`, which is ",
+        to_string(list_length(items: parts)),
+        " delimiter-separated field(s); jit-runner.sh writes exactly two, an epoch and a pid",
+      ], ""),
+    }
+  } else {
+    match parse_nonneg_int_field(text: parts.first()) {
+      Absent =>
+        RegistrationNameNoMatch {
+          name: name,
+          slot_instance: slot_instance,
+          cause: join(["the epoch field `", parts.first(), "` is not a non-negative integer, so this name was not written by jit-runner.sh's `date +%s` substitution"], ""),
+        }
+      Present { value: epoch } =>
+        match parse_nonneg_int_field(text: parts.last()) {
+          Absent =>
+            RegistrationNameNoMatch {
+              name: name,
+              slot_instance: slot_instance,
+              cause: join(["the pid field `", parts.last(), "` is not a non-negative integer, so this name was not written by jit-runner.sh's `$$` substitution"], ""),
+            }
+          Present { value: pid } =>
+            MatchedJitInstance { slot_instance: slot_instance, epoch_seconds: epoch, pid: pid }
+        }
+    }
+  }
+}
+
+fn match_registration_name_to_slot(name: NonEmptyStr, slot_instance: String) -> RegistrationNameMatch {
+  let raw = name as String
+  if raw == slot_instance {
+    MatchedBareSlotName { slot_instance: slot_instance }
+  } else {
+    let prefix = join([slot_instance, "-"], "")
+    if starts_with(s: raw, prefix: prefix) {
+      decode_jit_suffix(
+        slot_instance: slot_instance,
+        name: raw,
+        suffix: substring(s: raw, start: string_length(s: prefix), end: string_length(s: raw)),
+      )
+    } else {
+      RegistrationNameNoMatch {
+        name: raw,
+        slot_instance: slot_instance,
+        cause: join([raw, " is neither ", slot_instance, " nor that name followed by a jit-runner.sh suffix"], ""),
+      }
+    }
+  }
+}
+
+fn registration_name_match_is_slot(m: RegistrationNameMatch) -> Bool {
+  match m {
+    MatchedBareSlotName { slot_instance: _ } => true
+    MatchedJitInstance { slot_instance: _, epoch_seconds: _, pid: _ } => true
+    RegistrationNameNoMatch { name: _, slot_instance: _, cause: _ } => false
+  }
+}
+
+fn registration_name_match_wire(m: RegistrationNameMatch) -> String {
+  match m {
+    MatchedBareSlotName { slot_instance: s } => join(["bare:", s], "")
+    MatchedJitInstance { slot_instance: s, epoch_seconds: e, pid: p } =>
+      join(["jit:", s, " epoch=", to_string(e), " pid=", to_string(p)], "")
+    RegistrationNameNoMatch { name: _, slot_instance: _, cause: c } => join(["no-match: ", c], "")
+  }
+}
+
+// THE FIRST CANDIDATE THAT MATCHES, over a caller-supplied population. The population is supplied
+// rather than derived here so this module owns the SHAPE and not the roster: a caller that knows
+// which slot names exist asks about those, and this fold answers which one a name denotes.
+fn match_registration_name_to_any(
+  name: NonEmptyStr,
+  slot_instances: List<String>,
+) -> RegistrationNameMatch {
+  fold(
+    slot_instances,
+    init: RegistrationNameNoMatch {
+      name: name as String,
+      slot_instance: "",
+      cause: join([name as String, " matches no candidate slot instance, bare or jit-suffixed"], ""),
+    },
+    f: (acc, candidate) =>
+      if registration_name_match_is_slot(m: acc) {
+        acc
+      } else {
+        match_registration_name_to_slot(name: name, slot_instance: candidate)
+      },
+  )
+}

@@ -1,0 +1,134 @@
+module test.claim.runner.runner_registration_name_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.types { NonEmptyStr, String, Int }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.runner_registration_name {
+  MatchedBareSlotName,
+  MatchedJitInstance,
+  RegistrationNameNoMatch,
+  match_registration_name_to_slot,
+  match_registration_name_to_any,
+  registration_name_match_is_slot,
+}
+import gunbc.runner_host_retirement {
+  OwnershipEstablished,
+  OwnershipCanonicalUnresolved,
+  OwnershipCandidateUnresolved,
+  OwnershipForeign,
+  registration_ownership,
+  CaptureComplete,
+  CaptureUnavailable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE LITERAL CENSUS STRING ────────────────────────────────────────────────────────────────
+
+// READ OFF srv2 ON 2026-09-19 AT 10:34Z, AgentId 251463. This is the fixture that could not have
+// been derived from the naming function, which is exactly why the previous suite missed the defect:
+// every earlier control used `srv2-07`, produced by calling the producer, so it agreed with the model
+// by construction and said nothing about what the host emits.
+data srv2_live_agent_name: NonEmptyStr = "srv2-02-1789774588-3693107" as NonEmptyStr
+
+test fn the_live_census_name_decodes_to_its_slot_epoch_and_pid() -> Bool {
+  match match_registration_name_to_slot(name: srv2_live_agent_name, slot_instance: "srv2-02") {
+    MatchedJitInstance { slot_instance: s, epoch_seconds: e, pid: p } =>
+      s == "srv2-02" && e == 1789774588 && p == 3693107
+    MatchedBareSlotName { slot_instance: _ } => false
+    RegistrationNameNoMatch { name: _, slot_instance: _, cause: _ } => false
+  }
+}
+
+// THE WHOLE POINT OF THE REPAIR: a complete capture listing the LIVE name now establishes ownership.
+// Before it, this returned OwnershipCandidateUnresolved even with the capture in hand, so L3 could
+// have landed a perfect roster read and left every srv2 identity unresolved.
+test fn a_captured_live_name_establishes_ownership() -> Bool {
+  match registration_ownership(
+    host: operator_host_srv2,
+    name: srv2_live_agent_name,
+    capture: CaptureComplete { observed_on: "2026-09-19" as NonEmptyStr, members: [srv2_live_agent_name] },
+  ) {
+    OwnershipEstablished { host: _, slot_index: i, observed_on: _, basis: _ } => (i as Int) == 2
+    OwnershipCanonicalUnresolved { name: _, slot_index: _, cause: _ } => false
+    OwnershipCandidateUnresolved { name: _, cause: _ } => false
+    OwnershipForeign { name: _, cause: _ } => false
+  }
+}
+
+// AND WITHOUT THE CAPTURE IT IS RECOGNIZED BUT UNRESOLVED -- recognition improved, ownership still
+// needs its own basis, which is the R3 separation this must not undo.
+test fn a_live_name_without_capture_is_recognized_but_unresolved() -> Bool {
+  match registration_ownership(
+    host: operator_host_srv2,
+    name: srv2_live_agent_name,
+    capture: CaptureUnavailable { cause: "no snapshot" },
+  ) {
+    OwnershipCanonicalUnresolved { name: _, slot_index: i, cause: _ } => (i as Int) == 2
+    OwnershipEstablished { host: _, slot_index: _, observed_on: _, basis: _ } => false
+    OwnershipCandidateUnresolved { name: _, cause: _ } => false
+    OwnershipForeign { name: _, cause: _ } => false
+  }
+}
+
+// ── THE SHAPE IS THE PRODUCER'S, NOT A GENERAL SPLITTER ──────────────────────────────────────
+
+test fn the_bare_slot_name_still_matches() -> Bool {
+  match match_registration_name_to_slot(name: "srv2-02" as NonEmptyStr, slot_instance: "srv2-02") {
+    MatchedBareSlotName { slot_instance: s } => s == "srv2-02"
+    MatchedJitInstance { slot_instance: _, epoch_seconds: _, pid: _ } => false
+    RegistrationNameNoMatch { name: _, slot_instance: _, cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATOR AGAINST THE BARE-PREFIX PROMOTION REFUSED EARLIER IN THIS LANE: a name inside the
+// namespace whose suffix is not the producer's two numeric fields does NOT match.
+test fn a_non_numeric_suffix_does_not_match() -> Bool {
+  !registration_name_match_is_slot(
+    m: match_registration_name_to_slot(name: "srv2-02-notanumber-3693107" as NonEmptyStr, slot_instance: "srv2-02"),
+  )
+}
+
+test fn a_one_field_suffix_does_not_match() -> Bool {
+  !registration_name_match_is_slot(
+    m: match_registration_name_to_slot(name: "srv2-02-1789774588" as NonEmptyStr, slot_instance: "srv2-02"),
+  )
+}
+
+test fn a_three_field_suffix_does_not_match() -> Bool {
+  !registration_name_match_is_slot(
+    m: match_registration_name_to_slot(name: "srv2-02-1789774588-3693107-9" as NonEmptyStr, slot_instance: "srv2-02"),
+  )
+}
+
+// AN ADJACENT SLOT INDEX IS NOT THIS SLOT. `srv2-021` shares the `srv2-02` prefix as raw text and is
+// a different name; the delimiter requirement is what separates them.
+test fn an_adjacent_index_does_not_match() -> Bool {
+  !registration_name_match_is_slot(
+    m: match_registration_name_to_slot(name: "srv2-021" as NonEmptyStr, slot_instance: "srv2-02"),
+  )
+}
+
+// AND A DIFFERENT HOST'S LIVE NAME DOES NOT MATCH THIS SLOT.
+test fn another_hosts_live_name_does_not_match() -> Bool {
+  !registration_name_match_is_slot(
+    m: match_registration_name_to_slot(name: "srv1-02-1789774588-3693107" as NonEmptyStr, slot_instance: "srv2-02"),
+  )
+}
+
+// THE ROSTER FOLD PICKS THE SLOT THE NAME DENOTES, and answers no-match over a population that does
+// not contain it.
+test fn the_roster_fold_finds_the_denoted_slot() -> Bool {
+  match match_registration_name_to_any(name: srv2_live_agent_name, slot_instances: ["srv2-01", "srv2-02", "srv2-03"]) {
+    MatchedJitInstance { slot_instance: s, epoch_seconds: _, pid: _ } => s == "srv2-02"
+    MatchedBareSlotName { slot_instance: _ } => false
+    RegistrationNameNoMatch { name: _, slot_instance: _, cause: _ } => false
+  }
+}
+
+test fn the_roster_fold_refuses_a_population_without_the_slot() -> Bool {
+  !registration_name_match_is_slot(
+    m: match_registration_name_to_any(name: srv2_live_agent_name, slot_instances: ["srv2-01", "srv2-03"]),
+  )
+}
