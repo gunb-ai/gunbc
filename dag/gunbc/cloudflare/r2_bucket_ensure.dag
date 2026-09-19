@@ -16,6 +16,7 @@ import extdeps.cloudflare.r2 {
   R2Jurisdiction, R2JurisdictionDefault,
   r2_jurisdiction_wire,
 }
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.r2_buckets
 import extdeps.cloudflare.r2_buckets {
   parse_r2_jurisdiction,
