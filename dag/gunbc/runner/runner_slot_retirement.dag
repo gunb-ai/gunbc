@@ -20,6 +20,7 @@ import gunbc.host_operation_exec {
 }
 import extdeps.linux.cgroup_v2 {
   cgroup_v2_mount_point,
+  cgroup_v2_events_path,
   CgroupEventsDecoded,
   CgroupEventsUnparseable,
   decode_cgroup_events_populated,
@@ -947,4 +948,48 @@ fn retirement_baseline_rows(evidence: SlotRetirementEvidence) -> List<String> {
 // disposition is unchanged.
 fn transition_baseline_rows(host: HostIdentity) -> List<String> {
   transition_required_retiring(host: host) |> map(u => join(["required:", u as String], ""))
+}
+
+// ── Batched readings: one show and one events read for every retiree ──────────────────────────────
+
+// ONE READ OF EVERY RETIREE'S `cgroup.events`, AS ITS HOST ANSWERED IT. `CgroupEventsBatchRead`
+// carries the whole `FILE:LINE` stdout of extdeps.tools.grep grep_fixed_string_with_filename_argv over
+// the `populated` key; `CgroupEventsBatchUnread` is a batch that never ran or was refused, which
+// leaves every retiree with a live cgroup unobserved.
+type CgroupEventsBatch
+  = CgroupEventsBatchRead { stdout: String, stderr: String }
+  | CgroupEventsBatchUnread { cause: String }
+
+fn retirement_cgroup_events_path(control_group: String) -> NonEmptyStr {
+  cgroup_v2_events_path(cgroup_path: join([cgroup_v2_mount_point as String, trim(s: control_group)], "") as NonEmptyStr)
+}
+
+// THE DECISION OVER A BATCHED READ, and the same four answers as cgroup_occupancy_from_reads. A blank
+// ControlGroup is absence (control_group_property_means_cgroup_absent), so no file is consulted.
+// Otherwise the unit's answer is ONLY the lines prefixed by its own events path, decoded by the kernel
+// file's own decoder -- so a duplicated or malformed key still refuses. A path with NO line is
+// UNOBSERVED, never empty and never absent: grep is silent both for a file that vanished and for one it
+// could not open, and the directory test that discriminated those in the per-unit read is exactly the
+// round trip this batch removes. A cgroup that vanished between the show and the read is therefore a
+// one-observation delay, in the fail-closed direction.
+fn cgroup_occupancy_from_batched_events(control_group: String, batch: CgroupEventsBatch) -> CgroupOccupancy {
+  if control_group_property_means_cgroup_absent(value: control_group) {
+    CgroupAbsent
+  } else {
+    match batch {
+      CgroupEventsBatchUnread { cause: c } => CgroupUnobserved { cause: join(["the batched cgroup.events read did not run: ", c], "") }
+      CgroupEventsBatchRead { stdout: out, stderr: err } => {
+        let prefix = concat(retirement_cgroup_events_path(control_group: control_group) as String, ":")
+        let own = map(filter(split(s: out, delimiter: "\n"), l => starts_with(s: l, prefix: prefix)), l => substring(s: l, start: string_length(s: prefix), end: string_length(s: l)))
+        if list_length(items: own) == 0 {
+          CgroupUnobserved { cause: join(["the batched read returned no line for ", prefix, " ", trim(s: err)], "") }
+        } else {
+          match decode_cgroup_events_populated(body: join(own, "\n")) {
+            CgroupEventsUnparseable { cause: c } => CgroupUnobserved { cause: join(["cgroup.events could not be decoded: ", c], "") }
+            CgroupEventsDecoded { populated: p } => if p { CgroupObservedPopulated } else { CgroupObservedEmpty }
+          }
+        }
+      }
+    }
+  }
 }

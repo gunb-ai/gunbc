@@ -1,6 +1,6 @@
 module extdeps.tools.grep
 
-import std.types { NonEmptyStr, Bool, Unit }
+import std.types { NonEmptyStr, Bool, Unit, List, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
@@ -29,4 +29,14 @@ service grep.Grep {
       1 => Unit "pattern not found"
     }
   }
+}
+
+// ONE FIXED STRING ACROSS SEVERAL FILES, EACH MATCH NAMED BY ITS FILE. grep(1): `-H` prints the file
+// name before each matching line as `FILE:LINE`, `-F` reads the pattern as a fixed string. Exit status
+// is 0 when any line matched, 1 when none did, and 2 when an error occurred -- including a file that
+// could not be opened -- even if other files matched. So the status speaks for the batch, never for a
+// file: a consumer must key each file's answer by its own `FILE:` prefix, and a file with no such line
+// is unread, not empty.
+fn grep_fixed_string_with_filename_argv(pattern: NonEmptyStr, paths: List<NonEmptyStr>) -> List<String> {
+  concat(["grep", "-H", "-F", pattern as String], map(paths, p => p as String))
 }
