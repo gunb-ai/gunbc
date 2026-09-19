@@ -192,10 +192,6 @@ fn word_pair_qualified(a: Word, b: Word) -> WordPairResult {
   }
 }
 
-fn word_int_value(w: Word) -> Int {
-  w.value
-}
-
 // BITWISE OPERATIONS ARE ONE FOLD, NOT THREE. The three connectives differ only in the two-bit
 // decision at each place; the decomposition, the place accumulation and the bound are identical, so
 // authoring them separately would be three copies of one loop that can drift apart. The identity
@@ -608,8 +604,27 @@ fn word_from_octets_realizable(width: WordWidth, octets: List<Word>, endianness:
   }
 }
 
-fn octet_int_values(octets: List<Word>) -> List<Int> {
-  octets |> map(o => o.value)
+// THE LAST EXPORTED BOUNDARY THAT READ A VALUE WITHOUT ESTABLISHING IT, and it was on the base64
+// production route. octet_int_values mapped o.value over its members with no qualification and no
+// refusal arm at all -- octet_int_values([Word { width: Width8, value: 256 }]) answered [256], and
+// std.encoding consumed that projection for every decoded group. A projection is not exempt from
+// the premise rule: reading a field is where an uninhabitable word stops being a record and starts
+// being a number some consumer will trust.
+//
+// This is the partial-coverage state the premise seam was introduced to end, surviving one function
+// past the repair -- which is exactly why the controls are per-family rather than one specimen. The
+// members are qualified through the same octets_first_unqualified fold word_from_octets uses, so
+// width and value are established by one authority rather than two agreeing by accident, and the
+// result is typed because a projection that can refuse must be able to say so.
+type OctetValuesResult
+  = OctetValuesReady { values: List<Int> }
+  | OctetValuesRefused { cause: WordRefusal }
+
+fn octet_int_values(octets: List<Word>) -> OctetValuesResult {
+  match octets_first_unqualified(octets: octets) {
+    Present { value: cause } => OctetValuesRefused { cause: cause }
+    Absent => OctetValuesReady { values: octets |> map(o => o.value) }
+  }
 }
 
 // THE DECLARATIONS THIS MODULE LANDS AHEAD OF THEIR CONSUMERS, AS ROWS RATHER THAN AS PROSE.

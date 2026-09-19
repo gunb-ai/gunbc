@@ -422,7 +422,11 @@ fn base64_or_all(a: Word, b: Word, c: Word, d: Word) -> WordResult {
 fn base64_group_octet_values(group: Word) -> List<Int>? {
   match word_to_octets(a: group, endianness: BigEndian) {
     OctetsRefused { cause: _ } => none
-    OctetsReady { octets: octets } => Present { value: octet_int_values(octets: octets.skip(n: 1)) }
+    OctetsReady { octets: octets } =>
+      match octet_int_values(octets: octets.skip(n: 1)) {
+        OctetValuesRefused { cause: _ } => none
+        OctetValuesReady { values: values } => Present { value: values }
+      }
   }
 }
 
