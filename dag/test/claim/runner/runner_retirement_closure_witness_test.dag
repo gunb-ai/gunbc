@@ -1,0 +1,666 @@
+module test.claim.runner.runner_retirement_closure_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import std.types { NonEmptyStr, String, List, list_length }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv4 }
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOffline }
+import gunbc.fleet_runner_connectivity {
+  OrganizationRunnerRosterEvidence,
+  RosterObserved,
+  RosterObservedPartial,
+  RosterReadUnavailable,
+  RegistrationNamesNoCommittedSlot,
+}
+import gunbc.runner_slot_retirement {
+  RunnerRetirementObservation,
+  RunnerRetirementStanding,
+  CgroupObservedEmpty,
+  CgroupObservedPopulated,
+  CgroupUnobserved,
+  RetirementComplete,
+  RetirementPendingDrain,
+  RetirementUnobserved,
+  runner_retirement_standing,
+  GracefulRetirement,
+  AuthorizedDisruptiveRetirement,
+  MethodAvailable,
+  MethodUnavailable,
+  retirement_method_availability,
+  SlotRetirementEvidenceAbsent,
+  SlotRetirementEvidencePresent,
+  SlotRetirementAlreadySatisfied,
+  SlotRetirementActuate,
+  SlotRetirementPending,
+  SlotRetirementRefused,
+  slot_retirement_invocation,
+  slot_retirement_invocation_settled,
+  invocation_method_disposition,
+  MethodSelectedNotPerformed,
+  MethodNotSelected,
+  SlotRetirementSubjectMismatch,
+  slot_retirement_invocation_unit,
+  srv4_transition_interruption_authorization,
+}
+import gunbc.runner_host_retirement {
+  surplus_identity_disposition,
+  EstateCleanupStanding,
+  EstateCleanupComplete,
+  EstateCleanupOutstanding,
+  EstateObligationDischarged,
+  EstateObligationUnobserved,
+  RegistrationRemoval,
+  RunnerTreeRemoval,
+  LivenessReconcileTimerRetired,
+  estate_cleanup_standing,
+  RetireeObligationBasis,
+  ObligationFromCapturedSnapshot,
+  ObligationFromSearchBound,
+  CaptureUnavailable,
+  host_retirement_obligation_basis_of,
+}
+import gunbc.runner_retirement_closure {
+  ClosureBlocker,
+  PlannerSawCompleteSubject,
+  PlannerRefusedAccess,
+  PlannerFilteredSubjects,
+  AssessmentClearOfBlockers,
+  AssessmentBlocked,
+  retirement_assessment_verdict,
+  assessment_is_clear_of_blockers,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── THE THREE ARMS OF ONE INVOCATION ─────────────────────────────────────────────────────────
+
+fn retired_slot() -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: "actions-runner@srv2-01.service",
+    replacement_inhibited: true,
+    service_running: false,
+    occupancy: CgroupObservedEmpty,
+  }
+}
+
+fn live_slot() -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: "actions-runner@srv4-13.service",
+    replacement_inhibited: false,
+    service_running: true,
+    occupancy: CgroupObservedPopulated { count: 3 },
+  }
+}
+
+fn unreadable_slot() -> RunnerRetirementObservation {
+  RunnerRetirementObservation {
+    unit: "actions-runner@srv4-14.service",
+    replacement_inhibited: false,
+    service_running: true,
+    occupancy: CgroupUnobserved { cause: "ssh refused" },
+  }
+}
+
+// ARM 1, AND IT IS REACHED WITH NO AUTHORIZATION WHATSOEVER. This is the ruling's first row and the
+// discriminating red for the ordering inside the fold: the evidence handed in is ABSENT -- nobody
+// authorized interrupting anything -- and a slot whose postcondition already holds is still recorded
+// satisfied. A fold that tested coverage first would answer REFUSED here, reporting "not permitted
+// to interrupt" about a slot with nothing left to interrupt.
+test fn an_already_retired_slot_is_satisfied_without_any_authorization() -> Bool {
+  match slot_retirement_invocation(
+    evidence: SlotRetirementEvidenceAbsent { cause: "no operator authorization is bound to this convergence" },
+    unit: "actions-runner@srv2-01.service" as NonEmptyStr,
+    standing: runner_retirement_standing(o: retired_slot()),
+  ) {
+    SlotRetirementAlreadySatisfied { unit: _ } => true
+    SlotRetirementActuate { unit: _, method_label: _, operation: _ } => false
+    SlotRetirementPending { unit: _, cause: _ } => false
+    SlotRetirementRefused { unit: _, cause: _ } => false
+    SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => false
+  }
+}
+
+// AND NO RECEIPT MAY CLAIM A METHOD RAN. The satisfied arm has no field in which to name one, so this
+// is a reading of the type rather than of a flag somebody remembered to clear.
+test fn the_satisfied_arm_names_no_method() -> Bool {
+  match invocation_method_disposition(
+    i: slot_retirement_invocation(
+      evidence: SlotRetirementEvidenceAbsent { cause: "none" },
+      unit: "actions-runner@srv2-01.service" as NonEmptyStr,
+      standing: runner_retirement_standing(o: retired_slot()),
+    ),
+  ) {
+    MethodNotSelected { reason: _ } => true
+    MethodSelectedNotPerformed { method_label: _ } => false
+  }
+}
+
+// ARM 2. Incomplete, and an EXACT authorization names this unit, so the existing disruptive method is
+// selected and the receipt says which one ran.
+test fn an_incomplete_slot_under_an_exact_authorization_actuates() -> Bool {
+  match slot_retirement_invocation(
+    evidence: SlotRetirementEvidencePresent {
+      authorization: srv4_transition_interruption_authorization,
+      standings: [],
+    },
+    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    standing: runner_retirement_standing(o: live_slot()),
+  ) {
+    SlotRetirementActuate { unit: _, method_label: l, operation: _ } => l == "AuthorizedDisruptiveRetirement"
+    SlotRetirementAlreadySatisfied { unit: _ } => false
+    SlotRetirementPending { unit: _, cause: _ } => false
+    SlotRetirementRefused { unit: _, cause: _ } => false
+    SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => false
+  }
+}
+
+// AN ACTUATION IS NOT A COMPLETION. The postcondition it reaches for is established by a later pass's
+// independent readback, never by the operation that was supposed to bring it about.
+test fn an_emitted_actuation_is_not_settled() -> Bool {
+  !slot_retirement_invocation_settled(
+    i: slot_retirement_invocation(
+      evidence: SlotRetirementEvidencePresent {
+        authorization: srv4_transition_interruption_authorization,
+        standings: [],
+      },
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      standing: runner_retirement_standing(o: live_slot()),
+    ),
+  )
+}
+
+// ARM 3a. Incomplete and nothing authorizes interrupting this unit -- a refusal to act, which is the
+// arm an urgency or a worker count must never bypass.
+test fn an_incomplete_slot_with_no_authorization_refuses() -> Bool {
+  match slot_retirement_invocation(
+    evidence: SlotRetirementEvidenceAbsent { cause: "srv2 has no operator interruption authorization" },
+    unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+    standing: runner_retirement_standing(o: live_slot()),
+  ) {
+    SlotRetirementRefused { unit: _, cause: _ } => true
+    SlotRetirementAlreadySatisfied { unit: _ } => false
+    SlotRetirementActuate { unit: _, method_label: _, operation: _ } => false
+    SlotRetirementPending { unit: _, cause: _ } => false
+    SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => false
+  }
+}
+
+// ARM 3b, AND IT IS BEFORE THE COVERAGE TEST ON PURPOSE. An unreadable slot is PENDING even under a
+// full authorization: the permission question has not been reached, because nothing yet says whether
+// anything needs doing. Reporting it as refused would send an operator to mint permission to destroy
+// running work when the remedy is to restore a reading.
+test fn an_unobserved_readback_is_pending_even_under_authorization() -> Bool {
+  match slot_retirement_invocation(
+    evidence: SlotRetirementEvidencePresent {
+      authorization: srv4_transition_interruption_authorization,
+      standings: [],
+    },
+    unit: "actions-runner@srv4-14.service" as NonEmptyStr,
+    standing: runner_retirement_standing(o: unreadable_slot()),
+  ) {
+    SlotRetirementPending { unit: _, cause: _ } => true
+    SlotRetirementRefused { unit: _, cause: _ } => false
+    SlotRetirementAlreadySatisfied { unit: _ } => false
+    SlotRetirementActuate { unit: _, method_label: _, operation: _ } => false
+    SlotRetirementSubjectMismatch { unit: _, standing_unit: _ } => false
+  }
+}
+
+// GRACEFUL STAYS UNAVAILABLE, AND IT REFUSES RATHER THAN RETURNING A NO-OP THAT WOULD READ AS A
+// COMPLETED DRAIN. L2b implements it; this row is the wall until then.
+test fn graceful_retirement_remains_unavailable() -> Bool {
+  match retirement_method_availability(method: GracefulRetirement, unit: "actions-runner@srv2-01.service") {
+    MethodUnavailable { method_label: l, cause: _ } => l == "GracefulRetirement"
+    MethodAvailable { method: _ } => false
+  }
+}
+
+
+// ── THE CLOSURE JOIN: EVERY WAY OF NOT KNOWING IS A BLOCKER ──────────────────────────────────
+
+fn grounded_basis() -> RetireeObligationBasis {
+  ObligationFromCapturedSnapshot {
+    observed_on: "2026-09-19" as NonEmptyStr,
+    units: ["actions-runner@srv2-01.service" as NonEmptyStr],
+  }
+}
+
+fn complete_estate() -> EstateCleanupStanding {
+  estate_cleanup_standing(standings: [
+    EstateObligationDischarged { obligation: RegistrationRemoval, evidence: "delisted" },
+    EstateObligationDischarged { obligation: RunnerTreeRemoval, evidence: "absent" },
+    EstateObligationDischarged { obligation: LivenessReconcileTimerRetired, evidence: "masked" },
+  ])
+}
+
+fn settled_standings() -> List<RunnerRetirementStanding> {
+  [RetirementComplete { unit: "actions-runner@srv2-01.service" }]
+}
+
+fn one_required() -> List<NonEmptyStr> {
+  ["actions-runner@srv2-01.service" as NonEmptyStr]
+}
+
+fn observed_roster() -> OrganizationRunnerRosterEvidence {
+  RosterObserved { observed_on: "2026-09-19" as NonEmptyStr, registrations: [] }
+}
+
+// THE POSITIVE CONTROL. Everything read, everything settled, nothing filtered -- the closure
+// converges. Without this row every blocker below is satisfied by a fold that never converges, which
+// is the permanently-red twin of the permanently-green decoration.
+test fn a_complete_assessment_is_clear_of_blockers() -> Bool {
+  assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// AN UNAVAILABLE ROSTER IS UNOBSERVED, NOT ZERO REGISTRATIONS -- and zero is what an empty operation
+// set asserts about it.
+test fn an_unavailable_roster_blocks_the_closure() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: RosterReadUnavailable { reason: "no app credential" },
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// A PARTIAL ROSTER IS A PREFIX, and a prefix containing none of our identities is indistinguishable
+// from a complete read that found none.
+test fn a_partial_roster_blocks_the_closure() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: RosterObservedPartial {
+        observed_on: "2026-09-19" as NonEmptyStr,
+        registrations: [],
+        observed_count: 100,
+        authority_total: 522,
+      },
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// AN UNIMPLEMENTED METHOD REFUSING IS NOT A RETIREMENT IT PERFORMED.
+test fn an_unimplemented_graceful_method_blocks_the_closure() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: ["actions-runner@srv2-01.service"],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "actions-runner@srv2-01.service"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// ZERO OPERATIONS FROM A REFUSED PLANNER IS NOT CONVERGENCE. This and the row below are the pair the
+// contract's "zero hunks alone is insufficient" sentence is about: the operation count is IDENTICAL
+// to the converging control above, and only the planner's own disposition distinguishes them.
+test fn a_refused_planner_emitting_zero_operations_does_not_converge() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerRefusedAccess { cause: "ssh refused" },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+test fn a_filtering_planner_emitting_zero_operations_does_not_converge() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerFilteredSubjects {
+        filtered: ["actions-runner@srv2-09.service" as NonEmptyStr],
+        cause: "the committed-slot decoder did not recognize it",
+      },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// A REQUIRED RETIREE WITH NO STANDING CANNOT BE COVERED BY A NEIGHBOUR'S SUCCESS -- the join is over
+// the obligation, so an omitted subject blocks rather than shortening the list.
+test fn a_required_retiree_with_no_standing_blocks_the_closure() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: ["actions-runner@srv2-01.service" as NonEmptyStr, "actions-runner@srv2-02.service" as NonEmptyStr],
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// SLOT RETIREMENT SATISFIED IS NOT ESTATE CLEANUP, read at the closure. Every slot standing is
+// RetirementComplete and the closure still refuses, because the registration and tree obligations are
+// unobserved.
+test fn settled_slots_with_an_outstanding_estate_do_not_converge() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      extra: [],
+      estate: estate_cleanup_standing(standings: [
+        EstateObligationDischarged { obligation: LivenessReconcileTimerRetired, evidence: "masked" },
+        EstateObligationUnobserved { obligation: RegistrationRemoval, cause: "no app credential" },
+        EstateObligationUnobserved { obligation: RunnerTreeRemoval, cause: "not deleted by this route" },
+      ]),
+    ),
+  )
+}
+
+
+// ── SELECTION IS NOT PERFORMANCE ─────────────────────────────────────────────────────────────
+
+// THE DISCRIMINATOR THE REVIEW ASKED FOR: an incomplete slot with exact interruption authorization
+// SELECTS an operation, executes nothing, and reports method selected, not performed. The earlier
+// fold turned that selection into `MethodPerformed` with no execution outcome anywhere in its inputs,
+// so an assessment-only route wrote receipts asserting a disruptive stop had run.
+test fn an_authorized_selection_reports_selected_not_performed() -> Bool {
+  match invocation_method_disposition(
+    i: slot_retirement_invocation(
+      evidence: SlotRetirementEvidencePresent {
+        authorization: srv4_transition_interruption_authorization,
+        standings: [],
+      },
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      standing: runner_retirement_standing(o: live_slot()),
+    ),
+  ) {
+    MethodSelectedNotPerformed { method_label: l } => l == "AuthorizedDisruptiveRetirement"
+    MethodNotSelected { reason: _ } => false
+  }
+}
+
+// ── A NEIGHBOUR'S COMPLETION CANNOT SETTLE THIS SUBJECT ──────────────────────────────────────
+
+// srv2-01 IS COMPLETE AND srv2-02 IS NOT srv2-01. The earlier fold returned AlreadySatisfied for
+// srv2-02 from srv2-01's standing, because nothing checked that the standing described the subject.
+test fn a_neighbours_completion_cannot_settle_this_unit() -> Bool {
+  match slot_retirement_invocation(
+    evidence: SlotRetirementEvidenceAbsent { cause: "none" },
+    unit: "actions-runner@srv2-02.service" as NonEmptyStr,
+    standing: RetirementComplete { unit: "actions-runner@srv2-01.service" },
+  ) {
+    SlotRetirementSubjectMismatch { unit: u, standing_unit: su } =>
+      u == "actions-runner@srv2-02.service" && su == "actions-runner@srv2-01.service"
+    SlotRetirementAlreadySatisfied { unit: _ } => false
+    SlotRetirementActuate { unit: _, method_label: _, operation: _ } => false
+    SlotRetirementPending { unit: _, cause: _ } => false
+    SlotRetirementRefused { unit: _, cause: _ } => false
+  }
+}
+
+// AND A MISMATCH SELECTS NO METHOD, so the refusal cannot be laundered into an actuation.
+test fn a_subject_mismatch_selects_no_method() -> Bool {
+  match invocation_method_disposition(
+    i: slot_retirement_invocation(
+      evidence: SlotRetirementEvidencePresent {
+        authorization: srv4_transition_interruption_authorization,
+        standings: [],
+      },
+      unit: "actions-runner@srv4-13.service" as NonEmptyStr,
+      standing: RetirementComplete { unit: "actions-runner@srv4-14.service" },
+    ),
+  ) {
+    MethodNotSelected { reason: _ } => true
+    MethodSelectedNotPerformed { method_label: _ } => false
+  }
+}
+
+// ── A COMPLETE ASSESSMENT WITH WORK REMAINING IS NOT CLEAR ───────────────────────────────────
+
+// THE MUTATION OF THE CONVERGING CONTROL THE REVIEW NAMED: identical inputs to
+// `a_complete_assessment_is_clear_of_blockers` except operations_emitted 0 -> 1. The earlier fold
+// discarded the count and stayed green.
+test fn a_complete_assessment_with_operations_remaining_is_not_clear() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 1 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// ── AN ACTUAL ROSTER MEMBER CANNOT BE OMITTED ────────────────────────────────────────────────
+
+// THE OTHER FALSE GREEN: a COMPLETE roster carrying an owned surplus registration. The earlier fold
+// took the surplus dispositions as a separate parameter and discarded the roster's registrations, so
+// this exact input converged when paired with `surplus: []`. There is no second list to shorten now --
+// the dispositions are derived from this roster.
+test fn an_owned_surplus_member_of_a_complete_roster_blocks() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: RosterObserved {
+        observed_on: "2026-09-19" as NonEmptyStr,
+        registrations: [
+          GitHubSelfHostedRunnerRegistration {
+            id: 707,
+            name: "srv2-07" as NonEmptyStr,
+            status: GitHubRunnerOffline,
+            busy: false,
+            ephemeral: true,
+            version: "2.328.0" as NonEmptyStr,
+            os: "linux" as NonEmptyStr,
+            labels: [],
+          },
+        ],
+      },
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// AND THE CONTROL: a complete roster carrying only a FOREIGN registration still blocks, because an
+// unestablished owner is accounted for rather than filtered.
+test fn a_foreign_member_of_a_complete_roster_also_blocks() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: RosterObserved {
+        observed_on: "2026-09-19" as NonEmptyStr,
+        registrations: [
+          GitHubSelfHostedRunnerRegistration {
+            id: 900,
+            name: "someone-elses-runner" as NonEmptyStr,
+            status: GitHubRunnerOffline,
+            busy: false,
+            ephemeral: true,
+            version: "2.328.0" as NonEmptyStr,
+            os: "linux" as NonEmptyStr,
+            labels: [],
+          },
+        ],
+      },
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// ── R5: A CONTRADICTORY RETIREE READING CANNOT MINT A CLEAR ASSESSMENT ───────────────────────
+
+// THE EXACT PAIR THE REVIEW NAMED. The previous fold filtered to the completed standings and asked
+// for membership, so the second, disagreeing reading was discarded and no blocker was produced.
+test fn a_contradictory_retiree_reading_blocks_the_assessment() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: [
+        RetirementComplete { unit: "actions-runner@srv2-01.service" },
+        RetirementUnobserved { unit: "actions-runner@srv2-01.service", cause: "read failed" },
+      ],
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// AND IN THE OTHER ORDER -- reversing the list must not change the answer.
+test fn a_contradictory_retiree_reading_blocks_in_either_order() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: [
+        RetirementUnobserved { unit: "actions-runner@srv2-01.service", cause: "read failed" },
+        RetirementComplete { unit: "actions-runner@srv2-01.service" },
+      ],
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// ── R7: AN UNGROUNDED POPULATION BLOCKS THE ASSESSMENT ───────────────────────────────────────
+
+// THE REQUIRED CONTROL: settled candidate slots, an empty COMPLETE roster, and otherwise clear
+// inputs -- and the assessment must still block, specifically on population grounding. Previously the
+// basis was printed on the receipt and consumed by nothing, so this read clear.
+test fn an_ungrounded_population_blocks_the_assessment() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: host_retirement_obligation_basis_of(
+        capture: CaptureUnavailable { cause: "no snapshot has been taken" },
+        host: operator_host_srv2,
+        bound: 21,
+      ),
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// AN EXTRA BLOCKER SUPPLIED BY THE ROUTE BLOCKS TOO -- this is how the unresolved build provenance
+// reaches the verdict rather than being asserted or omitted.
+test fn a_supplied_extra_blocker_blocks_the_assessment() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      estate: complete_estate(),
+      extra: [ClosureBlocker { subject: "assessment-build-provenance", cause: "unresolved" }],
+    ),
+  )
+}

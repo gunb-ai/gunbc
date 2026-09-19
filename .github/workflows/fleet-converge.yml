@@ -11,9 +11,9 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
+        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown; runner_slot_retire assesses a DECLARED host retirement from a retained executor over SSH, taking retirement_executor and retirement_target rather than host because the machine being retired cannot be relied on to run the job that retires it
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, runner_slot_retire, r2_mint_preflight, r2_object_write_mint]
         type: choice
       target:
         description: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12); apply reads the subject off the plan artifact"
@@ -24,6 +24,16 @@ on:
         description: "host_reset_return only: the PEER that observes the reset. The subject is NOT an input -- it is derived from this observer through the modeled pairing, so a job cannot be pointed at the host it is resetting"
         required: false
         options: [srv1, srv2, srv3, srv4]
+        type: choice
+      retirement_executor:
+        description: "runner_slot_retire only: the RETAINED host whose runner executes the job. It is a different field from the target because retiring a host must not require a runnable runner on the host being retired, and the entry refuses when the two name the same machine"
+        required: false
+        options: [srv1, srv2, srv3, srv4]
+        type: choice
+      retirement_target:
+        description: "runner_slot_retire only: the host being RETIRED, reached over SSH from the executor. Only a host carrying a declared retirement is offered (srv2); a capacity refusal is not a retirement and does not put a host on this list"
+        required: false
+        options: [srv2]
         type: choice
       plan_artifact_hash:
         description: Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step).
@@ -52,7 +62,7 @@ on:
 jobs:
   build:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 70
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -135,6 +145,16 @@ jobs:
         env:
           GUNBC_HOST_RESET_DISPATCH_MODE: ${{ github.event.inputs.mode }}
           GUNBC_HOST_RESET_OBSERVER: ${{ github.event.inputs.reset_observer }}
+        timeout-minutes: 5
+      - name: "Retirement dispatch admission: refuse an unnamed executor, an unnamed target, or an executor that is its own target"
+        id: retirement_dispatch_admission
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_slot_retire_run.dag --function runner_slot_retire_dispatch_admission_wet
+        env:
+          GUNBC_RUNNER_RETIRE_DISPATCH_MODE: ${{ github.event.inputs.mode }}
+          RUNNER_RETIREMENT_EXECUTOR: ${{ github.event.inputs.retirement_executor }}
+          RUNNER_RETIREMENT_TARGET: ${{ github.event.inputs.retirement_target }}
         timeout-minutes: 5
       - name: Pack release bins for cross-job handoff (tar keeps exec bits)
         run: |
@@ -714,6 +734,57 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: always() && (github.event.inputs.mode == 'host_reset_return')
+        timeout-minutes: 10
+  runner-slot-retire:
+    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.retirement_executor)) }}
+    needs: [build]
+    timeout-minutes: 115
+    if: github.event.inputs.mode == 'runner_slot_retire'
+    concurrency:
+      group: gunbc-host-mutation-${{ github.event.inputs.retirement_target }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.expected_revision || github.ref }}
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        timeout-minutes: 5
+      - name: "Runner slot retirement: assess a declared host retirement from a retained executor over SSH"
+        id: runner_slot_retire
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/runner/runner_slot_retire_run.dag --function runner_slot_retire_ci_wet
+          cat "$ROOT/target/runner-slot-retire-receipt.txt"
+        env:
+          RUNNER_RETIREMENT_EXECUTOR: ${{ github.event.inputs.retirement_executor }}
+          RUNNER_RETIREMENT_TARGET: ${{ github.event.inputs.retirement_target }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+        if: github.event.inputs.mode == 'runner_slot_retire'
+        timeout-minutes: 5
+      - name: Upload runner slot retirement receipt
+        id: runner_slot_retire_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: runner-slot-retire
+          path: target/runner-slot-retire-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: always() && (github.event.inputs.mode == 'runner_slot_retire')
         timeout-minutes: 10
   dashboard-deploy:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
