@@ -266,9 +266,18 @@ fn runner_slot_retire_dispatch_admission_wet() -> ProcessExit
   }
 }
 
+// THE ORGANIZATION THE ROSTER WOULD BE SCANNED IN TRAVELS WITH THE SUBJECT, taken from the declared
+// retirement's own RunnerHostSpec. It is a LOGIN, the same spelling a capture stores, because the
+// census join compares organization strings exactly: the literal org URL that stood here could never
+// have matched a binding scoped to `gunb-ai`, however well the id and the name agreed, and the
+// roster read being unavailable hid that operationally without making it correct. There is no
+// unscoped arm to guard: HostRetirement carries a RunnerHostSpec by construction, so a target this
+// route admits always has an admitted scope, and a blocker for the absent case would be a check
+// whose red no source can author.
 type RetirementRouteSubject {
   executor: NonEmptyStr
   target: HostIdentity
+  roster_organization: NonEmptyStr
   ssh_target: SshTarget
 }
 
@@ -291,6 +300,7 @@ fn retirement_route_admission(executor_raw: String, target_raw: String) -> Retir
             subject: RetirementRouteSubject {
               executor: executor as NonEmptyStr,
               target: r.host,
+              roster_organization: github_app_runner_org(config: r.spec.app),
               ssh_target: SshTarget {
                 endpoint: fleet_probe_endpoint_for(host: r.host as String) as NonEmptyStr,
                 principal: executor_bootstrap_principal.login,
@@ -388,6 +398,11 @@ fn observe_reconcile_mechanism_reading(transport: HostEffectTransport) -> Reconc
       unit: runner_liveness_reconcile_service_unit,
       property: ActiveState,
     ),
+    service_unit_file_state: reconcile_property_read(
+      transport: transport,
+      unit: runner_liveness_reconcile_service_unit,
+      property: UnitFileState,
+    ),
   }
 }
 
@@ -468,12 +483,6 @@ fn retirement_route_estate_standings(run: RetirementRouteRun) -> List<EstateObli
 // DECLARED FRONTIER. The producer that replaces this is the App-credentialed roster read; when it
 // lands, this function's caller passes the real evidence and `surplus_identity_disposition` gets the
 // non-empty population it is written for. Until then the blocker is visible on every receipt.
-// THE ORGANIZATION THE ROSTER WOULD BE SCANNED IN. Carried even while the scan is unavailable,
-// because a registration id is meaningless outside a scope and a consumer must not have to guess one.
-fn retirement_route_roster_organization() -> NonEmptyStr {
-  "https://github.com/gunb-ai" as NonEmptyStr
-}
-
 fn retirement_route_roster_evidence() -> OrganizationRunnerRosterEvidence {
   RosterReadUnavailable {
     reason: "the runner slot retirement route holds no GitHub App credential and performs no organization roster read; the remote registrations for this host are therefore unobserved from this invocation",
@@ -767,7 +776,7 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                     revision: revision as NonEmptyStr,
                     host: subject.target,
                     roster: retirement_route_roster_evidence(),
-                    roster_organization: retirement_route_roster_organization(),
+                    roster_organization: subject.roster_organization,
                     required: run.required,
                     standings: run.standings,
                     method_subjects: retirement_route_graceful_subjects(run: run),

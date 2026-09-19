@@ -3,6 +3,7 @@ module gunbc.runner_registration_capture
 import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
 import std.algebra { trim }
 import product.placement_supply { HostIdentity }
+import extdeps.github.github { github_organization_url }
 import extdeps.github.actions_runner {
   ActionsRunnerRegistration,
   ActionsRunnerRegistrationPersistent,
@@ -129,21 +130,30 @@ fn capture_context_for(host: HostIdentity, slot_instance: NonEmptyStr) -> Captur
         cause: join([slot_instance as String, " is not a canonical slot name of ", host as String, ", so no installation of that host is named by it"], ""),
       }
     Present { value: i } =>
-      match host_admitted_organization(host: host) {
-        Absent =>
-          CaptureContextRefused {
-            cause: join([host as String, " has no modeled runner host row, so it has no admitted GitHub organization to scope a registration in"], ""),
-          }
-        Present { value: org } =>
-          CaptureContextAdmitted {
-            context: CaptureContext {
-              host: host,
-              slot_instance: slot_instance,
-              slot_index: i,
-              installation_path: capture_expected_path(slot_instance: slot_instance),
-              organization: org,
-            },
-          }
+      if (slot_instance as String) != (host_registration_name_for_slot(host: host, slot_index: i) as String) {
+        CaptureContextRefused {
+          cause: join([
+            slot_instance as String, " RECOGNIZES slot ", host_registration_name_for_slot(host: host, slot_index: i) as String,
+            " but is not that slot: it is a registration INCARNATION of it. A stable slot is what the host owns and what its unit and installation path are named after; an incarnation is one registration that slot made, and the suffix is minted per registration. Admitting it here would derive the unit and the path from the incarnation, which is the wrong subject and not a tree that exists. Supply the canonical slot name -- the suffix decoder stays available to the registration and roster consumers, which are asking the other question",
+          ], ""),
+        }
+      } else {
+        match host_admitted_organization(host: host) {
+          Absent =>
+            CaptureContextRefused {
+              cause: join([host as String, " has no modeled runner host row, so it has no admitted GitHub organization to scope a registration in"], ""),
+            }
+          Present { value: org } =>
+            CaptureContextAdmitted {
+              context: CaptureContext {
+                host: host,
+                slot_instance: slot_instance,
+                slot_index: i,
+                installation_path: capture_expected_path(slot_instance: slot_instance),
+                organization: org,
+              },
+            }
+        }
       }
   }
 }
@@ -243,14 +253,15 @@ fn capture_admission(
   }
 }
 
-// THE ADMITTED ORG IS A LOGIN AND THE FILE CARRIES A URL, so the comparison is that the URL's last
-// path segment is that login. A bare substring test would accept `github.com/gunb-ai-evil` and a
-// repository URL `github.com/gunb-ai/repo`, which are exactly the scopes this must separate.
+// THE ADMITTED ORG IS A LOGIN AND THE FILE CARRIES A URL, so the comparison is against the canonical
+// organization URL that login projects to, whole. The previous reading compared only the URL's LAST
+// PATH SEGMENT, and the annotation above it claimed that separated organization from repository
+// scope. It did not: the repository URL https://github.com/another-owner/gunb-ai ends in the login
+// and passed, as did https://example.invalid/gunb-ai and the bare string gunb-ai, neither of which
+// establishes the admitted GitHub origin at all. The segment test could not have separated the
+// scopes, because the scopes differ in what PRECEDES the login as much as in what follows it.
 fn capture_url_names_organization(url: NonEmptyStr, organization: NonEmptyStr) -> Bool {
-  match split(s: url as String, delimiter: "/").last() {
-    Present { value: seg } => seg == (organization as String)
-    Absent => false
-  }
+  (url as String) == (github_organization_url(login: organization) as String)
 }
 
 // THE LOCAL UNIT COMES FROM THE SLOT. This is the projection the previous shape got wrong, and it is
@@ -458,6 +469,23 @@ type LocalPopulationStanding
   = LocalPopulationKnown { observed_on: NonEmptyStr, slots: List<LocalSlotObservation> }
   | LocalPopulationIncomplete { cause: String }
 
+// A REGISTRATION READ OUT OF ONE INSTALLATION IS THAT INSTALLATION'S EVIDENCE, so an association
+// naming another slot is a disagreement between the read and the tree rather than a fact about
+// either. The enclosing observation was the only thing that knew which installation the file came
+// from, and nothing downstream can recover it: the binding carries its own slot, so a misattributed
+// member would be projected as that other slot's obligation and the tree it was actually read from
+// would look registration-free.
+fn slot_foreign_bindings(observation: LocalSlotObservation) -> List<RunnerRegistrationBinding> {
+  match observation.registrations {
+    SlotRegistrationsObserved { bindings: bs } =>
+      bs |> filter(b =>
+        (b.slot_instance as String) != (observation.slot_instance as String)
+        || (b.host as String) != (observation.host as String))
+    SlotRegistrationPositivelyAbsent { evidence: _ } => []
+    SlotRegistrationUnresolved { cause: _ } => []
+  }
+}
+
 fn local_population_standing(p: LocalSlotPopulation) -> LocalPopulationStanding {
   match p {
     LocalPopulationUnavailable { cause: c } => LocalPopulationIncomplete { cause: c }
@@ -471,12 +499,37 @@ fn local_population_standing(p: LocalSlotPopulation) -> LocalPopulationStanding 
         SlotRegistrationsObserved { bindings: _ } => false
         SlotRegistrationPositivelyAbsent { evidence: _ } => false
       })
+      let misattributed = ss |> filter(sl => list_length(items: slot_foreign_bindings(observation: sl)) > 0)
       if list_length(items: unresolved) > 0 {
         LocalPopulationIncomplete {
           cause: join([to_string(list_length(items: unresolved)), " observed local slot(s) have an unresolved registration standing, so what they owe remotely is not established"], ""),
         }
+      } else if list_length(items: misattributed) > 0 {
+        LocalPopulationIncomplete {
+          cause: join([
+            to_string(list_length(items: misattributed)),
+            " observed local slot(s) carry a registration binding for a DIFFERENT slot. A registration read out of one installation is that installation's evidence, so an association naming another slot means the read and the tree disagree about whose registration this is, and neither answer can be trusted for either slot",
+          ], ""),
+        }
       } else {
-        LocalPopulationKnown { observed_on: on, slots: ss }
+        match capture_coherence(bindings: local_population_bindings(p: p)) {
+          CaptureIdAttributedTwice { agent_id: id, first_slot: a, second_slot: b } =>
+            LocalPopulationIncomplete {
+              cause: join([
+                "scoped registration id ", to_string(id), " is attributed to both ", a as String, " and ", b as String,
+                " across the observed local slots; one remote registration cannot belong to two trees, so which tree owes its removal is not established",
+              ], ""),
+            }
+          CaptureIdNameConflict { agent_id: id, first_name: a, second_name: b } =>
+            LocalPopulationIncomplete {
+              cause: join([
+                "scoped registration id ", to_string(id), " appears under two names across the observed local slots, ",
+                a as String, " and ", b as String,
+                "; the remote projection would keep whichever came first, so the name it reports would depend on the read order rather than on the estate",
+              ], ""),
+            }
+          CapturesCoherent => LocalPopulationKnown { observed_on: on, slots: ss }
+        }
       }
     }
   }

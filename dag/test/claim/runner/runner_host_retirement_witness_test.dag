@@ -449,11 +449,19 @@ test fn all_three_estate_obligations_discharged_completes() -> Bool {
 // ── THE RECONCILE MECHANISM ──────────────────────────────────────────────────────────────────
 
 fn reading(file_state: String, timer_active: String, service_active: String) -> ReconcileMechanismReading {
+  reading_with_service(file_state: file_state, timer_active: timer_active, service_active: service_active, service_file_state: "masked")
+}
+
+// THE SERVICE IS MASKED IN THE SHARED HELPER so that every claim above keeps discriminating on its
+// own subject rather than on the service's configuration; the claims that are ABOUT the service's
+// inhibition supply it explicitly below.
+fn reading_with_service(file_state: String, timer_active: String, service_active: String, service_file_state: String) -> ReconcileMechanismReading {
   ReconcileMechanismReading {
     timer_load_state: ReconcilePropertyValue { value: "loaded" },
     timer_unit_file_state: ReconcilePropertyValue { value: file_state },
     timer_active_state: ReconcilePropertyValue { value: timer_active },
     service_active_state: ReconcilePropertyValue { value: service_active },
+    service_unit_file_state: ReconcilePropertyValue { value: service_file_state },
   }
 }
 
@@ -554,6 +562,7 @@ test fn an_unreadable_property_is_unobserved() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
     timer_active_state: ReconcilePropertyUnreadable { cause: "ssh refused" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -593,6 +602,7 @@ test fn an_unreadable_load_state_is_unobserved() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
     timer_active_state: ReconcilePropertyValue { value: "inactive" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -805,6 +815,7 @@ test fn an_absent_timer_with_a_running_reconciler_is_outstanding() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "" },
     timer_active_state: ReconcilePropertyValue { value: "inactive" },
     service_active_state: ReconcilePropertyValue { value: "active" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -816,6 +827,7 @@ test fn an_absent_timer_with_a_blank_reconciler_is_unobserved() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "" },
     timer_active_state: ReconcilePropertyValue { value: "inactive" },
     service_active_state: ReconcilePropertyValue { value: "" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -828,6 +840,7 @@ test fn an_absent_timer_with_an_established_quiescent_reconciler_discharges() ->
     timer_unit_file_state: ReconcilePropertyValue { value: "" },
     timer_active_state: ReconcilePropertyValue { value: "inactive" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -856,6 +869,7 @@ test fn an_absent_but_active_timer_is_outstanding() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "" },
     timer_active_state: ReconcilePropertyValue { value: "active" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -866,6 +880,7 @@ test fn an_absent_but_deactivating_timer_is_outstanding() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "" },
     timer_active_state: ReconcilePropertyValue { value: "deactivating" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -876,6 +891,7 @@ test fn an_absent_timer_with_blank_activity_is_unobserved() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "" },
     timer_active_state: ReconcilePropertyValue { value: "" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -888,6 +904,7 @@ test fn an_unrecognized_load_state_is_unobserved() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
     timer_active_state: ReconcilePropertyValue { value: "inactive" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -899,6 +916,7 @@ test fn a_masked_load_state_is_known_and_not_absent() -> Bool {
     timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
     timer_active_state: ReconcilePropertyValue { value: "inactive" },
     service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "masked" },
   }))
 }
 
@@ -959,5 +977,79 @@ test fn an_unreadable_fragment_path_is_unobserved() -> Bool {
     MaskFragmentUnobserved { unit: _, cause: _ } => true
     MaskFragmentClear { unit: _ } => false
     MaskFragmentRelocationRequired { unit: _, fragment_path: _, cause: _ } => false
+  }
+}
+
+// ── THE RECONCILER ITSELF MUST NOT BE STARTABLE ─────────────────────────────────────────────
+
+// THE POSITIVE: both units masked and quiescent discharges. Its paired negative changes ONLY the
+// service's configuration, which is what makes this a discriminator for the service arm rather than
+// a restatement of the timer's.
+test fn a_masked_quiescent_pair_discharges_the_reconcile_obligation() -> Bool {
+  match srv2_standing(r: reading_with_service(
+    file_state: "masked", timer_active: "inactive", service_active: "inactive", service_file_state: "masked",
+  )) {
+    EstateObligationDischarged { obligation: _, evidence: _ } => true
+    EstateObligationOutstanding { obligation: _, cause: _ } => false
+    EstateObligationUnobserved { obligation: _, cause: _ } => false
+  }
+}
+
+// A DISABLED SERVICE BESIDE A MASKED TIMER IS NOT RETIRED, and before this arm existed it read
+// IDENTICALLY to the fully masked pair: the observer never asked what the service's configuration
+// was, so "not currently running" stood in for "cannot be started". It cannot -- a disabled unit
+// still starts on an explicit `systemctl start` and still starts when another unit pulls it in.
+test fn a_disabled_reconcile_service_leaves_the_obligation_outstanding() -> Bool {
+  match srv2_standing(r: reading_with_service(
+    file_state: "masked", timer_active: "inactive", service_active: "inactive", service_file_state: "disabled",
+  )) {
+    EstateObligationOutstanding { obligation: _, cause: _ } => true
+    EstateObligationDischarged { obligation: _, evidence: _ } => false
+    EstateObligationUnobserved { obligation: _, cause: _ } => false
+  }
+}
+
+// A RUNTIME MASK LASTS UNTIL THE NEXT BOOT, so it does not establish a retired intent on a host
+// whose retirement outlives the boot.
+test fn a_runtime_masked_reconcile_service_leaves_the_obligation_outstanding() -> Bool {
+  match srv2_standing(r: reading_with_service(
+    file_state: "masked", timer_active: "inactive", service_active: "inactive", service_file_state: "masked-runtime",
+  )) {
+    EstateObligationOutstanding { obligation: _, cause: _ } => true
+    EstateObligationDischarged { obligation: _, evidence: _ } => false
+    EstateObligationUnobserved { obligation: _, cause: _ } => false
+  }
+}
+
+// A MISSING SERVICE-INHIBITION OBSERVATION STAYS UNOBSERVED rather than discharging or refusing: the
+// service is a separate unit and its inhibition is not inferable from the timer's.
+test fn an_unread_service_configuration_is_unobserved() -> Bool {
+  match srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "loaded" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
+    timer_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyUnreadable { cause: "systemctl show returned no UnitFileState for the service" },
+  }) {
+    EstateObligationUnobserved { obligation: _, cause: _ } => true
+    EstateObligationDischarged { obligation: _, evidence: _ } => false
+    EstateObligationOutstanding { obligation: _, cause: _ } => false
+  }
+}
+
+// AN ABSENT TIMER CONFIGURATION STILL DOES NOT DISCHARGE WHILE THE SERVICE IS STARTABLE. This is the
+// second discharge arm, and it had the same blind spot: a timer whose unit file is gone says nothing
+// about whether the reconciler it used to trigger can still be run by hand.
+test fn an_absent_timer_beside_a_disabled_service_stays_outstanding() -> Bool {
+  match srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "not-found" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
+    timer_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_unit_file_state: ReconcilePropertyValue { value: "disabled" },
+  }) {
+    EstateObligationOutstanding { obligation: _, cause: _ } => true
+    EstateObligationDischarged { obligation: _, evidence: _ } => false
+    EstateObligationUnobserved { obligation: _, cause: _ } => false
   }
 }

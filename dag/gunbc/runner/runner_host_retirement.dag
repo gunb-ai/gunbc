@@ -858,6 +858,7 @@ type ReconcileMechanismReading {
   timer_unit_file_state: ReconcilePropertyReading
   timer_active_state: ReconcilePropertyReading
   service_active_state: ReconcilePropertyReading
+  service_unit_file_state: ReconcilePropertyReading
 }
 
 type ReconcilePropertyReading
@@ -985,6 +986,7 @@ fn reconcile_reading_text(reading: ReconcileMechanismReading) -> String {
     " UnitFileState=", reconcile_reading_field_text(r: reading.timer_unit_file_state),
     " timer.ActiveState=", reconcile_reading_field_text(r: reading.timer_active_state),
     " service.ActiveState=", reconcile_reading_field_text(r: reading.service_active_state),
+    " service.UnitFileState=", reconcile_reading_field_text(r: reading.service_unit_file_state),
   ], "")
 }
 
@@ -1031,7 +1033,8 @@ fn reconcile_timer_estate_standing(
       if !reconcile_property_is_readable(r: reading.timer_load_state)
         || !reconcile_property_is_readable(r: reading.timer_unit_file_state)
         || !reconcile_property_is_readable(r: reading.timer_active_state)
-        || !reconcile_property_is_readable(r: reading.service_active_state) {
+        || !reconcile_property_is_readable(r: reading.service_active_state)
+        || !reconcile_property_is_readable(r: reading.service_unit_file_state) {
         EstateObligationUnobserved {
           obligation: LivenessReconcileTimerRetired,
           cause: join(["the reconcile mechanism on ", h as String, " could not be fully read (", reconcile_reading_text(reading: reading), "), so whether it can still restore runners is unknown"], ""),
@@ -1061,10 +1064,23 @@ fn reconcile_timer_estate_standing(
           obligation: LivenessReconcileTimerRetired,
           cause: join([u as String, " on ", h as String, " is still ACTIVE (", reconcile_reading_text(reading: reading), "); LoadState and ActiveState are orthogonal -- a unit whose configuration is not loaded may still be running -- and an armed timer elapses whatever its load or enablement says"], ""),
         }
+      } else if !reconcile_unit_file_state_is_known(state: reconcile_property_value(r: reading.service_unit_file_state)) {
+        EstateObligationUnobserved {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join(["the reconcile SERVICE on ", h as String, " reported a configuration state this model does not recognize (", reconcile_reading_text(reading: reading), "); the service is a separate unit and its own inhibition must be established, not inferred from the timer's"], ""),
+        }
+      } else if !reconcile_unit_file_state_inhibits(state: reconcile_property_value(r: reading.service_unit_file_state)) {
+        EstateObligationOutstanding {
+          obligation: LivenessReconcileTimerRetired,
+          cause: join([
+            "the reconcile SERVICE on ", h as String, " is not masked (", reconcile_reading_text(reading: reading),
+            "). Retiring the timer stops the schedule and leaves the reconciler itself startable: masking applies to the NAMED unit, so a masked timer beside a disabled service still admits an explicit `systemctl start` of the service and still admits another unit pulling it in. An inactive reading is not evidence of inhibition -- it is evidence about this instant -- and the reconciler is what restores the population this retirement removes",
+          ], ""),
+        }
       } else if reconcile_load_state_is_absent(state: reconcile_property_value(r: reading.timer_load_state)) {
         EstateObligationDischarged {
           obligation: LivenessReconcileTimerRetired,
-          evidence: join([u as String, " on ", h as String, " has no loaded configuration, is established not running, and its reconcile service is established not running (", reconcile_reading_text(reading: reading), ")"], ""),
+          evidence: join([u as String, " on ", h as String, " has no loaded configuration, is established not running, and its reconcile service is established not running AND masked (", reconcile_reading_text(reading: reading), ")"], ""),
         }
       } else if !reconcile_unit_file_state_is_known(state: file_state) {
         EstateObligationUnobserved {
@@ -1082,7 +1098,7 @@ fn reconcile_timer_estate_standing(
       } else {
         EstateObligationDischarged {
           obligation: LivenessReconcileTimerRetired,
-          evidence: join([u as String, " on ", h as String, " is inhibited, inactive, and its triggered reconciler is not running (", reconcile_reading_text(reading: reading), ") against a declared retired intent"], ""),
+          evidence: join([u as String, " on ", h as String, " is inhibited and inactive and its triggered reconciler is both masked and not running (", reconcile_reading_text(reading: reading), ") against a declared retired intent"], ""),
         }
       }
     }
