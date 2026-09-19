@@ -6,7 +6,7 @@ import gunbc.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,
   runner_microvm_network_supernet,
   GuestEgressPolicy, runner_microvm_guest_egress_policy,
-  IpV6Standing, IpV6DisabledOnDataPath, IpV6DefaultDenyRuleset, IpV6Unaddressed,
+  HostEgressGrain, HostChainDefaultDrop, IpV6DisabledOnDataPath,
 }
 
 // THE EGRESS PATH A RAW RUNNER HOST OWES, and why it is not the one the shared hosts run.
@@ -83,10 +83,12 @@ type ChainStance = DefaultDrop | DefaultAccept
 // ruleset is folded from; an earlier revision listed them here as prose and the two drifted (review
 // 68173: a "selected resolver" here against any-host port 53 there). What this host adds is its OWN
 // chain stances: it owns the whole forwarding policy, so its forward chain default-drops at host
-// grain where the shared hosts cannot.
+// grain where the shared hosts cannot, and its v6 is disabled on the data path (read back as 1 on
+// the filtered-egress-4 run) where theirs is filtered. Both are this host's HostEgressGrain, so the
+// record carries one value for each fact.
 type EgressPolicyShape {
   host_input: ChainStance
-  forward: ChainStance
+  host: HostEgressGrain
   guest: GuestEgressPolicy
   explicit_denials: List<NonEmptyStr>
   nat: NonEmptyStr
@@ -94,7 +96,7 @@ type EgressPolicyShape {
 
 data runner_host_egress_policy: EgressPolicyShape = EgressPolicyShape {
   host_input: DefaultDrop,
-  forward: DefaultDrop,
+  host: HostEgressGrain { forward: HostChainDefaultDrop, ipv6: IpV6DisabledOnDataPath },
   guest: runner_microvm_guest_egress_policy,
   explicit_denials: [
     "guest to the BMC and any management address",
@@ -103,9 +105,6 @@ data runner_host_egress_policy: EgressPolicyShape = EgressPolicyShape {
   nat: "masquerade the admitted guest prefix on the host uplink, and nothing else",
 }
 
-// THIS HOST DISABLES v6 ON THE DATA PATH (read back as 1 on the filtered-egress-4 run); the shared
-// hosts cannot, and filter it instead. One standing type, two host facts.
-data runner_host_ipv6: IpV6Standing = IpV6DisabledOnDataPath
 
 // ── what the kernel must carry, since nothing is modular ────────────────────────────────────────
 

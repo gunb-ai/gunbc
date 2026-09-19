@@ -236,13 +236,13 @@ data runner_microvm_nft_table_name: NonEmptyStr = "gunbc_microvm" as NonEmptyStr
 // slot's guest at all (see the prefix row above), so this rule catches traffic that reached the
 // host and asked to be forwarded between taps. Both exist because they fail differently -- the
 // prefix is arithmetic and cannot be flushed, this rule survives a guest that sets its own routes.
-fn runner_microvm_forward_chain() -> NftChain {
+fn runner_microvm_forward_chain(host: HostEgressGrain) -> NftChain {
   NftChain {
     name: "forward" as NonEmptyStr,
     chain_type: NftTypeFilter,
     hook: NftForward,
     priority: NftPriorityFilter,
-    policy: forward_chain_policy(g: runner_microvm_guest_egress_policy.grain),
+    policy: forward_chain_policy(g: host.forward),
     rules: concat(
       [
         NftRule {
@@ -253,7 +253,7 @@ fn runner_microvm_forward_chain() -> NftChain {
           verdict: NftDrop,
         },
       ],
-      runner_microvm_guest_egress_rules(),
+      guest_egress_rules(p: runner_microvm_guest_egress_policy, host: host),
     ),
   }
 }
@@ -294,9 +294,16 @@ type GuestEgressGrant {
   destination: GuestEgressDestination
 }
 
-type GuestEgressPolicy {
-  grain: ForwardDenyGrain
+// WHAT A GUEST MAY REACH IS SHARED BY EVERY HOST; HOW A HOST ENFORCES IT IS NOT. The grants and
+// denials are one row for the fleet. The forward grain and the IPv6 standing are facts about ONE
+// host -- whether it owns its forward chain, whether v6 is off on its data path -- so each host
+// supplies its own HostEgressGrain, and no host's row carries another host's values (review 68199).
+type HostEgressGrain {
+  forward: ForwardDenyGrain
   ipv6: IpV6Standing
+}
+
+type GuestEgressPolicy {
   denied_destinations: List<NonEmptyStr>
   grants: List<GuestEgressGrant>
 }
@@ -309,13 +316,19 @@ fn runner_microvm_guest_resolver() -> Ipv4Address {
   ipv4_address(octet1: 1, octet2: 1, octet3: 1, octet4: 1)
 }
 
-// TCP 443 IS A DESTINATION CLASS, NOT "GITHUB ONLY": github.com and the Actions endpoints are
-// CDN-fronted, so a static address list is stale when written. The narrow form is an egress proxy.
-data runner_microvm_guest_egress_policy: GuestEgressPolicy = GuestEgressPolicy {
-  grain: TapScopedFinalDrop {
+// THE SHARED RUNNER HOSTS (srvN). Other tables hook forward there (dockerd on srv2) and every table
+// runs with any drop winning, so the default-deny is the tap-scoped final drop; v6 is not disabled on
+// their data path, so it is filtered.
+data runner_microvm_shared_host_grain: HostEgressGrain = HostEgressGrain {
+  forward: TapScopedFinalDrop {
     chain_policy_reason: "other tables hook forward on srvN (dockerd on srv2) and every table runs with any drop winning, so a chain-level drop would drop traffic this fleet does not own" as NonEmptyStr,
   },
   ipv6: IpV6DefaultDenyRuleset,
+}
+
+// TCP 443 IS A DESTINATION CLASS, NOT "GITHUB ONLY": github.com and the Actions endpoints are
+// CDN-fronted, so a static address list is stale when written. The narrow form is an egress proxy.
+data runner_microvm_guest_egress_policy: GuestEgressPolicy = GuestEgressPolicy {
   denied_destinations: [
     "10.0.0.0/8" as NonEmptyStr,
     "172.16.0.0/12" as NonEmptyStr,
@@ -376,26 +389,38 @@ fn forward_chain_policy(g: ForwardDenyGrain) -> NftPolicy {
   }
 }
 
+// REPLIES ARE ADMITTED IN THEIR OWN DIRECTION. A reply to a guest's flow enters on the uplink and
+// leaves on the tap, so an established rule matching only the tap as INPUT never sees it. Under a
+// tap-scoped grain the chain's accept policy happened to carry replies; under HostChainDefaultDrop
+// the chain policy drops them and no guest flow would complete (review 68199). So the reply rule is
+// emitted on every grain, and nothing reaches a tap unsolicited under a dropping chain.
+//
 // THE ORDER IS THE POLICY: established first, so replies to admitted flows are never re-judged; the
 // v6 refusal before any v4 grant; the denials ABOVE the grants, because the 443 grant is a class and
 // 192.168.x.y:443 is in it (the Mt. Collins receipt's denied_paths is this ordering holding); the
 // grants; then the grain's final drop.
-fn guest_egress_rules(p: GuestEgressPolicy) -> List<NftRule> {
+fn guest_egress_rules(p: GuestEgressPolicy, host: HostEgressGrain) -> List<NftRule> {
   concat(
     concat(
       concat(
-        concat([from_guest_tap(m: [NftConnectionTrackingEstablished], verdict: NftAccept)], ipv6_rules(v: p.ipv6)),
+        concat(
+          [
+            NftRule {
+              matches: [NftOutputInterfaceWildcard { prefix: runner_microvm_tap_device_prefix }, NftConnectionTrackingEstablished],
+              verdict: NftAccept,
+            },
+            from_guest_tap(m: [NftConnectionTrackingEstablished], verdict: NftAccept),
+          ],
+          ipv6_rules(v: host.ipv6),
+        ),
         map(p.denied_destinations, c => from_guest_tap(m: [NftDestinationAddressPrefix { cidr: c }], verdict: NftDrop)),
       ),
       map(p.grants, g => grant_rule(g: g)),
     ),
-    final_drop_rules(g: p.grain),
+    final_drop_rules(g: host.forward),
   )
 }
 
-fn runner_microvm_guest_egress_rules() -> List<NftRule> {
-  guest_egress_rules(p: runner_microvm_guest_egress_policy)
-}
 
 // THE MASQUERADE MATCHES ON SOURCE AND NOT ON OUTPUT INTERFACE, which removes an observation this
 // module would otherwise have to make and keep correct. srv2's uplink is enP3p3s0f1 and srv1's is
@@ -418,16 +443,20 @@ fn runner_microvm_postrouting_chain() -> NftChain {
   }
 }
 
-fn runner_microvm_nft_table() -> NftTable {
+fn runner_microvm_nft_table(host: HostEgressGrain) -> NftTable {
   NftTable {
     family: NftInet,
     name: runner_microvm_nft_table_name,
-    chains: [runner_microvm_forward_chain(), runner_microvm_postrouting_chain()],
+    chains: [runner_microvm_forward_chain(host: host), runner_microvm_postrouting_chain()],
   }
 }
 
+fn runner_microvm_nft_ruleset_text_for(host: HostEgressGrain) -> String {
+  nft_table_wire(t: runner_microvm_nft_table(host: host))
+}
+
 fn runner_microvm_nft_ruleset_text() -> String {
-  nft_table_wire(t: runner_microvm_nft_table())
+  runner_microvm_nft_ruleset_text_for(host: runner_microvm_shared_host_grain)
 }
 
 

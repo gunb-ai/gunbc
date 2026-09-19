@@ -23,7 +23,9 @@ import gunbc.runner_microvm_network {
   runner_slot_conntrack_flush_command, runner_slot_conntrack_list_command,
   runner_microvm_nft_list_command, slot_network_readback_consumer_frontier,
   runner_microvm_guest_resolver, guest_resolver_configuration_frontier,
+  runner_microvm_nft_ruleset_text_for,
 }
+import gunbc.runner.runner_host_filtered_egress { runner_host_egress_policy }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
 import extdeps.exec.command { argv_words }
@@ -197,7 +199,7 @@ test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
 // default-deny into default-accept for every port nobody named.
 test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool {
   let text = runner_microvm_nft_ruleset_text()
-  string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
+  string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
     && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
     && string_contains(s: text, pattern: "policy accept")
     && !string_contains(s: text, pattern: "policy drop")
@@ -337,4 +339,18 @@ test fn the_dns_grant_is_the_booted_resolver_and_no_other_host() -> Bool {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }
+}
+
+// A HOST THAT DROPS AT THE CHAIN STILL CARRIES REPLIES, AND ITS OWN GRAIN IS WHAT IS FOLDED. The raw
+// host's row (runner_host_filtered_egress) is folded here: its chain policy is drop, it emits no
+// tap-scoped final drop, it does not filter v6 (disabled on its data path), and the reply-direction
+// established rule is present. The red is the previous fold, where the only established rule matched
+// the tap as INPUT, so every reply to a guest's flow fell to the chain's drop policy (review 68199).
+test fn a_chain_dropping_host_folds_its_own_grain_and_still_carries_replies() -> Bool {
+  let text = runner_microvm_nft_ruleset_text_for(host: runner_host_egress_policy.host)
+  string_contains(s: text, pattern: "hook forward priority 0; policy drop;")
+    && string_contains(s: text, pattern: "oifname \"gunbc-tap*\" ct state established,related accept")
+    && !string_contains(s: text, pattern: "meta nfproto ipv6")
+    && !string_contains(s: text, pattern: "iifname \"gunbc-tap*\" drop\n  }")
+    && string_contains(s: text, pattern: "ip daddr 1.1.1.1/32 udp dport 53 accept")
 }
