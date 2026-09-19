@@ -204,6 +204,21 @@ type SlotWidthStanding
 // ── THE RECEIPT ───────────────────────────────────────────────────────────────────────────────
 //
 // Every field names the run it came from through `run`; nothing is a number without a producer.
+//
+// STATED DIVERGENCE FROM product.fabric.node_qualification (DESIGN section 3b), because that module
+// is the home of "is this host qualified to stand behind an offer" and this receipt does not
+// inhabit it. Its HostQualificationReceipt binds an ADVERTISED accelerator delivery
+// (HostAdvertisedDelivery: accelerator count, usable memory, rail link mode, NIC PCIe, GPUDirect)
+// to a measured one, axis by axis, and its refusals are those axes. Nothing here is advertised:
+// the subject of this receipt is fleet work THROUGHPUT on a host the fleet already owns -- the
+// floor's pinned eval-step rate, the slot envelope's peak, the slot width under the host budget --
+// and none of those is a field that receipt could carry without growing an accelerator record a
+// throughput axis it would never read. So the SHAPE is inhabited (three-valued standings, a
+// receipt, an admission over it, a refusal list naming the standing that failed) and the AXES are
+// this module's own. What is deliberately NOT forked is the admission the fabric acts on:
+// qualified_executor_sanction hands an ExecutorSanction to gunbc.fabric_executor_class, and the
+// supply row goes through product.fabric.supply -- no second CapacityClassAdmission and no second
+// offer record. If a host ever needs both receipts, the join is a row beside both, not a merge.
 type RunnerThroughputReceipt {
   host: HostIdentity
   workload: FloorWorkloadPin
@@ -444,27 +459,55 @@ fn receipt_refusals(receipt: RunnerThroughputReceipt) -> List<ThroughputRefusal>
 // THE SLOWEST READING SPEAKS, never the fastest and never a mean -- the same protocol the pin was
 // taken under. A run at another revision cannot speak at all: it is carried into the Stale arm so
 // the reader sees which revision was measured, and it is never averaged with a matching one.
+//
+// THE ORDERING IS THE QUALIFYING FACT, NOT A SECOND RATIO. Runs are ordered on the
+// ThroughputStanding `qualify_throughput` produces, so what "slowest" means and what "a rate
+// sample" means are one derivation (review 68676 caught an earlier draft dividing steps by
+// milliseconds a second time, in a bare Int, for readings the qualifier had refused as not a
+// sample). An UNREAD reading is not comparable and is not ranked: it speaks FIRST, because a host
+// whose specimen could not be read is refused with that reason rather than admitted on its best
+// neighbour. Among read standings the lower measured rate wins; meets-vs-below is a consequence
+// of the number and needs no separate rule.
 fn runs_at_pin(pin: FloorWorkloadPin, runs: List<QualificationRun>) -> List<QualificationRun> {
   fold(runs, init: [], f: (acc, r) => if r.revision == pin.revision { list_push(acc, r) } else { acc })
 }
 
-fn run_rate_upper_bound(run: QualificationRun) -> Int {
-  match run.rate_specimen {
-    RateSpecimenUnread { because: _ } => 0
-    RateSpecimenRead { eval_steps: steps, cpu: cpu } => {
-      let cpu_ms = millisecond_count(m: cpu) as Int
-      let steps_n = eval_step_count_value(s: steps) as Int
-      if cpu_ms == 0 { 0 } else { steps_n / cpu_ms }
-    }
+fn standing_speaks_before(candidate: ThroughputStanding, held: ThroughputStanding) -> Bool {
+  match candidate {
+    ThroughputUnread { because: _ } =>
+      match held {
+        ThroughputUnread { because: _ } => false
+        ThroughputMeetsPin { measured: _, pinned: _ } => true
+        ThroughputBelowPin { measured: _, pinned: _ } => true
+      }
+    ThroughputMeetsPin { measured: c, pinned: _ } => measured_speaks_before(candidate: c, held: held)
+    ThroughputBelowPin { measured: c, pinned: _ } => measured_speaks_before(candidate: c, held: held)
   }
 }
 
-fn slowest_run(runs: List<QualificationRun>) -> QualificationRun? {
+fn measured_speaks_before(candidate: EvalStepsPerMillisecond, held: ThroughputStanding) -> Bool {
+  match held {
+    ThroughputUnread { because: _ } => false
+    ThroughputMeetsPin { measured: h, pinned: _ } =>
+      eval_steps_per_millisecond_count(r: candidate) < eval_steps_per_millisecond_count(r: h)
+    ThroughputBelowPin { measured: h, pinned: _ } =>
+      eval_steps_per_millisecond_count(r: candidate) < eval_steps_per_millisecond_count(r: h)
+  }
+}
+
+fn run_throughput_standing(calibration: EvalStepCalibration, run: QualificationRun) -> ThroughputStanding {
+  qualify_throughput(calibration: calibration, reading: run.rate_specimen)
+}
+
+fn slowest_run(calibration: EvalStepCalibration, runs: List<QualificationRun>) -> QualificationRun? {
   fold(runs, init: none, f: (acc, r) =>
     match acc {
       Absent => Present { value: r }
       Present { value: held } =>
-        if run_rate_upper_bound(run: r) < run_rate_upper_bound(run: held) { Present { value: r } } else { acc }
+        if standing_speaks_before(
+          candidate: run_throughput_standing(calibration: calibration, run: r),
+          held: run_throughput_standing(calibration: calibration, run: held),
+        ) { Present { value: r } } else { acc }
     }
   )
 }
@@ -508,7 +551,7 @@ fn qualify_runner_throughput(subject: RunnerThroughputQualification) -> RunnerTh
     Absent => HostUnqualified { host: subject.host, candidate: subject.capacity_class_candidate }
     Present { value: first } => {
       let at_pin = runs_at_pin(pin: subject.workload, runs: subject.runs)
-      match slowest_run(runs: at_pin) {
+      match slowest_run(calibration: subject.calibration, runs: at_pin) {
         Absent =>
           ReceiptStale {
             receipt: receipt_for_run(subject: subject, run: first),
