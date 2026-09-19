@@ -2,30 +2,21 @@ module product.fabric.candidate_field
 
 import std.types { List, EpochSecs }
 import std.decl_ref { DeclarationRef }
-import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
-import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
-import product.fabric.provider_admission {
-  RouteScopeSanction, ProviderUseScope, ProviderUseRefusal, admit_provider_use,
-}
-import product.fabric.offer_route {
-  OfferRouteRow, correspond_offer_route,
-  OfferRouteModeled, OfferRouteNotModeled, OfferRouteAmbiguous, OfferRouteFactsNameAnotherRoute,
-}
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.provider_route { CompliancePostureRevision }
+import product.fabric.provider_admission { RouteScopeSanction, ProviderUseScope }
+import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.supply { SupplierOffer }
-import product.fabric.route_readiness {
-  RouteExercise, RouteReadinessRequirement, route_readiness,
-  RouteReady, RouteAdmittedForItsOwnExercise, RouteNeverExercised, RouteExerciseExpired,
+import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
+import product.fabric.work { ExecutionRequirements }
+import product.fabric.node_qualification { OfferDeliveryClaim }
+import product.fabric.capacity_admission {
+  CapacityRefusal, admit_capacity,
+  CapacityAdmittedForOrdinaryWork, RouteExercisePlacementAdmitted, CapacityRefused,
 }
 import product.fabric.selection {
-  CandidateOffer, DispatchInputs, bind_candidate,
-  CandidateBound, DispatchInputsNameAnotherOffer, OfferNotAdmittedForUse,
-  PermitNamesAnotherOffer, PermitNamesAnotherRoute, PermitNamesAnotherWork,
-  PermitNamesAnotherDemand,
-}
-import product.fabric.node_qualification {
-  OfferDeliveryClaim, OfferDoesNotClaimNodeDelivery, OfferClaimsNodeDelivery,
-  QualificationRefusal, claimed_delivery_check, ClaimedDeliveryHolds,
-  ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
+  CandidateOffer, DispatchInputs, bind_admitted_capacity, bind_exercise_placement,
+  CapacityCandidateBound, CapacityDispatchInputsNameAnotherOffer,
 }
 
 // THE CANDIDATE FIELD IS ASSEMBLED BEFORE ANY PRICE EXISTS, AND THIS MODULE'S IMPORT LIST IS THE
@@ -86,51 +77,25 @@ import product.fabric.node_qualification {
 // itself. Every request answers, in one arm or the other.
 
 // WHAT A CALLER BRINGS PER OFFER: the offer and the dispatch observations that price it. The
-// dispatch inputs travel with the request even though nothing here reads them, because
-// bind_candidate seals the pair and a field that admitted an offer without its inputs would have
-// moved the mismatch check to whoever assembled the candidate later.
+// dispatch inputs travel with the request because the candidate is sealed from them here -
+// product.fabric.selection bind_admitted_capacity and bind_exercise_placement pair them with the
+// admitted carrier and refuse inputs naming another offer - and a field that admitted an offer
+// without its inputs would have moved that mismatch check to whoever assembled the candidate later.
 type FieldRequest<P> {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
   delivery: OfferDeliveryClaim<P>
 }
 
-// ONE ARM PER PRODUCER, which is why there is no single NotAdmitted arm. Each of these is reached
-// by exactly one match arm below and names a different remedy: model the route, settle which route
-// the roster means, fix the row that carried real facts onto the wrong offer, clear whatever the
-// admission's own typed cause names, or repair a permit that was carried onto the wrong subject.
-// Collapsing them would hand every one of those five back to the operator as "not admitted".
+// THE EXCLUSION CAUSE IS THE CAPACITY REFUSAL, NOT A SECOND SPELLING OF IT. An earlier revision
+// re-declared one arm per producer here and mapped each capacity/binding refusal onto it, which made
+// this module a second authority on what "not admissible" means and guaranteed the two lists would
+// drift. product.fabric.capacity_admission decides admissibility, so its refusal is what an excluded
+// entry carries; the arms this module adds are the ones only IT can produce - the dispatch-inputs
+// mismatch it checks when sealing the candidate.
 type FieldExclusionCause<P>
-  = FieldRouteNotModeled
-  | FieldRouteAmbiguous { claimed: List<ProviderRoute> }
-  | FieldRouteFactsNameAnotherRoute { facts_route: ProviderRoute, offer_route: ProviderRoute }
-  | FieldRouteNeverExercised { route: ProviderRoute }
-  | FieldRouteExerciseExpired { route: ProviderRoute, latest_valid_through: EpochSecs, at: EpochSecs }
-  | FieldUseRefused { cause: ProviderUseRefusal }
+  = FieldCapacityRefused { refusal: CapacityRefusal<P> }
   | FieldDispatchInputsNameAnotherOffer { inputs_name: FabricIdentity<P, OfferKey> }
-  | FieldPermitNamesAnotherOffer { permit_names: FabricIdentity<P, OfferKey> }
-  | FieldPermitNamesAnotherRoute
-  | FieldPermitNamesAnotherWork {
-      permit_work: FabricIdentity<P, WorkKey>,
-      subject_work: FabricIdentity<P, WorkKey>,
-    }
-  | FieldPermitNamesAnotherDemand {
-      permit_demand: FabricIdentity<P, DemandKey>,
-      subject_demand: FabricIdentity<P, DemandKey>,
-    }
-  | FieldNodeNotQualified { refusals: List<QualificationRefusal> }
-  | FieldDeliveryClaimNamesAnotherOffer { claim_names: FabricIdentity<P, OfferKey> }
-  | FieldDeliveryClaimReceiptMismatch {
-      claim_names: FabricIdentity<P, OfferKey>,
-      receipt_names: FabricIdentity<P, OfferKey>,
-    }
-
-// FieldNodeNotQualified is minted when FieldRequest.delivery is OfferClaimsNodeDelivery of the
-// SAME offer identity and a GroupNotQualified admission. A claim naming another offer is
-// FieldDeliveryClaimNamesAnotherOffer. Group B is a historical demonstration bound to
-// group_b_claimed_offer. TRIGGER: a Spark rail SupplierOffer carries OfferClaimsNodeDelivery of
-// its own FabricIdentity. SUFFICIENT FOR: an unqualified group is excluded by name, and a claim
-// cannot ride a different offer.
 
 type FieldExclusion<P> {
   offer: FabricIdentity<P, OfferKey>
@@ -153,13 +118,10 @@ fn excluded_entry<P>(
   FieldExcluded { exclusion: FieldExclusion { offer: offer, cause: cause } }
 }
 
-// THE ORDER IS CORRESPONDENCE, THEN READINESS, THEN ADMISSION, THEN BINDING, AND IT IS THE ONLY
-// ORDER THAT CAN BE WRITTEN. Readiness and admit_provider_use both need the route the facts row
-// governs, and the correspondence is the only producer of them here; admission sits behind readiness
-// in field_entry_admitted; bind_candidate cannot be called without the admission's
-// result. So the sequence is enforced by what each step needs rather than by a comment saying to
-// run them in order - the same construction-over-validation move sole_constructor makes on the
-// permit itself.
+// THE SCREENS ARE NOT ORDERED HERE, BECAUSE THEY ARE NOT RUN HERE. product.fabric.capacity_admission
+// admit_capacity runs every one of them and owns their order; this function asks it once per request
+// and does only the two things that are this module's: seal the candidate from whichever carrier came
+// back, and refuse dispatch inputs that describe a different offer.
 //
 // THE USE SCOPE IS THE CALLER'S ONE SCOPE FOR THE WHOLE FIELD, not a per-offer parameter, because
 // admission is granted FOR a demand, a work, a customer profile and a data-handling profile, and
@@ -176,117 +138,36 @@ fn field_entry<P>(
   exercises: List<RouteExercise>,
   readiness: RouteReadinessRequirement<P>,
   at: EpochSecs,
+  requirements: ExecutionRequirements,
   request: FieldRequest<P>,
 ) -> FieldEntry<P> {
-  match correspond_offer_route(
-    roster: routes, offer: request.offer.id, route: request.offer.route) {
-    OfferRouteNotModeled { offer: o } => excluded_entry(offer: o, cause: FieldRouteNotModeled)
-    OfferRouteAmbiguous { offer: o, claimed: c } =>
-      excluded_entry(offer: o, cause: FieldRouteAmbiguous { claimed: c })
-    OfferRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr } =>
-      excluded_entry(
-        offer: request.offer.id,
-        cause: FieldRouteFactsNameAnotherRoute { facts_route: fr, offer_route: orr },
-      )
-    OfferRouteModeled { facts: facts } =>
-      match route_readiness(
-        exercises: exercises, requirement: readiness, route: facts.route, work: scope.work, at: at) {
-        RouteNeverExercised { route: r } =>
-          excluded_entry(offer: request.offer.id, cause: FieldRouteNeverExercised { route: r })
-        RouteExerciseExpired { route: r, latest_valid_through: v, at: t } =>
-          excluded_entry(
-            offer: request.offer.id,
-            cause: FieldRouteExerciseExpired { route: r, latest_valid_through: v, at: t },
-          )
-        RouteReady { exercise: _ } => field_entry_delivery(
-          sanctions: sanctions, active: active, scope: scope,
-          decision_receipt: decision_receipt, facts: facts, request: request)
-        RouteAdmittedForItsOwnExercise { route: _ } => field_entry_delivery(
-          sanctions: sanctions, active: active, scope: scope,
-          decision_receipt: decision_receipt, facts: facts, request: request)
-      }
-  }
-}
-
-fn field_entry_delivery<P>(
-  sanctions: List<RouteScopeSanction>,
-  active: CompliancePostureRevision,
-  scope: ProviderUseScope<P>,
-  decision_receipt: DeclarationRef,
-  facts: ProviderRouteFacts,
-  request: FieldRequest<P>,
-) -> FieldEntry<P> {
-  match request.delivery {
-    OfferDoesNotClaimNodeDelivery => field_entry_admitted(
-      sanctions: sanctions, active: active, scope: scope,
-      decision_receipt: decision_receipt, facts: facts, request: request)
-    OfferClaimsNodeDelivery { offer: named, admission: _ } =>
-      if fabric_identity_eq(left: request.offer.id, right: named) {
-        match claimed_delivery_check(claim: request.delivery) {
-          ClaimedDeliveryHolds => field_entry_admitted(
-            sanctions: sanctions, active: active, scope: scope,
-            decision_receipt: decision_receipt, facts: facts, request: request)
-          ClaimedDeliveryUnqualified { refusals: r } =>
-            excluded_entry(offer: request.offer.id, cause: FieldNodeNotQualified { refusals: r })
-          ClaimedDeliveryOfferMismatch { claim_names: c, receipt_names: rec } =>
-            excluded_entry(
-              offer: request.offer.id,
-              cause: FieldDeliveryClaimReceiptMismatch { claim_names: c, receipt_names: rec },
-            )
-        }
-      } else {
-        excluded_entry(
-          offer: request.offer.id,
-          cause: FieldDeliveryClaimNamesAnotherOffer { claim_names: named },
-        )
-      }
-  }
-}
-
-// ADMISSION AND BINDING, reached only once the route is modeled AND ready. Readiness is decided
-// before admission so an unexercised route is reported as unexercised - a thing to go and run -
-// rather than masked behind whatever the use admission would have said.
-fn field_entry_admitted<P>(
-  sanctions: List<RouteScopeSanction>,
-  active: CompliancePostureRevision,
-  scope: ProviderUseScope<P>,
-  decision_receipt: DeclarationRef,
-  facts: ProviderRouteFacts,
-  request: FieldRequest<P>,
-) -> FieldEntry<P> {
-  match bind_candidate(
+  match admit_capacity(
+    routes: routes,
+    sanctions: sanctions,
+    active: active,
+    scope: scope,
+    decision_receipt: decision_receipt,
+    exercises: exercises,
+    readiness_requirement: readiness,
+    at: at,
+    requirements: requirements,
     offer: request.offer,
-    dispatch: request.dispatch,
-    admission: admit_provider_use(
-      roster: sanctions,
-      facts: facts,
-      active: active,
-      scope: scope,
-      offer: request.offer.id,
-      decision_receipt: decision_receipt,
-    ),
-    demand: scope.demand,
-    work: scope.work,
+    delivery: request.delivery,
   ) {
-    CandidateBound { candidate: c } => FieldAdmitted { candidate: c }
-    DispatchInputsNameAnotherOffer { offer: o, inputs_name: n } =>
-      excluded_entry(offer: o, cause: FieldDispatchInputsNameAnotherOffer { inputs_name: n })
-    OfferNotAdmittedForUse { offer: o, cause: c } =>
-      excluded_entry(offer: o, cause: FieldUseRefused { cause: c })
-    PermitNamesAnotherOffer { offer: o, permit_names: n } =>
-      excluded_entry(offer: o, cause: FieldPermitNamesAnotherOffer { permit_names: n })
-    PermitNamesAnotherRoute { offer: o } =>
-      excluded_entry(offer: o, cause: FieldPermitNamesAnotherRoute)
-    PermitNamesAnotherWork { permit_work: pw, subject_work: sw } =>
-      excluded_entry(
-        offer: request.offer.id,
-        cause: FieldPermitNamesAnotherWork { permit_work: pw, subject_work: sw },
-      )
-    PermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd } =>
-      excluded_entry(
-        offer: request.offer.id,
-        cause: FieldPermitNamesAnotherDemand { permit_demand: pd, subject_demand: sd },
-      )
+    CapacityRefused { refusal: r } =>
+      excluded_entry(offer: request.offer.id, cause: FieldCapacityRefused { refusal: r })
+    RouteExercisePlacementAdmitted { placement: placement } =>
+      match bind_exercise_placement(placement: placement, dispatch: request.dispatch) {
+        CapacityDispatchInputsNameAnotherOffer { offer: o, inputs_name: n } =>
+          excluded_entry(offer: o, cause: FieldDispatchInputsNameAnotherOffer { inputs_name: n })
+        CapacityCandidateBound { candidate: c } => FieldAdmitted { candidate: c }
+      }
+    CapacityAdmittedForOrdinaryWork { capacity: capacity } =>
+      match bind_admitted_capacity(capacity: capacity, dispatch: request.dispatch) {
+        CapacityDispatchInputsNameAnotherOffer { offer: o, inputs_name: n } =>
+          excluded_entry(offer: o, cause: FieldDispatchInputsNameAnotherOffer { inputs_name: n })
+        CapacityCandidateBound { candidate: c } => FieldAdmitted { candidate: c }
+      }
   }
 }
 
@@ -326,6 +207,7 @@ fn assemble_candidate_field<P>(
   exercises: List<RouteExercise>,
   readiness: RouteReadinessRequirement<P>,
   at: EpochSecs,
+  requirements: ExecutionRequirements,
   requests: List<FieldRequest<P>>,
 ) -> CandidateField<P> {
   let entries = map(requests, request =>
@@ -338,6 +220,7 @@ fn assemble_candidate_field<P>(
       exercises: exercises,
       readiness: readiness,
       at: at,
+      requirements: requirements,
       request: request,
     ))
   CandidateField {
