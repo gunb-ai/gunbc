@@ -3,7 +3,8 @@ module extdeps.npm
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
 import std.integer { UInt8 }
-import std.encoding { base64_decode, base64_encode, Standard }
+import std.machine_word { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.encoding { base64_decode, base64_encode, base64_octets, Standard }
 import std.content_hash {
   ContentHash,
   Sha512Digest,
@@ -270,9 +271,9 @@ fn npm_octets_to_lower_hex(octets: List<UInt8>) -> String {
 }
 
 fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<UInt8>) -> Bool {
-  match base64_encode(octets: octets, variant: Standard) {
-    Present { value: canonical } => encoded == canonical
-    Absent => false
+  match base64_octets(values: octets) {
+    QualifiedOctetsRefused { cause: _ } => false
+    QualifiedOctetsReady { octets: qualified } => encoded == base64_encode(octets: qualified, variant: Standard)
   }
 }
 

@@ -14,9 +14,9 @@ fn b64_std_of_utf8(s: String) -> String {
 }
 
 fn base64_encode_or_refused(octets: List<std.integer.UInt8>, variant: Base64Variant) -> String {
-  match base64_encode(octets: octets, variant: variant) {
-    Present { value: encoded } => encoded
-    Absent => "REFUSED"
+  match base64_octets(values: octets) {
+    QualifiedOctetsReady { octets: qualified } => base64_encode(octets: qualified, variant: variant)
+    QualifiedOctetsRefused { cause: _ } => "REFUSED"
   }
 }
 
