@@ -1620,7 +1620,7 @@ fn app_mint_record_steps(spec: AppInstallationTokenMint, key: String, value_expr
 // than the installation token it buys; it is written to a 0600 file, spent once, and removed before
 // the token is read out of the response.
 fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
-  concat(concat(concat(concat(concat(concat(
+  concat(concat(concat(concat(concat(concat(concat(
     [
       app_mint_step(command: "set -euo pipefail"),
       app_mint_step(command: "umask 077"),
