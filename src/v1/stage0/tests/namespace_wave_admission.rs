@@ -2224,3 +2224,220 @@ fn an_unmodeled_ci_event_refuses_rather_than_defaulting() {
     );
     assert!(adjudication_event_from_name(Some("schedule")).is_err());
 }
+
+// ── RELOCATION: ONE ROW FOR ONE MOVED DECLARATION, STILL AN ENUMERATION ──────────────────────
+//
+// A declaration moving between modules repoints every reference to its leaf; under `Binding` that
+// is one row per reference site (gunbc#10994 needed seventeen for one move). `Relocation` admits the
+// move once. Each arm below mutates the same move by one fact, so a subject that admitted whatever
+// shared the leaf -- the predicate the grain paragraph forbids -- would fail the second and third.
+
+const RELOC_HOME_DECLARES: &str = "module probe.home\n\ndata widget: String = \"w\"\n";
+const RELOC_HOME_MOVED_AWAY: &str = "module probe.home\n\ndata gadget: String = \"g\"\n";
+const RELOC_OTHER_EMPTY: &str = "module probe.other\n\ndata sprocket: String = \"s\"\n";
+const RELOC_OTHER_DECLARES: &str = "module probe.other\n\ndata widget: String = \"o\"\n";
+const RELOC_THIRD_DECLARES: &str = "module probe.third\n\ndata widget: String = \"t\"\n";
+const RELOC_SECOND_IMPORTS_HOME: &str =
+    "module probe.second\n\nimport probe.home { widget }\n\nfn use_again() -> String { widget }\n";
+const RELOC_SECOND_IMPORTS_OTHER: &str =
+    "module probe.second\n\nimport probe.other { widget }\n\nfn use_again() -> String { widget }\n";
+const RELOC_SECOND_IMPORTS_THIRD: &str =
+    "module probe.second\n\nimport probe.third { widget }\n\nfn use_again() -> String { widget }\n";
+
+fn ta_relocation(
+    label: &str,
+    spelling: &str,
+    from_module: &str,
+    to_module: &str,
+) -> TransitionAdmission {
+    TransitionAdmission {
+        label: label.to_string(),
+        subject: AdmissionSubject::Relocation {
+            spelling: spelling.to_string(),
+            from_module: from_module.to_string(),
+            to_module: to_module.to_string(),
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    }
+}
+
+fn widget_bindings_admitted_by(report: &WaveAdmissionReport, label: &str) -> Vec<(String, bool)> {
+    report
+        .deltas
+        .iter()
+        .filter_map(|d| match &d.subject {
+            DeltaSubject::Binding {
+                module, spelling, ..
+            } if spelling == "widget" => {
+                Some((module.clone(), d.admitted_by.as_deref() == Some(label)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn reloc_base() -> [(&'static str, &'static str); 4] {
+    [
+        ("home.dag", RELOC_HOME_DECLARES),
+        ("other.dag", RELOC_OTHER_EMPTY),
+        ("consumer.dag", CONSUMER_IMPORTS_HOME),
+        ("second.dag", RELOC_SECOND_IMPORTS_HOME),
+    ]
+}
+
+#[test]
+fn one_relocation_row_admits_every_binding_the_move_repoints() {
+    let head = [
+        ("home.dag", RELOC_HOME_MOVED_AWAY),
+        ("other.dag", RELOC_OTHER_DECLARES),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+        ("second.dag", RELOC_SECOND_IMPORTS_OTHER),
+    ];
+    let refused = compare("reloc_unadmitted", &reloc_base(), &head);
+    assert!(
+        refused
+            .deltas
+            .iter()
+            .any(|d| d.disposition == NamespaceDeltaDisposition::TargetChanged),
+        "PLANT NEVER REACHED: the move must produce TargetChanged deltas, got: {:?}",
+        refused.deltas
+    );
+    let admissions = [ta_relocation(
+        "move-widget",
+        "widget",
+        "probe.home",
+        "probe.other",
+    )];
+    let admitted = compare_with("reloc_admitted", &reloc_base(), &head, &admissions);
+    let bindings = widget_bindings_admitted_by(&admitted, "move-widget");
+    assert!(
+        bindings.len() >= 2,
+        "both consumers' widget bindings must be deltas, got: {:?}",
+        admitted.deltas
+    );
+    assert!(
+        bindings.iter().all(|(_, a)| *a),
+        "one relocation row must admit every binding the move repoints, got: {bindings:?}"
+    );
+    assert!(
+        admitted.stale_admissions.is_empty(),
+        "a relocation that matched must not also be stale: {:?}",
+        admitted.stale_admissions
+    );
+}
+
+#[test]
+fn a_relocation_row_does_not_admit_a_binding_repointed_elsewhere() {
+    let head = [
+        ("home.dag", RELOC_HOME_MOVED_AWAY),
+        ("other.dag", RELOC_OTHER_DECLARES),
+        ("third.dag", RELOC_THIRD_DECLARES),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+        ("second.dag", RELOC_SECOND_IMPORTS_THIRD),
+    ];
+    let admissions = [ta_relocation(
+        "move-widget",
+        "widget",
+        "probe.home",
+        "probe.other",
+    )];
+    let report = compare_with("reloc_elsewhere", &reloc_base(), &head, &admissions);
+    let bindings = widget_bindings_admitted_by(&report, "move-widget");
+    assert!(
+        bindings.iter().any(|(m, a)| m == "probe.consumer" && *a),
+        "the binding that followed the move is admitted, got: {bindings:?}"
+    );
+    assert!(
+        bindings.iter().any(|(m, a)| m == "probe.second" && !*a),
+        "a binding repointed to a THIRD module shares the leaf and must stay unadmitted, got: {bindings:?}"
+    );
+    assert!(
+        !report_unadjudicated(&report).is_empty(),
+        "the unadmitted repoint must still refuse"
+    );
+}
+
+#[test]
+fn a_relocation_whose_declaration_did_not_leave_its_old_module_is_invalid() {
+    let head = [
+        ("home.dag", RELOC_HOME_DECLARES),
+        ("other.dag", RELOC_OTHER_DECLARES),
+        ("consumer.dag", CONSUMER_IMPORTS_OTHER),
+        ("second.dag", RELOC_SECOND_IMPORTS_OTHER),
+    ];
+    let admissions = [ta_relocation(
+        "move-widget",
+        "widget",
+        "probe.home",
+        "probe.other",
+    )];
+    let report = compare_with("reloc_not_moved", &reloc_base(), &head, &admissions);
+    assert!(
+        widget_bindings_admitted_by(&report, "move-widget")
+            .iter()
+            .all(|(_, a)| !*a),
+        "a row whose declaration still lives in its old module admits nothing: {:?}",
+        report.deltas
+    );
+    assert!(
+        report
+            .stale_admissions
+            .iter()
+            .any(|s| s.contains("declared-in-from=true")),
+        "the refusal must say the declaration is still in its old module: {:?}",
+        report.stale_admissions
+    );
+}
+
+fn relocation_row_source(stem: &str, from_module: &str) -> String {
+    format!(
+        "module gunbc.namespace.transition_admission.{stem}\n\n\
+         import std.types {{ NonEmptyStr, List }}\n\
+         import std.decl_ref {{ decl_ref }}\n\
+         import gunbc.compiler_frontend_program_interlock {{ TargetChanged }}\n\
+         import gunbc.namespace.transition_admission {{ TransitionAdmission, Relocation }}\n\n\
+         data {stem}: TransitionAdmission = TransitionAdmission {{\n\
+           label: \"move-widget\" as NonEmptyStr,\n\
+           subject: Relocation {{\n\
+             to: decl_ref(\"probe.other\", \"widget\"),\n\
+             from_module: \"{from_module}\" as NonEmptyStr,\n\
+           }},\n\
+           disposition: TargetChanged,\n\
+         }}\n"
+    )
+}
+
+#[test]
+fn a_carried_relocation_block_loads_to_the_subject_it_spells() {
+    let loaded = carried_admissions_from_messages(&[(
+        "reloc".to_string(),
+        carrying(&[relocation_row_source("probe_widget_moves", "probe.home")]),
+    )])
+    .expect("well-formed relocation block");
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(
+        loaded[0].subject,
+        AdmissionSubject::Relocation {
+            spelling: "widget".to_string(),
+            from_module: "probe.home".to_string(),
+            to_module: "probe.other".to_string(),
+        }
+    );
+}
+
+#[test]
+fn a_carried_relocation_from_a_module_to_itself_refuses_located() {
+    let err = carried_admissions_from_messages(&[(
+        "selfmove".to_string(),
+        carrying(&[relocation_row_source("probe_widget_moves", "probe.other")]),
+    )])
+    .expect_err("self-relocation must refuse");
+    assert!(
+        err.contains("commit selfmove"),
+        "refusal must name the commit: {err}"
+    );
+    assert!(
+        err.contains("to itself"),
+        "refusal must name the defect: {err}"
+    );
+}
