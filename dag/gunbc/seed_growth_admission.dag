@@ -7,6 +7,7 @@ import gunbc.persisted_resolved_graph_consumer_test_seed_growth {
 }
 import gunbc.claim_scope_fixture_seed_growth { claim_scope_fixture_seed_growth_justification }
 import gunbc.scope_rank_view_seed_growth { scope_rank_view_seed_growth_justification }
+import gunbc.floor_teardown_attribution_seed_growth { floor_teardown_attribution_seed_growth_justification }
 import gunbc.anonymous_record_resolution_seed_growth { anonymous_record_resolution_seed_growth_justification }
 import gunbc.closure_edge_demand_seed_growth { closure_edge_demand_seed_growth_justification }
 import gunbc.reference_closure_binder_seed_growth { reference_closure_binder_seed_growth_justification }
@@ -287,7 +288,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     live_tree_stamp_detector_seed_growth_justification,
     joint_claim_join_seed_growth_justification,
     floor_arm_set_consumer_seed_growth_justification,
-    scope_rank_view_seed_growth_justification
+    scope_rank_view_seed_growth_justification,
+    floor_teardown_attribution_seed_growth_justification
   ]
 }
 

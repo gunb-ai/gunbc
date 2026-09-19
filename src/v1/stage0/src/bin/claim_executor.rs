@@ -2402,18 +2402,28 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(code) => code,
     };
+    // THE TERMINAL RECEIPT IS EMITTED FIRST, AND THE ORDER IS THE WHOLE POINT OF THESE TWO LINES.
+    // `emit_worker_terminal_before_return` is the worker's fail-closed channel: when the receipt is
+    // absent the parent substitutes "worker returned before producing a walk terminal receipt" and
+    // the real, located detail is gone. The first revision of this change called the instrument
+    // BEFORE it, inserting a ~168-second window -- this PR's own measured figure -- between a
+    // failure and the emission of its receipt, so a worker killed by an outer step cap during
+    // teardown would have downgraded a located failure into the generic no-receipt arm. That window
+    // did not exist when the drops ran after `main` returned, so the instrument would have created
+    // the regression it was added to measure (review 68459; DESIGN section 5, "every path succeeds
+    // fully or fails with a typed, located diagnostic"). Nothing in the instrument reads the
+    // receipt, so emitting first costs nothing.
+    let code = emit_worker_terminal_before_return(code);
     // ATTRIBUTE THE TEARDOWN INSTEAD OF LEAVING IT SILENT. `main` returns an `ExitCode` and calls
     // `process::exit` nowhere, so everything still alive is dropped after this function returns --
-    // off the end of the log, where no instrument can see it. Measured on run 35365418267: 167.8
-    // seconds between this step's last output and the next step's first, against 0.0-1.3s for every
-    // other inter-step gap in the same job. This call moves the thread-local drops inside the
-    // timed region so the cost is attributed per cache rather than inferred from a hole.
+    // off the end of the log, where no instrument can see it. This call moves the thread-local drops
+    // inside the timed region so the cost is attributed per cache rather than inferred from a hole.
     //
     // IT IS NOT THE REPAIR AND DOES NOT CLAIM TO BE. It makes the quantity visible so a repair can
     // be chosen against it; whatever `main`'s return still drops after this line remains unmeasured
     // and is reported as a residue rather than assumed to be zero.
     v1_compiler::cli_run::drop_process_caches_with_attribution();
-    emit_worker_terminal_before_return(code)
+    code
 }
 
 #[cfg(test)]
