@@ -11,7 +11,9 @@ import extdeps.systemd {
   SystemdUnitActiveState,
   Active, Inactive, Activating, Deactivating, Reloading, Failed,
   parse_systemd_unit_active_state,
-  systemd_unit_load_state_not_found_wire,
+  SystemdUnitLoadState,
+  LoadStateLoaded, LoadStateNotFound, LoadStateBadSetting, LoadStateError, LoadStateMasked,
+  parse_systemd_unit_load_state,
 }
 import extdeps.systemd.systemctl {
   UnitFileState,
@@ -745,9 +747,8 @@ type ReconcilePropertyReading
 // These predicates were bare string comparisons -- "active" || "activating" || "deactivating" ||
 // "reloading" for running, "inactive" || "failed" beside it for known, "not-found" for absence, and a
 // hand-spelled list of enablement words. Every one of those spellings is already declared:
-// `extdeps.systemd` owns `SystemdUnitActiveState` with `parse_systemd_unit_active_state`,
-// `extdeps.systemd.systemctl` owns `UnitFileState` with `parse_unit_file_state`, and the not-found
-// wire word has its own row. A second spelling of a cited upstream is the fork DESIGN section 3
+// `extdeps.systemd` owns `SystemdUnitActiveState` and `SystemdUnitLoadState` with their parsers, and
+// `extdeps.systemd.systemctl` owns `UnitFileState` with `parse_unit_file_state`. A second spelling of a cited upstream is the fork DESIGN section 3
 // forbids, and the tell was in this file already: the route reaches those properties through the
 // modeled `SystemdUnitProperty` for the property NAMES and then dropped to literals for the VALUES.
 //
@@ -810,20 +811,21 @@ fn reconcile_unit_file_state_is_known(state: String) -> Bool {
 }
 
 fn reconcile_load_state_is_absent(state: String) -> Bool {
-  state == (systemd_unit_load_state_not_found_wire as String)
+  match parse_systemd_unit_load_state(raw: state) {
+    Present { value: LoadStateNotFound } => true
+    Present { value: LoadStateLoaded } => false
+    Present { value: LoadStateBadSetting } => false
+    Present { value: LoadStateError } => false
+    Present { value: LoadStateMasked } => false
+    Absent => false
+  }
 }
 
-// LoadState HAS NO COPRODUCT UPSTREAM -- only the not-found word is declared -- so the recognized set
-// is enumerated here against systemd's documented values rather than parsed. Stated rather than left
-// implicit, because the two predicates beside it DO consume a parser and a reader would reasonably
-// expect this one to as well. The next-rung trigger is a LoadState vocabulary in extdeps.systemd
-// beside SystemdUnitActiveState; adding one is not this change's subject.
 fn reconcile_load_state_is_known(state: String) -> Bool {
-  reconcile_load_state_is_absent(state: state)
-    || state == "loaded"
-    || state == "masked"
-    || state == "bad-setting"
-    || state == "error"
+  match parse_systemd_unit_load_state(raw: state) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn reconcile_property_value(r: ReconcilePropertyReading) -> String {

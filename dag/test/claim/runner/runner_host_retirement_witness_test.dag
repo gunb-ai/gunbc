@@ -778,3 +778,26 @@ test fn an_absent_timer_with_blank_activity_is_unobserved() -> Bool {
     service_active_state: ReconcilePropertyValue { value: "inactive" },
   }))
 }
+
+// AN UNRECOGNIZED LOAD STATE IS UNKNOWN, NOT ABSENT AND NOT LOADED. The five words are cited to
+// systemd.unit(5) and now live in extdeps; a sixth spelling systemd might add must not default in
+// either direction, which is what the parser's absent arm establishes through this fold.
+test fn an_unrecognized_load_state_is_unobserved() -> Bool {
+  is_unobserved(s: srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "not-a-load-state" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
+    timer_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_active_state: ReconcilePropertyValue { value: "inactive" },
+  }))
+}
+
+// AND A `masked` LOAD STATE IS KNOWN AND NOT ABSENT -- it is one of the cited five, and reading it as
+// absence would discharge on a unit the manager is actively refusing to load.
+test fn a_masked_load_state_is_known_and_not_absent() -> Bool {
+  is_discharged(s: srv2_standing(r: ReconcileMechanismReading {
+    timer_load_state: ReconcilePropertyValue { value: "masked" },
+    timer_unit_file_state: ReconcilePropertyValue { value: "masked" },
+    timer_active_state: ReconcilePropertyValue { value: "inactive" },
+    service_active_state: ReconcilePropertyValue { value: "inactive" },
+  }))
+}
