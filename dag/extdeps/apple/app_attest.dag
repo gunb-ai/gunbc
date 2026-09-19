@@ -1,0 +1,156 @@
+module extdeps.apple.app_attest
+
+import std.types { NonEmptyStr, String, Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// DeviceCheck DCAppAttestService, and Apple's server-side validation procedure for its attestation
+// objects. Cited pages: "Establishing your app's integrity", "Validating apps that connect to your
+// server", "DCAppAttestService".
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server"
+  }
+}
+
+// ── What an attestation establishes, and what it does not ────────────────────────────────────
+// App Attest generates its OWN P-256 key in the Secure Enclave (generateKey), separate from any
+// CryptoKit key, and Apple certifies that key as belonging to a genuine instance of the app with a
+// named team id and bundle id on genuine Apple hardware. Two things it does NOT give:
+//
+//   * It cannot be gated by biometrics -- DCAppAttestService exposes no access-control policy -- so
+//     it proves the APP, not the operator. The decision-signing key is the CryptoKit enclave key
+//     under extdeps.apple.secure_enclave BiometryCurrentSet.
+//   * It certifies nothing about any other key. The link from the attested app to the decision key
+//     is made by the enrolment protocol: the clientDataHash the app attests over commits to the
+//     decision key and the one-time enrolment code (gunbc.auth.approval_device_redemption).
+
+type AttestKeyId = NonEmptyStr where brand("AttestKeyId")
+
+// Two environments by entitlement (com.apple.developer.devicecheck.appattest-environment), visible
+// to the server as the authenticator data's AAGUID: "appattestdevelop" or "appattest" followed by
+// seven zero bytes. TestFlight and App Store builds attest in production.
+type AppAttestEnvironment
+  = AppAttestDevelopment
+  | AppAttestProduction
+
+// ── Validation, in Apple's order ─────────────────────────────────────────────────────────────
+// The attestation object is CBOR { fmt: "apple-appattest", attStmt: { x5c, receipt }, authData }.
+// Apple's current procedure; each failure is its own refusal because each is a different incident.
+//
+//   1. x5c chains to the Apple App Attestation Root CA
+//   2. nonce = SHA256(authData || clientDataHash)
+//   3. nonce equals the credential certificate extension OID 1.2.840.113635.100.8.2
+//   4. SHA256(credential public key) equals the key id
+//   5. authData RP ID hash equals SHA256(App ID) -- App ID prefix, ".", bundle id
+//   6. authData counter is 0
+//   7. AAGUID names the expected environment
+//   8. authData credentialId equals the key id
+//   9. apple_validation_category_01 (UInt32, extensions CBOR) names an admitted launch category
+//  10. apple_bundle_version_01 (String, extensions CBOR) is the distributed app version
+//
+// The server then STORES the credential public key and the receipt: the key verifies every later
+// assertion, and the receipt is the handle for Apple's fraud-metric call.
+type AttestationRefusal
+  = AttestationFormatUnexpected { declared: String }
+  | AttestationChainUntrusted { detail: String }
+  | AttestationNonceMismatch
+  | AttestationKeyIdMismatch { declared: AttestKeyId }
+  | AttestationAppIdMismatch { expected_app_id: NonEmptyStr }
+  | AttestationCounterNonZero { counter: Int }
+  | AttestationEnvironmentUnexpected { expected: AppAttestEnvironment }
+  | AttestationCredentialIdMismatch { declared: AttestKeyId }
+  | AttestationValidationCategoryRefused { category: Int }
+  | AttestationBundleVersionAbsent
+  | AttestationUndecodable { cause: String }
+
+
+data app_attest_nonce_extension_oid: NonEmptyStr = "1.2.840.113635.100.8.2"
+
+// THE APP ID IS "<App ID prefix>.<bundle id>". Apple: the prefix is USUALLY the 10-character team
+// identifier, and is read from the app's Identifier entry in the developer account -- so it is its
+// own fact, not a second name for the team id, and the verifier is configured with it directly.
+type AppIdPrefix = NonEmptyStr where brand("AppIdPrefix")
+
+fn app_attest_app_id(prefix: AppIdPrefix, bundle_id: NonEmptyStr) -> NonEmptyStr {
+  join([prefix as String, bundle_id as String], ".") as NonEmptyStr
+}
+
+// ── Verified facts, minted only at the seam ──────────────────────────────────────────────────
+// Same boundary as extdeps.crypto.mac VerifiedMessage: nothing outside this module constructs a
+// verified attestation or assertion, and each names what it was verified OVER, so a success cannot
+// be paired afterwards with another enrolment's or another request's bytes.
+type VerifiedAttestation sole_constructor {
+  key_id: AttestKeyId
+  public_key_point_b64url: NonEmptyStr
+  receipt_b64: NonEmptyStr
+  environment: AppAttestEnvironment
+  client_data: NonEmptyStr
+}
+
+type AttestationVerification
+  = AttestationVerified { verified: VerifiedAttestation }
+  | AttestationRefused { cause: AttestationRefusal }
+
+fn attestation_verification_from_implementation(
+  key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
+  receipt_b64: NonEmptyStr,
+  environment: AppAttestEnvironment,
+  client_data: NonEmptyStr,
+  refusal: AttestationRefusal?,
+) -> AttestationVerification {
+  match refusal {
+    Present { value: r } => AttestationRefused { cause: r }
+    Absent => AttestationVerified {
+      verified: VerifiedAttestation { key_id: key_id, public_key_point_b64url: public_key_point_b64url, receipt_b64: receipt_b64, environment: environment, client_data: client_data }
+    }
+  }
+}
+
+
+// ── Assertions ───────────────────────────────────────────────────────────────────────────────
+// Each later request carries an assertion: CBOR { signature, authenticatorData } produced by
+// generateAssertion(keyId, clientDataHash). Apple's procedure: (1) clientDataHash = SHA256(clientData);
+// (2) nonce = SHA256(authenticatorData || clientDataHash); (3) the signature verifies for nonce under
+// the STORED public key; (4) the RP ID hash equals SHA256(App ID); (5) the counter exceeds the
+// previous assertion's; (6) the embedded challenge matches the one issued; (7) validationCategory
+// and (8) bundleVersion, from the extensions CBOR. Only after all eight does Apple call it trusted.
+//
+// THIS MODULE'S SUCCESS IS NAMED FOR LESS, deliberately: AssertionAuthentic covers steps 1-4, 7 and
+// 8 -- the parts a verifier can decide from the assertion, the client data and the stored key.
+// Step 5 needs the previous counter and step 6 needs the issued challenge; both are the CONSUMER'S
+// state, so the counter is carried out for the consumer to compare (or to state why it does not) and
+// the client data is carried out for the consumer to join to its challenge. A value named for full
+// trust would claim checks this producer cannot make.
+type AssertionRefusal
+  = AssertionSignatureInvalid
+  | AssertionAppIdMismatch { expected_app_id: NonEmptyStr }
+  | AssertionValidationCategoryRefused { category: Int }
+  | AssertionBundleVersionAbsent
+  | AssertionUndecodable { cause: String }
+
+type AuthenticAssertion sole_constructor {
+  key_id: AttestKeyId
+  public_key_point_b64url: NonEmptyStr
+  counter: Int
+  client_data: NonEmptyStr
+}
+
+type AssertionVerification
+  = AssertionAuthentic { authentic: AuthenticAssertion }
+  | AssertionRefused { cause: AssertionRefusal }
+
+fn assertion_verification_from_implementation(
+  key_id: AttestKeyId,
+  public_key_point_b64url: NonEmptyStr,
+  counter: Int,
+  client_data: NonEmptyStr,
+  refusal: AssertionRefusal?,
+) -> AssertionVerification {
+  match refusal {
+    Present { value: r } => AssertionRefused { cause: r }
+    Absent => AssertionAuthentic { authentic: AuthenticAssertion { key_id: key_id, public_key_point_b64url: public_key_point_b64url, counter: counter, client_data: client_data } }
+  }
+}

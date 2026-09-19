@@ -10,6 +10,18 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import product.placement_supply { HostIdentity }
 import extdeps.docker.cli { DockerCreateSpec }
 import extdeps.docker.container_inspect { ContainerInspect }
+import gunbc.spark.collective_memory_path_standing {
+  CollectiveMemoryPathStanding, collective_memory_path_standing, memory_path_standing_text,
+  MemoryPathDefectStanding, memory_path_defect_standing, DefectEstablished, NoDefectEstablished, DefectStandingUnread, EvidenceContradicts,
+  DesiredCollectiveMemoryPath, DirectRegistrationWhereDevicePermits,
+}
+import gunbc.spark.spark_gpu_direct_capability { spark_gb10_platform }
+import gunbc.spark.serving_rank_observe {
+  RankGpuDirectCapabilityReceipt, RankNcclMemoryPathReceipt, rank_nccl_memory_path_receipt,
+  RankNcclReceiptReading, RankNcclReceiptBuilt, RankNcclReceiptLogUnread, RankNcclReceiptLogFromAnotherSubject,
+  ObservedRankIncarnation, observed_rank_incarnation, incarnation_leg_subject, observed_rank_incarnations_agree,
+  observed_rank_incarnation_text, rank_gpu_direct_capability, rank_nccl_memory_path_reading, rank_nccl_gpu_direct_devices,
+}
 import extdeps.nvidia.nccl {
   NcclRoceGidSelection, NcclRealizedTransport, NcclTransportIbVerbs, NcclTransportSocket,
   nccl_realized_transport_wire,
@@ -24,7 +36,7 @@ import gunbc.fleet_known_hosts_anchor {
 import gunbc.spark.fabric_reach {
   ExecutorReach, ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach, SparkReachPath,
 }
-import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupB, fabric_group_hosts }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts }
 import gunbc.spark.grant_privileged_operation {
   read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized,
 }
@@ -34,10 +46,8 @@ import gunbc.auth.materialized_secret {
 import gunbc.spark.model_snapshot_materialize {
   SparkMaterializeContext, SnapshotAcquisitionExecutor, HostCli,
 }
-import gunbc.spark.serving_arm {
-  Glm53NativeFp8, GunbcGlm53NopeDerivedGb10, FourSparkTp4,
-  glm_native_concurrent_profile, ArmIntent, ArmBoundedExperiment,
-}
+import gunbc.spark.serving_arm { ArmIntent, ArmBoundedExperiment }
+import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
 import gunbc.spark.serving_arm_launch {
   ArmLaunchPlan, ArmLaunchPlanned, ArmLaunchRefused, ArmNodeLaunch,
   plan_arm_launch_for, arm_rail_gid_selection, glm_native_container_name,
@@ -51,6 +61,7 @@ import gunbc.spark.serving_rank_observe {
   RankLogCapture, RankLogCaptured, RankLogRefused, capture_rank_log,
   rank_transport_from_log, rank_startup_from_log,
   RankRevisionReading, RankRevisionRead, RankRevisionRefused, observe_rank_vllm_revision,
+  observe_rank_gpu_direct_capability,
   RankVerbsShape, observed_verbs_shape, verbs_shape_is_complete, verbs_shape_text,
   RankObservationRefusal, rank_observation_refusal_text,
 }
@@ -91,7 +102,7 @@ import gunbc.spark.serving_relaunch_transaction {
 // planner, so this module names neither. A host list written here would be a second authority for
 // the membership of Group B, and a container name written here would be a second authority for what
 // the planner creates -- and the relaunch's whole job is to make those two agree.
-data glm_group_b_group: FabricGroup = FabricGroupB
+data glm_group_b_group: FabricGroup = glm_group_b_serving_assignment.group
 
 fn glm_group_b_subjects() -> List<ObservedRankSubject> {
   map(fabric_group_hosts(g: glm_group_b_group), h =>
@@ -174,10 +185,34 @@ type RankStanding
   | RankReadOnAnotherTransport { transport: NonEmptyStr }
   | RankNotFullyRead { what: NonEmptyStr }
 
+// THE MEMORY PATH IS A TYPED FACET OF THE REPORT, NOT ONLY A SENTENCE IN ITS LINES. An earlier
+// revision rendered DEFECT / CONTRADICTION / unread into text and derived the report's standing from
+// the network transport alone, so the typed answer existed only as prose. It is carried here so a
+// qualification that consumes rank reports can act on it; it does not yet gate the observe route's
+// exit, which reports rather than qualifies. Absent when the log that carries the GDR lines could not
+// be captured or the transport itself was unread.
+type RankMemoryPathFacet sole_constructor {
+  from: ObservedRankIncarnation
+  standing: CollectiveMemoryPathStanding
+  defect: MemoryPathDefectStanding
+}
+
+// A CAPABILITY AND AN NCCL READING THAT DO NOT DESCRIBE THE SAME DEVICE ARE NOT A STANDING. The join
+// refuses by name when the two receipts' incarnations differ (host, container id or node rank), when
+// the NCCL lines were emitted by a local device other than the one the CUDA probe asked about, or when
+// the log was captured from a subject other than the incarnation -- rather than stamping one side's
+// identity onto a result built partly from the other.
+type RankMemoryPathReading
+  = RankMemoryPathRead { facet: RankMemoryPathFacet }
+  | RankMemoryPathProvenanceMismatch { capability_from: ObservedRankIncarnation, nccl_from: ObservedRankIncarnation }
+  | RankMemoryPathDeviceMismatch { probed: Int, announced: List<Nat> }
+  | RankMemoryPathLogNotFromIncarnation { log_from: ObservedRankSubject }
+
 type RankReport sole_constructor {
   subject: ObservedRankSubject
   lines: List<String>
   standing: RankStanding
+  memory_path: RankMemoryPathReading?
 }
 
 fn rank_standing_is_read(s: RankStanding) -> Bool {
@@ -220,7 +255,7 @@ fn rank_startup_facet(
 {
   match log {
     RankLogRefused { refusal: r } => RankStartupRefused { refusal: r }
-    RankLogCaptured { text: t } =>
+    RankLogCaptured { from: _, text: t } =>
       match observe_rank_vllm_revision(ctx: ctx, subject: subject) {
         RankRevisionRefused { refusal: r } => RankStartupRefused { refusal: r }
         RankRevisionRead { revision: rev } =>
@@ -233,6 +268,67 @@ fn rank_startup_facet(
 // two is deliberate: an engine still capturing CUDA graphs has not printed them yet, which is a state
 // of the engine and not a failure of the reading. The transport facet has no such state -- a running
 // rank has announced a network or this route could not read it.
+// ── WHICH NETWORK IS NOT WHICH MEMORY PATH, AND THE OBSERVATION REPORTS BOTH ───────────────────
+//
+// The transport verdict above says the communicator built IB verbs. It does not say whether the NIC
+// reaches the buffers directly or stages them through host memory, and on GB10 the answer is the
+// platform's supported state rather than a defect -- which a reader cannot know from the transport
+// line alone. This is the consumer of gunbc.spark.collective_memory_path_standing: the same captured
+// text the transport verdict was read from is read for the GDR lines, joined against the device
+// capability reading, and the resulting sentence goes in the rank's report beside the transport one.
+//
+// IT REPORTS RATHER THAN GATES, and that is deliberate. A staged path on an incapable platform is
+// not an action item, so it must not fail an observation; a staged path on a CAPABLE platform is a
+// defect, and the standing says which of those a reader is looking at instead of leaving them to
+// infer it from a log line that reads the same either way.
+// GROUP B'S MEMORY-PATH POLICY, THE OPERATOR'S: direct registration wherever the device permits it
+// ("I strongly suggest enabling it if it's supposed to be", 2026-09-18). On GB10 the device reports
+// no GPUDirect APIs, so this policy reads the staged path as the platform's supported state; it bites
+// only on a device that could register and a runtime that did not.
+data glm_group_b_desired_memory_path: DesiredCollectiveMemoryPath = DirectRegistrationWhereDevicePermits
+
+fn rank_memory_path_reading(capability: RankGpuDirectCapabilityReceipt, nccl: RankNcclMemoryPathReceipt) -> RankMemoryPathReading {
+  if !observed_rank_incarnations_agree(a: capability.from, b: nccl.from) {
+    RankMemoryPathProvenanceMismatch { capability_from: capability.from, nccl_from: nccl.from }
+  } else {
+    let announced = rank_nccl_gpu_direct_devices(r: nccl)
+    if any(announced, d => to_string(d) != to_string(capability.device_ordinal)) {
+      RankMemoryPathDeviceMismatch { probed: capability.device_ordinal, announced: announced }
+    } else {
+      let standing = collective_memory_path_standing(
+        capability: rank_gpu_direct_capability(platform: spark_gb10_platform, r: capability),
+        observed: rank_nccl_memory_path_reading(r: nccl),
+      )
+      RankMemoryPathRead { facet: RankMemoryPathFacet {
+        from: capability.from,
+        standing: standing,
+        defect: memory_path_defect_standing(policy: glm_group_b_desired_memory_path, s: standing),
+      } }
+    }
+  }
+}
+
+fn rank_memory_path_text(r: RankMemoryPathReading) -> String {
+  match r {
+    RankMemoryPathProvenanceMismatch { capability_from: c, nccl_from: n } =>
+      join(["PROVENANCE MISMATCH: the capability was read from ", observed_rank_incarnation_text(i: c), " and the NCCL lines from ", observed_rank_incarnation_text(i: n), ", so no memory-path standing is drawn"], "")
+    RankMemoryPathDeviceMismatch { probed: p, announced: ds } =>
+      join(["DEVICE MISMATCH: the CUDA probe asked device ", to_string(p), " and GPU Direct RDMA lines came from device(s) ", join(map(ds, d => to_string(d)), ","), ", so no memory-path standing is drawn"], "")
+    RankMemoryPathLogNotFromIncarnation { log_from: f } =>
+      join(["PROVENANCE MISMATCH: the log was captured from ", observed_rank_subject_text(s: f), ", not from the inspected incarnation"], "")
+    RankMemoryPathRead { facet: f } =>
+      join([
+        "memory path on ", observed_rank_incarnation_text(i: f.from), ": ",
+        match f.defect {
+          DefectEstablished { cause: c } => join(["DEFECT: ", c as String], "")
+          EvidenceContradicts { cause: c } => join(["CONTRADICTION: ", c as String], "")
+          DefectStandingUnread { cause: c } => join(["unread: ", c as String], "")
+          NoDefectEstablished { because: _ } => memory_path_standing_text(s: f.standing) as String
+        },
+      ], "")
+  }
+}
+
 fn observe_rank_report(
   trust: FleetOpenSshTrustPolicy,
   path: SparkReachPath,
@@ -249,19 +345,39 @@ fn observe_rank_report(
         subject: subject,
         lines: [rank_observation_refusal_text(r: r)],
         standing: RankNotFullyRead { what: "the container could not be inspected" as NonEmptyStr },
+        memory_path: none,
       }
-    RankInspected { subject: _, container: c } => {
+    RankInspected { subject: _, container: c } =>
+      match observed_rank_incarnation(subject: subject, c: c) {
+        Absent => RankReport {
+          subject: subject,
+          lines: ["the inspected container reports no container id or no node rank, so no later leg can be pinned to this incarnation"],
+          standing: RankNotFullyRead { what: "the container's incarnation was not read" as NonEmptyStr },
+          memory_path: none,
+        }
+        Present { value: incarnation } => observe_rank_incarnation(ctx: ctx, subject: subject, c: c, incarnation: incarnation)
+      }
+  }
+}
+
+// EVERY LEG AFTER THE INSPECTION ADDRESSES THE INSPECTED INCARNATION BY ITS IMMUTABLE ID. The log,
+// the revision readback and both CUDA queries go through `pinned`, so they cannot straddle a stop and
+// recreate: a new container under the same name has a different id, and the pinned legs refuse on it.
+fn observe_rank_incarnation(ctx: SparkMaterializeContext, subject: ObservedRankSubject, c: ContainerInspect, incarnation: ObservedRankIncarnation) -> RankReport
+  uses net: Network
+{
+  let pinned = incarnation_leg_subject(i: incarnation)
       let shape = match observed_verbs_shape(subject: subject, container: c) {
         Absent => RankFacet { lines: ["the container's own argv does not name a rank, so this reading has nothing to bind to"], complete: false }
         Present { value: sh } => RankFacet { lines: [verbs_shape_text(s: sh)], complete: verbs_shape_is_complete(s: sh) }
       }
-      let log = capture_rank_log(ctx: ctx, subject: subject, step: glm_group_b_log_step)
+      let log = capture_rank_log(ctx: ctx, subject: pinned, step: glm_group_b_log_step)
       let transport = match log {
         RankLogRefused { refusal: r } => RankTransportFacet {
           lines: [rank_observation_refusal_text(r: r)],
           standing: RankNotFullyRead { what: "the container log could not be captured" as NonEmptyStr },
         }
-        RankLogCaptured { text: t } =>
+        RankLogCaptured { from: _, text: t } =>
           match rank_transport_from_log(subject: subject, container: c, captured: t) {
             RankTransportRefused { refusal: r } => RankTransportFacet {
               lines: [rank_observation_refusal_text(r: r)],
@@ -273,7 +389,16 @@ fn observe_rank_report(
             }
           }
       }
-      let startup = match rank_startup_facet(ctx: ctx, subject: subject, container: c, log: log) {
+      let memory_path = match rank_nccl_memory_path_receipt(incarnation: incarnation, log: log) {
+        RankNcclReceiptLogUnread => none
+        RankNcclReceiptLogFromAnotherSubject { log_from: f } => Present { value: RankMemoryPathLogNotFromIncarnation { log_from: f } }
+        RankNcclReceiptBuilt { receipt: nccl } =>
+          Present { value: rank_memory_path_reading(
+            capability: observe_rank_gpu_direct_capability(ctx: ctx, incarnation: incarnation),
+            nccl: nccl,
+          ) }
+      }
+      let startup = match rank_startup_facet(ctx: ctx, subject: pinned, container: c, log: log) {
         RankStartupRefused { refusal: r } => RankFacet { lines: [rank_observation_refusal_text(r: r)], complete: false }
         RankStartupObserved { reading: sr } => RankFacet {
           lines: [join([
@@ -293,13 +418,22 @@ fn observe_rank_report(
         subject: subject,
         lines: concat(shape.lines, concat(transport.lines, concat(startup.lines, [rank_standing_text(s: joined_standing(shape: shape, transport: transport))]))),
         standing: joined_standing(shape: shape, transport: transport),
+        memory_path: memory_path,
       }
-    }
-  }
 }
 
 data glm_group_b_observe_attempt_raw: String = "glm-group-b-serving-observe"
 data glm_group_b_observe_receipt_path: String = "target/glm-group-b-serving-observation.txt"
+
+// THE RECEIPT READS THE TYPED FACET, NOT A COPY OF ITS TEXT. The memory-path reading is carried on
+// RankReport as a value and rendered here from that field, so the observation receipt is its consumer;
+// an absent reading (no log captured) renders nothing rather than a guessed line.
+fn rank_report_memory_path_lines(r: RankReport) -> List<String> {
+  match r.memory_path {
+    Absent => [] as List<String>
+    Present { value: m } => [rank_memory_path_text(r: m)]
+  }
+}
 
 // AN EMPTY SUBJECT ROSTER REFUSES BEFORE A CREDENTIAL IS MATERIALIZED, and the check is here rather
 // than after the reads for the same reason the transaction's is before its capture phase: at zero
@@ -324,7 +458,7 @@ fn glm_group_b_observe_wet() -> ProcessExit
       join(["glm group b serving observation at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n"], ""),
       join(map(reports, r => join([
         observed_rank_subject_text(s: r.subject), "\n",
-        join(map(r.lines, l => join(["  ", l], "")), "\n"), "\n",
+        join(map(concat(r.lines, rank_report_memory_path_lines(r: r)), l => join(["  ", l], "")), "\n"), "\n",
       ], "")), ""),
     ], "")
     let w = Filesystem.Write(path: glm_group_b_observe_receipt_path, content: body)
@@ -382,13 +516,14 @@ type ArmPlanRoster
   | ArmPlanRefused { cause: NonEmptyStr }
 
 fn glm_group_b_rank_plans() -> ArmPlanRoster {
+  let a = glm_group_b_serving_assignment
   match plan_arm_launch_for(
-    checkpoint: Glm53NativeFp8,
-    runtime: GunbcGlm53NopeDerivedGb10,
-    topology: FourSparkTp4,
-    group: glm_group_b_group,
+    checkpoint: a.checkpoint,
+    runtime: a.runtime,
+    topology: a.topology,
+    group: a.group,
     intent: ArmBoundedExperiment,
-    profile: glm_native_concurrent_profile,
+    profile: a.profile,
   ) {
     ArmLaunchRefused { cause: why } => ArmPlanRefused { cause: why }
     ArmLaunchPlanned { lines: ls, master: _ } => ArmPlanned {

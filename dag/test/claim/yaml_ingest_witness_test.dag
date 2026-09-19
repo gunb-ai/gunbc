@@ -101,3 +101,33 @@ test fn witness_rejection_discriminates_from_valid() -> Bool {
   yaml_source_parses(src: "a: 1\n") &&
     !yaml_source_parses(src: "just a bare word\n")
 }
+
+// Blank lines and full-line comments between entries -- including a comment indented unlike its
+// siblings, and one directly after a `key:` that opens a nested block -- carry no content.
+test fn witness_blank_and_comment_lines_between_entries_are_ignored() -> Bool {
+  match ingest_yaml_source(src: "# header\nname: ci\n\njobs:\n  # about the job\n  build:\n\n      # odd indent\n    steps:\n      - run: a\n\n      # between steps\n      - run: b\n") {
+    IngestedYaml { value: v } => serialize_yaml(v: v) == serialize_yaml(v: yaml_mapping(entries: [
+      kv(key: "name", value: yaml_string(s: "ci")),
+      kv(key: "jobs", value: yaml_mapping(entries: [
+        kv(key: "build", value: yaml_mapping(entries: [
+          kv(key: "steps", value: yaml_sequence(elements: [
+            yaml_mapping(entries: [kv(key: "run", value: yaml_string(s: "a"))]),
+            yaml_mapping(entries: [kv(key: "run", value: yaml_string(s: "b"))])
+          ]))
+        ]))
+      ]))
+    ]))
+    YamlIngestRejected { reason: _ } => false
+  }
+}
+
+// ...and inside a block literal they ARE content: skipping them there would silently rewrite scripts.
+test fn witness_blank_and_hash_lines_inside_a_block_literal_are_kept() -> Bool {
+  match ingest_yaml_source(src: "run: |\n  echo a\n\n  # kept\n  echo b\nnext: x\n") {
+    IngestedYaml { value: v } => serialize_yaml(v: v) == serialize_yaml(v: yaml_mapping(entries: [
+      kv(key: "run", value: yaml_string(s: "echo a\n\n# kept\necho b")),
+      kv(key: "next", value: yaml_string(s: "x"))
+    ]))
+    YamlIngestRejected { reason: _ } => false
+  }
+}

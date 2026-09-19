@@ -1,0 +1,256 @@
+module v2.test.parse.weather_g0_prefix_parse_probe
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty }
+import v2.compiler.parse { parse_module }
+import v2.compiler.resolve {
+  Namespace,
+  ResolveContext,
+  empty_canonical_symbol_set,
+  resolve_node,
+  scope_from_namespace
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_float_literal_node_from_lexeme,
+  dag_language_model
+}
+import v2.std.collection { empty_map }
+import v2.std.compilers.lexing { TokenStream, symbol_intern_lexeme }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  CorrectionNotModeled,
+  Diagnostic,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable
+}
+import v2.std.language_model { LanguageModel }
+import v2.std.lens_verdict { lens_verdict_diagnostic_locus_module, lens_verdict_diagnostic_locus_text }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Node,
+  TypeNode,
+  canonicalize_node_strip_provenance,
+  content_hash
+}
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.resolution_policy { NamespaceOnlyY }
+import v2.std.symbol_index { empty_symbol_index }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SH-1: weather.dag stopped at leftover `fn` because G0 had no float literal. v1 scan_number
+// admits `digits '.' digits` as ShLitFloat; v2 lexed only DigitChar+ as int, so `1.8` was
+// int+dot+int, postfix `.` demanded a binding name, the fn_decl failed, and the module repeat
+// left `fn` as the first remaining token. Coproduct variants with field blocks were not the gap:
+// those fixtures parsed before this row existed. The treatment is the smallest weather body
+// that contains a float; the standing red is a trailing-dot form v1 also refuses.
+
+data probe_cached_lm: LanguageModel = dag_language_model()
+
+fn parses(src: String) -> Bool {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn lexed_tokens(src: String) -> Outcome<TokenStream> {
+  let lm = probe_cached_lm
+  tokenize(text: src, file: ^probe, rules: lm.lex)
+}
+
+fn three_classes(src: String, a: Symbol, b: Symbol, c: Symbol) -> Bool {
+  match lexed_tokens(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match ts.all {
+        Cons {
+          head: t0,
+          tail: Cons { head: t1, tail: Cons { head: t2, tail: Empty } }
+        } => (t0.class == a) && (t1.class == b) && (t2.class == c)
+        _ => false
+      }
+  }
+}
+
+fn four_classes(src: String, a: Symbol, b: Symbol, c: Symbol, d: Symbol) -> Bool {
+  match lexed_tokens(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match ts.all {
+        Cons {
+          head: t0,
+          tail: Cons {
+            head: t1,
+            tail: Cons { head: t2, tail: Cons { head: t3, tail: Empty } }
+          }
+        } => (t0.class == a) && (t1.class == b) && (t2.class == c) && (t3.class == d)
+        _ => false
+      }
+  }
+}
+
+fn one_class(src: String, a: Symbol) -> Bool {
+  match lexed_tokens(src: src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match ts.all {
+        Cons { head: t0, tail: Empty } => t0.class == a
+        _ => false
+      }
+  }
+}
+
+data float_literal_source: String = "module m\nfn f() -> Float { 1.8 }\n"
+data second_float_lexeme: String = "2.5"
+data int_literal_control_source: String = "module m\nfn f() -> Int { 1 }\n"
+data weather_first_fn_source: String = "module m\nfn f() -> Float { x * 1.8 + 32.0 }\n"
+data trailing_dot_red_source: String = "module m\nfn f() -> Float { 1. }\n"
+
+test fn float_literal_alone_parses_holds() -> Bool {
+  parses(src: float_literal_source)
+}
+
+test fn distinct_float_literals_keep_distinct_lexemes_holds() -> Bool {
+  content_hash(
+    n: canonicalize_node_strip_provenance(
+      n: dag_float_literal_node_from_lexeme(
+        lexeme: "1.8",
+        occurrence_id: OccurrenceSynthetic
+      )
+    )
+  ) != content_hash(
+    n: canonicalize_node_strip_provenance(
+      n: dag_float_literal_node_from_lexeme(
+        lexeme: second_float_lexeme,
+        occurrence_id: OccurrenceSynthetic
+      )
+    )
+  )
+}
+
+test fn int_literal_control_parses_holds() -> Bool {
+  parses(src: int_literal_control_source)
+}
+
+test fn weather_first_fn_parses_holds() -> Bool {
+  parses(src: weather_first_fn_source)
+}
+
+test fn trailing_dot_float_still_refuses_holds() -> Bool {
+  match parses(src: trailing_dot_red_source) {
+    true => false
+    false => true
+  }
+}
+
+fn float_literal_resolve_ctx() -> ResolveContext {
+  let namespace = Namespace {
+    bindings: empty_map(),
+    canonical_symbols: empty_canonical_symbol_set(),
+    symbol_index: empty_symbol_index(),
+    module_qn: qualified_name_from_dotted_string(dotted: "m")
+  }
+  ResolveContext {
+    scope: scope_from_namespace(namespace: namespace),
+    namespace: namespace,
+    policy: NamespaceOnlyY,
+    position: qualified_name_from_dotted_string(dotted: "m"),
+    lm: probe_cached_lm,
+    under_module_root: false
+  }
+}
+
+data float_literal_resolve_probe: Node = dag_float_literal_node_from_lexeme(
+  lexeme: "1.8",
+  occurrence_id: OccurrenceSynthetic
+)
+
+data int_literal_resolve_probe: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+// Discriminates unbound_symbol misattribution: a parsed float is not a name.
+test fn float_literal_resolve_refuses_as_not_lowered_holds() -> Bool {
+  match resolve_node(ctx: float_literal_resolve_ctx(), n: float_literal_resolve_probe) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^float_literal_not_lowered
+  }
+}
+
+test fn int_literal_atom_still_resolves_holds() -> Bool {
+  match resolve_node(ctx: float_literal_resolve_ctx(), n: int_literal_resolve_probe) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Longest-match: digits '.' digits is a float, so a field/tuple access that is NOT digit-led
+// must stay ident + dot + int. `1..2` has a second dot rather than a fractional digit, so it
+// stays four tokens. `"1.8"` is one string. Digit-led `1.2.3` matches v1 scan_number: one
+// float, then dot, then int — not a three-segment dotted name.
+test fn numeric_field_access_is_ident_dot_int_holds() -> Bool {
+  three_classes(
+    src: "x.0",
+    a: ^dag_token_ident,
+    b: ^dag_token_dot,
+    c: ^dag_token_int_literal
+  )
+}
+
+test fn double_dot_between_ints_is_not_a_float_holds() -> Bool {
+  four_classes(
+    src: "1..2",
+    a: ^dag_token_int_literal,
+    b: ^dag_token_dot,
+    c: ^dag_token_dot,
+    d: ^dag_token_int_literal
+  )
+}
+
+test fn float_text_inside_a_string_stays_one_string_token_holds() -> Bool {
+  one_class(src: "\"1.8\"", a: ^dag_token_string_literal)
+}
+
+test fn digit_led_dotted_triple_is_float_then_dot_then_int_holds() -> Bool {
+  three_classes(
+    src: "1.2.3",
+    a: ^dag_token_float_literal,
+    b: ^dag_token_dot,
+    c: ^dag_token_int_literal
+  )
+}
+
+fn weather_fn_token_locus_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_g0_tokens_remain,
+    at: Textual {
+      file: symbol_intern_lexeme(lexeme: "dag/examples/weather/weather.dag"),
+      extent: ByteRange { start: 267, end: 269 }
+    },
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
+test fn weather_fatal_locus_text_keeps_file_and_bytes_holds() -> Bool {
+  lens_verdict_diagnostic_locus_text(d: weather_fn_token_locus_diagnostic())
+    == "dag/examples/weather/weather.dag bytes 267..269"
+}
+
+test fn weather_fatal_locus_text_is_not_the_module_name_fold_holds() -> Bool {
+  lens_verdict_diagnostic_locus_text(d: weather_fn_token_locus_diagnostic())
+    != lens_verdict_diagnostic_locus_module(d: weather_fn_token_locus_diagnostic())
+}

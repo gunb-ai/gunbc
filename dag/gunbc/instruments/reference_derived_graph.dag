@@ -19,9 +19,12 @@ import v2.lens.module_graph {
 //   gunbc run --source-root dag --source-root src/v2 \
 //     --entry dag/gunbc/instruments/reference_derived_graph.dag --function main
 //
-// Discriminating run is the fixture root below. Qualified mentions are a declared frontier
-// triggered on the dotted-reference capability, not lowering. Call contents are
-// eager-raven-113. Bare field types have a tree-side census with UNVERIFIED cause. Collector-only.
+// Discriminating run is the fixture root below. Qualified mention SITES reach since the
+// dotted-reference lowering (2026-09-18, v2.compiler.body_lowering_fold
+// body_lower_dotted_reference_optional -- the capability WAS lowering); their EDGES still wait on
+// type and data declarations being grafted into the containment tree. Call contents are
+// eager-raven-113. Bare field types are the same grafting loss (v2.compiler.namespace_graft rehomes
+// only fn declarations). Collector-only.
 // Unused-import-must-not-mint-a-reference-edge still is. It does not swap
 // dependency_resolution_facts_live (NAMESPACE-XL STAGE XL-6).
 

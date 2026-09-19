@@ -3,9 +3,9 @@ module test.claim.toolchain_home_standing_witness
 import std.types { Bool, List, String }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
-  SelfHosted, HostedRunner, UbuntuLatest, RunsOnExpression,
-  checkout_action, setup_rust_action
+  SelfHosted, HostedRunner, UbuntuLatest, RunsOnExpression
 }
+import gunbc.action_use_admission { checkout_action, setup_rust_action }
 import extdeps.languages.yaml.types { yaml_string, kv }
 import gunbc.toolchain_home_standing {
   ToolchainHomeClassification,

@@ -122,18 +122,28 @@ fn crs812_desired_lane_speed() -> Crs812DesiredLaneSpeed {
 // FORCED MODE IS THE CABLE CLASS'S REQUIREMENT, NOT A TUNING KNOB, so it is read from the extdeps
 // row that records the RouterOS behaviour rather than restated as a local constant.
 //
-// THE FEC RATIONALE HERE IS STALE, AND THE VALUE IS PROVISIONAL PENDING THE CONVERGE TEST. An earlier
-// head justified Fec91 as "the FEC the 100GBASE-CR2 attestation is conditional on". That was true of
-// the pre-recode 0x0B coding, which attests ieee_50gbase_cr2 with RequiresClause91Fec
-// (extdeps.transceiver.sff_8636). Post-recode (spark-a3ee byte 192 = 0x40 = 64), the coding attests
-// ieee_100gbase_cr2 with FecUnconditional -- so the mode is NOT conditional on Fec91, and the old
-// rationale no longer holds. What FEC 100GBASE-CR2 actually needs to TRAIN is a separate, open
-// question (gap G2: its 50G-PAM4 lanes use RS(544,514)/KP4, which the CRS812 REST surface may not
-// expose -- it offers only fec74/fec91/off/auto). The returned Fec91 is retained as the current
-// forced-DAC value but is NOT asserted as the correct 100G FEC; that is decided by the converge test
-// (fabric-switch-convergence-build-plan.md PR-3), deferred until the hardware links at 100G (§4d).
+// Fec91 IS A CANDIDATE, NOT A DEDUCED FACT, AND THE HISTORY HERE IS TWO §4d ERRORS TO AVOID REPEATING.
+// An earlier head justified Fec91 as "the FEC the 100GBASE-CR2 attestation is conditional on" -- true
+// of the pre-recode 0x0B coding (ieee_50gbase_cr2 RequiresClause91Fec), false post-recode where a3ee
+// attests ieee_100gbase_cr2 FecUnconditional. A second head over-corrected: it claimed 100GBASE-CR2
+// needs RS(544,514)/KP4 which the CRS812 might not expose -- an IEEE inference stated as a fact about
+// this switch. A third head over-corrected the OTHER way: "fec91 is what MikroTik documents for
+// 100G-baseCR2" -- a bet with no cited vendor document, consumed as a fact. NEITHER codeword claim is
+// grounded. What IS grounded: the eight fabric legs on this switch are OBSERVED running fec-mode
+// fec91 today (at their current 50G mode; docs/plans/fabric-switch-actuation-log.md). So Fec91 is
+// returned as the DESIRED-FEC CANDIDATE -- the FEC the plant already runs -- and whether it is the
+// FEC 100GBASE-CR2 needs to TRAIN is NOT established here; the converge test decides, and the converge
+// intent keeps a FEC-capability refusal arm rather than assuming this candidate is correct (§4d).
+// THE DESIRED-FEC CANDIDATE AS A NAMED ROW, GROUNDED IN AN OBSERVATION AND NOT A BARE LITERAL. Its
+// grounding is what THIS repository read off the switch -- the eight fabric legs run fec-mode fec91
+// today (docs/plans/fabric-switch-actuation-log.md) -- which is citable, unlike a MikroTik codeword
+// claim, which is not. It is NOT modeled in extdeps because it is not an upstream-spec fact this
+// repo can cite; it is an observation of our own switch. crs812_desired_fec consumes it so the value
+// has one home rather than sitting as a literal beside prose that claims a vendor fact.
+data crs812_observed_forced_dac_fec: Crs812FecMode = Fec91
+
 fn crs812_desired_fec() -> Crs812FecMode {
-  if crs812_passive_dac_requires_forced_mode { Fec91 } else { FecAuto }
+  if crs812_passive_dac_requires_forced_mode { crs812_observed_forced_dac_fec } else { FecAuto }
 }
 
 // A LANE PAIR IS ONE LEG. The odd lane carries the configuration and owns the even lane that
