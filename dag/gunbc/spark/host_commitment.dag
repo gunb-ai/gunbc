@@ -640,7 +640,7 @@ fn spark_host_standings_over(layout: EventLogLayout, at: EpochSecs) -> CurrentSt
     let current = flat_map(standings, st => match st { GroupStandingEstablished { current: c } => [c]  _ => [] as List<CurrentAuthority> })
     match placement_read(layout: layout) {
       PlacementUnread { step: st, reason: why } => CurrentStandingsUnread { cause: join(["the host-placement partition could not be read at ", st, ", so host commitment cannot be derived: ", why], "") as NonEmptyStr }
-      PlacementReadAt { head: _, effects: effs, commitments: _ } => spark_host_standings_current(current: current, host_claims: effs)
+      PlacementReadAt { head: _, effects: effs, preparations: _ } => spark_host_standings_current(current: current, host_claims: effs)
     }
   }
 }

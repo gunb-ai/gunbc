@@ -30,8 +30,10 @@ import gunbc.spark.host_effect_quiescence {
 import gunbc.spark.pair_serving_authority_log {
   HostEffectClaim, HostEffectClaimed, HostEffectClaimRefused, HostEffectRelease, HostEffectReleasedAt, HostEffectReleaseRefused,
   host_effect_admit, host_effect_admit_at, host_effect_release,
-  PlacementRead, PlacementReadAt, PlacementUnread, placement_read, live_commitments,
-  HostsCommitment, HostsCommittedAt, AlreadyCommitted, HostsCommitmentStale, HostsCommitmentRefused, hosts_commit, hosts_commit_at, void_commitment,
+  PlacementRead, PlacementReadAt, PlacementUnread, placement_read, group_live_commitment, group_fenced_hosts,
+  PlacementPreparation, PlacementPreparedAt, PlacementPreparationStale, PlacementPreparationRefused, placement_prepare, placement_prepare_at,
+  PlacementCleanup, PlacementFinalizedAt, PlacementAbortedAt, PlacementCleanupStillFencing, placement_abort, placement_finalize, authority_transition_append,
+  PreparationConsumption, PreparationConsumed, PreparationNotConsumed, PreparationConsumptionUnread, preparation_consumption,
   CurrentAuthority, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authority,
   AuthorityEstablishment, AuthorityEstablishedAt, AuthorityEstablishmentRefused, pair_serving_authority_establish,
   AuthorityTransition, AuthorityTransitionAppended, AuthorityTransitionStale, AuthorityTransitionRefused, pair_serving_authority_transition,
@@ -316,7 +318,7 @@ test fn an_ungrouped_host_is_claimed_on_the_placement_partition_by_real_executio
         && (match host_effect_admit(layout: layout, host: host, purpose: "a witness build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1000) {
               HostEffectClaimed { id: c, generation: _ } =>
                 (match host_effect_admit(layout: layout, host: host, purpose: "a second build" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1001) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "held"  _ => false })
-                  && (match placement_read(layout: layout) { PlacementReadAt { head: _, effects: effs, commitments: _ } => length(filter(effs, r => !r.released)) == 1  _ => false })
+                  && (match placement_read(layout: layout) { PlacementReadAt { head: _, effects: effs, preparations: _ } => length(filter(effs, r => !r.released)) == 1  _ => false })
                   && alr_release_with_quiet(handle: HostEffectHandle { host: host, residue: spec, claim: c }, layout: layout, at: 1002)
                   && (match alr_evidence_for(claim: c, host: host, spec: spec, at: 1003) { Present { value: e } => (match host_effect_release(layout: layout, claim: c, evidence: e, provenance: ClaimantTerminal { claim: c, claimant_executor: "executor-1" as NonEmptyStr }, executor: "executor-1" as NonEmptyStr, at: 1003) { HostEffectReleaseRefused { partition: _, step: st, reason: _ } => st == "evidence"  _ => false })  Absent => false })
                   && (match host_effect_admit(layout: layout, host: host, purpose: "a third build" as NonEmptyStr, executor: "executor-2" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1004) { HostEffectClaimed { id: _, generation: _ } => true  _ => false })
@@ -354,7 +356,7 @@ test fn a_claim_on_an_unestablished_groups_host_fences_its_establishment_by_real
                 && alr_occupied(layout: layout, host: host, at: 1006)
                 && alr_release_with_quiet(handle: HostEffectHandle { host: host, residue: spec, claim: c }, layout: layout, at: 1007)
                 && (match pair_serving_authority_transition(layout: layout, group: FabricGroupB, expected: released_b, next: active_b, transaction: "tx-claim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "operator" as NonEmptyStr, at: 1008) { AuthorityTransitionAppended { id: _, generation: g1, next: _ } => g1 == 1  _ => false })
-                && (match placement_read(layout: layout) { PlacementReadAt { head: _, effects: _, commitments: cms } => any(live_commitments(commitments: cms), cm => (match cm.group { FabricGroupB => true  FabricGroupA => false }) && any(cm.hosts, x => host_identity_eq(a: x, b: host)))  _ => false })
+                && (match placement_read(layout: layout) { PlacementReadAt { head: _, effects: _, preparations: preps } => any(group_live_commitment(preps: preps, group: FabricGroupB), x => host_identity_eq(a: x, b: host))  _ => false })
                 && (match host_effect_admit(layout: layout, host: host, purpose: "a build under the authority" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1009) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
             _ => false
           })
@@ -406,10 +408,11 @@ test fn a_release_needs_the_host_observed_quiet_by_real_execution() -> Bool {
 }
 
 // THE PLACEMENT HEAD IS THE FENCE, NOT THE READ: an effect that read the partition quiet, then
-// an authority transition commits its host, appends against the head it read -- STALE, nothing
-// placed; and an authority that read the partition quiet, then a claim lands, commits against the
-// head it read -- STALE, and its fresh re-decision refuses at `host-effects`. A commitment whose
-// group append does not land is voided and the host is claimable again.
+// an authority transition committed its host, appends against the head it read -- STALE, nothing
+// placed; and an authority that read the partition quiet, then a claim lands, prepares against
+// the head it read -- STALE, and its fresh re-decision refuses at `host-effects`. A preparation
+// whose group append never happens fences the host until it is aborted; the abort of a
+// preparation no authority event consumed lands, and the host is claimable again.
 test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Bool {
   alr_with_hash(scenario: fn(h) {
     alr_with_temp_dir(scenario: fn(dir) {
@@ -421,7 +424,7 @@ test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Boo
         Absent => false
         Present { value: resting } =>
           alr_witness_remote_ready(dir: dir)
-            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _ } => true  _ => false })
+            && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: resting, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1000) { AuthorityTransitionAppended { id: _, generation: _, next: _, placement: PlacementFinalizedAt { preparation: _, id: _ } } => true  _ => false })
             && {
               let effect_read = placement_read(layout: layout)
               (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1001) { AuthorityTransitionAppended { id: _, generation: g2, next: _ } => g2 == 2  _ => false })
@@ -433,19 +436,71 @@ test fn a_stale_placement_read_cannot_place_or_commit_by_real_execution() -> Boo
               let authority_read = placement_read(layout: layout)
               match host_effect_admit(layout: layout, host: srv, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1005) {
                 HostEffectClaimed { id: c, generation: _ } =>
-                  (match hosts_commit_at(layout: layout, read: authority_read, group: FabricGroupA, hosts: [srv], intent: "tx-reclaim-2" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1006) { HostsCommitmentStale => true  _ => false })
+                  (match placement_prepare_at(layout: layout, read: authority_read, group: FabricGroupA, previous_hosts: [] as List<HostIdentity>, next_hosts: [srv], operation: "tx-reclaim-2" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1006) { PlacementPreparationStale => true  _ => false })
                     && (match pair_serving_authority_transition(layout: layout, group: FabricGroupA, expected: released, next: resting, transaction: "tx-reclaim-2" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, actor: "witness" as NonEmptyStr, at: 1007) { AuthorityTransitionRefused { group: _, step: st, reason: _ } => st == "host-effects"  _ => false })
                     && alr_release_with_quiet(handle: HostEffectHandle { host: srv, residue: spec, claim: c }, layout: layout, at: 1008)
-                    && (match hosts_commit(layout: layout, group: FabricGroupA, hosts: [srv], intent: "stranded" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1009) {
-                          HostsCommittedAt { id: cid } =>
-                            (match host_effect_admit(layout: layout, host: srv, purpose: "a build under a stranded commitment" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1010) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
-                              && (match void_commitment(layout: layout, commitment: cid, reason: "the witness's group append never happened", actor: "operator" as NonEmptyStr, at: 1011) { Absent => true  Present { value: _ } => false })
-                              && (match host_effect_admit(layout: layout, host: srv, purpose: "a build after the void" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1012) { HostEffectClaimed { id: _, generation: _ } => true  _ => false })
+                    && (match placement_prepare(layout: layout, group: FabricGroupA, previous_hosts: [] as List<HostIdentity>, next_hosts: [srv], operation: "stranded" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1009) {
+                          PlacementPreparedAt { id: prep } =>
+                            (match host_effect_admit(layout: layout, host: srv, purpose: "a build under a stranded preparation" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1010) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
+                              && (match placement_abort(layout: layout, group: FabricGroupA, preparation: prep, reason: "the witness's group append never happened", actor: "operator" as NonEmptyStr, at: 1011) { PlacementAbortedAt { preparation: _, id: _ } => true  _ => false })
+                              && (match host_effect_admit(layout: layout, host: srv, purpose: "a build after the abort" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1012) { HostEffectClaimed { id: _, generation: _ } => true  _ => false })
                           _ => false
                         })
                 _ => false
               }
             }
+      }
+    })
+  })
+}
+
+// THE SAGA NEVER FREES A HOST EARLY, AND A CONSUMED PREPARATION CANNOT BE ABORTED. Group A is
+// Active over its four hosts. (1) A release (Active → ReleasedToFleet) that dies after its
+// preparation: the old hosts stay fenced -- group B cannot prepare over one, an effect cannot
+// claim one -- and the authority still reads Active; the abort (no authority event consumed the
+// preparation) frees nothing wrongly (the live commitment is still Active's). (2) A release that
+// dies after its group append, before finalization: the authority reads Released, the old hosts
+// are STILL fenced (the pending preparation's union), the abort REFUSES because the group's
+// chain names the preparation, and the finalization (as host_placement_finalize_wet does it)
+// lands and frees them.
+test fn a_saga_never_frees_a_host_early_and_a_consumed_preparation_cannot_be_aborted_by_real_execution() -> Bool {
+  alr_with_hash(scenario: fn(h) {
+    alr_with_temp_dir(scenario: fn(dir) {
+      let layout = alr_witness_layout(dir: dir)
+      let released = ReleasedToFleet { group: FabricGroupA, release_receipt: h }
+      let srv = match get(xs: fabric_group_hosts(g: FabricGroupA), index: 1) { Present { value: x } => x  Absent => alr_srv(s: "srv8") }
+      let spec = alr_residue(pattern: "/srv/build")
+      match pair_serving_authority_for(group: FabricGroupA) {
+        Absent => false
+        Present { value: resting } =>
+          alr_witness_remote_ready(dir: dir)
+            && (match placement_prepare(layout: layout, group: FabricGroupA, previous_hosts: fabric_group_hosts(g: FabricGroupA), next_hosts: [] as List<HostIdentity>, operation: "tx-release-crashed" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1000) {
+                  PlacementPreparedAt { id: prep } =>
+                    (match placement_prepare(layout: layout, group: FabricGroupB, previous_hosts: [] as List<HostIdentity>, next_hosts: [srv], operation: "tx-b" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1001) { PlacementPreparationRefused { step: st, reason: r } => st == "host-effects" && r.contains("another group")  _ => false })
+                      && (match host_effect_admit(layout: layout, host: srv, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1002) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
+                      && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1003), expected: resting, generation: 0)
+                      && (match preparation_consumption(layout: layout, group: FabricGroupA, preparation: prep) { PreparationNotConsumed => true  _ => false })
+                      && (match placement_abort(layout: layout, group: FabricGroupA, preparation: prep, reason: "the lane died before its group append", actor: "operator" as NonEmptyStr, at: 1004) { PlacementAbortedAt { preparation: _, id: _ } => true  _ => false })
+                      && (match host_effect_admit(layout: layout, host: srv, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1005) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
+                  _ => false
+                })
+            && (match placement_prepare(layout: layout, group: FabricGroupA, previous_hosts: fabric_group_hosts(g: FabricGroupA), next_hosts: [] as List<HostIdentity>, operation: "tx-release" as NonEmptyStr, actor: "witness" as NonEmptyStr, at: 1010) {
+                  PlacementPreparedAt { id: prep } =>
+                    (match current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1011) {
+                       CurrentAuthorityRead { authority: cur, head: head } =>
+                         (match authority_transition_append(layout: layout, group: FabricGroupA, head: head, current: cur, next: released, transaction: "tx-release" as NonEmptyStr, lifecycle: none, grant: none, entry_state: none, preparation: prep, actor: "witness" as NonEmptyStr, at: 1011) { EventAppended { id: _ } => true  _ => false })
+                       _ => false
+                     })
+                      && alr_current_is(c: current_pair_serving_authority(layout: layout, group: FabricGroupA, at: 1012), expected: released, generation: 1)
+                      && (match host_effect_admit(layout: layout, host: srv, purpose: "a build" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1012) { HostEffectClaimRefused { partition: _, step: st, reason: _ } => st == "committed"  _ => false })
+                      && (match placement_abort(layout: layout, group: FabricGroupA, preparation: prep, reason: "wrongly assumed stranded" as String, actor: "operator" as NonEmptyStr, at: 1013) { PlacementCleanupStillFencing { preparation: _, cause: c } => c.contains("consumed by authority event")  _ => false })
+                      && (match preparation_consumption(layout: layout, group: FabricGroupA, preparation: prep) {
+                            PreparationConsumed { authority_event: ae } => (match placement_finalize(layout: layout, preparation: prep, authority_event: ae, actor: "operator" as NonEmptyStr, at: 1014) { PlacementFinalizedAt { preparation: _, id: _ } => true  _ => false })
+                            _ => false
+                          })
+                      && (match host_effect_admit(layout: layout, host: srv, purpose: "a build after the finalization" as NonEmptyStr, executor: "executor-1" as NonEmptyStr, term: second(count: 100), residue: spec, at: 1015) { HostEffectClaimed { id: _, generation: _ } => true  _ => false })
+                  _ => false
+                })
       }
     })
   })

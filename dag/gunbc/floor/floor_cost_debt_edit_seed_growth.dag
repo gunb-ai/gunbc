@@ -1,0 +1,19 @@
+module gunbc.floor_cost_debt_edit_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the changed-cost-debt-witness ceiling the required floor applies at
+// claim build (operator ruling, 2026-09-19). The modeled authority is
+// v2.workflow.floor_cost_debt_edit cost_debt_changed_witness_ceiling_at_base; the declaration below
+// is its seed-side reader at the claim-build boundary, not a second policy.
+data floor_cost_debt_edit_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "cost_debt_changed_witness_ceiling", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor builds its claims in the seed, and the eval-step budget of a claim is fixed when v1_compiler.cli_run.required_floor_runner run_required_floor constructs it. The .dag decides everything about a changed cost-debt witness -- it shows the base declaration, tokenizes base and head, decides pure conjunct removal, selects the tier, derives the budget and names the edit's label. The seed item does the two reads the fold cannot perform from that loop: it hands over the head file's bytes and the comparison base the floor already resolved, then decodes the returned record (label, removed_conjuncts, budget) into the claim. It adds no policy: no tier choice, no label wording and no budget figure lives in it.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program. The required floor guards that program, and this change implements an operator ruling on its cost rule. It adds no language behavior, compatibility route, seed feature or emitted surface, and no flag: the tier is decided from the witness's tokens, never from anything an author writes.\n\nHAND-ITEM DELTA: +1, the reader above. The budget branch it feeds sits inside run_required_floor, which already existed.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the seed declaration when the self-emitted claim executor builds the required floor's claim roster and selects each claim's eval-step budget by calling v2.workflow.floor_cost_debt_edit cost_debt_changed_witness_ceiling_at_base (and v2.workflow.required_floor claim_eval_step_budget_for_identity) directly, so no hand-written reader decodes the ceiling record. NOT retired by the cost-debt roster reaching zero: an empty roster still needs its changed rows judged by this rule when one is touched.",
+  current_boundary: "v2.workflow.floor_cost_debt_edit cost_debt_changed_witness_ceiling_at_base -> v1_compiler.cli_run.required_floor_runner cost_debt_changed_witness_ceiling -> v1_compiler.cli_run.required_floor_runner run_required_floor -> v1_compiler.cli_run.required_floor_runner RequiredFloorClaim"
+}
