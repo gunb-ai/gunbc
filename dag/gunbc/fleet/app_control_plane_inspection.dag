@@ -17,11 +17,7 @@ import extdeps.uri {
   UriScheme,
   Http,
   Https,
-  ParsedHrefScheme,
-  HrefScheme,
-  RelativeHref,
-  UnknownHref,
-  parse_href_scheme,
+  uri_from_wire,
   uri_scheme_wire
 }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonBool, JsonNull, JsonArray, JsonObject }
@@ -147,36 +143,26 @@ type HookUrlDecode
   = HookUrlDecoded { url: Uri }
   | HookUrlRefused { reason: NonEmptyStr }
 
-fn strip_scheme_prefix(raw: NonEmptyStr, scheme: UriScheme) -> String {
-  let prefix_len = string_length(s: uri_scheme_wire(s: scheme) as String)
-  substring(s: raw as String, start: prefix_len, end: string_length(s: raw as String))
-}
-
-// Only the two schemes a webhook delivery can actually use are admitted. A relative, unknown, or
-// non-HTTP scheme is a refusal rather than a coerced Https, because the whole point of this axis is
-// to report what IS configured.
+// THE OBSERVED URL IS PARSED BY extdeps.uri, NEVER BY A SECOND PARSER HERE. An earlier cut of this
+// module split the scheme prefix itself, which is what `uri_from_wire` exists to stop being written
+// again -- and the two did not agree: GitHub's `HTTPS://host/x` parses a scheme there and the local
+// split, which cut by the LENGTH of the lowercase prefix, minted a Uri whose locator still carried
+// part of the scheme. One observed URL, two answers, on exactly the axis whose wrong Uri was this
+// module's earlier defect.
+//
+// The http(s) narrowing stays, because it is a fact about WEBHOOK DELIVERY rather than about URLs: a
+// mailto or data scheme is a well-formed Uri that no delivery can use. It is now a match on the
+// scheme of a Uri that extdeps.uri already decoded, not a second decode.
 fn decode_hook_url(raw: NonEmptyStr) -> HookUrlDecode {
-  match parse_href_scheme(url: raw as String) {
-    RelativeHref => HookUrlRefused {
-      reason: concat("app hook config url is not absolute: ", raw as String) as NonEmptyStr
+  match uri_from_wire(url: raw as String) {
+    Absent => HookUrlRefused {
+      reason: concat("app hook config url is not an absolute URL with a modeled scheme and an authority: ", raw as String) as NonEmptyStr
     }
-    UnknownHref => HookUrlRefused {
-      reason: concat("app hook config url carries no modeled scheme: ", raw as String) as NonEmptyStr
-    }
-    HrefScheme { scheme } => {
-      let rest = strip_scheme_prefix(raw: raw, scheme: scheme)
-      if rest == "" {
-        HookUrlRefused {
-          reason: concat("app hook config url carries a scheme and no authority: ", raw as String) as NonEmptyStr
-        }
-      } else {
-        match scheme {
-          Https => HookUrlDecoded { url: Uri { scheme: Https, locator: rest as NonEmptyStr } }
-          Http => HookUrlDecoded { url: Uri { scheme: Http, locator: rest as NonEmptyStr } }
-          _ => HookUrlRefused {
-            reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
-          }
-        }
+    Present { value: url } => match url.scheme {
+      Https => HookUrlDecoded { url: url }
+      Http => HookUrlDecoded { url: url }
+      _ => HookUrlRefused {
+        reason: concat("app hook config url scheme is not http(s): ", raw as String) as NonEmptyStr
       }
     }
   }

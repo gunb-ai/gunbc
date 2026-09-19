@@ -3,7 +3,7 @@ module test.claim.app_control_plane_inspection_witness
 import std.types { Bool, Int, String, NonEmptyStr, List }
 import v2.std.cardinality { Never }
 import v2.std.algebra { non_empty_to_list }
-import extdeps.uri { Uri, Http, Https, uri_wire }
+import extdeps.uri { Uri, Http, Https, uri_wire, uri_from_wire, uri_scheme_is_http }
 import extdeps.github.app {
   GitHubAppHookConfig,
   GitHubAppId,
@@ -226,6 +226,43 @@ test fn witness_http_url_keeps_its_observed_scheme() -> Bool {
   match decode_hook_url(raw: "http://example.invalid/hook") {
     HookUrlDecoded { url } => uri_wire(uri: url) == "http://example.invalid/hook"
     HookUrlRefused { reason: _ } => false
+  }
+}
+
+// THE RED FOR THE FORK THIS AXIS USED TO CARRY, and it is an AGREEMENT claim rather than a claim
+// about one spelling, because that is what the defect was: a hand-rolled split decided acceptance
+// for itself, so one observed URL had two answers depending on which authority read it. The
+// assertion is that decode_hook_url accepts exactly what extdeps.uri `uri_from_wire` accepts and
+// yields exactly the Uri it yields -- the http(s) narrowing below is the only admitted difference.
+// `HTTPS://` is in the roster because that is where the two authorities actually diverged: the
+// deleted split accepted it, uri_from_wire refuses it, and a reversion reds here.
+fn hook_url_agrees_with_uri_authority(raw: NonEmptyStr) -> Bool {
+  match uri_from_wire(url: raw as String) {
+    Absent => match decode_hook_url(raw: raw) {
+      HookUrlRefused { reason: _ } => true
+      HookUrlDecoded { url: _ } => false
+    }
+    Present { value: canonical } => match decode_hook_url(raw: raw) {
+      HookUrlDecoded { url } => uri_wire(uri: url) == uri_wire(uri: canonical)
+      HookUrlRefused { reason: _ } => !uri_scheme_is_http(s: canonical.scheme)
+    }
+  }
+}
+
+test fn witness_hook_url_decode_is_not_a_second_url_authority() -> Bool {
+  hook_url_agrees_with_uri_authority(raw: "https://example.invalid/hook")
+    && hook_url_agrees_with_uri_authority(raw: "http://example.invalid/hook")
+    && hook_url_agrees_with_uri_authority(raw: "HTTPS://example.invalid/hook")
+    && hook_url_agrees_with_uri_authority(raw: "mailto:ops@example.invalid")
+    && hook_url_agrees_with_uri_authority(raw: "/hook")
+}
+
+// A scheme and no authority is not a URL a delivery can reach, and must not mint a Uri whose
+// locator is empty.
+test fn witness_bare_scheme_refuses() -> Bool {
+  match decode_hook_url(raw: "https://") {
+    HookUrlRefused { reason: _ } => true
+    HookUrlDecoded { url: _ } => false
   }
 }
 
