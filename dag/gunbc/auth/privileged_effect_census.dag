@@ -198,8 +198,6 @@ data interim_cloudflare_adapter_unlanded: NonEmptyStr = "the approval loop has n
 
 data approval_bootstrap_circularity: NonEmptyStr = "the approval loop's own MAC keys cannot be provisioned by the approval loop; this is the one ceremony that is structurally the operator's, and it ran once on 2026-09-17" as NonEmptyStr
 
-data workstation_wet_run_frontier: NonEmptyStr = "gunbc.spark.credential_workflow spark_credential_access_token_frontier_note (2026-08-13) wired GcloudPrintToken for operator-workstation wet runs because no federated arm existed; the WorkloadIdentityToken arm has since landed, so this reason's trigger has fired and the site should move to resolve_access_token" as NonEmptyStr
-
 data eager_bootstrap_fork_declared: NonEmptyStr = "gunbc.auth.access_token_source ensure_access_token_eager_bootstrap_fork_dissolve_on declares this eager gcloud call as a §3 fork with its dissolution condition" as NonEmptyStr
 
 // ── The roster ───────────────────────────────────────────────────────────────────────────────
@@ -356,7 +354,11 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   // Interactive gcloud bound at the call site: the binding gunbc.auth.access_token_source names as
-  // "not a selection". The federated arm now exists, so each of these is a follow-up.
+  // "not a selection". The federated arm now exists, so each of these is a follow-up. Two of them
+  // (managed_access_apply, fleet_multi_principal_probe) once had a reason -- gunbc.spark.credential_workflow
+  // spark_credential_access_token_frontier_note, 2026-08-13: no federated arm existed -- and its
+  // trigger has fired. A reason whose trigger has fired is not a reason (review 68577), so these
+  // carry none and sit in the roster with the others.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
     effect: recurring_credential_read(subject: "BMC credential read for the fan converge" as NonEmptyStr),
@@ -381,13 +383,13 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       billing: NoBillingConsequence,
     },
     realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: Present { value: workstation_wet_run_frontier },
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
     effect: recurring_credential_read(subject: "read the in-run fleet key for a read-only multi-principal probe" as NonEmptyStr),
     realized: RealizedOperatorSession { arm: GcloudInteractive },
-    divergence_reason: Present { value: workstation_wet_run_frontier },
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "tools.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
@@ -466,6 +468,8 @@ data follow_up_sites: List<DeclarationRef> = [
   site(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
   site(module_path: "gunbc.srv3_bmc_credential_resolve", decl_name: "materialize_bmc_login_password"),
   site(module_path: "gunbc.tools.bmc_onboard", decl_name: "srv3_converge_credential"),
+  site(module_path: "gunbc.spark.managed_access_apply", decl_name: "spark_managed_access_apply_wet"),
+  site(module_path: "gunbc.fleet_multi_principal_probe", decl_name: "fleet_multi_principal_probe_with_attempt"),
   site(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),
   site(module_path: "tools.fabric_m0_origin_object_probe", decl_name: "probe_token_source"),
 ]
