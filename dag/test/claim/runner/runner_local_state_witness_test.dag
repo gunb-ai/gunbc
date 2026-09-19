@@ -33,9 +33,9 @@ import gunbc.runner_unit {
   RunnerUnitInstanceMalformed,
   RunnerUnitInstance,
   RunnerUnitLifecycleIntent,
-  lifecycle_intent_cannot_orphan,
+  lifecycle_intent_stops_finished_incarnation,
   gunbc_runner_lifecycle_intent,
-  gunbc_runner_listener_is_main_process,
+  gunbc_runner_main_exits_when_incarnation_ends,
 }
 import gunbc.runner_local_state {
   RunnerUnitObservation,
@@ -261,49 +261,45 @@ test fn witness_only_cgroup_reaching_kill_modes_reach_the_cgroup() -> Bool {
     && !systemd_kill_mode_reaches_whole_cgroup(mode: KillModeNone)
 }
 
-// THE PAIR IS WHAT DECIDES ORPHANING, NOT EITHER HALF. KillMode=control-group with ExitType=main
-// under a wrapper that does NOT exec is the trap: the teardown would reach the cgroup, but systemd
-// considers the service finished when the wrapper exits, so that teardown is never issued for the
-// survivors. This witness goes red if the predicate is weakened to consult kill_mode alone.
-// THE FOUR CASES, IN THE ORDER THAT MAKES THE PAIR LOAD-BEARING. ExitTypeMain is sufficient ONLY
-// when the listener is the main process -- the unreachable form -- and is exactly the trap when it
-// is not, which is this fleet. ExitTypeCgroup is sufficient regardless. A kill mode that leaves
-// children behind is never sufficient, whatever the exit type says, so the last two cases go red
-// if the predicate is ever weakened to consult exit_type alone.
-test fn witness_orphan_freedom_needs_both_halves() -> Bool {
+// THE PAIR DECIDES, NOT EITHER HALF, AND THE CASES ARE THE srv1 2026-09-18 MATRIX. ExitType=main
+// issues a stop when MainPID exits, and KillMode=control-group carries it to the whole cgroup: that
+// pair stops a finished incarnation. ExitType=main with a main process that outlives the incarnation
+// (run.sh's return-code-2 relaunch loop) issues no stop. ExitType=cgroup issues no stop while any
+// process survives -- the srv2-02 incident -- so it refuses whatever the kill mode. A kill mode that
+// leaves children behind refuses whatever the exit type. Weakening the predicate to consult either
+// half alone turns one of these arms green.
+test fn witness_stopping_a_finished_incarnation_needs_both_halves() -> Bool {
   let cg_main = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeControlGroup }
   let cg_cgroup = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeControlGroup }
-  let proc_cgroup = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeProcess }
-  lifecycle_intent_cannot_orphan(intent: cg_main, listener_is_main_process: true)
-    && !lifecycle_intent_cannot_orphan(intent: cg_main, listener_is_main_process: false)
-    && lifecycle_intent_cannot_orphan(intent: cg_cgroup, listener_is_main_process: false)
-    && !lifecycle_intent_cannot_orphan(intent: proc_cgroup, listener_is_main_process: false)
-    && !lifecycle_intent_cannot_orphan(intent: proc_cgroup, listener_is_main_process: true)
+  let proc_main = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
+  lifecycle_intent_stops_finished_incarnation(intent: cg_main, main_exits_when_incarnation_ends: true)
+    && !lifecycle_intent_stops_finished_incarnation(intent: cg_main, main_exits_when_incarnation_ends: false)
+    && !lifecycle_intent_stops_finished_incarnation(intent: cg_cgroup, main_exits_when_incarnation_ends: true)
+    && !lifecycle_intent_stops_finished_incarnation(intent: proc_main, main_exits_when_incarnation_ends: true)
 }
 
-// THE DECLARED INTENT IS ORPHAN-FREE ON THE FLEET AS MEASURED, AND THIS IS THE WITNESS THAT BINDS
-// THE TWO ROWS TOGETHER. Declaring a lifecycle intent and separately declaring that the listener is
-// not the main process would leave the pair unchecked -- the interesting failure is an intent that
-// is sound only under an assumption the fleet does not satisfy.
-test fn witness_declared_intent_is_orphan_free_on_this_fleet() -> Bool {
-  lifecycle_intent_cannot_orphan(
+// THE DECLARED INTENT STOPS A FINISHED INCARNATION ON THE FLEET AS MEASURED, and this binds the two
+// rows together: an intent sound only under an input the fleet does not satisfy is the interesting
+// failure.
+test fn witness_declared_intent_stops_a_finished_incarnation_on_this_fleet() -> Bool {
+  lifecycle_intent_stops_finished_incarnation(
     intent: gunbc_runner_lifecycle_intent,
-    listener_is_main_process: gunbc_runner_listener_is_main_process,
+    main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
   )
-    && !gunbc_runner_listener_is_main_process
 }
 
-// THE MEASURED CURRENT BEHAVIOUR, EXPRESSED AS THE INTENT IT IS INDISTINGUISHABLE FROM. On srv4-04
-// a restart killed the main process and left its own run-helper and listener alive, which is what
-// a teardown that does not reach the cgroup does. Whatever directives spell it on that host, the
-// contract it BEHAVES as cannot avoid orphaning, and the declared intent above must differ from it
-// -- a witness that let the two agree would be green over a change that changed nothing.
-test fn witness_the_orphaning_contract_and_the_declared_one_differ() -> Bool {
-  let as_observed = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
-  !lifecycle_intent_cannot_orphan(intent: as_observed, listener_is_main_process: gunbc_runner_listener_is_main_process)
-    && lifecycle_intent_cannot_orphan(
+// BOTH CONTRACTS THE FLEET HAS RUN ARE REFUSED, AND THE DECLARED ONE DIFFERS FROM EACH. KillMode=process
+// (srv4-04, 2026-08-25: a restart reaped only MainPID) and the ExitType=cgroup drop-in that replaced
+// it (srv2-02 held 2.7 days, srv1-03 and srv1-07 held 16 days) must both read red, or this witness
+// would stay green over a revert to either.
+test fn witness_both_fleet_contracts_are_refused_and_the_declared_one_is_not() -> Bool {
+  let killmode_process = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
+  let exittype_cgroup = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeControlGroup }
+  !lifecycle_intent_stops_finished_incarnation(intent: killmode_process, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
+    && !lifecycle_intent_stops_finished_incarnation(intent: exittype_cgroup, main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends)
+    && lifecycle_intent_stops_finished_incarnation(
       intent: gunbc_runner_lifecycle_intent,
-      listener_is_main_process: gunbc_runner_listener_is_main_process,
+      main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
     )
 }
 

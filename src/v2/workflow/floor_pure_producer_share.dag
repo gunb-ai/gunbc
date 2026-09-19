@@ -506,6 +506,26 @@ import v2.std.collection { List }
 // Serve below recompute: the value is Outcome<ParseArtifact>, Nodes and the span index, portable to
 // the bottom. WARM: nullary, source inline in the witness. The claim is about lowering, not parsing,
 // so sharing the parse does not hand it its answer.
+//
+// AND THE FINAL ROW:
+// DAG CANONICAL-SYMBOL MAP EARNS ITS ROW ON THE ENROLMENT-MARGIN CPU THE EVAL-STEP GATE
+// CANNOT SEE. Sibling floor run 35340819603 (#11580 merging the resolve-cost head that
+// establishes this map once per ResolutionContext) passed eval-steps and refused every
+// resolving claim at the 302ms enrolment margin, including one-member resolve probes that
+// sit near 40k steps. The same fill shows on grandfathered resolve claims. Re-derive with
+// required_floor_claim_cost.tsv on that run plus claim_batch --entry
+// src/v2/test/claim/name_resolve/one_member_cost_probe_test.dag [witness] cpu vs eval_steps:
+// the map fill is host work outside the step counter, paid once per claim frame because the
+// eval-frame memo dies at the claim boundary. Sharing census is the call-site graph: every
+// dag_language_model() resolve path reads dag_canonical_symbols(), which is a PointwisePower
+// closure and therefore not portable (ServeCacheValueNotPortable, the prepare_grammar
+// nullable_set shape). The share point is the Map it is built from --
+// dag_canonical_symbol_map -- symbols and bools only; dag_canonical_symbols wraps that map
+// at the consumer. Serve-below-recompute is the header's zero-walk Rc hand-over of a small
+// map against a fill that already exceeds the enrolment margin in-fold. WARM, NEVER
+// CLAIM-FORCED, by the same ceiling arithmetic as dag_prepared_grammar: an in-fold first
+// touch of this fill dies on the lane's margin and restarts per claim. The module is under
+// src/v2/extdeps, so it resolves in every required-floor subject.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.native_decl_selection.collision_resolved",
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
@@ -547,7 +567,8 @@ data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.test.claim.namespace_xl0.cross_module_reference_resolution.xl0r_resolved_consumer_b",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_normalized",
   "v2.test.claim.namespace_xl0.qualified_site_enumerator_differential.qsd_parsed",
-  "v2.test.claim.parse.test_marker_channel.test_marker_distinct_parsed"
+  "v2.test.claim.parse.test_marker_channel.test_marker_distinct_parsed",
+  "v2.extdeps.languages.dag.dag_canonical_symbol_map"
 ]
 
 // grammar_relation_row_for_emitted HAS NOW BEEN MEASURED ON THE THIRD CONJUNCT, AND IT PASSES.

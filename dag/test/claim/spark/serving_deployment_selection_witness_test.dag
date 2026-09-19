@@ -36,7 +36,7 @@ import gunbc.fleet_intent_network {
 import gunbc.spark.fabric_switch_observed { FabricGroupA, fabric_group_wire }
 import gunbc.spark.pair_serving_desired { spark_pair_serving_groups }
 import gunbc.spark.serving_subject {
-  ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq, glm_canary_serving_subject,
+  ServingSubject, PairServingUnitOn, PlacedServingArm, serving_subject_eq, glm_group_b_serving_subject,
 }
 import gunbc.spark.serving_deployment_selection {
   ModelArtifact, DeploymentCandidate, deployment_candidate,
@@ -55,7 +55,7 @@ import gunbc.spark.serving_deployment_selection {
   FleetFit, FleetFitWithinAdmissible, FleetFitExceedsAdmissible, FleetFitDegenerate, fleet_fit_of, fleet_fit_admits,
   FleetSnapshot, spark_unified_memory_per_host, spark_unified_memory_how, covering_topologies_over,
   ax_host_fit, ServedArtifactTransition, group_a_served_artifact_transition,
-  pair_unit_a_fleet_snapshot, glm_canary_fleet_snapshot, pair_unit_a_evidence_current, glm_canary_evidence_current,
+  pair_unit_a_fleet_snapshot, glm_group_b_fleet_snapshot, pair_unit_a_evidence_current, glm_group_b_evidence_current,
   serving_parameters_current, spark_runtime,
   artifact_deepseek_v4_flash_native, artifact_deepseek_v4_1_flash_native,
   artifact_glm_53_flash_native, artifact_glm_53_flash_2bit,
@@ -906,9 +906,9 @@ test fn a_shape_wider_than_the_admissible_set_refuses_by_name() -> Bool {
 // hosts is exactly what a count could not detect, so no length appears here.
 test fn the_v4_1_subject_is_admitted_group_a_and_the_canary_subject_group_b() -> Bool {
   let a = pair_unit_a_fleet_snapshot.admissible_hosts
-  let b = glm_canary_fleet_snapshot.admissible_hosts
+  let b = glm_group_b_fleet_snapshot.admissible_hosts
   serving_subject_eq(a: pair_unit_a_fleet_snapshot.subject, b: group_a_served_artifact_transition.subject)
-    && serving_subject_eq(a: glm_canary_fleet_snapshot.subject, b: glm_canary_serving_subject)
+    && serving_subject_eq(a: glm_group_b_fleet_snapshot.subject, b: glm_group_b_serving_subject)
     && contains_host(hosts: a, host: operator_host_srv5) && contains_host(hosts: a, host: operator_host_srv6)
     && contains_host(hosts: a, host: operator_host_srv7) && contains_host(hosts: a, host: operator_host_srv8)
     && !contains_host(hosts: a, host: operator_host_srv9) && !contains_host(hosts: a, host: operator_host_srv10)
