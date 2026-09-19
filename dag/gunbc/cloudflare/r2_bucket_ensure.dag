@@ -1,0 +1,365 @@
+module gunbc.cloudflare.r2_bucket_ensure
+
+import std.types { String, NonEmptyStr, Secret, List, Bool }
+import std.resources { Network }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.upsert_decision {
+  ObservationVerdict, Converged, Absent, Drifted, Conflict, Inaccessible, UnknownRefused,
+  Noop, Apply, Refuse,
+  UpsertClassification,
+  upsert_decision_label,
+  observation_verdict_label,
+}
+import extdeps.cloudflare.r2 {
+  R2Jurisdiction, R2JurisdictionDefault,
+  r2_jurisdiction_wire,
+}
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cloudflare.r2_buckets
+import extdeps.cloudflare.r2_buckets {
+  parse_r2_jurisdiction,
+  R2BucketResponse,
+  R2BucketRead, R2BucketPresent, R2BucketAbsent, R2AccountNotEntitled, R2BucketReadRefused,
+  classify_r2_bucket_get,
+}
+import gunbc.cloudflare.r2_origin {
+  CloudflareAccountId,
+  BucketPurpose,
+  bucket_purpose_key,
+  bucket_purpose_origin_standing,
+  gunbc_fleet_r2_bucket_allocations,
+  R2OriginStanding, R2OriginAllocated, R2OriginUnallocated,
+  FleetCloudflareAccountStanding, CloudflareAccountAllocated, CloudflareAccountUnallocated,
+  OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
+  fleet_cloudflare_account_standing,
+  fleet_r2_bucket_admin_credential,
+}
+import gunbc.auth.access_token_source {
+  resolve_access_token,
+  AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
+  access_token_upsert_required_reason,
+}
+import gunbc.auth.secret_ref_credential {
+  fetch_secret_ref_credential_with_token,
+  SecretCredentialReady,
+  SecretCredentialAccessUpsertRequired,
+  SecretCredentialWireDecodeRefused,
+  SecretCredentialFetchRefused,
+  SecretCredentialResolvedVersionMismatch,
+}
+
+// THE ACCOUNT'S R2 PREREQUISITES ARE CONVERGED, NOT ASSUMED. gunbc.cloudflare.r2_origin allocated
+// gunbai-fabric-origin and every signed request against it failed for nine days, because the
+// account held no R2 subscription and the bucket did not exist, and nothing in the corpus observed
+// either fact (gunbc#11713). This module is that observation and the one effect it licenses.
+//
+// THE SHAPE IS std.upsert_decision, NOT A NEW CONVERGENCE VOCABULARY. Per allocated purpose: an
+// independent read of the bucket (goal-blind: the Get takes the name the roster allocated and
+// returns what the account answered), a POINT classification pairing a verdict with Noop | Apply |
+// Refuse, the one Apply the classifier can choose (create the bucket), and a readback by a second
+// Get that must itself classify Converged. Selection happened earlier and elsewhere (DESIGN 3d):
+// which purposes exist, which bucket each gets and in which jurisdiction are the roster's and the
+// standing's; this module chooses none of them.
+//
+// ENTITLEMENT IS OBSERVED, AND REFUSED, NEVER PURCHASED. Cloudflare's published route to an R2
+// subscription is a dashboard checkout and its subscription API names no R2 rate plan
+// (extdeps.cloudflare.r2 r2_get_started_subscription_reading,
+// cloudflare_account_subscription_rate_plan_reading), so there is no gated effect to model: an
+// unentitled account classifies Inaccessible and Refuses with the dashboard step. The account's
+// entitlement is read as a byproduct of every bucket Get (extdeps.cloudflare.r2_buckets R2BucketRead), so it costs no extra call
+// and cannot be skipped by a purpose that happens to already have a bucket.
+//
+// JURISDICTION IS THE STANDING'S, AND A NON-DEFAULT ONE REFUSES BEFORE CREATE. The Create surface
+// carries no jurisdiction header (extdeps.cloudflare.r2_buckets cloudflare.R2Buckets), so a create for a
+// non-default standing would silently make a default bucket under that name -- and a jurisdiction
+// cannot be changed after creation. Both current purposes declare default.
+
+type R2BucketCreatePlan {
+  bucket_name: NonEmptyStr
+}
+
+data r2_subscription_dashboard_step: NonEmptyStr = "THE ACCOUNT HOLDS NO R2 SUBSCRIPTION (403 NotEntitled): open the Cloudflare dashboard for this account, Storage & databases > R2 > Overview, and complete the checkout flow to add an R2 subscription (a billing purchase an operator makes; Cloudflare's subscription API offers no R2 plan, so this converge cannot perform it). Then run this entry again. NOTHING WAS CREATED."
+
+fn r2_ensure_refuse(verdict: ObservationVerdict, reason: String) -> UpsertClassification<R2BucketCreatePlan> {
+  UpsertClassification { verdict: verdict, decision: Refuse { reason: reason as NonEmptyStr } }
+}
+
+fn classify_present_bucket(
+  desired_name: NonEmptyStr,
+  desired: R2Jurisdiction,
+  observed: R2BucketResponse,
+) -> UpsertClassification<R2BucketCreatePlan> {
+  let wanted = desired_name as String
+  if observed.name != wanted {
+    r2_ensure_refuse(
+      verdict: Conflict,
+      reason: join(["the Get for ", desired_name as String, " answered about a bucket named ", observed.name], ""),
+    )
+  } else {
+    match observed.jurisdiction {
+      Absent =>
+        r2_ensure_refuse(
+          verdict: UnknownRefused,
+          reason: join(["bucket ", desired_name as String, " exists and its jurisdiction was not returned, so it cannot be compared to the declared ", r2_jurisdiction_wire(jurisdiction: desired)], ""),
+        )
+      Present { value: raw } =>
+        match parse_r2_jurisdiction(raw: raw) {
+          Absent =>
+            r2_ensure_refuse(
+              verdict: UnknownRefused,
+              reason: join(["bucket ", desired_name as String, " reports jurisdiction ", raw, ", which is not in the published value set"], ""),
+            )
+          Present { value: got } =>
+            if r2_jurisdiction_wire(jurisdiction: got) == r2_jurisdiction_wire(jurisdiction: desired) {
+              UpsertClassification { verdict: Converged, decision: Noop }
+            } else {
+              r2_ensure_refuse(
+                verdict: Conflict,
+                reason: join(["bucket ", desired_name as String, " exists in jurisdiction ", raw, " but the standing declares ", r2_jurisdiction_wire(jurisdiction: desired), "; a jurisdiction cannot be changed after creation, so the bucket must be replaced by an operator or the standing corrected"], ""),
+              )
+            }
+        }
+    }
+  }
+}
+
+// PURE, SO EVERY ARM IS WITNESSABLE OVER A SUPPLIED READ (test.claim.cloudflare_r2_bucket_ensure).
+fn classify_r2_bucket_ensure(desired: R2OriginStanding, read: R2BucketRead) -> UpsertClassification<R2BucketCreatePlan> {
+  match desired {
+    R2OriginUnallocated { purpose: purpose } =>
+      r2_ensure_refuse(verdict: UnknownRefused, reason: concat("no bucket is allocated for ", bucket_purpose_key(purpose: purpose)))
+    R2OriginAllocated { bucket: bucket } =>
+      match read {
+        R2AccountNotEntitled => r2_ensure_refuse(verdict: Inaccessible, reason: r2_subscription_dashboard_step as String)
+        R2BucketReadRefused { cause: cause } =>
+          r2_ensure_refuse(verdict: UnknownRefused, reason: concat("THE BUCKET READ WAS REFUSED, NOTHING CREATED: ", cause as String))
+        R2BucketPresent { bucket: observed } =>
+          classify_present_bucket(desired_name: bucket.bucket_name, desired: bucket.jurisdiction, observed: observed)
+        R2BucketAbsent =>
+          match bucket.jurisdiction {
+            R2JurisdictionDefault =>
+              UpsertClassification { verdict: Absent, decision: Apply { plan: R2BucketCreatePlan { bucket_name: bucket.bucket_name } } }
+            _ =>
+              r2_ensure_refuse(
+                verdict: Absent,
+                reason: join(["bucket ", bucket.bucket_name as String, " is absent and its standing declares jurisdiction ", r2_jurisdiction_wire(jurisdiction: bucket.jurisdiction), ", which the Create surface cannot request; creating it would make a default-jurisdiction bucket under that name"], ""),
+              )
+          }
+      }
+  }
+}
+
+// ── THE EFFECTFUL HALF ───────────────────────────────────────────────────────────────────────────
+
+type R2EnsureCredentials
+  = R2EnsureCredentialsReady { account_id: CloudflareAccountId, admin: Secret }
+  | R2EnsureCredentialsRefused { cause: NonEmptyStr }
+
+// THE BUCKET CALLS ARE SIGNED BY THE BUCKET-ADMIN TOKEN AND BY NOTHING ELSE. The bootstrap token's one
+// power is minting; it has no R2 grant (the first live run of this entry read 403/10000 through it)
+// and is deliberately not widened to get one (operator ruling, 2026-09-19). So the locus this entry
+// reads is gunbc.cloudflare.r2_origin fleet_r2_bucket_admin_credential, and an unminted credential
+// refuses here, naming its mint entry, before any network call. PURE, so the arm is witnessable.
+type R2EnsureSigningLocus
+  = R2EnsureSigningPinned { locus: SecretRef }
+  | R2EnsureSigningRefused { cause: NonEmptyStr }
+
+fn r2_ensure_signing_locus(credential: OriginCredentialStanding) -> R2EnsureSigningLocus {
+  match credential {
+    OriginCredentialPinned { access_key_id: _, token_value: locus } => R2EnsureSigningPinned { locus: locus }
+    OriginCredentialUnminted { mint_entry: entry } =>
+      R2EnsureSigningRefused {
+        cause: join([
+          "THE BUCKET-ADMIN TOKEN IS NOT MINTED, NOTHING CALLED: run ", entry.module_path, " ", entry.decl_name,
+          " (fleet-converge mode r2_bucket_admin_mint) and pin its stored version in gunbc.cloudflare.r2_origin fleet_r2_bucket_admin_credential; this entry never signs with the bootstrap token",
+        ], "") as NonEmptyStr
+      }
+    OriginCredentialMintEntryUnbuilt { secret_id: secret_id } =>
+      R2EnsureSigningRefused {
+        cause: concat("THE BUCKET-ADMIN TOKEN HAS NO MINT ENTRY, NOTHING CALLED: its custody locus is ", secret_id as String) as NonEmptyStr
+      }
+  }
+}
+
+// THE CUSTODY LADDER: account standing, then the pinned bucket-admin locus, then the exact-version
+// read through the run's resolved GCP identity. Each absence refuses before any Cloudflare call.
+fn r2_ensure_credentials() -> R2EnsureCredentials uses net: Network {
+  match fleet_cloudflare_account_standing() {
+    CloudflareAccountUnallocated { company: _, intervention: intervention } =>
+      R2EnsureCredentialsRefused { cause: concat("NO CLOUDFLARE ACCOUNT ID: ", intervention.instruction as String) as NonEmptyStr }
+    CloudflareAccountAllocated { company: _, account_id: account_id } =>
+      match r2_ensure_signing_locus(credential: fleet_r2_bucket_admin_credential()) {
+        R2EnsureSigningRefused { cause: cause } => R2EnsureCredentialsRefused { cause: cause }
+        R2EnsureSigningPinned { locus: locus } =>
+          match resolve_access_token() {
+            AccessTokenUpsertRequired { plan: plan } =>
+              R2EnsureCredentialsRefused { cause: concat("NO GCP ACCESS TOKEN: ", access_token_upsert_required_reason(plan: plan)) as NonEmptyStr }
+            AccessTokenEnsureRefused { reason: reason } =>
+              R2EnsureCredentialsRefused { cause: concat("NO GCP ACCESS TOKEN: ", reason as String) as NonEmptyStr }
+            AccessTokenReady { token: gcp_token } =>
+              match fetch_secret_ref_credential_with_token(secret_ref: locus, access_token: gcp_token) {
+                SecretCredentialAccessUpsertRequired { plan: _ } =>
+                  R2EnsureCredentialsRefused { cause: "THE BUCKET-ADMIN TOKEN COULD NOT BE READ: the access ensure requires an interactive authentication this run cannot perform" as NonEmptyStr }
+                SecretCredentialFetchRefused { reason: reason } =>
+                  R2EnsureCredentialsRefused { cause: concat("THE BUCKET-ADMIN TOKEN COULD NOT BE READ: ", reason as String) as NonEmptyStr }
+                SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+                  R2EnsureCredentialsRefused { cause: "THE BUCKET-ADMIN TOKEN COULD NOT BE READ: the access response did not decode" as NonEmptyStr }
+                SecretCredentialResolvedVersionMismatch { requested: requested, resolved: resolved } =>
+                  R2EnsureCredentialsRefused {
+                    cause: join(["THE BUCKET-ADMIN READ ANSWERED ABOUT ANOTHER VERSION: asked for ", requested, ", answered about ", resolved], "") as NonEmptyStr
+                  }
+                SecretCredentialReady { credential: admin, resolved_version: _ } =>
+                  R2EnsureCredentialsReady { account_id: account_id, admin: admin }
+              }
+          }
+      }
+  }
+}
+
+fn read_r2_bucket(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2BucketRead uses net: Network {
+  let got = cloudflare.R2Buckets.Get(
+    auth_token: admin,
+    account_id: account_id as String,
+    bucket_name: bucket_name as String,
+  )
+  classify_r2_bucket_get(
+    outcome: got.outcome,
+    bucket: R2BucketResponse { name: got.name, jurisdiction: got.jurisdiction, location: got.location },
+  )
+}
+
+// ONE LINE PER PURPOSE: which purpose, what was observed, what was decided, and -- for an Apply --
+// what the independent readback established. `held` is whether the purpose ended converged.
+type R2PurposeEnsureOutcome {
+  line: String
+  held: Bool
+}
+
+fn purpose_line(purpose: BucketPurpose, classified: UpsertClassification<R2BucketCreatePlan>, detail: String) -> String {
+  join([
+    bucket_purpose_key(purpose: purpose),
+    observation_verdict_label(verdict: classified.verdict),
+    upsert_decision_label(decision: classified.decision),
+    detail,
+  ], "\t")
+}
+
+
+// THE CREATE IS NEVER ITS OWN EVIDENCE. Its response is discarded for classification purposes; a
+// second Get must answer Converged. A Create whose outcome is unknown (transport or 5xx) is followed
+// by the same readback, which is what decides whether it landed -- never a retry.
+fn apply_r2_bucket_create(
+  purpose: BucketPurpose,
+  desired: R2OriginStanding,
+  admin: Secret,
+  account_id: CloudflareAccountId,
+  observed: UpsertClassification<R2BucketCreatePlan>,
+  plan: R2BucketCreatePlan,
+) -> R2PurposeEnsureOutcome uses net: Network {
+  let created = cloudflare.R2Buckets.Create(
+    auth_token: admin,
+    account_id: account_id as String,
+    name: plan.bucket_name as String,
+  )
+  let readback = classify_r2_bucket_ensure(
+    desired: desired,
+    read: read_r2_bucket(admin: admin, account_id: account_id, bucket_name: plan.bucket_name),
+  )
+  let create_status = match created.outcome {
+    RestOk => "create ok"
+    RestStatusRefused { status: status, body: _ } => join(["create refused with status ", to_string(status)], "")
+    RestTransportRefused { cause: _ } => "create got no response"
+    RestBodyUndecodable { status: status, cause: _ } => join(["create status ", to_string(status), " body undecodable"], "")
+  }
+  match readback.decision {
+    Noop =>
+      R2PurposeEnsureOutcome {
+        line: purpose_line(purpose: purpose, classified: observed, detail: concat(create_status, "; readback converged")),
+        held: true,
+      }
+    Apply { plan: _ } =>
+      R2PurposeEnsureOutcome {
+        line: purpose_line(purpose: purpose, classified: observed, detail: concat(create_status, "; READBACK STILL ABSENT")),
+        held: false,
+      }
+    Refuse { reason: reason } =>
+      R2PurposeEnsureOutcome {
+        line: purpose_line(purpose: purpose, classified: observed, detail: join([create_status, "; READBACK REFUSED: ", reason as String], "")),
+        held: false,
+      }
+  }
+}
+
+fn ensure_r2_purpose_bucket(
+  purpose: BucketPurpose,
+  admin: Secret,
+  account_id: CloudflareAccountId,
+) -> R2PurposeEnsureOutcome uses net: Network {
+  let desired = bucket_purpose_origin_standing(purpose: purpose)
+  let name = match desired {
+    R2OriginAllocated { bucket: bucket } => Present { value: bucket.bucket_name }
+    R2OriginUnallocated { purpose: _ } => none
+  }
+  match name {
+    Absent =>
+      R2PurposeEnsureOutcome {
+        line: purpose_line(
+          purpose: purpose,
+          classified: r2_ensure_refuse(verdict: UnknownRefused, reason: "no bucket allocated"),
+          detail: "no bucket allocated",
+        ),
+        held: false,
+      }
+    Present { value: bucket_name } => {
+      let classified = classify_r2_bucket_ensure(
+        desired: desired,
+        read: read_r2_bucket(admin: admin, account_id: account_id, bucket_name: bucket_name),
+      )
+      match classified.decision {
+        Noop =>
+          R2PurposeEnsureOutcome {
+            line: purpose_line(purpose: purpose, classified: classified, detail: bucket_name as String),
+            held: true,
+          }
+        Refuse { reason: reason } =>
+          R2PurposeEnsureOutcome {
+            line: purpose_line(purpose: purpose, classified: classified, detail: reason as String),
+            held: false,
+          }
+        Apply { plan: plan } =>
+          apply_r2_bucket_create(purpose: purpose, desired: desired, admin: admin, account_id: account_id, observed: classified, plan: plan)
+      }
+    }
+  }
+}
+
+// RELATIVE TO THE CHECKOUT, like the preflight's receipt, so the fleet-converge upload step and a
+// session run name the same file.
+data r2_bucket_ensure_receipt_path: String = "target/r2-bucket-ensure-receipt.txt"
+
+// THE ENTRY. Every ALLOCATED purpose is walked -- the roster, not a hand list of the sum -- so a
+// purpose allocated later is converged without an edit here. The receipt is written whatever the
+// outcome, and the run fails if any purpose did not end converged.
+fn ensure() -> ProcessExit uses net: Network {
+  match r2_ensure_credentials() {
+    R2EnsureCredentialsRefused { cause: cause } => exit_failure(reason: cause as String)
+    R2EnsureCredentialsReady { account_id: account_id, admin: admin } => {
+      let outcomes = map(
+        gunbc_fleet_r2_bucket_allocations,
+        row => ensure_r2_purpose_bucket(purpose: row.purpose, admin: admin, account_id: account_id),
+      )
+      let text = join(map(outcomes, o => o.line), "\n")
+      let written = Filesystem.Write(path: r2_bucket_ensure_receipt_path, content: text)
+      let refused = filter(outcomes, o => !o.held)
+      if !written.success {
+        exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
+      } else if refused.length() == 0 {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(map(refused, o => o.line), "\n"))
+      }
+    }
+  }
+}

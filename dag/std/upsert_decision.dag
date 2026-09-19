@@ -26,10 +26,24 @@ type UpsertClassification<P> {
 // their records and project here at the emit boundary; they do not store the label. Added for
 // gunbc.roadmap_dispatch_environment's capability receipt (review 44078).
 
-fn upsert_decision_label(decision: UpsertDecision<String>) -> String {
+fn upsert_decision_label<P>(decision: UpsertDecision<P>) -> String {
   match decision {
     Noop => "noop"
     Apply { plan: _ } => "apply"
     Refuse { reason: _ } => "refuse"
+  }
+}
+
+// THE ONE WIRE SPELLING OF AN ObservationVerdict, on the sum for the reason upsert_decision_label is:
+// a receipt that names what was observed would otherwise re-spell the closed sum per consumer
+// (DESIGN 3). First consumer: gunbc.cloudflare.r2_bucket_ensure's per-purpose receipt (review 68490).
+fn observation_verdict_label(verdict: ObservationVerdict) -> String {
+  match verdict {
+    Converged => "converged"
+    Absent => "absent"
+    Drifted => "drifted"
+    Conflict => "conflict"
+    Inaccessible => "inaccessible"
+    UnknownRefused => "unknown-refused"
   }
 }
