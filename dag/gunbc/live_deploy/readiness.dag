@@ -78,6 +78,9 @@ import gunbc.typed_argv_exec {
 }
 import extdeps.http.client
 import extdeps.http.client { http_client_get_argv, http_client_max_time_flag }
+import gunbc.serve_liveness {
+  serve_liveness_path, ServeLivenessRead, ServeLivenessUnreachable, serve_liveness_read_from_probe,
+}
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type ServiceReadyEvidence {
@@ -245,6 +248,41 @@ fn live_deploy_healthz_get_for_port(port: Int, spec: DeploymentSpec, transport: 
       HealthzProbeRefused {
         probe_error: "health probe refused EmitArtifactThenThinRun transport",
       }
+  }
+}
+
+// ── THE LIVENESS PROBE THE CUTOVER'S STAGE 2 RUNS ───────────────────────────────────────────
+// IT IS NOT A SECOND READINESS GATE, and the difference is the whole reason the endpoint exists.
+// The /healthz poll above asks "is the process serving THIS TREE", which it answers by comparing a
+// surface digest -- a question only a process that can render has an answer to. This asks the
+// weaker and differently-timed question "is a process listening here, and which release is it",
+// which is answered out of the evaluator (gunbc.serve_liveness) and therefore still answerable when
+// the render path is not.
+//
+// It reuses this module's probe deadline rather than declaring one: the bound on how long to wait
+// for a local HTTP answer is one fact about this deployment, and the liveness answer is cheaper
+// than the healthz answer it was derived from, so the derived bound is an over-allowance rather
+// than a guess.
+//
+// THE UNREACHABLE ARM IS THE TRANSPORT'S AND EVERY OTHER ARM IS THE DOCUMENT'S. That split lives in
+// gunbc.serve_liveness serve_liveness_read_from_probe, so this function contributes the one fact
+// only the caller has -- whether anything answered -- and decides nothing about the bytes.
+fn live_deploy_liveness_get_local(port: Int, spec: DeploymentSpec) -> ServeLivenessRead {
+  let url = join(["http://127.0.0.1:", to_string(port), serve_liveness_path as String], "") as NonEmptyStr
+  match live_deploy_healthz_probe_deadline(spec: spec) {
+    Absent => ServeLivenessUnreachable { detail: healthz_probe_deadline_ungrounded as NonEmptyStr }
+    Present { value: deadline } => {
+      let got = http.Client.GetWithin(url: url, max_seconds: http_client_max_time_flag(max_time: deadline))
+      serve_liveness_read_from_probe(
+        success: got.success,
+        body: got.body,
+        error: join([
+          "http client GET ", url as String, " failed within the ",
+          http_client_max_time_flag(max_time: deadline) as String,
+          " s probe deadline derived from the serve wall limit",
+        ], "") as NonEmptyStr,
+      )
+    }
   }
 }
 

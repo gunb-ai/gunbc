@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, Int, Bool, List, Port }
 import std.measure { ByteSize }
 import gunbc.serve_liveness {
   serve_liveness_path,
-  ServeLivenessRead,
+  ServeLivenessRead, ServeLivenessUnreachable,
   ServeLivenessObserved, ServeLivenessBodyUnparseable, ServeLivenessBodyNotAnObject,
   ServeLivenessRevisionAbsent, ServeLivenessRevisionDuplicated, ServeLivenessRevisionNotAString,
   ServeLivenessRevisionMalformed,
@@ -42,6 +42,58 @@ import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_
 // plan performs the stage and brings back the observation. That split is deliberate: an advance
 // that could both decide and act would be able to report success for an effect nobody observed,
 // which is the fabricated-plausible-output arm DESIGN section 5 forbids at exactly this boundary.
+
+// ── THE SWITCH THAT MAKES TWO WRITERS UNWRITABLE ────────────────────────────────────────────
+// REVIEW 68050 CAUGHT A FREEZE STANDING WHERE A CONSTRUCTION WAS AVAILABLE, and it was right. The
+// ordinary release deploy spliced the broker unit in on the SERVING port and started it, while the
+// roadmap table unconditionally kept the four approval routes -- so an ordinary `dashboard-srv1`
+// apply produced exactly the state dark_deployment_admission refuses by name, skipping the release
+// readback and the demand measurement on the way. The only thing standing between the deploy and
+// that state was a sentence in three annotations saying roadmap redeploys were frozen. A prose
+// freeze is not a wall (DESIGN section 5; section 6's tells name it directly).
+//
+// ONE DECLARATION NOW DECIDES BOTH HALVES, because they were never two facts. "The roadmap still
+// mounts the approval routes" and "the broker must not bind the port the front door reaches" are
+// the same statement about who may write the store, and holding them in two places is what let
+// them disagree. This row is read by gunbc.roadmap_serve, which projects the four rows only while
+// it says StillMounted, and by gunbc.live_deploy.spec, which derives the broker's deploy port from
+// it -- so while the roadmap is a writer the deploy CANNOT put the broker anywhere the front door
+// can reach, and no apply path, ordinary or staged, has a spelling that does.
+//
+// STAGE 6 IS THEREFORE ONE EDIT WITH TWO CONSEQUENCES THAT CANNOT SEPARATE: flipping this row
+// retires the roadmap's rows and moves the broker onto the serving port in the same motion. That is
+// the atomic authority transition DESIGN section 3's replacement-migration rule asks for, rather
+// than two edits someone could land half of.
+//
+// THE ORDER IT MUST BE FLIPPED IN is still the plan's to enforce, and it does: flipping before the
+// front door is repointed would leave the approval paths proxied to a process that no longer serves
+// them, so approval_broker_cutover_admission refuses RetireRoadmapRoutes until the front door
+// evidence and all four probes are in.
+type RoadmapApprovalMount
+  = RoadmapStillMountsApprovalRoutes
+  | RoadmapApprovalRoutesRetired
+
+data roadmap_approval_mount: RoadmapApprovalMount = RoadmapStillMountsApprovalRoutes
+
+// THE PORT THE DEPLOY MAY BIND THE BROKER TO, derived rather than chosen. While the roadmap still
+// answers the approval paths, the only admissible port is the dark one: a broker on the serving
+// port would be a second writer against a single-writer store, and the deploy would have created it
+// without any stage of this plan running. There is no argument and no override -- the two-writer
+// state has no spelling in the deploy, which is the difference between this and the freeze it
+// replaces.
+fn approval_broker_deploy_port() -> Port {
+  match roadmap_approval_mount {
+    RoadmapStillMountsApprovalRoutes => approval_broker_dark_listen_port
+    RoadmapApprovalRoutesRetired => approval_broker_listen_port
+  }
+}
+
+fn roadmap_still_mounts_approval_routes() -> Bool {
+  match roadmap_approval_mount {
+    RoadmapStillMountsApprovalRoutes => true
+    RoadmapApprovalRoutesRetired => false
+  }
+}
 
 type ApprovalBrokerCutoverStage
   = DeployDark
@@ -130,6 +182,19 @@ fn approval_broker_liveness_url(port: Port) -> NonEmptyStr {
 // produces ReleaseReadBack. So a stage cannot be advanced past "prove release" by a body that
 // answered 200 with nothing useful in it -- a 200 is the caller's observation, and what the process
 // SAID is what this decides on.
+fn release_readback_from_read(read: ServeLivenessRead) -> ReleaseReadback {
+  match read {
+    ServeLivenessObserved { revision: rev } => ReleaseReadBack { revision: rev as String as NonEmptyStr }
+    ServeLivenessUnreachable { detail: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessBodyUnparseable => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessBodyNotAnObject => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionAbsent => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionDuplicated { count: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionNotAString => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+    ServeLivenessRevisionMalformed { text: _ } => ReleaseNotReadBack { detail: serve_liveness_read_reason(r: read) }
+  }
+}
+
 fn release_readback_from_livez(body: String) -> ReleaseReadback {
   let read = observe_serve_liveness(body: body)
   match read {
@@ -190,7 +255,6 @@ type ApprovalBrokerCutoverEvidence {
   decide_probe: RouteClassProbe
   submit_probe: RouteClassProbe
   status_probe: RouteClassProbe
-  roadmap_still_mounts_approval_routes: Bool
 }
 
 // ── ADMISSION ────────────────────────────────────────────────────────────────────────────────
@@ -365,11 +429,13 @@ fn approval_broker_cutover_position(e: ApprovalBrokerCutoverEvidence) -> Approva
 }
 
 // THE TERMINAL CONDITION, stated as the fact stage 6 establishes rather than as a stage that has
-// been performed: the roadmap no longer mounts an approval route. It is carried on the evidence
-// because it is observable in the corpus (roadmap_serve_approval_cutover_route_specs is empty or
-// deleted) and a plan that asserted it from its own position would be reading its own intent.
+// been performed: the roadmap no longer mounts an approval route. It reads roadmap_approval_mount
+// -- the declaration that DECIDES it -- rather than an evidence field an operator supplied, which
+// is the correction review 68050 forced: the field restated a corpus fact, so a caller could assert
+// the cutover complete while the rows were still mounted, and a plan reading its own intent is not
+// reading anything.
 fn approval_broker_cutover_complete(e: ApprovalBrokerCutoverEvidence) -> Bool {
-  !e.roadmap_still_mounts_approval_routes
+  !roadmap_still_mounts_approval_routes()
     && match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
       StageAdmitted { stage: _ } => true
       StageRefused { stage: _, cause: _ } => false
@@ -399,5 +465,38 @@ fn approval_broker_front_door_enable_argv(https_port: Port) -> List<List<String>
   map(
     approval_broker_front_door_endpoints(https_port: https_port, backend_port: approval_broker_listen_port),
     e => tailscale_serve_enable_argv(endpoint: e),
+  )
+}
+
+// ── WHAT THE DARK INSTALL ASKS THIS PLAN, IN PRODUCTION ─────────────────────────────────────
+// REVIEW 68050'S SECOND FINDING: the admission fold had no production consumer, so it gated
+// nothing -- an inert lens, which DESIGN section 4b calls a lie rather than a weak wall. This is
+// the consumer. gunbc.live_deploy.apply's dark-install entry probes the broker it just installed
+// and hands the reading here, so stage 2 is DECIDED by what the process answered rather than by an
+// operator saying it answered.
+//
+// THE OTHER STAGES' EVIDENCE IS DELIBERATELY ABSENT RATHER THAN FABRICATED. A deploy that has just
+// installed the broker has taken no demand measurement, repointed no front door and probed no route
+// class, and supplying plausible arms for them would be exactly the fabricated-output failure this
+// plan exists to prevent. So this builds the evidence it HAS and leaves the rest at its unmeasured
+// and unprobed arms, which is why the admission it can reach is ProveRelease and no further -- the
+// cumulative rule then refuses every later stage on its own missing observation, by name.
+fn dark_install_evidence(listening_port: Port, read: ServeLivenessRead) -> ApprovalBrokerCutoverEvidence {
+  ApprovalBrokerCutoverEvidence {
+    dark: DarkUnitListening { port: listening_port },
+    release_readback: release_readback_from_read(read: read),
+    demand: DemandUnmeasured { missing: "the six readings stage 3 takes against this dark process" as NonEmptyStr },
+    front_door: FrontDoorPointsAtRoadmap,
+    confirm_probe: RouteClassUnprobed,
+    decide_probe: RouteClassUnprobed,
+    submit_probe: RouteClassUnprobed,
+    status_probe: RouteClassUnprobed,
+  }
+}
+
+fn dark_install_release_admission(listening_port: Port, read: ServeLivenessRead) -> CutoverAdmission {
+  approval_broker_cutover_admission(
+    stage: ProveRelease,
+    e: dark_install_evidence(listening_port: listening_port, read: read),
   )
 }

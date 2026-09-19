@@ -1357,14 +1357,24 @@ test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
     && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
 }
 
-// IT INSTALLS ON THE DARK PORT AND NOT THE SERVING ONE. A stage that came up where the front door
-// can reach it would be a second writer against the single-writer approval store wearing the first
-// stage's name -- which gunbc.auth.approval_broker_cutover also refuses from the observation side,
-// so the property is asserted at the producer and at the admission rather than at one of them.
-test fn the_dark_install_binds_the_dark_port() -> Bool {
-  let script = witness_approval_broker_dark_script_text
-  string_contains(s: script, pattern: join([" --port ", to_string(approval_broker_dark_listen_port)], ""))
-    && !string_contains(s: script, pattern: join([" --port ", to_string(approval_broker_listen_port)], ""))
+// NEITHER INSTALL PATH CAN BIND THE SERVING PORT WHILE THE ROADMAP STILL ANSWERS THE APPROVAL
+// PATHS. This is the claim review 68050 forced: it used to hold only for the staged script, while
+// the ORDINARY release apply spliced the broker in on the serving port and started it, producing
+// the two-writer state the cutover fold refuses by name -- prevented only by prose. The port is now
+// derived from gunbc.auth.approval_broker_cutover approval_broker_deploy_port(), so both emissions
+// carry the same placement and the bad one has no spelling.
+//
+// THE RED: point the spec's broker port at approval_broker_listen_port while the mount switch still
+// says StillMounted, and both conjuncts fail on both scripts.
+test fn neither_install_path_binds_the_serving_port_while_the_roadmap_serves() -> Bool {
+  let dark = witness_approval_broker_dark_script_text
+  let apply = witness_apply_script()
+  let serving_flag = join([" --port ", to_string(approval_broker_listen_port)], "")
+  let dark_flag = join([" --port ", to_string(approval_broker_dark_listen_port)], "")
+  string_contains(s: dark, pattern: dark_flag)
+    && !string_contains(s: dark, pattern: serving_flag)
+    && string_contains(s: apply, pattern: dark_flag)
+    && !string_contains(s: apply, pattern: serving_flag)
 }
 
 // IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the

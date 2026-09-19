@@ -59,8 +59,14 @@ data serve_liveness_path: NonEmptyStr = "/livez"
 // synthesising a digest, so this reads the ONE member it has, through that module's name and that
 // module's predicate.
 
+// ServeLivenessUnreachable IS A SEPARATE ARM FROM EVERY PARSE ARM, and the distinction is the one
+// gunbc.live_deploy.readiness already pays for on /healthz: "the probe never landed" and "a process
+// answered something wrong" are different facts with different remedies, and a reader that folded
+// them together would report a dead unit and a malformed launch argument as one state. It is the
+// only arm this module cannot produce from bytes, so it is supplied by the probe fold below.
 type ServeLivenessRead
-  = ServeLivenessBodyUnparseable
+  = ServeLivenessUnreachable { detail: NonEmptyStr }
+  | ServeLivenessBodyUnparseable
   | ServeLivenessBodyNotAnObject
   | ServeLivenessRevisionAbsent
   | ServeLivenessRevisionDuplicated { count: Int }
@@ -97,8 +103,22 @@ fn observe_serve_liveness(body: String) -> ServeLivenessRead {
   }
 }
 
+// THE PROBE FOLD. A liveness endpoint that did not answer is the observation the CALLER makes, so
+// the caller's transport outcome is what supplies this arm; everything past it is bytes, which
+// observe_serve_liveness decides. Splitting it here rather than inside the parser is what keeps this
+// module free of any transport.
+fn serve_liveness_read_from_probe(success: Bool, body: String, error: NonEmptyStr) -> ServeLivenessRead {
+  if success {
+    observe_serve_liveness(body: body)
+  } else {
+    ServeLivenessUnreachable { detail: error }
+  }
+}
+
 fn serve_liveness_read_reason(r: ServeLivenessRead) -> NonEmptyStr {
   match r {
+    ServeLivenessUnreachable { detail: d } =>
+      join(["the liveness endpoint did not answer: ", d as String], "") as NonEmptyStr
     ServeLivenessBodyUnparseable =>
       "the liveness endpoint answered bytes that are not JSON" as NonEmptyStr
     ServeLivenessBodyNotAnObject =>

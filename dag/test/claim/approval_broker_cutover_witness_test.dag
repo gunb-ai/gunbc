@@ -23,6 +23,8 @@ import gunbc.auth.approval_broker_cutover {
   approval_broker_cutover_admission,
   approval_broker_cutover_position,
   approval_broker_cutover_complete,
+  RoadmapApprovalMount, RoadmapStillMountsApprovalRoutes, RoadmapApprovalRoutesRetired,
+  roadmap_approval_mount, approval_broker_deploy_port, roadmap_still_mounts_approval_routes,
   approval_broker_cutover_stages,
   approval_broker_front_door_enable_argv,
 }
@@ -48,7 +50,6 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
     decide_probe: RouteClassUnprobed,
     submit_probe: RouteClassUnprobed,
     status_probe: RouteClassUnprobed,
-    roadmap_still_mounts_approval_routes: true,
   }
 }
 
@@ -70,7 +71,6 @@ fn everything_observed() -> ApprovalBrokerCutoverEvidence {
     decide_probe: RouteClassAnswered { status: 400 },
     submit_probe: RouteClassAnswered { status: 403 },
     status_probe: RouteClassAnswered { status: 404 },
-    roadmap_still_mounts_approval_routes: false,
   }
 }
 
@@ -119,7 +119,6 @@ test fn cutover_refuses_retirement_when_one_route_class_was_never_probed() -> Bo
     decide_probe: full.decide_probe,
     submit_probe: RouteClassUnprobed,
     status_probe: full.status_probe,
-    roadmap_still_mounts_approval_routes: true,
   }
   match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
     StageRefused { stage: _, cause: c } => match c {
@@ -145,7 +144,6 @@ test fn cutover_distinguishes_a_refused_probe_from_an_unprobed_one() -> Bool {
     decide_probe: full.decide_probe,
     submit_probe: full.submit_probe,
     status_probe: full.status_probe,
-    roadmap_still_mounts_approval_routes: true,
   }
   match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
     StageRefused { stage: _, cause: c } => match c {
@@ -172,7 +170,6 @@ test fn cutover_refuses_a_dark_stage_that_bound_the_serving_port() -> Bool {
     decide_probe: RouteClassUnprobed,
     submit_probe: RouteClassUnprobed,
     status_probe: RouteClassUnprobed,
-    roadmap_still_mounts_approval_routes: true,
   }
   match approval_broker_cutover_admission(stage: ProveRelease, e: e) {
     StageRefused { stage: _, cause: c } => match c {
@@ -198,7 +195,6 @@ test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
     decide_probe: full.decide_probe,
     submit_probe: full.submit_probe,
     status_probe: full.status_probe,
-    roadmap_still_mounts_approval_routes: true,
   }
   match approval_broker_cutover_admission(stage: RepointFrontDoor, e: e) {
     StageRefused { stage: _, cause: c } => match c {
@@ -219,23 +215,44 @@ test fn cutover_admits_every_stage_once_every_observation_is_taken() -> Bool {
     && count(approval_broker_cutover_stages()) == 6
 }
 
-// COMPLETION IS NOT THE SAME FACT AS ADMISSION. A plan admitted to perform the retirement has not
-// performed it; the roadmap still mounts the routes until the arm is deleted. Reading its own
-// position as evidence of the effect is the fabricated-output arm at exactly this seam.
+// COMPLETION IS NOT THE SAME FACT AS ADMISSION, and it is no longer something the caller can state.
+// A plan admitted to perform the retirement has not performed it, and the fact that decides whether
+// it was performed is roadmap_approval_mount -- the declaration the roadmap table and the deploy
+// port both read. While that row says StillMounted, every observation can be in and the cutover is
+// still incomplete, which is what this asserts. It used to read an evidence field an operator
+// supplied, so a caller could assert completion with the rows still mounted (review 68050).
 test fn cutover_is_not_complete_while_the_roadmap_still_mounts_the_routes() -> Bool {
-  let full = everything_observed()
-  let e = ApprovalBrokerCutoverEvidence {
-    dark: full.dark,
-    release_readback: full.release_readback,
-    demand: full.demand,
-    front_door: full.front_door,
-    confirm_probe: full.confirm_probe,
-    decide_probe: full.decide_probe,
-    submit_probe: full.submit_probe,
-    status_probe: full.status_probe,
-    roadmap_still_mounts_approval_routes: true,
+  roadmap_still_mounts_approval_routes()
+    && stage_is_admitted(stage: RetireRoadmapRoutes, e: everything_observed())
+    && !approval_broker_cutover_complete(e: everything_observed())
+}
+
+// ── THE TWO-WRITER STATE HAS NO SPELLING IN THE DEPLOY ──────────────────────────────────────
+// THIS IS THE WALL REVIEW 68050 ASKED FOR, and it is the one that matters most in this PR: while
+// the roadmap still answers the approval paths, the port the deploy binds the broker to is the DARK
+// one, so no apply path -- ordinary release apply or staged dark install -- can place a second
+// writer where the front door reaches it. Before this, the only thing forbidding it was prose in
+// three annotations saying roadmap redeploys were frozen.
+//
+// THE RED IS THE EDIT THAT WOULD REOPEN IT: make approval_broker_deploy_port answer the serving
+// port, or flip roadmap_approval_mount while the roadmap rows are still projected, and the two
+// conjuncts stop agreeing.
+test fn while_the_roadmap_mounts_the_routes_the_deploy_port_is_dark() -> Bool {
+  match roadmap_approval_mount {
+    RoadmapStillMountsApprovalRoutes =>
+      approval_broker_deploy_port() == approval_broker_dark_listen_port
+        && !(approval_broker_deploy_port() == approval_broker_listen_port)
+    RoadmapApprovalRoutesRetired =>
+      approval_broker_deploy_port() == approval_broker_listen_port
   }
-  stage_is_admitted(stage: RetireRoadmapRoutes, e: e) && !approval_broker_cutover_complete(e: e)
+}
+
+// ONE ROW DECIDES BOTH HALVES, which is what makes stage 6 atomic rather than two edits someone
+// could land half of. The port and the mount are projections of the same declaration, so they
+// cannot disagree about who may write the store.
+test fn the_mount_switch_and_the_deploy_port_are_one_fact() -> Bool {
+  roadmap_still_mounts_approval_routes()
+    == (approval_broker_deploy_port() == approval_broker_dark_listen_port)
 }
 
 // ── THE FRONT DOOR STAGE CARRIES ITS OWN ARGV ────────────────────────────────────────────────

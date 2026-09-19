@@ -46,7 +46,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_compute_root, dashboard_instance_event_log_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
-import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
+import gunbc.auth.approval_broker_cutover { approval_broker_deploy_port }
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
@@ -399,6 +399,15 @@ fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
 // same published tree as the roadmap server on that host; sharing the tree is not co-tenancy,
 // because a tree is read and a heap is not. What it does NOT share is the cgroup, the process, the
 // restart lifecycle or the port -- which is the entire content of the split.
+//
+// THE PORT IS DERIVED AND NOT PASSED BY A CALLER'S CHOICE. deployment_spec_for supplies
+// gunbc.auth.approval_broker_cutover approval_broker_deploy_port(), which answers the DARK port for
+// as long as the roadmap still mounts the approval routes. That is the wall review 68050 asked for:
+// while two route tables could serve the approval paths, no deploy path -- ordinary release apply
+// or staged dark install -- has a spelling that puts the broker where the front door can reach it,
+// so the two-writer state against the single-writer store is unwritable rather than forbidden by a
+// note. The parameter remains, because the emitter's port argument is what lets a witness render
+// both placements and compare them.
 //
 // THE EVALUATION CAPS ARE THE ROADMAP'S, and that is a stated divergence rather than a derivation:
 // the broker's own per-request cost has never been measured, the roadmap's caps are an order of
@@ -1092,7 +1101,7 @@ fn deployment_spec_for(
     ),
     approval_broker: approval_broker_service_config(
       instance: instance,
-      port: approval_broker_listen_port,
+      port: approval_broker_deploy_port(),
     ),
     names: names,
     instance_id: instance.instance_id,

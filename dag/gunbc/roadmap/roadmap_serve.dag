@@ -10,6 +10,10 @@ import extdeps.uri_path { uri_query_param }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
 }
+import gunbc.auth.approval_broker_cutover {
+  RoadmapApprovalMount, RoadmapStillMountsApprovalRoutes, RoadmapApprovalRoutesRetired,
+  roadmap_approval_mount,
+}
 import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
   ServeHttpRequest,
@@ -473,18 +477,29 @@ fn serve_publish_handler_response_for_instance(
 // broker would take the approval loop down for the window between the two -- an outage strictly
 // worse than the co-tenancy it repairs, and the reason the plan is staged rather than atomic.
 //
-// THE DISSOLUTION IS STAGE 6 OF THAT PLAN AND NOTHING ELSE. It deletes this arm and the projection
-// below, at which point the wall test.claim.roadmap_serve_witness
-// roadmap_serve_table_owns_no_approval_route goes green and stays as the regression control whose
-// RED is re-adding a route. It is stated as a plan stage rather than as prose because a dissolution
-// no mechanism can read is one nothing will ever fire.
+// THE DISSOLUTION IS ONE ROW AND NOTHING ELSE, which is what makes it a mechanism rather than a
+// plan someone remembers. gunbc.auth.approval_broker_cutover roadmap_approval_mount decides whether
+// this projection yields the four rows at all, and the SAME row decides which port the deploy may
+// bind the broker to -- so while these rows are mounted the broker cannot be placed anywhere the
+// front door reaches, and the two-writer state has no spelling (review 68050 caught the earlier
+// arrangement, where an ordinary apply produced it and only prose forbade it).
+//
+// Flipping that row retires these rows and moves the broker onto the serving port in one motion,
+// and the plan refuses to admit the flip until the front door is repointed and all four route
+// classes have been probed. The arm below survives the flip as dead code for exactly one change and
+// is deleted with it; what stays is the regression control that this table answers nothing for the
+// four approval pairs.
 
 fn roadmap_serve_approval_cutover_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
-  map(approval_broker_route_specs(), spec => ServedRouteSpec {
-    method: spec.method,
-    raw: spec.raw,
-    handler: ApprovalBrokerCutoverHandler { route: spec.handler },
-  })
+  match roadmap_approval_mount {
+    RoadmapApprovalRoutesRetired => []
+    RoadmapStillMountsApprovalRoutes =>
+      map(approval_broker_route_specs(), spec => ServedRouteSpec {
+        method: spec.method,
+        raw: spec.raw,
+        handler: ApprovalBrokerCutoverHandler { route: spec.handler },
+      })
+  }
 }
 
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {

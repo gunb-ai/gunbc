@@ -62,8 +62,13 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.live_deploy.member_observe { deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
+import gunbc.auth.approval_broker_cutover {
+  CutoverAdmission, StageAdmitted, StageRefused,
+  dark_install_release_admission, cutover_refusal_reason,
+}
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
+  live_deploy_liveness_get_local,
   ServiceReadiness,
   service_readiness_reason,
 }
@@ -626,16 +631,51 @@ fn approval_broker_dark_install_wet_with_access(
       if !reconciliation_converged(r: preflight) {
         live_deploy_reconciliation_exit(r: preflight)
       } else {
-        live_deploy_reconciliation_exit(r: live_deploy_fold(
+        let mutation = live_deploy_fold(
           spec: spec,
           effect: LiveDeployApprovalBrokerDarkInstall { spec: spec, candidate: candidate },
           transport: access.transport,
           access: access,
           fixture_actor: Absent,
           fixture_host: Absent,
-        ))
+        )
+        if !reconciliation_converged(r: mutation) {
+          live_deploy_reconciliation_exit(r: mutation)
+        } else {
+          approval_broker_dark_install_readback_exit(spec: spec)
+        }
       }
     }
+  }
+}
+
+// THE INSTALL IS NOT THE POINT; THE READBACK IS. A converged mutation says the unit files were
+// written and systemd was asked to start one -- it says nothing about whether a process came up,
+// bound the port, or is the release this deploy just named. Stage 2 of the cutover is exactly that
+// question, and this is where it is asked, so the plan has a production consumer rather than being
+// an authority nobody calls (review 68050: an inert lens is a lie, DESIGN section 4b).
+//
+// THE PORT IS THE SPEC'S, which gunbc.live_deploy.spec derives from the cutover switch -- so the
+// probe reaches the process this deploy actually placed, and cannot drift to the serving port while
+// the roadmap is still a writer.
+//
+// THE ADMITTING ARM CARRIES NO MESSAGE because ProcessExit's success arm has no field to carry one;
+// what the probe said reaches an operator through the refusal path, where it is needed, and through
+// the journal of the unit that answered.
+//
+// IT EXITS ON THE ADMISSION, not on the probe. A broker that came up answering a malformed revision
+// is a converged mutation and a REFUSED stage, and reporting success for it would leave every later
+// stage reasoning about a build nobody can name.
+fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec) -> ProcessExit {
+  let port = spec.approval_broker.listen.port
+  let read = live_deploy_liveness_get_local(port: port, spec: spec)
+  match dark_install_release_admission(listening_port: port, read: read) {
+    StageAdmitted { stage: _ } => ExitSuccess
+    StageRefused { stage: _, cause: c } =>
+      exit_failure(reason: join([
+        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        cutover_refusal_reason(c: c) as String,
+      ], ""))
   }
 }
 

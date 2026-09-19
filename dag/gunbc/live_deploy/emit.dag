@@ -56,7 +56,6 @@ import extdeps.systemd.unit_file {
   SystemdInstallDirective, WantedBy,
   serialize_systemd_unit_file,
 }
-import gunbc.auth.approval_broker_endpoint { approval_broker_dark_listen_port }
 import gunbc.live_deploy.member_identity {
   ReleaseEffectPlan, ConvergedMember, TreePublication, Executable, UnitFile, UnitManager, ServiceProcess,
   DirectoryRoot, plan_mutation_of, mutation_is_keep, PlanMutationLookup, MutationInPlan, MemberNotInPlan,
@@ -2157,9 +2156,14 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
 // about, so "what did stage 1 install" is answerable from the model rather than from a terminal
 // transcript.
 //
-// THE DARK PORT IS THE ARGUMENT AND THE PLAN REFUSES IF IT IS NOT. gunbc.auth.approval_broker_cutover
-// dark_deployment_admission refuses a "dark" deployment observed on the serving port, because a
-// broker the front door can reach is a second writer wearing the first stage's name.
+// IT CANNOT BIND THE SERVING PORT, AND THAT IS NOW A CONSTRUCTION RATHER THAN THIS STAGE'S CARE.
+// The port comes from the spec, and gunbc.live_deploy.spec derives the spec's broker port from
+// gunbc.auth.approval_broker_cutover approval_broker_deploy_port() -- the dark port for as long as
+// the roadmap still mounts the approval routes. So this stage and the ordinary release apply write
+// the SAME placement, and neither has a spelling that produces two writers (review 68050). The
+// plan's dark_deployment_admission still refuses a broker OBSERVED on the serving port, which is
+// the other side of the same property: the emitter cannot write it and the plan will not believe
+// it if something else did.
 fn approval_broker_dark_install_intent(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,
@@ -2168,7 +2172,7 @@ fn approval_broker_dark_install_intent(
     steps: concat(
       concat(
         [deploy_raw(command: deploy_shell_strict_options_command), deploy_stage_directory_let_step()],
-        approval_broker_unit_write_steps_on(spec: spec, revision: revision, port: approval_broker_dark_listen_port),
+        apply_approval_broker_unit_write_steps(spec: spec, revision: revision),
       ),
       [
         deploy_effect(inv: systemctl_daemon_reload_effect()),
