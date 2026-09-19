@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64 }
 import extdeps.provisioning.network_boot { NativeDhcpBootOptions, UefiPxe }
+import extdeps.crypto.mac { MacKeyId }
 import extdeps.uri { Uri, Https, Tftp }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.external_authority { ExternalAuthority }
@@ -1133,7 +1134,7 @@ fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> N
       fleet: FleetBootServiceReceipt {
         https_boot_endpoint: Uri { scheme: Https, locator: "boot.example.test/manifest" },
         origin_custom_domain: Uri { scheme: Https, locator: "boot-origin.example.test" },
-        signing_key_identity: "boot-manifest-key-0",
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
         observation: obs,
         observed_at: 1788000000000,
       },
@@ -1187,7 +1188,7 @@ fn established_network_boot_for(t: BootDeliveryTarget, digest: ContentHash) -> N
           kernel_cmdline: "console=ttyAMA0",
           not_before: 1788000000000,
           expiry: 1788003600000,
-          signing_key_identity: "boot-manifest-key-0",
+          signing_key_identity: "boot-manifest-key-0" as MacKeyId,
           callback_identity: "intake-callback-0",
         },
         observation: obs,
