@@ -6,9 +6,9 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlString, YamlNull, YamlBool, YamlInt, YamlFloat, YamlSequence, YamlMapping, yaml_string, yaml_bool, kv }
 import extdeps.github.actions {
   Step, UsesStep, RunStep,
-  WorkflowPermissions, PermRead, PermWrite,
-  checkout_action
+  WorkflowPermissions, PermRead, PermWrite
 }
+import gunbc.action_use_admission { checkout_action }
 import gunbc.heal_workflow { job_permissions_carry_write }
 import gunbc.heal_publisher_workflow { checkout_step_names_another_subject }
 
