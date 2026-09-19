@@ -65,6 +65,7 @@ import gunbc.fleet_workflow_steps {
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.runner_slot_retire_run {
+  runner_slot_retire_job_id,
   runner_retirement_executor_env_name,
   runner_retirement_target_env_name,
   runner_slot_retire_dispatch_mode_env,
@@ -574,7 +575,7 @@ data fleet_converge_runner_slot_retire_step_if: String = fleet_converge_mode_ste
 
 fn fleet_converge_runner_slot_retire_job() -> Job {
   Job {
-    id: "runner-slot-retire",
+    id: runner_slot_retire_job_id,
     name: none,
     runner: fleet_converge_retirement_executor_runner_spec(),
     steps: concat(
@@ -607,10 +608,12 @@ fn fleet_converge_runner_slot_retire_job() -> Job {
 // the runner's own hostname instead would make the label that decided WHERE the job ran and the name
 // the machine answers to one reading, which is the corroboration collapse review 61761 found on the
 // reset route one job above.
+data fleet_converge_runner_slot_retire_step_id: String = "runner_slot_retire"
+
 fn fleet_converge_runner_slot_retire_step() -> Step {
   RunStep {
     name: Present { value: "Runner slot retirement: assess a declared host retirement from a retained executor over SSH" },
-    id: Present { value: "runner_slot_retire" },
+    id: Present { value: fleet_converge_runner_slot_retire_step_id },
     run: gunbc_ci_runner_slot_retire_invoke(),
     shell: none,
     env: Present {

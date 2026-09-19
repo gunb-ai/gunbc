@@ -1,7 +1,9 @@
 module gunbc.cli_dispatch_surface
 
 import std.measure { Millisecond, millisecond_count }
-import std.types { Bool, CommitSha, Int, List, Port, String }
+import std.types { Bool, CommitSha, Int, List, Port, String, list_length }
+import std.algebra { trim }
+import std.content_hash { content_hash_validate_lower_hex_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -322,6 +324,71 @@ fn gunbc_cli_version_text(identity: CliVersionIdentity) -> String {
   match identity {
     CliCleanSourceCommit { commit: commit } => commit,
     CliDirtySourceCommit { commit: commit } => concat(commit, "-dirty")
+  }
+}
+
+// THE SAME GRAMMAR READ BACKWARD (DESIGN section 4: emit and ingest are one procedure run in two
+// directions). `gunbc --version` prints one line, `<binary name> <identity>`, where the identity is
+// exactly what `gunbc_cli_version_text` rendered; a consumer that needs to know which source
+// commit a RUNNING gunbc was built from reads that line back through this fold rather than
+// pattern-matching the text in its own module, so the render and the parse cannot drift apart.
+//
+// THE DIRTY SUFFIX IS PARSED, NOT STRIPPED. A dirty identity names a tree that was NOT the commit,
+// and a reader that dropped the suffix to recover "the commit" would be manufacturing exactly the
+// impersonation `dirty_version_identity_cannot_impersonate_the_commit` refuses at the render.
+//
+// A MATERIALIZED-TREE IDENTITY IS REFUSED HERE, NOT ADMITTED AS A COMMIT. The devboot producer
+// (gunbc.devboot.build) binds `tree:<oid>` through `gunbc.build_identity` instead of a commit, and
+// this type carries no arm for it: a tree object is not a revision and cannot be joined to one
+// without the commit that names it. Admitting a tree arm belongs with the consumer that can join
+// it; until then the parse says what it saw.
+type CliVersionLineParse
+  = CliVersionLineParsed { identity: CliVersionIdentity }
+  | CliVersionLineRefused { cause: String }
+
+fn gunbc_cli_version_line_parse(line: String) -> CliVersionLineParse {
+  let fields = split(s: trim(s: line), delimiter: " ")
+  match fields[0] {
+    Absent =>
+      CliVersionLineRefused { cause: "a gunbc version line is `<binary name> <identity>`, and this line is empty" }
+    Present { value: program } =>
+      match fields[1] {
+        Absent =>
+          CliVersionLineRefused {
+            cause: concat("a gunbc version line is `<binary name> <identity>`, which this is not: ", trim(s: line)),
+          }
+        Present { value: identity } =>
+          if list_length(fields) != 2 {
+            CliVersionLineRefused {
+              cause: concat("a gunbc version line is `<binary name> <identity>`, which this is not: ", trim(s: line)),
+            }
+          } else if program != gunbc_cli_binary_name() {
+            CliVersionLineRefused {
+              cause: join(["the version line names the program ", program, ", not ", gunbc_cli_binary_name()], ""),
+            }
+          } else {
+            gunbc_cli_version_identity_parse(identity: identity)
+          }
+      }
+  }
+}
+
+fn gunbc_cli_version_identity_parse(identity: String) -> CliVersionLineParse {
+  let dirty_suffix = "-dirty"
+  let dirty = ends_with(s: identity, suffix: dirty_suffix)
+  let commit = if dirty {
+    substring(s: identity, start: 0, end: identity.length() - dirty_suffix.length())
+  } else {
+    identity
+  }
+  if !content_hash_validate_lower_hex_length(text: commit, expected_hex_digits: 40) {
+    CliVersionLineRefused {
+      cause: concat("the version identity is not a 40-digit lower-hex source commit (a materialized-tree identity or other spelling): ", identity),
+    }
+  } else {
+    CliVersionLineParsed {
+      identity: gunbc_cli_version_identity(source_commit: commit as CommitSha, source_dirty: dirty),
+    }
   }
 }
 

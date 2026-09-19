@@ -105,6 +105,14 @@ import gunbc.runner_host_retirement {
 import extdeps.git
 import extdeps.git.inspect
 import gunbc.output_policy { ExpectSuccess }
+import gunbc.build_provenance_join {
+  BuildProvenanceJoin,
+  observe_running_seed_identity,
+  observe_build_delivery_route,
+  join_build_provenance,
+  build_provenance_join_holds,
+  build_provenance_join_text,
+}
 import gunbc.runner_retirement_closure {
   ClosureBlocker,
   PlannerDisposition,
@@ -147,6 +155,11 @@ data runner_retirement_executor_env_name: String = "RUNNER_RETIREMENT_EXECUTOR"
 data runner_retirement_target_env_name: String = "RUNNER_RETIREMENT_TARGET"
 data runner_slot_retire_attempt_raw: String = "runner-slot-retire-ci"
 data runner_slot_retire_receipt_path: String = "target/runner-slot-retire-receipt.txt"
+
+// THE JOB THIS ROUTE RUNS AS, declared here and consumed by gunbc.fleet_converge_workflow for the
+// job's id, so the id the workflow emits and the id the build-provenance join expects the runner
+// to report (GITHUB_JOB) are one fact. The workflow imports this module, not the reverse.
+data runner_slot_retire_job_id: String = "runner-slot-retire"
 
 // ── THE DISPATCH ADMISSION, WHICH RUNS IN THE BUILD JOB AND NOT IN THIS ONE ──────────────────
 //
@@ -617,17 +630,26 @@ fn corroborate_checkout_revision(expected: String, reading: CheckoutRevisionRead
   }
 }
 
-// THE BUILD PROVENANCE BLOCKER. Named rather than silent, and it blocks the assessment the same way
-// an unread roster does -- an assessment whose producer cannot be identified cannot join a package
-// that is defined at one revision.
-fn build_provenance_blocker(run_id: String) -> ClosureBlocker {
-  ClosureBlocker {
-    subject: "assessment-build-provenance",
-    cause: join([
-      "no producer in this repository binds the executable performing this assessment to the revision that built it -- claim_executor --verify-build-artifacts checks only that each path is a file, executable and nonempty -- so the build identity behind run ",
-      run_id,
-      " is UNRESOLVED and this assessment cannot be joined to its producer",
-    ], ""),
+// THE BUILD PROVENANCE BLOCKER IS NOW A JOIN, AND IT BLOCKS ONLY WHEN THE JOIN REFUSES.
+//
+// The first version of this route carried an unconditional blocker under the subject
+// `assessment-build-provenance`: no producer bound the executable performing the assessment to
+// the revision that built it, so every assessment was blocked on its own provenance. The join is
+// gunbc.build_provenance_join: the running interpreter reports the source commit compiled into it
+// (`gunbc.Cli.RunningVersion` over /proc/self/exe, so the report is of the process evaluating this
+// route and not of a path), and that commit must equal the revision this run admitted and
+// corroborated above. Three refusals keep their own arms -- built from another commit, built
+// dirty, identity unobserved -- and each becomes one blocker under the same subject, so a closure
+// reading the receipt sees WHICH provenance fact failed. All agree -> no blocker, which is the only
+// way this subject leaves the blocker list.
+fn build_provenance_blockers(verdict: BuildProvenanceJoin, run_id: String) -> List<ClosureBlocker> {
+  if build_provenance_join_holds(verdict: verdict) {
+    []
+  } else {
+    [ClosureBlocker {
+      subject: "assessment-build-provenance",
+      cause: join([build_provenance_join_text(verdict: verdict), " (run ", run_id, ")"], ""),
+    }]
   }
 }
 
@@ -732,6 +754,11 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                 FleetSshContextRefused { cause: c } => exit_failure(reason: join(["runner_slot_retire: ", c], ""))
                 FleetSshContextReady { context: context, receipt: context_receipt } => {
                   let run = run_retirement_route(subject: subject, context: context)
+                  let provenance = join_build_provenance(
+                    expected: revision,
+                    reading: observe_running_seed_identity(),
+                    route: observe_build_delivery_route(consumer_job_id: runner_slot_retire_job_id),
+                  )
                   let verdict = retirement_assessment_verdict(
                     revision: revision as NonEmptyStr,
                     host: subject.target,
@@ -743,7 +770,7 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                     planner: retirement_route_planner_disposition(run: run),
                     basis: run.basis,
                     obligation_population: transition_required_retiring(host: subject.target),
-                    extra: [build_provenance_blocker(run_id: run_id)],
+                    extra: build_provenance_blockers(verdict: provenance, run_id: run_id),
                     estate: estate_cleanup_standing(standings: retirement_route_estate_standings(run: run)),
                   )
                   let terminal = retirement_route_terminal(
@@ -753,6 +780,7 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                   let body = join([
                     "runner_slot_retire probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
                     "revision=", revision, " run_id=", run_id, "\n",
+                    "executable_build_provenance=", build_provenance_join_text(verdict: provenance), "\n",
                     context_receipt,
                     retirement_route_text(run: run),
                     assessment_verdict_text(v: verdict),

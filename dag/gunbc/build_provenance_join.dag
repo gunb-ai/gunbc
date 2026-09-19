@@ -1,0 +1,323 @@
+module gunbc.build_provenance_join
+
+import std.types { String, Bool, CommitSha }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.cli_services
+import gunbc.cli_dispatch_surface {
+  CliVersionIdentity,
+  CliCleanSourceCommit,
+  CliDirtySourceCommit,
+  CliVersionLineParsed,
+  CliVersionLineRefused,
+  gunbc_cli_version_line_parse,
+}
+import extdeps.github.actions_environment { github_job_variable_name }
+import gunbc.actions_run_binding {
+  ActionsRunBinding,
+  ActionsVariableRead,
+  ActionsRunBound,
+  ActionsRunUnbound,
+  observe_actions_run_binding,
+  run_binding_names_workflow_file,
+  actions_variable_read,
+  ActionsVariablePresent,
+  ActionsVariableAbsent,
+  read_expected_revision,
+  ExpectedRevisionPresent,
+  ExpectedRevisionAbsent,
+}
+import gunbc.generated_artifact { FleetConvergeYamlArtifact, artifact_path }
+import gunbc.repository { gunbc_repository }
+
+// THE EXECUTABLE THAT PERFORMS AN ASSESSMENT IS JOINED TO THE REVISION THE ASSESSMENT CLAIMS.
+//
+// A fleet-converge run binds three revisions before it writes a receipt: the event's
+// (gunbc.actions_run_binding observe_actions_run_binding), the operator-selected R
+// (read_expected_revision, admitted against the event by admit_run_revision), and the tree the job
+// checked out (git.Inspect.HeadCommit, corroborated against R). None of them says anything about
+// the PROGRAM doing the assessing. That program is `gunbc`, built in the workflow's build job and
+// carried to the assessing job as the release-bins artifact, and `claim_executor
+// --verify-build-artifacts` establishes only that each carried path is a file, executable and
+// nonempty -- an executable built from S passes it as readily as one built from R. So a receipt
+// that names R could have been computed by a program whose semantics are S's, and a closure that
+// joins on the receipt's revision would be joining on a label. That is the blocker
+// gunbc.runner_slot_retire_run carried under the subject `assessment-build-provenance`.
+//
+// THE JOIN REUSES THE ONE IDENTITY THE BINARY ALREADY CARRIES, and adds no field. src/v1/stage0
+// build.rs observes `git rev-parse HEAD` (and whether the Rust inputs are dirty) at build time and
+// binds it as GUNBC_BUILD_IDENTITY; the generated clap surface renders it as `gunbc --version`
+// (gunbc.cli_dispatch_surface gunbc_cli_version_text). Measured 2026-09-19 on fleet-converge run
+// 35416075835: the build job checked out origin/main at 4e6e066f88 while the event sha was
+// 7261964510, and the `gunbc` inside the retained release-bins artifact reports exactly
+// 4e6e066f88, clean -- the identity tracks the BUILD checkout, which is the fact the join needs,
+// and that run's two checkouts of `main` eighteen minutes apart are the window in which a
+// checkout at R and a binary at S can coexist.
+//
+// WHAT MAKES IT A JOIN ON THE EXECUTABLE AND NOT ON A PATH. The observation is
+// `gunbc.Cli.RunningVersion`, an operation with no input whose argv is fixed at /proc/self/exe
+// (extdeps.linux.procfs ProcSelfExe): the interpreter evaluating this fold forks, and the kernel
+// resolves the magic link in that child before the exec, so the program that prints the identity
+// is the image the interpreter is running. It is not `target/release/gunbc` re-read from disk and
+// it is not a `{path, digest}` receipt handed across the job boundary -- tools.scm_acceptance_binary
+// records why such a receipt is ordinary forgeable data once it crosses a process boundary, and
+// this join accepts none: the identity is compiled into the bytes that answer.
+//
+// WHAT A MATCHING REPORT DOES AND DOES NOT ESTABLISH, because the inference "these bytes print
+// `gunbc R`, therefore an admitted build of R produced them" is invalid on its own: a substituted
+// executable prints that line too, and fixing WHICH executable answers does not authenticate what
+// it says (review of gunbc#11693). tools.scm_acceptance_binary draws the same line -- artifact
+// selection, runnability and build provenance are three obligations, and a cross-host artifact
+// needs a trusted build subject and a verified transport as separate facts. So the join has TWO
+// halves and refuses without either:
+//
+//   the DELIVERY ROUTE establishes which artifact is trusted: this process is running as the job
+//   the modeled fleet-converge workflow hands the build job's release-bins artifact to, inside one
+//   run of that workflow file -- observed from the runner's own GITHUB_WORKFLOW_REF and GITHUB_JOB
+//   (extdeps.github.actions_environment), admitted against the workflow file path
+//   gunbc.generated_artifact names and the job id the route declares. The model behind that job --
+//   `needs: [build]`, the release-bins download and verify steps, the build job's upload of the
+//   same artifact -- is the accepted build-and-delivery boundary, and the enrolled claim
+//   test.claim.build_provenance_join_witness holds the model to it; the YAML is its projection.
+//
+//   the RUNNING-IMAGE REPORT establishes that the evaluator's compiled identity agrees with the
+//   selected revision.
+//
+// Neither half creates the other's assumption. A matching report outside the route is
+// `BuildProvenanceOriginUnestablished`: the executable REPORTS R, and where it came from is an
+// unresolved blocker that stays on the assessment rather than being cleared by the self-report.
+//
+// THE ARMS, EACH ITS OWN DISCRIMINATOR. All agree, inside the route -> `BuildProvenanceJoined`.
+// Built from a commit other than R -> `BuildProvenanceMismatch`, carrying both. A dirty tree ->
+// `BuildProvenanceDirty`, because `<R>-dirty` is not R and the render authority refuses the
+// impersonation in the other direction too. Identity unreadable -- the operation fails, prints
+// something that is not a version line, or a materialized-tree identity that names no commit --
+// -> `BuildProvenanceUnobserved`. Identity agrees but the delivery route is not admitted ->
+// `BuildProvenanceOriginUnestablished`. Every arm but the first is a refusal and never a pass.
+//
+// WHICH HOST THE OBSERVATION IS SOUND UNDER. The running image is whichever binary hosts the
+// interpreter. Under `gunbc run` -- the retirement route's step, and the probe below -- that is
+// `gunbc`, whose generated clap surface answers `--version`, and the Read arm is reachable. Under
+// claim_batch or claim_executor the image has no `--version` (hand-parsed argv, unmodeled), the
+// operation exits 2 and the observation is Unreadable -- so the join REFUSES there rather than
+// reporting some other program's identity. test.claim.running_seed_identity_wet executes the
+// operation for real under claim_batch --wet and holds it to exactly that: agree with HEAD, or
+// refuse naming why. Widening the version surface to the witness binaries is the next-rung
+// trigger for the Read arm under that harness, and it is seed growth on an unmodeled surface.
+//
+// WHAT THIS DOES NOT ESTABLISH, said so it is not cited for it. `gunbc` is the interpreter and is
+// the one release bin that carries an identity; claim_executor and the other fourteen bins in the
+// artifact carry none, and this join says nothing about them. It does not establish that the build
+// was reproducible, nor that the compiled stamp is fresh over every source the executable links --
+// the stamp producer's rerun coverage is its own obligation (src/v1/stage0/build.rs), and this
+// consumer claims no more clean-build guarantee than that producer supports. And it is a join at
+// one interface: the running process's own report and the runner's own coordinates, supplied here
+// as readings so the fold is decidable without executing the process (DESIGN section 3, witness
+// discriminates at one interface); the executing route is runner_slot_retire_ci_wet and the probe
+// below.
+type BuildDeliveryRoute
+  = DeliveredByRunBuildJob { workflow_path: String, job_id: String, run_id: String }
+  | DeliveryRouteUnestablished { cause: String }
+
+// THE ROUTE IS ADMITTED FROM THE RUNNER'S COORDINATES, NOT DECLARED BY THE CALLER. `binding` is the
+// run this process is bound to (already admitted against R by the caller), `observed_job_id` is
+// what the runner says this job is, and the two expectations name the workflow file and job the
+// model hands release-bins to. The REPOSITORY is bound from its authority (gunbc.repository), not
+// from the binding: `run_binding_names_workflow_file` compares the workflow reference against the
+// binding's own repository, so a self-consistent set of coordinates from another repository with
+// the same file path and job id would otherwise define its own trust scope. Outside Actions the
+// observations are absent, which is the unestablished arm and not an error: the probe below runs
+// there deliberately.
+//
+// WHAT THESE COORDINATES ARE: GITHUB_WORKFLOW_REF and GITHUB_JOB are the runner's statement of
+// which workflow file and job this process is. They do not themselves report that an artifact was
+// downloaded; the workflow MODEL does (gunbc.fleet_workflow_steps release_bins_delivery_premise,
+// held by an enrolled claim), and the sentence the joined arm renders is read under that accepted
+// trusted-runner assumption, never as an authentication of the strings.
+fn admit_build_delivery_route(
+  binding: ActionsRunBinding,
+  observed_job_id: ActionsVariableRead,
+  workflow_path: String,
+  consumer_job_id: String,
+) -> BuildDeliveryRoute {
+  if binding.repository != gunbc_repository.full_name {
+    DeliveryRouteUnestablished {
+      cause: join(["this run belongs to repository ", binding.repository, ", not ", gunbc_repository.full_name, " (gunbc.repository), whose fleet-converge workflow is the admitted build route"], ""),
+    }
+  } else if !run_binding_names_workflow_file(binding: binding, workflow_path: workflow_path) {
+    DeliveryRouteUnestablished {
+      cause: join(["this run's workflow reference ", binding.workflow_ref, " does not name ", workflow_path, ", the workflow whose build job produces the release-bins artifact"], ""),
+    }
+  } else {
+    match observed_job_id {
+      ActionsVariableAbsent { variable: v, detail: d } =>
+        DeliveryRouteUnestablished { cause: join([v, " ", d, "; which job of the run this process is cannot be located"], "") }
+      ActionsVariablePresent { value: job } =>
+        if job != consumer_job_id {
+          DeliveryRouteUnestablished {
+            cause: join(["this process is job ", job, " but the release-bins artifact is delivered to job ", consumer_job_id], ""),
+          }
+        } else {
+          DeliveredByRunBuildJob { workflow_path: workflow_path, job_id: job, run_id: binding.run_id }
+        }
+    }
+  }
+}
+
+fn fleet_converge_workflow_file_path() -> String {
+  artifact_path(a: FleetConvergeYamlArtifact)
+}
+
+fn observe_build_delivery_route(consumer_job_id: String) -> BuildDeliveryRoute {
+  match observe_actions_run_binding() {
+    ActionsRunUnbound { variable: v, detail: d } =>
+      DeliveryRouteUnestablished { cause: join([v, " ", d, "; this process is not bound to a workflow run"], "") }
+    ActionsRunBound { binding: run } =>
+      admit_build_delivery_route(
+        binding: run,
+        observed_job_id: actions_variable_read(name: github_job_variable_name),
+        workflow_path: fleet_converge_workflow_file_path(),
+        consumer_job_id: consumer_job_id,
+      )
+  }
+}
+
+type RunningSeedIdentityReading
+  = RunningSeedIdentityRead { identity: CliVersionIdentity }
+  | RunningSeedIdentityUnreadable { cause: String }
+
+fn observe_running_seed_identity() -> RunningSeedIdentityReading {
+  let probe = gunbc.Cli.RunningVersion()
+  if !probe.success {
+    RunningSeedIdentityUnreadable {
+      cause: join(["the running gunbc did not report its version: ", trim(s: probe.stderr)], ""),
+    }
+  } else {
+    match gunbc_cli_version_line_parse(line: probe.stdout) {
+      CliVersionLineRefused { cause: c } => RunningSeedIdentityUnreadable { cause: c }
+      CliVersionLineParsed { identity: i } => RunningSeedIdentityRead { identity: i }
+    }
+  }
+}
+
+type BuildProvenanceJoin
+  = BuildProvenanceJoined { revision: CommitSha, route: BuildDeliveryRoute }
+  | BuildProvenanceMismatch { expected: CommitSha, built_from: CommitSha }
+  | BuildProvenanceDirty { built_from: CommitSha }
+  | BuildProvenanceUnobserved { cause: String }
+  | BuildProvenanceOriginUnestablished { reported: CommitSha, cause: String }
+
+fn join_build_provenance(
+  expected: String,
+  reading: RunningSeedIdentityReading,
+  route: BuildDeliveryRoute,
+) -> BuildProvenanceJoin {
+  match reading {
+    RunningSeedIdentityUnreadable { cause: c } => BuildProvenanceUnobserved { cause: c }
+    RunningSeedIdentityRead { identity: identity } =>
+      match identity {
+        CliDirtySourceCommit { commit: c } => BuildProvenanceDirty { built_from: c }
+        CliCleanSourceCommit { commit: c } =>
+          if (c as String) != trim(s: expected) {
+            BuildProvenanceMismatch { expected: trim(s: expected) as CommitSha, built_from: c }
+          } else {
+            match route {
+              DeliveryRouteUnestablished { cause: rc } =>
+                BuildProvenanceOriginUnestablished { reported: c, cause: rc }
+              DeliveredByRunBuildJob { workflow_path: _, job_id: _, run_id: _ } =>
+                BuildProvenanceJoined { revision: c, route: route }
+            }
+          }
+      }
+  }
+}
+
+fn build_provenance_join_holds(verdict: BuildProvenanceJoin) -> Bool {
+  match verdict {
+    BuildProvenanceJoined { revision: _, route: _ } => true
+    BuildProvenanceMismatch { expected: _, built_from: _ } => false
+    BuildProvenanceDirty { built_from: _ } => false
+    BuildProvenanceUnobserved { cause: _ } => false
+    BuildProvenanceOriginUnestablished { reported: _, cause: _ } => false
+  }
+}
+
+fn build_delivery_route_text(route: BuildDeliveryRoute) -> String {
+  match route {
+    DeliveredByRunBuildJob { workflow_path: w, job_id: j, run_id: r } =>
+      join(["delivered to job ", j, " of ", w, " by run ", r, "'s build job"], "")
+    DeliveryRouteUnestablished { cause: c } => join(["delivery route unestablished: ", c], "")
+  }
+}
+
+fn build_provenance_join_text(verdict: BuildProvenanceJoin) -> String {
+  match verdict {
+    BuildProvenanceJoined { revision: r, route: route } =>
+      join([
+        "the executable performing this assessment reports it was built from ", r as String,
+        ", the selected revision, and was ", build_delivery_route_text(route: route),
+      ], "")
+    BuildProvenanceMismatch { expected: e, built_from: b } =>
+      join([
+        "the executable performing this assessment reports it was built from ", b as String,
+        " but the selected revision is ", e as String,
+        "; a checkout at the selected revision does not make the program reading it that revision's program",
+      ], "")
+    BuildProvenanceDirty { built_from: b } =>
+      join([
+        "the executable performing this assessment reports a dirty build of ", b as String,
+        "; a dirty tree is not that commit and cannot be joined to it",
+      ], "")
+    BuildProvenanceUnobserved { cause: c } =>
+      join(["the build identity of the executable performing this assessment is UNOBSERVED (", c, "); an assessment whose producer cannot be identified cannot be joined to a revision"], "")
+    BuildProvenanceOriginUnestablished { reported: r, cause: c } =>
+      join([
+        "the executable performing this assessment reports it was built from ", r as String,
+        ", the selected revision, but its origin is UNESTABLISHED (", c,
+        "); a self-report outside the admitted build-and-delivery route does not resolve where the executable came from",
+      ], "")
+  }
+}
+
+// THE PROBE, so the real path can be exercised and its discriminators shown outside a fleet run:
+// `gunbc run ... --entry dag/gunbc/build_provenance_join.dag --function build_provenance_probe_wet`
+// with RLM_EXPECTED_REVISION set and, to exercise the delivery half, the runner coordinates
+// (GITHUB_REPOSITORY, GITHUB_WORKFLOW_REF, GITHUB_RUN_ID, GITHUB_SHA, GITHUB_JOB) as a runner would
+// set them for the job named by BUILD_PROVENANCE_PROBE_JOB. Against the commit the invoked gunbc
+// was built from and inside the route it exits success; against another 40-hex revision it exits
+// failure with the mismatch; outside the route it exits failure with the origin unestablished. It
+// is the same observations and the same fold the retirement route consumes, so a green here and a
+// green there are one wall, not two. Supplying the coordinates locally exercises the fold's route
+// half; it does not establish delivery, which only a real run's coordinates do.
+data build_provenance_probe_receipt_path: String = "target/build-provenance-probe-receipt.txt"
+
+data build_provenance_probe_job_env_name: String = "BUILD_PROVENANCE_PROBE_JOB"
+
+fn build_provenance_probe_wet() -> ProcessExit {
+  match read_expected_revision() {
+    ExpectedRevisionAbsent { variable: v, detail: d } =>
+      exit_failure(reason: join(["build_provenance_probe: ", v, " ", d], ""))
+    ExpectedRevisionPresent { revision: expected } =>
+      match actions_variable_read(name: build_provenance_probe_job_env_name) {
+        ActionsVariableAbsent { variable: v, detail: d } =>
+          exit_failure(reason: join(["build_provenance_probe: ", v, " ", d, "; the probe needs the job id the route would be admitted for"], ""))
+        ActionsVariablePresent { value: consumer_job } => {
+          let verdict = join_build_provenance(
+            expected: expected,
+            reading: observe_running_seed_identity(),
+            route: observe_build_delivery_route(consumer_job_id: consumer_job),
+          )
+          let body = join(["build_provenance_probe expected=", expected, "\n", build_provenance_join_text(verdict: verdict), "\n"], "")
+          let w = Filesystem.Write(path: build_provenance_probe_receipt_path, content: body)
+          if w.success == false {
+            exit_failure(reason: join(["build_provenance_probe: receipt write failed: ", w.error, "\n", body], ""))
+          } else if build_provenance_join_holds(verdict: verdict) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: body)
+          }
+        }
+      }
+  }
+}

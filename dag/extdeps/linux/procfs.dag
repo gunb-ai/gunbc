@@ -27,6 +27,7 @@ type ProcfsPath
   | ProcNetUnix
   | ProcSwaps
   | ProcSysKernelHostname
+  | ProcSelfExe
 
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
@@ -37,9 +38,22 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
     ProcNetUnix => "/proc/net/unix"
     ProcSwaps => "/proc/swaps"
     ProcSysKernelHostname => "/proc/sys/kernel/hostname"
+    ProcSelfExe => "/proc/self/exe"
   }
 }
 
+// /proc/[pid]/exe IS A MAGIC LINK TO THE EXECUTED IMAGE, NOT A PATH THE PROCESS WAS STARTED FROM.
+// proc.5 documents it as a symbolic link containing the actual pathname of the executed command,
+// resolved by the kernel to the inode that was execve'd -- so it keeps naming the running image
+// after the file at that pathname is replaced or unlinked (the link then reads with a " (deleted)"
+// suffix), and executing it re-runs those same bytes. That is the property gunbc.cli_services
+// `gunbc.Cli.RunningVersion` spends: an argv whose first element is this path is executed by the
+// kernel in the context of the forked child, before any exec, so the program it runs is the one
+// the interpreter itself is running, and no path a caller could supply selects a different one.
+// Measured on 2026-09-19 (a probe that renamed its own file after start and re-executed
+// /proc/self/exe still ran the original image). Rostered here because the observation is a
+// procfs read like every other on this list, taken of the reading process's own /proc/self.
+//
 // ProcSelfStat was read by this repository before it was rostered here — v1_rt's
 // trace_process_tree_cpu_ms has parsed utime/stime out of /proc/self/stat since the trace
 // ledger landed, so its addition is a roster repair, not a new read. proc.5 documents the
@@ -56,6 +70,7 @@ data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcNetUnix,
   ProcSwaps,
   ProcSysKernelHostname,
+  ProcSelfExe,
 ]
 
 // THE TRANSPORT FOR READING procfs ON A HOST THAT MAY NOT BE THIS ONE. Every earlier procfs read in
