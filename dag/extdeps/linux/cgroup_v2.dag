@@ -205,3 +205,45 @@ fn decode_cgroup_events_populated(body: String) -> CgroupEventsDecoding {
     CgroupEventsPopulatedRefused { cause: c } => CgroupEventsUnparseable { cause: c }
   }
 }
+
+// THE PATH IS COMPOSED IN .dag AND INTERPOLATED AS ONE VALUE, NOT ASSEMBLED INSIDE THE ARGV.
+// An argv of ["cat", "{cgroup_path}/{interface_file}"] does not concatenate two interpolations
+// around a literal slash -- the interpolation grammar reads across it and the `/` becomes a
+// DIVISION operator, which fails at evaluation with "unsupported operator Div on String".
+// Measured on srv1-07: ListChildCgroups, whose argv interpolates a single value, executed fine;
+// this operation was the only one carrying two interpolations separated by an operator character.
+// One input, one interpolation, and the composition stays where the type system can see it.
+fn cgroup_v2_child_path(parent: NonEmptyStr, child: NonEmptyStr) -> NonEmptyStr {
+  concat(parent as String, "/", child as String) as NonEmptyStr
+}
+
+fn cgroup_v2_slice_path(slice: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_v2_mount_point, child: slice)
+}
+
+fn cgroup_v2_events_path(cgroup_path: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: cgroup_path, child: cgroup_v2_events_interface_file)
+}
+
+// WHICH KERNELS PROVIDE THIS MECHANISM AT ALL, homed here for the same reason and by the same
+// parallel as extdeps.linux.procfs kernel_provides_procfs: whether a kernel family offers cgroup
+// v2 is a fact about cgroup v2, not about any consumer that happens to need it. It first appeared
+// in gunbc.host_budget_source as `kernel_provides_private_memory_limit` -- a consumer-side name
+// for this fact, which is DESIGN section 3's nickname in the ordinary case and a layer inversion
+// in the strict one: a second name for one concept, homed away from its authority, and it would
+// have forked the moment a second consumer needed the same answer.
+//
+// LinuxGuestOnWindows answers TRUE for the reason its procfs sibling gives -- WSL2 runs a real
+// Linux kernel and mounts a real unified hierarchy -- and it is the arm most likely to be got
+// wrong by reading the name. Darwin and WindowsNt answer false: neither has cgroups, and neither
+// has any modeled equivalent per-process memory limit, which is the load-bearing consequence for
+// gunbc.host_budget_source -- on those kernels a host-shared reading is the strongest fact
+// available rather than a substitute for a bound that could have been read.
+fn kernel_provides_cgroup_v2(kernel: KernelFamily) -> Bool {
+  match kernel {
+    Linux => true
+    LinuxGuestOnWindows => true
+    Darwin => false
+    WindowsNt => false
+  }
+}
