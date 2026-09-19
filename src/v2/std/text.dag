@@ -1,7 +1,7 @@
 module v2.std.text
 
 import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
-import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, length, list_append, list_head, list_reverse, list_starts_with, list_tail, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, any, contains, fold_list, for_all, is_empty, length, list_append, list_head, list_reverse, list_starts_with, list_tail, skip }
 import v2.std.logic { Bool }
 import std.types { Char }
 type String = FreeMonoid<Char>
@@ -169,4 +169,28 @@ fn string_join(fields: FreeMonoid<String>, separator: String) -> String {
 // same types as every other text fold.
 fn string_replace(source: String, needle: FreeSemigroup<Char>, replacement: String) -> String {
   string_join(fields: string_split(source: source, delimiter: needle), separator: replacement)
+}
+
+// ALPHABET MEMBERSHIP IS CHARACTER MEMBERSHIP, NOT SUBSTRING SEARCH. Every consumer this replaced
+// asked "is each character of s drawn from this admitted alphabet", and every one of them spelled
+// it as a host `string_contains(s: alphabet, pattern: ch)` -- substring search over a one-character
+// needle -- under a hand-rolled index walk carrying `i` and `n` past `char_at`. Two costs rode on
+// that spelling. The operand of `char_at` is a String, not a Char, so each site had to VALIDATE
+// `string_length(s: ch) == 1` to recover the fact the type should have carried; over the structural
+// carrier the element IS a Char and that state has no constructor (DESIGN section 4b, rung 4).
+// And substring search is the wrong semantic question: it answers containment of a SEQUENCE, so a
+// two-character operand would be admitted by an alphabet that spells it contiguously.
+//
+// The derivation is the list algebra, unchanged: membership is `contains` under char equality,
+// and the scan is `for_all` / `any` over the same carrier. No index, no bound, no second walk.
+fn string_contains_char(s: String, c: Char) -> Bool {
+  contains(xs: s, item: c, eq: char_eq)
+}
+
+fn string_all_chars_in(s: String, alphabet: String) -> Bool {
+  for_all(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
+}
+
+fn string_any_char_in(s: String, alphabet: String) -> Bool {
+  any(xs: s, predicate: fn(c) { string_contains_char(s: alphabet, c: c) })
 }

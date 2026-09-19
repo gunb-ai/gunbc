@@ -4,8 +4,12 @@ import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_
 import gunbc.spark.managed_access_apply { spark_apply_receipt_path }
 import gunbc.spark.pair_serving_apply { spark_pair_apply_receipt_path }
 import gunbc.ledger_row_coherence { heal_repair_declaration_artifact_path }
-import extdeps.cloud.gcp.secret_ref { secret_ref_access_url, secret_ref_version_resource }
-import gunbc.auth.github_apps { gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_access_url, secret_ref_version_resource }
+import gunbc.auth.github_apps {
+  DeclaredGitHubApp,
+  gunbai_ci_declared, gunbai_ci_app_pem_secret, gunbai_ci_declared_installation_id,
+  gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id
+}
 import gunbc.auth.org_admin_credential { org_admin_app_key_unreadable_message, org_admin_installation_token_refused_message }
 import extdeps.github.org_admin_auth {
   github_app_installation_access_token_url,
@@ -69,20 +73,12 @@ import gunbc.commit_workflow {
 }
 import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.repo_identity { gunbc_merge_target_ref }
-import gunbc.heal_revalidation {
-  heal_no_change_token,
-  heal_produced_token,
-  heal_author_commit_required_token,
-  heal_push_refused_token,
-  superseded_by_author_head_token,
-  superseded_by_healed_head_token,
-  superseded_by_healed_head_approve_remedy
+import gunbc.auth.heal_publisher_federation {
+  heal_publisher_installation_token_request_body,
+  heal_publisher_key_unreadable_message,
+  heal_publisher_token_refused_message
 }
-import gunbc.heal_push_plan {
-  auto_push_eligible_committed_artifact_paths,
-  author_commit_required_committed_artifact_paths,
-  live_heal_push_refusal_cause_token
-}
+import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
@@ -93,7 +89,8 @@ import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
 }
-import std.types { GitRef }
+import std.types { GitRef, Int, String, List }
+import v2.std.algebra { FreeSemigroup, non_empty_to_list }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
@@ -966,9 +963,19 @@ data gunbc_ci_heal_repair_declaration_target: GunbcRunStepTarget = GunbcRunStepT
   function: "heal_repair_declaration",
 }
 
-data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/repo/repo_local_git_config.dag",
-  function: "converge",
+data gunbc_ci_heal_candidate_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_candidate.dag",
+  function: "heal_candidate_produce_wet",
+}
+
+data gunbc_ci_heal_publication_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_publication.dag",
+  function: "heal_publication_admit_wet",
+}
+
+data gunbc_ci_heal_publication_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_publication.dag",
+  function: "heal_publication_publish_wet",
 }
 
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
@@ -998,7 +1005,7 @@ data gunbc_ci_heal_repo_local_git_config_target: GunbcRunStepTarget = GunbcRunSt
 // remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
 // this list is diligence, not a denominator.
 //
-// Counted at authoring: 27 declarations, 27 entries. That equality is the thing nothing checks.
+// Counted at authoring: 33 declarations, 33 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
   [
     gunbc_ci_fleet_reach_probe_target,
@@ -1036,7 +1043,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_heal_regen_target,
     gunbc_ci_heal_repair_declaration_target,
     gunbc_ci_heal_verify_target,
-    gunbc_ci_heal_repo_local_git_config_target
+    gunbc_ci_heal_candidate_target,
+    gunbc_ci_heal_publication_admit_target,
+    gunbc_ci_heal_publication_publish_target
   ]
 }
 
@@ -1532,105 +1541,166 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
 // administrator sibling records): the mint POST writes its headers and body to files, and anything
 // but 201 refuses with the status line, so a revoked key, a removed installation and a missing
 // permission each surface as what they are rather than as a JSON decode traceback.
+type AppInstallationTokenMint {
+  file_stem: String
+  key_secret: SecretRef
+  app_id: Int
+  app_slug: String
+  installation_id: Int
+  export_env_names: FreeSemigroup<String>
+  key_unreadable_message: String
+  token_refused_message: String
+  minted_message: String
+  request_body: String?
+}
+
+fn app_mint_path(stem: String, suffix: String) -> String {
+  join(["\"$RUNNER_TEMP/", stem, suffix, "\""], "")
+}
+
+fn app_mint_cleanup_command(spec: AppInstallationTokenMint) -> String {
+  join([
+    "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\" \"$JWT_FILE\" \"$TOKEN_HEADERS\" \"$TOKEN_BODY\" ",
+    app_mint_path(stem: spec.file_stem, suffix: "-app-key-sm-body"),
+    "; unset ",
+    join(non_empty_to_list(xs: spec.export_env_names), " "),
+    "; }"
+  ], "")
+}
+
+fn app_mint_request_body_argument(spec: AppInstallationTokenMint) -> String {
+  match spec.request_body {
+    Absent => ""
+    Present { value: body } => join(["-H 'Content-Type: application/json' -d '", body, "' "], "")
+  }
+}
+
+fn app_mint_token_request_command(spec: AppInstallationTokenMint) -> String {
+  join([
+    "curl -sS -X POST -H @\"$JWT_FILE\" -H 'Accept: application/vnd.github+json' ",
+    app_mint_request_body_argument(spec: spec),
+    "-D \"$TOKEN_HEADERS\" -o \"$TOKEN_BODY\" \"",
+    github_app_installation_access_token_url(installation_id: spec.installation_id),
+    "\""
+  ], "")
+}
+
+fn app_mint_export_commands(spec: AppInstallationTokenMint) -> List<String> {
+  concat(
+    [concat("export ", spec.export_env_names.head)],
+    map(spec.export_env_names.tail, n => join(["export ", n, "=\"$", spec.export_env_names.head, "\""], ""))
+  )
+}
+
+fn app_mint_step(command: String) -> PipelineStep {
+  Do { run: ci_retry_body_run(command: command) }
+}
+
+// ONE MINT FOR EVERY IN-RUN INSTALLATION TOKEN, because the sequence is one fact: read the App key
+// from Secret Manager with this run's federated token, sign a JWT bounded by
+// github_app_jwt_lifetime_seconds, exchange it for an installation token, wipe the key and then the
+// JWT the moment each stops being needed, and export the token into this step's environment only.
+// WHAT THE CALLERS DIFFER IN IS PARAMETERS, NOT SEQUENCE: which App, which installation, which
+// secret, what the token may do (request_body down-scopes it at the mint), which environment names
+// carry it, and what each failure says. A second copy of this ladder per caller is the duplication
+// DESIGN section 2 names, and it would drift in the direction that matters -- one copy learning to
+// wipe a key that the other leaves behind.
+//
+// THE APP JWT CAN MINT A TOKEN FOR EVERY INSTALLATION OF ITS APP, so it is strictly more powerful
+// than the installation token it buys; it is written to a 0600 file, spent once, and removed before
+// the token is read out of the response.
+fn github_app_installation_token_prelude(spec: AppInstallationTokenMint) -> List<PipelineStep> {
+  concat(
+    [
+      app_mint_step(command: "set -euo pipefail"),
+      app_mint_step(command: "umask 077"),
+      app_mint_step(command: concat("KEY_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-key"))),
+      app_mint_step(command: concat("HDR_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-auth-header"))),
+      app_mint_step(command: concat("JWT_FILE=", app_mint_path(stem: spec.file_stem, suffix: "-app-jwt"))),
+      app_mint_step(command: concat("TOKEN_HEADERS=", app_mint_path(stem: spec.file_stem, suffix: "-token-headers"))),
+      app_mint_step(command: concat("TOKEN_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-token-body"))),
+      app_mint_step(command: app_mint_cleanup_command(spec: spec)),
+      app_mint_step(command: "trap cleanup EXIT"),
+      app_mint_step(command: gunbc_ci_auth_header_file_write_command()),
+      app_mint_step(command: concat("SM_BODY=", app_mint_path(stem: spec.file_stem, suffix: "-app-key-sm-body"))),
+      app_mint_step(command: join([
+        "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
+        secret_ref_access_url(ref: spec.key_secret),
+        "\")\""
+      ], "")),
+      app_mint_step(command: "rm -f \"$HDR_FILE\""),
+      app_mint_step(command: join([
+        "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
+        spec.key_unreadable_message,
+        "\" >&2; exit 1; fi"
+      ], "")),
+      app_mint_step(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\""),
+      app_mint_step(command: "rm -f \"$SM_BODY\""),
+      app_mint_step(command: "chmod 600 \"$KEY_FILE\""),
+      app_mint_step(command: "NOW=$(date +%s)"),
+      app_mint_step(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }"),
+      app_mint_step(command: "JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | b64url)"),
+      app_mint_step(command: join([
+        "JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((NOW-",
+        to_string(github_app_jwt_backdate_seconds),
+        "))\" \"$((NOW+",
+        to_string(github_app_jwt_lifetime_seconds),
+        "))\" \"",
+        to_string(spec.app_id),
+        "\" | b64url)"
+      ], "")),
+      app_mint_step(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)"),
+      app_mint_step(command: "rm -f \"$KEY_FILE\""),
+      app_mint_step(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\""),
+      app_mint_step(command: app_mint_token_request_command(spec: spec)),
+      app_mint_step(command: "rm -f \"$JWT_FILE\""),
+      app_mint_step(command: join([
+        "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
+        spec.token_refused_message,
+        "\" >&2; exit 1; fi"
+      ], "")),
+      app_mint_step(command: join([
+        spec.export_env_names.head,
+        "=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\""
+      ], "")),
+      app_mint_step(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"")
+    ],
+    concat(
+      map(app_mint_export_commands(spec: spec), c => app_mint_step(command: c)),
+      [app_mint_step(command: join(["echo \"", spec.minted_message, "\""], ""))]
+    )
+  )
+}
+
+fn org_admin_app_token_mint() -> AppInstallationTokenMint {
+  AppInstallationTokenMint {
+    file_stem: "org-admin",
+    key_secret: gunbai_ci_app_pem_secret,
+    app_id: gunbai_ci_declared.app_id.value,
+    app_slug: gunbai_ci_declared.slug as String,
+    installation_id: gunbai_ci_declared_installation_id.value,
+    export_env_names: FreeSemigroup { head: "GUNBC_ORG_ADMIN_TOKEN", tail: ["GH_TOKEN"] },
+    key_unreadable_message: org_admin_app_key_unreadable_message(
+      resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
+      http_status: "$SM_CODE"
+    ),
+    token_refused_message: org_admin_installation_token_refused_message(
+      installation: "gunbai-ci",
+      status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
+    ),
+    minted_message: join([
+      "org-admin: installation token minted in-run for app ",
+      gunbai_ci_declared.slug as String,
+      " installation ",
+      to_string(gunbai_ci_declared_installation_id.value),
+      " (one-hour lifetime; key wiped; token held in this step's environment only)"
+    ], ""),
+    request_body: none
+  }
+}
+
 fn gunbc_ci_org_admin_app_token_prelude() -> List<PipelineStep> {
-  [
-    Do { run: ci_retry_body_run(command: "set -euo pipefail") },
-    Do { run: ci_retry_body_run(command: "umask 077") },
-    Do { run: ci_retry_body_run(command: "KEY_FILE=\"$RUNNER_TEMP/org-admin-app-key\"") },
-    Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/org-admin-auth-header\"") },
-    Do { run: ci_retry_body_run(command: "JWT_FILE=\"$RUNNER_TEMP/org-admin-app-jwt\"") },
-    Do { run: ci_retry_body_run(command: "TOKEN_HEADERS=\"$RUNNER_TEMP/org-admin-token-headers\"") },
-    Do { run: ci_retry_body_run(command: "TOKEN_BODY=\"$RUNNER_TEMP/org-admin-token-body\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: "cleanup() { rm -f \"$KEY_FILE\" \"$HDR_FILE\" \"$JWT_FILE\" \"$TOKEN_HEADERS\" \"$TOKEN_BODY\" \"$RUNNER_TEMP/org-admin-app-key-sm-body\"; unset GUNBC_ORG_ADMIN_TOKEN GH_TOKEN; }"
-      )
-    },
-    Do { run: ci_retry_body_run(command: "trap cleanup EXIT") },
-    Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
-    Do { run: ci_retry_body_run(command: "SM_BODY=\"$RUNNER_TEMP/org-admin-app-key-sm-body\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "SM_CODE=\"$(curl -sS -o \"$SM_BODY\" -w '%\{http_code}' -H @\"$HDR_FILE\" \"",
-          secret_ref_access_url(ref: gunbai_ci_app_pem_secret),
-          "\")\""
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "rm -f \"$HDR_FILE\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if [ \"$SM_CODE\" != 200 ]; then rm -f \"$SM_BODY\"; echo \"",
-          org_admin_app_key_unreadable_message(
-            resource: secret_ref_version_resource(ref: gunbai_ci_app_pem_secret),
-            http_status: "$SM_CODE"
-          ),
-          "\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))[\"payload\"][\"data\"]))' \"$SM_BODY\" > \"$KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$SM_BODY\"") },
-    Do { run: ci_retry_body_run(command: "chmod 600 \"$KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "NOW=$(date +%s)") },
-    Do { run: ci_retry_body_run(command: "b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }") },
-    Do { run: ci_retry_body_run(command: "JWT_HEADER=$(printf '%s' '\{\"alg\":\"RS256\",\"typ\":\"JWT\"}' | b64url)") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "JWT_PAYLOAD=$(printf '\{\"iat\":%d,\"exp\":%d,\"iss\":\"%s\"}' \"$((NOW-",
-          to_string(github_app_jwt_backdate_seconds),
-          "))\" \"$((NOW+",
-          to_string(github_app_jwt_lifetime_seconds),
-          "))\" \"",
-          to_string(gunbai_ci_declared.app_id.value),
-          "\" | b64url)"
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "JWT_SIG=$(printf '%s.%s' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" | openssl dgst -sha256 -sign \"$KEY_FILE\" | b64url)") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$KEY_FILE\"") },
-    Do { run: ci_retry_body_run(command: "printf 'Authorization: Bearer %s.%s.%s\\n' \"$JWT_HEADER\" \"$JWT_PAYLOAD\" \"$JWT_SIG\" > \"$JWT_FILE\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "curl -sS -X POST -H @\"$JWT_FILE\" -H 'Accept: application/vnd.github+json' -D \"$TOKEN_HEADERS\" -o \"$TOKEN_BODY\" \"",
-          github_app_installation_access_token_url(installation_id: gunbai_ci_declared_installation_id.value),
-          "\""
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "rm -f \"$JWT_FILE\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "if ! head -n1 \"$TOKEN_HEADERS\" | grep -q ' 201 '; then echo \"",
-          org_admin_installation_token_refused_message(
-            installation: "gunbai-ci",
-            status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
-          ),
-          "\" >&2; exit 1; fi"
-        ], "")
-      )
-    },
-    Do { run: ci_retry_body_run(command: "GUNBC_ORG_ADMIN_TOKEN=\"$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))[\"token\"])' \"$TOKEN_BODY\")\"") },
-    Do { run: ci_retry_body_run(command: "rm -f \"$TOKEN_HEADERS\" \"$TOKEN_BODY\"") },
-    Do { run: ci_retry_body_run(command: "export GUNBC_ORG_ADMIN_TOKEN") },
-    Do { run: ci_retry_body_run(command: "export GH_TOKEN=\"$GUNBC_ORG_ADMIN_TOKEN\"") },
-    Do {
-      run: ci_retry_body_run(
-        command: join([
-          "echo \"org-admin: installation token minted in-run for app ",
-          gunbai_ci_declared.slug as String,
-          " installation ",
-          to_string(gunbai_ci_declared_installation_id.value),
-          " (one-hour lifetime; key wiped; token held in this step's environment only)\""
-        ], "")
-      )
-    }
-  ]
+  github_app_installation_token_prelude(spec: org_admin_app_token_mint())
 }
 
 // THE APP-JWT PRELUDE (operator decision 2026-09-05, option (b)). GET /app and
@@ -2180,247 +2250,81 @@ fn gunbc_ci_heal_repair_declaration_invoke() -> String {
     receipt_rel: none
   )
 }
+// THE CANDIDATE PRODUCER REPLACES THE COMMIT AND THE PUSH. What stood here until this cut was the
+// whole foreign-executor repair: git config, a git add line per registered artifact, the
+// author-commit drift detection over the workflow projections, the commit, the push, and the
+// SupersededByHealedHead notice that told a reader a human now had to approve the gated run. None of
+// it survives the cutover -- the pull request's job holds no write authority at all, so there is
+// nothing to configure, stage, commit or push, and gunbc.heal_publisher_workflow publishes the
+// repair from the default branch under an App installation token whose pushes GitHub runs without
+// approval (gunbc#10958; the loss the old arm declared is gunbc.rung_drop
+// heal_healed_head_executed_verdict_without_human).
+// THE ONE COMMAND AN AUTHOR RUNS TO REGENERATE EVERY COMMITTED PROJECTION. It is named here rather
+// than in each consumer because three places tell an author to run it -- the merge driver's refusal
+// recipe, its two witnesses -- and a second spelling would drift from the entry the workflow uses.
+// It was `ci_heal_author_commit_regen_command` while heal's author-commit arm was its only caller;
+// that arm is gone with the push, and the command is not heal's (gunbc#10958).
+data generated_artifact_author_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"
 
-// Immediately after the release gunbc binary is unpacked, converge repository-local Git integration
-// bindings (merge.generated-artifact.driver and core.hooksPath) via the modeled
-// repo_local_git_config actuator — BEFORE the skew-guard git merge, so merge=generated-artifact
-// rows govern the remedy merge rather than dying as unresolved conflicts. Ordering: after unpack
-// (converge is gunbc run) and before ci_heal_binary_source_skew_guard_step (whose git merge is the
-// first merge on this checkout). Heal push uses git -c core.hooksPath= so the post-converge
-// hooksPath binding does not invoke pre-push during the unattended push (cargo is absent from the
-// hook PATH on heal runners — a push refusal, not a formatting finding). Idempotent:
-// already-converged checkouts are a no-op.
-fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
+fn gunbc_ci_heal_candidate_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
-    entry: gunbc_ci_heal_repo_local_git_config_target.entry,
-    function: gunbc_ci_heal_repo_local_git_config_target.function,
+    entry: gunbc_ci_heal_candidate_target.entry,
+    function: gunbc_ci_heal_candidate_target.function,
     claim_run: false,
     receipt_rel: none
   )
 }
 
-// RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard this note describes is DELETED and no
-// function implements it. What follows is the incident record that produced it, kept because the
-// receipt outlives the mechanism; read it in the past tense. THE PAIRING THE HEAL JOB NEVER MODELED
-// (incident 2026-07-29). A generated artifact's identity is (authority source x compiler), and this
-// job silently paired TWO DIFFERENT REVISIONS of that product: the release binary came from
-// `build`, which uses the default pull_request checkout — the MERGE ref (main + PR) — while this
-// job checked out `github.head_ref`, the BRANCH HEAD, because it pushes the regeneration back
-// (ci_heal_branch_checkout_note reasons about push semantics and never about the binary's
-// provenance; it calls build's output 'the release gunbc binary', treating a projection of one
-// revision as a context-free tool). The skew is latent until a seed change adds a Rust->.dag call:
-// then the merge-ref binary invokes a `.dag` function the branch-head tree lacks, `lookup_fn`
-// misses, and the run dies mid-regen. Live receipt: #7348 landed the scoped-run observation seed,
-// whose Rust calls gunbc.observation_seed_render.scoped_run_begin_write_measured; every open PR
-// whose branch head predated it went red at once (#7392, #7394, #7395 — identical failure, none at
-// fault), while main stayed green because ci_regen_heal_if skips this job on push. Reproduced by
-// execution: ONE binary built from the merge ref, run against a pre-#7348 tree -> the exact CI
-// failure; against the same tree with origin/main merged in -> ExitSuccess, zero drift. The guard
-// refused the unsound pairing instead of discovering it as a mid-regen crash.
-// RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard is DELETED. The operator ruling of
-// 2026-07-29 below is kept as the ruling it was, not as live behaviour. THE COMPARAND IS THE
-// BUILT-FROM REVISION, NOT A BRANCH NAME (operator ruling 2026-07-29). The first cut compared
-// against `origin/main`, wrong on the operator's own objection: `origin/main` names several things
-// — the one on this runner, the one on a developer's machine, the actual source of truth — so a
-// guard keyed on it asserts a relationship between the tree and WHICHEVER main this box last
-// fetched, and can race an advance mid-run. The question was never about main: it is 'was this
-// binary compiled from a revision this tree can satisfy'. `github.sha` answers it exactly — on a
-// pull_request it IS the merge commit the build job checked out, so the guard compares the tree
-// against the binary's own provenance, in the same run, with no floating ref. The guard fails
-// closed if that revision cannot be resolved: unverifiable provenance is a refusal, never assumed
-// fine.
-//
-// PRECISION IS ALSO THE POINT (DESIGN §5 — refuse, never widen; never manufacture friction the
-// defect does not warrant). A blanket 'tree must equal the built-from revision' would red nearly
-// every PR to catch a rare pairing — a wall priced in other people's time. The DECIDABLE condition
-// that matters is narrower: the binary is unsound against this tree exactly when the built-from
-// revision carries SEED commits (src/v1 — the Rust the binary is compiled from) this tree lacks,
-// since only those can introduce a Rust->.dag expectation the tree cannot satisfy. `git rev-list
-// HEAD..$BUILT_FROM -- src/v1` is exactly that set: empty on the overwhelming majority of PRs (a
-// .dag-only advance cannot skew a compiled binary), non-empty precisely in the #7348 shape.
-// VERIFIED BY EXECUTION on the incident: at the pre-#7348 branch point the set is two commits and
-// one IS 445bac31c (#7348), so the guard names the responsible commit in its own refusal; at
-// current main and at the same branch after the advance was merged in, the set is empty and the
-// guard is silent — the heal that went green on #7395 is the live receipt for the passing arm. On
-// non-empty the step REFUSES rather than regenerating with a compiler that disagrees with the tree
-// — the fabricated-plausible-output arm §5 forbids: main_wet would write whatever the mismatched
-// pair produces and the commit-push step would push it. NOT IN SCOPE: preventing a stale branch
-// from MERGING at all. That is merge-admission policy, needs a source-of-truth model this repo does
-// not have yet (operator: the SCM lane after v1 deletion), and this guard does not pretend to
-// supply one — it protects the one pairing this job has agency over.
-// RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard and its remedy are DELETED. The operator
-// ruling of 2026-07-29 below is kept as the ruling it was, not as live behaviour. THE GUARD APPLIES
-// ITS OWN REMEDY (operator ruling 2026-07-29: 'we can also try to apply the remedy automatically').
-// The first cut printed 'merge the base branch, then re-run' and exited 1 — a correct refusal and a
-// wasted round trip: the job holds contents:write, already pushes commits to this branch, and the
-// fix is a merge it is authorized to perform. Making a human do a mechanical repair the machine can
-// do is the toil this pipeline exists to remove.
-//
-// This is a REPAIR, not a widen, which is why it is admissible under DESIGN §5. The refused arm
-// does not proceed despite the skew — it REMOVES the skew by bringing the tree up to the revision
-// the binary was built from, then re-checks the same condition. Regeneration runs only if that
-// second check passes, so the artifacts are still projected by a compiler the tree agrees with; the
-// invariant is re-established and re-verified.
-//
-// Both failure arms stay closed. A merge that CONFLICTS aborts and refuses with the original
-// diagnostic plus the conflicting paths — the machine will not resolve semantic conflicts on an
-// author's behalf. A merge that succeeds but leaves the seed still ahead (possible if the base
-// moved again mid-run) refuses too, rather than looping. The remedy is attempted exactly once.
-data ci_heal_author_commit_artifact_dir: String = "heal-author-commit-required"
-
-data ci_heal_author_commit_artifact_name: String = "heal-author-commit-required"
-
-data ci_heal_author_commit_regen_command: String = "gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet"
-
-fn path_has_hidden_segment(path: String) -> Bool {
-  string_contains(s: concat("/", path), pattern: "/.")
+// THE ADMIT STEP CARRIES NO PRELUDE, AND THAT ABSENCE IS THE POINT: it runs before the publisher
+// federates, so a candidate that does not admit never causes a token to be minted.
+fn gunbc_ci_heal_publication_admit_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_publication_admit_target.entry,
+    function: gunbc_ci_heal_publication_admit_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
 }
 
-fn ci_heal_author_commit_artifact_includes_hidden_files() -> Bool {
-  any(author_commit_required_committed_artifact_paths(), p => path_has_hidden_segment(path: p))
-}
-
-data ci_heal_commit_push_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_heal_commit_push_script",
-    field: WholeDeclaration
+fn heal_publisher_token_mint(app: DeclaredGitHubApp, installation: GitHubAppInstallationId) -> AppInstallationTokenMint {
+  AppInstallationTokenMint {
+    file_stem: "heal-publisher",
+    key_secret: gunbai_bot_app_pem_secret,
+    app_id: app.app_id.value,
+    app_slug: app.slug as String,
+    installation_id: installation.value,
+    export_env_names: FreeSemigroup { head: "GITHUB_TOKEN", tail: [] },
+    key_unreadable_message: heal_publisher_key_unreadable_message(http_status: "$SM_CODE"),
+    token_refused_message: heal_publisher_token_refused_message(
+      status_line: "$(head -n1 \"$TOKEN_HEADERS\" | tr -d '\\r')"
+    ),
+    minted_message: join([
+      "heal-publisher: installation token minted in-run for app ",
+      app.slug as String,
+      " installation ",
+      to_string(installation.value),
+      " (one hour, contents:write on this repository only; key wiped; token held in this step's environment only)"
+    ], ""),
+    request_body: Present { value: heal_publisher_installation_token_request_body() }
   }
 }
 
-data ci_heal_commit_push_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_heal_commit_push_script — the entire foreign-executor heal commit RunStep, including git config/add/commit/push, workflow author-commit drift detection (git diff over author_commit_required_committed_artifact_paths), repair-artifact packaging (mkdir/cp into heal-author-commit-required/), and HealAuthorCommitRequired diagnostic emission. All of this is today concat-built bash under the single Scaffold disposition beside ci_heal_commit_push_shell_emit_scaffold (ci_heal_git_add_lines was already the prior git-staging half; #7659 extends the same surface for AuthorCommitRequired, not a second unmarked shell). The former merge-admission emitter peer stays deleted: its runtime-present work executes as typed git/filesystem operations inside WalkPlan success stages. DISSOLVES WHEN the shell→intent lane models the full heal repair disposition on host_effect_apply — git transport, filesystem packaging, typed diagnostic — via orchestration bash-emit or typed Do-effects (host-effect-orchestration, ROADMAP shell→intent Phase 2), at which point this RunStep is a realization handler, not emitted bash. The regen half (main_wet) is already modeled separately.")
-
-fn ci_heal_git_add_lines() -> List<String> {
-  map(auto_push_eligible_committed_artifact_paths(), p =>
-    concat("if [ -e \"", concat(p, concat("\" ]; then git add \"", concat(p, concat("\"; else echo \"chore-heal: registered generated artifact absent on this tree, not staging: ", concat(p, "\"; fi")))))))
-}
-
-fn ci_heal_author_commit_drift_lines() -> List<String> {
-  concat(
-    ["AUTHOR_COMMIT_DRIFT=\"\""],
-    map(author_commit_required_committed_artifact_paths(), p =>
-      concat("if [ -e \"", concat(p, concat("\" ] && ! git diff --quiet -- \"", concat(p, concat("\"; then AUTHOR_COMMIT_DRIFT=\"$AUTHOR_COMMIT_DRIFT ", concat(p, "\"; fi")))))))
-  )
-}
-
-data ci_heal_author_commit_required_output: String = "heal_author_commit_required"
-
-fn ci_heal_author_commit_package_lines() -> List<String> {
-  [
-    concat(concat("echo \"", ci_heal_author_commit_required_output), "=0\" >> \"$GITHUB_OUTPUT\""),
-    "if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
-    concat("  rm -rf \"", concat(ci_heal_author_commit_artifact_dir, "\"")),
-    "  for p in $AUTHOR_COMMIT_DRIFT; do",
-    concat("    if ! mkdir -p \"", concat(ci_heal_author_commit_artifact_dir, "/$(dirname \"$p\")\"; then echo \"::error::HealRepairBundleIncomplete path=$p\" >&2; exit 1; fi")),
-    concat("    if ! cp \"$p\" \"", concat(ci_heal_author_commit_artifact_dir, "/$p\"; then echo \"::error::HealRepairBundleIncomplete path=$p\" >&2; exit 1; fi")),
-    "  done",
-    concat(concat("  echo \"", ci_heal_author_commit_required_output), "=1\" >> \"$GITHUB_OUTPUT\""),
-    "fi"
-  ]
-}
-
-// THE MISSING DECLARATION REFUSES; IT DOES NOT COMMIT WITHOUT ONE. The trailer arm below previously
-// read `if [ -s <path> ]; then cat ...; fi`, which omitted the repair trailer whenever the file was
-// absent or empty and committed anyway. That is the exact shape gunbc.ledger_row_coherence
-// ledger_repair_judged_token exists to prevent, reappearing one layer down in shell: a head whose
-// declaration step silently produced nothing would commit with no trailer, and a later reader
-// counting repairs would see zero repairs over an unstated population and read a COVERAGE COLLAPSE
-// as a FIXED DEFECT. The module refuses to let a repair go unrecorded and the shell was still free
-// to let the record itself go missing.
-//
-// EMPTY REFUSES AS WELL AS ABSENT, deliberately rather than incidentally: a run that judged the
-// ledgers emits at least one judged line per ledger artifact, so an empty file means nothing was
-// judged. The denominator is zero, which is precisely the state that must never be mistaken for a
-// clean numerator.
-// THE PUSH IS CLASSIFIED, NOT ASSUMED. Under the step default shell a bare push that loses a
-// non-fast-forward race ends the job on git's own exit status, so the outcome reaching every
-// reader is a raw rejection hint -- true about git and silent about which of the two states it is.
-// The two are decidable here and are separated by one question this job can answer: is the remote
-// branch still at the head this run judged? If it moved, the arm is gunbc.heal_revalidation
-// HealSupersededByAuthorHead, which owns the reasoning and the exit status. If it did not, the
-// push was refused for a reason that is not a race, and that stays a hard red. Neither arm forces
-// and neither retries: a second attempt against a branch that is still moving either loses again
-// or lands a repair derived from a tree nobody checked.
-fn ci_heal_shell_lines() -> List<String> {
-  concat(
-    [
-      "git config user.name \"gunbc-ci-auto-heal\"",
-      "git config user.email \"gunbc-ci-auto-heal@users.noreply.github.com\""
-    ],
-    concat(
-      ci_heal_author_commit_drift_lines(),
-      concat(
-        ci_heal_author_commit_package_lines(),
-        concat(
-          ci_heal_git_add_lines(),
-          [
-            "PRIOR_HEAD=$(git rev-parse HEAD)",
-            "if git diff --cached --quiet; then",
-            "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then",
-            concat(concat("    echo \"::error::", concat(heal_author_commit_required_token, " head=$PRIOR_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=")), concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2")))),
-            "    exit 1",
-            "  fi",
-            concat("  echo \"", concat(heal_no_change_token, " head=$PRIOR_HEAD\"")),
-            "  exit 0",
-            "else",
-            "  CHANGED_ARTIFACTS=$(git diff --cached --name-only)",
-            "  HEAL_MESSAGE_FILE=$(mktemp)",
-            "  printf '%s\\n' \"chore: regenerate drifted generated artifacts (ci auto-heal)\" > \"$HEAL_MESSAGE_FILE\"",
-            concat(
-              concat("  if [ ! -s \"", heal_repair_declaration_artifact_path),
-              concat(
-                "\" ]; then echo \"::error::HealRepairDeclarationMissing path=",
-                concat(
-                  heal_repair_declaration_artifact_path,
-                  " -- the declaration step did not produce a judgment for this head, so a commit here would record zero repairs over an unstated population\" >&2; exit 1; fi"
-                )
-              )
-            ),
-            concat(concat("  cat \"", heal_repair_declaration_artifact_path), "\" >> \"$HEAL_MESSAGE_FILE\""),
-            "  git commit --no-verify -F \"$HEAL_MESSAGE_FILE\"",
-            "  HEALED_HEAD=$(git rev-parse HEAD)",
-            "  HEAL_BRANCH_REF=\"${{ github.head_ref || github.ref_name }}\"",
-            "  if ! git -c core.hooksPath= push origin \"HEAD:$HEAL_BRANCH_REF\"; then",
-            "    REMOTE_HEAD=$(git ls-remote origin \"refs/heads/$HEAL_BRANCH_REF\" | cut -f1)",
-            "    if [ -n \"$REMOTE_HEAD\" ] && [ \"$REMOTE_HEAD\" != \"$PRIOR_HEAD\" ]; then",
-            concat("      echo \"::notice::", concat(superseded_by_author_head_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF author_commit_paths=$AUTHOR_COMMIT_DRIFT changed_artifacts=$CHANGED_ARTIFACTS; the branch moved under this run, nothing was published, and the repair for the current head belongs to its own run\"")),
-            "      exit 0",
-            "    fi",
-            concat("    echo \"::error::", concat(heal_push_refused_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD remote_head=$REMOTE_HEAD branch=$HEAL_BRANCH_REF -- the push was refused while the branch still stood at the head this run judged, so this is not a lost race\" >&2")),
-            "    exit 1",
-            "  fi",
-            concat("  echo \"", concat(heal_produced_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD changed_artifacts=$CHANGED_ARTIFACTS\""))
-          ]
-        )
-      )
-    )
-  )
-}
-
-// AUTO-DISPATCH OF THE HEALED HEAD IS DELETED FROM THIS ARM. A bot-pushed head still creates a
-// pull_request run that GitHub HOLDS (action_required, zero jobs). Auto-dispatch was the only
-// route that executed without a human (gunbc.rung_drop.floor_cut_heal) and is deleted because it
-// cannot APPROVE that gated run and shadows GitHub's name-keyed PR rollup. The named loss is
-// gunbc.rung_drop.heal_healed_head_executed_verdict_without_human, not this annotation. The class
-// of same-named check-runs is gunbc.recurring_failure_mode.comparison_keyed_on_part_of_the_identity_it_compares.
-// gunbc.witness_floor_workflow ci_heal_expected_healed_sha_input remains for GitHub UI dispatch.
-//
-// THE NONZERO EXIT STAYS. This run judged PRIOR_HEAD; it has no standing to speak for H1. So
-// SupersededByHealedHead still prints and this job still fails. There is no executed verdict until
-// a human approves the gated pull_request run. The notice below names that remedy.
-fn gunbc_ci_heal_commit_push_script() -> String {
-  join(
-    [
-      gunbc_invoke_root_stamp_script(),
-      fold(ci_heal_shell_lines(), init: "", f: fn(acc, line) { concat(acc, concat(line, "\n")) }),
-      concat("  echo \"", concat(superseded_by_healed_head_token, " prior_head=$PRIOR_HEAD healed_head=$HEALED_HEAD; revalidation-required\"\n")),
-      concat("  echo \"::notice::", concat(superseded_by_healed_head_token, concat(" healed_head=$HEALED_HEAD ", concat(superseded_by_healed_head_approve_remedy, "\"\n")))),
-      "  if [ -n \"$AUTHOR_COMMIT_DRIFT\" ]; then\n",
-      concat(concat("    echo \"::error::", concat(heal_author_commit_required_token, " head=$HEALED_HEAD author_commit_paths=$AUTHOR_COMMIT_DRIFT cause=")), concat(live_heal_push_refusal_cause_token(), concat(" regen_command='", concat(ci_heal_author_commit_regen_command, "'\" >&2\n")))),
-      "  fi\n  exit 1\nfi\n"
-    ],
-    ""
+// THE PUBLISHER MINTS ITS OWN TOKEN IN-RUN, down-scoped to contents:write on this repository alone.
+// An earlier revision matched on a registration coproduct here and emitted a deliberately invalid
+// shell marker on its Pending arm; that arm is gone with the coproduct, because the App is
+// gunbai-bot -- already registered, already installed, and its key already in Secret Manager
+// labelled for exactly this purpose -- so no arm of that match was reachable any more.
+fn gunbc_ci_heal_publication_publish_invoke() -> String {
+  gunbc_run_step_script_with_prelude(
+    prelude: github_app_installation_token_prelude(
+      spec: heal_publisher_token_mint(app: gunbai_bot_declared, installation: gunbai_bot_declared_installation_id)
+    ),
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_heal_publication_publish_target.entry,
+    function: gunbc_ci_heal_publication_publish_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }

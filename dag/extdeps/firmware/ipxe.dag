@@ -1,0 +1,36 @@
+module extdeps.firmware.ipxe
+
+import std.types { NonEmptyStr }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ipxe.org/docs"
+  }
+}
+
+data ipxe_chainloading_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ipxe.org/howto/chainloading"
+  }
+}
+
+// iPXE's own build grammar: `make <platform>/<image>` from src/, e.g. bin-arm64-efi/snponly.efi.
+// snponly.efi drives the NIC through the firmware's SNP protocol instead of a native iPXE driver,
+// which is the image the chainloading how-to names for UEFI.
+type IpxeBuildTarget {
+  platform: NonEmptyStr
+  image: NonEmptyStr
+}
+
+data ipxe_arm64_efi_snponly: IpxeBuildTarget = IpxeBuildTarget {
+  platform: "bin-arm64-efi",
+  image: "snponly.efi",
+}
+
+fn ipxe_build_target_path(target: IpxeBuildTarget) -> NonEmptyStr {
+  join([target.platform as String, "/", target.image as String], "") as NonEmptyStr
+}

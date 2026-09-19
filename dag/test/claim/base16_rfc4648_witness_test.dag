@@ -1,0 +1,104 @@
+module test.claim.base16_rfc4648_witness_test
+
+import std.integer { UInt8 }
+import extdeps.numeric.base16 { base16_encode_lower, base16_decode_lower }
+import extdeps.git.object_store { git_sha1_object_id, git_object_id_raw_octets }
+import extdeps.mercurial {
+  mercurial_decode_node_identity,
+  mercurial_node_id_octets,
+  mercurial_node_id_text,
+  MercurialNodeIdentityObservation,
+  MercurialChangesetNodeIdentity,
+  MercurialNodeIdentityDecoded,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// extdeps.numeric.base16 is the one octet <-> lowercase-hex codec; git and mercurial decoded and
+// npm encoded through private copies of it until ENCODING-0 (gunbc#11629) deleted them. The first
+// group pins the authority against independent fixed vectors (RFC 4648 section 10, plus octets
+// whose nibbles differ so a swapped high/low half cannot pass). The second group is the bypass
+// discriminator: each consumer is asked a question only the authority answers, on an asymmetric
+// vector, so mutating base16_decode_lower or base16_encode_lower turns these RED -- a consumer that
+// had kept its own codec would stay green under that mutation.
+
+data asymmetric_octets: List<UInt8> = [1, 35, 69, 103, 137, 171, 205, 239, 0, 255]
+
+data asymmetric_hex: String = "0123456789abcdef00ff"
+
+data asymmetric_node_hex: String = "0123456789abcdef0123456789abcdef01234567"
+
+data asymmetric_node_octets: List<UInt8> = [1, 35, 69, 103, 137, 171, 205, 239, 1, 35, 69, 103, 137, 171, 205, 239, 1, 35, 69, 103]
+
+test fn base16_encodes_rfc4648_foobar_vector() -> Bool {
+  base16_encode_lower(octets: [102, 111, 111, 98, 97, 114]) == "666f6f626172"
+}
+
+test fn base16_encodes_empty_as_empty() -> Bool {
+  base16_encode_lower(octets: []) == ""
+}
+
+test fn base16_encodes_asymmetric_vector() -> Bool {
+  base16_encode_lower(octets: asymmetric_octets) == asymmetric_hex
+}
+
+test fn base16_decodes_asymmetric_vector() -> Bool {
+  match base16_decode_lower(hex: asymmetric_hex) {
+    Present { value: octets } => octets == asymmetric_octets
+    Absent => false
+  }
+}
+
+test fn base16_decodes_empty_as_empty() -> Bool {
+  match base16_decode_lower(hex: "") {
+    Present { value: octets } => octets == []
+    Absent => false
+  }
+}
+
+test fn base16_refuses_odd_length() -> Bool {
+  match base16_decode_lower(hex: "abc") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base16_refuses_uppercase_as_noncanonical() -> Bool {
+  match base16_decode_lower(hex: "AB") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn base16_refuses_non_hex_digit() -> Bool {
+  match base16_decode_lower(hex: "0g") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn git_raw_octets_route_through_base16() -> Bool {
+  match git_sha1_object_id(hex: asymmetric_node_hex) {
+    Absent => false
+    Present { value: oid } =>
+      match git_object_id_raw_octets(oid: oid) {
+        Present { value: octets } => octets == asymmetric_node_octets
+        Absent => false
+      }
+  }
+}
+
+test fn mercurial_node_identity_routes_through_base16() -> Bool {
+  match mercurial_decode_node_identity(
+    observation: MercurialNodeIdentityObservation {
+      role: MercurialChangesetNodeIdentity,
+      text: asymmetric_node_hex,
+    },
+  ) {
+    MercurialNodeIdentityDecoded { node } =>
+      mercurial_node_id_octets(node: node) == asymmetric_node_octets
+        && mercurial_node_id_text(node: node) == asymmetric_node_hex
+    _ => false
+  }
+}
