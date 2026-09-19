@@ -4,6 +4,7 @@ import std.types { Bool, EpochMs, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.crypto.mac { MacKeyId }
 import extdeps.uri { Uri, Https, Tftp }
 import extdeps.toolchain.types { Aarch64, X86_64, Wasm32 }
 import extdeps.provisioning.dhcp_client_arch { HttpBootArm64, UefiArm64 }
@@ -184,7 +185,7 @@ fn fleet_ok() -> FleetBootServiceStanding {
     receipt: FleetBootServiceReceipt {
       https_boot_endpoint: fleet_broker,
       origin_custom_domain: fleet_origin,
-      signing_key_identity: "boot-manifest-key-0",
+      signing_key_identity: "boot-manifest-key-0" as MacKeyId,
       observation: obs,
       observed_at: 1788000000000,
     },
@@ -311,7 +312,7 @@ fn manifest_ok() -> SignedBootManifestStanding {
       kernel_cmdline: "console=ttyAMA0",
       not_before: 1788000000000,
       expiry: 1788003600000,
-      signing_key_identity: "boot-manifest-key-0",
+      signing_key_identity: "boot-manifest-key-0" as MacKeyId,
       callback_identity: "intake-callback-0",
     },
     observation: obs,
@@ -605,7 +606,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
         kernel_cmdline: "console=ttyAMA0",
         not_before: 1788000000000,
         expiry: 1788003600000,
-        signing_key_identity: "boot-manifest-key-0",
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
         callback_identity: "intake-callback-0",
       },
       observation: obs,
@@ -683,7 +684,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
         kernel_cmdline: "console=ttyAMA0",
         not_before: 1788000000000,
         expiry: 1788003600000,
-        signing_key_identity: "boot-manifest-key-0",
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
         callback_identity: "intake-callback-0",
       },
       observation: obs,
@@ -769,7 +770,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
         kernel_cmdline: "console=ttyAMA0",
         not_before: 1788000000000,
         expiry: 1788003600000,
-        signing_key_identity: "boot-manifest-key-0",
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
         callback_identity: "intake-callback-0",
       },
       observation: obs,
@@ -1083,7 +1084,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
         kernel_cmdline: "console=ttyAMA0",
         not_before: 1788000000000,
         expiry: 1788003600000,
-        signing_key_identity: "boot-manifest-key-0",
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
         callback_identity: "intake-callback-0",
       },
       observation: obs,
@@ -1139,7 +1140,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
         kernel_cmdline: "console=ttyAMA0",
         not_before: 1788000000000,
         expiry: 1788003600000,
-        signing_key_identity: "boot-manifest-key-0",
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
         callback_identity: "intake-callback-0",
       },
       observation: obs,
@@ -1189,7 +1190,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
         kernel_cmdline: "console=ttyAMA0",
         not_before: 1788000000000,
         expiry: 1788003600000,
-        signing_key_identity: "boot-manifest-key-other",
+        signing_key_identity: "boot-manifest-key-other" as MacKeyId,
         callback_identity: "intake-callback-0",
       },
       observation: obs,
@@ -1411,7 +1412,7 @@ test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool {
         kernel_cmdline: "console=ttyAMA0",
         not_before: 1788000000000,
         expiry: 1788003600000,
-        signing_key_identity: "boot-manifest-key-0",
+        signing_key_identity: "boot-manifest-key-0" as MacKeyId,
         callback_identity: "intake-callback-0",
       },
       observation: obs,
@@ -1685,7 +1686,7 @@ fn manifest_verified(attempt_id: IntakeAttemptId, verified_at: EpochMs) -> Signe
       kernel_cmdline: "console=ttyAMA0",
       not_before: 1788000000000,
       expiry: 1788003600000,
-      signing_key_identity: "boot-manifest-key-0",
+      signing_key_identity: "boot-manifest-key-0" as MacKeyId,
       callback_identity: "intake-callback-0",
     },
     observation: obs,
