@@ -285,7 +285,7 @@ fn site_edge_proxy_dhcp_directives(network_address: Ipv4Address, roster: SiteEdg
     ],
     concat(
       map(roster.known_client_macs, m => DnsmasqDhcpHostSetTag { mac: render_mac_address(addr: m) as String, tag: site_edge_known_tag }),
-      [DnsmasqDhcpBootTags { tags: [site_edge_arm64_tag, site_edge_known_tag], target: site_edge_offered_filename(roster: roster) as String, server_name: roster.tftp_server_name as String, server_address: render_ipv4_address(addr: roster.tftp_server_address) as String }],
+      [DnsmasqDhcpBootTags { first_tag: site_edge_arm64_tag, more_tags: [site_edge_known_tag], target: site_edge_offered_filename(roster: roster) as String, server_name: roster.tftp_server_name as String, server_address: render_ipv4_address(addr: roster.tftp_server_address) as String }],
     ),
   )
 }
