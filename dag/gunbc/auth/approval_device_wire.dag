@@ -11,7 +11,7 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
-import std.encoding { base64_encode, base64_decode, UrlSafe, base64_octet_int }
+import std.encoding { base64_encode, base64_decode, UrlSafe, utf8_decode_octets }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.integer { UInt8 }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
@@ -830,54 +830,6 @@ fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
   join([path_segment_prefix, base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s as String)), variant: UrlSafe)], "") as NonEmptyStr
 }
 
-// A STATED DEPARTURE FROM std.encoding utf8_decode_bytes, which is total and so cannot refuse: the
-// route must tell "no identity was decoded" (malformed) apart from "an identity, spelled another way"
-// (non-canonical), and a total decoder erases that difference. This decoder only decides
-// admissibility; decode_path_segment's re-encode through the standard encoder remains the backstop,
-// so any disagreement between the two refuses rather than admitting an alias.
-// UTF-8 per RFC 3629, from octets; a malformed sequence is Absent, never a replacement character.
-// Each completed scalar is checked against its sequence length, so overlong forms (a value encodable
-// in fewer bytes), UTF-16 surrogates (U+D800..U+DFFF) and values above U+10FFFF are malformed here --
-// no valid identity was decoded -- rather than reaching the canonical check as an alternate spelling.
-type Utf8Decode {
-  out: List<Int>
-  need: Int
-  len: Int
-  acc: Int
-  ok: Bool
-}
-
-fn utf8_scalar_admissible(cp: Int, len: Int) -> Bool {
-  if len == 2 { cp >= 128 }
-  else if len == 3 { cp >= 2048 && !(cp >= 55296 && cp <= 57343) }
-  else if len == 4 { cp >= 65536 && cp <= 1114111 }
-  else { false }
-}
-
-fn utf8_code_points_of_octets(os: List<UInt8>) -> List<Int>? {
-  let st = fold(os, init: Utf8Decode { out: [], need: 0, len: 0, acc: 0, ok: true }, f: (d, octet) => {
-    let o = base64_octet_int(b: octet)
-    if !d.ok { d }
-    else if d.need == 0 {
-      if o < 128 { Utf8Decode { out: concat(d.out, [o]), need: 0, len: 0, acc: 0, ok: true } }
-      else if o >= 194 && o < 224 { Utf8Decode { out: d.out, need: 1, len: 2, acc: o - 192, ok: true } }
-      else if o >= 224 && o < 240 { Utf8Decode { out: d.out, need: 2, len: 3, acc: o - 224, ok: true } }
-      else if o >= 240 && o < 245 { Utf8Decode { out: d.out, need: 3, len: 4, acc: o - 240, ok: true } }
-      else { Utf8Decode { out: d.out, need: 0, len: 0, acc: 0, ok: false } }
-    } else {
-      if o >= 128 && o < 192 {
-        let acc = d.acc * 64 + (o - 128)
-        if d.need == 1 {
-          if utf8_scalar_admissible(cp: acc, len: d.len) { Utf8Decode { out: concat(d.out, [acc]), need: 0, len: 0, acc: 0, ok: true } }
-          else { Utf8Decode { out: d.out, need: 0, len: 0, acc: 0, ok: false } }
-        }
-        else { Utf8Decode { out: d.out, need: d.need - 1, len: d.len, acc: acc, ok: true } }
-      } else { Utf8Decode { out: d.out, need: 0, len: 0, acc: 0, ok: false } }
-    }
-  })
-  if st.ok && st.need == 0 { Present { value: st.out } } else { none }
-}
-
 // THE SERVER'S INVERSE, typed and consuming the raw route suffix exactly once. The route takes the
 // suffix as received and does not percent-decode it first. Admitted only when re-encoding the decoded
 // identity reproduces the presented segment byte for byte, so each identity has exactly one
@@ -893,7 +845,7 @@ fn decode_path_segment(presented: String) -> PathSegmentDecode {
     match base64_decode(s: substring(s: presented, start: string_length(s: path_segment_prefix), end: string_length(s: presented)), variant: UrlSafe) {
       Absent => PathSegmentMalformed { cause: "segment body is not base64url" }
       Present { value: octets } =>
-        match utf8_code_points_of_octets(os: octets) {
+        match utf8_decode_octets(octets: octets) {
           Absent => PathSegmentMalformed { cause: "segment body is not UTF-8" }
           Present { value: cps } =>
             if cps == [] { PathSegmentMalformed { cause: "segment names an empty identity" } }
