@@ -26,6 +26,10 @@ import gunbc.fleet.organization_runner_roster_read {
   RunnersVisibilityUnestablished,
   roster_page_read_from_included,
   classify_roster_walk,
+  parse_runner_id_probes,
+  RunnerIdProbesParsed,
+  RunnerIdProbesUnparsable,
+  runner_visibility_from_report,
   OrganizationRunnerRosterReport,
   runner_id_observation_from_included
 }
@@ -272,4 +276,38 @@ test fn a_200_for_a_different_id_is_unobserved() -> Bool {
     RunnerIdUnobserved { org: _, runner_id: _, reason: _ } => true
     _ => false
   }
+}
+
+// A MALFORMED PROBE ID REFUSES; IT IS NEVER DROPPED.
+test fn a_malformed_runner_id_token_refuses_rather_than_vanishing() -> Bool {
+  match parse_runner_id_probes(raw: "11, 1x2") {
+    RunnerIdProbesUnparsable { tokens } => tokens == ["1x2"]
+    RunnerIdProbesParsed { ids: _ } => false
+  }
+}
+
+test fn well_formed_runner_id_tokens_parse_in_order() -> Bool {
+  match parse_runner_id_probes(raw: " 251463,91529 ") {
+    RunnerIdProbesParsed { ids } => ids == [251463, 91529]
+    RunnerIdProbesUnparsable { tokens: _ } => false
+  }
+}
+
+// VISIBILITY COMES FROM THE ROSTER READ: a delivered page establishes it for that org; none does not.
+test fn visibility_follows_the_roster_reads_first_page() -> Bool {
+  let read = walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: ok(link: "", total: 1, runners: [runner_one_json]) },
+  ])
+  let failed = walk_evidence(scope: scope_with_id, pages: [
+    ScriptedPage { target: first_target, stdout: included(status_line: "HTTP/2.0 403 Forbidden", link: "", body: "\{}") },
+  ])
+  let seen = match runner_visibility_from_report(org: gunb_ai, route: GhTokenFromOrgAdminPrelude {}, report: read) {
+    RunnersVisible { org: o, route: _ } => (o as String) == "gunb-ai"
+    RunnersVisibilityUnestablished { org: _, reason: _ } => false
+  }
+  let unseen = match runner_visibility_from_report(org: gunb_ai, route: GhTokenFromOrgAdminPrelude {}, report: failed) {
+    RunnersVisible { org: _, route: _ } => false
+    RunnersVisibilityUnestablished { org: _, reason: _ } => true
+  }
+  seen && unseen
 }

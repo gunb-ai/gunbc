@@ -669,30 +669,33 @@ fn runner_id_observation_from_included(
   }
 }
 
-// ONE VISIBILITY PROBE, THEN ONE GET PER ID. The probe is the first page of the same listing the
-// roster reads, under the same route, so it costs one request however many ids are asked about.
-fn organization_runner_id_observations(org: NonEmptyStr, runner_ids: List<Int>) -> List<OrganizationRunnerIdObservation> {
-  match organization_runner_read_route() {
-    Absent => map(runner_ids, id => RunnerIdUnobserved { org: org, runner_id: id, reason: organization_runner_roster_credential_absent_reason as NonEmptyStr })
-    Present { value: route } => {
-      let probe = fetch_roster_page_via(
-        scope: OrganizationRunnerScope { login: org, id: none },
-        cursor: github_first_page_cursor,
-        respond: fn(t) { gh_roster_transport(target: t) }
-      )
-      let visibility = runner_visibility_from_page_read(org: org, route: route, read: probe)
-      map(runner_ids, id => {
-        let response = github.CliOrgSelfHostedRunners.GetOrgRunner(org: org, runner_id: id)
-        runner_id_observation_from_included(org: org, visibility: visibility, runner_id: id, stdout: response.stdout, stderr: response.stderr)
-      })
+// VISIBILITY IS TAKEN FROM THE ROSTER READ THE CALLER ALREADY MADE, NOT FROM A SECOND LISTING.
+// Whether this credential can list the organization's runners is one fact; the roster walk's first
+// page establishes it, so the per-ID join consumes that reading rather than paying for, and possibly
+// disagreeing with, a second request. A roster that delivered no page establishes nothing.
+fn runner_visibility_from_report(org: NonEmptyStr, route: OrgRunnerReadRoute, report: OrganizationRunnerRosterReport) -> OrganizationRunnerVisibility {
+  if report.pages_read > 0 {
+    RunnersVisible { org: org, route: route }
+  } else {
+    RunnersVisibilityUnestablished {
+      org: org,
+      reason: concat("the roster read delivered no page: ", report.note) as NonEmptyStr
     }
   }
 }
 
-fn organization_runner_id_observation(org: NonEmptyStr, runner_id: Int) -> OrganizationRunnerIdObservation {
-  match organization_runner_id_observations(org: org, runner_ids: [runner_id]) {
-    Cons { head: o, tail: _ } => o
-    Empty {} => RunnerIdUnobserved { org: org, runner_id: runner_id, reason: "no observation was produced for the requested id" }
+// ONE GET PER ID, joined against visibility the caller established for the same organization.
+fn organization_runner_id_observations(
+  org: NonEmptyStr,
+  visibility: OrganizationRunnerVisibility,
+  runner_ids: List<Int>,
+) -> List<OrganizationRunnerIdObservation> {
+  match organization_runner_read_route() {
+    Absent => map(runner_ids, id => RunnerIdUnobserved { org: org, runner_id: id, reason: organization_runner_roster_credential_absent_reason as NonEmptyStr })
+    Present { value: _ } => map(runner_ids, id => {
+      let response = github.CliOrgSelfHostedRunners.GetOrgRunner(org: org, runner_id: id)
+      runner_id_observation_from_included(org: org, visibility: visibility, runner_id: id, stdout: response.stdout, stderr: response.stderr)
+    })
   }
 }
 
@@ -730,13 +733,26 @@ fn roster_registration_lines(e: OrganizationRunnerRosterEvidence) -> String {
   ], "")), "")
 }
 
-fn runner_id_probe_list() -> List<Int> {
+// A MALFORMED PROBE ID REFUSES THE STEP. Dropping an unparsable token would give a receipt with
+// one probe line fewer than the dispatcher asked for and no trace of the loss.
+type RunnerIdProbeParse
+  = RunnerIdProbesParsed { ids: List<Int> }
+  | RunnerIdProbesUnparsable { tokens: List<String> }
+
+fn parse_runner_id_probes(raw: String) -> RunnerIdProbeParse {
+  let tokens = filter(map(split(s: raw, delimiter: ","), t => trim(s: t)), t => t != "")
+  let bad = filter(tokens, t => match parse_int(s: t) { Present { value: n } => n < 0, Absent => true })
+  if length(xs: bad) > 0 {
+    RunnerIdProbesUnparsable { tokens: bad }
+  } else {
+    RunnerIdProbesParsed { ids: flat_map(tokens, t => match parse_int(s: t) { Present { value: n } => [n], Absent => [] }) }
+  }
+}
+
+fn runner_id_probe_request() -> RunnerIdProbeParse {
   match shell.Env.Get(name: runner_id_probes_env_name).value {
-    Absent => []
-    Present { value: raw } => flat_map(split(s: raw, delimiter: ","), t => match parse_int(s: trim(s: t)) {
-      Present { value: n } => [n]
-      Absent => []
-    })
+    Absent => RunnerIdProbesParsed { ids: [] }
+    Present { value: raw } => parse_runner_id_probes(raw: raw)
   }
 }
 
@@ -749,9 +765,20 @@ fn runner_id_observation_line(o: OrganizationRunnerIdObservation) -> String {
 }
 
 fn organization_runner_roster_observe_wet() -> ProcessExit {
+  match runner_id_probe_request() {
+    RunnerIdProbesUnparsable { tokens } =>
+      exit_failure(reason: concat("OrgRunnerIdProbesUnparsable: runner_ids carries tokens that are not non-negative integer ids: ", join(tokens, ",")))
+    RunnerIdProbesParsed { ids } => organization_runner_roster_observe_with_probes(runner_ids: ids)
+  }
+}
+
+fn organization_runner_roster_observe_with_probes(runner_ids: List<Int>) -> ProcessExit {
   let org = organization_runner_roster_org()
   let report = organization_runner_roster_report(org: org)
-  let probes = organization_runner_id_observations(org: org, runner_ids: runner_id_probe_list())
+  let probes = match organization_runner_read_route() {
+    Absent => organization_runner_id_observations(org: org, visibility: RunnersVisibilityUnestablished { org: org, reason: organization_runner_roster_credential_absent_reason as NonEmptyStr }, runner_ids: runner_ids)
+    Present { value: route } => organization_runner_id_observations(org: org, visibility: runner_visibility_from_report(org: org, route: route, report: report), runner_ids: runner_ids)
+  }
   let receipt = join([
     "endpoint=GET-/orgs/\{org\}/actions/runners organization=", org as String,
     " pages_read=", to_string(report.pages_read),
