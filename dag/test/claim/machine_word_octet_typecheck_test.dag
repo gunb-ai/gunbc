@@ -1,0 +1,66 @@
+module test.claim.machine_word_octet_typecheck
+
+import std.types { String, Bool, Int }
+import v2.std.optional { Present, Absent }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+
+// THE OCTET CARRIER IS ONLY A WALL IF THE BAD CALL FAILS TO COMPILE, AND THAT CANNOT BE SHOWN FROM
+// THE ACCEPTED CORPUS -- if it were writable there, the tree would not build. DESIGN section 4b is
+// explicit that this is not a ceiling: the state is representable as SOURCE HANDED TO THE COMPILER
+// BY A FIXTURE, so declining to enrol it would be specification-without-execution.
+//
+// THIS IS THE SECOND ATTEMPT AND THE SOURCES ARE DELIBERATELY SIMPLER. The first carried record
+// literals, which needed brace escaping inside a .dag string, and every claim came back on the
+// 0 - 1 not-runnable sentinel -- the harness was not running and the sentinel said so in both
+// directions rather than letting the green pass. These sources contain NO record literal and NO
+// brace that is not a plain block: the illegal call is made by passing a parameter of the wrong
+// declared type, which needs no value to be constructed at all. If this still reports not-runnable,
+// the cause is the census in this module rather than anything in the source text.
+fn census_of(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+// NOT-RUNNABLE IS NEITHER ZERO NOR POSITIVE. A census that could not run has observed nothing;
+// reporting that as no diagnostics would satisfy the green, and as some diagnostics would satisfy
+// the reds. 0 - 1 is neither, so a dead harness fails in both directions at once.
+fn blocking_total(source: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn blocking_for(source: String, wanted: String) -> Int {
+  match census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+// A List<Word> where List<Octet> is declared. This is the counterexample that motivated the Octet
+// carrier: a Word carries a width that may not be eight, and the old carrier let a SANCTIONED
+// Width16 value reach the octet path.
+data word_list_for_octet_list_red_source: String = "module probe_octet_carrier_word_list\nimport std.machine_word { Word, Width32, WordResult, BigEndian, word_from_octets }\nimport std.types { List }\nfn f(w: List<Word>) -> WordResult { word_from_octets(width: Width32, octets: w, endianness: BigEndian) }\n"
+
+// A bare Int list where List<Octet> is declared -- the rawest form of the same mistake.
+data int_list_for_octet_list_red_source: String = "module probe_octet_carrier_int_list\nimport std.machine_word { Width32, WordResult, BigEndian, word_from_octets }\nimport std.types { List, Int }\nfn f(v: List<Int>) -> WordResult { word_from_octets(width: Width32, octets: v, endianness: BigEndian) }\n"
+
+// THE GREEN CONTROL, load-bearing rather than decorative: two reds alone are satisfied by a compiler
+// that has stopped judging argument types, or by a harness reporting a blocking row for everything.
+// This takes the SAME route with the RIGHT carrier and must produce nothing.
+data octet_list_green_source: String = "module probe_octet_carrier_green\nimport std.machine_word { Octet, Width32, WordResult, BigEndian, word_from_octets }\nimport std.types { List }\nfn f(o: List<Octet>) -> WordResult { word_from_octets(width: Width32, octets: o, endianness: BigEndian) }\n"
+
+test fn a_word_list_does_not_satisfy_the_octet_carrier_holds() -> Bool {
+  blocking_for(source: word_list_for_octet_list_red_source, wanted: "TypeMismatch") > 0
+    && blocking_total(source: word_list_for_octet_list_red_source) > 0
+}
+
+test fn an_int_list_does_not_satisfy_the_octet_carrier_holds() -> Bool {
+  blocking_for(source: int_list_for_octet_list_red_source, wanted: "TypeMismatch") > 0
+    && blocking_total(source: int_list_for_octet_list_red_source) > 0
+}
+
+test fn the_octet_carrier_route_compiles_holds() -> Bool {
+  blocking_total(source: octet_list_green_source) == 0
+}

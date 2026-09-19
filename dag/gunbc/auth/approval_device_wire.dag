@@ -11,7 +11,7 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.android.key_attestation { AndroidAttestationChain }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, proposed_decision_name }
 import std.logic { Bool }
-import std.machine_word { QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.machine_word { OctetsReady, OctetsRefused }
 import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe, utf8_decode_octets }
 import std.bytes { utf8_encode_bytes, bytes_octets, pure_dag_seam_unreachable_string }
 import std.integer { UInt8 }
@@ -843,9 +843,9 @@ data path_segment_prefix: String = "id-"
 // UTF-8 encoding of a String), and it diverges rather than fabricating a path.
 fn path_segment(s: NonEmptyStr) -> NonEmptyStr {
   match base64_octets(values: bytes_octets(b: utf8_encode_bytes(s: s as String))) {
-    QualifiedOctetsReady { octets: qualified } =>
+    OctetsReady { octets: qualified } =>
       join([path_segment_prefix, base64_encode(octets: qualified, variant: UrlSafe)], "") as NonEmptyStr
-    QualifiedOctetsRefused { cause: _ } => pure_dag_seam_unreachable_string() as NonEmptyStr
+    OctetsRefused { cause: _ } => pure_dag_seam_unreachable_string() as NonEmptyStr
   }
 }
 

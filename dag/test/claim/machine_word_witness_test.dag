@@ -281,8 +281,8 @@ test fn carry_is_pinned_in_both_directions_holds() -> Bool {
   }
 }
 
-fn octet_words(values: List<Int>) -> List<Word> {
-  values |> map(v => Word { width: Width8, value: v })
+fn octet_words(values: List<Int>) -> List<Octet> {
+  values |> map(v => Octet { value: v })
 }
 
 fn octets_of(result: OctetsResult) -> List<Int> {
@@ -309,7 +309,7 @@ test fn octet_packing_round_trips_holds() -> Bool {
   match word_to_octets(a: v, endianness: BigEndian) {
     OctetsRefused { cause: _ } => false
     OctetsReady { octets: octets } =>
-      word32_value_or(result: word_from_octets(width: Width32, octets: qualified_words_to_words(octets: octets), endianness: BigEndian), fallback: 0 - 1) == 305419896
+      word32_value_or(result: word_from_octets(width: Width32, octets: octets, endianness: BigEndian), fallback: 0 - 1) == 305419896
   }
 }
 
@@ -321,12 +321,22 @@ test fn packing_refuses_the_wrong_octet_count_holds() -> Bool {
   }
 }
 
-test fn packing_refuses_a_non_octet_member_holds() -> Bool {
-  let octets = [Word { width: Width8, value: 1 }, Word { width: Width8, value: 2 }, Word { width: Width32, value: 3 }, Word { width: Width8, value: 4 }]
-  match word_from_octets(width: Width32, octets: octets, endianness: BigEndian) {
-    WordRefused { cause: OctetWidthMismatch { observed: _ } } => true
-    WordRefused { cause: _ } => false
-    WordReady { word: _ } => false
+// A NON-OCTET MEMBER IS NO LONGER EXPRESSIBLE, so the claim that refused one is replaced by the
+// claim that says why. Octet carries a value and no width, so a member cannot disagree about its
+// width -- the state the old control caught has no constructor. What CAN still be written is an
+// out-of-range value, and octet_of_int is what refuses it.
+test fn an_octet_cannot_be_built_out_of_range_holds() -> Bool {
+  match octet_of_int(value: 256) {
+    OctetRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
+    OctetRefused { cause: _ } => false
+    OctetReady { octet: _ } => false
+  }
+}
+
+test fn an_octet_admits_the_byte_range_holds() -> Bool {
+  match octet_of_int(value: 255) {
+    OctetReady { octet: o } => octet_value(o: o) == 255
+    OctetRefused { cause: _ } => false
   }
 }
 
@@ -358,16 +368,16 @@ test fn length_field_refuses_a_value_past_its_capacity_holds() -> Bool {
 // So re-introducing the displaced arithmetic turns this Absent into a Present and reds the claim.
 test fn base64_encode_refuses_an_out_of_range_octet_holds() -> Bool {
   match base64_octets(values: [256, 0, 0]) {
-    QualifiedOctetsRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
-    QualifiedOctetsRefused { cause: _ } => false
-    QualifiedOctetsReady { octets: _ } => false
+    OctetsRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: _ } => false
   }
 }
 
 test fn base64_encode_still_admits_the_byte_range_holds() -> Bool {
   match base64_octets(values: [255, 0, 255]) {
-    QualifiedOctetsRefused { cause: _ } => false
-    QualifiedOctetsReady { octets: qualified } => base64_encode(octets: qualified, variant: Standard) == "/wD/"
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: qualified } => base64_encode(octets: qualified, variant: Standard) == "/wD/"
   }
 }
 
@@ -597,14 +607,23 @@ test fn to_octets_refuses_an_unqualified_operand_holds() -> Bool {
   }
 }
 
-// The packing counterexample: both members have the right WIDTH and one has an impossible VALUE,
-// and the packed result (512) is in range for Width16, so nothing downstream would have fired.
-test fn packing_refuses_an_unqualified_member_holds() -> Bool {
-  let members = [Word { width: Width8, value: 1 }, Word { width: Width8, value: 256 }]
-  match word_from_octets(width: Width16, octets: members, endianness: BigEndian) {
-    WordRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
-    WordRefused { cause: _ } => false
-    WordReady { word: _ } => false
+// THE PACKING COUNTEREXAMPLE MOVED TO THE CONSTRUCTOR, WHICH IS THE POINT OF THE REPAIR. The old
+// control supplied two members of the right WIDTH, one with an impossible VALUE, and required the
+// packing to refuse -- because the carrier at the time proved neither. Admitting the same list
+// through the octet constructor refuses before any packing happens, and that is the state the
+// packing no longer has to re-inspect.
+test fn admitting_an_out_of_range_member_refuses_before_packing_holds() -> Bool {
+  match octets_of_ints(octets: [], remaining: [1, 256]) {
+    OctetsRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
+    OctetsRefused { cause: _ } => false
+    OctetsReady { octets: _ } => false
+  }
+}
+
+test fn admitting_an_in_range_list_succeeds_holds() -> Bool {
+  match octets_of_ints(octets: [], remaining: [1, 255]) {
+    OctetsReady { octets: o } => octet_int_values(octets: o) == [1, 255]
+    OctetsRefused { cause: _ } => false
   }
 }
 
@@ -660,23 +679,16 @@ fn word_refuses_unrealizable(result: WordResult) -> Bool {
   }
 }
 
-// THE PROJECTION IS A BOUNDARY TOO. octet_int_values read o.value off every member without
-// establishing any of them and had no refusal arm to report one -- [Word{Width8,256}] projected to
-// [256], and std.encoding consumed that projection on the base64 decode route. Reading a field is
-// where an uninhabitable word stops being a record and becomes a number a consumer will trust.
-test fn octet_projection_refuses_an_unqualified_member_holds() -> Bool {
-  match word_from_octets(width: Width8, octets: [Word { width: Width8, value: 256 }], endianness: BigEndian) {
-    WordRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
-    WordRefused { cause: _ } => false
-    WordReady { word: _ } => false
-  }
-}
-
-test fn octet_projection_refuses_a_non_octet_member_holds() -> Bool {
-  match word_from_octets(width: Width8, octets: [Word { width: Width32, value: 1 }], endianness: BigEndian) {
-    WordRefused { cause: OctetWidthMismatch { observed: _ } } => true
-    WordRefused { cause: _ } => false
-    WordReady { word: _ } => false
+// THE PROJECTION NO LONGER HAS A REFUSAL TO CLAIM, and that is a climb rather than a loss.
+// octet_int_values once read a value off members it had not established, so [Word{Width8,256}]
+// projected to [256] on the base64 decode route. It now takes List<Octet>, where the width is
+// structural and the range was settled by octet_of_int, so there is no inspection left to assert --
+// the earlier control's subject was the gap, and the gap is closed by construction. What remains
+// claimable is that the projection reads what was admitted, which is the claim below.
+test fn octet_projection_reads_what_was_admitted_holds() -> Bool {
+  match octets_of_ints(octets: [], remaining: [0, 1, 255]) {
+    OctetsReady { octets: o } => octet_int_values(octets: o) == [0, 1, 255]
+    OctetsRefused { cause: _ } => false
   }
 }
 
