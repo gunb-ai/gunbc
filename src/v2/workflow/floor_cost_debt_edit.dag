@@ -73,8 +73,10 @@ type CostDebtWitnessEdit =
     PureConjunctRemoval { removed_conjuncts: Int }
   | ReJudgedAsNewWitness { cause: CostDebtEditReJudgeCause }
 
+// `label` is the receipt wording the host prints; it is derived here so the host formats nothing.
 type CostDebtChangedWitnessCeiling {
   edit: CostDebtWitnessEdit
+  label: String
   tier: ClaimCeilingTier
   budget: EvalStepCount
 }
@@ -90,6 +92,7 @@ fn cost_debt_changed_witness_ceiling(edit: CostDebtWitnessEdit) -> CostDebtChang
   let tier = cost_debt_edit_tier(edit: edit)
   CostDebtChangedWitnessCeiling {
     edit: edit,
+    label: cost_debt_edit_label(edit: edit),
     tier: tier,
     budget: claim_ceiling_eval_step_budget(tier: tier)
   }
@@ -102,6 +105,13 @@ fn cost_debt_edit_cause_label(cause: CostDebtEditReJudgeCause) -> String {
     WitnessSourceDidNotTokenize => "witness_source_did_not_tokenize"
     WitnessTokensUnchanged => "witness_tokens_unchanged"
     EditIsNotAConjunctRemoval => "edit_is_not_a_conjunct_removal"
+  }
+}
+
+fn cost_debt_edit_label(edit: CostDebtWitnessEdit) -> String {
+  match edit {
+    PureConjunctRemoval { removed_conjuncts: _ } => "pure_conjunct_removal"
+    ReJudgedAsNewWitness { cause: c } => join(["rejudged_as_new_witness cause=", cost_debt_edit_cause_label(cause: c)], "")
   }
 }
 

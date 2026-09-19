@@ -814,7 +814,7 @@ pub(crate) fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet
 /// 2026-09-19). The `.dag` shows the base, tokenizes both declarations, decides whether the edit
 /// is a pure conjunct removal and selects the tier and its budget. THE HOST'S SHARE ENDS AT TWO
 /// READS the fold cannot perform from here: the head file's bytes, and which comparison base the
-/// floor already resolved. Returns the edit label (for the receipt) and the budget in steps.
+/// floor already resolved. Returns the model's edit label (for the receipt) and the budget in steps.
 pub(crate) fn cost_debt_changed_witness_ceiling(
     base: &str,
     rel_path: &str,
@@ -847,38 +847,10 @@ pub(crate) fn cost_debt_changed_witness_ceiling(
             ctx.format_value(&result)
         ));
     };
-    let edit = match ctx.field(fields, "edit") {
-        Some(Value::Variant {
-            variant_name,
-            fields: edit_fields,
-            ..
-        }) if ctx.sym_eq(*variant_name, "PureConjunctRemoval") => {
-            match ctx.field(edit_fields, "removed_conjuncts") {
-                Some(Value::Int(n)) => format!("pure_conjunct_removal removed_conjuncts={n}"),
-                _ => return Err("PureConjunctRemoval carries no removed_conjuncts Int".to_string()),
-            }
-        }
-        Some(Value::Variant {
-            variant_name,
-            fields: edit_fields,
-            ..
-        }) if ctx.sym_eq(*variant_name, "ReJudgedAsNewWitness") => {
-            match ctx.field(edit_fields, "cause") {
-                Some(Value::Variant { variant_name, .. }) => {
-                    format!(
-                        "rejudged_as_new_witness cause={}",
-                        ctx.resolve(*variant_name)
-                    )
-                }
-                _ => return Err("ReJudgedAsNewWitness carries no cause arm".to_string()),
-            }
-        }
-        other => {
-            return Err(format!(
-                "CostDebtChangedWitnessCeiling.edit was `{}`, expected CostDebtWitnessEdit",
-                other.map(|v| ctx.format_value(v)).unwrap_or_default()
-            ))
-        }
+    // THE LABEL IS THE MODEL'S (`cost_debt_edit_label`); the host prints it and mints no wording.
+    let edit = match ctx.field(fields, "label") {
+        Some(Value::Str(label)) => label.to_string(),
+        _ => return Err("CostDebtChangedWitnessCeiling carries no `label` String".to_string()),
     };
     let budget = match ctx.field(fields, "budget") {
         Some(Value::Record {
