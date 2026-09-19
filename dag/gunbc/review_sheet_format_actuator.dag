@@ -309,14 +309,6 @@ fn format_request_plan(tab: LocatedReviewTab, schema: ReviewSheetSchema, standin
   }
 }
 
-fn format_plan_sheet_ids(plan: FormatRequestPlan) -> List<Int> {
-  [
-    plan.freeze.sheet_id, plan.header.sheet_id, plan.opportunity.sheet_id,
-    plan.arbitrage.sheet_id, plan.incompatible.sheet_id, plan.required.sheet_id,
-    plan.replay.sheet_id,
-  ]
-}
-
 fn freeze_header(q: FreezeRowsRequest) -> FormatStepOutcome uses net: Network {
   let r = sheets.Spreadsheets.SetFrozenRows(
     spreadsheet_id: q.spreadsheet_id,

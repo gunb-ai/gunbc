@@ -19,7 +19,6 @@ import gunbc.review_sheet_tab_locator {
   LocatedReviewTab,
   review_tab_standing_from_read,
   review_tab_standing_of_outcome,
-  review_tab_is_located,
 }
 
 // THE RESPONSES ARE SUPPLIED AT THIS INTERFACE AND THAT IS THE RULE RATHER THAN A SHORTCUT.
@@ -234,13 +233,4 @@ test fn a_refused_status_is_unreadable_and_carries_the_status_rather_than_readin
     TabLocated { tab: _ } => false
     TabAmbiguous { candidates: _ } => false
   }
-}
-
-test fn only_the_located_arm_reports_located() -> Bool {
-  review_tab_is_located(s: review_tab_standing_from_read(
-    spreadsheet_id: witness_spreadsheet_id,
-    read: spreadsheet_read_of(sheets_read: [sheet_read(sheet_id: 3, title: "Sheet1", index: 0)]),
-  ))
-    && (review_tab_is_located(s: TabAbsent) == false)
-    && (review_tab_is_located(s: TabUnreadable { cause: "read failed" as NonEmptyStr }) == false)
 }

@@ -19,7 +19,6 @@ import gunbc.review_sheet_tab_locator {
 import gunbc.review_sheet_format_actuator {
   FormatRequestPlan,
   format_request_plan,
-  format_plan_sheet_ids,
   HeaderRangeStanding,
   HeaderRangeWire,
   HeaderRangeUnqualifiable,
@@ -74,10 +73,23 @@ fn located_tab_for_witness(sheet_id: Int, title: String) -> ReviewTabStanding {
 
 data witness_located_sheet_id: Int = 1836271154
 
+// THE FOLD IS THE WITNESS'S, NOT THE ACTUATOR'S. An earlier cut declared
+// format_plan_sheet_ids beside format_request_plan, where no production caller ever read it --
+// a declaration whose only consumer is a claim, which DESIGN section 3c calls dangling
+// (review 68522). FormatRequestPlan's fields are readable from here, so the claim reads the
+// record production really builds and the actuator declares nothing for the test's benefit.
+fn plan_sheet_ids(plan: FormatRequestPlan) -> List<Int> {
+  [
+    plan.freeze.sheet_id, plan.header.sheet_id, plan.opportunity.sheet_id,
+    plan.arbitrage.sheet_id, plan.incompatible.sheet_id, plan.required.sheet_id,
+    plan.replay.sheet_id,
+  ]
+}
+
 fn plan_sheet_ids_for(sheet_id: Int, title: String) -> List<Int> {
   match located_tab_for_witness(sheet_id: sheet_id, title: title) {
     TabLocated { tab: t } =>
-      format_plan_sheet_ids(plan: format_request_plan(tab: t, schema: ci_prospect_sheet_schema(), standing_col: 3))
+      plan_sheet_ids(plan: format_request_plan(tab: t, schema: ci_prospect_sheet_schema(), standing_col: 3))
     TabAbsent => []
     TabAmbiguous { candidates: _ } => []
     TabUnreadable { cause: _ } => []
