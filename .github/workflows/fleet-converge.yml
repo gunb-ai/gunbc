@@ -11,9 +11,9 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
+        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; app_control_plane_observe reads the gunbai-ci App registration and webhook config with a short-lived App JWT and refuses on hook-config drift; app_key_version_verify reads the gunbai-ci App private key at the EXACT Secret Manager version named by app_key_version, mints an installation token with it, and refuses unless GitHub accepts it and the key's rotation deadline has not passed -- no add, disable or destroy; microvm_host_converge installs the cited Firecracker release on the selected host and refuses the kvm grant by name; guest_image_observe reports the micro-VM base artifacts and their measured digests on the selected host and builds nothing; guest_image_converge builds the runner guest image there; microvm_boot_probe boots that image and reads its serial console; spark_grants and spark_bootstrap prepare the selected Spark; spark_serving_apply applies the promoted fabric groups' vLLM units over the password session, workers before heads; spark_runtime_image_probe pulls the pinned runtime image on the selected Spark and reads its capabilities from inside its own digest, changing nothing; host_reset_return drives a rostered reset subject through its controller and measures the return FROM A PEER, and takes reset_observer rather than host because the observer must not be the subject; runner_host_file_observe reads the runner teardown drop-in, the needrestart deferral and the loaded teardown on the selected host as its administrator and writes nothing; runner_host_file_converge writes whichever of those two files differs, reloads systemd only if the drop-in changed, and refuses unless the manager then reports the declared teardown
         required: true
-        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint]
+        options: [plan, launch_environment_plan, allocation_store_plan, apply, org_actions_observe, app_control_plane_observe, app_key_version_verify, microvm_host_converge, guest_image_observe, guest_image_converge, microvm_boot_probe, spark_grants, spark_bootstrap, spark_serving_apply, spark_runtime_image_probe, dashboard_deploy, rlm_launch_deployment_receipt, host_reset_return, runner_host_file_observe, runner_host_file_converge, runner_password_session_tool_converge, r2_mint_preflight, r2_object_write_mint]
         type: choice
       target:
         description: "Spark target host for the spark_* modes, naming the administrator credential the run materializes (any rostered Spark: srv5, srv6, srv7, srv8, srv9, srv10, srv11, srv12); apply reads the subject off the plan artifact"
@@ -25,6 +25,10 @@ on:
         required: false
         options: [srv1, srv2, srv3, srv4]
         type: choice
+      app_key_version:
+        description: "app_key_version_verify only: the Secret Manager version NUMBER of ci-github-app-private-key to verify. The alias latest is refused -- it names whatever is newest when it resolves, so a mint through it proves nothing about a specific key"
+        required: false
+        type: string
       plan_artifact_hash:
         description: Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step).
         required: false
@@ -393,6 +397,74 @@ jobs:
           if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'app_control_plane_observe'
+        timeout-minutes: 10
+      - name: "App key version verify: mint an installation token with the exact version"
+        id: app_key_version_verify_mint
+        run: |
+          set -euo pipefail
+          : > "$APP_KEY_VERIFY_RECORD"
+          case "$APP_KEY_VERSION" in ''|0*|*[!0-9]*) echo "AppKeyVersionSelectorRefused: '$APP_KEY_VERSION' is not a Secret Manager version number; the alias is refused rather than resolved. Reading NO key." >&2; exit 1;; esac
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/app-key-verify-app-key"
+          HDR_FILE="$RUNNER_TEMP/app-key-verify-auth-header"
+          JWT_FILE="$RUNNER_TEMP/app-key-verify-app-jwt"
+          TOKEN_HEADERS="$RUNNER_TEMP/app-key-verify-token-headers"
+          TOKEN_BODY="$RUNNER_TEMP/app-key-verify-token-body"
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE" "$JWT_FILE" "$TOKEN_HEADERS" "$TOKEN_BODY" "$RUNNER_TEMP/app-key-verify-app-key-sm-body"; unset GUNBC_APP_KEY_VERIFY_TOKEN; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          SM_BODY="$RUNNER_TEMP/app-key-verify-app-key-sm-body"
+          SM_CODE="$(curl -sS -o "$SM_BODY" -w '%{http_code}' -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/$APP_KEY_VERSION:access")"
+          rm -f "$HDR_FILE"
+          printf 'key_http_status %s\n' "$SM_CODE" >> "$APP_KEY_VERIFY_RECORD"
+          if [ "$SM_CODE" != 200 ]; then rm -f "$SM_BODY"; echo "AppKeyVersionUnreadable: Secret Manager answered HTTP $SM_CODE for projects/gunbai-secrets/secrets/ci-github-app-private-key/versions/$APP_KEY_VERSION; the verdict step below types the cause. Minting NO token." >&2; exit 1; fi
+          printf 'resolved_name %s\n' "$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))["name"])' "$SM_BODY")" >> "$APP_KEY_VERIFY_RECORD"
+          python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(open(sys.argv[1]))["payload"]["data"]))' "$SM_BODY" > "$KEY_FILE"
+          rm -f "$SM_BODY"
+          chmod 600 "$KEY_FILE"
+          NOW=$(date +%s)
+          b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          JWT_HEADER=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          JWT_PAYLOAD=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((NOW-60))" "$((NOW+540))" "2653532" | b64url)
+          JWT_SIG=$(printf '%s.%s' "$JWT_HEADER" "$JWT_PAYLOAD" | openssl dgst -sha256 -sign "$KEY_FILE" | b64url)
+          rm -f "$KEY_FILE"
+          printf 'Authorization: Bearer %s.%s.%s\n' "$JWT_HEADER" "$JWT_PAYLOAD" "$JWT_SIG" > "$JWT_FILE"
+          curl -sS -X POST -H @"$JWT_FILE" -H 'Accept: application/vnd.github+json' -D "$TOKEN_HEADERS" -o "$TOKEN_BODY" "https://api.github.com/app/installations/104134109/access_tokens"
+          rm -f "$JWT_FILE"
+          printf 'token_status_line %s\n' "$(head -n1 "$TOKEN_HEADERS" | tr -d '\r')" >> "$APP_KEY_VERIFY_RECORD"
+          if ! head -n1 "$TOKEN_HEADERS" | grep -q ' 201 '; then echo "AppKeyInstallationTokenRefused: GitHub answered $(head -n1 "$TOKEN_HEADERS" | tr -d '\r') to the exchange signed with this version; the verdict step below types the cause." >&2; exit 1; fi
+          GUNBC_APP_KEY_VERIFY_TOKEN="$(python3 -c 'import sys,json; print(json.load(open(sys.argv[1]))["token"])' "$TOKEN_BODY")"
+          rm -f "$TOKEN_HEADERS" "$TOKEN_BODY"
+          export GUNBC_APP_KEY_VERIFY_TOKEN
+          echo "app-key-verify: an installation token was minted with version $APP_KEY_VERSION for app gunbai-ci (key wiped; token unused and unset on exit)"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+          APP_KEY_VERSION: ${{ github.event.inputs.app_key_version }}
+          APP_KEY_VERIFY_RECORD: ${{ runner.temp }}/app-key-verify-record
+        if: github.event.inputs.mode == 'app_key_version_verify'
+        timeout-minutes: 5
+      - name: "App key version verify: typed verdict and rotation-deadline standing"
+        id: app_key_version_verify_verdict
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/auth/ci_app_key_rotation.dag --function ci_app_key_version_verify_wet
+          cat "$ROOT/target/app-key-version-verify-receipt.txt"
+        env:
+          APP_KEY_VERSION: ${{ github.event.inputs.app_key_version }}
+          APP_KEY_VERIFY_RECORD: ${{ runner.temp }}/app-key-verify-record
+        if: always() && github.event.inputs.mode == 'app_key_version_verify'
+        timeout-minutes: 5
+      - name: Upload app key version verify receipt
+        id: app_key_version_verify_receipt_upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: app-key-version-verify
+          path: target/app-key-version-verify-receipt.txt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: always() && github.event.inputs.mode == 'app_key_version_verify'
         timeout-minutes: 10
       - name: "R2 mint preflight: bootstrap read + account permission-group listing (reachability, no mutation)"
         id: r2_mint_preflight

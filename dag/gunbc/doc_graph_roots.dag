@@ -328,9 +328,10 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "secret-version-lifecycle",
     primary_work: DeclarationRef { module_path: "gunbc.auth.secret_rotation", decl_name: "SecretRotationIntent", field: WholeDeclaration },
     additional_works: [
-
+      DeclarationRef { module_path: "gunbc.auth.ci_app_key_rotation", decl_name: "ci_app_key_rotation_intent", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.auth.ci_app_key_rotation", decl_name: "ci_app_key_version_verify_wet", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the rotation kernel actuates against a live federation authority and its subject SecretRotationIntent describes shipped behavior rather than a declared frontier; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the rotation kernel actuates against a live federation authority and its subject SecretRotationIntent describes shipped behavior rather than a declared frontier; the row deletes with the document. STANDING (C9b, 2026-09-19): the kernel has NOT actuated. Its first real subject is bound (gunbc.auth.ci_app_key_rotation ci_app_key_rotation_intent, the gunbai-ci App private key: ReceivedOutOfBand, DisableOnly, one consumer pinned to the exact new version), the retirement plan that orders read-back before census and proof exists (gunbc.auth.secret_rotation plan_rotation_retirement), and the consumer the plan requires EXECUTES as the fleet-converge app_key_version_verify mode, which mints an installation token against an exact version and mutates nothing. The CAPABILITY THIS TRIGGER NAMES is still absent: the add-version and disable-prior actuation for this subject, run with a human in the loop, whose receipt shows the key received out of band added exactly once, read back at its exact version, verified by app_key_version_verify on that number, and the prior version disabled and read back as SmDisabled. That first rotation is an operator act; no lane performs it on its own authority. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

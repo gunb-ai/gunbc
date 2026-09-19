@@ -1,0 +1,401 @@
+module gunbc.auth.ci_app_key_rotation
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.cloud.gcp.secret_ref { SecretRef, secret_ref_version_resource }
+import extdeps.cloud.gcp.secret_manager {
+  SmResolvedVersionIdentity,
+  SmResolvedVersionIdentityRefusal,
+  SmResolvedVersionIdentityEmpty,
+  SmResolvedVersionIdentityMalformed,
+  SmResolvedVersionIdentityDecoded,
+  SmResolvedVersionIdentityDecodeRefused,
+  decode_sm_resolved_version_identity_wire,
+  sm_version_id_is_number,
+}
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import gunbc.auth.github_apps {
+  gunbai_ci_declared,
+  gunbai_ci_app_pem_secret,
+  app_key_settings_locator,
+}
+import gunbc.auth.secret_ref_credential { resolved_identity_matches_request }
+import gunbc.auth.secret_rotation {
+  SecretRotationIntent,
+  ReceivedOutOfBand,
+  DisableOnly,
+  ConsumerVerificationRequirement,
+  RotationConsumer,
+  ConsumerId,
+  ExactVersion,
+  AliasLatest,
+  classify_version_selector,
+  secret_version_at,
+  ConsumerVersionEvidence,
+  ResolvedVersionObserved,
+  ConsumerUnreachable,
+  RotationSubjectContract,
+  ReissueAtIssuerThenRotate,
+  RestoreTestBinding,
+  RotationDeadlineStanding,
+  RotationDeadlineAhead,
+  RotationDeadlinePassed,
+  RotationDeadlineUndecidable,
+  rotation_deadline_standing,
+  rotation_loss_remedy_text,
+}
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+
+// THE FIRST REAL SUBJECT OF gunbc.auth.secret_rotation: the gunbai-ci GitHub App private key
+// (gunbc.auth.github_apps gunbai_ci_app_pem_secret). It is the root of trust for every org-admin
+// action CI takes — the fleet-converge preludes read it, sign an App JWT, and exchange that for an
+// installation token — so a compromise of it has exactly as much reach as CI does, and until this
+// module nothing recorded when it must be rotated, what to do when it is lost, or how its restore
+// is rehearsed.
+//
+// The replacement is RECEIVED OUT OF BAND. GitHub mints App private keys only in the App's settings
+// page ("Generate a private key"); the REST surface for an App exposes the App, its installations
+// and installation tokens, and no endpoint creates or lists private keys. GeneratedInWorkflow would
+// therefore name a generator that does not exist. The channel is the settings locator itself, so
+// the intent says where the bytes come from in the same vocabulary the loss remedy uses.
+//
+// Retirement is DisableOnly. The prior version's bytes are never destroyed by this subject's
+// rotation: a disabled version is restored by one enable, and the brief that bound this subject
+// forbids the irreversible arm.
+
+data ci_app_key_consumer_id: ConsumerId = "ci-app-installation-token-mint" as ConsumerId
+
+// The contract the key owes between rotations. The deadline is POLICY, authored here and moved
+// forward by the operator who completes a rotation; the verifier below reads it on every run and
+// refuses once it has passed, so an overdue key reds the one instrument that exercises it rather
+// than sitting in a row nobody opens.
+data ci_app_key_contract: RotationSubjectContract = RotationSubjectContract {
+  subject: gunbai_ci_app_pem_secret,
+  rotate_by: "2026-12-18T00:00:00Z" as Rfc3339Timestamp,
+  loss_remedy: ReissueAtIssuerThenRotate { issuer: app_key_settings_locator(app: gunbai_ci_declared) },
+  restore_test: RestoreTestBinding { consumer: ci_app_key_consumer_id },
+}
+
+// The rotation intent for this subject, for a replacement already added as `new_version`. The
+// consumer roster is the real one: the installation-token mint, pinned to the EXACT new version.
+// A consumer pinned by number that reports success is proven on that number by the kernel's own
+// rule, and the verifier below reports the resolved identity besides, so the proof does not rest
+// on the pin alone.
+fn ci_app_key_rotation_intent(
+  intent_id: NonEmptyStr,
+  prior_version: SmResolvedVersionIdentity,
+  new_version: NonEmptyStr,
+) -> SecretRotationIntent {
+  SecretRotationIntent {
+    intent_id: intent_id,
+    subject: gunbai_ci_app_pem_secret,
+    prior_version: prior_version,
+    replacement: ReceivedOutOfBand {
+      channel: concat("GitHub App settings, Generate a private key: ", rotation_loss_remedy_text(remedy: ci_app_key_contract.loss_remedy)) as NonEmptyStr,
+    },
+    verification: ConsumerVerificationRequirement {
+      consumers: [
+        RotationConsumer { id: ci_app_key_contract.restore_test.consumer, selector: ExactVersion { number: new_version } },
+      ],
+    },
+    retirement: DisableOnly,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The verifier: does the key in version N actually mint?
+// ---------------------------------------------------------------------------
+
+// The verifier is the restore test the contract owes and the consumer evidence the rotation needs,
+// and it is ONE thing because both ask the same question of the same bytes. The mint itself runs in
+// the fleet-converge step (gunbc.ci_spec gunbc_ci_app_key_version_verify_invoke) through the same
+// prelude the org-admin step mints with — there is one place key material is written, and this
+// module never touches it. What arrives here is an OBSERVATION RECORD: the HTTP status Secret
+// Manager answered for the exact version, the resource name it said it answered about, and the
+// status line GitHub answered to the installation-token exchange. None of those is credential
+// material. The verdict is decided here, over that record, so every refusal is typed and located
+// rather than a shell exit status.
+//
+// The selector is admitted before anything else, and the alias is refused rather than resolved:
+// `latest` means whatever is newest at the instant it resolves, so a mint through it is compatible
+// with every version the secret has ever held and proves nothing about the one being made live.
+
+data app_key_version_env_name: NonEmptyStr = "APP_KEY_VERSION"
+data app_key_verify_record_env_name: NonEmptyStr = "APP_KEY_VERIFY_RECORD"
+data app_key_verify_receipt_path: String = "target/app-key-version-verify-receipt.txt"
+
+// The record's keys, spelled once and read by the step that writes them (gunbc.ci_spec).
+data app_key_record_key_status_key: String = "key_http_status"
+data app_key_record_resolved_name_key: String = "resolved_name"
+data app_key_record_token_status_key: String = "token_status_line"
+
+type AppKeyVersionSelectorAdmission
+  = AppKeyVersionAdmitted { version: NonEmptyStr }
+  | AppKeyVersionSelectorRefused { cause: AppKeyVersionRefusal }
+
+type AppKeyVersionRefusal
+  = AppKeyVersionSelectorMissing
+  | AppKeyVersionSelectorIsAlias
+  | AppKeyVersionSelectorNotANumber { supplied: String }
+  | AppKeyMintObservationAbsent { cause: NonEmptyStr }
+  | AppKeyVersionUnreadable { http_status: String }
+  | AppKeyResolvedVersionUndecodable { cause: SmResolvedVersionIdentityRefusal }
+  | AppKeyResolvedVersionDiffers { requested: String, resolved: String }
+  | AppKeyInstallationTokenUnobserved
+  | AppKeyInstallationTokenRefused { status_line: String }
+
+type AppKeyVersionVerdict
+  = AppKeyVersionMints { version: SmResolvedVersionIdentity }
+  | AppKeyVersionRefused { cause: AppKeyVersionRefusal }
+
+fn admit_app_key_version_selector(requested: String) -> AppKeyVersionSelectorAdmission {
+  if requested == "" {
+    AppKeyVersionSelectorRefused { cause: AppKeyVersionSelectorMissing }
+  } else {
+    match classify_version_selector(version: requested as NonEmptyStr) {
+      AliasLatest => AppKeyVersionSelectorRefused { cause: AppKeyVersionSelectorIsAlias }
+      ExactVersion { number: n } =>
+        if sm_version_id_is_number(version: n as String) {
+          AppKeyVersionAdmitted { version: n }
+        } else {
+          AppKeyVersionSelectorRefused { cause: AppKeyVersionSelectorNotANumber { supplied: requested } }
+        }
+    }
+  }
+}
+
+type AppKeyMintObservation {
+  key_http_status: String?
+  resolved_name: String?
+  token_status_line: String?
+}
+
+fn record_line_value(line: String, key: String) -> String? {
+  let prefix = concat(key, " ")
+  if starts_with(s: line, prefix: prefix) {
+    Present { value: substring(s: line, start: prefix.length(), end: line.length()) }
+  } else {
+    none
+  }
+}
+
+fn record_value(record: String, key: String) -> String? {
+  fold_list(
+    xs: split(s: record, delimiter: "\n"),
+    empty: none,
+    cons: fn(acc, line) {
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => record_line_value(line: line, key: key)
+      }
+    }
+  )
+}
+
+fn decode_app_key_mint_record(record: String) -> AppKeyMintObservation {
+  AppKeyMintObservation {
+    key_http_status: record_value(record: record, key: app_key_record_key_status_key),
+    resolved_name: record_value(record: record, key: app_key_record_resolved_name_key),
+    token_status_line: record_value(record: record, key: app_key_record_token_status_key),
+  }
+}
+
+// GitHub answers a successful installation-token exchange 201 Created
+// (extdeps.github.org_admin_auth installation_token_citation); the status line carries the code as
+// its second word, so the test is on that word rather than on a substring of the whole line.
+fn status_line_is_created(line: String) -> Bool {
+  match split(s: line, delimiter: " ") |> skip(n: 1) |> first {
+    Present { value: code } => code == "201"
+    Absent => false
+  }
+}
+
+// The order is the order of the evidence: a version that could not be read has no resolved name to
+// check, and a resolved name that is not the requested version has signed nothing worth reporting
+// on. Each arm names what the operator must inspect, and none reports `unverified` as a pass.
+fn verify_app_key_version(
+  secret: SecretRef,
+  version: NonEmptyStr,
+  observation: AppKeyMintObservation,
+) -> AppKeyVersionVerdict {
+  let requested = secret_version_at(secret: secret, version: version)
+  match observation.key_http_status {
+    Absent =>
+      AppKeyVersionRefused {
+        cause: AppKeyMintObservationAbsent { cause: "the mint step recorded no Secret Manager status for the exact version" as NonEmptyStr },
+      }
+    Present { value: status } =>
+      if status != "200" {
+        AppKeyVersionRefused { cause: AppKeyVersionUnreadable { http_status: status } }
+      } else {
+        match decode_sm_resolved_version_identity_wire(
+          name: match observation.resolved_name {
+            Present { value: n } => n
+            Absent => ""
+          },
+        ) {
+          SmResolvedVersionIdentityDecodeRefused { cause: c } =>
+            AppKeyVersionRefused { cause: AppKeyResolvedVersionUndecodable { cause: c } }
+          SmResolvedVersionIdentityDecoded { identity: identity } =>
+            if !resolved_identity_matches_request(identity: identity, requested: requested) {
+              AppKeyVersionRefused {
+                cause: AppKeyResolvedVersionDiffers {
+                  requested: secret_ref_version_resource(ref: requested),
+                  resolved: identity as String,
+                },
+              }
+            } else {
+              match observation.token_status_line {
+                Absent => AppKeyVersionRefused { cause: AppKeyInstallationTokenUnobserved }
+                Present { value: line } =>
+                  if status_line_is_created(line: line) {
+                    AppKeyVersionMints { version: identity }
+                  } else {
+                    AppKeyVersionRefused { cause: AppKeyInstallationTokenRefused { status_line: line } }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+// THE ROUTE INTO THE KERNEL. The verdict is consumer evidence for the rotation's census: a mint on
+// version N is ResolvedVersionObserved naming the identity Secret Manager answered about, and every
+// refusal is ConsumerUnreachable carrying its cause — never success-only, and never absent, so a
+// failed verification is a named refusal in the rotation's receipt rather than a missing row.
+fn app_key_verdict_evidence(verdict: AppKeyVersionVerdict) -> ConsumerVersionEvidence {
+  match verdict {
+    AppKeyVersionMints { version: v } =>
+      ResolvedVersionObserved { consumer: ci_app_key_consumer_id, resolved: v }
+    AppKeyVersionRefused { cause: c } =>
+      ConsumerUnreachable { consumer: ci_app_key_consumer_id, cause: app_key_refusal_text(cause: c) as NonEmptyStr }
+  }
+}
+
+fn app_key_refusal_text(cause: AppKeyVersionRefusal) -> String {
+  match cause {
+    AppKeyVersionSelectorMissing =>
+      join(["AppKeyVersionSelectorMissing: ", app_key_version_env_name as String, " is empty; name the exact Secret Manager version number to verify"], "")
+    AppKeyVersionSelectorIsAlias =>
+      "AppKeyVersionSelectorIsAlias: `latest` is a moving alias and names no version until it resolves; a mint through it proves nothing about the bytes being verified -- name the version number"
+    AppKeyVersionSelectorNotANumber { supplied: s } =>
+      join(["AppKeyVersionSelectorNotANumber: '", s, "' is not a Secret Manager version number"], "")
+    AppKeyMintObservationAbsent { cause: c } =>
+      concat("AppKeyMintObservationAbsent: ", c as String)
+    AppKeyVersionUnreadable { http_status: s } =>
+      join([
+        "AppKeyVersionUnreadable: Secret Manager answered HTTP ", s,
+        " for the exact version; 404 means the version does not exist, 400 FAILED_PRECONDITION that it is disabled or destroyed, 403 that the principal cannot read it -- loss remedy: ",
+        rotation_loss_remedy_text(remedy: ci_app_key_contract.loss_remedy)
+      ], "")
+    AppKeyResolvedVersionUndecodable { cause: c } =>
+      match c {
+        SmResolvedVersionIdentityEmpty => "AppKeyResolvedVersionUndecodable: Secret Manager's response named no version"
+        SmResolvedVersionIdentityMalformed => "AppKeyResolvedVersionUndecodable: Secret Manager's response named a malformed version resource"
+      }
+    AppKeyResolvedVersionDiffers { requested: r, resolved: v } =>
+      join(["AppKeyResolvedVersionDiffers: requested ", r, " and Secret Manager answered about ", v, "; the mint signed with bytes other than the ones being verified"], "")
+    AppKeyInstallationTokenUnobserved =>
+      "AppKeyInstallationTokenUnobserved: the mint step recorded no GitHub status for the installation-token exchange"
+    AppKeyInstallationTokenRefused { status_line: l } =>
+      join([
+        "AppKeyInstallationTokenRefused: GitHub answered '", l,
+        "' to the installation-token exchange signed with this version; 401 means GitHub does not accept this key (deleted from the App, or never registered) -- loss remedy: ",
+        rotation_loss_remedy_text(remedy: ci_app_key_contract.loss_remedy)
+      ], "")
+  }
+}
+
+fn deadline_standing_text(standing: RotationDeadlineStanding) -> String {
+  match standing {
+    RotationDeadlineAhead { rotate_by: d } => concat("ahead rotate_by=", d as String)
+    RotationDeadlinePassed { rotate_by: d, observed_at: n } =>
+      join(["PASSED rotate_by=", d as String, " observed_at=", n as String], "")
+    RotationDeadlineUndecidable { cause: c } => concat("undecidable: ", c as String)
+  }
+}
+
+fn verdict_text(verdict: AppKeyVersionVerdict) -> String {
+  match verdict {
+    AppKeyVersionMints { version: v } => concat("mints version=", v as String)
+    AppKeyVersionRefused { cause: c } => concat("refused ", app_key_refusal_text(cause: c))
+  }
+}
+
+fn app_key_verify_receipt_text(requested: String, verdict: AppKeyVersionVerdict, deadline: RotationDeadlineStanding, observed_at: NonEmptyStr) -> String {
+  join([
+    "app-key-version-verify subject=", secret_ref_version_resource(ref: ci_app_key_contract.subject),
+    " requested_version=", requested,
+    " verdict=", verdict_text(verdict: verdict),
+    " rotation_deadline=", deadline_standing_text(standing: deadline),
+    " observed_at=", observed_at as String, "\n"
+  ], "")
+}
+
+// The outcome a run reports: the key must mint on the exact version AND the contract's deadline must
+// not have passed. A key that mints past its deadline is still a finding the operator owes a
+// rotation for, so it refuses rather than passing with a note; an undecidable deadline refuses
+// too, because an instant that cannot be ordered against the deadline is not known to be before it.
+fn app_key_verify_exit(verdict: AppKeyVersionVerdict, deadline: RotationDeadlineStanding) -> ProcessExit {
+  match verdict {
+    AppKeyVersionRefused { cause: c } => exit_failure(reason: app_key_refusal_text(cause: c))
+    AppKeyVersionMints { version: _ } =>
+      match deadline {
+        RotationDeadlineAhead { rotate_by: _ } => ExitSuccess
+        RotationDeadlinePassed { rotate_by: _, observed_at: _ } =>
+          exit_failure(reason: concat("AppKeyRotationDeadlinePassed: the key mints, and its contract's rotation deadline has passed -- ", deadline_standing_text(standing: deadline)))
+        RotationDeadlineUndecidable { cause: c } =>
+          exit_failure(reason: concat("AppKeyRotationDeadlineUndecidable: ", c as String))
+      }
+  }
+}
+
+fn env_or_empty(name: NonEmptyStr) -> String {
+  match shell.Env.Get(name: name).value {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn observe_app_key_mint_record() -> AppKeyMintObservation? {
+  let path = env_or_empty(name: app_key_verify_record_env_name)
+  if path == "" {
+    none
+  } else {
+    let read = Filesystem.Read(path: path)
+    if !read.success {
+      none
+    } else {
+      Present { value: decode_app_key_mint_record(record: read.content) }
+    }
+  }
+}
+
+fn ci_app_key_version_verify_wet() -> ProcessExit {
+  let requested = env_or_empty(name: app_key_version_env_name)
+  let observed_at = clock_now_probed_at_or_unknown()
+  let deadline = rotation_deadline_standing(contract: ci_app_key_contract, now: observed_at as Rfc3339Timestamp)
+  let verdict = match admit_app_key_version_selector(requested: requested) {
+    AppKeyVersionSelectorRefused { cause: c } => AppKeyVersionRefused { cause: c }
+    AppKeyVersionAdmitted { version: n } =>
+      match observe_app_key_mint_record() {
+        Absent =>
+          AppKeyVersionRefused {
+            cause: AppKeyMintObservationAbsent { cause: "the mint step's observation record is absent or unreadable" as NonEmptyStr },
+          }
+        Present { value: obs } => verify_app_key_version(secret: ci_app_key_contract.subject, version: n, observation: obs)
+      }
+  }
+  let wrote = Filesystem.Write(
+    path: app_key_verify_receipt_path,
+    content: app_key_verify_receipt_text(requested: requested, verdict: verdict, deadline: deadline, observed_at: observed_at),
+  )
+  if !wrote.success {
+    exit_failure(reason: concat("AppKeyVerifyReceiptWriteRefused: ", wrote.error))
+  } else {
+    app_key_verify_exit(verdict: verdict, deadline: deadline)
+  }
+}
