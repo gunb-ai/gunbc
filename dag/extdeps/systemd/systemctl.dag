@@ -324,17 +324,67 @@ fn systemctl_status_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "status", "--no-pager", "--full", unit as String]
 }
 
+// `masked-runtime` IS A STATE systemd REPORTS AND THIS VOCABULARY DID NOT CARRY, so a consumer
+// reading enablement had to either fall through it or re-spell it locally. It is distinct from
+// `masked` in the way that matters to anything reasoning about durability: a runtime mask lives under
+// /run and is gone at the next boot.
 type UnitFileState
   = UnitEnabled
   | UnitEnabledRuntime
   | UnitLinked
   | UnitMasked
+  | UnitMaskedRuntime
   | UnitStatic
   | UnitDisabled
   | UnitIndirect
   | UnitGenerated
   | UnitTransient
   | UnitBad
+
+// THE WIRE BOUNDARY, READ IN BOTH DIRECTIONS, AND `none` IS THE UNRECOGNIZED READING.
+//
+// `systemctl show --property=UnitFileState --value` returns one of these words, and consumers were
+// comparing the raw string against locally spelled literals -- a second authority for a vocabulary
+// this type already owns, free to drift from the upstream it cites. The parse's absent arm is the
+// three-valued answer such consumers were hand-rolling: a spelling systemd added that this model does
+// not know is UNKNOWN, never a default.
+// THE PARSE COMPARES AGAINST THE WIRE FUNCTION RATHER THAN RE-SPELLING ITS WORDS. The first version
+// hand-wrote all eleven here while `unit_file_state_wire` below wrote them again -- two authorities
+// for one cited vocabulary, and the drift between them would have failed SILENTLY: a corrected or
+// added state reaches `none`, which a consumer reads as "systemd said a word this model does not
+// know" and reports as an unreadable host. A spelling defect presenting as an unobservable machine is
+// the worst shape a fork of this kind can take. The sibling in this same change,
+// `parse_systemd_unit_load_state`, was already built this way.
+fn parse_unit_file_state(raw: String) -> UnitFileState? {
+  if raw == unit_file_state_wire(s: UnitEnabled) { Present { value: UnitEnabled } }
+  else { if raw == unit_file_state_wire(s: UnitEnabledRuntime) { Present { value: UnitEnabledRuntime } }
+  else { if raw == unit_file_state_wire(s: UnitLinked) { Present { value: UnitLinked } }
+  else { if raw == unit_file_state_wire(s: UnitMasked) { Present { value: UnitMasked } }
+  else { if raw == unit_file_state_wire(s: UnitMaskedRuntime) { Present { value: UnitMaskedRuntime } }
+  else { if raw == unit_file_state_wire(s: UnitStatic) { Present { value: UnitStatic } }
+  else { if raw == unit_file_state_wire(s: UnitDisabled) { Present { value: UnitDisabled } }
+  else { if raw == unit_file_state_wire(s: UnitIndirect) { Present { value: UnitIndirect } }
+  else { if raw == unit_file_state_wire(s: UnitGenerated) { Present { value: UnitGenerated } }
+  else { if raw == unit_file_state_wire(s: UnitTransient) { Present { value: UnitTransient } }
+  else { if raw == unit_file_state_wire(s: UnitBad) { Present { value: UnitBad } }
+  else { none } } } } } } } } } } }
+}
+
+fn unit_file_state_wire(s: UnitFileState) -> String {
+  match s {
+    UnitEnabled => "enabled"
+    UnitEnabledRuntime => "enabled-runtime"
+    UnitLinked => "linked"
+    UnitMasked => "masked"
+    UnitMaskedRuntime => "masked-runtime"
+    UnitStatic => "static"
+    UnitDisabled => "disabled"
+    UnitIndirect => "indirect"
+    UnitGenerated => "generated"
+    UnitTransient => "transient"
+    UnitBad => "bad"
+  }
+}
 
 service systemd.Systemctl {
   operation Enable {

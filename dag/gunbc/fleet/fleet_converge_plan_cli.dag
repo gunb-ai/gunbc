@@ -58,7 +58,7 @@ import product.placement_supply { HostIdentity }
 import extdeps.github.actions_runner {
   actions_runner_registration_file_name,
   actions_runner_registration_decode,
-  ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable,
+  ActionsRunnerRegistrationDecoded, ActionsRunnerRegistrationUnreadable, ActionsRunnerRegistrationRecord,
   ActionsRunnerRegistrationPersistent, ActionsRunnerRegistrationEphemeral,
 }
 import gunbc.runner_unit { runner_unit_name_of_registration }
@@ -1452,8 +1452,8 @@ fn observe_runner_slot_registration_wet(present: Bool, path: String) -> RunnerSl
     } else {
       match actions_runner_registration_decode(raw: read.content) {
         ActionsRunnerRegistrationUnreadable { reason } => SlotRegistrationUnreadable { reason: reason }
-        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => SlotRegisteredEphemeral
-        ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent } => SlotRegisteredPersistent
+        ActionsRunnerRegistrationDecoded { record: ActionsRunnerRegistrationRecord { identity: _, lifecycle: ActionsRunnerRegistrationEphemeral } } => SlotRegisteredEphemeral
+        ActionsRunnerRegistrationDecoded { record: ActionsRunnerRegistrationRecord { identity: _, lifecycle: ActionsRunnerRegistrationPersistent } } => SlotRegisteredPersistent
       }
     }
   }

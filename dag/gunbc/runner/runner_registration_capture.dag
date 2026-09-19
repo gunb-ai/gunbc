@@ -1,0 +1,647 @@
+module gunbc.runner_registration_capture
+
+import std.types { Bool, List, String, NonEmptyStr, Int, list_length }
+import std.algebra { trim }
+import product.placement_supply { HostIdentity }
+import extdeps.github.github { github_organization_url }
+import extdeps.github.actions_runner {
+  ActionsRunnerRegistration,
+  ActionsRunnerRegistrationPersistent,
+  ActionsRunnerRegistrationEphemeral,
+  ActionsRunnerRegistrationRead,
+  ActionsRunnerRegistrationDecoded,
+  ActionsRunnerRegistrationUnreadable,
+  ActionsRunnerRegistrationRecord,
+  ActionsRunnerCapturedIdentity,
+  actions_runner_registration_decode,
+  actions_runner_instance_dir,
+}
+import gunbc.legacy_slot_incarnation_name {
+  RegistrationNameMatch,
+  MatchedBareSlotName,
+  MatchedJitInstance,
+  RegistrationNameNoMatch,
+  match_registration_name_to_slot,
+  registration_name_match_is_slot,
+  registration_name_match_wire,
+}
+import gunbc.runner_unit { runner_unit_name_of_registration }
+import gunbc.runner_host_deploy {
+  runner_host_spec_for,
+  RunnerHostSpecFound,
+  RunnerHostSpecAbsent,
+  github_app_runner_org,
+}
+import gunbc.fleet_runner_connectivity { host_registration_name_for_slot }
+import std.nat { Nat, nat_range_inclusive }
+
+// A CAPTURE IS A BINDING BETWEEN FOUR IDENTITIES, NOT A NAME.
+//
+// The subject of a retirement is not one string. srv2's first record is:
+//
+//     stable slot          srv2-02
+//     local unit           actions-runner@srv2-02.service
+//     capture location     /opt/actions-runner/srv2-02/.runner
+//     remote registration  organization gunb-ai, registration id 251463
+//     reported name        srv2-02-1789774588-3693107
+//
+// THOSE ARE NOT PROJECTIONS OF ONE NAME AND THE MODEL MUST NOT TREAT THEM AS ONE. A stable slot hosts
+// SUCCESSIVE registration incarnations; the full remote name and the numeric id describe exactly one
+// of them. Carrying a `List<registration-name>` collapses that, and the collapse shows up
+// immediately: mapping a captured name through the unit projection yields
+// `actions-runner@srv2-02-1789774588-3693107.service`, which is not any unit on the host, while
+// mapping only the bare slot throws away the identity needed to address the remote object.
+//
+// SO THE LOCAL UNIT IS DERIVED FROM THE SLOT AND THE REMOTE OBJECT IS ADDRESSED BY ITS ID, and both
+// travel in one record so neither can be recovered by guessing from the other.
+// THE CANONICAL SLOT VOCABULARY LIVES HERE, WITH THE CAPTURE THAT CORROBORATES AGAINST IT. It was
+// declared in the retirement module and is consumed by both; one home rather than two spellings of
+// "which names does this host issue".
+data registration_discovery_bound: Nat = 50
+
+fn canonical_slot_index_of(host: HostIdentity, name: NonEmptyStr) -> Nat? {
+  fold(
+    nat_range_inclusive(lo: 1, hi: registration_discovery_bound),
+    init: none,
+    f: (acc, i) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if registration_name_match_is_slot(
+            m: match_registration_name_to_slot(
+              name: name,
+              slot_instance: host_registration_name_for_slot(host: host, slot_index: i) as String,
+            ),
+          ) {
+            Present { value: i }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+// THE CAPTURE CONTEXT IS ADMITTED, NOT ASSEMBLED FROM FREE STRINGS.
+//
+// `capture_admission` used to take host, slot_instance and capture_path as independent arguments and
+// copy the first and third straight into the binding. Only the NAME was corroborated, so two
+// contradictions were accepted with a perfectly valid srv2-02 `.runner` body: a path naming
+// `/opt/actions-runner/srv2-05/.runner` beside slot `srv2-02`, and host `srv3` beside slot `srv2-02`.
+// Co-locating three unrelated strings in one record is not a binding; it is a record shaped like one.
+//
+// SO THE CONTEXT IS MINTED ONCE, FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS: the slot must be a
+// canonical slot name of the host, the installation path is DERIVED from
+// `runner_slot_provision` `runner_slot_instance_dir` rather than supplied, and the admitted
+// organization comes from the host's own GitHub App row rather than from the file or a route literal.
+// `sole_constructor` means no caller can assemble one some other way.
+type CaptureContext sole_constructor {
+  host: HostIdentity
+  slot_instance: NonEmptyStr
+  slot_index: Nat
+  installation_path: NonEmptyStr
+  organization: NonEmptyStr
+}
+
+type CaptureContextAdmission
+  = CaptureContextAdmitted { context: CaptureContext }
+  | CaptureContextRefused { cause: String }
+
+data capture_registration_file_name: String = ".runner"
+
+fn capture_expected_path(slot_instance: NonEmptyStr) -> NonEmptyStr {
+  join([actions_runner_instance_dir(instance_name: slot_instance) as String, "/", capture_registration_file_name], "") as NonEmptyStr
+}
+
+// THE ORGANIZATION COMES FROM THE HOST'S OWN SPEC, WHICH A REFUSED WIDTH DOES NOT REMOVE.
+// `runner_host_spec_for` is the lookup that names a host whatever its admitted width resolved to --
+// which is exactly srv2's situation, and exactly why the deploy resolution would have been the wrong
+// authority to ask.
+fn host_admitted_organization(host: HostIdentity) -> NonEmptyStr? {
+  match runner_host_spec_for(host: host) {
+    RunnerHostSpecFound { spec: sp } => Present { value: github_app_runner_org(config: sp.app) }
+    RunnerHostSpecAbsent { host: _ } => none
+  }
+}
+
+fn capture_context_for(host: HostIdentity, slot_instance: NonEmptyStr) -> CaptureContextAdmission {
+  match canonical_slot_index_of(host: host, name: slot_instance) {
+    Absent =>
+      CaptureContextRefused {
+        cause: join([slot_instance as String, " is not a canonical slot name of ", host as String, ", so no installation of that host is named by it"], ""),
+      }
+    Present { value: i } =>
+      if (slot_instance as String) != (host_registration_name_for_slot(host: host, slot_index: i) as String) {
+        CaptureContextRefused {
+          cause: join([
+            slot_instance as String, " RECOGNIZES slot ", host_registration_name_for_slot(host: host, slot_index: i) as String,
+            " but is not that slot: it is a registration INCARNATION of it. A stable slot is what the host owns and what its unit and installation path are named after; an incarnation is one registration that slot made, and the suffix is minted per registration. Admitting it here would derive the unit and the path from the incarnation, which is the wrong subject and not a tree that exists. Supply the canonical slot name -- the suffix decoder stays available to the registration and roster consumers, which are asking the other question",
+          ], ""),
+        }
+      } else {
+        match host_admitted_organization(host: host) {
+          Absent =>
+            CaptureContextRefused {
+              cause: join([host as String, " has no modeled runner host row, so it has no admitted GitHub organization to scope a registration in"], ""),
+            }
+          Present { value: org } =>
+            CaptureContextAdmitted {
+              context: CaptureContext {
+                host: host,
+                slot_instance: slot_instance,
+                slot_index: i,
+                installation_path: capture_expected_path(slot_instance: slot_instance),
+                organization: org,
+              },
+            }
+        }
+      }
+  }
+}
+
+type CaptureProvenance {
+  observed_on: NonEmptyStr
+  method: NonEmptyStr
+}
+
+type RunnerRegistrationBinding {
+  host: HostIdentity
+  slot_instance: NonEmptyStr
+  capture_path: NonEmptyStr
+  organization: NonEmptyStr
+  agent_id: Int
+  agent_name: NonEmptyStr
+  lifecycle: ActionsRunnerRegistration
+  provenance: CaptureProvenance
+}
+
+// THE FILE IS ADMITTED LOCAL EVIDENCE, NOT AN UNFORGEABLE CERTIFICATE. It is trusted because the
+// observation procedure was authorized and the location was corroborated -- not because a runner
+// wrote it. So a capture whose decoded name points at a different slot than the directory it was
+// found under is UNRESOLVED, and it is not resolved by preferring the directory, preferring the name,
+// or taking the later record. Neither side is more authoritative; their disagreement is the finding.
+type CaptureAdmission
+  = CaptureBound { binding: RunnerRegistrationBinding }
+  | CaptureUnresolved { capture_path: NonEmptyStr, cause: String }
+
+// THE OBSERVED PATH AND THE DECODED ORGANIZATION ARE CORROBORATED, NOT PROMOTED.
+//
+// The path the observation reports must be the one the context derives -- a `.runner` read from a
+// different installation is a copied file however well its contents decode. And the `GitHubUrl` the
+// file carries must name the admitted organization: an org-scoped runner address is meaningless
+// against a repository-scoped or otherwise unadmitted URL, and promoting any nonempty string from the
+// file to `organization` made the file its own authority on scope.
+fn capture_admission(
+  context: CaptureContext,
+  observed_path: NonEmptyStr,
+  raw: String,
+  provenance: CaptureProvenance,
+) -> CaptureAdmission {
+  if (observed_path as String) != (context.installation_path as String) {
+    CaptureUnresolved {
+      capture_path: observed_path,
+      cause: join([
+        "this capture was read from ", observed_path as String,
+        " while ", context.slot_instance as String, "'s installation is ", context.installation_path as String,
+        "; a registration file found outside the installation it is claimed for is not that slot's evidence",
+      ], ""),
+    }
+  } else {
+    match actions_runner_registration_decode(raw: raw) {
+      ActionsRunnerRegistrationUnreadable { reason: r } =>
+        CaptureUnresolved { capture_path: observed_path, cause: join(["the captured .runner could not be decoded: ", r], "") }
+      ActionsRunnerRegistrationDecoded { record: rec } =>
+        if !capture_url_names_organization(url: rec.identity.github_url, organization: context.organization) {
+          CaptureUnresolved {
+            capture_path: observed_path,
+            cause: join([
+              "the captured GitHubUrl ", rec.identity.github_url as String,
+              " does not name the admitted organization ", context.organization as String,
+              "; a registration scoped elsewhere is not addressable as this estate's",
+            ], ""),
+          }
+        } else {
+          let m = match_registration_name_to_slot(
+            name: rec.identity.agent_name,
+            slot_instance: context.slot_instance as String,
+          )
+          if !registration_name_match_is_slot(m: m) {
+            CaptureUnresolved {
+              capture_path: observed_path,
+              cause: join([
+                "the captured registration name ", rec.identity.agent_name as String,
+                " does not decode to ", context.slot_instance as String,
+                ", the slot whose installation this file was found under (", registration_name_match_wire(m: m),
+                "); a copied or misplaced capture is not resolved by preferring the directory or the name",
+              ], ""),
+            }
+          } else {
+            CaptureBound {
+              binding: RunnerRegistrationBinding {
+                host: context.host,
+                slot_instance: context.slot_instance,
+                capture_path: context.installation_path,
+                organization: context.organization,
+                agent_id: rec.identity.agent_id,
+                agent_name: rec.identity.agent_name,
+                lifecycle: rec.lifecycle,
+                provenance: provenance,
+              },
+            }
+          }
+        }
+    }
+  }
+}
+
+// THE ADMITTED ORG IS A LOGIN AND THE FILE CARRIES A URL, so the comparison is against the canonical
+// organization URL that login projects to, whole. The previous reading compared only the URL's LAST
+// PATH SEGMENT, and the annotation above it claimed that separated organization from repository
+// scope. It did not: the repository URL https://github.com/another-owner/gunb-ai ends in the login
+// and passed, as did https://example.invalid/gunb-ai and the bare string gunb-ai, neither of which
+// establishes the admitted GitHub origin at all. The segment test could not have separated the
+// scopes, because the scopes differ in what PRECEDES the login as much as in what follows it.
+fn capture_url_names_organization(url: NonEmptyStr, organization: NonEmptyStr) -> Bool {
+  (url as String) == (github_organization_url(login: organization) as String)
+}
+
+// THE LOCAL UNIT COMES FROM THE SLOT. This is the projection the previous shape got wrong, and it is
+// one line here precisely because the binding already separated the two identities.
+fn binding_local_unit(b: RunnerRegistrationBinding) -> NonEmptyStr {
+  runner_unit_name_of_registration(registration_name: b.slot_instance)
+}
+
+// THE REMOTE SUBJECT IS THE ORGANIZATION AND THE NUMERIC ID, which is what GitHub's organization
+// runner GET and DELETE endpoints address. The name is carried for corroboration and is never the
+// address.
+type RemoteRegistrationSubject {
+  organization: NonEmptyStr
+  agent_id: Int
+  reported_name: NonEmptyStr
+}
+
+fn binding_remote_subject(b: RunnerRegistrationBinding) -> RemoteRegistrationSubject {
+  RemoteRegistrationSubject {
+    organization: b.organization,
+    agent_id: b.agent_id,
+    reported_name: b.agent_name,
+  }
+}
+
+fn binding_wire(b: RunnerRegistrationBinding) -> String {
+  join([
+    "slot=", b.slot_instance as String,
+    " unit=", binding_local_unit(b: b) as String,
+    " org=", b.organization as String,
+    " agent_id=", to_string(b.agent_id),
+    " name=", b.agent_name as String,
+    " observed_on=", b.provenance.observed_on as String,
+  ], "")
+}
+
+
+// ── ONE SLOT, MANY REGISTRATIONS ──────────────────────────────────────────────────────────────
+//
+// A stable slot can have had several successive registrations, and the two obligations they create
+// have DIFFERENT GRAINS. Locally there is one unit to inhibit and one tree to account for however
+// many incarnations registered from it. Remotely there is one object per registration id, and
+// collapsing two incarnations because they decode to the same slot loses one of them -- which is the
+// direction that leaves a live registration behind.
+//
+// SO THE TWO DEDUPLICATIONS ARE DIFFERENT FUNCTIONS OVER THE SAME BINDINGS, and neither is derivable
+// from the other's output.
+fn local_unit_obligations(bindings: List<RunnerRegistrationBinding>) -> List<NonEmptyStr> {
+  fold(
+    bindings,
+    init: [],
+    f: (acc, b) => {
+      let u = binding_local_unit(b: b)
+      if any(acc, x => (x as String) == (u as String)) { acc } else { concat(acc, [u]) }
+    },
+  )
+}
+
+fn remote_registration_obligations(bindings: List<RunnerRegistrationBinding>) -> List<RemoteRegistrationSubject> {
+  fold(
+    bindings,
+    init: [],
+    f: (acc, b) => {
+      let s = binding_remote_subject(b: b)
+      if any(acc, x => x.agent_id == s.agent_id && (x.organization as String) == (s.organization as String)) {
+        acc
+      } else {
+        concat(acc, [s])
+      }
+    },
+  )
+}
+
+// ONE ID ATTRIBUTED TO TWO SLOTS IS A CONTRADICTION, NOT TWO FACTS. A registration is one remote
+// object; two captures claiming it for different installations cannot both be sound, and choosing
+// either would be the silent conflict resolution the trust boundary forbids.
+// TWO KINDS OF DISAGREEMENT, AND THE FIRST VERSION SAW ONLY ONE. It rejected one scoped id attributed
+// to different SLOT strings and left two bindings with the same id and slot but CONFLICTING NAMES
+// coherent -- after which the lookup and the remote-obligation fold both took the first record and
+// discarded the other name. A repeated observation that AGREES is one fact seen twice; two different
+// full incarnation names for one registration id are two claims about one remote object, and picking
+// the earlier is a selection rule standing where a refusal belongs.
+type CaptureCoherence
+  = CapturesCoherent
+  | CaptureIdAttributedTwice { agent_id: Int, first_slot: NonEmptyStr, second_slot: NonEmptyStr }
+  | CaptureIdNameConflict { agent_id: Int, first_name: NonEmptyStr, second_name: NonEmptyStr }
+
+fn capture_coherence(bindings: List<RunnerRegistrationBinding>) -> CaptureCoherence {
+  fold(
+    bindings,
+    init: CapturesCoherent,
+    f: (acc, b) =>
+      match acc {
+        CaptureIdAttributedTwice { agent_id: _, first_slot: _, second_slot: _ } => acc
+        CaptureIdNameConflict { agent_id: _, first_name: _, second_name: _ } => acc
+        CapturesCoherent => {
+          let same_id = bindings |> filter(o =>
+            o.agent_id == b.agent_id && (o.organization as String) == (b.organization as String))
+          let slot_clash = same_id |> filter(o => (o.slot_instance as String) != (b.slot_instance as String))
+          let name_clash = same_id |> filter(o => (o.agent_name as String) != (b.agent_name as String))
+          if list_length(items: slot_clash) > 0 {
+            CaptureIdAttributedTwice {
+              agent_id: b.agent_id,
+              first_slot: b.slot_instance,
+              second_slot: slot_clash.first().slot_instance,
+            }
+          } else if list_length(items: name_clash) > 0 {
+            CaptureIdNameConflict {
+              agent_id: b.agent_id,
+              first_name: b.agent_name,
+              second_name: name_clash.first().agent_name,
+            }
+          } else {
+            CapturesCoherent
+          }
+        }
+      },
+  )
+}
+
+
+// ── THE LOCAL SLOT POPULATION IS NOT THE IMAGE OF THE REGISTRATION BINDINGS ───────────────────
+//
+// THE CENSUS IS THE DISCRIMINATOR AND IT DOES NOT AGREE WITH ITSELF ACROSS THE TWO SIDES:
+//
+//     observed local trees        01 02 03 04 05 11 12      (seven)
+//     captured registration ids      02       05 11 12      (four)
+//
+// Deriving local obligations from `local_unit_obligations(bindings)` yields FOUR local units and
+// silently omits three trees that exist on the machine. The only way that fold could have covered
+// them is if every local slot had a registration record, and `RunnerRegistrationBinding` requires an
+// AgentId, an AgentName and an organization -- so a slot whose `.runner` is POSITIVELY ABSENT has no
+// shape in it at all. Calling those three captures "unresolved" instead would avoid the omission by
+// making a genuinely absent registration permanently unresolvable, which is the opposite error.
+// Neither reading describes the estate.
+//
+// SO A LOCAL SLOT IS ITS OWN SUBJECT AND ITS REGISTRATION ASSOCIATIONS HANG OFF IT. Zero, one or
+// several: a slot with no registration is a local retirement subject with nothing owed remotely, and
+// a slot that has registered several times is one local subject with several remote ones. The two
+// obligation grains stay what they were -- unit locally, scoped id remotely -- and neither is derived
+// from the other's list.
+type SlotRegistrationStanding
+  = SlotRegistrationsObserved { bindings: List<RunnerRegistrationBinding> }
+  | SlotRegistrationPositivelyAbsent { evidence: String }
+  | SlotRegistrationUnresolved { cause: String }
+
+type LocalSlotObservation {
+  host: HostIdentity
+  slot_instance: NonEmptyStr
+  installation_path: NonEmptyStr
+  registrations: SlotRegistrationStanding
+}
+
+type LocalSlotPopulation
+  = LocalPopulationComplete { observed_on: NonEmptyStr, slots: List<LocalSlotObservation> }
+  | LocalPopulationPartial { observed_on: NonEmptyStr, slots: List<LocalSlotObservation>, cause: String }
+  | LocalPopulationUnavailable { cause: String }
+
+fn local_population_slots(p: LocalSlotPopulation) -> List<LocalSlotObservation> {
+  match p {
+    LocalPopulationComplete { observed_on: _, slots: ss } => ss
+    LocalPopulationPartial { observed_on: _, slots: ss, cause: _ } => ss
+    LocalPopulationUnavailable { cause: _ } => []
+  }
+}
+
+// ONE LOCAL SUBJECT PER OBSERVED SLOT, whatever its registration standing. This is the fold the
+// obligation consumes, and it never consults a binding: a tree with no `.runner` is exactly as much a
+// retirement subject as one with three.
+fn local_slot_unit_obligations(p: LocalSlotPopulation) -> List<NonEmptyStr> {
+  fold(
+    local_population_slots(p: p),
+    init: [],
+    f: (acc, sl) => {
+      let u = runner_unit_name_of_registration(registration_name: sl.slot_instance)
+      if any(acc, x => (x as String) == (u as String)) { acc } else { concat(acc, [u]) }
+    },
+  )
+}
+
+// THE REMOTE SUBJECTS ARE THE UNION OF EACH SLOT'S ASSOCIATIONS, deduplicated by scoped id. A slot
+// contributes none when its registration is positively absent, which is a real answer rather than a
+// gap: there is nothing to delist and no receipt to write.
+fn local_population_bindings(p: LocalSlotPopulation) -> List<RunnerRegistrationBinding> {
+  fold(
+    local_population_slots(p: p),
+    init: [],
+    f: (acc, sl) =>
+      match sl.registrations {
+        SlotRegistrationsObserved { bindings: bs } => concat(acc, bs)
+        SlotRegistrationPositivelyAbsent { evidence: _ } => acc
+        SlotRegistrationUnresolved { cause: _ } => acc
+      },
+  )
+}
+
+fn local_population_remote_obligations(p: LocalSlotPopulation) -> List<RemoteRegistrationSubject> {
+  remote_registration_obligations(bindings: local_population_bindings(p: p))
+}
+
+// THE POPULATION CLAIM IS ITS OWN QUESTION, exactly as it is for registrations: a partial local read
+// can carry sound per-slot facts and cannot say these are all the trees. A slot whose registration
+// standing is UNRESOLVED also blocks -- the tree is known, and what it owes remotely is not.
+type LocalPopulationStanding
+  = LocalPopulationKnown { observed_on: NonEmptyStr, slots: List<LocalSlotObservation> }
+  | LocalPopulationIncomplete { cause: String }
+
+// A REGISTRATION READ OUT OF ONE INSTALLATION IS THAT INSTALLATION'S EVIDENCE, so an association
+// naming another slot is a disagreement between the read and the tree rather than a fact about
+// either. The enclosing observation was the only thing that knew which installation the file came
+// from, and nothing downstream can recover it: the binding carries its own slot, so a misattributed
+// member would be projected as that other slot's obligation and the tree it was actually read from
+// would look registration-free.
+fn slot_foreign_bindings(observation: LocalSlotObservation) -> List<RunnerRegistrationBinding> {
+  match observation.registrations {
+    SlotRegistrationsObserved { bindings: bs } =>
+      bs |> filter(b =>
+        (b.slot_instance as String) != (observation.slot_instance as String)
+        || (b.host as String) != (observation.host as String))
+    SlotRegistrationPositivelyAbsent { evidence: _ } => []
+    SlotRegistrationUnresolved { cause: _ } => []
+  }
+}
+
+fn local_population_standing(p: LocalSlotPopulation) -> LocalPopulationStanding {
+  match p {
+    LocalPopulationUnavailable { cause: c } => LocalPopulationIncomplete { cause: c }
+    LocalPopulationPartial { observed_on: _, slots: _, cause: c } =>
+      LocalPopulationIncomplete {
+        cause: join(["the local slot population read is partial (", c, "), so it cannot establish that no further owned trees exist"], ""),
+      }
+    LocalPopulationComplete { observed_on: on, slots: ss } => {
+      let unresolved = ss |> filter(sl => match sl.registrations {
+        SlotRegistrationUnresolved { cause: _ } => true
+        SlotRegistrationsObserved { bindings: _ } => false
+        SlotRegistrationPositivelyAbsent { evidence: _ } => false
+      })
+      let misattributed = ss |> filter(sl => list_length(items: slot_foreign_bindings(observation: sl)) > 0)
+      if list_length(items: unresolved) > 0 {
+        LocalPopulationIncomplete {
+          cause: join([to_string(list_length(items: unresolved)), " observed local slot(s) have an unresolved registration standing, so what they owe remotely is not established"], ""),
+        }
+      } else if list_length(items: misattributed) > 0 {
+        LocalPopulationIncomplete {
+          cause: join([
+            to_string(list_length(items: misattributed)),
+            " observed local slot(s) carry a registration binding for a DIFFERENT slot. A registration read out of one installation is that installation's evidence, so an association naming another slot means the read and the tree disagree about whose registration this is, and neither answer can be trusted for either slot",
+          ], ""),
+        }
+      } else {
+        match capture_coherence(bindings: local_population_bindings(p: p)) {
+          CaptureIdAttributedTwice { agent_id: id, first_slot: a, second_slot: b } =>
+            LocalPopulationIncomplete {
+              cause: join([
+                "scoped registration id ", to_string(id), " is attributed to both ", a as String, " and ", b as String,
+                " across the observed local slots; one remote registration cannot belong to two trees, so which tree owes its removal is not established",
+              ], ""),
+            }
+          CaptureIdNameConflict { agent_id: id, first_name: a, second_name: b } =>
+            LocalPopulationIncomplete {
+              cause: join([
+                "scoped registration id ", to_string(id), " appears under two names across the observed local slots, ",
+                a as String, " and ", b as String,
+                "; the remote projection would keep whichever came first, so the name it reports would depend on the read order rather than on the estate",
+              ], ""),
+            }
+          CapturesCoherent => LocalPopulationKnown { observed_on: on, slots: ss }
+        }
+      }
+    }
+  }
+}
+
+fn local_population_wire(p: LocalSlotPopulation) -> String {
+  match p {
+    LocalPopulationComplete { observed_on: on, slots: ss } =>
+      join(["complete observed_on=", on as String, " slots=", to_string(list_length(items: ss))], "")
+    LocalPopulationPartial { observed_on: on, slots: ss, cause: c } =>
+      join(["PARTIAL observed_on=", on as String, " slots=", to_string(list_length(items: ss)), " cause=", c], "")
+    LocalPopulationUnavailable { cause: c } => join(["UNAVAILABLE ", c], "")
+  }
+}
+
+// ── COMPLETENESS IS A DIFFERENT QUESTION FROM PER-MEMBER EVIDENCE ─────────────────────────────
+//
+// An earlier shape refused ownership from ANY partial capture, which is too coarse and was corrected
+// on review. A partial census can establish a perfectly sound binding for a member it DID observe; it
+// simply cannot establish that no other bindings exist. Those are separate claims with separate
+// consumers -- per-member ownership decides whether this identity is ours to reconcile, and
+// completeness decides whether the closure may say the population is known.
+type CaptureCensus
+  = CaptureCensusComplete {
+      observed_on: NonEmptyStr
+      bindings: List<RunnerRegistrationBinding>
+      unresolved: List<CaptureAdmission>
+    }
+  | CaptureCensusPartial {
+      observed_on: NonEmptyStr
+      bindings: List<RunnerRegistrationBinding>
+      unresolved: List<CaptureAdmission>
+      cause: String
+    }
+  | CaptureCensusUnavailable { cause: String }
+
+// WHAT THE CAPTURE STANDING IS, ON THE RECEIPT. An operator reading a blocked assessment needs to
+// tell "no capture was taken" from "a complete capture found four registrations" -- the two produce
+// the same empty obligation today and have opposite remedies.
+fn capture_census_wire(c: CaptureCensus) -> String {
+  match c {
+    CaptureCensusComplete { observed_on: on, bindings: bs, unresolved: us } =>
+      join(["complete observed_on=", on as String, " bindings=", to_string(list_length(items: bs)), " unresolved=", to_string(list_length(items: us))], "")
+    CaptureCensusPartial { observed_on: on, bindings: bs, unresolved: us, cause: c2 } =>
+      join(["PARTIAL observed_on=", on as String, " bindings=", to_string(list_length(items: bs)), " unresolved=", to_string(list_length(items: us)), " cause=", c2], "")
+    CaptureCensusUnavailable { cause: c2 } => join(["UNAVAILABLE ", c2], "")
+  }
+}
+
+fn census_bindings(c: CaptureCensus) -> List<RunnerRegistrationBinding> {
+  match c {
+    CaptureCensusComplete { observed_on: _, bindings: bs, unresolved: _ } => bs
+    CaptureCensusPartial { observed_on: _, bindings: bs, unresolved: _, cause: _ } => bs
+    CaptureCensusUnavailable { cause: _ } => []
+  }
+}
+
+// PER-MEMBER: was THIS identity observed in an installation we own, coherently. Available from a
+// partial census, because the member's own evidence does not depend on the ones nobody read.
+fn census_binding_for_agent(c: CaptureCensus, organization: NonEmptyStr, agent_id: Int) -> RunnerRegistrationBinding? {
+  match capture_coherence(bindings: census_bindings(c: c)) {
+    CaptureIdAttributedTwice { agent_id: _, first_slot: _, second_slot: _ } => none
+    CaptureIdNameConflict { agent_id: _, first_name: _, second_name: _ } => none
+    CapturesCoherent =>
+      fold(
+        census_bindings(c: c),
+        init: none,
+        f: (acc, b) =>
+          match acc {
+            Present { value: v } => Present { value: v }
+            Absent =>
+              if b.agent_id == agent_id && (b.organization as String) == (organization as String) {
+                Present { value: b }
+              } else {
+                none
+              }
+          },
+      )
+  }
+}
+
+// POPULATION-LEVEL: may a consumer claim these are all of them. Only a complete census answers yes,
+// and an unresolved capture inside it still refuses -- a member the procedure could not settle is a
+// member the population does not account for.
+type CapturePopulationStanding
+  = CapturePopulationKnown { observed_on: NonEmptyStr, bindings: List<RunnerRegistrationBinding> }
+  | CapturePopulationIncomplete { cause: String }
+
+fn capture_population_standing(c: CaptureCensus) -> CapturePopulationStanding {
+  match c {
+    CaptureCensusUnavailable { cause: cc } => CapturePopulationIncomplete { cause: cc }
+    CaptureCensusPartial { observed_on: _, bindings: _, unresolved: _, cause: cc } =>
+      CapturePopulationIncomplete {
+        cause: join(["the capture census is partial (", cc, "), so it cannot establish that no further registrations exist"], ""),
+      }
+    CaptureCensusComplete { observed_on: on, bindings: bs, unresolved: us } =>
+      if list_length(items: us) > 0 {
+        CapturePopulationIncomplete {
+          cause: join([to_string(list_length(items: us)), " capture(s) in this census are unresolved, so the population is not fully accounted for"], ""),
+        }
+      } else {
+        match capture_coherence(bindings: bs) {
+          CaptureIdAttributedTwice { agent_id: i, first_slot: f, second_slot: sec } =>
+            CapturePopulationIncomplete {
+              cause: join(["registration id ", to_string(i), " is attributed to both ", f as String, " and ", sec as String, "; the census contradicts itself"], ""),
+            }
+          CaptureIdNameConflict { agent_id: i, first_name: f, second_name: sec } =>
+            CapturePopulationIncomplete {
+              cause: join(["registration id ", to_string(i), " is recorded with two different names, ", f as String, " and ", sec as String, "; one remote object cannot have two identities and neither may be preferred"], ""),
+            }
+          CapturesCoherent => CapturePopulationKnown { observed_on: on, bindings: bs }
+        }
+      }
+  }
+}

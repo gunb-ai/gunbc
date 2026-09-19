@@ -1,0 +1,194 @@
+module gunbc.legacy_slot_incarnation_name
+
+import std.types { Bool, List, String, NonEmptyStr, Int, EpochSecs, list_length }
+import std.algebra { trim }
+
+// THE NAMING AUTHORITY FOR THE LEGACY SHARED-HOST SLOT INCARNATION GRAMMAR.
+//
+// TWO CONSUMERS, AND THE SECOND IS WHY THIS IS A MODULE RATHER THAN A HELPER INSIDE THE CAPTURE
+// BOUNDARY. At the capture boundary it CORROBORATES: a `.runner` found under `.../srv2-02/` must
+// carry a name that decodes to `srv2-02`, and disagreement leaves that capture unresolved rather than
+// letting the directory or the name win. In a COMPLETE ROSTER SCAN it CLASSIFIES: a remote
+// registration with no local capture at all has only its name to go on, and decoding it is how owned
+// surplus beyond the captured files is found. Folding this into the capture boundary would lose the
+// second consumer entirely, and the second consumer is the one that finds what nobody wrote a file
+// for.
+//
+// WHAT A DECODE ESTABLISHES IN EACH CASE IS DIFFERENT, AND THE DIFFERENCE IS NOT IN THIS MODULE.
+// Here a decode says only WHAT THE NAME DENOTES. At the capture boundary that is corroboration of an
+// admitted observation; in a roster scan it is a CANDIDATE that still needs corroboration and is
+// never ownership on its own. This module deliberately returns the same answer to both and lets each
+// consumer decide what it is worth.
+//
+// THE PRODUCER, AS INSTALLED EVIDENCE RATHER THAN A DEPENDENCY. srv2's live `.runner` files carry
+// AgentName values like `srv2-02-1789774588-3693107` (operator-authorized census 2026-09-19 10:34Z,
+// AgentId 251463). They are written by a host-resident `/opt/actions-runner/jit-runner.sh` whose
+// recovered legacy copy reads:
+//
+//     RUNNER_NAME="${RUNNER_NAME_PREFIX}-$(date +%s)-$$"
+//
+// So the shape is SLOT INSTANCE, then unix epoch SECONDS, then the shell's PID -- three parts joined
+// by the same delimiter the slot instance itself uses, which is why the decoding below anchors on a
+// candidate slot name rather than counting segments. Its stated purpose is avoiding collisions while
+// an earlier registration lingers, which corroborates the observed shape.
+//
+// THIS IS EVIDENCE OF INSTALLED BEHAVIOUR BEING MIGRATED, NOT A RUNTIME DEPENDENCY ON THAT SCRIPT OR
+// ITS REPOSITORY, and byte identity between the recovered copy and the installed script is NOT
+// established here. What is modelled is the grammar the census observed; the script is cited as the
+// realization that explains it.
+//
+// THIS GRAMMAR IS SCOPED TO THE LEGACY SHARED-HOST SLOT FAMILY, AND THE SCOPE IS THE POINT.
+//
+// An earlier draft of this annotation said `gunbc.runner_jit_mint` `jit_runner_name_for` states that
+// the runner name IS the unit name, and framed the suffix as that model disagreeing with the running
+// fleet. THAT WAS WRONG ABOUT THE CITED FUNCTION AND IS WITHDRAWN. Its parameter is a
+// `MicroVmAttempt`, and it renders `gunbc-microvm-<slot-instance>-<attempt-id>` -- a different runner
+// family with its own deliberate attempt-bound naming contract, not the shared-host
+// `actions-runner@<slot>.service` incarnation this module decodes. Nothing here describes, amends or
+// applies to microVM naming, and microVM minting must not be changed to emit epoch/pid names to
+// accommodate this census.
+//
+// THE DISCREPANCY, STATED PRECISELY: the shared registration and capture consumers assume bare
+// canonical slot names, while the deployed LEGACY HOST-SLOT producer emits suffixed incarnation
+// names. The microVM producer is a third thing and is not in tension with either.
+//
+// ONE MORE CLAIM NOT TO CARRY FORWARD. The microVM annotation argues that an orphaned registration
+// can be reconciled to a host ONLY by name. That is sound for the family it governs and is not a
+// universal rule: the host capture read here supplies an ID-based association, which is a stronger
+// binding than a name. Neither statement invalidates the other, and this module relies on the second
+// without asserting anything about the first.
+//
+// WHY THIS IS NOT `extdeps/`. GitHub accepts whatever name the registration request carries, so the
+// suffix is not an upstream spec -- it is a fact about a deployment realization we read as ground
+// truth (`gunbc.runner_lifecycle` records that ctrl's installer is read that way). The upstream shape
+// is "a runner has a name"; this is what one fleet's script puts in it.
+
+// THE DECODING IS RELATIVE TO A CANDIDATE SLOT INSTANCE, WHICH IS WHAT MAKES IT UNAMBIGUOUS.
+//
+// A segment count cannot separate the two forms on its own: `srv2-02` is two segments and
+// `srv2-02-1789774588-3693107` is four, but nothing in the model says a host label carries no
+// delimiter, so peeling "the last two segments" would silently mis-split a host that did. Anchoring
+// on the full canonical slot name removes the guess -- the remainder after that exact prefix either
+// is the producer's two numeric fields or it is not.
+//
+// THIS IS NOT THE BARE-PREFIX PROMOTION THAT WAS REFUSED EARLIER IN THIS LANE. That one tested
+// `starts_with(name, host + "-")`, which admits `srv2-anything`. This tests the FULL canonical slot
+// name followed by the delimiter AND requires the remainder to be exactly two non-negative integers,
+// so `srv2-02-notanumber` and `srv2-021` both fail.
+type RegistrationNameMatch
+  = MatchedBareSlotName { slot_instance: String }
+  | MatchedJitInstance { slot_instance: String, epoch_seconds: EpochSecs, pid: Int }
+  | RegistrationNameNoMatch { name: String, slot_instance: String, cause: String }
+
+// THE EPOCH FIELD CARRIES `EpochSecs`, WHICH IS THE ESTATE'S CARRIER FOR THIS FACT. `std.types`
+// declares it and `extdeps.linux.proc_stat`, `extdeps.clock` and the appropriation-period model all
+// consume it; a bare `Int` here would be a second spelling of a fact that already has a home. `pid`
+// keeps `Int` deliberately -- no carrier for a process id exists in this tree, and minting one for a
+// single field would be the re-invention the same rule forbids in the other direction.
+//
+// THE NON-NEGATIVITY CHECK BELOW IS NOT A SECOND REPRESENTATION OF `range(min: 0)`, AND THE
+// DISTINCTION IS MEASURED RATHER THAN ASSERTED. `where` refinements are decided only where the value
+// is a LITERAL -- `gunbc.recurring_failure_mode` `refinement_predicate_enforced_only_where_the_value
+// _is_a_literal` censuses that across interpretation, the fixture harness and emission, and every
+// non-literal seam is advisory or silent. A value coming out of `parse_int` is computed, so the
+// refinement refuses nothing about it and this check is the only wall a negative epoch ever meets.
+// Deleting it on the strength of the declared type would replace a real refusal with a comment.
+//
+// THE ESTATE'S OTHER `EpochSecs` PRODUCER DOES EXACTLY THE SAME THING, which is the corroboration
+// rather than my reading of the rule: `extdeps.linux.proc_stat` parses btime, tests `n < 0` and
+// answers `BootTimeBeforeEpoch` on the negative, then assigns the raw Int into an `EpochSecs` field
+// with NO cast. Both halves are load-bearing -- an explicit `as EpochSecs` on a computed value is
+// refused by the interpreter outright, and the runtime guard is what the refinement does not do.
+// THE SPELLING IS VALIDATED BEFORE THE NUMBER IS READ, AND NOT REPAIRED INTO ONE.
+//
+// This trimmed each suffix field before parsing, so `srv2-02- 1789774588-3693107` was accepted: the
+// space after the delimiter disappeared before validation, and the decoded fields were then
+// indistinguishable from the canonical census spelling. The declared producer emits no such
+// whitespace, so that is a DIFFERENT NAME being repaired into this one. A field whose spelling is not
+// what the issuer writes is refused rather than normalized.
+fn parse_nonneg_int_field(text: String) -> Int? {
+  if text == "" || trim(s: text) != text {
+    none
+  } else {
+    match parse_int(s: text) {
+      Absent => none
+      Present { value: n } => if n >= 0 { Present { value: n } } else { none }
+    }
+  }
+}
+
+// THE SUFFIX IS EXACTLY TWO FIELDS. A name carrying one, or three, is not what the producer writes,
+// and admitting it would make this decoder a general-purpose splitter over a shape nobody declared.
+fn decode_jit_suffix(slot_instance: String, name: String, suffix: String) -> RegistrationNameMatch {
+  let parts = split(s: suffix, delimiter: "-")
+  if list_length(items: parts) != 2 {
+    RegistrationNameNoMatch {
+      name: name,
+      slot_instance: slot_instance,
+      cause: join([
+        "the text after `", slot_instance, "-` is `", suffix, "`, which is ",
+        to_string(list_length(items: parts)),
+        " delimiter-separated field(s); jit-runner.sh writes exactly two, an epoch and a pid",
+      ], ""),
+    }
+  } else {
+    match parse_nonneg_int_field(text: parts.first()) {
+      Absent =>
+        RegistrationNameNoMatch {
+          name: name,
+          slot_instance: slot_instance,
+          cause: join(["the epoch field `", parts.first(), "` is not a non-negative integer, so this name was not written by jit-runner.sh's `date +%s` substitution"], ""),
+        }
+      Present { value: epoch } =>
+        match parse_nonneg_int_field(text: parts.last()) {
+          Absent =>
+            RegistrationNameNoMatch {
+              name: name,
+              slot_instance: slot_instance,
+              cause: join(["the pid field `", parts.last(), "` is not a non-negative integer, so this name was not written by jit-runner.sh's `$$` substitution"], ""),
+            }
+          Present { value: pid } =>
+            MatchedJitInstance { slot_instance: slot_instance, epoch_seconds: epoch, pid: pid }
+        }
+    }
+  }
+}
+
+fn match_registration_name_to_slot(name: NonEmptyStr, slot_instance: String) -> RegistrationNameMatch {
+  let raw = name as String
+  if raw == slot_instance {
+    MatchedBareSlotName { slot_instance: slot_instance }
+  } else {
+    let prefix = join([slot_instance, "-"], "")
+    if starts_with(s: raw, prefix: prefix) {
+      decode_jit_suffix(
+        slot_instance: slot_instance,
+        name: raw,
+        suffix: substring(s: raw, start: string_length(s: prefix), end: string_length(s: raw)),
+      )
+    } else {
+      RegistrationNameNoMatch {
+        name: raw,
+        slot_instance: slot_instance,
+        cause: join([raw, " is neither ", slot_instance, " nor that name followed by a jit-runner.sh suffix"], ""),
+      }
+    }
+  }
+}
+
+fn registration_name_match_is_slot(m: RegistrationNameMatch) -> Bool {
+  match m {
+    MatchedBareSlotName { slot_instance: _ } => true
+    MatchedJitInstance { slot_instance: _, epoch_seconds: _, pid: _ } => true
+    RegistrationNameNoMatch { name: _, slot_instance: _, cause: _ } => false
+  }
+}
+
+fn registration_name_match_wire(m: RegistrationNameMatch) -> String {
+  match m {
+    MatchedBareSlotName { slot_instance: s } => join(["bare:", s], "")
+    MatchedJitInstance { slot_instance: s, epoch_seconds: e, pid: p } =>
+      join(["jit:", s, " epoch=", to_string(e), " pid=", to_string(p)], "")
+    RegistrationNameNoMatch { name: _, slot_instance: _, cause: c } => join(["no-match: ", c], "")
+  }
+}

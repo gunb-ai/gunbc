@@ -45,6 +45,17 @@ fn github_https_clone_url(repo: Repository) -> NonEmptyStr {
   join(["https://github.com/", repo.owner, "/", repo.name, ".git"], "") as NonEmptyStr
 }
 
+// AN ORGANIZATION'S URL IS https://github.com/ORG, one path segment and no more, and that is the
+// whole discriminator: a repository URL under the same owner is https://github.com/ORG/REPO, so the
+// two scopes differ only in what follows the login. A self-hosted runner's .runner records the scope
+// it registered into as one of these URLs, and GitHub admits registrations at both scopes, so a
+// consumer that must know WHICH cannot reduce the question to the final path segment -- under that
+// reading https://github.com/another-owner/ORG passes, and so does anything at all ending in the
+// login. Comparing the whole URL against this projection is what separates them.
+fn github_organization_url(login: NonEmptyStr) -> NonEmptyStr {
+  join(["https://github.com/", login as String], "") as NonEmptyStr
+}
+
 type GitHubAuthToken {
   token: Secret
   scopes: List<GitHubScope>
