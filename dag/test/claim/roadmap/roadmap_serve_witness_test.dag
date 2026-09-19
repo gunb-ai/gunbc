@@ -13,6 +13,9 @@ import gunbc.roadmap_serve {
   BeltPublishHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
+  roadmap_serve_own_route_specs,
+  roadmap_serve_approval_cutover_route_specs,
+  ApprovalBrokerCutoverHandler,
   roadmap_serve_selection_response,
   roadmap_serve_invoke,
   roadmap_serve_respond,
@@ -52,6 +55,7 @@ import extdeps.http.server {
   media_type_wire_label,
 }
 import extdeps.uri_path { PathParamBinding, path_param_value }
+import gunbc.auth.approval_broker_serve { approval_broker_route_specs }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
 import gunbc.roadmap_authority {
   RoadmapAuthorityProjection, RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
@@ -603,37 +607,49 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
     && !string_contains(s: md.body, pattern: public_plan_section_title())
 }
 
-// ── THE WALL THE APPROVAL-BROKER SPLIT LEAVES BEHIND ─────────────────────────────────────────
-// The four approval routes moved to gunbc.auth.approval_broker_serve under their own unit and
-// slice, for an availability reason rather than a tidiness one: boot 15 refused on an approval
+// ── THE APPROVAL ROUTES, MID-CUTOVER ────────────────────────────────────────────────────────
+// The four approval routes are being moved to gunbc.auth.approval_broker_serve under its own unit
+// and slice, for an availability reason rather than a tidiness one: boot 15 refused on an approval
 // status poll because THIS process's heap was swapped and OOM-killed (side-chat ruling
-// 2026-09-19). Re-adding a route here would restore that dependency AND put a second process on the
-// single-writer 0600 approval store, whose whole discipline is that there is one writer.
+// 2026-09-19). The staged transaction deploys the broker dark and measures it BEFORE anything is
+// repointed, so during the window this table still mounts them -- and what these two claims
+// establish is that mounting them costs no second authority.
 //
-// IT ASKS SELECTION, NOT THE SPEC LIST, and the difference is what makes it a wall rather than a
-// spelling check. A route re-added under any literal that MATCHES an approval request -- the same
-// path, a wildcard above it, a template that happens to cover it -- is caught, because what is
-// asserted is that this table answers nothing for those four (method, path) pairs. A witness over
-// the raw literals would go green against a re-added route spelled differently while the process
-// served it.
+// WHAT IS ASSERTED: every approval row this table carries is a PROJECTION of the broker's own spec
+// -- same method, same path literal, same handler value -- so there is one place an approval route
+// is defined and one place it is implemented, while there are temporarily two tables serving it.
+// The RED is a hand-authored approval row appearing in roadmap_serve_own_route_specs: the counts
+// stop agreeing and the projection stops accounting for every approval path this table answers.
 //
-// THE RED IS EXACTLY THE PROHIBITED EDIT: add any of the four rows back to
-// roadmap_serve_route_specs and this claim fails. The positive control that these pairs are
-// reachable SOMEWHERE is the broker's own selection witness -- absent that, this claim would be
-// satisfiable by deleting the approval loop entirely.
+// THE WALL THIS BECOMES. At stage 6 of gunbc.auth.approval_broker_cutover the arm and the
+// projection are deleted, and these two claims are replaced by the standing regression control that
+// this table answers NOTHING for the four approval (method, path) pairs.
 
-fn roadmap_table_answers_nothing_for(method: HttpMethod, path: String) -> Bool {
+test fn roadmap_approval_rows_are_projected_from_the_broker() -> Bool {
+  let projected = roadmap_serve_approval_cutover_route_specs()
+  count(projected) == count(approval_broker_route_specs())
+    && count(roadmap_serve_route_specs())
+       == count(roadmap_serve_own_route_specs()) + count(projected)
+}
+
+// NO APPROVAL PATH IS ANSWERED BY A ROW THIS MODULE AUTHORED. The projection above could hold while
+// a hand-written row ALSO matched an approval request -- two owners with agreeing counts. This asks
+// selection instead: every approval request this table answers must land on the broker arm.
+fn roadmap_approval_request_lands_on_the_broker_arm(method: HttpMethod, path: String) -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: method, path: path) {
-    SelectedDynamic { handler: _, params: _ } => false
+    SelectedDynamic { handler: h, params: _ } => match h {
+      ApprovalBrokerCutoverHandler { route: _ } => true
+      _ => false
+    }
     SelectedStatic { route: _ } => false
-    MethodNotAllowed { allowed: _ } => true
-    NoRouteMatched => true
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
   }
 }
 
-test fn roadmap_serve_table_owns_no_approval_route() -> Bool {
-  roadmap_table_answers_nothing_for(method: GET, path: "/approve/esc-1.approve.0badc0de")
-    && roadmap_table_answers_nothing_for(method: POST, path: "/approve/esc-1.approve.0badc0de")
-    && roadmap_table_answers_nothing_for(method: POST, path: "/approvals")
-    && roadmap_table_answers_nothing_for(method: GET, path: "/approvals/esc-1")
+test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
+  roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approve/esc-1.approve.0badc0de")
+    && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approve/esc-1.approve.0badc0de")
+    && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
+    && roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approvals/esc-1")
 }

@@ -1,0 +1,322 @@
+module gunbc.auth.approval_broker_cutover
+
+import std.types { NonEmptyStr, String, Int, Bool, List, Port }
+import std.logic { Bool }
+import gunbc.auth.approval_broker_endpoint {
+  approval_broker_listen_port, approval_broker_dark_listen_port,
+  approval_broker_confirm_path_template, approval_broker_submit_path,
+  approval_broker_status_path_template,
+}
+
+// ── MOVING THE APPROVAL LOOP WITHOUT EVER HAVING TWO WRITERS ─────────────────────────────────
+// THE HAZARD IS NOT THE MOVE, IT IS THE OVERLAP. The approval store keeps 0600 generations under a
+// single-writer discipline: a decision wins by being the one that committed, and "the one" is a
+// property of there being one process able to commit. Two implementations serving /approve against
+// one store is not a slower or messier cutover, it is a different store -- a request could be
+// filed by one process and redeemed by the other, or two redemptions could each believe they won.
+//
+// AND THE OTHER DIRECTION IS EQUALLY REAL. Removing the routes from the roadmap in the same motion
+// that introduces the broker leaves a window in which NOBODY serves them, and an approval link
+// already on a phone is a capability that outlives the deployment that issued it. An outage of the
+// approval loop is strictly worse than the co-tenancy the split repairs.
+//
+// So the transition is neither atomic nor free-running: it is a STAGED TRANSACTION whose stages are
+// ordered, whose entry conditions are evidence rather than intention, and whose advance is a fold
+// that REFUSES with a located cause when the evidence is absent. DESIGN section 6 names a
+// hand-authored migration script as out-of-band actuation; this is the authority that plan reads,
+// so "which stage are we at and may we advance" is answered from modeled evidence rather than from
+// whoever is holding the terminal.
+//
+// WHAT THIS MODULE IS NOT. It does not actuate. It decides admission, and an operator or a deploy
+// plan performs the stage and brings back the observation. That split is deliberate: an advance
+// that could both decide and act would be able to report success for an effect nobody observed,
+// which is the fabricated-plausible-output arm DESIGN section 5 forbids at exactly this boundary.
+
+type ApprovalBrokerCutoverStage
+  = DeployDark
+  | ProveRelease
+  | MeasureDemand
+  | RepointFrontDoor
+  | ProbeRouteClasses
+  | RetireRoadmapRoutes
+
+fn approval_broker_cutover_stages() -> List<ApprovalBrokerCutoverStage> {
+  [DeployDark, ProveRelease, MeasureDemand, RepointFrontDoor, ProbeRouteClasses, RetireRoadmapRoutes]
+}
+
+fn approval_broker_cutover_stage_label(stage: ApprovalBrokerCutoverStage) -> NonEmptyStr {
+  match stage {
+    DeployDark => "deploy-dark" as NonEmptyStr
+    ProveRelease => "prove-release" as NonEmptyStr
+    MeasureDemand => "measure-demand" as NonEmptyStr
+    RepointFrontDoor => "repoint-front-door" as NonEmptyStr
+    ProbeRouteClasses => "probe-route-classes" as NonEmptyStr
+    RetireRoadmapRoutes => "retire-roadmap-routes" as NonEmptyStr
+  }
+}
+
+// WHAT EACH STAGE IS FOR, in the order the ordering exists to enforce:
+//
+//   1. DeployDark        -- the broker unit and slice are installed and started on the DARK port,
+//                           which nothing proxies to. Its store access is idle. The roadmap is
+//                           still the only process anything routes an approval to, so there is
+//                           still exactly one writer.
+//   2. ProveRelease      -- the dark process reads back the release it was launched with. A process
+//                           that cannot say which release it is must never be routed to, because
+//                           every later stage's evidence would be about an unknown build.
+//   3. MeasureDemand     -- the six readings the slice bound was asked to be derived from, taken
+//                           against the dark process: cold bind and load peak, idle resident,
+//                           submission-plus-notification peak, confirm-page peak, redemption peak,
+//                           status-poll peak. Until this stage the bound in gunbc.live_deploy.emit
+//                           is a ceiling proved by containment, not a measurement (that row says so
+//                           itself), and this stage is what replaces it.
+//   4. RepointFrontDoor  -- the two approval mounts move to the broker. THIS is the stage that
+//                           makes the broker a writer, and stage 6 is what stops the roadmap being
+//                           one; between them the roadmap is REACHABLE but no longer ROUTED, which
+//                           is why probing comes before retiring.
+//   5. ProbeRouteClasses -- all four route classes are exercised THROUGH the front door. This is
+//                           also where the one thing this corpus does not know about the upstream
+//                           is settled: whether a --set-path mount presents the mount prefix to the
+//                           backend (gunbc.auth.approval_broker_endpoint
+//                           approval_broker_front_door_path_preservation). A 404 here is a located
+//                           refusal with the roadmap still able to serve, which is the whole reason
+//                           this stage is before the next one and not after it.
+//   6. RetireRoadmapRoutes -- the cutover arm and its projection are deleted from
+//                           gunbc.roadmap_serve, and the roadmap process stops being able to reach
+//                           the store or either keyring at all.
+
+// ── THE EVIDENCE ─────────────────────────────────────────────────────────────────────────────
+// EACH FIELD IS AN OBSERVATION SOMEONE BROUGHT BACK, never an intention someone declared. The
+// distinction is the whole value of the type: a stage whose entry condition is "we decided to" can
+// always be satisfied, and a plan that can always advance is not a plan.
+
+type DarkDeploymentStanding
+  = DarkUnitNotStarted { detail: NonEmptyStr }
+  | DarkUnitListening { port: Port }
+
+type ReleaseReadback
+  = ReleaseNotReadBack { detail: NonEmptyStr }
+  | ReleaseReadBack { revision: NonEmptyStr }
+
+// THE SIX READINGS ARE ONE VALUE BECAUSE THEY ARE ONE QUESTION. A bound derived from five of them
+// is a bound with an unmeasured peak in it, and the peak that is missing is the one that will be
+// hit. Absence is not zero, so the unmeasured state is its own arm rather than a reading of 0.
+type BrokerDemandReading
+  = DemandUnmeasured { missing: NonEmptyStr }
+  | DemandMeasured {
+      cold_load_peak_bytes: Int
+      idle_resident_bytes: Int
+      submission_peak_bytes: Int
+      confirm_page_peak_bytes: Int
+      redemption_peak_bytes: Int
+      status_poll_peak_bytes: Int
+      declared_concurrency: Int
+    }
+
+type FrontDoorStanding
+  = FrontDoorPointsAtRoadmap
+  | FrontDoorPointsAtBroker { port: Port }
+
+// ONE ARM PER ROUTE CLASS, and a class is UNPROBED until an answer came back through the front
+// door. A probe that was skipped and a probe that returned a 404 are different facts about the
+// deployment and must not fold together, because the first says nothing was learned and the second
+// says something was learned and it was bad -- DESIGN's not-met versus cannot-tell.
+type RouteClassProbe
+  = RouteClassUnprobed
+  | RouteClassRefused { status: Int, detail: NonEmptyStr }
+  | RouteClassAnswered { status: Int }
+
+type ApprovalBrokerCutoverEvidence {
+  dark: DarkDeploymentStanding
+  release: ReleaseReadback
+  demand: BrokerDemandReading
+  front_door: FrontDoorStanding
+  confirm_probe: RouteClassProbe
+  decide_probe: RouteClassProbe
+  submit_probe: RouteClassProbe
+  status_probe: RouteClassProbe
+  roadmap_still_mounts_approval_routes: Bool
+}
+
+// ── ADMISSION ────────────────────────────────────────────────────────────────────────────────
+// EVERY REFUSAL NAMES THE STAGE AND WHAT IS MISSING. None of them is a boolean false: a caller that
+// cannot advance learns which observation to go and take, which is the difference between a typed
+// refusal and a gate.
+type CutoverRefusal
+  = DarkDeploymentNotListening { detail: NonEmptyStr }
+  | DarkDeploymentOnTheServingPort { port: Port }
+  | ReleaseUnreadable { detail: NonEmptyStr }
+  | DemandNotMeasured { missing: NonEmptyStr }
+  | FrontDoorStillAtRoadmap
+  | RouteClassNotProbed { route: NonEmptyStr }
+  | RouteClassProbeRefused { route: NonEmptyStr, status: Int, detail: NonEmptyStr }
+  | BothWritersWouldBeLive { detail: NonEmptyStr }
+
+type CutoverAdmission
+  = StageAdmitted { stage: ApprovalBrokerCutoverStage }
+  | StageRefused { stage: ApprovalBrokerCutoverStage, cause: CutoverRefusal }
+
+fn route_class_admission(route: NonEmptyStr, probe: RouteClassProbe) -> CutoverRefusal? {
+  match probe {
+    RouteClassUnprobed => Present { value: RouteClassNotProbed { route: route } }
+    RouteClassRefused { status: st, detail: d } =>
+      Present { value: RouteClassProbeRefused { route: route, status: st, detail: d } }
+    RouteClassAnswered { status: _ } => Absent
+  }
+}
+
+fn first_refusal(causes: List<CutoverRefusal?>) -> CutoverRefusal? {
+  fold(causes, init: none, f: (acc, c) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => c
+    }
+  )
+}
+
+fn all_route_classes_probed(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  first_refusal(causes: [
+    route_class_admission(route: approval_broker_confirm_path_template, probe: e.confirm_probe),
+    route_class_admission(route: "POST \{capability\} decide" as NonEmptyStr, probe: e.decide_probe),
+    route_class_admission(route: approval_broker_submit_path, probe: e.submit_probe),
+    route_class_admission(route: approval_broker_status_path_template, probe: e.status_probe),
+  ])
+}
+
+// THE DARK STAGE'S OWN REFUSAL IS THE ONE THAT KEEPS THE STAGING HONEST. A "dark" deployment that
+// came up on the SERVING port is not dark: the front door would reach it, and the stage whose whole
+// purpose is to observe the broker while it is not a writer would be observing a second writer.
+fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  match e.dark {
+    DarkUnitNotStarted { detail: d } => Present { value: DarkDeploymentNotListening { detail: d } }
+    DarkUnitListening { port: p } =>
+      if p == approval_broker_listen_port {
+        Present { value: DarkDeploymentOnTheServingPort { port: p } }
+      } else {
+        Absent
+      }
+  }
+}
+
+fn release_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  match e.release {
+    ReleaseNotReadBack { detail: d } => Present { value: ReleaseUnreadable { detail: d } }
+    ReleaseReadBack { revision: _ } => Absent
+  }
+}
+
+fn demand_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  match e.demand {
+    DemandUnmeasured { missing: m } => Present { value: DemandNotMeasured { missing: m } }
+    DemandMeasured {
+      cold_load_peak_bytes: _, idle_resident_bytes: _, submission_peak_bytes: _,
+      confirm_page_peak_bytes: _, redemption_peak_bytes: _, status_poll_peak_bytes: _,
+      declared_concurrency: _,
+    } => Absent
+  }
+}
+
+fn front_door_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
+  match e.front_door {
+    FrontDoorPointsAtRoadmap => Present { value: FrontDoorStillAtRoadmap }
+    FrontDoorPointsAtBroker { port: _ } => Absent
+  }
+}
+
+// ADMISSION IS CUMULATIVE, AND THAT IS THE ORDERING LAW RATHER THAN A CONVENIENCE. Each stage
+// requires every earlier stage's evidence as well as its own, so a plan cannot reach the retirement
+// stage by taking the observations out of order and it cannot skip the measurement by having probed
+// successfully. The refusal reported is the FIRST missing one, which is the one to go and take.
+fn approval_broker_cutover_admission(
+  stage: ApprovalBrokerCutoverStage,
+  e: ApprovalBrokerCutoverEvidence,
+) -> CutoverAdmission {
+  let cause = match stage {
+    DeployDark => none
+    ProveRelease => first_refusal(causes: [dark_deployment_admission(e: e)])
+    MeasureDemand => first_refusal(causes: [dark_deployment_admission(e: e), release_admission(e: e)])
+    RepointFrontDoor => first_refusal(causes: [
+      dark_deployment_admission(e: e), release_admission(e: e), demand_admission(e: e),
+    ])
+    ProbeRouteClasses => first_refusal(causes: [
+      dark_deployment_admission(e: e), release_admission(e: e), demand_admission(e: e),
+      front_door_admission(e: e),
+    ])
+    RetireRoadmapRoutes => first_refusal(causes: [
+      dark_deployment_admission(e: e), release_admission(e: e), demand_admission(e: e),
+      front_door_admission(e: e), all_route_classes_probed(e: e),
+    ])
+  }
+  match cause {
+    Present { value: c } => StageRefused { stage: stage, cause: c }
+    Absent => StageAdmitted { stage: stage }
+  }
+}
+
+fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
+  match c {
+    DarkDeploymentNotListening { detail: d } =>
+      join(["the approval broker is not listening on its dark port: ", d as String], "") as NonEmptyStr
+    DarkDeploymentOnTheServingPort { port: p } =>
+      join([
+        "the approval broker came up on the SERVING port ", to_string(p),
+        ", so it is not dark: the front door can reach it and the store would have two writers. ",
+        "Bind the dark port (gunbc.auth.approval_broker_endpoint approval_broker_dark_listen_port) ",
+        "for every stage before the front door is repointed.",
+      ], "") as NonEmptyStr
+    ReleaseUnreadable { detail: d } =>
+      join(["the dark broker did not read back a release revision: ", d as String,
+            ". Every later stage's evidence would be about an unknown build."], "") as NonEmptyStr
+    DemandNotMeasured { missing: m } =>
+      join([
+        "the broker's own memory demand is unmeasured: ", m as String,
+        ". Its slice bound is currently a ceiling proved by containment in the pre-split roadmap ",
+        "closure, not a measurement, and repointing traffic before measuring would mean sizing a ",
+        "live writer from a number about a different process.",
+      ], "") as NonEmptyStr
+    FrontDoorStillAtRoadmap =>
+      "the front door still proxies the approval paths to the roadmap port; nothing has moved yet" as NonEmptyStr
+    RouteClassNotProbed { route: r } =>
+      join([
+        "route class ", r as String, " was never probed through the front door. Unprobed is not ",
+        "passing: it says nothing was learned, which is exactly the state the roadmap's rows must ",
+        "not be removed under.",
+      ], "") as NonEmptyStr
+    RouteClassProbeRefused { route: r, status: st, detail: d } =>
+      join([
+        "route class ", r as String, " answered ", to_string(st), " through the front door: ",
+        d as String,
+        ". If this is a 404 on an /approve path, the discriminator is the one ",
+        "gunbc.auth.approval_broker_endpoint approval_broker_front_door_path_preservation names: a ",
+        "--set-path mount that strips its prefix presents /<capability> to a table matching ",
+        "/approve/<capability>. Repair it in the model, with the roadmap still able to serve.",
+      ], "") as NonEmptyStr
+    BothWritersWouldBeLive { detail: d } =>
+      join(["refusing: this would leave two processes able to write the approval store -- ", d as String], "") as NonEmptyStr
+  }
+}
+
+// ── WHERE THE PLAN IS ────────────────────────────────────────────────────────────────────────
+// THE FURTHEST ADMITTED STAGE, derived from evidence rather than tracked as state. A recorded
+// position is a second authority for something the observations already determine, and it is the
+// one that goes stale when a stage is rolled back.
+fn approval_broker_cutover_position(e: ApprovalBrokerCutoverEvidence) -> ApprovalBrokerCutoverStage {
+  fold(approval_broker_cutover_stages(), init: DeployDark, f: (acc, stage) =>
+    match approval_broker_cutover_admission(stage: stage, e: e) {
+      StageAdmitted { stage: s } => s
+      StageRefused { stage: _, cause: _ } => acc
+    }
+  )
+}
+
+// THE TERMINAL CONDITION, stated as the fact stage 6 establishes rather than as a stage that has
+// been performed: the roadmap no longer mounts an approval route. It is carried on the evidence
+// because it is observable in the corpus (roadmap_serve_approval_cutover_route_specs is empty or
+// deleted) and a plan that asserted it from its own position would be reading its own intent.
+fn approval_broker_cutover_complete(e: ApprovalBrokerCutoverEvidence) -> Bool {
+  !e.roadmap_still_mounts_approval_routes
+    && match approval_broker_cutover_admission(stage: RetireRoadmapRoutes, e: e) {
+      StageAdmitted { stage: _ } => true
+      StageRefused { stage: _, cause: _ } => false
+    }
+}

@@ -7,6 +7,9 @@ import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri_path { uri_query_param }
+import gunbc.auth.approval_broker_serve {
+  ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
+}
 import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
   ServeHttpRequest,
@@ -199,6 +202,7 @@ type RoadmapServeHandler
   | ObservationJsonHandler
   | BeltStopHandler
   | BeltPublishHandler
+  | ApprovalBrokerCutoverHandler { route: ApprovalBrokerHandler }
 
 // Fail-closed table construction (review 40286, the section 5 catch: the earlier serve_tpl mapped
 // MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
@@ -241,7 +245,7 @@ type ServedDailyBodyAuthority
   = DailyBodyRenderedUnderThisPlan
   | DailyBodyAuthorityUnknown
 
-fn roadmap_serve_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
+fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
   [
     ServedRouteSpec { method: GET, raw: roadmap_site_daily_url_path as String, handler: RoadmapDailyPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_full_url_path as String, handler: RoadmapFullPageHandler },
@@ -270,6 +274,13 @@ fn roadmap_serve_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
     ServedRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     ServedRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
   ]
+}
+
+// THE LIVE TABLE IS THIS MODULE'S OWN ROWS PLUS THE ROWS IT IS STILL MOUNTING FOR THE BROKER MID-
+// CUTOVER, and the split into two producers is what makes stage 6 a deletion rather than an edit
+// inside a list of thirty literals.
+fn roadmap_serve_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
+  concat(roadmap_serve_own_route_specs(), roadmap_serve_approval_cutover_route_specs())
 }
 
 fn roadmap_serve_route_table_build() -> ServedRouteTableBuild<RoadmapServeHandler> {
@@ -435,22 +446,46 @@ fn serve_publish_handler_response_for_instance(
   }
 }
 
-// ── WHERE THE APPROVAL ROUTES WENT ───────────────────────────────────────────────────────────
-// GET/POST /approve/\{capability\}, POST /approvals and GET /approvals/\{escalation_id\} were
-// served from this table and are now served by their own process,
-// gunbc.auth.approval_broker_serve, under its own unit, slice and memory bound.
+// ── THE APPROVAL ROUTES ARE MID-CUTOVER, AND THIS IS THE STAGE THEY ARE AT ───────────────────
+// GET/POST /approve/\{capability\}, POST /approvals and GET /approvals/\{escalation_id\} are being
+// moved out of this process into gunbc.auth.approval_broker_serve, which has its own unit, slice,
+// MainPID and memory bound.
 //
 // THE RECEIPT IS AN OUTAGE, NOT A TIDINESS ARGUMENT (side-chat ruling 2026-09-19). Boot 15 refused
 // on an approval status poll because THIS process's 18 GB heap was swapped and OOM-killed. The
 // approval folds were fine; they were merely resident in a process whose job is expensive renders.
-// The note above still says what made that possible -- the approval routes consulted no roadmap at
-// all -- so the only thing joining them to a roadmap render was co-tenancy, and co-tenancy is
-// repaired by splitting the process, not by rendering more cheaply.
+// The note further down still says what made that possible -- the approval routes consulted no
+// roadmap at all -- so the only thing joining them to a roadmap render was co-tenancy, and
+// co-tenancy is repaired by splitting the process, not by rendering more cheaply.
 //
-// THIS MODULE MUST NOT REACQUIRE THEM. Re-adding a route here would restore the availability
-// dependency AND put a second process on the single-writer 0600 approval store, which is worse than
-// the fork it looks like: the store's discipline is a property of there being one writer. The wall
-// is the witness roadmap_serve_table_owns_no_approval_route, whose RED is exactly re-adding one.
+// WHAT LANDED HERE AND WHY IT IS ONE ARM RATHER THAN FOUR. The handler folds and the path literals
+// are GONE from this module: they live once, in the broker's module and in
+// gunbc.auth.approval_broker_endpoint. What remains is a single arm carrying the broker's own
+// handler value, and route rows PROJECTED from the broker's own specs -- so during the cutover
+// window there are two route TABLES and still exactly one authority for what an approval route is,
+// where it is mounted and what it does. Copying the adapter to keep serving here would have been
+// the DESIGN section 2 duplication this split exists to remove, and re-spelling the paths would
+// have been the section 3 fork.
+//
+// WHY THE ROWS ARE STILL HERE AT ALL: the staged transaction the split was ordered under puts the
+// dark deployment and the measurement BEFORE anything is repointed, and the route removal LAST
+// (gunbc.auth.approval_broker_cutover). Removing them in the same change that first introduces the
+// broker would take the approval loop down for the window between the two -- an outage strictly
+// worse than the co-tenancy it repairs, and the reason the plan is staged rather than atomic.
+//
+// THE DISSOLUTION IS STAGE 6 OF THAT PLAN AND NOTHING ELSE. It deletes this arm and the projection
+// below, at which point the wall test.claim.roadmap_serve_witness
+// roadmap_serve_table_owns_no_approval_route goes green and stays as the regression control whose
+// RED is re-adding a route. It is stated as a plan stage rather than as prose because a dissolution
+// no mechanism can read is one nothing will ever fire.
+
+fn roadmap_serve_approval_cutover_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>> {
+  map(approval_broker_route_specs(), spec => ServedRouteSpec {
+    method: spec.method,
+    raw: spec.raw,
+    handler: ApprovalBrokerCutoverHandler { route: spec.handler },
+  })
+}
 
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
   serve_dispatch_handler_response_for_instance(
@@ -618,6 +653,8 @@ fn roadmap_serve_invoke_over(
     ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
+    ApprovalBrokerCutoverHandler { route: r } =>
+      approval_broker_invoke(handler: r, params: params, request: request)
   }
 }
 

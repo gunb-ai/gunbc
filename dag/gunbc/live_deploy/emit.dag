@@ -46,7 +46,7 @@ import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privi
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
-  ServiceSlice, slice_memory_max, slice_memory_high,
+  ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants,
   SystemdServiceDirective, ServiceType, ExecStart, Restart,
@@ -64,6 +64,8 @@ import gunbc.live_deploy.member_identity {
 import extdeps.crypto.hash { digest_shell_verify_line }
 import gunbc.live_deploy.spec {
   deployment_slice_unit_name, deployment_slice_unit_path,
+  gunbc_approval_broker_unit_name, gunbc_approval_broker_unit_path,
+  gunbc_approval_broker_slice_unit_name, gunbc_approval_broker_slice_unit_path,
   DeploymentSpec,
   DeploymentStep, ArtifactStep, Dependency,
   DeploymentDependencyStep,
@@ -503,7 +505,7 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
       ExecStart { command: join([
         svc.serve_binary as String,
         " serve --source-root dag --source-root src/v2",
-        " --entry dag/gunbc/roadmap/roadmap_serve.dag --function ", svc.serve_function as String,
+        " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
         " --host ", host, " --port ", port,
         " --release-revision ", release_revision_execstart_text(binding: revision),
         eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
@@ -517,6 +519,105 @@ fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBi
 
 fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
   doc_text(text: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(spec: spec, revision: revision)))
+}
+
+// ── THE APPROVAL BROKER'S SLICE AND UNIT ─────────────────────────────────────────────────────
+// THE BOUND IS DERIVED FROM A MEASURED UPPER BOUND, NOT GUESSED AND NOT COPIED. DESIGN section 5's
+// oracle rule admits a numeric literal grounded in an explicit policy budget and rejects one
+// grounded in a measurement of the current tree, so the basis is recorded beside the policy:
+//
+//   Before this split, the roadmap serve process served these four routes. Its closure therefore
+//   CONTAINED the broker's closure, and that process's resident peak was measured at 3.46 GB on
+//   srv1 (2026-09-04, the same measurement live_deploy_slice_memory_max cites). A strict subset of
+//   a closure cannot demand more than the whole of it, so 3.46 GB is a sound UPPER BOUND on the
+//   broker's cold-load and steady demand rather than an analogy from a similar workload.
+//
+// The cap is set above that bound with headroom and far below the roadmap's, which is the property
+// that matters: the roadmap's demand has no route by which it can reach this slice's allowance.
+//
+// IT IS AN UPPER BOUND AND THE MODEL SAYS SO. What is NOT established is the broker's OWN demand at
+// the six points the split was asked to size against -- cold bind and load peak, idle resident,
+// submission-plus-notification peak, confirm-page peak, redemption peak, status-poll peak -- and a
+// bound derived from a superset is a ceiling, not a measurement. Stage 2 of
+// gunbc.auth.approval_broker_cutover is the instrument that produces those readings against the
+// dark deployment, and tightening these two rows from them is that stage's product. Until it runs,
+// a ceiling proved by containment is the honest arm, and asserting the tighter number the six
+// readings would probably support would be exactly the deduced-from-inferred move DESIGN 4d forbids.
+data approval_broker_slice_memory_max: ByteSize = byte_size(6442450944)
+
+data approval_broker_slice_memory_high: ByteSize = byte_size(5368709120)
+
+// MemorySwapMax=0 IS THE RECEIPT'S OWN LESSON WRITTEN INTO THE UNIT. Boot 15 did not fail because
+// the roadmap process was large; it failed because that process was SWAPPED and then OOM-killed,
+// and a swapped process is one whose latency is unbounded while it still looks alive. An approval
+// poll answered after the swap-in is a poll that has already timed out. Denying swap converts that
+// into an immediate, attributable kill at a declared bound -- a loud failure with a restart, rather
+// than a silent hours-long stall (DESIGN section 5: refuse, never widen).
+fn approval_broker_slice_unit_file() -> SystemdUnitFile {
+  SliceUnitFile {
+    unit: [
+      Description { text: "gunbc approval broker cgroup bound (separate from the roadmap deployment slice)" as NonEmptyStr },
+    ],
+    slice: [
+      slice_memory_max(bytes: approval_broker_slice_memory_max),
+      slice_memory_high(bytes: approval_broker_slice_memory_high),
+      slice_memory_swap_max(bytes: byte_size(0)),
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn emit_approval_broker_slice_unit_doc() -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: approval_broker_slice_unit_file()))
+}
+
+// THE BROKER UNIT IS THE ROADMAP UNIT WITH THREE FIELDS DIFFERENT AND ONE DIRECTIVE REMOVED, and
+// every difference is the split.
+//
+// Slice= names the broker's own slice, which is the whole construction: two cgroups means the
+// roadmap's resident set cannot evict the broker's.
+//
+// THE USER-MANAGER ENVIRONMENT IS ABSENT ON PURPOSE. The roadmap unit carries XDG_RUNTIME_DIR and
+// DBUS_SESSION_BUS_ADDRESS because POST /dispatch starts a user unit and the belt observes them.
+// The broker starts nothing and observes nothing: it files a request, renders a page, redeems a
+// capability and reads a standing. Handing it an address for the user manager would be handing it a
+// capability its routes have no use for, and a capability a process does not need is one more thing
+// a defect in it can reach.
+//
+// Restart=on-failure and a distinct MainPID are the other half of the availability property: a
+// broker that dies is restarted by systemd on its own lifecycle, rather than waiting for whoever
+// notices the dashboard is down.
+fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+  let svc = spec.approval_broker
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc approval broker HTTP server (gunbc serve)" as NonEmptyStr },
+      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      ServiceSlice { name: gunbc_approval_broker_slice_unit_name },
+      WorkingDirectory { path: svc.repo_root },
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " serve --source-root dag --source-root src/v2",
+        " --entry ", svc.serve_entry as String, " --function ", svc.serve_function as String,
+        " --host ", svc.listen.host, " --port ", to_string(svc.listen.port),
+        " --release-revision ", release_revision_execstart_text(binding: revision),
+        eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
+        eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
+      ], "") as NonEmptyStr },
+      Restart { policy: "on-failure" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}
+
+fn emit_approval_broker_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file(spec: spec, revision: revision)))
 }
 
 // OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a
@@ -1394,6 +1495,40 @@ fn deploy_memory_cap_apply_steps(
 // step's existing emission on this plan's mutation, so the identity decides WHETHER the root is
 // installed and the step decides HOW. The DirectoryRoot arm below exists because the match is total
 // over ConvergedMember, and it is genuinely unreached from this function.
+// THE BROKER'S TWO FILES RIDE THE UNIT MEMBER, and that placement is the same one the deployment
+// slice already uses: the slice unit is written inside the tree-publication effect rather than
+// enrolled as an owned artifact step, because a cgroup bound is part of installing the units that
+// join it, not a separately reconciled resource. The broker's slice and service are the same kind
+// of fact, with the additional reason that gunbc_approval_broker_unit_name is a HOST singleton
+// (gunbc.live_deploy.spec): enrolling it as an owned member would make a twin's retract remove the
+// host's broker.
+//
+// THE SLICE IS WRITTEN BEFORE THE UNIT that joins it, in the same order the roadmap's is: a
+// [Service] carrying Slice= for a slice that does not exist yet starts under the default bound,
+// which is the unbounded state the bound exists to remove.
+fn apply_approval_broker_unit_write_steps(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
+  [
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: gunbc_approval_broker_slice_unit_name as String,
+      content: render(doc: emit_approval_broker_slice_unit_doc(), proto: live_deploy_protocol),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: gunbc_approval_broker_slice_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: gunbc_approval_broker_slice_unit_path() as String,
+    )),
+    deploy_raw(command: deploy_stage_write_command(
+      stage_name: gunbc_approval_broker_unit_name as String,
+      content: render(doc: emit_approval_broker_unit_doc(spec: spec, revision: revision), proto: live_deploy_protocol),
+    )),
+    deploy_raw(command: deploy_stage_install_command(
+      stage_name: gunbc_approval_broker_unit_name as String,
+      mode: install_file_shared_mode,
+      dest: gunbc_approval_broker_unit_path() as String,
+    )),
+  ]
+}
+
 fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan, spec: DeploymentSpec) -> List<PipelineStep> {
   let revision = RevisionBoundAtEmission { revision: plan.target.revision }
   match member {
@@ -1454,20 +1589,23 @@ fn emit_release_member_effects(member: ConvergedMember, plan: ReleaseEffectPlan,
       )),
     ] }
     UnitFile => concat(
-      if !plan_writes_unit(plan: plan) { [] } else { [
+      if !plan_writes_unit(plan: plan) { [] } else { concat([
         apply_systemd_unit_write_step(spec: spec, revision: revision),
         deploy_raw(command: deploy_stage_install_command(
           stage_name: spec.service.unit_name as String,
           mode: install_file_shared_mode,
           dest: deployment_systemd_unit_path(names: spec.names) as String,
         )),
-      ] },
+      ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)) },
       concat(
         if !plan_reloads_manager(plan: plan) { [] } else { [deploy_effect(inv: systemctl_daemon_reload_effect())] },
-        if !plan_restarts_process(plan: plan) { [] } else { [
+        if !plan_restarts_process(plan: plan) { [] } else { concat([
           deploy_effect(inv: systemctl_enable_effect(unit: plan.target.unit)),
           deploy_effect(inv: systemctl_restart_effect(unit: plan.target.unit)),
-        ] },
+        ], [
+          deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
+          deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
+        ]) },
       ),
     )
     UnitManager => []
@@ -1548,17 +1686,20 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     FabricEventLogRoot => [
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
     ]
-    SystemdUnit => [
+    SystemdUnit => concat(concat([
       apply_systemd_unit_write_step(spec: spec, revision: revision),
       deploy_raw(command: deploy_stage_install_command(
         stage_name: spec.service.unit_name as String,
         mode: install_file_shared_mode,
         dest: art.path as String,
       )),
+    ], apply_approval_broker_unit_write_steps(spec: spec, revision: revision)), [
       deploy_effect(inv: systemctl_daemon_reload_effect()),
       deploy_effect(inv: systemctl_enable_effect(unit: spec.service.unit_name)),
       deploy_effect(inv: systemctl_restart_effect(unit: spec.service.unit_name)),
-    ]
+      deploy_effect(inv: systemctl_enable_effect(unit: gunbc_approval_broker_unit_name)),
+      deploy_effect(inv: systemctl_restart_effect(unit: gunbc_approval_broker_unit_name)),
+    ])
     PublicationHelperTimerUnit => concat(
       apply_publication_spool_steps(spec: spec),
       [
