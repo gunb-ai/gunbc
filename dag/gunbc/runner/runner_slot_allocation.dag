@@ -17,12 +17,8 @@ import gunbc.session_reservation_policy {
 }
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import extdeps.toolchain.types { Aarch64 }
 import extdeps.ci_runner.types { QuotedBasisUnresolved, ResolvedBytes, quoted_magnitude_bytes }
-import extdeps.cloud.ubicloud { ubicloud_provider_identity }
 import gunbc.runner_shape_census {
-  memory_per_vcpu,
-  surveyed_runner_shapes,
   MemoryPerVcpuReading,
   UniformMemoryPerVcpu,
   RatioNotUniformAcrossSizes,
@@ -697,14 +693,6 @@ fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> DerivedRunnerWidth
 // the adoption cited an operator ruling that does not exist. The conversion is now the extdeps
 // authority's own quoted_magnitude_bytes, which refuses rather than guessing when a sample really
 // has no stated basis.
-fn gunbc_runner_memory_per_core_reading() -> MemoryPerVcpuReading {
-  memory_per_vcpu(
-    rows: surveyed_runner_shapes(),
-    provider: ubicloud_provider_identity,
-    architecture: Aarch64,
-  )
-}
-
 // AN UNGROUNDED RATIO REFUSES BY NAME INSTEAD OF ANSWERING ZERO. The shape this replaces mapped
 // every refusing reading to byte_size(0) and relied on the zero travelling through
 // gunbc_runner_cores_per_slot and host_cpu_admitted_width until the placement called it
@@ -717,8 +705,34 @@ type RunnerMemoryPerCoreResolution
   = MemoryPerCoreResolved { bytes: ByteSize }
   | MemoryPerCoreUnresolved { cause: String }
 
+// THE RATIO IS A CLAIM ABOUT OUR WORKLOAD, NOT ABOUT A VENDOR'S PRICE LIST.
+//
+// This read a Ubicloud aarch64 survey (deleted with this change), whose rows are
+// uniform at 3.0 GB/vCPU DECIMAL. That figure is Ubicloud's commercial proportioning of an Ampere
+// Altra Q80-30 (80 cores). Our hosts are Altra Max M128-30 (128 cores), and the number was being
+// used to answer a different question entirely: how many cores one CI slot NEEDS, which is a fact
+// about the workload that runs in it.
+//
+// The workload is the required floor, and it is SINGLE-THREADED (operator, 2026-09-19): it needs
+// one core. At the 26 GiB slot the surveyed ratio answered 10, so the CPU axis admitted 128/10 = 12
+// and BOUND the whole fleet there -- a tenfold over-reservation sourced from a VM price list. It
+// was not a measurement of us, and the asymmetry is the tell: memory_max on this same row IS
+// derived from measured floor-job cgroup peaks (gunbc_runner_slot_memory_max_ruling_note), so one
+// axis was grounded in our own instrument and its sibling in a vendor catalog for other silicon.
+//
+// The replacement is an AUTHORED PROVISIONING RESERVE, not a demand measurement, and it says so:
+// reserve one core per 3 GiB of slot memory. It is deliberately far above the single core the
+// workload needs, so headroom for parallel link/codegen phases survives without the axis claiming
+// evidence it does not have.
+//
+// DISSOLVE-ON: a measured floor-job CPU demand series, read from the same cgroup instrument that
+// produced the memory figure (cpu.stat rather than memory.peak). When that lands, this reserve is
+// replaced by the measurement and the CPU axis becomes a real independent constraint rather than a
+// convention -- see gunbc.recurring_failure_mode and the width note below.
+data gunbc_runner_memory_per_core_reserve_bytes: Int = 3221225472
+
 fn gunbc_runner_memory_per_core() -> RunnerMemoryPerCoreResolution {
-  runner_memory_per_core_of(reading: gunbc_runner_memory_per_core_reading())
+  MemoryPerCoreResolved { bytes: byte_size(gunbc_runner_memory_per_core_reserve_bytes) }
 }
 
 // THE READING IS A PARAMETER SO THE REFUSAL HAS AN AUTHORABLE RED. A zero-argument derivation over
