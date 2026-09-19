@@ -51,14 +51,12 @@ enum WireError: Error, LocalizedError {
     case refused(at: String, cause: String)
     /// No answer at all: the request MAY have taken effect.
     case transport(String)
-    /// A path segment outside the unreserved alphabet (path_segment refuses; nothing is encoded).
-    case pathSegment(String)
 
     /// True for the arms after which the server's state is unknown to the app.
     var outcomeUnknown: Bool {
         switch self {
         case .refused, .transport: return true
-        case .configMissing, .status, .pathSegment: return false
+        case .configMissing, .status: return false
         }
     }
 
@@ -68,7 +66,6 @@ enum WireError: Error, LocalizedError {
         case .status(let s, let body): return "server refused: HTTP \(s) \(body)"
         case .refused(let at, let cause): return "server answer refused at \(at): \(cause) (outcome unknown)"
         case .transport(let m): return "server unreached (outcome unknown): \(m)"
-        case .pathSegment(let s): return "not a path segment (RFC 3986 unreserved only): \(s)"
         }
     }
 }
@@ -377,20 +374,22 @@ enum Route {
     private static let requestPrefix = "/approve/device/requests/"
     private static let enrollmentPrefix = "/approve/device/enrollments/"
 
-    /// path_segment: the RFC 3986 unreserved alphabet, not "." or "..", or REFUSED — never
-    /// percent-encoded, so the signed path and the transported path are the same bytes.
-    static func segment(_ s: String) throws -> String {
-        let ok = !s.isEmpty && s != "." && s != ".." && s.unicodeScalars.allSatisfy { u in
-            let c = u.value
-            return (48...57).contains(c) || (65...90).contains(c) || (97...122).contains(c) || c == 45 || c == 46 || c == 95 || c == 126
+    /// path_segment: encoded totally and injectively, never refused. A UTF-8 byte is kept only when
+    /// it is 0-9 A-Z a-z - _ ~ (is_path_kept_code_point: "." is always encoded so no id can form a
+    /// dot-segment); every other byte, "%" included, is "%" + two UPPERCASE hex digits. The encoded
+    /// path is transported verbatim (percentEncodedPath), so the assertion covers the bytes sent.
+    static func segment(_ s: String) -> String {
+        var out = ""
+        for b in s.utf8 {
+            let kept = (48...57).contains(b) || (65...90).contains(b) || (97...122).contains(b) || b == 45 || b == 95 || b == 126
+            if kept { out.unicodeScalars.append(Unicode.Scalar(b)) } else { out += String(format: "%%%02X", b) }
         }
-        guard ok else { throw WireError.pathSegment(s) }
-        return s
+        return out
     }
     /// device_request_path
-    static func request(_ escalationId: String) throws -> String { requestPrefix + (try segment(escalationId)) }
+    static func request(_ escalationId: String) -> String { requestPrefix + segment(escalationId) }
     /// device_enrollment_path
-    static func enrollment(_ enrollmentId: String) throws -> String { enrollmentPrefix + (try segment(enrollmentId)) }
+    static func enrollment(_ enrollmentId: String) -> String { enrollmentPrefix + segment(enrollmentId) }
 }
 
 // ── Transport ────────────────────────────────────────────────────────────────────────────────
@@ -419,7 +418,8 @@ struct ServerConfig {
         return ServerConfig(host: host, apnsEnvironment: env)
     }
 
-    /// path is a Route path whose segments passed Route.segment, so no encoding is applied.
+    /// path is a Route path whose segments are already percent-encoded; it is set as
+    /// percentEncodedPath so URLComponents transports it verbatim and never re-encodes it.
     func url(_ path: String) throws -> URL {
         var c = URLComponents()
         c.scheme = "https"

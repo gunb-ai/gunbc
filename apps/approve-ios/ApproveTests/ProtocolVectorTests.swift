@@ -46,11 +46,17 @@ struct Vectors: Decodable {
         var name: String
         var body: String
     }
+    struct PathSegment: Decodable {
+        var input: String
+        var encoded: String
+    }
     var framing: String
     var redemption: [Redemption]
     var enrolment: [Enrolment]
     var read: [Read]
     var envelope: [Envelope]
+    /// path_segment: input -> encoded, emitted by the .dag path_segment fold.
+    var path_segment: [PathSegment]
 }
 
 final class ProtocolVectorTests: XCTestCase {
@@ -63,6 +69,7 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertFalse(v.enrolment.isEmpty, "no enrolment vectors")
         XCTAssertFalse(v.read.isEmpty, "no read vectors")
         XCTAssertFalse(v.envelope.isEmpty, "no envelope vectors")
+        XCTAssertFalse(v.path_segment.isEmpty, "no path_segment vectors")
         return v
     }
 
@@ -181,14 +188,21 @@ final class ProtocolVectorTests: XCTestCase {
         XCTAssertEqual(got, Data(try envelope("push_update_client_data").utf8))
     }
 
-    func testPathsMatchTheFixtureAndRefuseOutsideTheAlphabet() throws {
+    func testPathsMatchTheFixture() throws {
         let f = try WireDecode.fetchedRequest(Data(try envelope("fetched_request").utf8))
-        XCTAssertEqual(try Route.request(f.escalation_id), try envelope("request_path"))
+        XCTAssertEqual(Route.request(f.escalation_id), try envelope("request_path"))
         let g = try WireDecode.enrolmentGrant(Data(try envelope("enrolment_grant").utf8))
-        XCTAssertEqual(try Route.enrollment(g.enrollment_id), try envelope("enrollment_path"))
-        XCTAssertThrowsError(try Route.request("a/b"))
-        XCTAssertThrowsError(try Route.request("a%2Fb"))
-        XCTAssertThrowsError(try Route.request(".."))
+        XCTAssertEqual(Route.enrollment(g.enrollment_id), try envelope("enrollment_path"))
+    }
+
+    /// path_segment over every input -> encoded vector the .dag fold emitted: "." "%" "/" and
+    /// non-ASCII encode as upper-case %XX per UTF-8 byte, the kept alphabet passes through.
+    func testPathSegmentMatchesEveryVector() throws {
+        for v in try load().path_segment {
+            XCTAssertEqual(Route.segment(v.input), v.encoded, v.input)
+        }
+        // Injectivity control: an already-encoded input does not collide with its decoded twin.
+        XCTAssertNotEqual(Route.segment("a%2Fb"), Route.segment("a/b"))
     }
 
     /// The emitter's escaping is serialize_json's: controls as \u00XX upper-case, "/" literal.

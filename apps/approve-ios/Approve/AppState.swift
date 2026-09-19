@@ -156,7 +156,7 @@ final class AppState: ObservableObject {
         do {
             let client = try requireClient()
             let enrollmentId = enrollmentIdForCode(p.code)
-            let path = try Route.enrollment(enrollmentId)
+            let path = Route.enrollment(enrollmentId)
             let probe = EnrolledDevice(enrollment_id: enrollmentId, decision_key_blob: p.decision_key_blob,
                                        attest_key_id: p.attest_key_id, forwarded_apns_token: nil)
             let back = try await client.readback(path, try await readAuth(probe, path: path))
@@ -210,7 +210,7 @@ final class AppState: ObservableObject {
     }
 
     func fetch(_ escalationId: String) async throws -> FetchedRequest {
-        let path = try Route.request(escalationId)
+        let path = Route.request(escalationId)
         return try await requireClient().fetch(path, try await readAuth(path: path))
     }
 
