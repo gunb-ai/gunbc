@@ -25,7 +25,7 @@ import gunbc.fabric_event_log {
 import gunbc.fabric_event_log_host { HostLayoutResolved, HostLayoutRefused, event_log_layout_for_host, now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach }
-import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire, parse_fabric_group, fabric_group_of_host }
+import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, parse_fabric_group, fabric_group_of_host }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.released_baseline { ReleasedBaselineSpec, released_baseline_wire, parse_released_baseline }
 import gunbc.spark.pair_serving_authority {
@@ -917,7 +917,9 @@ fn current_pair_serving_authority(layout: EventLogLayout, group: FabricGroup, at
 //
 // ONE COMPARE-AND-SET AT THE HEAD the establishment read. Refused when an authority is already
 // established, when the authority names another group, when it would commit a host under a live
-// claim, when it commits no host, or when it holds a lease; stale when the partition moved.
+// claim -- on this partition or on any other home the host could have claimed on (its own
+// partition, the other group's), read for every host it commits -- when it commits no host, or
+// when it holds a lease; stale when the partition moved.
 type AuthorityEstablishment
   = AuthorityEstablishedAt { id: EventId }
   | AuthorityEstablishmentRefused { group: FabricGroup, step: String, reason: String }
@@ -935,7 +937,11 @@ fn pair_serving_authority_establish(layout: EventLogLayout, group: FabricGroup, 
           AuthorityUnestablished { host_effects: effs } =>
             match establishment_refusal(a: authority, effs: effs, at: at) {
               Present { value: why } => AuthorityEstablishmentRefused { group: group, step: "host-effects", reason: why }
-              Absent => {
+              Absent =>
+            match committed_hosts_other_home_claims(layout: layout, hosts: pair_serving_committed_hosts(a: authority), writing: pair_authority_partition(group: group), at: at) {
+              OwnClaimsUnread { partition: pt, step: st, reason: why } => AuthorityEstablishmentRefused { group: group, step: join(["host-partition/", st], ""), reason: join([pt as String, ": ", why], "") }
+              OwnClaimsLive { records: live } => AuthorityEstablishmentRefused { group: group, step: "host-effects", reason: join(["the authority would commit a host under a live host effect on another partition: ", join(map(live, r => host_effect_line_at(r: r, at: at)), "; ")], "") }
+              OwnClaimsQuiet => {
                 let event = ChainEvent {
                   partition: pair_authority_partition(group: group),
                   parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
@@ -953,6 +959,7 @@ fn pair_serving_authority_establish(layout: EventLogLayout, group: FabricGroup, 
         }
     }
   }
+            }
 }
 
 // THE SOURCE ROW, ESTABLISHED ON THE LOG: the production route from a desired authority row to a
@@ -1053,7 +1060,7 @@ fn pair_serving_authority_transition(
         } else if pair_serving_commits_hosts(a: next) && length(pair_serving_committed_hosts(a: next)) == 0 {
           AuthorityTransitionRefused { group: group, step: "subject", reason: "the next state commits hosts but names none; a transaction state must retain the population it was authorized over" }
         } else {
-        match committed_hosts_own_claims(layout: layout, hosts: pair_serving_committed_hosts(a: next), at: at) {
+        match committed_hosts_other_home_claims(layout: layout, hosts: pair_serving_committed_hosts(a: next), writing: pair_authority_partition(group: group), at: at) {
           OwnClaimsUnread { partition: pt, step: st, reason: why } => AuthorityTransitionRefused { group: group, step: join(["host-partition/", st], ""), reason: join([pt as String, ": ", why], "") }
           OwnClaimsLive { records: live } => AuthorityTransitionRefused { group: group, step: "host-effects", reason: join(["the next state commits a host under a live host effect on the host's own partition; it is fenced until that effect is released with quiescence evidence: ", join(map(live, r => host_effect_line_at(r: r, at: at)), "; ")], "") }
           OwnClaimsQuiet =>
@@ -1107,14 +1114,65 @@ fn committed_hosts_own_claims(layout: EventLogLayout, hosts: List<HostIdentity>,
     match acc {
       OwnClaimsUnread { partition: _, step: _, reason: _ } => acc
       OwnClaimsLive { records: _ } => acc
-      OwnClaimsQuiet =>
-        match host_effects_on_host(layout: layout, host: h) {
-          HostEffectsUnread { partition: pt, step: st, reason: why } => OwnClaimsUnread { partition: pt, step: st, reason: why }
-          HostEffectsReadAt { head: _, records: rs } => {
-            let live = live_host_effects_on(records: rs, hosts: [h], at: at)
-            if length(live) == 0 { OwnClaimsQuiet } else { OwnClaimsLive { records: live } }
+      OwnClaimsQuiet => host_claims_on_partition(layout: layout, partition: host_effect_partition(host: h), host: h, at: at)
+    })
+}
+
+// THE LIVE CLAIMS ON ONE HOST, READ FROM ONE PARTITION, whichever kind it is: a group partition is
+// folded by the authority fold (its claims ride with either fold state), a host partition by the
+// host-effect fold.
+fn host_claims_on_partition(layout: EventLogLayout, partition: PartitionId, host: HostIdentity, at: EpochSecs) -> OwnClaims {
+  let group = if (partition as String) == (pair_authority_partition(group: FabricGroupA) as String) { Present { value: FabricGroupA } }
+    else if (partition as String) == (pair_authority_partition(group: FabricGroupB) as String) { Present { value: FabricGroupB } }
+    else { none }
+  let records = match group {
+    Absent =>
+      match host_effects_on_partition(layout: layout, partition: partition) {
+        HostEffectsUnread { partition: pt, step: st, reason: why } => OwnClaimsUnread { partition: pt, step: st, reason: why }
+        HostEffectsReadAt { head: _, records: rs } => OwnClaimsLive { records: rs }
+      }
+    Present { value: g } =>
+      match read_group_partition(layout: layout, group: g) {
+        GroupPartitionUnread { step: st, reason: why } => OwnClaimsUnread { partition: partition, step: st, reason: why }
+        GroupPartitionAt { head: _, fold: f } =>
+          match f {
+            AuthorityFoldRefused { at_event: e, reason: why } => OwnClaimsUnread { partition: partition, step: "fold", reason: join(["event ", e as String, " refused: ", why], "") }
+            AuthorityUnestablished { host_effects: rs } => OwnClaimsLive { records: rs }
+            AuthorityFolded { host_effects: rs } => OwnClaimsLive { records: rs }
           }
-        }
+      }
+  }
+  match records {
+    OwnClaimsUnread { partition: pt, step: st, reason: why } => OwnClaimsUnread { partition: pt, step: st, reason: why }
+    OwnClaimsQuiet => OwnClaimsQuiet
+    OwnClaimsLive { records: rs } => {
+      let live = live_host_effects_on(records: rs, hosts: [host], at: at)
+      if length(live) == 0 { OwnClaimsQuiet } else { OwnClaimsLive { records: live } }
+    }
+  }
+}
+
+// EVERY PARTITION A HOST'S CLAIM COULD LIVE ON, OTHER THAN THE ONE BEING WRITTEN: its own partition
+// and both group partitions. The home rule places a claim by the host's fabric group, and the
+// source can move a host between groups or out of one; a claim written under the old home is
+// still a claim, so an admission or an establishment reads the other homes too and refuses under
+// a live one (or an unread one). A transition reads them through committed_hosts_own_claims.
+fn other_home_claims(layout: EventLogLayout, host: HostIdentity, writing: PartitionId, at: EpochSecs) -> OwnClaims {
+  let candidates = [host_effect_partition(host: host), pair_authority_partition(group: FabricGroupA), pair_authority_partition(group: FabricGroupB)]
+  fold(filter(candidates, pt => (pt as String) != (writing as String)), init: OwnClaimsQuiet, f: (acc, pt) =>
+    match acc {
+      OwnClaimsUnread { partition: _, step: _, reason: _ } => acc
+      OwnClaimsLive { records: _ } => acc
+      OwnClaimsQuiet => host_claims_on_partition(layout: layout, partition: pt, host: host, at: at)
+    })
+}
+
+fn committed_hosts_other_home_claims(layout: EventLogLayout, hosts: List<HostIdentity>, writing: PartitionId, at: EpochSecs) -> OwnClaims {
+  fold(hosts, init: OwnClaimsQuiet, f: (acc, h) =>
+    match acc {
+      OwnClaimsUnread { partition: _, step: _, reason: _ } => acc
+      OwnClaimsLive { records: _ } => acc
+      OwnClaimsQuiet => other_home_claims(layout: layout, host: h, writing: writing, at: at)
     })
 }
 
@@ -1284,6 +1342,10 @@ fn host_effect_admit(layout: EventLogLayout, home: HostEffectHome, host: HostIde
       } else if length(live_host_effects_on(records: effs, hosts: [host], at: at)) != 0 {
         HostEffectClaimRefused { partition: partition, step: "held", reason: join([host as String, " is held by another live host effect: ", join(map(live_host_effects_on(records: effs, hosts: [host], at: at), r => host_effect_line_at(r: r, at: at)), "; ")], "") }
       } else {
+      match other_home_claims(layout: layout, host: host, writing: partition, at: at) {
+        OwnClaimsUnread { partition: pt, step: st, reason: why } => HostEffectClaimRefused { partition: partition, step: join(["other-home/", st], ""), reason: join([pt as String, ": ", why], "") }
+        OwnClaimsLive { records: live } => HostEffectClaimRefused { partition: partition, step: "held", reason: join([host as String, " is held by a live host effect on another partition: ", join(map(live, r => host_effect_line_at(r: r, at: at)), "; ")], "") }
+        OwnClaimsQuiet => {
         let event = ChainEvent {
           partition: partition,
           parent: match head { HeadAbsent => none  HeadAt { id: h } => Present { value: h } },
@@ -1299,6 +1361,8 @@ fn host_effect_admit(layout: EventLogLayout, home: HostEffectHome, host: HostIde
       }
     }
   }
+      }
+      }
 }
 
 type HostEffectRelease
