@@ -14,7 +14,9 @@ import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
 import product.capacity.pool { Pool, PoolReading, PoolRead, PoolReadingRefused, pool_reading_at }
+import product.capacity.event_json { chain_envelope_decode }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
   event_parent_expectation, AppendDecision, AppendAdmitted, AppendStale, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted, chain_from_head,
@@ -253,7 +255,8 @@ fn event_log_read_partition_with<P>(layout: EventLogLayout, partition: Partition
               } else {
                 let st = fold(nat_range_inclusive(lo: 1, hi: budget), init: CollectState { current: HeadAt { id: h }, collected: [], refused: none }, f: (acc, _i) => collect_step(layout: layout, st: acc, decode: decode))
                 match st.refused {
-                  Present { value: why } => PartitionReadRefused { step: "read", reason: why }
+                  Present { value: why } =>
+                    PartitionReadRefused { step: "read", reason: join([why, "; backfill receipt for this partition: ", match event_log_backfill_receipt(layout: layout, partition: partition) { BackfillReceiptAt { head: rh } => join(["present at head ", rh, " -- every event at or before it carries a ref, so this is a missing object, not a legacy chain"], "")  BackfillReceiptAbsent => "absent -- run fabric_event_log_event_refs_backfill_wet on the placed host"  BackfillReceiptUnread { reason: rr } => join(["unread: ", rr], "") }], "") }
                   Absent => PartitionReadOk { head: HeadAt { id: h }, walk: chain_from_head(envs: st.collected, head: HeadAt { id: h }, budget: budget) }
                 }
               }
@@ -572,5 +575,102 @@ fn event_log_backfill_event_refs<P>(layout: EventLogLayout, partition: Partition
           }
         }
       }
+  }
+}
+
+// ── THE MIGRATION ENTRY: EVERY LIVE PARTITION, ON THE PLACED HOST, WITH A RECEIPT PER PARTITION ─
+//
+// The operator's one production route for the backfill (DESIGN §6: a hand-run script is
+// out-of-band actuation; this is the modeled door). It runs where the blobs are -- the layout's
+// remote must be the placed repository's local path, so an executor that is not the placed host
+// refuses before touching anything -- enumerates every partition head under refs/fabric/ in that
+// repository, walks each through the ENVELOPE decoder (chain_envelope_decode: the parent links
+// are all the backfill needs, and it does not select a payload family it would then have to
+// trust), and records a durable receipt per partition: refs/fabric-events-backfilled/<partition>
+// naming the head the backfill covered. The receipt is the cutover gate a reader consults when
+// it hits an unfetchable parent: with a receipt at or behind the head, every earlier event has a
+// ref and the missing object is a real fault; without one, the refusal names this entry. Exit 0
+// only when every live partition is receipted.
+fn backfill_receipt_ref(partition: PartitionId) -> String {
+  join(["refs/fabric-events-backfilled/", partition as String], "")
+}
+
+fn fabric_partitions_in(raw: String) -> List<PartitionId> {
+  flat_map(event_ref_names_in(raw: raw), r => if starts_with(s: r, prefix: "refs/fabric/") { [r.substring(start: 12, end: r.length()) as PartitionId] } else { [] as List<PartitionId> })
+}
+
+type PartitionBackfillReceipt
+  = PartitionBackfilled { partition: PartitionId, created: Nat, present: Nat, head: String }
+  | PartitionBackfillRefused { partition: PartitionId, step: String, reason: String }
+
+fn backfill_partition_with_receipt(layout: EventLogLayout, bare: FilePath, partition: PartitionId) -> PartitionBackfillReceipt {
+  match event_log_backfill_event_refs(layout: layout, partition: partition, budget: pair_backfill_budget, decode: fn(text) { chain_envelope_decode(text: text) }) {
+    EventRefBackfillRefused { partition: _, step: s, reason: why } => PartitionBackfillRefused { partition: partition, step: s, reason: why }
+    EventRefsBackfilled { partition: _, created: c, present: p } =>
+      match event_log_observe_head(layout: layout, partition: partition) {
+        HeadObservationRefused { step: s, reason: why } => PartitionBackfillRefused { partition: partition, step: join(["receipt/", s], ""), reason: why }
+        HeadObserved { head: HeadAbsent } => PartitionBackfilled { partition: partition, created: c, present: p, head: "" }
+        HeadObserved { head: HeadAt { id: h } } => {
+          let u = git.Core.UpdateRefCompareAndSwapInRepo(repo: bare, ref: backfill_receipt_ref(partition: partition), new_value: h as String, expected_old: "")
+          if u.exit_code == 0 {
+            PartitionBackfilled { partition: partition, created: c, present: p, head: h as String }
+          } else {
+            let f = git.Core.PushForcedRefInRepo(repo: layout.mirror, remote: bare as String, refspec: join([h as String, ":", backfill_receipt_ref(partition: partition)], ""))
+            if f.exit_code == 0 { PartitionBackfilled { partition: partition, created: c, present: p, head: h as String } } else { PartitionBackfillRefused { partition: partition, step: "receipt", reason: join(["update-ref exit ", to_string(u.exit_code), ": ", trim(s: u.stderr), "; push exit ", to_string(f.exit_code), ": ", trim(s: f.stderr)], "") } }
+          }
+        }
+      }
+  }
+}
+
+data pair_backfill_budget: Nat = 4096
+
+fn backfill_receipt_line(r: PartitionBackfillReceipt) -> String {
+  match r {
+    PartitionBackfilled { partition: p, created: c, present: n, head: h } => join([p as String, ": backfilled created=", to_string(c), " present=", to_string(n), " head=", h], "")
+    PartitionBackfillRefused { partition: p, step: s, reason: why } => join([p as String, ": REFUSED at ", s, ": ", why], "")
+  }
+}
+
+fn fabric_event_log_event_refs_backfill_over(layout: EventLogLayout) -> ProcessExit {
+  match layout.remote {
+    RemoteUnplaced => exit_failure(reason: "fabric event log backfill: the event log is unplaced")
+    RemoteOverFleetSsh { url: _ } => exit_failure(reason: "fabric event log backfill: this executor is not the placed host; the backfill walks the placed repository's own blobs and runs there")
+    RemoteLocalPath { path: bare } => {
+      let refs = git.Core.ForEachRefIn(repository_path: bare as String)
+      if refs.exit_code != 0 {
+        exit_failure(reason: join(["fabric event log backfill: for-each-ref exit ", to_string(refs.exit_code), ": ", trim(s: refs.stderr)], ""))
+      } else {
+        let receipts = map(fabric_partitions_in(raw: refs.raw), p => backfill_partition_with_receipt(layout: layout, bare: bare, partition: p))
+        let body = join(map(receipts, r => backfill_receipt_line(r: r)), "\n")
+        if all(receipts, r => match r { PartitionBackfilled { partition: _, created: _, present: _, head: _ } => true  PartitionBackfillRefused { partition: _, step: _, reason: _ } => false }) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: join(["fabric event log backfill: not every live partition is receipted:\n", body], ""))
+        }
+      }
+    }
+  }
+}
+
+
+// The receipt as a reader consults it: present with the head it covered, or absent.
+type BackfillReceiptRead
+  = BackfillReceiptAt { head: String }
+  | BackfillReceiptAbsent
+  | BackfillReceiptUnread { reason: String }
+
+fn event_log_backfill_receipt(layout: EventLogLayout, partition: PartitionId) -> BackfillReceiptRead {
+  match event_log_remote_word(remote: layout.remote) {
+    Absent => BackfillReceiptUnread { reason: "the event log is unplaced" }
+    Present { value: remote } => {
+      let r = git.Core.LsRemoteRefInRepo(repo: layout.mirror, remote: remote, ref_name: backfill_receipt_ref(partition: partition))
+      let oid = advertised_oid(advertised: r.advertised)
+      if r.exit_code != 0 {
+        BackfillReceiptUnread { reason: join(["ls-remote exit ", to_string(r.exit_code), ": ", trim(s: r.stderr)], "") }
+      } else {
+        if oid == "" { BackfillReceiptAbsent } else { BackfillReceiptAt { head: oid } }
+      }
+    }
   }
 }

@@ -914,15 +914,27 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "an_expired_host_effect_claim_fences_nothing_by_real_execution" },
-      entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
-      function: "an_expired_host_effect_claim_fences_nothing_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.fabric_event_log_append_real_execution", function: "a_legacy_chain_is_readable_from_a_fresh_mirror_only_after_the_backfill_by_real_execution" },
       entry: "dag/test/claim/fabric_event_log_append_real_execution_witness_test.dag",
       function: "a_legacy_chain_is_readable_from_a_fresh_mirror_only_after_the_backfill_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "an_overdue_host_effect_claim_fences_until_released_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
+      function: "an_overdue_host_effect_claim_fences_until_released_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.spark.pair_serving_authority_log_real_execution", function: "an_ungrouped_host_is_claimed_on_its_own_partition_by_real_execution" },
+      entry: "dag/test/claim/spark/pair_serving_authority_log_real_execution_witness_test.dag",
+      function: "an_ungrouped_host_is_claimed_on_its_own_partition_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric_event_log_append_real_execution", function: "the_backfill_entry_receipts_every_partition_and_the_fresh_mirror_reads_by_real_execution" },
+      entry: "dag/test/claim/fabric_event_log_append_real_execution_witness_test.dag",
+      function: "the_backfill_entry_receipts_every_partition_and_the_fresh_mirror_reads_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

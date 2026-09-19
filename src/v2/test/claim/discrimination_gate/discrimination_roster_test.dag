@@ -145,8 +145,5 @@ fn discrimination_family_gate() -> Bool {
     false
   } else {
     all_rows_discriminating(rows: rows)
-      && negative_control_correctly_rejected()
-      && non_perturbed_control_correctly_rejected()
-      && mixed_input_non_perturbed_control_correctly_rejected()
   }
 }

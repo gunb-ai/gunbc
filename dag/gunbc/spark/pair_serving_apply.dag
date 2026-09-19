@@ -170,7 +170,7 @@ fn pair_serving_authority_admits_apply(a: PairServingGroupAuthority?) -> Bool {
 // decorative. An earlier shape looked the authority up inside this fold, so the only way to reach the
 // refusing arm was to edit the live row -- no control could SUPPLY a suspended authority, and deleting
 // the gate entirely would have left every claim green. A check whose red is unauthorable is worse than
-// absent because it gets cited as coverage (DESIGN section 4b). spark_pair_apply_plan below is the thin
+// absent because it gets cited as coverage (DESIGN section 4b). spark_pair_apply_plans_current below is the thin
 // binding that supplies the live authority, exactly as fabric_capacity_standing binds its verdict.
 fn spark_pair_apply_plan_under(r: SparkPairRealization, authority: PairServingGroupAuthority?) -> SparkPairApplyPlan {
   match r {
