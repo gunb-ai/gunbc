@@ -22,6 +22,7 @@ import extdeps.apple.app_attest {
   LaunchExtensionsRequired, LaunchExtensionsOptional, AppAttestLaunchExtensionPolicy,
   AppAttestAttestationReady, AppAttestAttestationRefused, AppAttestEnvironment,
   app_attest_attestation_object, app_attest_verify, app_attest_verify_assertion, app_attest_environment_of,
+  AppAttestAssertionReady, AppAttestAssertionRefused, app_attest_assertion_object,
 }
 import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
 import gunbc.auth.approval_device_redemption {
@@ -240,6 +241,18 @@ test fn the_genuine_assertion_decodes_and_refuses_at_the_sha256_frontier() -> Bo
   match app_attest_verify_assertion(assertion_b64: genuine_assertion) {
     AssertionRefused { cause: AssertionVerificationUnrealized { capability: AppAttestSha256Digest } } => true
     _ => false
+  }
+}
+
+// Read independently: the genuine assertion's authenticator data is 37 octets, flags 0x40, counter 1.
+test fn the_genuine_assertion_decodes_to_counter_one() -> Bool {
+  match base64_decode(s: genuine_assertion as String, variant: Standard) {
+    Absent => false
+    Present { value: octets } =>
+      match app_attest_assertion_object(input: octets) {
+        AppAttestAssertionReady { value: a } => a.auth_data.counter == 1 && a.auth_data.whole.end - a.auth_data.whole.start == 37
+        AppAttestAssertionRefused { cause: _ } => false
+      }
   }
 }
 

@@ -740,11 +740,19 @@ fn x509_names_chain(child: X509Link, issuer: X509Link) -> Bool {
     == octet_span_octets(input: issuer.input, span: issuer.certificate.subject)
 }
 
+// The certificate that issued the one at `depth`: the next in the chain, or the anchor after the last.
+fn x509_issuer_link(chain: List<X509Link>, anchor: X509Link, depth: Int) -> X509Link {
+  match chain |> get(depth + 1) {
+    Present { value: next } => next
+    Absent => anchor
+  }
+}
+
 fn x509_chain_step(chain: List<X509Link>, anchor: X509Link, depth: Int, now: Int, leaf_handled: List<List<Int>>) -> X509ChainCheck {
   match chain |> get(depth) {
     Absent => X509ChainStructurallyValid
     Present { value: link } => {
-      let issuer = match chain |> get(depth + 1) { Present { value: next } => next Absent => anchor }
+      let issuer = x509_issuer_link(chain: chain, anchor: anchor, depth: depth)
       let handled = if depth == 0 { append([oid_basic_constraints, oid_key_usage], items: leaf_handled) } else { [oid_basic_constraints, oid_key_usage] }
       let below = if depth == 0 { 0 } else { depth - 1 }
       if !x509_names_chain(child: link, issuer: issuer) {

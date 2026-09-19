@@ -23,6 +23,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // DER refusal, each differing from an accepted input only in the property under test. Epoch values
 // are POSIX seconds cross-checked with `date -u -d`.
 
+fn zeros(n: Int, acc: List<UInt8>) -> List<UInt8> {
+  if n == 0 { acc } else { zeros(n: n - 1, acc: acc |> list_push(0)) }
+}
+
 fn whole(input: List<UInt8>) -> OctetSpan {
   OctetSpan { start: 0, end: count(input) }
 }
@@ -47,7 +51,7 @@ fn arcs_of(input: List<UInt8>) -> List<Int>? {
 
 test fn reads_short_and_long_form_lengths() -> Bool {
   let short: List<UInt8> = [4, 1, 7]
-  let long: List<UInt8> = append([4, 129, 128], items: range(0, 128) |> map(i => 0))
+  let long: List<UInt8> = append([4, 129, 128], items: zeros(n: 128, acc: []))
   match element(input: short) {
     Present { value: e } => octet_span_octets(input: short, span: e.content) == [7]
     Absent => false
@@ -65,7 +69,7 @@ test fn refuses_a_long_form_length_short_form_could_carry() -> Bool {
 }
 
 test fn refuses_a_long_form_length_with_a_leading_zero_octet() -> Bool {
-  match der_read_element(input: append([4, 130, 0, 200], items: range(0, 200) |> map(i => 0)), at: 0) {
+  match der_read_element(input: append([4, 130, 0, 200], items: zeros(n: 200, acc: [])), at: 0) {
     DerReadRefused { cause: DerNoncanonicalLength { at: _ } } => true
     _ => false
   }

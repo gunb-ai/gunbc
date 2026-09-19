@@ -341,8 +341,13 @@ fn app_attest_auth_data_extensions(input: List<UInt8>, span: OctetSpan, rp_id_ha
   }
 }
 
-// Authenticator data occupying `span` of `input` (the byte string's own extent).
-fn app_attest_auth_data(input: List<UInt8>, span: OctetSpan) -> AppAttestAuthDataRead {
+// Authenticator data occupying `span` of `input` (the byte string's own extent). An ATTESTATION
+// carries attested credential data and says so with flag AT. An ASSERTION's authenticator data is
+// the fixed 37-octet header plus any extensions and carries no credential data -- yet Apple sets AT
+// on it anyway: the genuine device assertion in test.claim.app_attest_parse_witness_test is 37
+// octets with flags 0x40. So whether credential data is read is the CALLER'S fact (which object this
+// is), not inferred from AT, and an assertion that did carry more octets refuses as trailing.
+fn app_attest_auth_data(input: List<UInt8>, span: OctetSpan, reads_credential: Bool) -> AppAttestAuthDataRead {
   if octet_span_length(span: span) < 37 {
     AppAttestAuthDataRefused { cause: AppAttestAuthDataTruncated { needed: 37, available: octet_span_length(span: span) } }
   } else {
@@ -353,7 +358,7 @@ fn app_attest_auth_data(input: List<UInt8>, span: OctetSpan) -> AppAttestAuthDat
         match octet_read_unsigned_be(input: input, at: span.start + 33, octets: 4) {
           OctetUnsignedRefused { cause: _ } => AppAttestAuthDataRefused { cause: AppAttestAuthDataTruncated { needed: 37, available: 33 } }
           OctetUnsignedReady { value: counter, end: after_counter } => {
-            let attested = octet_bit_is_set(octet: flags, bit: 6)
+            let attested = reads_credential && octet_bit_is_set(octet: flags, bit: 6)
             let has_extensions = octet_bit_is_set(octet: flags, bit: 7)
             let bounded = input.take(n: span.end)
             if attested {
@@ -427,7 +432,7 @@ fn app_attest_statement(input: List<UInt8>, statement: CborItem, auth_data: Octe
                   match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_receipt) {
                     Absent => app_attest_malformed(cause: AppAttestFieldMissing { field: AppAttestFieldReceipt })
                     Present { value: CborBytes { span: receipt } } =>
-                      match app_attest_auth_data(input: input, span: auth_data) {
+                      match app_attest_auth_data(input: input, span: auth_data, reads_credential: true) {
                         AppAttestAuthDataRefused { cause: c } => app_attest_malformed(cause: c)
                         AppAttestAuthDataReady { value: ad } =>
                           AppAttestAttestationReady { value: AppAttestAttestationObject { input: input, certificates: cert_spans, receipt: receipt, auth_data: ad } }
@@ -620,11 +625,11 @@ fn app_attest_verify(
 ) -> AttestationVerification {
   match base64_decode(s: attestation_b64 as String, variant: Standard) {
     Absent => AttestationRefused { cause: AttestationMalformed { cause: AppAttestBase64Invalid } }
-    Present { value: input } =>
-      match app_attest_attestation_object(input: input) {
+    Present { value: decoded } =>
+      match app_attest_attestation_object(input: decoded) {
         AppAttestAttestationRefused { cause: c } => AttestationRefused { cause: c }
         AppAttestAttestationReady { value: obj } =>
-          match app_attest_chain_links(input: input, spans: obj.certificates, index: 0, acc: []) {
+          match app_attest_chain_links(input: decoded, spans: obj.certificates, index: 0, acc: []) {
             AppAttestChainRefused { cause: c } => AttestationRefused { cause: c }
             AppAttestChainReady { links: links } =>
               match app_attest_pinned_anchor() {
@@ -668,7 +673,7 @@ fn app_attest_assertion_object(input: List<UInt8>) -> AppAttestAssertionRead {
           Present { value: CborBytes { span: signature } } =>
             match cbor_map_text_value(input: input, entries: entries, key: app_attest_wire_authenticator_data) {
               Present { value: CborBytes { span: ad_span } } =>
-                match app_attest_auth_data(input: input, span: ad_span) {
+                match app_attest_auth_data(input: input, span: ad_span, reads_credential: false) {
                   AppAttestAuthDataRefused { cause: c } => AppAttestAssertionRefused { cause: c }
                   AppAttestAuthDataReady { value: ad } => AppAttestAssertionReady { value: AppAttestAssertionObject { input: input, signature: signature, auth_data: ad } }
                 }
@@ -686,8 +691,8 @@ fn app_attest_assertion_object(input: List<UInt8>) -> AppAttestAssertionRead {
 fn app_attest_verify_assertion(assertion_b64: NonEmptyStr) -> AssertionVerification {
   match base64_decode(s: assertion_b64 as String, variant: Standard) {
     Absent => AssertionRefused { cause: AssertionMalformed { cause: AppAttestBase64Invalid } }
-    Present { value: input } =>
-      match app_attest_assertion_object(input: input) {
+    Present { value: decoded } =>
+      match app_attest_assertion_object(input: decoded) {
         AppAttestAssertionRefused { cause: c } => AssertionRefused { cause: AssertionMalformed { cause: c } }
         AppAttestAssertionReady { value: _ } => AssertionRefused { cause: AssertionVerificationUnrealized { capability: AppAttestSha256Digest } }
       }
