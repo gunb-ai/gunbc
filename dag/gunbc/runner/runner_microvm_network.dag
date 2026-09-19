@@ -1,10 +1,10 @@
 module gunbc.runner_microvm_network
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, Port }
 import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.content_hash { Sha256Digest }
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
@@ -290,7 +290,7 @@ type GuestEgressDestination
 
 type GuestEgressGrant {
   transport: NftTransport
-  port: Int
+  port: Port
   destination: GuestEgressDestination
 }
 
@@ -326,6 +326,10 @@ data runner_microvm_shared_host_grain: HostEgressGrain = HostEgressGrain {
   ipv6: IpV6DefaultDenyRuleset,
 }
 
+data runner_microvm_guest_dns_port: Port = 53
+
+data runner_microvm_guest_tls_port: Port = 443
+
 // TCP 443 IS A DESTINATION CLASS, NOT "GITHUB ONLY": github.com and the Actions endpoints are
 // CDN-fronted, so a static address list is stale when written. The narrow form is an egress proxy.
 data runner_microvm_guest_egress_policy: GuestEgressPolicy = GuestEgressPolicy {
@@ -339,9 +343,9 @@ data runner_microvm_guest_egress_policy: GuestEgressPolicy = GuestEgressPolicy {
     "224.0.0.0/4" as NonEmptyStr,
   ],
   grants: [
-    GuestEgressGrant { transport: NftUdp, port: 53, destination: NamedDestination { address: runner_microvm_guest_resolver() } },
-    GuestEgressGrant { transport: NftTcp, port: 53, destination: NamedDestination { address: runner_microvm_guest_resolver() } },
-    GuestEgressGrant { transport: NftTcp, port: 443, destination: AnyUndeniedDestination },
+    GuestEgressGrant { transport: NftUdp, port: runner_microvm_guest_dns_port, destination: NamedDestination { address: runner_microvm_guest_resolver() } },
+    GuestEgressGrant { transport: NftTcp, port: runner_microvm_guest_dns_port, destination: NamedDestination { address: runner_microvm_guest_resolver() } },
+    GuestEgressGrant { transport: NftTcp, port: runner_microvm_guest_tls_port, destination: AnyUndeniedDestination },
   ],
 }
 
@@ -637,7 +641,7 @@ fn conntrack_readback(o: GuestConntrackObservation) -> SlotNetworkReadback {
 fn ruleset_readback(o: RulesetObservation, converged: Sha256Digest) -> SlotNetworkReadback {
   match o {
     RulesetListed { digest: d } =>
-      if (d.hex as String) == (converged.hex as String) {
+      if content_hash_eq_cryptographic(left: d, right: converged) {
         SlotNetworkConfirmed
       } else {
         SlotNetworkRefuted {
