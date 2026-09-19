@@ -96,6 +96,16 @@ import gunbc.repository { gunbc_repository }
 // -> `BuildProvenanceUnobserved`. Identity agrees but the delivery route is not admitted ->
 // `BuildProvenanceOriginUnestablished`. Every arm but the first is a refusal and never a pass.
 //
+// WHICH HOST THE OBSERVATION IS SOUND UNDER. The running image is whichever binary hosts the
+// interpreter. Under `gunbc run` -- the retirement route's step, and the probe below -- that is
+// `gunbc`, whose generated clap surface answers `--version`, and the Read arm is reachable. Under
+// claim_batch or claim_executor the image has no `--version` (hand-parsed argv, unmodeled), the
+// operation exits 2 and the observation is Unreadable -- so the join REFUSES there rather than
+// reporting some other program's identity. test.claim.running_seed_identity_wet executes the
+// operation for real under claim_batch --wet and holds it to exactly that: agree with HEAD, or
+// refuse naming why. Widening the version surface to the witness binaries is the next-rung
+// trigger for the Read arm under that harness, and it is seed growth on an unmodeled surface.
+//
 // WHAT THIS DOES NOT ESTABLISH, said so it is not cited for it. `gunbc` is the interpreter and is
 // the one release bin that carries an identity; claim_executor and the other fourteen bins in the
 // artifact carry none, and this join says nothing about them. It does not establish that the build

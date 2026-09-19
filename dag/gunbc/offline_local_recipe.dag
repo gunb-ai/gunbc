@@ -64,6 +64,12 @@ type OfflineLocalRecipeRow {
 data offline_local_recipes: List<OfflineLocalRecipeRow> = [
   OfflineLocalRecipeRow {
     policy: "wet_integration_offline_note",
+    subject: RecipeEntry { path: "dag/test/claim/running_seed_identity_wet_test.dag" },
+    selection: RecipeFunctions { names: ["the_running_image_observation_agrees_with_the_checkout_or_refuses"] },
+    mode: Wet
+  },
+  OfflineLocalRecipeRow {
+    policy: "wet_integration_offline_note",
     subject: RecipeEntry { path: "dag/test/claim/host/host_effect_apply_witness_test.dag" },
     selection: RecipeCallerChosen,
     mode: Wet

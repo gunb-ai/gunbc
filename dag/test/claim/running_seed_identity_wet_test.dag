@@ -1,0 +1,52 @@
+module test.claim.running_seed_identity_wet
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import std.types { String }
+import std.algebra { trim }
+import extdeps.git
+import extdeps.git.inspect
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.cli_dispatch_surface { CliCleanSourceCommit, CliDirtySourceCommit }
+import gunbc.build_provenance_join {
+  RunningSeedIdentityRead,
+  RunningSeedIdentityUnreadable,
+  observe_running_seed_identity,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE OPERATION, RUN FOR REAL. Every claim over the build-provenance join supplies its reading,
+// which DESIGN section 3 permits only while some claim still runs the real path: this file is that
+// claim. It executes `gunbc.Cli.RunningVersion` -- the interpreter evaluating this claim forks and
+// execs /proc/self/exe -- and holds the parsed result to the only two things it may be. Wet by
+// nature (the operation has no mock, deliberately), so it runs under `claim_batch --wet`; hermetic
+// discovery refuses it rather than fabricating an identity, which is the right refusal.
+//
+// WHICH ARM THIS HARNESS INHABITS, stated because it is a boundary and not a defect. The
+// observation asks the RUNNING IMAGE for its version, and the image is whichever binary hosts the
+// interpreter. Under `gunbc run` -- the retirement route, and the probe
+// gunbc.build_provenance_join build_provenance_probe_wet -- that is `gunbc`, whose generated clap
+// surface renders GUNBC_BUILD_IDENTITY, and the Read arm is reached. Under `claim_batch --wet` the
+// image is claim_batch, whose hand-parsed argv has no `--version` (measured 2026-09-19: exit 2,
+// "unknown argument: --version"), so the operation fails and the observation is Unreadable -- the
+// REFUSAL arm, inhabited by a real fork, exec and parse, never a fabricated commit. Both arms
+// are the same declaration and the same fold; which one a run reaches is the host's, and the
+// join refuses on the second. Widening the version surface to the witness binaries is seed growth
+// on an unmodeled argv surface (DESIGN, Building & checks), so it is the next-rung trigger for
+// reaching the Read arm under this harness, not a change this witness makes.
+
+// THE CLAIM: the observation agrees with the checkout, or refuses naming why -- and nothing else.
+// A Read of a commit other than HEAD is the stale-interpreter case and is red; a dirty build of
+// HEAD is red; a refusal must carry the operation's own failure rather than an empty cause.
+test fn the_running_image_observation_agrees_with_the_checkout_or_refuses() -> Bool {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  match observe_running_seed_identity() {
+    RunningSeedIdentityRead { identity: i } =>
+      match i {
+        CliCleanSourceCommit { commit: c } => head.success && (c as String) == trim(s: head.sha as String)
+        CliDirtySourceCommit { commit: _ } => false
+      }
+    RunningSeedIdentityUnreadable { cause: c } => starts_with(s: c, prefix: "the running gunbc did not report its version")
+  }
+}
