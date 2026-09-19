@@ -1,0 +1,304 @@
+module test.claim.app_attest_parse_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp, Int, List }
+import std.integer { UInt8 }
+import std.encoding { base64_decode, base64_encode, Standard }
+import std.octet_span { OctetSpan, octet_span_octets }
+import extdeps.ietf.cbor { CborTrailingInput, CborDuplicateMapKey }
+import extdeps.itu.der { DerTrailingInput }
+import extdeps.ietf.x509 {
+  X509Read, X509Ready, X509Refused, X509Malformed, X509Expired, X509NotYetValid,
+  x509_certificate,
+}
+import extdeps.apple.app_attest {
+  AttestKeyId, AppAttestDevelopment, AppAttestProduction,
+  AttestationVerification, AttestationVerified, AttestationRefused,
+  AttestationMalformed, AttestationChainUntrusted, AttestationEnvironmentUnexpected, AttestationCredentialIdMismatch,
+  AttestationValidationCategoryAbsent, AttestationVerificationUnrealized, AttestationFormatUnexpected,
+  AssertionVerification, AssertionRefused, AssertionMalformed, AssertionVerificationUnrealized,
+  AppAttestCborRefused, AppAttestUnknownField, AppAttestBase64Invalid,
+  AppAttestEcdsaSignatureVerification, AppAttestSha256Digest,
+  LaunchExtensionsRequired, LaunchExtensionsOptional, AppAttestLaunchExtensionPolicy,
+  AppAttestAttestationReady, AppAttestAttestationRefused, AppAttestEnvironment,
+  app_attest_attestation_object, app_attest_verify, app_attest_verify_assertion, app_attest_environment_of,
+}
+import extdeps.crypto.signature { VerifyingKey, EcdsaP256Sha256, Sec1Uncompressed }
+import gunbc.auth.approval_device_redemption {
+  EnrolmentChallenge, EnrolmentSlotStanding, EnrolmentCodeUnspent,
+  EnrolmentAdmitted, EnrolmentRefused, EnrolmentAttestationRefused, EnrolmentObservationTimeUnreadable,
+  ios_enrolment_admission,
+}
+import gunbc.auth.approval_decision_store { approval_operator_login }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ORACLE IS A GENUINE DEVICE OBJECT, NOT THIS DECODER'S OWN OUTPUT. The attestation and
+// assertion below were produced by DCAppAttestService on an iPhone (iOS 14.4, development
+// environment, 2021-01-23) and are published under Apache-2.0 by github.com/veehaitch/devicecheck-appattest
+// (src/test/resources/ios-14.4.yaml); they are carried here byte for byte from gunbc#11592's
+// app_attest_witness_test (swift-ibex-621), whose chain verifies to the pinned Apple root under
+// `openssl verify -attime 1611404013`. The expected field values were read independently of this
+// decoder (openssl x509 -text and a direct byte read): leaf valid 2021-01-22T12:13:35Z to
+// 2021-01-25T12:13:35Z, CA 1 with basicConstraints CA:TRUE pathlen:0, only basicConstraints and
+// keyUsage critical, authenticator-data flags 0x40, counter 0, AAGUID "appattestdevelop",
+// credential id equal to the decoded key id.
+//
+// The adversarial controls mutate THESE bytes, so each refusal is the genuine object failing one
+// property. They are also the route's bypass discriminator: a hand-written offset walk over the
+// same bytes reads the same authData and certificates, and would not refuse a duplicate key, an
+// unknown key, trailing CBOR, or a certificate with trailing bytes.
+data genuine_attestation: NonEmptyStr = "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"
+data genuine_assertion: NonEmptyStr = "omlzaWduYXR1cmVYRjBEAiBJ6BT/QR689UKy84YyN3RDydYD9KVQ2BTRK+x1i8ezqAIgGM7BsZbSuF6TjmK6xtOFekyVyjf8akGvp5qFRGm9LTxxYXV0aGVudGljYXRvckRhdGFYJUVlEup+JpR2q5Pht5cWhVkv9z+JSsDsL9VICKCL+2yPQAAAAAE="
+data genuine_key_id: AttestKeyId = "YmbJO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3M=" as AttestKeyId
+data genuine_client_data: NonEmptyStr = "wurzelpfropf"
+data captured_at: Int = 1611404013
+data genuine_point: NonEmptyStr = "BIjANKGQqn28WgYVAcZUKAOUJYIZiz8cxUZzyjua0gtBUoJnpU9f26BGn6-0a7aZCjlr8E-UpJ1DIMgcerJAo5g"
+
+data genuine_observed_at: Timestamp = "2021-01-23T12:13:33Z"
+data admitted_categories: List<Int> = [2, 3]
+
+fn genuine_octets() -> List<UInt8> {
+  match base64_decode(s: genuine_attestation as String, variant: Standard) {
+    Present { value: o } => o
+    Absent => []
+  }
+}
+
+fn reencode(octets: List<UInt8>) -> NonEmptyStr {
+  match base64_encode(octets: octets, variant: Standard) {
+    Present { value: s } => s as NonEmptyStr
+    Absent => "!" as NonEmptyStr
+  }
+}
+
+fn verify_genuine(environment: AppAttestEnvironment, policy: AppAttestLaunchExtensionPolicy, key_id: AttestKeyId, now: Int) -> AttestationVerification {
+  app_attest_verify(environment: environment, policy: policy, admitted_categories: admitted_categories, attestation_b64: genuine_attestation, key_id: key_id, now_epoch: now)
+}
+
+fn verify_bytes(octets: List<UInt8>) -> AttestationVerification {
+  app_attest_verify(environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, admitted_categories: admitted_categories, attestation_b64: reencode(octets: octets), key_id: genuine_key_id, now_epoch: captured_at)
+}
+
+// ── The genuine object decodes to the independently read values ─────────────────────────────
+
+test fn the_genuine_attestation_decodes_to_its_independently_read_fields() -> Bool {
+  let input = genuine_octets()
+  match app_attest_attestation_object(input: input) {
+    AppAttestAttestationRefused { cause: _ } => false
+    AppAttestAttestationReady { value: obj } =>
+      count(obj.certificates) == 2
+        && obj.auth_data.counter == 0
+        && match obj.auth_data.extensions { Absent => true Present { value: _ } => false }
+        && match obj.auth_data.credential {
+          Absent => false
+          Present { value: c } =>
+            match app_attest_environment_of(input: input, aaguid: c.aaguid) {
+              Present { value: AppAttestDevelopment } => true
+              _ => false
+            }
+            && match base64_decode(s: genuine_key_id as String, variant: Standard) {
+              Present { value: k } => octet_span_octets(input: input, span: c.credential_id) == k
+              Absent => false
+            }
+        }
+  }
+}
+
+// The leaf certificate's subject public key IS the credential key the authenticator data carries:
+// 0x04 || x || y from the COSE key equals the SEC1 point in the certificate.
+test fn the_leaf_certificate_key_is_the_attested_credential_key() -> Bool {
+  let input = genuine_octets()
+  match app_attest_attestation_object(input: input) {
+    AppAttestAttestationRefused { cause: _ } => false
+    AppAttestAttestationReady { value: obj } =>
+      match obj.auth_data.credential {
+        Absent => false
+        Present { value: c } =>
+          match obj.certificates.first() {
+            Absent => false
+            Present { value: leaf_span } => {
+              let leaf = octet_span_octets(input: input, span: leaf_span)
+              match x509_certificate(input: leaf, span: OctetSpan { start: 0, end: count(leaf) }) {
+                X509Refused { cause: _ } => false
+                X509Ready { certificate: cert } =>
+                  octet_span_octets(input: leaf, span: cert.public_key.point)
+                    == append(append([4], items: octet_span_octets(input: input, span: c.x)), items: octet_span_octets(input: input, span: c.y))
+                    && cert.not_before == 1611317615
+                    && cert.not_after == 1611576815
+              }
+            }
+          }
+      }
+  }
+}
+
+// ── The verifier: every decidable step runs, and it never answers Verified ──────────────────
+
+// Under a policy requiring the launch extensions, the pre-iOS-17 genuine object is refused at step
+// 9, which is only reached after the chain structure (1), counter (6), environment (7) and
+// credential id (8) all passed on genuine bytes.
+test fn the_genuine_attestation_passes_the_decidable_steps_and_stops_at_the_absent_category() -> Bool {
+  match verify_genuine(environment: AppAttestDevelopment, policy: LaunchExtensionsRequired, key_id: genuine_key_id, now: captured_at) {
+    AttestationRefused { cause: AttestationValidationCategoryAbsent } => true
+    _ => false
+  }
+}
+
+// With the extensions optional, every decidable step passes and the verifier refuses at the ECDSA
+// frontier. It does NOT answer AttestationVerified: no signature was checked.
+test fn a_genuine_attestation_refuses_at_the_ecdsa_frontier_and_is_never_verified() -> Bool {
+  match verify_genuine(environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, key_id: genuine_key_id, now: captured_at) {
+    AttestationRefused { cause: AttestationVerificationUnrealized { capability: AppAttestEcdsaSignatureVerification } } => true
+    _ => false
+  }
+}
+
+test fn a_development_attestation_is_refused_where_production_is_required() -> Bool {
+  match verify_genuine(environment: AppAttestProduction, policy: LaunchExtensionsOptional, key_id: genuine_key_id, now: captured_at) {
+    AttestationRefused { cause: AttestationEnvironmentUnexpected { expected: _ } } => true
+    _ => false
+  }
+}
+
+test fn the_wrong_key_id_is_refused_at_the_credential_id() -> Bool {
+  match verify_genuine(environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, key_id: "AAAAO4x5nEHUvncp9zdWuVZjNBEMgJn3cdSToAXQe3M=" as AttestKeyId, now: captured_at) {
+    AttestationRefused { cause: AttestationCredentialIdMismatch { declared: _ } } => true
+    _ => false
+  }
+}
+
+test fn the_genuine_chain_is_refused_after_its_leaf_expires() -> Bool {
+  match verify_genuine(environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, key_id: genuine_key_id, now: 1790000000) {
+    AttestationRefused { cause: AttestationChainUntrusted { cause: X509Expired { depth: d, not_after: t } } } => d == 0 && t == 1611576815
+    _ => false
+  }
+}
+
+test fn the_genuine_chain_is_refused_before_its_leaf_is_valid() -> Bool {
+  match verify_genuine(environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, key_id: genuine_key_id, now: 1600000000) {
+    AttestationRefused { cause: AttestationChainUntrusted { cause: X509NotYetValid { depth: d, not_before: _ } } } => d == 0
+    _ => false
+  }
+}
+
+// ── Adversarial controls over the genuine bytes (and the route's bypass discriminator) ──────
+
+test fn trailing_cbor_after_the_attestation_is_refused() -> Bool {
+  match verify_bytes(octets: append(genuine_octets(), items: [0])) {
+    AttestationRefused { cause: AttestationMalformed { cause: AppAttestCborRefused { cause: CborTrailingInput { at: _, remaining: r } } } } => r == 1
+    _ => false
+  }
+}
+
+// The top-level map header 0xA3 (three entries) becomes 0xA4, and a second "fmt" entry is appended.
+test fn a_duplicate_top_level_key_is_refused() -> Bool {
+  let dup: List<UInt8> = [99, 102, 109, 116, 97, 120]
+  match verify_bytes(octets: append(append([164], items: genuine_octets().skip(n: 1)), items: dup)) {
+    AttestationRefused { cause: AttestationMalformed { cause: AppAttestCborRefused { cause: CborDuplicateMapKey { at: _ } } } } => true
+    _ => false
+  }
+}
+
+test fn an_unknown_top_level_key_is_refused() -> Bool {
+  let unknown: List<UInt8> = [99, 122, 122, 122, 0]
+  match verify_bytes(octets: append(append([164], items: genuine_octets().skip(n: 1)), items: unknown)) {
+    AttestationRefused { cause: AttestationMalformed { cause: AppAttestUnknownField } } => true
+    _ => false
+  }
+}
+
+test fn a_certificate_with_trailing_bytes_is_refused() -> Bool {
+  let input = genuine_octets()
+  match app_attest_attestation_object(input: input) {
+    AppAttestAttestationRefused { cause: _ } => false
+    AppAttestAttestationReady { value: obj } =>
+      match obj.certificates.first() {
+        Absent => false
+        Present { value: leaf_span } => {
+          let padded = append(octet_span_octets(input: input, span: leaf_span), items: [0])
+          match x509_certificate(input: padded, span: OctetSpan { start: 0, end: count(padded) }) {
+            X509Refused { cause: X509Malformed { cause: DerTrailingInput { at: _, remaining: r } } } => r == 1
+            _ => false
+          }
+        }
+      }
+  }
+}
+
+test fn text_that_is_not_base64_is_refused() -> Bool {
+  match app_attest_verify(environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, admitted_categories: admitted_categories, attestation_b64: "not*base64", key_id: genuine_key_id, now_epoch: captured_at) {
+    AttestationRefused { cause: AttestationMalformed { cause: AppAttestBase64Invalid } } => true
+    _ => false
+  }
+}
+
+// ── Assertions ───────────────────────────────────────────────────────────────────────────────
+
+test fn the_genuine_assertion_decodes_and_refuses_at_the_sha256_frontier() -> Bool {
+  match app_attest_verify_assertion(assertion_b64: genuine_assertion) {
+    AssertionRefused { cause: AssertionVerificationUnrealized { capability: AppAttestSha256Digest } } => true
+    _ => false
+  }
+}
+
+test fn an_assertion_with_trailing_cbor_is_refused() -> Bool {
+  match base64_decode(s: genuine_assertion as String, variant: Standard) {
+    Absent => false
+    Present { value: octets } =>
+      match app_attest_verify_assertion(assertion_b64: reencode(octets: append(octets, items: [0]))) {
+        AssertionRefused { cause: AssertionMalformed { cause: AppAttestCborRefused { cause: CborTrailingInput { at: _, remaining: _ } } } } => true
+        _ => false
+      }
+  }
+}
+
+// ── The route: the enrolment parse stage runs the modeled decoder ───────────────────────────
+
+data decision_key: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
+
+fn live_slot() -> EnrolmentSlotStanding {
+  EnrolmentCodeUnspent {
+    challenge: EnrolmentChallenge { code: "482913", issued_to_login: approval_operator_login, issued_at: "2021-01-23T12:10:00Z", expires_at: "2021-01-23T12:20:00Z" }
+  }
+}
+
+// The genuine attestation reaches the route, decodes, passes every decidable step, and the route
+// REFUSES the enrolment at the ECDSA frontier. It is never admitted.
+test fn the_enrolment_route_refuses_a_genuine_attestation_at_the_ecdsa_frontier() -> Bool {
+  match ios_enrolment_admission(
+    slot: live_slot(), decision_key: decision_key, attestation_b64: genuine_attestation, key_id: genuine_key_id,
+    environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, admitted_categories: admitted_categories,
+    observed_at: genuine_observed_at,
+  ) {
+    EnrolmentRefused { cause: EnrolmentAttestationRefused { cause: AttestationVerificationUnrealized { capability: AppAttestEcdsaSignatureVerification } } } => true
+    _ => false
+  }
+}
+
+// THE ROUTE'S BYPASS DISCRIMINATOR: a duplicate key the modeled CBOR decoder refuses reaches the
+// route as that decoder's typed cause. A route that walked the bytes by hand would not see it.
+test fn the_enrolment_route_refuses_a_duplicate_key_through_the_modeled_decoder() -> Bool {
+  let dup: List<UInt8> = [99, 102, 109, 116, 97, 120]
+  match ios_enrolment_admission(
+    slot: live_slot(), decision_key: decision_key,
+    attestation_b64: reencode(octets: append(append([164], items: genuine_octets().skip(n: 1)), items: dup)),
+    key_id: genuine_key_id, environment: AppAttestDevelopment, policy: LaunchExtensionsOptional,
+    admitted_categories: admitted_categories, observed_at: genuine_observed_at,
+  ) {
+    EnrolmentRefused { cause: EnrolmentAttestationRefused { cause: AttestationMalformed { cause: AppAttestCborRefused { cause: CborDuplicateMapKey { at: _ } } } } } => true
+    _ => false
+  }
+}
+
+test fn the_enrolment_route_refuses_an_unreadable_observation_time() -> Bool {
+  match ios_enrolment_admission(
+    slot: live_slot(), decision_key: decision_key, attestation_b64: genuine_attestation, key_id: genuine_key_id,
+    environment: AppAttestDevelopment, policy: LaunchExtensionsOptional, admitted_categories: admitted_categories,
+    observed_at: "2021-01-23 12:13:33",
+  ) {
+    EnrolmentRefused { cause: EnrolmentObservationTimeUnreadable { observed_at: _ } } => true
+    _ => false
+  }
+}

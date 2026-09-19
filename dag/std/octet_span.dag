@@ -1,0 +1,158 @@
+module std.octet_span
+
+import std.integer { UInt8 }
+import std.machine_word {
+  Word, WordWidth, Width8, Width16, Width32, WordResult, WordReady, WordRefused,
+  word_of_int, word_from_octets, word_shift_right, word_and,
+}
+import extdeps.toolchain.architecture_profile { BigEndian }
+
+// THE ONE BYTE-OFFSET AUTHORITY FOR OCTET PARSERS (gunbc#11629).
+//
+// Every binary parser in the encoding program -- CBOR, DER, X.509, App Attest authenticator data --
+// reads one input List<UInt8> and names the part it read by a half-open [start, end) span over that
+// SAME input. A parser never carries a copied sub-list plus a private offset convention, because two
+// conventions for "where is this field" is the positional fork the brief forbids: a refusal must be
+// located in the caller's input, and a later consumer must be able to re-read a field's exact bytes
+// (a certificate's signed TBS bytes, an attestation's authData) without re-deriving where it was.
+//
+// Truncation is the only way a read can fail here, and it is refused by name with the offset, the
+// octets needed and the octets present. Interpreting octets as integers or bit fields is not done
+// here with arithmetic: it goes through std.machine_word, which owns width and bit operations
+// (NUMERIC-BIT-0, gunbc#11627), so no parser open-codes a shift or a mask.
+
+type OctetSpan {
+  start: Int
+  end: Int
+}
+
+type OctetReadRefusal
+  = OctetInputTruncated { at: Int, needed: Int, available: Int }
+  | OctetUnsignedTooWide { at: Int, octets: Int }
+  | OctetWordRefused { at: Int }
+
+type OctetUnsignedRead
+  = OctetUnsignedReady { value: Int, end: Int }
+  | OctetUnsignedRefused { cause: OctetReadRefusal }
+
+type OctetSpanRead
+  = OctetSpanReady { span: OctetSpan }
+  | OctetSpanRefused { cause: OctetReadRefusal }
+
+fn octet_span_length(span: OctetSpan) -> Int {
+  span.end - span.start
+}
+
+fn octet_span_octets(input: List<UInt8>, span: OctetSpan) -> List<UInt8> {
+  input.skip(n: span.start).take(n: span.end - span.start)
+}
+
+fn octet_span_equals(input: List<UInt8>, a: OctetSpan, b: OctetSpan) -> Bool {
+  octet_span_length(span: a) == octet_span_length(span: b)
+    && octet_span_octets(input: input, span: a) == octet_span_octets(input: input, span: b)
+}
+
+fn octet_span_is(input: List<UInt8>, span: OctetSpan, expected: List<UInt8>) -> Bool {
+  octet_span_octets(input: input, span: span) == expected
+}
+
+// A span of `length` octets starting at `at`, refused when the input does not hold that many.
+fn octet_span_read(input: List<UInt8>, at: Int, length: Int) -> OctetSpanRead {
+  let available = count(input) - at
+  if at < 0 || length < 0 || available < length {
+    OctetSpanRefused { cause: OctetInputTruncated { at: at, needed: length, available: available } }
+  } else {
+    OctetSpanReady { span: OctetSpan { start: at, end: at + length } }
+  }
+}
+
+fn octet_at(input: List<UInt8>, at: Int) -> UInt8? {
+  if at < 0 { none } else { input |> get(at) }
+}
+
+fn octet_word(octet: UInt8) -> WordResult {
+  word_of_int(width: Width8, value: octet + 0)
+}
+
+// The octet's bits [shift, shift + width) as a small unsigned value: a right shift then a mask, both
+// performed by std.machine_word at width 8.
+fn octet_bit_field(octet: UInt8, shift: Int, mask: Int) -> Int? {
+  match octet_word(octet: octet) {
+    WordRefused { cause: _ } => none
+    WordReady { word: w } =>
+      match word_shift_right(a: w, amount: shift) {
+        WordRefused { cause: _ } => none
+        WordReady { word: shifted } =>
+          match word_of_int(width: Width8, value: mask) {
+            WordRefused { cause: _ } => none
+            WordReady { word: m } =>
+              match word_and(a: shifted, b: m) {
+                WordRefused { cause: _ } => none
+                WordReady { word: field } => Present { value: field.value }
+              }
+          }
+      }
+  }
+}
+
+fn octet_bit_is_set(octet: UInt8, bit: Int) -> Bool {
+  match octet_bit_field(octet: octet, shift: bit, mask: 1) {
+    Present { value: v } => v == 1
+    Absent => false
+  }
+}
+
+// The word width that holds `count` octets, when std.machine_word realizes one. Three octets are
+// read as a 32-bit word behind one leading zero octet, the same packing std.encoding base64 uses.
+fn octet_unsigned_width(octets: Int) -> WordWidth? {
+  if octets == 1 {
+    Present { value: Width8 }
+  } else if octets == 2 {
+    Present { value: Width16 }
+  } else if octets == 3 || octets == 4 {
+    Present { value: Width32 }
+  } else {
+    none
+  }
+}
+
+fn octet_words(octets: List<UInt8>) -> List<Word>? {
+  fold(octets, init: Present { value: [] }, f: (acc, octet) =>
+    match acc {
+      Absent => none
+      Present { value: words } =>
+        match octet_word(octet: octet) {
+          WordRefused { cause: _ } => none
+          WordReady { word: w } => Present { value: words |> list_push(w) }
+        }
+    })
+}
+
+data octet_zero_pad: List<UInt8> = [0]
+
+data octet_no_pad: List<UInt8> = []
+
+fn octet_zero_padding(octets: Int) -> List<UInt8> {
+  if octets == 3 { octet_zero_pad } else { octet_no_pad }
+}
+
+// `octets` octets at `at`, big-endian, as an unsigned integer. Widths std.machine_word does not
+// realize refuse by name rather than being computed some other way.
+fn octet_read_unsigned_be(input: List<UInt8>, at: Int, octets: Int) -> OctetUnsignedRead {
+  match octet_span_read(input: input, at: at, length: octets) {
+    OctetSpanRefused { cause: c } => OctetUnsignedRefused { cause: c }
+    OctetSpanReady { span: span } =>
+      match octet_unsigned_width(octets: octets) {
+        Absent => OctetUnsignedRefused { cause: OctetUnsignedTooWide { at: at, octets: octets } }
+        Present { value: width } =>
+          match octet_words(octets: append(octet_zero_padding(octets: octets), items: octet_span_octets(input: input, span: span))) {
+            Absent => OctetUnsignedRefused { cause: OctetWordRefused { at: at } }
+            Present { value: words } =>
+              match word_from_octets(width: width, octets: words, endianness: BigEndian) {
+                WordRefused { cause: _ } => OctetUnsignedRefused { cause: OctetWordRefused { at: at } }
+                WordReady { word: w } => OctetUnsignedReady { value: w.value, end: span.end }
+              }
+          }
+      }
+  }
+}

@@ -1,0 +1,75 @@
+module extdeps.time.posix_epoch
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// SECONDS SINCE THE EPOCH, POSIX.1-2017 Base Definitions 4.16: a UTC civil date-time (proleptic
+// Gregorian calendar, leap seconds not counted) maps to
+//   tm_sec + tm_min*60 + tm_hour*3600 + days_since_1970_01_01 * 86400.
+// Its consumer is extdeps.ietf.x509, whose validity times (UTCTime, GeneralizedTime) are civil
+// date-times that a verifier compares against a caller's epoch-seconds `now`.
+//
+// days_from_civil is the proleptic-Gregorian day count in era form (400-year cycles of 146097 days),
+// the arithmetic the POSIX definition's own expression expands to, stated once here so no parser
+// re-derives calendar arithmetic.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_16"
+  }
+}
+
+type CivilDateTime {
+  year: Int
+  month: Int
+  day: Int
+  hour: Int
+  minute: Int
+  second: Int
+}
+
+fn civil_is_leap_year(year: Int) -> Bool {
+  (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn civil_days_in_month(year: Int, month: Int) -> Int {
+  if month == 2 {
+    if civil_is_leap_year(year: year) { 29 } else { 28 }
+  } else if month == 4 || month == 6 || month == 9 || month == 11 {
+    30
+  } else {
+    31
+  }
+}
+
+// A civil date-time whose fields are in range. Second 60 is refused: POSIX time does not count leap
+// seconds, and X.509 (RFC 5280 4.1.2.5) forbids them in validity times.
+fn civil_is_valid(t: CivilDateTime) -> Bool {
+  t.month >= 1 && t.month <= 12
+    && t.day >= 1 && t.day <= civil_days_in_month(year: t.year, month: t.month)
+    && t.hour >= 0 && t.hour <= 23
+    && t.minute >= 0 && t.minute <= 59
+    && t.second >= 0 && t.second <= 59
+}
+
+fn civil_floor_div(a: Int, b: Int) -> Int {
+  if a >= 0 { a / b } else { 0 - ((0 - a + b - 1) / b) }
+}
+
+fn days_from_civil(year: Int, month: Int, day: Int) -> Int {
+  let y = if month <= 2 { year - 1 } else { year }
+  let era = civil_floor_div(a: y, b: 400)
+  let yoe = y - era * 400
+  let mp = if month > 2 { month - 3 } else { month + 9 }
+  let doy = (153 * mp + 2) / 5 + day - 1
+  let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+  era * 146097 + doe - 719468
+}
+
+fn civil_epoch_seconds(t: CivilDateTime) -> Int? {
+  if civil_is_valid(t: t) {
+    Present { value: days_from_civil(year: t.year, month: t.month, day: t.day) * 86400 + t.hour * 3600 + t.minute * 60 + t.second }
+  } else {
+    none
+  }
+}
