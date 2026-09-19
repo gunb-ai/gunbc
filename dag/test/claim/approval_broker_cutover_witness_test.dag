@@ -223,21 +223,33 @@ test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
 }
 
 // ── THE POSITIVE CONTROL ─────────────────────────────────────────────────────────────────────
-// Without this, every claim above is satisfiable by a plan that refuses everything. With every
-// observation taken, the last stage is admitted and the transaction reads complete.
+// Without this, every claim above is satisfiable by a plan that refuses everything.
+//
+// IT ASSERTS ADMISSION AND NOT COMPLETION, which is the correction the cutover HOLD's item 5
+// forced. It used to require approval_broker_cutover_complete(e) as well -- and the claim directly
+// below asserts that completion is FALSE while the source still routes to the roadmap. Both cannot
+// hold, so one of them was always failing, and a pair of claims that contradict each other is worse
+// than either being absent: whichever one is read first looks like coverage.
+//
+// The two are about different subjects, which is why they can both be right now. Admission is a
+// function of the EVIDENCE a caller supplies; completion is a function of a DECLARATION in the
+// corpus (approval_route_ownership). Supplying every observation admits the retirement stage; it
+// does not perform it, and nothing a caller passes can make it look performed.
 test fn cutover_admits_every_stage_once_every_observation_is_taken() -> Bool {
   let e = everything_observed()
   stage_is_admitted(stage: RetireRoadmapRoutes, e: e)
-    && approval_broker_cutover_complete(e: e)
     && count(approval_broker_cutover_stages()) == 6
 }
 
-// COMPLETION IS NOT THE SAME FACT AS ADMISSION, and it is no longer something the caller can state.
-// A plan admitted to perform the retirement has not performed it, and the fact that decides whether
-// it was performed is roadmap_approval_mount -- the declaration the roadmap table and the deploy
-// port both read. While that row says StillMounted, every observation can be in and the cutover is
-// still incomplete, which is what this asserts. It used to read an evidence field an operator
-// supplied, so a caller could assert completion with the rows still mounted (review 68050).
+// COMPLETION IS NOT THE SAME FACT AS ADMISSION, and it is not something a caller can state. A plan
+// admitted to perform the retirement has not performed it; what decides whether it was performed is
+// approval_route_ownership, the declaration the roadmap's route projection and the front-door mounts
+// both read. While that row routes to the roadmap, every observation can be in and the cutover is
+// still incomplete -- which is what this asserts, and what the positive control above deliberately
+// does NOT assert (cutover HOLD item 5: the two used to contradict each other).
+//
+// It used to read an evidence field an operator supplied, so a caller could declare completion with
+// the rows still mounted (review 68050).
 test fn cutover_is_not_complete_while_the_roadmap_still_mounts_the_routes() -> Bool {
   roadmap_still_mounts_approval_routes()
     && stage_is_admitted(stage: RetireRoadmapRoutes, e: everything_observed())
