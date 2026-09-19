@@ -47,7 +47,6 @@ import gunbc.runner_microvm_network {
   runner_slot_network,
   runner_slot_network_as_microvm_networking,
   runner_slot_guest_ip_boot_arg,
-  runner_microvm_nft_ruleset_text,
 }
 import extdeps.systemd.systemd_run { SystemdRunProperty }
 
@@ -171,7 +170,6 @@ type AttemptLaunchPlan
       authorization: GrantAuthorization
       tap_device: NonEmptyStr
       guest_ip_boot_arg: String
-      nft_ruleset: String
       slice: SystemdRunProperty
       jail_root: String
       stage_jail_root: ArgvCommand
@@ -379,7 +377,6 @@ fn plan_authorized_steps(
     authorization: authorization,
     tap_device: net.tap_device,
     guest_ip_boot_arg: runner_slot_guest_ip_boot_arg(net: net),
-    nft_ruleset: runner_microvm_nft_ruleset_text(),
     slice: runner_microvm_attempt_slice_property(attempt: attempt),
     jail_root: jail_root,
     stage_jail_root: mkdir_parents_command(path: jail_root),
@@ -436,7 +433,6 @@ fn planned_jailer_launches(plan: AttemptLaunchPlan) -> Int {
       authorization: _,
       tap_device: _,
       guest_ip_boot_arg: _,
-      nft_ruleset: _,
       slice: _,
       jail_root: _,
       stage_jail_root: _,
@@ -535,7 +531,6 @@ fn staging_verdict(plan: AttemptLaunchPlan, obs: WorkspaceStagingObservation) ->
       authorization: _,
       tap_device: _,
       guest_ip_boot_arg: _,
-      nft_ruleset: _,
       slice: _,
       jail_root: _,
       stage_jail_root: _,

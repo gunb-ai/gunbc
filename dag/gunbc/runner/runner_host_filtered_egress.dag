@@ -86,6 +86,10 @@ type ChainStance = DefaultDrop | DefaultAccept
 // grain where the shared hosts cannot, and its v6 is disabled on the data path (read back as 1 on
 // the filtered-egress-4 run) where theirs is filtered. Both are this host's HostEgressGrain, so the
 // record carries one value for each fact.
+//
+// This host is NOT a fleet-converge target of the srvN microVM program: its grain has no installer in
+// this tree, and the one that would install it is its host image (runner_attempt_launch
+// host_boot_cutover_frontier), not the srvN converge named by host_ruleset_installer_frontier.
 type EgressPolicyShape {
   host_input: ChainStance
   host: HostEgressGrain

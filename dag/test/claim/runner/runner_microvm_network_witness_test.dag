@@ -10,7 +10,7 @@ import gunbc.fleet_intent_network { operator_host_srv2 }
 import gunbc.runner_microvm_network {
   runner_slot_network, runner_slot_tap_device_name, runner_slot_guest_mac,
   runner_slot_host_address, runner_slot_guest_address,
-  runner_slot_guest_ip_boot_arg, runner_microvm_nft_ruleset_text,
+  runner_slot_guest_ip_boot_arg, runner_microvm_shared_host_nft_ruleset_text,
   runner_slot_netdev_text, runner_slot_network_file_text,
   runner_slot_netdev_path, runner_slot_network_file_path,
   netmask_of_prefix, runner_microvm_network_supernet,
@@ -82,7 +82,7 @@ test fn the_guest_ip_directive_carries_every_positional_separator() -> Bool {
 // wins, so `policy drop` in our forward chain would drop packets dockerd forwards. The red here is
 // that exact regression: flip the chain's policy and this goes red before it reaches a host.
 test fn the_forward_chain_defaults_to_accept_and_drops_only_tap_to_tap() -> Bool {
-  let text = runner_microvm_nft_ruleset_text()
+  let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "hook forward")
     && string_contains(s: text, pattern: "policy accept")
     && !string_contains(s: text, pattern: "policy drop")
@@ -93,7 +93,7 @@ test fn the_forward_chain_defaults_to_accept_and_drops_only_tap_to_tap() -> Bool
 // must converge rather than accumulate, and `delete table` on an absent table is an ERROR in
 // nftables rather than a no-op -- so the add must come FIRST. The red is either line missing.
 test fn the_ruleset_replaces_its_own_table_and_guards_the_delete() -> Bool {
-  let text = runner_microvm_nft_ruleset_text()
+  let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "add table inet gunbc_microvm")
     && string_contains(s: text, pattern: "delete table inet gunbc_microvm")
 }
@@ -102,7 +102,7 @@ test fn the_ruleset_replaces_its_own_table_and_guards_the_delete() -> Bool {
 // one is host-specific and rots on a NIC rename. Source-matching the fleet supernet is exact and
 // identical everywhere, so the control asserts the masquerade is reached by source address.
 test fn the_masquerade_matches_the_supernet_and_names_no_interface() -> Bool {
-  let text = runner_microvm_nft_ruleset_text()
+  let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "ip saddr 172.30.0.0/16 masquerade")
     && !string_contains(s: text, pattern: "enP3p3s0f1")
 }
@@ -173,7 +173,7 @@ test fn the_nat_supernet_contains_the_slot_addresses_it_claims_to() -> Bool {
   let supernet = runner_microvm_network_supernet() as String
   let host_octets = render_ipv4_address(addr: net.host_address) as String
   string_contains(s: supernet, pattern: to_string(runner_microvm_network_supernet_prefix))
-    && string_contains(s: runner_microvm_nft_ruleset_text(), pattern: supernet)
+    && string_contains(s: runner_microvm_shared_host_nft_ruleset_text(), pattern: supernet)
     && string_contains(s: host_octets, pattern: "172.30.")
     && string_contains(s: supernet, pattern: "172.30.")
 }
@@ -184,7 +184,7 @@ test fn the_nat_supernet_contains_the_slot_addresses_it_claims_to() -> Bool {
 // nat, so this pins the chain type that carries the masquerade AND the one that must stay filter --
 // the red is the previous renderer, which hardcoded filter for both.
 test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
-  let text = runner_microvm_nft_ruleset_text()
+  let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "type nat hook postrouting")
     && string_contains(s: text, pattern: "type filter hook forward")
     && !string_contains(s: text, pattern: "type filter hook postrouting")
@@ -198,7 +198,7 @@ test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
 // 443, the ordering the Mt. Collins receipt showed holding -- and a missing final drop, which turns
 // default-deny into default-accept for every port nobody named.
 test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool {
-  let text = runner_microvm_nft_ruleset_text()
+  let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
     && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
     && string_contains(s: text, pattern: "policy accept")
@@ -329,7 +329,7 @@ test fn the_ruleset_readback_lists_our_table_and_its_consumer_is_a_frontier() ->
 // guest -- review 68173), and a boot directive naming a resolver the ruleset does not admit.
 test fn the_dns_grant_is_the_booted_resolver_and_no_other_host() -> Bool {
   let resolver = render_ipv4_address(addr: runner_microvm_guest_resolver()) as String
-  let text = runner_microvm_nft_ruleset_text()
+  let text = runner_microvm_shared_host_nft_ruleset_text()
   let arg = runner_slot_guest_ip_boot_arg(net: runner_slot_network(slot: slot(i: 7)))
   !string_contains(s: text, pattern: "\" udp dport 53")
     && !string_contains(s: text, pattern: "\" tcp dport 53")

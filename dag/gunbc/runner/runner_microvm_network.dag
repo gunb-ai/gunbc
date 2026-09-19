@@ -459,7 +459,22 @@ fn runner_microvm_nft_ruleset_text_for(host: HostEgressGrain) -> String {
   nft_table_wire(t: runner_microvm_nft_table(host: host))
 }
 
-fn runner_microvm_nft_ruleset_text() -> String {
+// THE RULESET IS HOST STATE AND ITS INSTALLER TAKES THE HOST'S OWN GRAIN. The per-attempt launch
+// plan carried a ruleset until review 68256: an attempt is not the owner of a host-wide table (parent
+// ruling A, 2026-09-19), and a plan with no host identity could only ever render one host's grain.
+// The installer is the host converge, which knows which host it is converging.
+//
+// DECLARED FRONTIER (DESIGN 3c). NAMED CONSUMER: the microVM host converge (the microvm_host_converge
+// fleet-converge mode) installing the table on srvN. TRIGGER: that converge installs
+// runner_microvm_nft_ruleset_text_for(host: <the converged host's HostEgressGrain>), reads the
+// listing back with runner_microvm_nft_list_command and records its digest as the converged digest
+// slot_network_readback compares against. SUFFICIENT FOR deleting this row. NOT satisfied by a
+// witness folding a grain, and not by any per-attempt step installing a table.
+data host_ruleset_installer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the microvm_host_converge fleet-converge mode on srvN. TRIGGER: it installs runner_microvm_nft_ruleset_text_for(host: the converged host's HostEgressGrain), reads the listing back with runner_microvm_nft_list_command, and records that digest as the converged digest slot_network_readback compares against. SUFFICIENT FOR deleting this row. NOT satisfied by a witness folding a grain or by a per-attempt step installing a table." as NonEmptyStr,
+)
+
+fn runner_microvm_shared_host_nft_ruleset_text() -> String {
   runner_microvm_nft_ruleset_text_for(host: runner_microvm_shared_host_grain)
 }
 
