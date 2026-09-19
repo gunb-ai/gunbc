@@ -26,14 +26,14 @@ import std.durable_exclusive_hold {
 import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecode, HoldPayloadDecoded, HoldPayloadUndecodable,
   hold_slot_payload, decode_hold_slot_payload, hold_observation_of_cas,
-  FileHoldReleaseAssessment, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
-  file_hold_release_assess_observed,
 }
 
 // THE PURE HALF OF THE HOLD PROTOCOL AND ITS CODEC. Every row here decides
-// from a supplied observation; nothing reaches a filesystem. The effectful
-// rows -- acquire lands, contenders race, release commits, store refusal --
-// are test.claim.durable_exclusive_hold_file_store_wet_witness.
+// from a supplied observation over the PURE assessments; nothing reaches a
+// filesystem and nothing here can mint a plan -- the plan mints read the store
+// themselves. The effectful rows -- acquire lands, one plan raced by two
+// commits, release plans and commits, store refusal -- are
+// test.claim.durable_exclusive_hold_file_store_wet_witness.
 
 fn eh_owner(text: String) -> DurableHoldOwnerRef {
   text as DurableHoldOwnerRef
@@ -90,6 +90,31 @@ test fn unknown_and_malformed_payloads_refuse_and_are_not_free() -> Bool {
     && eh_refuses(payload: "HELD|demand-7|offer-1")
     && eh_refuses(payload: "|demand-7|offer-1")
     && eh_refuses(payload: "leased|demand-7|offer-1")
+}
+
+// A TAG WITH NOTHING AFTER IT REFUSES. The branded owner and release
+// references are NonEmptyStr, and the cast from the sliced body does not check
+// that at this position, so the decode checks it explicitly before constructing
+// either. The exact specimens are the two tags alone.
+test fn a_held_tag_with_no_owner_refuses() -> Bool {
+  eh_refuses(payload: "held|")
+}
+
+test fn a_free_tag_with_no_release_reference_refuses() -> Bool {
+  eh_refuses(payload: "free|")
+}
+
+// AND THE BARE FREE TAG IS NOT ACQUISITION-ELIGIBLE. This is the harm the row
+// above guards: a truncated or corrupted "free|" read as a free slot would be
+// taken over. Through the observation and the acquire assessment it must land
+// on the undecodable refusal, never on an eligible expectation.
+test fn a_bare_free_tag_is_not_an_acquirable_free_slot() -> Bool {
+  match durable_hold_acquire_assess(observed: hold_observation_of_cas(observed: eh_present(payload: "free|", generation: 3))) {
+    HoldAcquireRefused { refusal: HoldAcquireSlotUndecodable { generation: g, detail: _ } } => cas_generation_count(g: g) == 3
+    HoldAcquireRefused { refusal: HoldAcquireOccupied { generation: _, holder: _ } } => false
+    HoldAcquireRefused { refusal: HoldAcquireObservationUnavailable { cause: _ } } => false
+    HoldAcquireEligible { expected: _ } => false
+  }
 }
 
 fn eh_present(payload: NonEmptyStr, generation: Int) -> CasSlotObservation<NonEmptyStr> {
@@ -270,42 +295,6 @@ test fn releasing_an_undecodable_slot_refuses() -> Bool {
 
 test fn releasing_over_an_unavailable_observation_refuses() -> Bool {
   eh_release_refusal_label(a: eh_release_assess(observed: hold_observation_of_cas(observed: eh_unavailable()), owner: "demand-7|offer-1", acquired: 1)) == "unavailable"
-}
-
-// THE PLAN IS MINTED FROM THE OBSERVATION AND CARRIES THE FREE PAYLOAD IN THE
-// SHARED SPELLING. The generation on the plan is the store's, and the payload
-// the commit will write is the free tag followed by exactly the release reference
-// -- the bytes the fabric's release wrote before the extraction.
-test fn an_eligible_release_plans_the_observed_generation_and_the_free_bytes() -> Bool {
-  match file_hold_release_assess_observed(
-    root: "/var/lib/gunbc/example",
-    slot_key: "srv3-06",
-    observed: eh_present(payload: "held|demand-7|offer-1", generation: 5),
-    owner: eh_owner(text: "demand-7|offer-1"),
-    acquired_generation: 5,
-    released_by: eh_release(text: "attempt abandoned before execution"),
-  ) {
-    FileHoldReleasePlanned { plan: p } =>
-      cas_generation_count(g: p.generation) == 5
-        && (p.slot_key as String) == "srv3-06"
-        && (p.free_payload as String) == "free|attempt abandoned before execution"
-    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
-  }
-}
-
-test fn an_ineligible_release_produces_no_plan() -> Bool {
-  match file_hold_release_assess_observed(
-    root: "/var/lib/gunbc/example",
-    slot_key: "srv3-06",
-    observed: eh_present(payload: "held|demand-7|offer-1", generation: 5),
-    owner: eh_owner(text: "demand-7|offer-1"),
-    acquired_generation: 4,
-    released_by: eh_release(text: "stale"),
-  ) {
-    FileHoldReleaseNotEligible { slot_key: k, refusal: HoldReleaseAgainstAnotherGeneration { acquired: _, observed: _ } } => (k as String) == "srv3-06"
-    FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => false
-    FileHoldReleasePlanned { plan: _ } => false
-  }
 }
 
 // ONE HOLDER EQUALITY, and it is exact: a prefix, a case variant and a

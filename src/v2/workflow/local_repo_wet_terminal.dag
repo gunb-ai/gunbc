@@ -824,9 +824,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "two_contenders_over_one_free_generation_give_one_commit_and_one_lost_race_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_race_by_real_execution" },
       entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
-      function: "two_contenders_over_one_free_generation_give_one_commit_and_one_lost_race_by_real_execution",
+      function: "one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_race_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -851,6 +851,42 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution" },
       entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
       function: "a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness_test.dag",
+      function: "a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "the_right_reservation_releases_its_cell_to_free_at_the_next_generation_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "the_right_reservation_releases_its_cell_to_free_at_the_next_generation_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "a_cell_held_by_another_reservation_is_not_released_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "a_cell_held_by_another_reservation_is_not_released_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "an_already_free_slot_has_no_hold_to_release_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "an_already_free_slot_has_no_hold_to_release_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "the_right_reservation_at_another_acquisition_generation_is_not_released_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "the_right_reservation_at_another_acquisition_generation_is_not_released_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.fabric.fabric_control_plane_wet_witness", function: "a_superseded_lease_generation_refuses_at_the_budget_fence_and_the_cell_stays_held_by_real_execution" },
+      entry: "dag/test/claim/fabric/fabric_control_plane_wet_witness_test.dag",
+      function: "a_superseded_lease_generation_refuses_at_the_budget_fence_and_the_cell_stays_held_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

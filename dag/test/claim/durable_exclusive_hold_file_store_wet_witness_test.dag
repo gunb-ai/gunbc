@@ -10,11 +10,12 @@ import std.durable_exclusive_hold {
   HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner,
   HoldReleaseAgainstAnotherGeneration, HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
 }
-import gunbc.durable_cas_file_store { observe_cas_slot_state, cas_file_slot_path }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
-  file_hold_acquire, file_hold_acquire_observed,
+  FileHoldAcquirePlan, FileHoldAcquirePreparation, FileHoldAcquirePlanned, FileHoldAcquireNotEligible,
+  file_hold_acquire, file_hold_acquire_prepare, file_hold_acquire_commit,
   FileHoldReleasePlan, FileHoldReleaseAssessment, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   FileHoldReleaseOutcome, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
   FileHoldReleaseKeyNotSlotAddressable,
@@ -65,6 +66,41 @@ fn wh_acquire_store_unavailable(o: FileHoldAcquireOutcome) -> Bool {
   match o {
     FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => true
     _ => false
+  }
+}
+
+fn wh_acquire_plan(root: NonEmptyStr, owner: String) -> FileHoldAcquirePlan? {
+  match file_hold_acquire_prepare(root: root, slot_key: "cell", requested_owner: wh_owner(text: owner)) {
+    FileHoldAcquirePlanned { plan: p } => Present { value: p }
+    FileHoldAcquireNotEligible { slot_key: _, refusal: _ } => none
+  }
+}
+
+fn wh_acquire_commit(p: FileHoldAcquirePlan?) -> FileHoldAcquireOutcome? {
+  match p {
+    Present { value: plan } => Present { value: file_hold_acquire_commit(plan: plan) }
+    Absent => none
+  }
+}
+
+fn wh_acquired_at_opt(o: FileHoldAcquireOutcome?, generation: Int) -> Bool {
+  match o {
+    Present { value: v } => wh_acquired_at(o: v, generation: generation)
+    Absent => false
+  }
+}
+
+fn wh_acquire_lost_opt(o: FileHoldAcquireOutcome?) -> Bool {
+  match o {
+    Present { value: v } => wh_acquire_lost(o: v)
+    Absent => false
+  }
+}
+
+fn wh_acquire_store_unavailable_opt(o: FileHoldAcquireOutcome?) -> Bool {
+  match o {
+    Present { value: v } => wh_acquire_store_unavailable(o: v)
+    Absent => false
   }
 }
 
@@ -185,25 +221,27 @@ test fn a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_re
     && removed.success
 }
 
-// TWO CONTENDERS, ONE OBSERVATION, ONE WINNER. Both read the slot free at 2 and
-// both are eligible; the store admits exactly one and the other is a lost race
-// AFTER its own observation -- not Occupied, which would say it was never
-// eligible, and not a store fault. This is the case the protocol exists for.
-test fn two_contenders_over_one_free_generation_give_one_commit_and_one_lost_race_by_real_execution() -> Bool {
+// TWO CONTENDERS, ONE LIVE READ, ONE WINNER. The slot is free at 2; ONE
+// prepare performs the live read and mints ONE sealed plan; two commits of that
+// same plan race to the store. Exactly one is admitted; the other is a lost race
+// AFTER the read -- not Occupied, which would say it was never eligible, and not
+// a store fault. This is the case the protocol exists for, and it is staged
+// without any caller-supplied observation: the plan is the only thing shared.
+test fn one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_race_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
   let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let released = wh_commit(p: wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "done")))
-  let shared = observe_cas_slot_state(root: root, key: "cell")
-  let a = file_hold_acquire_observed(root: root, slot_key: "cell", observed: shared, requested_owner: wh_owner(text: "contender-a"))
-  let b = file_hold_acquire_observed(root: root, slot_key: "cell", observed: shared, requested_owner: wh_owner(text: "contender-b"))
+  let plan = wh_acquire_plan(root: root, owner: "contender-a")
+  let a = wh_acquire_commit(p: plan)
+  let b = wh_acquire_commit(p: plan)
   let bytes = wh_slot_bytes(root: root, generation: 3)
   let no_fourth = wh_slot_generation_absent(root: root, generation: 4)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   wh_acquired_at(o: first, generation: 1)
     && wh_released_at(o: released, generation: 2)
-    && wh_acquired_at(o: a, generation: 3)
-    && wh_acquire_lost(o: b)
+    && wh_acquired_at_opt(o: a, generation: 3)
+    && wh_acquire_lost_opt(o: b)
     && bytes == "held|contender-a"
     && no_fourth
     && removed.success
@@ -222,27 +260,49 @@ test fn a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_ex
   planted.success && wh_acquire_store_unavailable(o: outcome) && !wh_acquire_lost(o: outcome) && removed.success
 }
 
-// THE SAME DISTINCTION AT THE WRITE, NOT ONLY AT THE READ. The row above reaches the store fault
-// while OBSERVING (the root is a file, so nothing can be read), and a mutation that collapsed only
-// the write's CasStoreRefused arm into a lost race passed it -- measured on this PR's mutation
-// table. So this row supplies a genuine observation (absent, read from a real empty directory)
-// and attempts the publication into the unwritable root: the write itself is refused by the
-// store, and that must surface as unavailable, not as a race lost after observation.
+// THE SAME DISTINCTION AT THE WRITE, NOT ONLY AT THE READ. The row above
+// reaches the store fault while READING (the root is a file, so nothing can be
+// read), and a mutation that collapsed only the commit's CasStoreRefused arm
+// into a lost race passed it -- measured on this PR's mutation table. So this
+// row prepares a real plan against a real empty root, then mutates THAT store
+// between prepare and commit: the directory is removed and a regular file is put
+// in its place. The commit's own publication is refused by the store, and that
+// must surface as unavailable, not as a race lost after the read. The plan is
+// bound to the root it was read from; nothing is rebound.
 test fn a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
-  let empty_dir = wh_fresh_root()
-  let blocker = concat(root_path, "/not-a-directory")
-  let planted = Filesystem.Write(path: blocker, content: "not a store root")
-  let observed = observe_cas_slot_state(root: empty_dir as NonEmptyStr, key: "cell")
-  let outcome = file_hold_acquire_observed(
-    root: blocker as NonEmptyStr, slot_key: "cell", observed: observed, requested_owner: wh_owner(text: "demand-7|offer-1"),
-  )
+  let root = root_path as NonEmptyStr
+  let plan = wh_acquire_plan(root: root, owner: "demand-7|offer-1")
+  let removed_dir = shell.Remove.RecursiveForce(path: root_path)
+  let planted = Filesystem.Write(path: root_path, content: "not a store root any more")
+  let outcome = wh_acquire_commit(p: plan)
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  let removed_dir = shell.Remove.RecursiveForce(path: empty_dir)
-  planted.success
-    && wh_acquire_store_unavailable(o: outcome)
-    && !wh_acquire_lost(o: outcome)
-    && removed.success && removed_dir.success
+  removed_dir.success
+    && planted.success
+    && wh_acquire_store_unavailable_opt(o: outcome)
+    && !wh_acquire_lost_opt(o: outcome)
+    && removed.success
+}
+
+// THE RELEASE PLAN IS MINTED FROM THE LIVE READ AND CARRIES THE FREE BYTES IN
+// THE SHARED SPELLING. The generation on the plan is the store's, and the payload
+// the commit will write is the free tag followed by exactly the release
+// reference -- the bytes the fabric's release wrote before the extraction.
+test fn a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let plan = wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "attempt abandoned before execution"))
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  let plan_ok = match plan {
+    Present { value: p } =>
+      cas_generation_count(g: p.generation) == 1
+        && (p.slot_key as String) == "cell"
+        && (p.root as String) == root_path
+        && (p.free_payload as String) == "free|attempt abandoned before execution"
+    Absent => false
+  }
+  wh_acquired_at(o: first, generation: 1) && plan_ok && removed.success
 }
 
 // FOUR RELEASE REFUSALS, AND NONE OF THEM FREES. Each refusal is checked

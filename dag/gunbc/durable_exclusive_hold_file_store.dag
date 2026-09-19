@@ -24,7 +24,7 @@ module gunbc.durable_exclusive_hold_file_store
 
 import std.types { NonEmptyStr, String }
 import std.durable_compare_and_set {
-  ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
+  CasExpectation, ExpectSlotGeneration, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasStoreFailure, CasSlotObservationRefused,
   CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
   CasReadableAbsent, CasReadablePresent, CasGeneration,
@@ -34,7 +34,7 @@ import std.durable_exclusive_hold {
   DurableHoldState, DurableHoldHeld, DurableHoldFree,
   DurableHoldObservation, HoldSlotAbsent, HoldSlotFree, HoldSlotHeld,
   HoldSlotUndecodable, HoldObservationUnavailable,
-  HoldAcquireEligible, HoldAcquireRefused,
+  DurableHoldAcquireRefusal, HoldAcquireEligible, HoldAcquireRefused,
   HoldAcquireOccupied, HoldAcquireSlotUndecodable, HoldAcquireObservationUnavailable,
   HoldReleaseEligible, HoldReleaseRefused, DurableHoldReleaseRefusal,
   durable_hold_acquire_assess, durable_hold_release_assess,
@@ -82,23 +82,37 @@ type HoldPayloadDecode
 fn decode_hold_slot_payload(payload: NonEmptyStr) -> HoldPayloadDecode {
   let text = payload as String
   if starts_with(s: text, prefix: hold_held_tag) {
-    HoldPayloadDecoded {
-      state: DurableHoldHeld {
-        owner: hold_slot_body(text: text, tag: hold_held_tag) as DurableHoldOwnerRef,
-      },
-    }
+    hold_decode_held_body(text: text, body: hold_slot_body(text: text, tag: hold_held_tag))
   } else {
     if starts_with(s: text, prefix: hold_free_tag) {
-      HoldPayloadDecoded {
-        state: DurableHoldFree {
-          released_by: hold_slot_body(text: text, tag: hold_free_tag) as DurableHoldReleaseRef,
-        },
-      }
+      hold_decode_free_body(text: text, body: hold_slot_body(text: text, tag: hold_free_tag))
     } else {
       HoldPayloadUndecodable {
         detail: concat("slot payload carries no recognised state tag: ", text) as NonEmptyStr,
       }
     }
+  }
+}
+
+// A TAG WITH NOTHING AFTER IT IS UNDECODABLE, NOT A HOLDER OR A RELEASE WITH AN
+// EMPTY NAME. The branded values are NonEmptyStr and the cast from a String does
+// not enforce that at this position (the refinement is deferred), so the body is
+// checked for emptiness BEFORE either branded value is constructed. The free arm
+// is the dangerous one: a bare "free|" read as a free slot would be
+// acquisition-eligible, and a corrupted or truncated slot would be taken over.
+fn hold_decode_held_body(text: String, body: String) -> HoldPayloadDecode {
+  if body == "" {
+    HoldPayloadUndecodable { detail: concat("slot payload carries the held tag with no owner: ", text) as NonEmptyStr }
+  } else {
+    HoldPayloadDecoded { state: DurableHoldHeld { owner: body as DurableHoldOwnerRef } }
+  }
+}
+
+fn hold_decode_free_body(text: String, body: String) -> HoldPayloadDecode {
+  if body == "" {
+    HoldPayloadUndecodable { detail: concat("slot payload carries the free tag with no release reference: ", text) as NonEmptyStr }
+  } else {
+    HoldPayloadDecoded { state: DurableHoldFree { released_by: body as DurableHoldReleaseRef } }
   }
 }
 
@@ -122,10 +136,64 @@ fn observe_file_hold(root: NonEmptyStr, key: NonEmptyStr) -> DurableHoldObservat
   hold_observation_of_cas(observed: observe_cas_slot_state(root: root, key: key))
 }
 
+// EVERY EFFECTFUL HOLD WRITE IS LIVE READ -> SEALED PLAN -> CAS COMMIT, AND NO
+// WRITER ACCEPTS AN OBSERVATION FROM ITS CALLER.
+//
+// An earlier cut of this module exposed the write half over a caller-supplied
+// CasSlotObservation, so that a witness could hand two contenders one
+// observation. That reopened the exact path the first amendment closed, one
+// layer down: a caller holding a synthetic "free at N" for a slot that is really
+// HELD at N would have derived ExpectSlotGeneration(N) and overwritten the live
+// hold (side-chat review on gunbc#11661). So the plan is minted ONLY by a
+// function that performs the read itself, the plan is sole_constructor and
+// carries the root and key it was read from, and the commit takes nothing but
+// the plan. On the source-to-.dag acceptance path there is therefore no route by
+// which a caller-authored observation reaches a write: the forgeries have no
+// constructor here, rather than being refused. The emitted-Rust path is not
+// claimed, for the reason durable_cas_file_store states on VerifiedCasAttempt.
+//
+// The split is still a split -- prepare, then commit -- because a consumer may
+// have work between the two (the fabric settles money), and because a race is
+// exercised honestly as ONE live read minting ONE plan that two contenders then
+// commit: the store admits exactly one.
+type FileHoldAcquirePlan sole_constructor {
+  root: NonEmptyStr
+  slot_key: NonEmptyStr
+  owner: DurableHoldOwnerRef
+  expected: CasExpectation
+  held_payload: NonEmptyStr
+}
+
+type FileHoldAcquirePreparation
+  = FileHoldAcquirePlanned { plan: FileHoldAcquirePlan }
+  | FileHoldAcquireNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldAcquireRefusal }
+
+// The live read and the protocol's judgement of it. Only an absent or a free
+// slot yields a plan; the expectation on the plan is derived from what was read.
+fn file_hold_acquire_prepare(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  requested_owner: DurableHoldOwnerRef,
+) -> FileHoldAcquirePreparation {
+  match durable_hold_acquire_assess(observed: observe_file_hold(root: root, key: slot_key)) {
+    HoldAcquireRefused { refusal: r } => FileHoldAcquireNotEligible { slot_key: slot_key, refusal: r }
+    HoldAcquireEligible { expected: e } =>
+      FileHoldAcquirePlanned {
+        plan: FileHoldAcquirePlan {
+          root: root,
+          slot_key: slot_key,
+          owner: requested_owner,
+          expected: e,
+          held_payload: hold_slot_payload(state: DurableHoldHeld { owner: requested_owner }),
+        },
+      }
+  }
+}
+
 // EVERY WAY AN ACQUIRE ENDS, TYPED AND SEPARATE, because the remedies differ.
 // Occupied is the protocol's answer and retrying will not change it until the
-// holder releases; Lost is a race after this caller's own observation and the
-// remedy is to re-observe; StoreUnavailable says nothing about the slot; an
+// holder releases; Lost is a race after this caller's own read and the remedy
+// is to re-observe; StoreUnavailable says nothing about the slot; an
 // undecodable slot needs an operator; an unaddressable key is the caller's
 // defect. Collapsing store refusal into a lost race is the class rostered as
 // store_refusal_reported_as_contention, and it is kept apart here by
@@ -138,24 +206,36 @@ type FileHoldAcquireOutcome
   | FileHoldSlotUndecodable { slot_key: NonEmptyStr, generation: CasGeneration, detail: NonEmptyStr }
   | FileHoldKeyNotSlotAddressable { slot_key: NonEmptyStr }
 
-// The write half, split from the read so two contenders can be handed ONE
-// observation and race to the store from it -- which is the case the protocol
-// exists for, and the one a read-then-write in a single function cannot stage.
-// The observation is still a CasSlotObservation, the store's own product, and
-// never a caller-authored state.
-//
-// admit_cas_attempt_for_derived_payload rather than admit_cas_attempt: this
-// module derives the payload from the state, so there is no caller digest that
-// could legitimately disagree, and the only refusal that remains reachable is a
-// key that does not address a slot.
-fn file_hold_acquire_observed(
+// admit_cas_attempt_for_derived_payload rather than admit_cas_attempt: the
+// payload on the plan was derived from the state by this module, so there is no
+// caller digest that could legitimately disagree, and the only refusal that
+// remains reachable is a key that does not address a slot.
+fn file_hold_acquire_commit(plan: FileHoldAcquirePlan) -> FileHoldAcquireOutcome {
+  match admit_cas_attempt_for_derived_payload(key: plan.slot_key, expected: plan.expected, proposed: plan.held_payload) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldKeyNotSlotAddressable { slot_key: plan.slot_key }
+    DerivedPayloadAdmitted { verified: v } =>
+      match file_compare_and_set(root: plan.root, publication: DefaultAccessCreateOnly, verified: v) {
+        CasCommitted { committed: c } =>
+          FileHoldAcquired { slot_key: plan.slot_key, owner: plan.owner, generation: c.generation }
+        CasPreconditionFailed { expected: _, observed: _ } => FileHoldAcquireLost { slot_key: plan.slot_key }
+        CasStoreRefused { cause: c } => FileHoldAcquireStoreUnavailable { slot_key: plan.slot_key, cause: c }
+      }
+  }
+}
+
+// THE PRODUCTION ACQUIRE: prepare, then commit, in one call. It takes no
+// CasExpectation and no observation: it reads the slot, admits only absent or
+// free, derives the expectation from that read, and writes. A caller cannot
+// present a generation, so it cannot overwrite a hold whose generation it
+// happens to know.
+fn file_hold_acquire(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
-  observed: CasSlotObservation<NonEmptyStr>,
   requested_owner: DurableHoldOwnerRef,
 ) -> FileHoldAcquireOutcome {
-  match durable_hold_acquire_assess(observed: hold_observation_of_cas(observed: observed)) {
-    HoldAcquireRefused { refusal: r } =>
+  match file_hold_acquire_prepare(root: root, slot_key: slot_key, requested_owner: requested_owner) {
+    FileHoldAcquirePlanned { plan: p } => file_hold_acquire_commit(plan: p)
+    FileHoldAcquireNotEligible { slot_key: _, refusal: r } =>
       match r {
         HoldAcquireOccupied { generation: g, holder: h } =>
           FileHoldOccupied { slot_key: slot_key, holder: h, generation: g }
@@ -164,39 +244,7 @@ fn file_hold_acquire_observed(
         HoldAcquireObservationUnavailable { cause: c } =>
           FileHoldAcquireStoreUnavailable { slot_key: slot_key, cause: CasSlotObservationRefused { cause: c } }
       }
-    HoldAcquireEligible { expected: e } =>
-      match admit_cas_attempt_for_derived_payload(
-        key: slot_key,
-        expected: e,
-        proposed: hold_slot_payload(state: DurableHoldHeld { owner: requested_owner }),
-      ) {
-        DerivedPayloadKeyNotSlotAddressable { key: _ } => FileHoldKeyNotSlotAddressable { slot_key: slot_key }
-        DerivedPayloadAdmitted { verified: v } =>
-          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
-            CasCommitted { committed: c } =>
-              FileHoldAcquired { slot_key: slot_key, owner: requested_owner, generation: c.generation }
-            CasPreconditionFailed { expected: _, observed: _ } => FileHoldAcquireLost { slot_key: slot_key }
-            CasStoreRefused { cause: c } => FileHoldAcquireStoreUnavailable { slot_key: slot_key, cause: c }
-          }
-      }
   }
-}
-
-// THE PRODUCTION ACQUIRE. It takes no CasExpectation: it reads the slot,
-// admits only absent or free, derives the expectation from that read, and
-// writes. A caller cannot present a generation, so it cannot overwrite a hold
-// whose generation it happens to know.
-fn file_hold_acquire(
-  root: NonEmptyStr,
-  slot_key: NonEmptyStr,
-  requested_owner: DurableHoldOwnerRef,
-) -> FileHoldAcquireOutcome {
-  file_hold_acquire_observed(
-    root: root,
-    slot_key: slot_key,
-    observed: observe_cas_slot_state(root: root, key: slot_key),
-    requested_owner: requested_owner,
-  )
 }
 
 // RELEASE IS ASSESS-THEN-COMMIT, NOT ONE INDIVISIBLE FREE, because a consumer
@@ -204,8 +252,8 @@ fn file_hold_acquire(
 // and frees the cell only if the ledger advanced. So the assessment produces a
 // PLAN and the commit consumes it. The plan is minted here and nowhere else --
 // sole_constructor -- so a caller cannot author "release generation 7 for
-// owner A" from its own bookkeeping; every field is copied from the store's
-// observation at assessment time.
+// owner A" from its own bookkeeping; every field is copied from the live read
+// the assessment itself performs.
 type FileHoldReleasePlan sole_constructor {
   root: NonEmptyStr
   slot_key: NonEmptyStr
@@ -218,21 +266,20 @@ type FileHoldReleaseAssessment
   = FileHoldReleasePlanned { plan: FileHoldReleasePlan }
   | FileHoldReleaseNotEligible { slot_key: NonEmptyStr, refusal: DurableHoldReleaseRefusal }
 
-// The pure form over a supplied store observation, for the same reason the
-// acquire has one: the protocol's release walls are decided from a value, and a
-// witness that supplies the store's observation exercises every one of them
-// without a filesystem. A production caller uses file_hold_release_assess,
-// which reads the slot itself.
-fn file_hold_release_assess_observed(
+// THE ONLY MINT OF A RELEASE PLAN READS THE SLOT ITSELF. There is deliberately
+// no variant over a supplied observation: a synthetic "held by A at N" handed to
+// such a mint would produce a plan that frees a real hold of B's at N, and the
+// plan being sole_constructor would then protect nothing. Every field on the
+// plan is copied from this live read.
+fn file_hold_release_assess(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
-  observed: CasSlotObservation<NonEmptyStr>,
   owner: DurableHoldOwnerRef,
   acquired_generation: CasGeneration,
   released_by: DurableHoldReleaseRef,
 ) -> FileHoldReleaseAssessment {
   match durable_hold_release_assess(
-    observed: hold_observation_of_cas(observed: observed),
+    observed: observe_file_hold(root: root, key: slot_key),
     owner: owner,
     acquired_generation: acquired_generation,
   ) {
@@ -248,23 +295,6 @@ fn file_hold_release_assess_observed(
         },
       }
   }
-}
-
-fn file_hold_release_assess(
-  root: NonEmptyStr,
-  slot_key: NonEmptyStr,
-  owner: DurableHoldOwnerRef,
-  acquired_generation: CasGeneration,
-  released_by: DurableHoldReleaseRef,
-) -> FileHoldReleaseAssessment {
-  file_hold_release_assess_observed(
-    root: root,
-    slot_key: slot_key,
-    observed: observe_cas_slot_state(root: root, key: slot_key),
-    owner: owner,
-    acquired_generation: acquired_generation,
-    released_by: released_by,
-  )
 }
 
 // The commit still tells a lost race from an unavailable store. A release

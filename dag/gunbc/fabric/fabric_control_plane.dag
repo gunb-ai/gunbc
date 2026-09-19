@@ -4,9 +4,7 @@ import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
 import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
 import extdeps.currency.currency { CurrencyCode }
-import std.durable_compare_and_set {
-  CasStoreFailure, CasSlotObservationRefused, CasSlotObservation, cas_generation_count,
-}
+import std.durable_compare_and_set { CasStoreFailure, CasSlotObservationRefused, cas_generation_count }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef,
   DurableHoldReleaseRefusal, HoldReleaseSlotAbsent, HoldReleaseAlreadyFree,
@@ -23,14 +21,13 @@ import product.fabric.provider_admission {
 }
 import product.fabric.selection { CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.durable_cas_file_store { observe_cas_slot_state }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
   FileHoldReleasePlan, FileHoldReleaseAssessment, FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   FileHoldReleaseOutcome, FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable,
   FileHoldReleaseKeyNotSlotAddressable,
-  file_hold_acquire, file_hold_release_assess_observed, file_hold_release_commit,
+  file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
 }
 import gunbc.fabric_floor_dispatch { floor_supply_selection, floor_execution_requirements }
 import product.fabric.budget {
@@ -603,19 +600,25 @@ type CellHoldEnd
 // unchanged: the store was read and the cell is NOT held by the hold being
 // released -- absent, already free, another reservation's, this reservation's at
 // another generation, or a payload nobody can read. The detail names which.
+//
+// THE OBSERVATION IS READ HERE, NEVER ACCEPTED. An earlier cut took a
+// CasSlotObservation so that a witness could supply one; that made this the
+// second release route beside release_reserved_cell_at, and a synthetic "held
+// by this reservation" would have minted a plan that frees another
+// reservation's real hold. The shared assessment performs the read itself, so
+// the fabric's release walls are now evidenced on a real store (the wet fabric
+// witness) and the protocol's walls on supplied values one layer down.
 fn end_cell_hold(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
-  observed: CasSlotObservation<NonEmptyStr>,
   reservation: ReservationRef,
   acquired_generation: Int,
   money: MoneyOutcome,
   reason: NonEmptyStr,
 ) -> CellHoldEnd {
-  match file_hold_release_assess_observed(
+  match file_hold_release_assess(
     root: root,
     slot_key: slot_key,
-    observed: observed,
     owner: fabric_hold_owner(reservation: reservation),
     acquired_generation: acquired_generation,
     released_by: fabric_hold_release_ref(reason: reason),
@@ -714,9 +717,8 @@ fn free_cell_slot(plan: FileHoldReleasePlan, account: MoneyAccount) -> CellHoldE
 // The observation is READ rather than accepted from the caller, for the reason
 // the store's own compare-and-set gives about attempts: a caller that supplies
 // the observation is the author of the fact it is supposed to be reading, and
-// nothing then relates that fact to the slot being ended. The pure form keeps
-// the parameter because a witness supplying one is a fixture and knows it; a
-// production caller reaching for it would be constructing its own answer.
+// nothing then relates that fact to the slot being ended. There is no longer a
+// form that accepts one at any layer.
 fn release_reserved_cell_at(
   root: NonEmptyStr,
   slot_key: NonEmptyStr,
@@ -730,7 +732,6 @@ fn release_reserved_cell_at(
   end_cell_hold(
     root: root,
     slot_key: slot_key,
-    observed: observe_cas_slot_state(root: root, key: slot_key),
     reservation: reservation,
     acquired_generation: acquired_generation,
     money: release_money(
@@ -888,7 +889,6 @@ fn settle_reserved_cell_at<P>(
         ending: end_cell_hold(
           root: root,
           slot_key: slot_key,
-          observed: observe_cas_slot_state(root: root, key: slot_key),
           reservation: r,
           acquired_generation: acquired_generation,
           money: settle_money(
