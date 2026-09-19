@@ -7,6 +7,7 @@ import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.materialization_provider { length_prefixed_encode }
 import extdeps.uri { uri_wire }
+import extdeps.toolchain.types { architecture_diagnostic_name }
 import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
 import extdeps.provisioning.dhcp_client_arch {
   dhcp_processor_architecture_code,
@@ -123,8 +124,12 @@ fn boot_mode_preimage(mode: ClientNetworkBootMode) -> String {
   }
 }
 
-// Each field is length-prefixed, so no field value can shift a boundary:
-// two distinct claim records cannot share one preimage.
+// Each field is length-prefixed, so no field value can shift a boundary, and
+// the authored architecture is signed by its own variant name: the DHCP class
+// beside it is a derived projection that sends X86 and X86_64 to one BiosX86
+// code under legacy BIOS, so it cannot stand in for the field the join admits
+// on. The diagnostic name is the injective token of the variant here, not a
+// wire label; the DHCP projection keeps its fail-closed arm (Absent refuses).
 fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptyStr? {
   let id = c.identity
   match dhcp_client_processor_architecture(arch: id.architecture, mode: id.boot_mode) {
@@ -137,6 +142,7 @@ fn signed_boot_manifest_signing_input(c: SignedBootManifestClaims) -> NonEmptySt
             id.target_unit as String,
             id.attempt_id as String,
             id.nonce as String,
+            architecture_diagnostic_name(arch: id.architecture) as String,
             to_string(dhcp_processor_architecture_code(a: dhcp_arch)),
             boot_mode_preimage(mode: id.boot_mode),
             serialize_content_hash(hash: id.chainloader_digest) as String,
@@ -204,39 +210,40 @@ fn attempt_nonce_spent(spent: List<SpentAttemptNonce>, attempt_id: IntakeAttempt
   spent |> any(row => row.attempt_id == attempt_id && row.nonce == nonce)
 }
 
+// `presented` is the claims-derived signing input, computed once by the caller
+// that also handed it to the MAC; the verified message is compared against it
+// rather than against a second derivation of the same claims.
 fn verify_signed_boot_manifest(
   ticket: SignedBootManifestTicket,
   expectation: BootManifestExpectation,
+  presented: NonEmptyStr,
   mac_result: MacVerification,
 ) -> BootManifestVerification {
   match expectation.trust.standing {
     BootstrapTrustUnestablished => refused(class: ManifestVerificationTrust)
-    ProductionTrustedBootstrap { grounds: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
-    ControlledNetworkBootstrap { evidence: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, mac_result: mac_result)
+    ProductionTrustedBootstrap { grounds: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, presented: presented, mac_result: mac_result)
+    ControlledNetworkBootstrap { evidence: _ } => verify_signed_boot_manifest_under_trust(ticket: ticket, expectation: expectation, presented: presented, mac_result: mac_result)
   }
 }
 
 fn verify_signed_boot_manifest_under_trust(
   ticket: SignedBootManifestTicket,
   expectation: BootManifestExpectation,
+  presented: NonEmptyStr,
   mac_result: MacVerification,
 ) -> BootManifestVerification {
-  match signed_boot_manifest_signing_input(c: ticket.claims) {
-    Absent => refused(class: ManifestVerificationWrongArchitecture)
-    Present { value: presented } =>
-      match mac_result {
-        MacVerified { verified: v } =>
-          if v.message != presented {
-            refused(class: ManifestVerificationWrongMessage)
-          } else {
-            join_verified_mac(ticket: ticket, expectation: expectation, verified: v)
-          }
-        MacTagMismatch { key_id: _ } => refused(class: ManifestVerificationMac)
-        MacTagMalformed { octets_declared: _, octets_expected: _ } => refused(class: ManifestVerificationMac)
-        MacSuiteMismatch { expected: _, key_suite: _ } => refused(class: ManifestVerificationSuite)
-        MacKeyUnknown { key_id: _ } => refused(class: ManifestVerificationSigningKey)
-        MacKeyRetired { key_id: _, retired_at: _ } => refused(class: ManifestVerificationSigningKey)
+  match mac_result {
+    MacVerified { verified: v } =>
+      if v.message != presented {
+        refused(class: ManifestVerificationWrongMessage)
+      } else {
+        join_verified_mac(ticket: ticket, expectation: expectation, verified: v)
       }
+    MacTagMismatch { key_id: _ } => refused(class: ManifestVerificationMac)
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => refused(class: ManifestVerificationMac)
+    MacSuiteMismatch { expected: _, key_suite: _ } => refused(class: ManifestVerificationSuite)
+    MacKeyUnknown { key_id: _ } => refused(class: ManifestVerificationSigningKey)
+    MacKeyRetired { key_id: _, retired_at: _ } => refused(class: ManifestVerificationSigningKey)
   }
 }
 
@@ -267,6 +274,7 @@ fn redeem_signed_boot_manifest(ticket: SignedBootManifestTicket, key: MacKey, ex
       verify_signed_boot_manifest(
         ticket: ticket,
         expectation: expectation,
+        presented: message,
         mac_result: mac_verify(key: key, message: message, tag_hex: ticket.tag_hex),
       )
   }

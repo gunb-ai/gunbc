@@ -4,13 +4,14 @@ import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.toolchain.types { Architecture, Aarch64, Wasm32, X86 }
+import extdeps.toolchain.types { Architecture, Aarch64, Wasm32, X86, X86_64 }
 import extdeps.provisioning.network_boot { UefiHttpBoot, LegacyBiosPxe }
 import extdeps.uri { uri_https }
 import extdeps.crypto.mac { MacKey, MacKeyId, HmacSha256, mac_verification_from_implementation }
 import gunbc.machine_intake_subject { UnitKey, IntakeAttemptId }
 import product.placement_supply { SiteIdentity }
 import gunbc.network_boot_delivery {
+  network_boot_delivery_frontier_rows,
   SignedBootManifestIdentity,
   SignedBootManifestVerified,
   SignedBootManifestIdentified,
@@ -301,6 +302,7 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
       match verify_signed_boot_manifest(
         ticket: ticket,
         expectation: expectation_at(spent: []),
+        presented: presented,
         mac_result: mac_verification_from_implementation(
           key_id: other_key_id,
           suite: HmacSha256,
@@ -384,6 +386,56 @@ test fn legacy_bios_x86_ticket_projects_its_published_dhcp_class() -> Bool {
   }
 }
 
+fn legacy_bios_identity(arch: Architecture) -> SignedBootManifestIdentity {
+  let id = good_identity()
+  SignedBootManifestIdentity {
+    target_unit: id.target_unit,
+    attempt_id: id.attempt_id,
+    nonce: id.nonce,
+    architecture: arch,
+    boot_mode: LegacyBiosPxe { tftp_root: uri_https(locator: "boot.example/tftp") },
+    chainloader_digest: id.chainloader_digest,
+    kernel_digest: id.kernel_digest,
+    initrd_digest: id.initrd_digest,
+    root_digest: id.root_digest,
+    kernel_cmdline: id.kernel_cmdline,
+    not_before: id.not_before,
+    expiry: id.expiry,
+    signing_key_identity: id.signing_key_identity,
+    callback_identity: id.callback_identity,
+  }
+}
+
+// X86 and X86_64 share one DHCP class (BiosX86, RFC 4578 code 0) under legacy
+// BIOS, so a preimage that signed only the DHCP code would let a ticket issued
+// for X86 verify after architecture is flipped to X86_64 — the field the join
+// admits on. The authored architecture must be signed itself (review 68037).
+test fn legacy_bios_x86_and_x86_64_tickets_have_distinct_signing_inputs() -> Bool {
+  match signed_boot_manifest_signing_input(c: claims_for(id: legacy_bios_identity(arch: X86))) {
+    Absent => false
+    Present { value: p32 } =>
+      match signed_boot_manifest_signing_input(c: claims_for(id: legacy_bios_identity(arch: X86_64))) {
+        Absent => false
+        Present { value: p64 } => p32 != p64
+      }
+  }
+}
+
+test fn x86_ticket_does_not_redeem_as_x86_64() -> Bool {
+  match issue_signed_boot_manifest(claims: claims_for(id: legacy_bios_identity(arch: X86)), key: broker_key, trust: production_trust()) {
+    BootManifestIssued { ticket: t } =>
+      match redeem_signed_boot_manifest(
+        ticket: SignedBootManifestTicket { claims: claims_for(id: legacy_bios_identity(arch: X86_64)), tag_hex: t.tag_hex },
+        key: broker_key,
+        expectation: expectation_at(spent: []),
+      ) {
+        BootManifestRefused { class: c } => c == ManifestVerificationMac
+        BootManifestAuthentic { claims: _ } => false
+      }
+    BootManifestIssuanceRefused { cause: _ } => false
+  }
+}
+
 fn broker_census_has_frontier_subject(row: FrontierRow) -> Bool {
   any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
 }
@@ -394,4 +446,15 @@ test fn broker_frontier_rows_well_formed() -> Bool {
 
 test fn broker_frontier_rows_are_in_the_census() -> Bool {
   all(network_boot_manifest_broker_frontier_rows, row => broker_census_has_frontier_subject(row: row))
+}
+
+// 0A's join frontier rows are asserted here rather than in the join witness:
+// that file is 0A's, and the census membership check is 0D's obligation for
+// the rows its broker rows sit beside.
+test fn join_frontier_rows_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: network_boot_delivery_frontier_rows)
+}
+
+test fn join_frontier_rows_are_in_the_census() -> Bool {
+  all(network_boot_delivery_frontier_rows, row => broker_census_has_frontier_subject(row: row))
 }
