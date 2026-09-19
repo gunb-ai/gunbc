@@ -6212,10 +6212,14 @@ pub fn run_required_floor(
                 .iter()
                 .any(|name| module_name_is_or_is_contained_by(module_path, name))
     };
-    if required_gate_prefixes.is_empty() {
+    // THE GATE IS EMPTY ONLY WHEN BOTH SELECTOR ROSTERS ARE: an authored-module row admits
+    // a module as surely as a family row does, so an empty prefix roster beside a populated
+    // authored-module roster is a gate that plans claims, not one that greens over nothing.
+    if required_gate_prefixes.is_empty() && required_gate_authored_modules.is_empty() {
         return Err("REQUIRED-FLOOR REFUSAL cause=RequiredGateRosterEmpty — \
-                    v2.workflow.required_floor.required_gate_prefixes admits nothing, so the \
-                    floor would plan zero claims and green over an empty population"
+                    v2.workflow.required_floor.required_gate_prefixes and \
+                    required_gate_authored_modules both admit nothing, so the floor would plan \
+                    zero claims and green over an empty population"
             .to_string());
     }
     // ── the witness roster, as the `.dag` discovery authority answers it ──────────────────

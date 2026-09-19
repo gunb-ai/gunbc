@@ -682,10 +682,11 @@ fn required_gate_prefixes() -> List<String> {
 // narrowing every family selector beside them, which is the shape review 11256 already refused
 // once for module seeds.
 //
-// SO THE SECOND KIND IS DECLARED AS ITS OWN ROSTER WITH ITS OWN RULE, and the rule is not new:
-// it is the AUTHORED-MODULE-NAME rule `v2.workflow.floor_subject_seed` already states for every
-// non-prefix seed -- a name matches itself or a module it contains by name at a segment
-// boundary (`a.b` admits `a.b` and `a.b.c`, never `a.bc`) -- which is exactly the rule the
+// SO THE SECOND KIND IS DECLARED AS ITS OWN ROSTER WITH ITS OWN RULE, and the rule is not new
+// and is NOT string equality: it is NAMED-MODULE SUBTREE ADMISSION, the authored-module-name
+// rule `v2.workflow.floor_subject_seed` already states for every non-prefix seed -- a name
+// admits itself and every module it contains by name at a segment boundary (`a.b` admits `a.b`
+// and `a.b.c`, never `a.bc`) -- which is exactly the rule the
 // host's `closure_module_seeds` realizes in preparation (`v1_compiler.cli_run`
 // `module_name_is_or_is_contained_by`). Reusing it is what makes preparation and disposition
 // agree by construction: a module this roster names is seeded into the prepared subject by the
@@ -718,7 +719,8 @@ fn required_gate_authored_modules() -> List<String> {
   ]
 }
 
-// ONE SELECTOR, TWO RULES, THE RULE NAMED ON THE ARM. The disposition folds over this coproduct,
+// ONE SELECTOR, TWO RULES, THE RULE NAMED ON THE ARM: a family is a textual prefix, an
+// authored module is a named-module subtree. The disposition folds over this coproduct,
 // so a match reports WHICH kind admitted the module and a reader of the disposition row can tell
 // a family admission from a named one.
 type RequiredGateSelector
