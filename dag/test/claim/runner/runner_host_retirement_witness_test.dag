@@ -43,6 +43,9 @@ import gunbc.runner_host_retirement {
   retiree_obligation_ungrounded_cause,
   host_retirement_obligation_basis,
   host_retirement_obligation_basis_of,
+  HostRetirement,
+  HostRetirementAmbiguous,
+  host_retirement_standing_of,
   host_retirement_local_population,
   ReconcileMechanismReading,
   ReconcilePropertyValue,
@@ -95,6 +98,7 @@ test fn srv2_carries_a_declared_host_retirement() -> Bool {
   match host_retirement_standing(host: operator_host_srv2) {
     HostRetirementDeclared { retirement: r } => (r.host as String) == (operator_host_srv2 as String)
     HostNotRetiring { host: _, cause: _ } => false
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
   }
 }
 
@@ -117,6 +121,7 @@ test fn a_host_nobody_declared_retiring_owes_nothing() -> Bool {
     HostNotRetiring { host: _, cause: _ } =>
       list_length(items: host_retirement_required_retirees(host: operator_host_srv4)) == 0
     HostRetirementDeclared { retirement: _ } => false
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
   }
 }
 
@@ -1051,5 +1056,59 @@ test fn an_absent_timer_beside_a_disabled_service_stays_outstanding() -> Bool {
     EstateObligationOutstanding { obligation: _, cause: _ } => true
     EstateObligationDischarged { obligation: _, evidence: _ } => false
     EstateObligationUnobserved { obligation: _, cause: _ } => false
+  }
+}
+
+// ── ONE HOST IS RETIRED ONCE, OR THE QUESTION IS UNRESOLVED ─────────────────────────────────
+
+// TWO DECLARED ROWS FOR ONE HOST ARE NOT A LIST TO PICK FROM. This value is the admission gate for
+// the destructive route, and two rows can differ in search bound, captured population and local
+// population -- so answering with the first would make AUTHORING ORDER decide which obligation the
+// route is about to discharge. The module states that rule for its estate obligations and the capture
+// boundary states it for bindings; it was stated twice and then not applied to the gate in front of
+// both.
+fn duplicate_retirement_rows() -> List<HostRetirement> {
+  [srv2_host_retirement, srv2_host_retirement]
+}
+
+test fn two_declared_retirements_for_one_host_are_ambiguous() -> Bool {
+  match host_retirement_standing_of(rows: duplicate_retirement_rows(), host: operator_host_srv2) {
+    HostRetirementAmbiguous { host: _, count: n, cause: _ } => n == 2
+    HostRetirementDeclared { retirement: _ } => false
+    HostNotRetiring { host: _, cause: _ } => false
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
+  }
+}
+
+// THE PAIRED POSITIVE: exactly one row still declares, so the refusal is about multiplicity and not
+// about this fold having stopped answering.
+test fn exactly_one_declared_retirement_still_declares() -> Bool {
+  match host_retirement_standing_of(rows: [srv2_host_retirement], host: operator_host_srv2) {
+    HostRetirementDeclared { retirement: r } => (r.host as String) == "srv2"
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
+    HostNotRetiring { host: _, cause: _ } => false
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
+  }
+}
+
+// AND NO ROWS IS STILL NOT-RETIRING, which is a different answer from ambiguous and must stay one.
+test fn no_declared_retirement_is_not_ambiguity() -> Bool {
+  match host_retirement_standing_of(rows: [], host: operator_host_srv2) {
+    HostNotRetiring { host: _, cause: _ } => true
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
+    HostRetirementDeclared { retirement: _ } => false
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
+  }
+}
+
+// AMBIGUITY DOES NOT PERMIT A DELETION. The surplus disposition asks whether the owning host is
+// retiring, and an unresolved answer is not a yes -- this is the consumer where picking the first row
+// would have turned an authoring slip into permission to remove a registration.
+test fn an_ambiguous_standing_does_not_make_surplus_deletable() -> Bool {
+  match host_retirement_standing_of(rows: duplicate_retirement_rows(), host: operator_host_srv2) {
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => true
+    HostRetirementDeclared { retirement: _ } => false
+    HostNotRetiring { host: _, cause: _ } => false
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
   }
 }

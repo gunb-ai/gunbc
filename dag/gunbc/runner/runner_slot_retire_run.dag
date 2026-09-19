@@ -76,6 +76,7 @@ import gunbc.runner_host_retirement {
   HostRetirementStanding,
   HostRetirementDeclared,
   HostNotRetiring,
+  HostRetirementAmbiguous,
   host_retirement_standing,
   host_retirement_obligation_basis,
   host_retirement_capture,
@@ -295,6 +296,7 @@ fn retirement_route_admission(executor_raw: String, target_raw: String) -> Retir
     RetirementPairNamed { executor: executor, target: target } =>
       match host_retirement_standing(host: target as HostIdentity) {
         HostNotRetiring { host: _, cause: c } => RetirementRouteRefused { cause: c }
+        HostRetirementAmbiguous { host: _, count: _, cause: c } => RetirementRouteRefused { cause: c }
         HostRetirementDeclared { retirement: r } =>
           RetirementRouteAdmitted {
             subject: RetirementRouteSubject {
@@ -780,7 +782,7 @@ fn runner_slot_retire_bound_wet(revision: String, run_id: String) -> ProcessExit
                     required: run.required,
                     standings: run.standings,
                     method_subjects: retirement_route_graceful_subjects(run: run),
-                    method_availability: retirement_method_availability(method: GracefulRetirement, unit: subject.target as String),
+                    method: GracefulRetirement,
                     planner: retirement_route_planner_disposition(run: run),
                     basis: run.basis,
                     local_population: host_retirement_local_population(host: subject.target),

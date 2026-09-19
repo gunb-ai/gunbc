@@ -166,8 +166,16 @@ data declared_host_retirements: List<HostRetirement> = [srv2_host_retirement]
 // consumer can mint a retirement from a refusal, a census gap, an empty roster read or an urgency.
 // That is the construction that makes the two failure arms in the type's note unwritable rather than
 // merely discouraged -- there is nowhere else to build the value they would have to produce.
+// A SECOND DECLARED ROW FOR ONE HOST IS AN UNRESOLVED QUESTION, NOT A LIST TO PICK FROM. This value
+// is the admission gate for the destructive route, and two rows can differ in search_bound, capture
+// and local_population -- so taking the first would decide, silently and by authoring order, which
+// obligation the route is about to discharge. This module already refuses exactly that shape for the
+// estate obligations ("Selecting one -- first, last, or the convenient one -- is an unresolved
+// selection rule wearing a decision's clothes"), and the capture boundary refuses it for bindings;
+// the rule was stated twice and then not applied to the gate in front of both.
 type HostRetirementStanding
   = HostRetirementDeclared { retirement: HostRetirement }
+  | HostRetirementAmbiguous { host: HostIdentity, count: Int, cause: String }
   | HostNotRetiring { host: HostIdentity, cause: String }
 
 fn host_retirement_rows_for(host: HostIdentity) -> List<HostRetirement> {
@@ -175,14 +183,31 @@ fn host_retirement_rows_for(host: HostIdentity) -> List<HostRetirement> {
 }
 
 fn host_retirement_standing(host: HostIdentity) -> HostRetirementStanding {
-  let rows = host_retirement_rows_for(host: host)
+  host_retirement_standing_of(rows: host_retirement_rows_for(host: host), host: host)
+}
+
+// THE SELECTION RULE TAKES THE ROWS, so the ambiguous arm has an authorable red. Reading the module's
+// own roster inside the decision would leave the refusal unreachable from any witness -- the rows are
+// authored here and nothing outside can add a second one -- and a wall whose red cannot be written is
+// a decoration that will be cited as coverage (DESIGN 4b). Supplying the population is also what
+// makes this claim about ONE interface rather than about whatever the roster happens to hold today.
+fn host_retirement_standing_of(rows: List<HostRetirement>, host: HostIdentity) -> HostRetirementStanding {
   if list_length(items: rows) == 0 {
     HostNotRetiring {
       host: host,
       cause: join([host as String, " carries no declared host retirement, so nothing about it may be deleted under one; a host whose admitted width refuses is a host the model cannot size, not a host somebody decided to remove"], ""),
     }
+  } else if list_length(items: rows) > 1 {
+    HostRetirementAmbiguous {
+      host: host,
+      count: list_length(items: rows),
+      cause: join([
+        host as String, " carries ", to_string(list_length(items: rows)),
+        " declared host retirements. They may differ in search bound, captured population and local population, so which obligation a retirement route would discharge is not established -- and answering with the first would make authoring order the decision. One host is retired once or the rows are reconciled",
+      ], ""),
+    }
   } else {
-    HostRetirementDeclared { retirement: rows |> fold(init: rows.first(), f: (acc, r) => acc) }
+    HostRetirementDeclared { retirement: rows.first() }
   }
 }
 
@@ -235,6 +260,7 @@ fn host_retirement_obligation_basis_of(
 fn host_retirement_local_population(host: HostIdentity) -> LocalSlotPopulation {
   match host_retirement_standing(host: host) {
     HostRetirementDeclared { retirement: r } => r.local_population
+    HostRetirementAmbiguous { host: _, count: _, cause: c } => LocalPopulationUnavailable { cause: c }
     HostNotRetiring { host: h, cause: _ } =>
       LocalPopulationUnavailable {
         cause: join([h as String, " carries no declared retirement, so no local slot population is declared for it"], ""),
@@ -245,6 +271,7 @@ fn host_retirement_local_population(host: HostIdentity) -> LocalSlotPopulation {
 fn host_retirement_obligation_basis(host: HostIdentity) -> RetireeObligationBasis {
   match host_retirement_standing(host: host) {
     HostNotRetiring { host: h, cause: _ } => ObligationAbsent { host: h }
+    HostRetirementAmbiguous { host: h, count: _, cause: _ } => ObligationAbsent { host: h }
     HostRetirementDeclared { retirement: r } =>
       host_retirement_obligation_basis_of(local_population: r.local_population, host: r.host, bound: r.search_bound)
   }
@@ -315,6 +342,7 @@ fn host_retirement_discovery_subjects(host: HostIdentity) -> List<NonEmptyStr> {
 fn host_retirement_capture(host: HostIdentity) -> CaptureCensus {
   match host_retirement_standing(host: host) {
     HostRetirementDeclared { retirement: r } => r.capture
+    HostRetirementAmbiguous { host: _, count: _, cause: c } => CaptureCensusUnavailable { cause: c }
     HostNotRetiring { host: h, cause: _ } =>
       CaptureCensusUnavailable {
         cause: join([h as String, " carries no declared retirement, so no capture census is declared for it"], ""),
@@ -325,6 +353,7 @@ fn host_retirement_capture(host: HostIdentity) -> CaptureCensus {
 fn host_retirement_spec(host: HostIdentity) -> List<RunnerHostSpec> {
   match host_retirement_standing(host: host) {
     HostNotRetiring { host: _, cause: _ } => []
+    HostRetirementAmbiguous { host: _, count: _, cause: _ } => []
     HostRetirementDeclared { retirement: r } => [r.spec]
   }
 }
@@ -594,6 +623,7 @@ fn surplus_identity_within_retirement_scope(d: SurplusIdentityDisposition) -> Bo
     SurplusOwnedRetiree { name: _, host: h } =>
       match host_retirement_standing(host: h) {
         HostRetirementDeclared { retirement: _ } => true
+        HostRetirementAmbiguous { host: _, count: _, cause: _ } => false
         HostNotRetiring { host: _, cause: _ } => false
       }
   }
@@ -809,6 +839,7 @@ type ReconcileTimerIntent
 fn runner_liveness_reconcile_timer_intent(host: HostIdentity) -> ReconcileTimerIntent {
   match host_retirement_standing(host: host) {
     HostNotRetiring { host: h, cause: _ } => ReconcileTimerActive { host: h }
+    HostRetirementAmbiguous { host: h, count: _, cause: _ } => ReconcileTimerActive { host: h }
     HostRetirementDeclared { retirement: r } =>
       ReconcileTimerRetired {
         host: r.host,

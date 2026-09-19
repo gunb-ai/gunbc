@@ -15,6 +15,7 @@ import extdeps.github.actions_runner {
   ActionsRunnerCapturedIdentity,
   actions_runner_registration_decode,
   actions_runner_instance_dir,
+  actions_runner_registration_file_name,
 }
 import gunbc.legacy_slot_incarnation_name {
   RegistrationNameMatch,
@@ -106,10 +107,8 @@ type CaptureContextAdmission
   = CaptureContextAdmitted { context: CaptureContext }
   | CaptureContextRefused { cause: String }
 
-data capture_registration_file_name: String = ".runner"
-
 fn capture_expected_path(slot_instance: NonEmptyStr) -> NonEmptyStr {
-  join([actions_runner_instance_dir(instance_name: slot_instance) as String, "/", capture_registration_file_name], "") as NonEmptyStr
+  join([actions_runner_instance_dir(instance_name: slot_instance) as String, "/", actions_runner_registration_file_name], "") as NonEmptyStr
 }
 
 // THE ORGANIZATION COMES FROM THE HOST'S OWN SPEC, WHICH A REFUSED WIDTH DOES NOT REMOVE.

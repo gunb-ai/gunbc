@@ -14,6 +14,8 @@ import gunbc.runner_slot_retirement {
   authoritative_standing_is_complete,
   authoritative_standing_cause,
   RetirementMethodAvailability,
+  retirement_method_availability,
+  RetirementMethod,
   MethodAvailable,
   MethodUnavailable,
   RunnerRetirementStanding,
@@ -355,6 +357,14 @@ type RetirementAssessmentVerdict
   = AssessmentClearOfBlockers { revision: NonEmptyStr, required_subjects: Int }
   | AssessmentBlocked { revision: NonEmptyStr, blockers: List<ClosureBlocker> }
 
+// THE METHOD IS PASSED, NOT ITS AVAILABILITY, BECAUSE AVAILABILITY IS PER SUBJECT. This fold took one
+// precomputed RetirementMethodAvailability and stamped it across every subject, while the producer is
+// unit-dependent: AuthorizedDisruptiveRetirement asks interruption_authorization_covers(auth, unit).
+// So one covered unit would have yielded MethodAvailable -- an empty blocker list -- for units the
+// authorization never named, on the route that interrupts them. It stayed latent only because the
+// arm that does reach production, GracefulRetirement, ignores its unit argument, and the caller was
+// handing it a HOST rather than a unit at all. That is the identity join this PR adds
+// SlotRetirementSubjectMismatch to refuse, committed in the fold beside it.
 fn retirement_assessment_verdict(
   revision: NonEmptyStr,
   host: HostIdentity,
@@ -363,7 +373,7 @@ fn retirement_assessment_verdict(
   required: List<NonEmptyStr>,
   standings: List<RunnerRetirementStanding>,
   method_subjects: List<String>,
-  method_availability: RetirementMethodAvailability,
+  method: RetirementMethod,
   planner: PlannerDisposition,
   basis: RetireeObligationBasis,
   local_population: LocalSlotPopulation,
@@ -379,7 +389,7 @@ fn retirement_assessment_verdict(
       ),
       concat(
         retiree_blockers(required: required, standings: standings),
-        flat_map(method_subjects, u => method_blockers(unit: u, availability: method_availability)),
+        flat_map(method_subjects, u => method_blockers(unit: u, availability: retirement_method_availability(method: method, unit: u))),
       ),
     ),
     concat(

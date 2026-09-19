@@ -106,14 +106,17 @@ type RegistrationNameMatch
 // indistinguishable from the canonical census spelling. The declared producer emits no such
 // whitespace, so that is a DIFFERENT NAME being repaired into this one. A field whose spelling is not
 // what the issuer writes is refused rather than normalized.
+//
+// THE CHECK IS A ROUND TRIP, BECAUSE THE WHITESPACE GUARD CLAIMED THAT RULE WITHOUT BUILDING IT.
+// parse_int accepts a leading `+` and leading zeros, so `+1789774588` and `01789774588` still decoded
+// -- spellings `date +%s` and `$$` never emit, repaired into an owned incarnation by a decoder whose
+// note said it refused exactly that. Rendering the parsed number back and requiring it to equal the
+// text subsumes whitespace, sign and leading zeros in one construction rather than enumerating the
+// spellings to forbid, which is the enumeration that was already one short.
 fn parse_nonneg_int_field(text: String) -> Int? {
-  if text == "" || trim(s: text) != text {
-    none
-  } else {
-    match parse_int(s: text) {
-      Absent => none
-      Present { value: n } => if n >= 0 { Present { value: n } } else { none }
-    }
+  match parse_int(s: text) {
+    Absent => none
+    Present { value: n } => if n >= 0 && to_string(n) == text { Present { value: n } } else { none }
   }
 }
 

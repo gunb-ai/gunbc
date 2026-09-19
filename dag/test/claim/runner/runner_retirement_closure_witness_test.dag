@@ -68,6 +68,7 @@ import gunbc.runner_retirement_closure {
   AssessmentBlocked,
   retirement_assessment_verdict,
   assessment_is_clear_of_blockers,
+  RetirementAssessmentVerdict,
 }
 
 import gunbc.runner_registration_capture {
@@ -277,7 +278,7 @@ test fn a_complete_assessment_is_clear_of_blockers() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -300,7 +301,7 @@ test fn an_unavailable_roster_blocks_the_closure() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -328,7 +329,7 @@ test fn a_partial_roster_blocks_the_closure() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -350,7 +351,7 @@ test fn an_unimplemented_graceful_method_blocks_the_closure() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: ["actions-runner@srv2-01.service"],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "actions-runner@srv2-01.service"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -374,7 +375,7 @@ test fn a_refused_planner_emitting_zero_operations_does_not_converge() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerRefusedAccess { cause: "ssh refused" },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -395,7 +396,7 @@ test fn a_filtering_planner_emitting_zero_operations_does_not_converge() -> Bool
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerFilteredSubjects {
         filtered: ["actions-runner@srv2-09.service" as NonEmptyStr],
         cause: "the committed-slot decoder did not recognize it",
@@ -421,7 +422,7 @@ test fn a_required_retiree_with_no_standing_blocks_the_closure() -> Bool {
       required: ["actions-runner@srv2-01.service" as NonEmptyStr, "actions-runner@srv2-02.service" as NonEmptyStr],
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -445,7 +446,7 @@ test fn settled_slots_with_an_outstanding_estate_do_not_converge() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -534,7 +535,7 @@ test fn a_complete_assessment_with_operations_remaining_is_not_clear() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 1 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -575,7 +576,7 @@ test fn an_owned_surplus_member_of_a_complete_roster_blocks() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -612,7 +613,7 @@ test fn a_foreign_member_of_a_complete_roster_also_blocks() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -640,7 +641,7 @@ test fn a_contradictory_retiree_reading_blocks_the_assessment() -> Bool {
         RetirementUnobserved { unit: "actions-runner@srv2-01.service", cause: "read failed" },
       ],
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -665,7 +666,7 @@ test fn a_contradictory_retiree_reading_blocks_in_either_order() -> Bool {
         RetirementComplete { unit: "actions-runner@srv2-01.service" },
       ],
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -691,7 +692,7 @@ test fn an_ungrounded_population_blocks_the_assessment() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: host_retirement_obligation_basis_of(
         local_population: LocalPopulationUnavailable { cause: "no local read has been taken" },
@@ -718,7 +719,7 @@ test fn a_supplied_extra_blocker_blocks_the_assessment() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -744,7 +745,7 @@ test fn an_obligation_identity_missing_from_the_assessment_blocks() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: ObligationFromCapturedSnapshot {
         observed_on: "2026-09-19" as NonEmptyStr,
@@ -775,7 +776,7 @@ test fn an_assessed_identity_no_authority_names_blocks() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: ObligationFromCapturedSnapshot {
         observed_on: "2026-09-19" as NonEmptyStr,
@@ -801,7 +802,7 @@ test fn a_complete_empty_capture_covers_an_empty_population() -> Bool {
       required: [],
       standings: [],
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: ObligationFromCapturedSnapshot { observed_on: "2026-09-19" as NonEmptyStr, units: [] },
       obligation_population: [],
@@ -835,7 +836,7 @@ test fn a_width_transition_identity_is_supported_by_its_own_authority() -> Bool 
         RetirementComplete { unit: "actions-runner@srv4-13.service" },
       ],
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: [
@@ -861,7 +862,7 @@ test fn omitting_the_width_transition_identity_blocks() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: [
@@ -892,7 +893,7 @@ test fn an_assessed_identity_no_authority_names_still_blocks() -> Bool {
         RetirementComplete { unit: "actions-runner@srv2-99.service" },
       ],
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -920,7 +921,7 @@ test fn an_unavailable_local_population_blocks_the_closure() -> Bool {
       required: one_required(),
       standings: settled_standings(),
       method_subjects: [],
-      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      method: GracefulRetirement,
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
       obligation_population: one_required(),
@@ -928,4 +929,55 @@ test fn an_unavailable_local_population_blocks_the_closure() -> Bool {
       extra: [],
     ),
   )
+}
+
+// ── AVAILABILITY IS PER SUBJECT, NOT STAMPED ACROSS THE SET ─────────────────────────────────
+
+// THE REQUIRED DISCRIMINATOR: two method subjects, one inside the operator's interruption
+// authorization and one outside it. The fold used to receive ONE precomputed availability, so the
+// covered unit's MethodAvailable -- an empty blocker list -- was the answer for both, and the
+// uncovered unit passed the method gate on a permission that never named it. The authorization is
+// srv4's real one, whose scope enumerates slots 13..21, so srv4-13 is covered and srv4-01 is not.
+fn method_verdict(subjects: List<String>) -> RetirementAssessmentVerdict {
+  retirement_assessment_verdict(
+    revision: "abc123" as NonEmptyStr,
+    local_population: settled_local_population(),
+    host: operator_host_srv2,
+    roster: observed_roster(),
+    roster_organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    required: one_required(),
+    standings: settled_standings(),
+    method_subjects: subjects,
+    method: AuthorizedDisruptiveRetirement { authorization: srv4_transition_interruption_authorization },
+    planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+    basis: grounded_basis(),
+    obligation_population: one_required(),
+    estate: complete_estate(),
+    extra: [],
+  )
+}
+
+test fn an_uncovered_subject_blocks_even_beside_a_covered_one() -> Bool {
+  !assessment_is_clear_of_blockers(v: method_verdict(subjects: [
+    "actions-runner@srv4-13.service",
+    "actions-runner@srv4-01.service",
+  ]))
+}
+
+// AND THE ORDER DOES NOT DECIDE IT. With one precomputed availability the answer depended on which
+// unit the caller happened to derive it from, so both orders are claimed.
+test fn the_uncovered_subject_blocks_in_either_order() -> Bool {
+  !assessment_is_clear_of_blockers(v: method_verdict(subjects: [
+    "actions-runner@srv4-01.service",
+    "actions-runner@srv4-13.service",
+  ]))
+}
+
+// THE PAIRED POSITIVE: subjects that are ALL covered do not block on the method, so the claims above
+// discriminate on coverage rather than on this method arm always refusing.
+test fn subjects_wholly_inside_the_authorization_do_not_block_on_the_method() -> Bool {
+  assessment_is_clear_of_blockers(v: method_verdict(subjects: [
+    "actions-runner@srv4-13.service",
+    "actions-runner@srv4-14.service",
+  ]))
 }
