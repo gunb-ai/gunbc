@@ -402,7 +402,7 @@ test fn w_consumer_only_identity_cannot_vanish() -> Bool {
 }
 
 test fn w_projection_only_identity_is_in_the_denominator() -> Bool {
-  let projection = PrimitiveProjection { primitive: primitive_identity_slug(name: "shadow"), declaration: decl_ref(module_path: "v2.std.x", decl_name: "shadow"), fidelity: ModeledProjection }
+  let projection = PrimitiveProjection { primitive: primitive_identity_slug(name: "shadow"), declaration: decl_ref(module_path: "test.fixture.primitive_egress_decoy.decoy", decl_name: "scan_to_eol"), fidelity: ModeledProjection }
   let c = census_with(facts: [], edges: [], rows: [row(name: "shadow")], projections: [projection], decls: [], resolve: resolver_all_fn)
   has(xs: standing_names(ss: projection_only_identities(c: c)), x: "shadow")
     && class_of(c: c, name: "shadow") != "NONE"
