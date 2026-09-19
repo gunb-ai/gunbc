@@ -25,6 +25,7 @@ import product.fabric.provider_admission {
 }
 import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.route_readiness { RequireExercisedRoute, ExerciseOfRoute }
+import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
 import product.fabric.capacity_admission {
   AdmittedCapacity, CapacityAdmission, CapacityAdmittedForOrdinaryWork,
   RouteExercisePlacementAdmitted, CapacityRefused, admit_capacity,
@@ -305,6 +306,7 @@ fn capacity_for(
       at: now,
       requirements: requirements(caps: caps),
       offer: o,
+      delivery: OfferDoesNotClaimNodeDelivery,
     ) {
       CapacityAdmittedForOrdinaryWork { capacity: c } => [c]
       RouteExercisePlacementAdmitted { placement: _ } => []
@@ -545,6 +547,7 @@ fn cloud_y_exercise_admission() -> CapacityAdmission<NonEmptyStr> {
     at: now,
     requirements: requirements(caps: caps()),
     offer: offer(key: "cloud-y", route: cloud_y_route(), grants: 50),
+    delivery: OfferDoesNotClaimNodeDelivery,
   )
 }
 
@@ -608,6 +611,7 @@ fn capacity_for_demand(demand_key: DemandKey) -> List<AdmittedCapacity<NonEmptyS
       at: now,
       requirements: requirements(caps: caps()),
       offer: o,
+      delivery: OfferDoesNotClaimNodeDelivery,
     ) {
       CapacityAdmittedForOrdinaryWork { capacity: c } => if (c.offer.id.key as NonEmptyStr) == "cloud-x" { [c] } else { [] }
       RouteExercisePlacementAdmitted { placement: _ } => []
@@ -650,6 +654,7 @@ fn capacity_at(key: OfferKey, route: ProviderRoute, threads: Int) -> List<Admitt
     at: now,
     requirements: requirements_at(threads: threads),
     offer: offer(key: key, route: route, grants: 10),
+    delivery: OfferDoesNotClaimNodeDelivery,
   ) {
     CapacityAdmittedForOrdinaryWork { capacity: c } => [c]
     RouteExercisePlacementAdmitted { placement: _ } => []

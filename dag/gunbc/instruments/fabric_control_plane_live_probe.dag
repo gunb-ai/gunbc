@@ -38,6 +38,7 @@ import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey }
 import product.fabric.demand { Demand }
 import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.candidate_field { FieldRequest, CandidateField, assemble_candidate_field }
+import product.fabric.node_qualification { OfferDoesNotClaimNodeDelivery }
 import product.fabric.route_readiness { ExerciseOfRoute }
 import product.fabric.selection {
   DispatchInputs,
@@ -1889,6 +1890,7 @@ fn cp_probe_field(executor: NonEmptyStr, work: FabricIdentity<NonEmptyStr, WorkK
           },
           opportunity: NoFeasibleAlternativeUse { receipt: "gunbc.observation.opportunity-1" },
         },
+        delivery: OfferDoesNotClaimNodeDelivery,
       },
     ],
   )

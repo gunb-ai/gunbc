@@ -32,7 +32,8 @@ import product.fabric.demand {
 import std.types { Timestamp }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.exec.command { argv_words }
-import extdeps.github.actions { ActionRef, checkout_action, setup_rust_action }
+import gunbc.action_use_admission { checkout_action, setup_rust_action }
+import extdeps.github.action_release { ActionRelease }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_home_isolation_script, ci_pin_rustup_default_script }
 import gunbc.claim_executor_cli { claim_executor_command, claim_executor_release_path }
 import gunbc.repo_self_build { repo_self_build_all_bins_command }
@@ -157,8 +158,8 @@ fn command_material(command: ArgvCommand) -> NonEmptyStr {
   )
 }
 
-fn action_ref_material(action: ActionRef) -> NonEmptyStr {
-  concat("action:", concat(framed_string(value: action.owner), concat(framed_string(value: action.repo), framed_string(value: action.ref))))
+fn action_ref_material(action: ActionRelease) -> NonEmptyStr {
+  concat("action:", concat(framed_string(value: action.owner), concat(framed_string(value: action.repo), framed_string(value: action.commit))))
 }
 
 // Opaque contract name. Obligations are the structured field —

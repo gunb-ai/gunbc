@@ -9,6 +9,7 @@ import product.fabric.offer_route { OfferRouteRow }
 import product.fabric.supply { SupplierOffer }
 import product.fabric.route_readiness { RouteExercise, RouteReadinessRequirement }
 import product.fabric.work { ExecutionRequirements }
+import product.fabric.node_qualification { OfferDeliveryClaim }
 import product.fabric.capacity_admission {
   CapacityRefusal, admit_capacity,
   CapacityAdmittedForOrdinaryWork, RouteExercisePlacementAdmitted, CapacityRefused,
@@ -83,6 +84,7 @@ import product.fabric.selection {
 type FieldRequest<P> {
   offer: SupplierOffer<P>
   dispatch: DispatchInputs<P>
+  delivery: OfferDeliveryClaim<P>
 }
 
 // THE EXCLUSION CAUSE IS THE CAPACITY REFUSAL, NOT A SECOND SPELLING OF IT. An earlier revision
@@ -150,6 +152,7 @@ fn field_entry<P>(
     at: at,
     requirements: requirements,
     offer: request.offer,
+    delivery: request.delivery,
   ) {
     CapacityRefused { refusal: r } =>
       excluded_entry(offer: request.offer.id, cause: FieldCapacityRefused { refusal: r })

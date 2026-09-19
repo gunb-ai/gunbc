@@ -1,0 +1,75 @@
+module extdeps.github.action_runtime_policy
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.github.action_release {
+  ActionExecutionMechanism, JavaScriptAction, CompositeAction, DockerAction,
+}
+
+// WHAT GITHUB DOES WITH AN ACTION'S DECLARED EXECUTION MECHANISM. This is the platform's policy, a
+// fact separate from what the producer declared (extdeps.github.action_release) and from whether
+// this repository accepts the result (gunbc.action_use_admission). A runtime being AVAILABLE on the
+// runner is not the fact modeled here: the question is whether the runner executes the mechanism
+// the producer declared, or a different one in its place.
+//
+// The case that motivated this module: from the Node 20 deprecation onward the runner executes an
+// action declaring `runs.using: node20` under Node 24, annotating the job with "Node.js 20 is
+// deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24"
+// and continuing. The job succeeds; the mechanism that ran is not the one declared.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.action_runtime_policy",
+      decl_name: "github_actions_execution_disposition",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// `Exact` carries only the declaration: the realized mechanism IS the declared one, and a second
+// field that must equal the first would be a writable way to say they differ.
+type PlatformActionExecutionDisposition
+  = PlatformExecutesExact { declared: ActionExecutionMechanism }
+  | PlatformForcedSubstitution {
+      declared: ActionExecutionMechanism,
+      realized: ActionExecutionMechanism,
+      policy_authority: ExternalAuthority
+    }
+  | PlatformRefusesDeclaration { declared: ActionExecutionMechanism, reason: NonEmptyStr }
+  | PlatformDispositionUnmodeled { declared: ActionExecutionMechanism }
+
+// Node majors other than 20 and 24 are not answered. GitHub's treatment of node12 and node16 has
+// changed more than once, and nothing here read it, so the answer is `Unmodeled`, not a guess.
+// This is the actions/runner policy as it applies to the runner versions this repository
+// runs (gunbc.runner_first_job_receipt records 2.337.0), all of which carry the forced
+// substitution; a runner old enough to still execute node20 as declared is not distinguished.
+fn github_actions_execution_disposition(declared: ActionExecutionMechanism) -> PlatformActionExecutionDisposition {
+  match declared {
+    JavaScriptAction { node_major: n } =>
+      if n == 24 {
+        PlatformExecutesExact { declared: declared }
+      } else if n == 20 {
+        PlatformForcedSubstitution {
+          declared: declared,
+          realized: JavaScriptAction { node_major: 24 },
+          policy_authority: extdeps_external_authority_anchor,
+        }
+      } else {
+        PlatformDispositionUnmodeled { declared: declared }
+      }
+    CompositeAction { nested: _ } => PlatformExecutesExact { declared: declared }
+    DockerAction { image: _ } => PlatformExecutesExact { declared: declared }
+  }
+}

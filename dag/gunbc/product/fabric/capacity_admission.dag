@@ -3,7 +3,7 @@ module product.fabric.capacity_admission
 import std.types { List, EpochSecs }
 import std.decl_ref { DeclarationRef }
 import v2.std.optional { Present, Absent }
-import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey }
+import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }
 import product.fabric.provider_admission {
@@ -20,6 +20,11 @@ import product.fabric.supply {
   SupplierOffer, ObservedSupply, QuotedSupply, UnobservedSupply,
   OfferFungibility, offer_fungibility_for,
   Fungible, TrustDomainMismatch, CapabilitiesNotOffered, IsolationNotProvided, ShapeAxesNotCovered,
+}
+import product.fabric.node_qualification {
+  OfferDeliveryClaim, OfferDoesNotClaimNodeDelivery, OfferClaimsNodeDelivery,
+  QualificationRefusal, claimed_delivery_check, ClaimedDeliveryHolds,
+  ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
 }
 import product.fabric.route_readiness {
   RouteExercise, RouteReadinessRequirement, route_readiness,
@@ -83,6 +88,13 @@ type CapacityRefusal<P>
   | CapacitySupplyUnobserved { offer: FabricIdentity<P, OfferKey>, obligation: DeclarationRef }
   | CapacityRouteNeverExercised { offer: FabricIdentity<P, OfferKey>, route: ProviderRoute }
   | CapacityRouteExerciseExpired { offer: FabricIdentity<P, OfferKey>, route: ProviderRoute, latest_valid_through: EpochSecs, at: EpochSecs }
+  | CapacityNodeNotQualified { offer: FabricIdentity<P, OfferKey>, refusals: List<QualificationRefusal> }
+  | CapacityDeliveryClaimNamesAnotherOffer { offer: FabricIdentity<P, OfferKey>, claim_names: FabricIdentity<P, OfferKey> }
+  | CapacityDeliveryClaimReceiptMismatch {
+      offer: FabricIdentity<P, OfferKey>,
+      claim_names: FabricIdentity<P, OfferKey>,
+      receipt_names: FabricIdentity<P, OfferKey>,
+    }
   | CapacityNotFungibleForWork { offer: FabricIdentity<P, OfferKey>, fungibility: OfferFungibility }
   | CapacityUseRefused { offer: FabricIdentity<P, OfferKey>, cause: ProviderUseRefusal }
   | CapacityPermitNamesAnotherOffer { offer: FabricIdentity<P, OfferKey>, permit_names: FabricIdentity<P, OfferKey> }
@@ -130,6 +142,7 @@ fn admit_capacity<P>(
   at: EpochSecs,
   requirements: ExecutionRequirements,
   offer: SupplierOffer<P>,
+  delivery: OfferDeliveryClaim<P>,
 ) -> CapacityAdmission<P> {
   match correspond_offer_route(roster: routes, offer: offer.id, route: offer.route) {
     OfferRouteNotModeled { offer: o } => CapacityRefused { refusal: CapacityRouteNotModeled { offer: o } }
@@ -145,12 +158,12 @@ fn admit_capacity<P>(
           admit_ready_offer(
             sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
             facts: facts, exercises: exercises, readiness_requirement: readiness_requirement, at: at,
-            requirements: requirements, offer: offer)
+            requirements: requirements, offer: offer, delivery: delivery)
         QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } =>
           admit_ready_offer(
             sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
             facts: facts, exercises: exercises, readiness_requirement: readiness_requirement, at: at,
-            requirements: requirements, offer: offer)
+            requirements: requirements, offer: offer, delivery: delivery)
       }
   }
 }
@@ -169,6 +182,7 @@ fn admit_ready_offer<P>(
   at: EpochSecs,
   requirements: ExecutionRequirements,
   offer: SupplierOffer<P>,
+  delivery: OfferDeliveryClaim<P>,
 ) -> CapacityAdmission<P> {
   match route_readiness(
     exercises: exercises, requirement: readiness_requirement,
@@ -180,13 +194,63 @@ fn admit_ready_offer<P>(
         refusal: CapacityRouteExerciseExpired { offer: offer.id, route: r, latest_valid_through: v, at: t },
       }
     RouteReady { exercise: e } =>
-      admit_use_for(
+      admit_delivered_offer(
         sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
-        facts: facts, requirements: requirements, offer: offer, exercise: Present { value: e })
+        facts: facts, requirements: requirements, offer: offer, exercise: Present { value: e },
+        delivery: delivery)
     RouteAdmittedForItsOwnExercise { route: r } =>
+      admit_delivered_offer(
+        sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+        facts: facts, requirements: requirements, offer: offer, exercise: Absent,
+        delivery: delivery)
+  }
+}
+
+// NODE DELIVERY IS A SUPPLY FACT, SO IT IS SCREENED HERE WITH THE OTHERS (gunbc#11568 wrote this
+// screen into product.fabric.candidate_field; it moved here when that module stopped owning the
+// screens). An offer that CLAIMS a node group's delivery is qualified on MEASURED delivery rather than
+// its advertisement, and the claim must name the offer it rides on. Decided after readiness - a route
+// nobody has exercised is reported as that, not masked behind a qualification verdict - and before
+// fungibility and admission. Screening it only on the dispatch path would let the planning fold count
+// an unqualified group as reserve, which is the fork this module exists to prevent.
+//
+// CARRIED OVER FROM gunbc#11568 WITH THE SCREEN: Group B is a historical demonstration bound to
+// gunbc.spark.group_b_node_qualification group_b_claimed_offer. TRIGGER: a Spark rail SupplierOffer
+// carries OfferClaimsNodeDelivery of its own FabricIdentity. SUFFICIENT FOR: an unqualified group is
+// refused by name, and a claim cannot ride a different offer.
+fn admit_delivered_offer<P>(
+  sanctions: List<RouteScopeSanction>,
+  active: CompliancePostureRevision,
+  scope: ProviderUseScope<P>,
+  decision_receipt: DeclarationRef,
+  facts: ProviderRouteFacts,
+  requirements: ExecutionRequirements,
+  offer: SupplierOffer<P>,
+  exercise: RouteExercise?,
+  delivery: OfferDeliveryClaim<P>,
+) -> CapacityAdmission<P> {
+  match delivery {
+    OfferDoesNotClaimNodeDelivery =>
       admit_use_for(
         sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
-        facts: facts, requirements: requirements, offer: offer, exercise: Absent)
+        facts: facts, requirements: requirements, offer: offer, exercise: exercise)
+    OfferClaimsNodeDelivery { offer: named, admission: _ } =>
+      if !fabric_identity_eq(left: offer.id, right: named) {
+        CapacityRefused { refusal: CapacityDeliveryClaimNamesAnotherOffer { offer: offer.id, claim_names: named } }
+      } else {
+        match claimed_delivery_check(claim: delivery) {
+          ClaimedDeliveryHolds =>
+            admit_use_for(
+              sanctions: sanctions, active: active, scope: scope, decision_receipt: decision_receipt,
+              facts: facts, requirements: requirements, offer: offer, exercise: exercise)
+          ClaimedDeliveryUnqualified { refusals: r } =>
+            CapacityRefused { refusal: CapacityNodeNotQualified { offer: offer.id, refusals: r } }
+          ClaimedDeliveryOfferMismatch { claim_names: c, receipt_names: rec } =>
+            CapacityRefused {
+              refusal: CapacityDeliveryClaimReceiptMismatch { offer: offer.id, claim_names: c, receipt_names: rec },
+            }
+        }
+      }
   }
 }
 
