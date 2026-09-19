@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { String, NonEmptyStr, Timestamp, Secret }
 import std.measure { byte_size }
 import std.scoped_authorization { AttemptIdentity }
+import std.durable_compare_and_set { cas_generation_count }
 import extdeps.crypto.mac { MacKey, HmacSha256, mac_sign, MacSigned, MacKeyMaterialNotHex }
 import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
 import extdeps.apple.apns { apns_send_outcome_of }
@@ -29,8 +30,11 @@ import gunbc.auth.approval_device_redemption {
   DeviceEnrollmentRevoked, DeviceEnrollmentForAnotherOperator, DeviceEnrollmentUnknown,
   device_redemption_admission, redeem_device_over_store,
   parse_enrolment_record, enrolment_json, enrolment_code_json, code_of_enrollment_id,
+  enrolment_record_kind_generation, enrolment_record_kind_wire, enrolment_record_kind_of_wire, enrolment_record_kind_expectation,
+  IssuedCodeRecord, EnrolledRecord, RevokedRecord, enrolment_readback_of,
 }
 import gunbc.auth.approval_device_wire {
+  EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire,
   DeviceRedemptionSigningInput, RedemptionChallenge, MobileIos, MobileAndroid,
   device_redemption_signing_input, enrolment_transcript, redemption_challenge_message, approval_device_audience,
 }
@@ -377,7 +381,7 @@ test fn witness_enrolment_record_round_trips_at_generation_two() -> Bool {
   match fx_admitted_enrollment() {
     Absent => false
     Present { value: e } =>
-      match parse_enrolment_record(text: enrolment_json(e: e), generation: 2) {
+      match parse_enrolment_record(text: enrolment_json(e: e), generation: enrolment_record_kind_generation(k: EnrolledRecord)) {
         EnrolmentCodeConsumed { enrollment: r } =>
           r.enrollment_id == e.enrollment_id && r.operator_login == e.operator_login && r.decision_key.point_b64url == e.decision_key.point_b64url
         _ => false
@@ -389,7 +393,7 @@ test fn witness_enrolment_record_at_the_wrong_generation_is_unreadable() -> Bool
   match fx_admitted_enrollment() {
     Absent => false
     Present { value: e } =>
-      match parse_enrolment_record(text: enrolment_json(e: e), generation: 1) {
+      match parse_enrolment_record(text: enrolment_json(e: e), generation: enrolment_record_kind_generation(k: IssuedCodeRecord)) {
         EnrolmentSlotUnreadable { detail: _ } => true
         _ => false
       }
@@ -397,14 +401,16 @@ test fn witness_enrolment_record_at_the_wrong_generation_is_unreadable() -> Bool
 }
 
 test fn witness_issued_code_record_round_trips_at_generation_one() -> Bool {
-  match parse_enrolment_record(text: enrolment_code_json(c: fx_code_challenge(expires_at: "2026-09-17T10:05:00Z")), generation: 1) {
+  match parse_enrolment_record(text: enrolment_code_json(c: fx_code_challenge(expires_at: "2026-09-17T10:05:00Z")), generation: enrolment_record_kind_generation(k: IssuedCodeRecord)) {
     EnrolmentCodeUnspent { challenge: c } => c.code == fx_code && c.issued_to_login == approval_operator_login
     _ => false
   }
 }
 
 test fn witness_enrollment_id_names_its_code_slot() -> Bool {
-  code_of_enrollment_id(enrollment_id: "enr-482913") == "482913" && code_of_enrollment_id(enrollment_id: "other") == ""
+  match code_of_enrollment_id(enrollment_id: "enr-482913") { Present { value: c } => c as String == "482913"  Absent => false }
+    && code_of_enrollment_id(enrollment_id: "other") == none
+    && code_of_enrollment_id(enrollment_id: "enr-") == none
 }
 
 // THE ENCODING THE REVIEW CAUGHT: the raw lowercase-hex tag placed where the canonical base64url
@@ -425,5 +431,33 @@ test fn witness_device_admission_refuses_an_assertion_under_another_public_key()
   match admit(input: fx_good_input(), signature: good_signature(), assertion: other) {
     DeviceNotAdmitted { outcome: DevicePlatformProofWrongKey } => true
     _ => false
+  }
+}
+
+// THE KIND ROW IS ONE AUTHORITY: every kind's wire name reads back as the same kind, the kinds sit
+// at three distinct, consecutive generations, and each writer expects the generation of the kind
+// before it.
+test fn witness_enrolment_record_kinds_round_trip_and_order() -> Bool {
+  let kinds = [IssuedCodeRecord, EnrolledRecord, RevokedRecord]
+  all(kinds, k => match enrolment_record_kind_of_wire(s: enrolment_record_kind_wire(k: k) as String) {
+    Present { value: back } => enrolment_record_kind_wire(k: back) == enrolment_record_kind_wire(k: k)
+    Absent => false
+  })
+    && cas_generation_count(g: enrolment_record_kind_generation(k: EnrolledRecord)) == cas_generation_count(g: enrolment_record_kind_generation(k: IssuedCodeRecord)) + 1
+    && cas_generation_count(g: enrolment_record_kind_generation(k: RevokedRecord)) == cas_generation_count(g: enrolment_record_kind_generation(k: EnrolledRecord)) + 1
+    && enrolment_record_kind_of_wire(s: "other") == none
+}
+
+// THE READBACK PROJECTS THE STORED STANDING: live -> active, revoked -> revoked, and no enrolment
+// (unknown, unspent code, unreadable) -> no readback at all.
+test fn witness_enrolment_readback_projects_the_stored_standing() -> Bool {
+  match fx_admitted_enrollment() {
+    Absent => false
+    Present { value: e } =>
+      match enrolment_readback_of(standing: EnrolmentCodeConsumed { enrollment: e }) { Present { value: r } => enrolment_standing_wire(s: r.standing) == enrolment_standing_wire(s: EnrolmentStandingActive) && r.enrollment_id == e.enrollment_id  Absent => false }
+        && match enrolment_readback_of(standing: EnrolmentRevoked { enrollment: e, revoked_at: "2026-09-17T11:00:00Z", reason: "lost" }) { Present { value: r } => enrolment_standing_wire(s: r.standing) == enrolment_standing_wire(s: EnrolmentStandingRevoked)  Absent => false }
+        && enrolment_readback_of(standing: EnrolmentCodeUnknown) == none
+        && enrolment_readback_of(standing: fx_live_code) == none
+        && enrolment_readback_of(standing: EnrolmentSlotUnreadable { detail: "x" }) == none
   }
 }

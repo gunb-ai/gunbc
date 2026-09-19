@@ -1,0 +1,87 @@
+module v2.test.required_floor_gate_selector
+
+import v2.workflow.required_floor {
+  RequiredFloorDisposition,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedCostDebt,
+  required_floor_site_disposition,
+  RequiredGateSelector, GateModuleFamily, GateAuthoredModule,
+  RequiredGateMatch, GateUnmatched, GateMatched,
+  first_required_gate_match, required_gate_selectors,
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Every fixture below is authored in this source; the module reaches nothing outside the
+// substrate inputs.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE GATE'S TWO SELECTOR KINDS, EXERCISED THROUGH THE ACTUAL ADMISSION DECISION AND NOT A
+// STRING HELPER (review on gunbc#11708, RF-1). `required_floor_site_disposition` is the fold
+// every discovered site takes, so what these rows establish is the disposition a site gets --
+// and it is in the `v2.test.` family, so it executes on the required floor rather than being
+// counted outside it, which is where the first draft of these rows would have sat
+// (`test.claim.discovery_census_witness` matches no gate row: its roster row spells
+// `..._witness_test`, a fourth instance of the class this module tests).
+fn site_is_planned(module_path: String) -> Bool {
+  match required_floor_site_disposition(
+    module_path: module_path,
+    identity: concat(module_path, ".a_claim")
+  ) {
+    Planned => true
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedOutsideGateClosure => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    PlannedAsChangedWitness => false
+  }
+}
+
+test fn an_authored_module_row_admits_the_module_it_names() -> Bool {
+  site_is_planned(module_path: "test.claim.runner_capacity_plan_witness")
+    && site_is_planned(module_path: "test.claim.runner_capacity_realize_witness")
+}
+
+// THE SUFFIX NEIGHBOUR IS THE DISCRIMINATOR: under the prefix rule these would be admitted, and
+// they must not be. `_extra` extends the spelling without a segment boundary and a truncation
+// is not the name; a child module (`.child`) IS contained by name and is admitted, which is the
+// authored-module rule `v2.workflow.floor_subject_seed` declares and not a leak.
+test fn an_authored_module_row_does_not_admit_its_suffix_neighbour() -> Bool {
+  !site_is_planned(module_path: "test.claim.runner_capacity_plan_witness_extra")
+    && !site_is_planned(module_path: "test.claim.runner_capacity_realize_witness_extra")
+    && !site_is_planned(module_path: "test.claim.runner_capacity_plan_witnes")
+    && site_is_planned(module_path: "test.claim.runner_capacity_plan_witness.child")
+}
+
+// THE FAMILY RULE IS UNCHANGED BESIDE IT: a member of `test.claim.namespace_` -- a row that is
+// deliberately not a segment -- is still admitted textually, so the authored-module kind was
+// added without narrowing the prefix kind.
+test fn a_family_row_still_admits_its_members_textually() -> Bool {
+  site_is_planned(module_path: "test.claim.namespace_resolution_witness")
+    && site_is_planned(module_path: "v2.test.claim.ordinary_witness")
+}
+
+// WHICH KIND ADMITTED A MODULE IS REPORTED, not collapsed into a Bool: the match names the
+// selector, so an authored-module admission and a family admission are distinguishable.
+test fn the_match_names_the_kind_that_admitted() -> Bool {
+  match first_required_gate_match(module_path: "test.claim.runner_capacity_plan_witness", selectors: required_gate_selectors()) {
+    GateUnmatched => false
+    GateMatched { selector: s } =>
+      match s {
+        GateAuthoredModule { module_path: m } => m == "test.claim.runner_capacity_plan_witness"
+        GateModuleFamily { prefix: _ } => false
+      }
+  }
+    && match first_required_gate_match(module_path: "v2.test.claim.ordinary_witness", selectors: required_gate_selectors()) {
+      GateUnmatched => false
+      GateMatched { selector: s } =>
+        match s {
+          GateAuthoredModule { module_path: _ } => false
+          GateModuleFamily { prefix: p } => p == "v2.test."
+        }
+    }
+}

@@ -6,6 +6,7 @@ import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_named_edge,
   emit_module_header_emitted_node,
+  namespace_graft_node_is_module_body,
   qualified_name_from_graft_spine
 }
 import v2.std.algebra { fold_list_node }
@@ -368,5 +369,72 @@ test fn namespace_graft_nonempty_flatten_stays_well_formed_holds() -> Bool {
   match module_header_containment_graft(root: ng_types_and_fn_root) {
     Accepted { value: grafted, diagnostics: _ } => well_formed(n: grafted)
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// ONE-MEMBER BODY VERSUS ONE MORE SEGMENT. A body whose only member is a Named
+// edge to a Conj has the spine's own shape, so before the producer marked the
+// body this module read as `v2.test.namespace_graft.alpha.NgOnly` -- the
+// declaration was eaten as a segment (resolve_module_not_found on every
+// type-only module; CI declarations: unresolved-module-identities). RED without
+// the marker: this row asserts the single authored identity.
+fn ng_conj_member_edge(name: Symbol) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: Node {
+      kind: TypeNode { connective: Conj },
+      children: [ng_export_edge(name: ^NgInner)],
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+data ng_one_conj_member_root: Node = ng_pre_graft_module_root(
+  qn: ng_module_qn,
+  body_edges: [ng_conj_member_edge(name: ^NgOnly)]
+)
+
+test fn namespace_graft_one_conj_member_body_is_not_a_segment_RED() -> Bool {
+  match module_header_containment_graft(root: ng_one_conj_member_root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: grafted, diagnostics: _ } =>
+      ng_qn_eq(out: qualified_name_from_graft_spine(root: grafted), expected: ng_module_qn)
+  }
+}
+
+// THE OTHER DIRECTION: a genuine two-segment path with the same one-Conj-member
+// body still reads as exactly two segments. Without this control a marker could
+// "fix" the row above by ending every spine after one segment.
+data ng_two_segment_qn: QualifiedName = qualified_name_from_dotted_string(dotted: "ngtwo.beta")
+
+data ng_two_segment_one_conj_member_root: Node = ng_pre_graft_module_root(
+  qn: ng_two_segment_qn,
+  body_edges: [ng_conj_member_edge(name: ^NgOnly)]
+)
+
+test fn namespace_graft_two_segment_path_still_reads_two_segments_holds() -> Bool {
+  match module_header_containment_graft(root: ng_two_segment_one_conj_member_root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: grafted, diagnostics: _ } =>
+      ng_qn_eq(out: qualified_name_from_graft_spine(root: grafted), expected: ng_two_segment_qn)
+  }
+}
+
+// The marker is the producer's: the innermost node of the spine carries
+// namespace_graft_module_body_identity, and the member survives beside it.
+test fn namespace_graft_body_carries_producer_marker_holds() -> Bool {
+  match module_header_containment_graft(root: ng_one_conj_member_root) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: grafted, diagnostics: _ } =>
+      match find_named_child(root: grafted, name: ^grammar_production_captured_node_projection) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: captured, diagnostics: _ } =>
+          let body = namespace_graft_walk_spine_to_body(captured: captured)
+          namespace_graft_node_is_module_body(node: body)
+            && match find_named_child(root: body, name: ^NgOnly) {
+              Accepted { value: _, diagnostics: _ } => true
+              Rejected { diagnostics: _ } => false
+            }
+      }
   }
 }
