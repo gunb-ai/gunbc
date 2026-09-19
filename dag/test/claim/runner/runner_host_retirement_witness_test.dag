@@ -146,9 +146,12 @@ fn registration(name: String, id: Nat) -> GitHubSelfHostedRunnerRegistration {
 
 data witness_org: NonEmptyStr = "https://github.com/gunb-ai" as NonEmptyStr
 
-fn witness_binding(slot: String, agent_id: Int, name: String) -> RunnerRegistrationBinding {
+// THE BINDING CARRIES ITS OWN HOST, because ownership now corroborates the candidate's host against
+// it rather than taking the caller's word. A fixture that hardcoded srv2 while the claim asked about
+// srv4 is exactly the disagreement the join is there to refuse.
+fn witness_binding_on(host: HostIdentity, slot: String, agent_id: Int, name: String) -> RunnerRegistrationBinding {
   RunnerRegistrationBinding {
-    host: operator_host_srv2,
+    host: host,
     slot_instance: slot as NonEmptyStr,
     capture_path: join(["/opt/actions-runner/", slot, "/.runner"], "") as NonEmptyStr,
     organization: witness_org,
@@ -160,6 +163,10 @@ fn witness_binding(slot: String, agent_id: Int, name: String) -> RunnerRegistrat
       method: "witness-supplied" as NonEmptyStr,
     },
   }
+}
+
+fn witness_binding(slot: String, agent_id: Int, name: String) -> RunnerRegistrationBinding {
+  witness_binding_on(host: operator_host_srv2, slot: slot, agent_id: agent_id, name: name)
 }
 
 fn owned_capture(bindings: List<RunnerRegistrationBinding>) -> CaptureCensus {
@@ -176,7 +183,7 @@ fn disposition_bound(host: HostIdentity, reg: GitHubSelfHostedRunnerRegistration
     name: reg.name,
     organization: witness_org,
     agent_id: reg.id as Int,
-    capture: owned_capture(bindings: [witness_binding(slot: slot, agent_id: reg.id as Int, name: reg.name as String)]),
+    capture: owned_capture(bindings: [witness_binding_on(host: host, slot: slot, agent_id: reg.id as Int, name: reg.name as String)]),
   )
 }
 

@@ -99,11 +99,18 @@ type RegistrationNameMatch
 // answers `BootTimeBeforeEpoch` on the negative, then assigns the raw Int into an `EpochSecs` field
 // with NO cast. Both halves are load-bearing -- an explicit `as EpochSecs` on a computed value is
 // refused by the interpreter outright, and the runtime guard is what the refinement does not do.
+// THE SPELLING IS VALIDATED BEFORE THE NUMBER IS READ, AND NOT REPAIRED INTO ONE.
+//
+// This trimmed each suffix field before parsing, so `srv2-02- 1789774588-3693107` was accepted: the
+// space after the delimiter disappeared before validation, and the decoded fields were then
+// indistinguishable from the canonical census spelling. The declared producer emits no such
+// whitespace, so that is a DIFFERENT NAME being repaired into this one. A field whose spelling is not
+// what the issuer writes is refused rather than normalized.
 fn parse_nonneg_int_field(text: String) -> Int? {
-  if trim(s: text) == "" {
+  if text == "" || trim(s: text) != text {
     none
   } else {
-    match parse_int(s: trim(s: text)) {
+    match parse_int(s: text) {
       Absent => none
       Present { value: n } => if n >= 0 { Present { value: n } } else { none }
     }

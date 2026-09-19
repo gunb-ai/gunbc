@@ -7,6 +7,8 @@ import gunbc.runner_host_deploy { RunnerHostSpec, srv2_runner_host_spec }
 import gunbc.runner_slot_population_census { desired_unit_names_range }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner_registration_capture {
+  registration_discovery_bound,
+  canonical_slot_index_of,
   CaptureCensus,
   CaptureCensusComplete,
   CaptureCensusPartial,
@@ -18,7 +20,7 @@ import gunbc.runner_registration_capture {
   census_binding_for_agent,
   local_unit_obligations,
 }
-import std.nat { Nat, nat_range_inclusive }
+import std.nat { Nat }
 import gunbc.legacy_slot_incarnation_name {
   RegistrationNameMatch,
   MatchedBareSlotName,
@@ -365,57 +367,9 @@ type RegistrationOwnership
   | OwnershipCandidateUnresolved { name: NonEmptyStr, cause: String }
   | OwnershipForeign { name: NonEmptyStr, cause: String }
 
-// THE DISCOVERY RANGE, AND IT IS READ-ONLY BY CONSTRUCTION. This bounds which canonical names are
-// GENERATED for comparison. It establishes nothing about what exists and creates no obligation --
-// membership in the obligation is decided by the grounded authorities, never by this number. 50 is
-// the largest provisioning template this estate has used (srv1's historical remainder), so a
-// canonical name outside it is not a name this estate has ever issued.
-data registration_discovery_bound: Nat = 50
-
-// RECOGNITION ACCEPTS THE FORM THE FLEET ACTUALLY EMITS, WHICH EXACT EQUALITY DID NOT.
-//
-// This compared a candidate against `host_registration_name_for_slot` for equality, and the live
-// estate never produces that string: srv2's `.runner` files carry `srv2-02-1789774588-3693107`, the
-// slot instance plus jit-runner.sh's epoch and pid. Measured before the repair, that name reached
-// `OwnershipCandidateUnresolved` -- fail-closed, so nothing was destroyed -- and, worse, it stayed
-// unresolved even when handed a COMPLETE capture that listed it, because recognition gates ownership
-// and recognition could not place it. The grounding path could not be grounded by real data.
-//
-// The comparison now goes through `gunbc.legacy_slot_incarnation_name`, which anchors on the FULL
-// canonical slot name and requires the remainder to be exactly the producer's two numeric fields.
-fn canonical_slot_index_of(host: HostIdentity, name: NonEmptyStr) -> Nat? {
-  fold(
-    nat_range_inclusive(lo: 1, hi: registration_discovery_bound),
-    init: none,
-    f: (acc, i) =>
-      match acc {
-        Present { value: v } => Present { value: v }
-        Absent =>
-          if registration_name_match_is_slot(
-            m: match_registration_name_to_slot(
-              name: name,
-              slot_instance: host_registration_name_for_slot(host: host, slot_index: i) as String,
-            ),
-          ) {
-            Present { value: i }
-          } else {
-            none
-          }
-      },
-  )
-}
-
-// THE DECODED FORM, CARRIED SO A CONSUMER CAN SEE WHICH INCARNATION IT READ. Two registrations for
-// one slot differ only in the epoch and pid, and a consumer reconciling an estate needs to tell a
-// stale incarnation from the current one -- which a Nat index alone cannot say.
-fn canonical_slot_match_of(host: HostIdentity, name: NonEmptyStr) -> RegistrationNameMatch {
-  match_registration_name_to_any(
-    name: name,
-    slot_instances: nat_range_inclusive(lo: 1, hi: registration_discovery_bound)
-      |> map(i => host_registration_name_for_slot(host: host, slot_index: i) as String),
-  )
-}
-
+// THE DISCOVERY RANGE AND THE CANONICAL-SLOT DECISION MOVED TO `gunbc.runner_registration_capture`,
+// which is where the capture context corroborates against them. Declaring them here as well would be
+// two spellings of "which names does this host issue", free to disagree the first time either moved.
 fn host_registration_namespace_prefix(host: HostIdentity) -> String {
   join([host as String, "-"], "")
 }
@@ -451,6 +405,20 @@ fn capture_unresolved_cause(capture: CaptureCensus) -> String {
   }
 }
 
+// AN ID HIT DOES NOT OVERRIDE DISAGREEMENT IN THE EVIDENCE IT HIT.
+//
+// This decoded the candidate to slot index `i`, looked a binding up by org and id, and on a hit
+// returned `OwnershipEstablished` with the slot taken FROM THE CANDIDATE NAME -- never comparing the
+// binding's own host, slot or full name against it. One sound capture was enough to produce a wrong
+// answer: the srv2-02 binding for id 251463, offered a candidate named
+// `srv2-05-1789774588-3693107` at the same org and id, established ownership FOR SLOT 5, with a
+// basis string that could simultaneously say the captured id belongs to srv2-02.
+//
+// THE SUBJECT NOW COMES FROM THE BINDING AND THE CANDIDATE IS CORROBORATED AGAINST IT. Three facts
+// must agree -- the host, the decoded slot, and the full registration name -- and any disagreement is
+// preserved as a refusal rather than resolved by preferring the candidate or the capture. Silence on
+// a disagreement is the one outcome the admitted-evidence trust boundary cannot afford, because it is
+// the shape a copied or mis-attributed record takes.
 fn registration_ownership(
   host: HostIdentity,
   name: NonEmptyStr,
@@ -462,16 +430,59 @@ fn registration_ownership(
     Present { value: i } =>
       match capture_binding_for(capture: capture, organization: organization, agent_id: agent_id) {
         Present { value: b } =>
-          OwnershipEstablished {
-            host: host,
-            slot_index: i,
-            observed_on: b.provenance.observed_on,
-            basis: join([
-              "this name denotes ", host as String, "'s canonical slot ", to_string(i),
-              " (", registration_name_match_wire(m: canonical_slot_match_of(host: host, name: name)),
-              "), AND a capture taken on ", b.provenance.observed_on as String,
-              " binds registration id ", to_string(agent_id), " to ", b.slot_instance as String,
-            ], ""),
+          if (b.host as String) != (host as String) {
+            OwnershipCanonicalUnresolved {
+              name: name,
+              slot_index: i,
+              cause: join([
+                "registration id ", to_string(agent_id), " is bound by capture to host ", b.host as String,
+                " and this candidate is being classified against ", host as String,
+                "; an id match does not override a host disagreement",
+              ], ""),
+            }
+          } else if (b.agent_name as String) != (name as String) {
+            OwnershipCanonicalUnresolved {
+              name: name,
+              slot_index: i,
+              cause: join([
+                "registration id ", to_string(agent_id), " is bound by capture to the name ", b.agent_name as String,
+                " and this candidate reports ", name as String,
+                "; one remote object cannot have two identities, and neither the candidate nor the capture may be preferred",
+              ], ""),
+            }
+          } else {
+            match canonical_slot_index_of(host: host, name: b.slot_instance) {
+              Absent =>
+                OwnershipCanonicalUnresolved {
+                  name: name,
+                  slot_index: i,
+                  cause: join(["the bound slot ", b.slot_instance as String, " is not a canonical slot of ", host as String, " within the discovery range"], ""),
+                }
+              Present { value: bound_index } =>
+                if (bound_index as Int) != (i as Int) {
+                  OwnershipCanonicalUnresolved {
+                    name: name,
+                    slot_index: i,
+                    cause: join([
+                      "this candidate decodes to slot ", to_string(i), " while the capture binds id ",
+                      to_string(agent_id), " to ", b.slot_instance as String,
+                      "; the established subject comes from the binding and the disagreement is the finding",
+                    ], ""),
+                  }
+                } else {
+                  OwnershipEstablished {
+                    host: b.host,
+                    slot_index: bound_index,
+                    observed_on: b.provenance.observed_on,
+                    basis: join([
+                      "a capture taken on ", b.provenance.observed_on as String,
+                      " binds registration id ", to_string(agent_id), " in ", b.organization as String,
+                      " to ", b.slot_instance as String, " under ", b.capture_path as String,
+                      ", and the candidate's host, decoded slot and full name all agree with it",
+                    ], ""),
+                  }
+                }
+            }
           }
         Absent =>
           OwnershipCanonicalUnresolved {

@@ -183,6 +183,14 @@ data actions_runner_registration_file_name: String = ".runner"
 
 data actions_runner_cache_dir: String = "/opt/actions-runner-cache"
 
+// THE INSTALLATION DIRECTORY OF ONE RUNNER INSTANCE. This lived in `gunbc.runner_slot_provision`,
+// which is the wrong layer for it and produced a real import cycle the moment a second consumer
+// needed it: the rule is base-dir plus instance name, and the base dir is declared here. A consumer
+// that re-spelled the join would be a second authority for a path both sides must agree on exactly.
+fn actions_runner_instance_dir(instance_name: NonEmptyStr) -> NonEmptyStr {
+  join([actions_runner_base_dir, "/", instance_name as String], "") as NonEmptyStr
+}
+
 // THE REGISTRATION FILE CARRIES AN IDENTITY AND A LIFETIME POLICY, AND ONLY THE SECOND WAS RETAINED.
 //
 // `.runner` is the JSON `config.sh` writes. Its members include `AgentId` (the numeric registration
@@ -259,10 +267,14 @@ fn actions_runner_registration_lifecycle_of(doc: JsonValue) -> ActionsRunnerRegi
   }
 }
 
+// THE NUMERIC MEMBER IS NOT TRIM-NORMALIZED AND A NEGATIVE ID REFUSES. The runner settings schema
+// declares AgentId unsigned, so a negative value is not a low id -- it is a record that did not come
+// from the writer this decoder models. Repairing surrounding whitespace would likewise accept a
+// spelling the writer does not emit and then report it as the identity.
 fn actions_runner_registration_number_member(doc: JsonValue, key: String) -> Int? {
   match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: JsonNumber { lexeme: lx } } => parse_int(s: trim(s: lx as String))
-    JsonMemberFound { value: JsonString { value: t } } => parse_int(s: trim(s: t))
+    JsonMemberFound { value: JsonNumber { lexeme: lx } } => actions_runner_nonneg_of(text: lx as String)
+    JsonMemberFound { value: JsonString { value: t } } => actions_runner_nonneg_of(text: t)
     JsonMemberFound { value: _ } => none
     JsonMemberAbsent => none
     JsonMemberDuplicated { count: _ } => none
@@ -270,14 +282,32 @@ fn actions_runner_registration_number_member(doc: JsonValue, key: String) -> Int
   }
 }
 
+// THE TEXT MEMBER IS PRESERVED EXACTLY. It used to return `trim(t)`, which ALTERS THE RECORDED REMOTE
+// IDENTITY before anything judges it: a padded AgentName became the canonical census name rather than
+// being carried as supplied and refused downstream. An identity is what the writer wrote; normalizing
+// it here makes two different remote objects indistinguishable at every later boundary.
+//
+// EMPTINESS IS STILL REJECTED, and that is a different act from repairing: a member that is only
+// whitespace names nothing, so it is absent rather than silently trimmed into a shorter identity.
 fn actions_runner_registration_text_member(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: JsonString { value: t } } =>
-      if trim(s: t) == "" { none } else { Present { value: trim(s: t) } }
+      if trim(s: t) == "" { none } else { Present { value: t } }
     JsonMemberFound { value: _ } => none
     JsonMemberAbsent => none
     JsonMemberDuplicated { count: _ } => none
     JsonMemberNotAnObject => none
+  }
+}
+
+fn actions_runner_nonneg_of(text: String) -> Int? {
+  if trim(s: text) != text {
+    none
+  } else {
+    match parse_int(s: text) {
+      Absent => none
+      Present { value: n } => if n >= 0 { Present { value: n } } else { none }
+    }
   }
 }
 
@@ -286,10 +316,10 @@ fn actions_runner_registration_with_lifecycle(
   lifecycle: ActionsRunnerRegistration,
 ) -> ActionsRunnerRegistrationRead {
   match actions_runner_registration_number_member(doc: doc, key: actions_runner_registration_agent_id_member) {
-    Absent => ActionsRunnerRegistrationUnreadable { reason: ".runner AgentId is absent, duplicated, or not a number" }
+    Absent => ActionsRunnerRegistrationUnreadable { reason: ".runner AgentId is absent, duplicated, negative, whitespace-padded, or not a number; the settings schema declares it unsigned" }
     Present { value: id } =>
       match actions_runner_registration_text_member(doc: doc, key: actions_runner_registration_agent_name_member) {
-        Absent => ActionsRunnerRegistrationUnreadable { reason: ".runner AgentName is absent, duplicated, empty, or not a string" }
+        Absent => ActionsRunnerRegistrationUnreadable { reason: ".runner AgentName is absent, duplicated, whitespace-only, or not a string; its exact spelling is preserved rather than trimmed" }
         Present { value: name } =>
           match actions_runner_registration_text_member(doc: doc, key: actions_runner_registration_github_url_member) {
             Absent => ActionsRunnerRegistrationUnreadable { reason: ".runner GitHubUrl is absent, duplicated, empty, or not a string" }

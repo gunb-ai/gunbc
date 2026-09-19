@@ -3,10 +3,16 @@ module test.claim.runner.runner_registration_capture_witness
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import std.types { NonEmptyStr, String, Int, list_length }
-import gunbc.fleet_intent_network { operator_host_srv2 }
+import gunbc.fleet_intent_network { operator_host_srv2, operator_host_srv3 }
 import extdeps.github.actions_runner { ActionsRunnerRegistrationEphemeral, ActionsRunnerRegistrationPersistent }
 import gunbc.runner_registration_capture {
   CaptureProvenance,
+  CaptureContext,
+  CaptureContextAdmitted,
+  CaptureContextRefused,
+  capture_context_for,
+  capture_expected_path,
+  CaptureIdNameConflict,
   RunnerRegistrationBinding,
   CaptureAdmission,
   CaptureBound,
@@ -43,14 +49,24 @@ fn census_provenance() -> CaptureProvenance {
   }
 }
 
-fn srv2_02_admission() -> CaptureAdmission {
+fn srv2_context(slot: String) -> CaptureContext {
+  match capture_context_for(host: operator_host_srv2, slot_instance: slot as NonEmptyStr) {
+    CaptureContextAdmitted { context: c } => c
+    CaptureContextRefused { cause: _ } => srv2_context(slot: "srv2-02")
+  }
+}
+
+fn admit_at(slot: String, path: String, raw: String) -> CaptureAdmission {
   capture_admission(
-    host: operator_host_srv2,
-    slot_instance: "srv2-02" as NonEmptyStr,
-    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
-    raw: srv2_02_runner_json,
+    context: srv2_context(slot: slot),
+    observed_path: path as NonEmptyStr,
+    raw: raw,
     provenance: census_provenance(),
   )
+}
+
+fn srv2_02_admission() -> CaptureAdmission {
+  admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-02/.runner", raw: srv2_02_runner_json)
 }
 
 // THE PRINCIPAL POSITIVE. The specimen must preserve AgentId 251463 and the full remote name WHILE
@@ -63,7 +79,7 @@ test fn the_census_specimen_binds_slot_unit_and_registration() -> Bool {
       (binding_local_unit(b: b) as String) == "actions-runner@srv2-02.service"
         && b.agent_id == 251463
         && (b.agent_name as String) == "srv2-02-1789774588-3693107"
-        && (b.organization as String) == "https://github.com/gunb-ai"
+        && (b.organization as String) == "gunb-ai"
         && (b.slot_instance as String) == "srv2-02"
         && (b.provenance.observed_on as String) == "2026-09-19T10:34Z"
     CaptureUnresolved { capture_path: _, cause: _ } => false
@@ -75,7 +91,7 @@ test fn the_remote_subject_is_the_org_scoped_id() -> Bool {
   match srv2_02_admission() {
     CaptureBound { binding: b } => {
       let s = binding_remote_subject(b: b)
-      s.agent_id == 251463 && (s.organization as String) == "https://github.com/gunb-ai"
+      s.agent_id == 251463 && (s.organization as String) == "gunb-ai"
     }
     CaptureUnresolved { capture_path: _, cause: _ } => false
   }
@@ -88,7 +104,7 @@ test fn the_remote_subject_is_the_org_scoped_id() -> Bool {
 test fn a_valid_name_with_no_capture_yields_no_binding() -> Bool {
   match census_binding_for_agent(
     c: CaptureCensusUnavailable { cause: "no census taken" },
-    organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    organization: "gunb-ai" as NonEmptyStr,
     agent_id: 251463,
   ) {
     Absent => true
@@ -99,13 +115,7 @@ test fn a_valid_name_with_no_capture_yields_no_binding() -> Bool {
 // A MALFORMED SUFFIX REFUSES DESPITE THE PREFIX -- the capture-boundary corroboration consumes the
 // legacy name authority, so a name in the namespace that is not an incarnation of this slot blocks.
 test fn a_malformed_suffix_refuses_despite_the_prefix() -> Bool {
-  match capture_admission(
-    host: operator_host_srv2,
-    slot_instance: "srv2-02" as NonEmptyStr,
-    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
-    raw: "{\"AgentId\":9,\"AgentName\":\"srv2-02-notanumber-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}",
-    provenance: census_provenance(),
-  ) {
+  match admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-02/.runner", raw: "{\"AgentId\":9,\"AgentName\":\"srv2-02-notanumber-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}") {
     CaptureUnresolved { capture_path: _, cause: _ } => true
     CaptureBound { binding: _ } => false
   }
@@ -114,13 +124,7 @@ test fn a_malformed_suffix_refuses_despite_the_prefix() -> Bool {
 // CAPTURE-DIRECTORY / NAME DISAGREEMENT BLOCKS. A `.runner` naming slot 05 found under slot 02's
 // installation is a copied or misplaced file, and it is not resolved by preferring either side.
 test fn a_directory_and_name_disagreement_blocks() -> Bool {
-  match capture_admission(
-    host: operator_host_srv2,
-    slot_instance: "srv2-02" as NonEmptyStr,
-    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
-    raw: "{\"AgentId\":251484,\"AgentName\":\"srv2-05-1789774588-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}",
-    provenance: census_provenance(),
-  ) {
+  match admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-02/.runner", raw: "{\"AgentId\":251484,\"AgentName\":\"srv2-05-1789774588-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}") {
     CaptureUnresolved { capture_path: _, cause: _ } => true
     CaptureBound { binding: _ } => false
   }
@@ -133,7 +137,7 @@ fn incarnation(agent_id: Int, name: String) -> RunnerRegistrationBinding {
     host: operator_host_srv2,
     slot_instance: "srv2-02" as NonEmptyStr,
     capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
-    organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    organization: "gunb-ai" as NonEmptyStr,
     agent_id: agent_id,
     agent_name: name as NonEmptyStr,
     lifecycle: ActionsRunnerRegistrationEphemeral,
@@ -157,7 +161,7 @@ test fn one_id_attributed_to_two_slots_is_incoherent() -> Bool {
     host: operator_host_srv2,
     slot_instance: "srv2-05" as NonEmptyStr,
     capture_path: "/opt/actions-runner/srv2-05/.runner" as NonEmptyStr,
-    organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    organization: "gunb-ai" as NonEmptyStr,
     agent_id: 251463,
     agent_name: "srv2-05-1789774588-3693107" as NonEmptyStr,
     lifecycle: ActionsRunnerRegistrationEphemeral,
@@ -165,6 +169,7 @@ test fn one_id_attributed_to_two_slots_is_incoherent() -> Bool {
   }
   match capture_coherence(bindings: [a, b]) {
     CaptureIdAttributedTwice { agent_id: i, first_slot: _, second_slot: _ } => i == 251463
+    CaptureIdNameConflict { agent_id: _, first_name: _, second_name: _ } => false
     CapturesCoherent => false
   }
 }
@@ -181,7 +186,7 @@ test fn a_partial_census_still_binds_an_observed_member() -> Bool {
       unresolved: [],
       cause: "four of seven trees read",
     },
-    organization: "https://github.com/gunb-ai" as NonEmptyStr,
+    organization: "gunb-ai" as NonEmptyStr,
     agent_id: 251463,
   ) {
     Present { value: b } => b.agent_id == 251463
@@ -231,13 +236,7 @@ test fn an_unresolved_capture_blocks_the_population() -> Bool {
 // outside any committed range -- so if desired capacity ever became an identity-recognition filter,
 // this row goes red.
 test fn a_captured_slot_outside_committed_membership_still_binds() -> Bool {
-  match capture_admission(
-    host: operator_host_srv2,
-    slot_instance: "srv2-11" as NonEmptyStr,
-    capture_path: "/opt/actions-runner/srv2-11/.runner" as NonEmptyStr,
-    raw: "{\"AgentId\":91529,\"AgentName\":\"srv2-11-1780000000-1111111\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}",
-    provenance: census_provenance(),
-  ) {
+  match admit_at(slot: "srv2-11", path: "/opt/actions-runner/srv2-11/.runner", raw: "{\"AgentId\":91529,\"AgentName\":\"srv2-11-1780000000-1111111\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}") {
     CaptureBound { binding: b } =>
       b.agent_id == 91529 && (binding_local_unit(b: b) as String) == "actions-runner@srv2-11.service"
     CaptureUnresolved { capture_path: _, cause: _ } => false
@@ -246,14 +245,157 @@ test fn a_captured_slot_outside_committed_membership_still_binds() -> Bool {
 
 // A BARE (UNSUFFIXED) CAPTURED NAME BINDS TOO, so the repair did not make the suffix mandatory.
 test fn a_bare_captured_name_binds() -> Bool {
-  match capture_admission(
-    host: operator_host_srv2,
-    slot_instance: "srv2-03" as NonEmptyStr,
-    capture_path: "/opt/actions-runner/srv2-03/.runner" as NonEmptyStr,
-    raw: "{\"AgentId\":7,\"AgentName\":\"srv2-03\",\"Ephemeral\":\"False\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}",
-    provenance: census_provenance(),
-  ) {
+  match admit_at(slot: "srv2-03", path: "/opt/actions-runner/srv2-03/.runner", raw: "{\"AgentId\":7,\"AgentName\":\"srv2-03\",\"Ephemeral\":\"False\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}") {
     CaptureBound { binding: b } => (binding_local_unit(b: b) as String) == "actions-runner@srv2-03.service"
     CaptureUnresolved { capture_path: _, cause: _ } => false
+  }
+}
+
+// ── IJ-2: THE CONTEXT'S PARTS CANNOT BE SUBSTITUTED ─────────────────────────────────────────
+
+// A PATH FROM ANOTHER INSTALLATION IS REFUSED. Both of the contradictions the review named were
+// accepted with a perfectly valid srv2-02 body, because host and path were copied into the binding
+// without corroboration. The path is now DERIVED from the context, so the only way to disagree is to
+// report having read it somewhere else -- which is exactly what a copied file looks like.
+test fn a_capture_read_from_another_installation_refuses() -> Bool {
+  match admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-05/.runner", raw: srv2_02_runner_json) {
+    CaptureUnresolved { capture_path: _, cause: _ } => true
+    CaptureBound { binding: _ } => false
+  }
+}
+
+// AND A SLOT THAT IS NOT THIS HOST'S HAS NO CONTEXT AT ALL, which is the second contradiction:
+// host srv3 beside slot srv2-02 can no longer be assembled.
+test fn a_slot_of_another_host_admits_no_context() -> Bool {
+  match capture_context_for(host: operator_host_srv3, slot_instance: "srv2-02" as NonEmptyStr) {
+    CaptureContextRefused { cause: _ } => true
+    CaptureContextAdmitted { context: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE CONTEXT, so the refusals above are not a constructor that admits
+// nothing, and the path it derives is the installation the census actually read.
+test fn the_admitted_context_derives_the_installation_path() -> Bool {
+  match capture_context_for(host: operator_host_srv2, slot_instance: "srv2-02" as NonEmptyStr) {
+    CaptureContextAdmitted { context: c } =>
+      (c.installation_path as String) == "/opt/actions-runner/srv2-02/.runner"
+        && (c.organization as String) == "gunb-ai"
+    CaptureContextRefused { cause: _ } => false
+  }
+}
+
+// AN INCOMPATIBLE REGISTRATION SCOPE REFUSES. A repository-scoped URL and a look-alike organization
+// are the two the substring test this replaced would have accepted.
+test fn a_repository_scoped_url_refuses() -> Bool {
+  match admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-02/.runner", raw: "{\"AgentId\":251463,\"AgentName\":\"srv2-02-1789774588-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai/some-repo\"}") {
+    CaptureUnresolved { capture_path: _, cause: _ } => true
+    CaptureBound { binding: _ } => false
+  }
+}
+
+test fn a_lookalike_organization_refuses() -> Bool {
+  match admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-02/.runner", raw: "{\"AgentId\":251463,\"AgentName\":\"srv2-02-1789774588-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai-evil\"}") {
+    CaptureUnresolved { capture_path: _, cause: _ } => true
+    CaptureBound { binding: _ } => false
+  }
+}
+
+// ── IJ-4: IDENTITY TEXT IS PRESERVED, NOT REPAIRED ──────────────────────────────────────────
+
+// AN INTERNALLY PADDED SUFFIX IS A DIFFERENT NAME. The decoder trimmed each field before parsing, so
+// this became indistinguishable from the canonical census spelling at the decoded-field level.
+test fn an_internally_padded_suffix_refuses() -> Bool {
+  match admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-02/.runner", raw: "{\"AgentId\":251463,\"AgentName\":\"srv2-02- 1789774588-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}") {
+    CaptureUnresolved { capture_path: _, cause: _ } => true
+    CaptureBound { binding: _ } => false
+  }
+}
+
+// A PADDED AgentName IS NOT SILENTLY TRIMMED INTO THE CENSUS NAME.
+test fn a_padded_agent_name_refuses() -> Bool {
+  match admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-02/.runner", raw: "{\"AgentId\":251463,\"AgentName\":\" srv2-02-1789774588-3693107 \",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}") {
+    CaptureUnresolved { capture_path: _, cause: _ } => true
+    CaptureBound { binding: _ } => false
+  }
+}
+
+// A NEGATIVE AgentId REFUSES: the settings schema declares it unsigned, so a negative value is not a
+// low id but a record the modeled writer did not produce.
+test fn a_negative_agent_id_refuses() -> Bool {
+  match admit_at(slot: "srv2-02", path: "/opt/actions-runner/srv2-02/.runner", raw: "{\"AgentId\":-1,\"AgentName\":\"srv2-02-1789774588-3693107\",\"Ephemeral\":\"True\",\"GitHubUrl\":\"https://github.com/gunb-ai\"}") {
+    CaptureUnresolved { capture_path: _, cause: _ } => true
+    CaptureBound { binding: _ } => false
+  }
+}
+
+// ── IJ-1: CONFLICTING NAMES FOR ONE ID ──────────────────────────────────────────────────────
+
+fn incarnation_named(agent_id: Int, name: String) -> RunnerRegistrationBinding {
+  RunnerRegistrationBinding {
+    host: operator_host_srv2,
+    slot_instance: "srv2-02" as NonEmptyStr,
+    capture_path: "/opt/actions-runner/srv2-02/.runner" as NonEmptyStr,
+    organization: "gunb-ai" as NonEmptyStr,
+    agent_id: agent_id,
+    agent_name: name as NonEmptyStr,
+    lifecycle: ActionsRunnerRegistrationEphemeral,
+    provenance: census_provenance(),
+  }
+}
+
+// SAME SCOPED ID, SAME SLOT, DIFFERENT NAMES. This stayed CapturesCoherent and the lookup then took
+// the first record, discarding the conflicting name.
+test fn one_id_with_conflicting_names_is_incoherent() -> Bool {
+  match capture_coherence(bindings: [
+    incarnation_named(agent_id: 251463, name: "srv2-02-1789774588-3693107"),
+    incarnation_named(agent_id: 251463, name: "srv2-02-1799999999-4444444"),
+  ]) {
+    CaptureIdNameConflict { agent_id: i, first_name: _, second_name: _ } => i == 251463
+    CaptureIdAttributedTwice { agent_id: _, first_slot: _, second_slot: _ } => false
+    CapturesCoherent => false
+  }
+}
+
+// AND IN THE OTHER ORDER, because a first-wins fold is order sensitive and this must not be.
+test fn one_id_with_conflicting_names_is_incoherent_in_either_order() -> Bool {
+  match capture_coherence(bindings: [
+    incarnation_named(agent_id: 251463, name: "srv2-02-1799999999-4444444"),
+    incarnation_named(agent_id: 251463, name: "srv2-02-1789774588-3693107"),
+  ]) {
+    CaptureIdNameConflict { agent_id: _, first_name: _, second_name: _ } => true
+    CaptureIdAttributedTwice { agent_id: _, first_slot: _, second_slot: _ } => false
+    CapturesCoherent => false
+  }
+}
+
+// AN AGREEING REPEATED OBSERVATION IS STILL ONE FACT, so the coherence test did not become a
+// duplicate-rejecting one.
+test fn an_agreeing_repeated_observation_stays_coherent() -> Bool {
+  match capture_coherence(bindings: [
+    incarnation_named(agent_id: 251463, name: "srv2-02-1789774588-3693107"),
+    incarnation_named(agent_id: 251463, name: "srv2-02-1789774588-3693107"),
+  ]) {
+    CapturesCoherent => true
+    CaptureIdNameConflict { agent_id: _, first_name: _, second_name: _ } => false
+    CaptureIdAttributedTwice { agent_id: _, first_slot: _, second_slot: _ } => false
+  }
+}
+
+// AND THE LOOKUP REFUSES ON A CONFLICT RATHER THAN RETURNING THE FIRST.
+test fn the_lookup_refuses_a_conflicting_id() -> Bool {
+  match census_binding_for_agent(
+    c: CaptureCensusComplete {
+      observed_on: "2026-09-19" as NonEmptyStr,
+      bindings: [
+        incarnation_named(agent_id: 251463, name: "srv2-02-1789774588-3693107"),
+        incarnation_named(agent_id: 251463, name: "srv2-02-1799999999-4444444"),
+      ],
+      unresolved: [],
+    },
+    organization: "gunb-ai" as NonEmptyStr,
+    agent_id: 251463,
+  ) {
+    Absent => true
+    Present { value: _ } => false
   }
 }

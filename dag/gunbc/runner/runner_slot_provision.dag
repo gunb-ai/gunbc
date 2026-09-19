@@ -29,6 +29,7 @@ import gunbc.runner_host_deploy {
 import extdeps.github.actions_runner {
   ActionsRunnerSlotPrivilegedCommands,
   actions_runner_base_dir,
+  actions_runner_instance_dir,
   actions_runner_cache_dir,
   ActionsRunnerBinaryArtifact,
   actions_runner_release_2_336_0,
@@ -372,7 +373,7 @@ type RunnerSlotObservation
   | RunnerSlotsUnobserved { reason: NonEmptyStr }
 
 fn runner_slot_instance_dir(instance_name: NonEmptyStr) -> NonEmptyStr {
-  join([actions_runner_base_dir, "/", instance_name as String], "") as NonEmptyStr
+  actions_runner_instance_dir(instance_name: instance_name)
 }
 
 fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMember {

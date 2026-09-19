@@ -13,6 +13,7 @@ import extdeps.github.actions_runner {
   ActionsRunnerRegistrationRecord,
   ActionsRunnerCapturedIdentity,
   actions_runner_registration_decode,
+  actions_runner_instance_dir,
 }
 import gunbc.legacy_slot_incarnation_name {
   RegistrationNameMatch,
@@ -24,6 +25,14 @@ import gunbc.legacy_slot_incarnation_name {
   registration_name_match_wire,
 }
 import gunbc.runner_unit { runner_unit_name_of_registration }
+import gunbc.runner_host_deploy {
+  runner_host_spec_for,
+  RunnerHostSpecFound,
+  RunnerHostSpecAbsent,
+  github_app_runner_org,
+}
+import gunbc.fleet_runner_connectivity { host_registration_name_for_slot }
+import std.nat { Nat, nat_range_inclusive }
 
 // A CAPTURE IS A BINDING BETWEEN FOUR IDENTITIES, NOT A NAME.
 //
@@ -44,6 +53,101 @@ import gunbc.runner_unit { runner_unit_name_of_registration }
 //
 // SO THE LOCAL UNIT IS DERIVED FROM THE SLOT AND THE REMOTE OBJECT IS ADDRESSED BY ITS ID, and both
 // travel in one record so neither can be recovered by guessing from the other.
+// THE CANONICAL SLOT VOCABULARY LIVES HERE, WITH THE CAPTURE THAT CORROBORATES AGAINST IT. It was
+// declared in the retirement module and is consumed by both; one home rather than two spellings of
+// "which names does this host issue".
+data registration_discovery_bound: Nat = 50
+
+fn canonical_slot_index_of(host: HostIdentity, name: NonEmptyStr) -> Nat? {
+  fold(
+    nat_range_inclusive(lo: 1, hi: registration_discovery_bound),
+    init: none,
+    f: (acc, i) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if registration_name_match_is_slot(
+            m: match_registration_name_to_slot(
+              name: name,
+              slot_instance: host_registration_name_for_slot(host: host, slot_index: i) as String,
+            ),
+          ) {
+            Present { value: i }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+// THE CAPTURE CONTEXT IS ADMITTED, NOT ASSEMBLED FROM FREE STRINGS.
+//
+// `capture_admission` used to take host, slot_instance and capture_path as independent arguments and
+// copy the first and third straight into the binding. Only the NAME was corroborated, so two
+// contradictions were accepted with a perfectly valid srv2-02 `.runner` body: a path naming
+// `/opt/actions-runner/srv2-05/.runner` beside slot `srv2-02`, and host `srv3` beside slot `srv2-02`.
+// Co-locating three unrelated strings in one record is not a binding; it is a record shaped like one.
+//
+// SO THE CONTEXT IS MINTED ONCE, FROM THE AUTHORITIES THAT ALREADY OWN ITS PARTS: the slot must be a
+// canonical slot name of the host, the installation path is DERIVED from
+// `runner_slot_provision` `runner_slot_instance_dir` rather than supplied, and the admitted
+// organization comes from the host's own GitHub App row rather than from the file or a route literal.
+// `sole_constructor` means no caller can assemble one some other way.
+type CaptureContext sole_constructor {
+  host: HostIdentity
+  slot_instance: NonEmptyStr
+  slot_index: Nat
+  installation_path: NonEmptyStr
+  organization: NonEmptyStr
+}
+
+type CaptureContextAdmission
+  = CaptureContextAdmitted { context: CaptureContext }
+  | CaptureContextRefused { cause: String }
+
+data capture_registration_file_name: String = ".runner"
+
+fn capture_expected_path(slot_instance: NonEmptyStr) -> NonEmptyStr {
+  join([actions_runner_instance_dir(instance_name: slot_instance) as String, "/", capture_registration_file_name], "") as NonEmptyStr
+}
+
+// THE ORGANIZATION COMES FROM THE HOST'S OWN SPEC, WHICH A REFUSED WIDTH DOES NOT REMOVE.
+// `runner_host_spec_for` is the lookup that names a host whatever its admitted width resolved to --
+// which is exactly srv2's situation, and exactly why the deploy resolution would have been the wrong
+// authority to ask.
+fn host_admitted_organization(host: HostIdentity) -> NonEmptyStr? {
+  match runner_host_spec_for(host: host) {
+    RunnerHostSpecFound { spec: sp } => Present { value: github_app_runner_org(config: sp.app) }
+    RunnerHostSpecAbsent { host: _ } => none
+  }
+}
+
+fn capture_context_for(host: HostIdentity, slot_instance: NonEmptyStr) -> CaptureContextAdmission {
+  match canonical_slot_index_of(host: host, name: slot_instance) {
+    Absent =>
+      CaptureContextRefused {
+        cause: join([slot_instance as String, " is not a canonical slot name of ", host as String, ", so no installation of that host is named by it"], ""),
+      }
+    Present { value: i } =>
+      match host_admitted_organization(host: host) {
+        Absent =>
+          CaptureContextRefused {
+            cause: join([host as String, " has no modeled runner host row, so it has no admitted GitHub organization to scope a registration in"], ""),
+          }
+        Present { value: org } =>
+          CaptureContextAdmitted {
+            context: CaptureContext {
+              host: host,
+              slot_instance: slot_instance,
+              slot_index: i,
+              installation_path: capture_expected_path(slot_instance: slot_instance),
+              organization: org,
+            },
+          }
+      }
+  }
+}
+
 type CaptureProvenance {
   observed_on: NonEmptyStr
   method: NonEmptyStr
@@ -69,46 +173,83 @@ type CaptureAdmission
   = CaptureBound { binding: RunnerRegistrationBinding }
   | CaptureUnresolved { capture_path: NonEmptyStr, cause: String }
 
+// THE OBSERVED PATH AND THE DECODED ORGANIZATION ARE CORROBORATED, NOT PROMOTED.
+//
+// The path the observation reports must be the one the context derives -- a `.runner` read from a
+// different installation is a copied file however well its contents decode. And the `GitHubUrl` the
+// file carries must name the admitted organization: an org-scoped runner address is meaningless
+// against a repository-scoped or otherwise unadmitted URL, and promoting any nonempty string from the
+// file to `organization` made the file its own authority on scope.
 fn capture_admission(
-  host: HostIdentity,
-  slot_instance: NonEmptyStr,
-  capture_path: NonEmptyStr,
+  context: CaptureContext,
+  observed_path: NonEmptyStr,
   raw: String,
   provenance: CaptureProvenance,
 ) -> CaptureAdmission {
-  match actions_runner_registration_decode(raw: raw) {
-    ActionsRunnerRegistrationUnreadable { reason: r } =>
-      CaptureUnresolved { capture_path: capture_path, cause: join(["the captured .runner could not be decoded: ", r], "") }
-    ActionsRunnerRegistrationDecoded { record: rec } => {
-      let m = match_registration_name_to_slot(
-        name: rec.identity.agent_name,
-        slot_instance: slot_instance as String,
-      )
-      if !registration_name_match_is_slot(m: m) {
-        CaptureUnresolved {
-          capture_path: capture_path,
-          cause: join([
-            "the captured registration name ", rec.identity.agent_name as String,
-            " does not decode to ", slot_instance as String,
-            ", the slot whose installation this file was found under (", registration_name_match_wire(m: m),
-            "); a copied or misplaced capture is not resolved by preferring the directory or the name",
-          ], ""),
-        }
-      } else {
-        CaptureBound {
-          binding: RunnerRegistrationBinding {
-            host: host,
-            slot_instance: slot_instance,
-            capture_path: capture_path,
-            organization: rec.identity.github_url,
-            agent_id: rec.identity.agent_id,
-            agent_name: rec.identity.agent_name,
-            lifecycle: rec.lifecycle,
-            provenance: provenance,
-          },
-        }
-      }
+  if (observed_path as String) != (context.installation_path as String) {
+    CaptureUnresolved {
+      capture_path: observed_path,
+      cause: join([
+        "this capture was read from ", observed_path as String,
+        " while ", context.slot_instance as String, "'s installation is ", context.installation_path as String,
+        "; a registration file found outside the installation it is claimed for is not that slot's evidence",
+      ], ""),
     }
+  } else {
+    match actions_runner_registration_decode(raw: raw) {
+      ActionsRunnerRegistrationUnreadable { reason: r } =>
+        CaptureUnresolved { capture_path: observed_path, cause: join(["the captured .runner could not be decoded: ", r], "") }
+      ActionsRunnerRegistrationDecoded { record: rec } =>
+        if !capture_url_names_organization(url: rec.identity.github_url, organization: context.organization) {
+          CaptureUnresolved {
+            capture_path: observed_path,
+            cause: join([
+              "the captured GitHubUrl ", rec.identity.github_url as String,
+              " does not name the admitted organization ", context.organization as String,
+              "; a registration scoped elsewhere is not addressable as this estate's",
+            ], ""),
+          }
+        } else {
+          let m = match_registration_name_to_slot(
+            name: rec.identity.agent_name,
+            slot_instance: context.slot_instance as String,
+          )
+          if !registration_name_match_is_slot(m: m) {
+            CaptureUnresolved {
+              capture_path: observed_path,
+              cause: join([
+                "the captured registration name ", rec.identity.agent_name as String,
+                " does not decode to ", context.slot_instance as String,
+                ", the slot whose installation this file was found under (", registration_name_match_wire(m: m),
+                "); a copied or misplaced capture is not resolved by preferring the directory or the name",
+              ], ""),
+            }
+          } else {
+            CaptureBound {
+              binding: RunnerRegistrationBinding {
+                host: context.host,
+                slot_instance: context.slot_instance,
+                capture_path: context.installation_path,
+                organization: context.organization,
+                agent_id: rec.identity.agent_id,
+                agent_name: rec.identity.agent_name,
+                lifecycle: rec.lifecycle,
+                provenance: provenance,
+              },
+            }
+          }
+        }
+    }
+  }
+}
+
+// THE ADMITTED ORG IS A LOGIN AND THE FILE CARRIES A URL, so the comparison is that the URL's last
+// path segment is that login. A bare substring test would accept `github.com/gunb-ai-evil` and a
+// repository URL `github.com/gunb-ai/repo`, which are exactly the scopes this must separate.
+fn capture_url_names_organization(url: NonEmptyStr, organization: NonEmptyStr) -> Bool {
+  match split(s: url as String, delimiter: "/").last() {
+    Present { value: seg } => seg == (organization as String)
+    Absent => false
   }
 }
 
@@ -186,9 +327,16 @@ fn remote_registration_obligations(bindings: List<RunnerRegistrationBinding>) ->
 // ONE ID ATTRIBUTED TO TWO SLOTS IS A CONTRADICTION, NOT TWO FACTS. A registration is one remote
 // object; two captures claiming it for different installations cannot both be sound, and choosing
 // either would be the silent conflict resolution the trust boundary forbids.
+// TWO KINDS OF DISAGREEMENT, AND THE FIRST VERSION SAW ONLY ONE. It rejected one scoped id attributed
+// to different SLOT strings and left two bindings with the same id and slot but CONFLICTING NAMES
+// coherent -- after which the lookup and the remote-obligation fold both took the first record and
+// discarded the other name. A repeated observation that AGREES is one fact seen twice; two different
+// full incarnation names for one registration id are two claims about one remote object, and picking
+// the earlier is a selection rule standing where a refusal belongs.
 type CaptureCoherence
   = CapturesCoherent
   | CaptureIdAttributedTwice { agent_id: Int, first_slot: NonEmptyStr, second_slot: NonEmptyStr }
+  | CaptureIdNameConflict { agent_id: Int, first_name: NonEmptyStr, second_name: NonEmptyStr }
 
 fn capture_coherence(bindings: List<RunnerRegistrationBinding>) -> CaptureCoherence {
   fold(
@@ -197,19 +345,26 @@ fn capture_coherence(bindings: List<RunnerRegistrationBinding>) -> CaptureCohere
     f: (acc, b) =>
       match acc {
         CaptureIdAttributedTwice { agent_id: _, first_slot: _, second_slot: _ } => acc
+        CaptureIdNameConflict { agent_id: _, first_name: _, second_name: _ } => acc
         CapturesCoherent => {
-          let clash = bindings |> filter(o =>
-            o.agent_id == b.agent_id
-              && (o.organization as String) == (b.organization as String)
-              && (o.slot_instance as String) != (b.slot_instance as String))
-          if list_length(items: clash) == 0 {
-            CapturesCoherent
-          } else {
+          let same_id = bindings |> filter(o =>
+            o.agent_id == b.agent_id && (o.organization as String) == (b.organization as String))
+          let slot_clash = same_id |> filter(o => (o.slot_instance as String) != (b.slot_instance as String))
+          let name_clash = same_id |> filter(o => (o.agent_name as String) != (b.agent_name as String))
+          if list_length(items: slot_clash) > 0 {
             CaptureIdAttributedTwice {
               agent_id: b.agent_id,
               first_slot: b.slot_instance,
-              second_slot: clash.first().slot_instance,
+              second_slot: slot_clash.first().slot_instance,
             }
+          } else if list_length(items: name_clash) > 0 {
+            CaptureIdNameConflict {
+              agent_id: b.agent_id,
+              first_name: b.agent_name,
+              second_name: name_clash.first().agent_name,
+            }
+          } else {
+            CapturesCoherent
           }
         }
       },
@@ -251,6 +406,7 @@ fn census_bindings(c: CaptureCensus) -> List<RunnerRegistrationBinding> {
 fn census_binding_for_agent(c: CaptureCensus, organization: NonEmptyStr, agent_id: Int) -> RunnerRegistrationBinding? {
   match capture_coherence(bindings: census_bindings(c: c)) {
     CaptureIdAttributedTwice { agent_id: _, first_slot: _, second_slot: _ } => none
+    CaptureIdNameConflict { agent_id: _, first_name: _, second_name: _ } => none
     CapturesCoherent =>
       fold(
         census_bindings(c: c),
@@ -293,6 +449,10 @@ fn capture_population_standing(c: CaptureCensus) -> CapturePopulationStanding {
           CaptureIdAttributedTwice { agent_id: i, first_slot: f, second_slot: sec } =>
             CapturePopulationIncomplete {
               cause: join(["registration id ", to_string(i), " is attributed to both ", f as String, " and ", sec as String, "; the census contradicts itself"], ""),
+            }
+          CaptureIdNameConflict { agent_id: i, first_name: f, second_name: sec } =>
+            CapturePopulationIncomplete {
+              cause: join(["registration id ", to_string(i), " is recorded with two different names, ", f as String, " and ", sec as String, "; one remote object cannot have two identities and neither may be preferred"], ""),
             }
           CapturesCoherent => CapturePopulationKnown { observed_on: on, bindings: bs }
         }
