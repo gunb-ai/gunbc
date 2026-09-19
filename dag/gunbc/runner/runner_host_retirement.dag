@@ -21,16 +21,6 @@ import gunbc.runner_registration_capture {
   local_unit_obligations,
 }
 import std.nat { Nat }
-import gunbc.legacy_slot_incarnation_name {
-  RegistrationNameMatch,
-  MatchedBareSlotName,
-  MatchedJitInstance,
-  RegistrationNameNoMatch,
-  match_registration_name_to_slot,
-  match_registration_name_to_any,
-  registration_name_match_is_slot,
-  registration_name_match_wire,
-}
 import extdeps.systemd {
   SystemdUnitActiveState,
   Active, Inactive, Activating, Deactivating, Reloading, Failed,
@@ -228,14 +218,6 @@ fn host_retirement_obligation_basis(host: HostIdentity) -> RetireeObligationBasi
     HostNotRetiring { host: h, cause: _ } => ObligationAbsent { host: h }
     HostRetirementDeclared { retirement: r } =>
       host_retirement_obligation_basis_of(capture: r.capture, host: r.host, bound: r.search_bound)
-  }
-}
-
-fn retiree_obligation_units(b: RetireeObligationBasis) -> List<NonEmptyStr> {
-  match b {
-    ObligationAbsent { host: _ } => []
-    ObligationFromCapturedSnapshot { observed_on: _, units: us } => us
-    ObligationFromSearchBound { units: us, bound: _, cause: _ } => us
   }
 }
 

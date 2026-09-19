@@ -9,7 +9,6 @@ import gunbc.legacy_slot_incarnation_name {
   MatchedJitInstance,
   RegistrationNameNoMatch,
   match_registration_name_to_slot,
-  match_registration_name_to_any,
   registration_name_match_is_slot,
 }
 import gunbc.runner_host_retirement {
@@ -146,18 +145,4 @@ test fn another_hosts_live_name_does_not_match() -> Bool {
   )
 }
 
-// THE ROSTER FOLD PICKS THE SLOT THE NAME DENOTES, and answers no-match over a population that does
-// not contain it.
-test fn the_roster_fold_finds_the_denoted_slot() -> Bool {
-  match match_registration_name_to_any(name: srv2_live_agent_name, slot_instances: ["srv2-01", "srv2-02", "srv2-03"]) {
-    MatchedJitInstance { slot_instance: s, epoch_seconds: _, pid: _ } => s == "srv2-02"
-    MatchedBareSlotName { slot_instance: _ } => false
-    RegistrationNameNoMatch { name: _, slot_instance: _, cause: _ } => false
-  }
-}
 
-test fn the_roster_fold_refuses_a_population_without_the_slot() -> Bool {
-  !registration_name_match_is_slot(
-    m: match_registration_name_to_any(name: srv2_live_agent_name, slot_instances: ["srv2-01", "srv2-03"]),
-  )
-}

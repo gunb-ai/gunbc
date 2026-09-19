@@ -393,6 +393,19 @@ type CaptureCensus
     }
   | CaptureCensusUnavailable { cause: String }
 
+// WHAT THE CAPTURE STANDING IS, ON THE RECEIPT. An operator reading a blocked assessment needs to
+// tell "no capture was taken" from "a complete capture found four registrations" -- the two produce
+// the same empty obligation today and have opposite remedies.
+fn capture_census_wire(c: CaptureCensus) -> String {
+  match c {
+    CaptureCensusComplete { observed_on: on, bindings: bs, unresolved: us } =>
+      join(["complete observed_on=", on as String, " bindings=", to_string(list_length(items: bs)), " unresolved=", to_string(list_length(items: us))], "")
+    CaptureCensusPartial { observed_on: on, bindings: bs, unresolved: us, cause: c2 } =>
+      join(["PARTIAL observed_on=", on as String, " bindings=", to_string(list_length(items: bs)), " unresolved=", to_string(list_length(items: us)), " cause=", c2], "")
+    CaptureCensusUnavailable { cause: c2 } => join(["UNAVAILABLE ", c2], "")
+  }
+}
+
 fn census_bindings(c: CaptureCensus) -> List<RunnerRegistrationBinding> {
   match c {
     CaptureCensusComplete { observed_on: _, bindings: bs, unresolved: _ } => bs

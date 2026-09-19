@@ -78,6 +78,7 @@ import gunbc.runner_host_retirement {
   HostNotRetiring,
   host_retirement_standing,
   host_retirement_obligation_basis,
+  host_retirement_capture,
   host_retirement_discovery_subjects,
   retiree_obligation_basis_wire,
   RetireeObligationBasis,
@@ -105,6 +106,11 @@ import gunbc.runner_host_retirement {
 import extdeps.git
 import extdeps.git.inspect
 import gunbc.output_policy { ExpectSuccess }
+import gunbc.runner_registration_capture {
+  binding_wire,
+  census_bindings,
+  capture_census_wire,
+}
 import gunbc.runner_retirement_closure {
   ClosureBlocker,
   PlannerDisposition,
@@ -547,6 +553,8 @@ fn retirement_route_text(run: RetirementRouteRun) -> String {
     "executor=", run.subject.executor as String, " target=", run.subject.target as String, "\n",
     "required-subjects=", to_string(list_length(items: run.required)),
     " basis=", retiree_obligation_basis_wire(b: host_retirement_obligation_basis(host: run.subject.target)), "\n",
+    "capture=", capture_census_wire(c: host_retirement_capture(host: run.subject.target)), "\n",
+    join(map(census_bindings(c: host_retirement_capture(host: run.subject.target)), b => join(["binding ", binding_wire(b: b), "\n"], "")), ""),
     "discovery-subjects=", to_string(list_length(items: run.discovery)), " (observed read-only; no obligation)\n",
     join(map(run.discovery_standings, s => join(["discovery unit=", retirement_unit(s: s), " ", retirement_standing_wire(s: s), "\n"], "")), ""),
     join(map(run.standings, s => join(["standing unit=", retirement_unit(s: s), " ", retirement_standing_wire(s: s), "\n"], "")), ""),
