@@ -9,6 +9,11 @@ import product.fabric.isolation {
 }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess }
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
+import product.fabric.sanitation { CellId, CellReady, CellQuarantined, FactNotObserved, CgroupEmpty }
+import gunbc.runner_microvm_cell_readiness {
+  CellIncarnationAdmission, CellReadinessStoreRead, StoreRead, StoreRootOwned, CellSettled,
+  cell_incarnation_admission,
+}
 import extdeps.virtualization.firecracker {
   FirecrackerMachineConfig,
   FirecrackerVmConfig,
@@ -47,6 +52,7 @@ import gunbc.runner_microvm {
   RunnerMicroVmRefusedMalformedVm,
   RunnerMicroVmRefusedEnvelopeDisagreement,
   RunnerMicroVmRefusedEnvelopeUnresolved,
+  RunnerMicroVmRefusedCellNotAdmitted,
   RunnerMicroVmSizing,
   MicroVmSized,
   MicroVmSizeUnresolved,
@@ -97,6 +103,7 @@ fn admission_is_orphan_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
   }
 }
 
@@ -108,6 +115,7 @@ fn admission_is_credential_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
   }
 }
 
@@ -119,6 +127,7 @@ fn admission_is_envelope_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
   }
 }
 
@@ -135,6 +144,7 @@ fn admission_is_admitted(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
   }
 }
 
@@ -155,6 +165,7 @@ fn admission_refuses_naming_the_missing_reserve(a: RunnerMicroVmAdmission) -> Bo
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
+    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
   }
 }
 
@@ -166,6 +177,7 @@ fn admission_is_malformed_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
+    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
   }
 }
 
@@ -196,6 +208,7 @@ data exittype_cgroup_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLif
 test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
   admission_is_orphan_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -211,6 +224,7 @@ test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
 test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
   admission_is_orphan_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: exittype_cgroup_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -226,6 +240,7 @@ test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
 test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -243,6 +258,7 @@ test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
 test fn shared_slot_directory_credential_is_refused() -> Bool {
   admission_is_credential_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -268,6 +284,7 @@ fn two_root_config() -> FirecrackerVmConfig {
 test fn two_root_devices_is_a_malformed_vm() -> Bool {
   admission_is_malformed_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -303,6 +320,7 @@ test fn microvm_provides_a_dedicated_kernel_and_the_current_slot_does_not() -> B
 test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -319,6 +337,7 @@ test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
 test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
   admission_is_admitted(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -328,6 +347,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
     ),
   ) && admission_is_orphan_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -343,6 +363,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
 test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
   admission_is_credential_refusal(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmIsMainProcess,
       intent: deployed_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -422,6 +443,7 @@ data witness_unmodeled_reserve: RealizationReserve = ReserveUnmodeled {
 test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool {
   admission_refuses_naming_the_missing_reserve(
     a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
       topology: VmmUnderLifecycleController,
       intent: repaired_lifecycle_intent,
       main_exits_when_incarnation_ends: true,
@@ -451,6 +473,7 @@ fn config_with_machine(vcpus: Int, mib: Int) -> FirecrackerVmConfig {
 
 fn admission_of_machine(vcpus: Int, mib: Int) -> RunnerMicroVmAdmission {
   runner_microvm_admission(
+    cell: witness_admitted_cell(),
     topology: VmmUnderLifecycleController,
     intent: repaired_lifecycle_intent,
     main_exits_when_incarnation_ends: true,
@@ -730,4 +753,56 @@ test fn the_cell_core_count_still_resolves() -> Bool {
     CoresPerSlotUnresolved { cause: _ } => false
     CoresPerSlotResolved { threads: t } => hardware_thread_count_value(t: t) > 0
   }
+}
+
+// THE CELL ADMISSION EVERY OTHER CONTROL HERE RUNS UNDER, OBTAINED THROUGH THE REAL JOIN rather than
+// constructed: a store holding a settled Ready at generation 0, asked for allocation generation 1.
+fn witness_store(cell: String, readiness_ready: Bool) -> CellReadinessStoreRead {
+  StoreRead {
+    ownership: StoreRootOwned,
+    records: [
+      CellSettled {
+        cell: cell as CellId,
+        generation: 0,
+        readiness: if readiness_ready {
+          CellReady { cell: cell as CellId }
+        } else {
+          CellQuarantined { cell: cell as CellId, unproven: [FactNotObserved { fact: CgroupEmpty }] }
+        },
+      },
+    ],
+  }
+}
+
+fn witness_admitted_cell() -> CellIncarnationAdmission {
+  cell_incarnation_admission(store: witness_store(cell: "srv1-01", readiness_ready: true), cell: "srv1-01" as CellId, allocation_generation: 1)
+}
+
+// A QUARANTINED CELL REFUSES AN OTHERWISE ADMISSIBLE VM, AND REFUSES WITH THE CELL'S CAUSE. The
+// VM, intent and reserve are exactly those of the admitted controls, so the only thing this varies
+// is the readiness the admission consumes -- the frontier #11662 declared here, now closed.
+test fn a_quarantined_cell_refuses_an_otherwise_admissible_microvm() -> Bool {
+  let quarantined = runner_microvm_admission(
+    cell: cell_incarnation_admission(store: witness_store(cell: "srv1-01", readiness_ready: false), cell: "srv1-01" as CellId, allocation_generation: 1),
+    topology: VmmUnderLifecycleController,
+    intent: repaired_lifecycle_intent,
+    main_exits_when_incarnation_ends: true,
+    transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+    config: mvp_sized_config(),
+    reserve: witness_reserve,
+  )
+  let refused_with_cause = match quarantined {
+    RunnerMicroVmRefusedCellNotAdmitted { reason: r } => cause_mentions(cause: r, needle: "cgroup-empty")
+    _ => false
+  }
+  refused_with_cause
+    && admission_is_admitted(a: runner_microvm_admission(
+      cell: witness_admitted_cell(),
+      topology: VmmUnderLifecycleController,
+      intent: repaired_lifecycle_intent,
+      main_exits_when_incarnation_ends: true,
+      transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+      config: mvp_sized_config(),
+      reserve: witness_reserve,
+    ))
 }

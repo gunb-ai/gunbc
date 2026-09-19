@@ -1,0 +1,280 @@
+module gunbc.runner_microvm_cell_readiness
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.disposition { Disposition, SingleAuthority }
+import product.fabric.sanitation {
+  CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact,
+  cell_readiness_line,
+}
+
+data runner_microvm_cell_readiness_disposition: Disposition = SingleAuthority
+
+// THE HOST-LOCAL RECORD OF WHETHER A CELL MAY RUN ITS NEXT INCARNATION.
+//
+// product.fabric.sanitation decides CellReadiness from ONE readback. This module holds what that
+// verdict means ACROSS attempts, which is a different question with its own failure modes: a
+// readback can arrive late, a controller can die between staging and readback, and the store the
+// verdict lives in can itself be unreadable or writable by someone other than root. None of those
+// may turn into admission, so each is a typed arm rather than a default.
+//
+// THE UNIT OF THE STORE IS (cell, generation). A generation is the allocation generation an
+// incarnation ran as; the next incarnation runs as generation + 1 and is admitted only when the
+// record for generation says CellReady. Keying on the cell alone is what would let a readback of
+// attempt N clear the quarantine of attempt N + 1: the verdicts would be indistinguishable.
+//
+// A record is either IN FLIGHT or SETTLED, and the in-flight arm is the durable half of boot
+// recovery. It is written before anything is staged, so a controller lost at any later point
+// leaves a record that says "cleanup owed" rather than a settled Ready from the previous attempt
+// that would readmit a cell whose VMM may still be running.
+type CellReadinessRecord
+  = CellAttemptInFlight { cell: CellId, generation: Int, attempt: NonEmptyStr }
+  | CellSettled { cell: CellId, generation: Int, readiness: CellReadiness }
+
+fn record_cell(record: CellReadinessRecord) -> CellId {
+  match record {
+    CellAttemptInFlight { cell: c, generation: _, attempt: _ } => c
+    CellSettled { cell: c, generation: _, readiness: _ } => c
+  }
+}
+
+fn record_generation(record: CellReadinessRecord) -> Int {
+  match record {
+    CellAttemptInFlight { cell: _, generation: g, attempt: _ } => g
+    CellSettled { cell: _, generation: g, readiness: _ } => g
+  }
+}
+
+// ROOT OWNERSHIP IS OBSERVED, NOT ASSUMED, because a store any tenant can write is a store any
+// tenant can mark Ready. The observation is the host's stat of the store, and a store that is not
+// root-owned and root-only-writable withdraws the WHOLE HOST: every record in it is suspect, not
+// one cell's.
+type CellReadinessStoreOwnership
+  = StoreRootOwned
+  | StoreNotRootOwned { owner_uid: Int, mode: NonEmptyStr }
+
+// AN UNREADABLE STORE IS A THIRD STATE, NOT AN EMPTY ONE. Reading "no records" out of a store that
+// could not be opened is the empty-observation narrow: it would report every cell as never
+// settled -- which refuses, so it is safe -- but it would report it at CELL grain and send an
+// operator to every cell instead of to the store. It is kept distinct so the withdrawal lands at
+// the grain whose remedy it is.
+type CellReadinessStoreRead
+  = StoreRead { ownership: CellReadinessStoreOwnership, records: List<CellReadinessRecord> }
+  | StoreUnreadable { reason: NonEmptyStr }
+
+fn records_for_cell(records: List<CellReadinessRecord>, cell: CellId) -> List<CellReadinessRecord> {
+  filter(records, r => (record_cell(record: r) as String) == (cell as String))
+}
+
+// WITHDRAWAL HAS TWO GRAINS AND THEY ARE NOT INTERCHANGEABLE.
+//
+// HOST grain: the evidence every cell's admission rests on is itself unsound -- the store cannot be
+// read, is not root's, or holds two records for one cell -- so no cell on the host may start,
+// including cells whose last record happens to read Ready. CELL grain: the store is sound and says
+// THIS cell is not ready. Folding host grain into per-cell refusals would admit the next cell whose
+// record is intact inside a store nobody should trust; folding cell grain into host grain would let
+// one leaked VMM take a host's whole warm pool out of service.
+type HostWithdrawal
+  = HostStoreUnreadable { reason: NonEmptyStr }
+  | HostStoreNotRootOwned { owner_uid: Int, mode: NonEmptyStr }
+  | HostStoreAmbiguous { cell: CellId, records: Int }
+
+type CellWithdrawal
+  = CellNeverSettled
+  | CellQuarantinedAt { generation: Int, unproven: List<UnprovenFact> }
+  | CellGenerationMismatch { settled: Int, allocated: Int }
+
+// THE ADMISSION, AND IT JOINS THREE FACTS AT ONE PLACE: the allocation's generation, the store's
+// readiness, and the generation that readiness was established at. CellRecoveryRequired is not a
+// withdrawal: it says the previous incarnation never settled and a teardown must run to completion
+// BEFORE this question can be asked again -- boot recovery resumes cleanup before admission.
+type CellIncarnationAdmission
+  = CellIncarnationAdmitted { cell: CellId, generation: Int }
+  | CellRecoveryRequired { cell: CellId, generation: Int, attempt: NonEmptyStr }
+  | CellWithdrawn { cell: CellId, withdrawal: CellWithdrawal }
+  | HostWithdrawn { withdrawal: HostWithdrawal }
+
+fn cell_incarnation_admission(
+  store: CellReadinessStoreRead,
+  cell: CellId,
+  allocation_generation: Int,
+) -> CellIncarnationAdmission {
+  match store {
+    StoreUnreadable { reason: r } => HostWithdrawn { withdrawal: HostStoreUnreadable { reason: r } }
+    StoreRead { ownership: o, records: rs } =>
+      match o {
+        StoreNotRootOwned { owner_uid: u, mode: m } =>
+          HostWithdrawn { withdrawal: HostStoreNotRootOwned { owner_uid: u, mode: m } }
+        StoreRootOwned => admission_of_cell_records(
+          cell: cell,
+          records: records_for_cell(records: rs, cell: cell),
+          allocation_generation: allocation_generation,
+        )
+      }
+  }
+}
+
+fn admission_of_cell_records(
+  cell: CellId,
+  records: List<CellReadinessRecord>,
+  allocation_generation: Int,
+) -> CellIncarnationAdmission {
+  if (records |> count) > 1 {
+    HostWithdrawn { withdrawal: HostStoreAmbiguous { cell: cell, records: records |> count } }
+  } else {
+    match records.first() {
+      Absent => CellWithdrawn { cell: cell, withdrawal: CellNeverSettled }
+      Present { value: r } => admission_of_record(record: r, allocation_generation: allocation_generation)
+    }
+  }
+}
+
+fn admission_of_record(record: CellReadinessRecord, allocation_generation: Int) -> CellIncarnationAdmission {
+  match record {
+    CellAttemptInFlight { cell: c, generation: g, attempt: a } =>
+      CellRecoveryRequired { cell: c, generation: g, attempt: a }
+    CellSettled { cell: c, generation: g, readiness: readiness } =>
+      match readiness {
+        CellQuarantined { cell: _, unproven: u } =>
+          CellWithdrawn { cell: c, withdrawal: CellQuarantinedAt { generation: g, unproven: u } }
+        CellReady { cell: _ } =>
+          if g + 1 == allocation_generation {
+            CellIncarnationAdmitted { cell: c, generation: allocation_generation }
+          } else {
+            CellWithdrawn { cell: c, withdrawal: CellGenerationMismatch { settled: g, allocated: allocation_generation } }
+          }
+      }
+  }
+}
+
+fn cell_incarnation_admitted(admission: CellIncarnationAdmission) -> Bool {
+  match admission {
+    CellIncarnationAdmitted { cell: _, generation: _ } => true
+    CellRecoveryRequired { cell: _, generation: _, attempt: _ } => false
+    CellWithdrawn { cell: _, withdrawal: _ } => false
+    HostWithdrawn { withdrawal: _ } => false
+  }
+}
+
+fn cell_incarnation_admission_text(admission: CellIncarnationAdmission) -> String {
+  match admission {
+    CellIncarnationAdmitted { cell: c, generation: g } =>
+      join([c as String, ": admitted at generation ", to_string(g)], "")
+    CellRecoveryRequired { cell: c, generation: g, attempt: a } =>
+      join([c as String, ": recovery required -- attempt ", a as String, " at generation ", to_string(g), " never settled, so its teardown runs before any admission"], "")
+    CellWithdrawn { cell: c, withdrawal: w } =>
+      match w {
+        CellNeverSettled => join([c as String, ": withdrawn -- no readback has ever established this cell empty"], "")
+        CellQuarantinedAt { generation: g, unproven: u } =>
+          join([c as String, ": withdrawn -- ", cell_readiness_line(readiness: CellQuarantined { cell: c, unproven: u }), " at generation ", to_string(g)], "")
+        CellGenerationMismatch { settled: s, allocated: a } =>
+          join([c as String, ": withdrawn -- readiness was settled at generation ", to_string(s), " but the allocation is generation ", to_string(a)], "")
+      }
+    HostWithdrawn { withdrawal: w } =>
+      match w {
+        HostStoreUnreadable { reason: r } => join(["host withdrawn -- the cell readiness store is unreadable: ", r as String], "")
+        HostStoreNotRootOwned { owner_uid: u, mode: m } =>
+          join(["host withdrawn -- the cell readiness store is owned by uid ", to_string(u), " mode ", m as String, ", so any record in it could have been written by a tenant"], "")
+        HostStoreAmbiguous { cell: c, records: n } =>
+          join(["host withdrawn -- the cell readiness store holds ", to_string(n), " records for ", c as String, ", so it is not a store of one fact per cell"], "")
+      }
+  }
+}
+
+// WRITES ARE MONOTONE IN THE GENERATION, AND QUARANTINE ONLY TIGHTENS WITHIN ONE.
+//
+// A write at a LOWER generation than the stored record is a stale readback and is refused: it is
+// how a slow readback of attempt N would clear attempt N + 1's quarantine. At the SAME generation a
+// settled Ready may be tightened to Quarantined and an in-flight record may settle (its own
+// attempt's readback), but a Quarantined record is never loosened: clearing a quarantine is a NEW
+// readback that establishes the facts, and it is recorded at a new generation so the clearing event
+// is distinguishable from a late copy of the old one.
+type CellReadinessWrite
+  = WriteAttemptStarted { cell: CellId, generation: Int, attempt: NonEmptyStr }
+  | WriteReadbackSettled { cell: CellId, generation: Int, attempt: NonEmptyStr, readiness: CellReadiness }
+
+type CellReadinessWriteResult
+  = WriteAccepted { records: List<CellReadinessRecord> }
+  | WriteRefusedStale { cell: CellId, stored: Int, offered: Int }
+  | WriteRefusedWouldLoosenQuarantine { cell: CellId, generation: Int }
+  | WriteRefusedAttemptMismatch { cell: CellId, stored_attempt: NonEmptyStr, offered_attempt: NonEmptyStr }
+  | WriteRefusedAttemptAlreadyRecorded { cell: CellId, generation: Int }
+  | WriteRefusedNotAdmitted { cell: CellId, admission: CellIncarnationAdmission }
+
+fn write_cell(write: CellReadinessWrite) -> CellId {
+  match write {
+    WriteAttemptStarted { cell: c, generation: _, attempt: _ } => c
+    WriteReadbackSettled { cell: c, generation: _, attempt: _, readiness: _ } => c
+  }
+}
+
+fn record_of_write(write: CellReadinessWrite) -> CellReadinessRecord {
+  match write {
+    WriteAttemptStarted { cell: c, generation: g, attempt: a } => CellAttemptInFlight { cell: c, generation: g, attempt: a }
+    WriteReadbackSettled { cell: c, generation: g, attempt: _, readiness: r } => CellSettled { cell: c, generation: g, readiness: r }
+  }
+}
+
+// AN ATTEMPT START IS NOT A READBACK, so a higher generation alone does not admit it: it is written
+// only over a settled Ready at exactly the previous generation, which is the admission above
+// restated at the write -- the store refuses to record a start the admission would have refused,
+// rather than trusting every writer to have asked first. The first incarnation on a cell therefore
+// needs a readback establishing the empty cell before it, exactly like every later one.
+fn apply_cell_readiness_write(
+  records: List<CellReadinessRecord>,
+  write: CellReadinessWrite,
+) -> CellReadinessWriteResult {
+  let cell = write_cell(write: write)
+  let others = filter(records, r => (record_cell(record: r) as String) != (cell as String))
+  let replaced = concat(others, [record_of_write(write: write)])
+  match write {
+    WriteAttemptStarted { cell: c, generation: g, attempt: _ } =>
+      match admission_of_cell_records(cell: c, records: records_for_cell(records: records, cell: c), allocation_generation: g) {
+        CellIncarnationAdmitted { cell: _, generation: _ } => WriteAccepted { records: replaced }
+        refused => WriteRefusedNotAdmitted { cell: c, admission: refused }
+      }
+    WriteReadbackSettled { cell: _, generation: _, attempt: _, readiness: _ } =>
+      match records_for_cell(records: records, cell: cell).first() {
+        Absent => WriteAccepted { records: replaced }
+        Present { value: stored } => {
+          let offered = record_generation(record: record_of_write(write: write))
+          let held = record_generation(record: stored)
+          if offered < held {
+            WriteRefusedStale { cell: cell, stored: held, offered: offered }
+          } else if offered > held {
+            WriteAccepted { records: replaced }
+          } else {
+            same_generation_settle(stored: stored, write: write, replaced: replaced)
+          }
+        }
+      }
+  }
+}
+
+fn same_generation_settle(
+  stored: CellReadinessRecord,
+  write: CellReadinessWrite,
+  replaced: List<CellReadinessRecord>,
+) -> CellReadinessWriteResult {
+  match write {
+    WriteAttemptStarted { cell: c, generation: g, attempt: _ } =>
+      WriteRefusedAttemptAlreadyRecorded { cell: c, generation: g }
+    WriteReadbackSettled { cell: c, generation: g, attempt: a, readiness: r } =>
+      match stored {
+        CellAttemptInFlight { cell: _, generation: _, attempt: sa } =>
+          if (sa as String) == (a as String) {
+            WriteAccepted { records: replaced }
+          } else {
+            WriteRefusedAttemptMismatch { cell: c, stored_attempt: sa, offered_attempt: a }
+          }
+        CellSettled { cell: _, generation: _, readiness: held } =>
+          match held {
+            CellQuarantined { cell: _, unproven: _ } => WriteRefusedWouldLoosenQuarantine { cell: c, generation: g }
+            CellReady { cell: _ } =>
+              match r {
+                CellQuarantined { cell: _, unproven: _ } => WriteAccepted { records: replaced }
+                CellReady { cell: _ } => WriteRefusedAttemptAlreadyRecorded { cell: c, generation: g }
+              }
+          }
+      }
+  }
+}

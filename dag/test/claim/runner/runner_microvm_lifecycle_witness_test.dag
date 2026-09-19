@@ -1,0 +1,309 @@
+module gunbc.test.claim.runner.runner_microvm_lifecycle_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv2 }
+import product.fabric.sanitation { CellId, CellReadiness, CellReady, CellQuarantined, cell_is_ready }
+import gunbc.runner_microvm { gunbc_runner_guest_image }
+import gunbc.runner_microvm_attempt { MicroVmAttemptResult, MicroVmAttemptAccepted, microvm_attempt }
+import gunbc.runner_attempt_launch { GroundClear, GroundOccupied }
+import gunbc.runner_microvm_cell_readiness {
+  CellReadinessRecord, CellAttemptInFlight, CellSettled,
+  CellReadinessStoreRead, StoreRead, StoreUnreadable, StoreRootOwned, StoreNotRootOwned,
+  CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn,
+  HostWithdrawn, HostStoreUnreadable, HostStoreNotRootOwned, HostStoreAmbiguous,
+  CellNeverSettled, CellQuarantinedAt, CellGenerationMismatch,
+  CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled,
+  CellReadinessWriteResult, WriteAccepted, WriteRefusedStale, WriteRefusedWouldLoosenQuarantine,
+  WriteRefusedAttemptMismatch, WriteRefusedAttemptAlreadyRecorded, WriteRefusedNotAdmitted,
+  cell_incarnation_admission, apply_cell_readiness_write,
+}
+import gunbc.runner_microvm_lifecycle {
+  AttemptIdentity, attempt_identity_vmm,
+  ControllerStart, StartAttempt, StartRecovery, StartRefused, StartIdentityDisagrees, controller_start,
+  BringUpPhase, AttemptPrepared, VmmStarted, GuestBooted, RunnerListening, SlotServing,
+  BringUpEvent, BringUpTransition, BringUpAdvanced, BringUpRefusedForeignIncarnation,
+  BringUpRefusedOutOfOrder, advance_bring_up,
+  TerminalTrigger, VmmExited, RunnerExited, ControllerLost, ResourcesFoundOnRecovery, StopRequested,
+  StopAdmission, StopAdmitted, StopRefusedStaleIncarnation, stop_request_admission,
+  TeardownStop, StoppedGracefully, StoppedByForce, ForceStopBoundExceeded,
+  CgroupSubtreeReadback, CgroupSubtreeEmpty, CgroupSubtreePopulated, CgroupSubtreeReadFailed,
+  ResourceReadback, ResourceAbsent, ResourcePresent,
+  HostTeardownReadback, settle_teardown, settle_recovery,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cell: CellId = "srv2-04"
+
+// The identity goes through the sealed microvm_attempt constructor; a refusal there yields no
+// identity, so every test below that needs one fails rather than passing on a fabricated record.
+fn identity(generation: Int, invocation: String) -> AttemptIdentity? {
+  match microvm_attempt(slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 4 }, attempt_id: join(["w-", to_string(generation)], "")) {
+    MicroVmAttemptAccepted { attempt: a } =>
+      Present {
+        value: AttemptIdentity {
+          attempt: a,
+          allocation_generation: generation,
+          invocation_id: invocation as NonEmptyStr,
+          jit_registration_id: "reg-1" as NonEmptyStr,
+          guest_image: gunbc_runner_guest_image,
+        },
+      }
+    _ => none
+  }
+}
+
+fn clean_host(stop: TeardownStop, cgroup: CgroupSubtreeReadback) -> HostTeardownReadback {
+  HostTeardownReadback {
+    stop: stop,
+    cgroup: cgroup,
+    mounts: ResourceAbsent,
+    tap: ResourceAbsent,
+    attempt_storage: ResourceAbsent,
+    credential_disk: ResourceAbsent,
+  }
+}
+
+fn readiness_after(trigger: TerminalTrigger, host: HostTeardownReadback) -> CellReadiness? {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => none
+    Present { value: id } => Present { value: settle_teardown(identity: id, trigger: trigger, host: host).readiness }
+  }
+}
+
+fn is_quarantined(r: CellReadiness?) -> Bool {
+  match r {
+    Present { value: CellQuarantined { cell: _, unproven: _ } } => true
+    _ => false
+  }
+}
+
+fn is_ready(r: CellReadiness?) -> Bool {
+  match r {
+    Present { value: CellReady { cell: _ } } => true
+    _ => false
+  }
+}
+
+// THE POSITIVE CONTROL: a graceful stop and a host readback confirming every resource absent returns
+// the cell. Without it every quarantine below would be satisfied by a controller that quarantines
+// everything.
+test fn a_clean_host_readback_returns_the_cell() -> Bool {
+  is_ready(r: readiness_after(trigger: RunnerExited { exit_code: 0 }, host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty)))
+}
+
+// A CHILD IGNORING SIGTERM is not a dirty cell by itself: the bounded force-stop is what it is for.
+// The cell returns ONLY because the host then reads the subtree empty.
+test fn a_sigterm_ignoring_child_is_force_stopped_and_the_cell_returns_only_on_an_empty_readback() -> Bool {
+  is_ready(r: readiness_after(trigger: StopRequested, host: clean_host(stop: StoppedByForce, cgroup: CgroupSubtreeEmpty)))
+    && is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: StoppedByForce, cgroup: CgroupSubtreePopulated { pids: [4242], cgroups: ["srv2-04.slice" as NonEmptyStr] })))
+}
+
+// A DOUBLE-FORK moves the survivor into a child cgroup; the recursive readback still finds it.
+test fn a_double_forked_survivor_in_a_child_cgroup_quarantines() -> Bool {
+  is_quarantined(r: readiness_after(
+    trigger: VmmExited { exit_code: 0 },
+    host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreePopulated { pids: [5151], cgroups: ["srv2-04.slice/escape.scope" as NonEmptyStr] }),
+  ))
+}
+
+// AN UNKILLABLE TASK quarantines on the stop outcome even when the cgroup listing reads empty
+// afterwards -- the listing is a later instant, and the task that outlived SIGKILL is the fact.
+test fn an_unkillable_task_quarantines_even_if_the_listing_later_reads_empty() -> Bool {
+  is_quarantined(r: readiness_after(trigger: StopRequested, host: clean_host(stop: ForceStopBoundExceeded { survivors: [777] }, cgroup: CgroupSubtreeEmpty)))
+}
+
+// A FAILED CGROUP READ QUARANTINES, and the quarantine is never released by a later Ready readback
+// at the same generation: that would be "could not read" converted into "empty" one write later.
+test fn a_failed_cgroup_read_quarantines_and_is_never_released_at_its_generation() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } => {
+      let failed = settle_teardown(identity: id, trigger: ControllerLost, host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeReadFailed { reason: "cgroup.procs: EIO" as NonEmptyStr }))
+      let clean = settle_teardown(identity: id, trigger: ControllerLost, host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty))
+      let started = [CellAttemptInFlight { cell: cell, generation: 1, attempt: attempt_identity_vmm(identity: id) }]
+      match apply_cell_readiness_write(records: started, write: failed.record) {
+        WriteAccepted { records: after_failed } =>
+          !cell_is_ready(readiness: failed.readiness)
+            && match apply_cell_readiness_write(records: after_failed, write: clean.record) {
+              WriteRefusedWouldLoosenQuarantine { cell: _, generation: _ } => true
+              _ => false
+            }
+            && match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: after_failed }, cell: cell, allocation_generation: 2) {
+              CellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: _, unproven: _ } } => true
+              _ => false
+            }
+        _ => false
+      }
+    }
+  }
+}
+
+// A SUCCESSFUL JOB LEAVING A BACKGROUND PROCESS: the runner's exit 0 has no route to the verdict.
+test fn a_successful_job_that_leaves_a_background_process_quarantines() -> Bool {
+  is_quarantined(r: readiness_after(
+    trigger: RunnerExited { exit_code: 0 },
+    host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreePopulated { pids: [9001], cgroups: ["srv2-04.slice" as NonEmptyStr] }),
+  ))
+}
+
+// EACH ATTEMPT RESOURCE IS ITS OWN FACT: a tap left behind quarantines a cell whose processes are gone.
+test fn a_leftover_tap_quarantines_a_cell_with_no_processes() -> Bool {
+  is_quarantined(r: readiness_after(
+    trigger: RunnerExited { exit_code: 0 },
+    host: HostTeardownReadback {
+      stop: StoppedGracefully,
+      cgroup: CgroupSubtreeEmpty,
+      mounts: ResourceAbsent,
+      tap: ResourcePresent { detail: "tap-srv2-04 still exists" as NonEmptyStr },
+      attempt_storage: ResourceAbsent,
+      credential_disk: ResourceAbsent,
+    },
+  ))
+}
+
+// A STOP FOR A PREVIOUS INCARNATION IS REFUSED, and the same stop for the live one is admitted.
+test fn a_stale_incarnation_stop_is_refused() -> Bool {
+  match identity(generation: 2, invocation: "inv-b") {
+    Absent => false
+    Present { value: live } =>
+      match identity(generation: 1, invocation: "inv-a") {
+        Absent => false
+        Present { value: stale } =>
+          match stop_request_admission(live: live, requested: stale) {
+            StopRefusedStaleIncarnation { live_generation: 2, requested_generation: 1 } => true
+            _ => false
+          }
+            && match stop_request_admission(live: live, requested: live) {
+              StopAdmitted { trigger: StopRequested } => true
+              _ => false
+            }
+      }
+  }
+}
+
+// A STALE READBACK CANNOT CLEAR A NEWER QUARANTINE: generation 1's Ready arriving after generation
+// 2 quarantined is refused by the store, not trusted by the controller.
+test fn a_stale_readback_cannot_clear_a_newer_quarantine() -> Bool {
+  let newer = [CellSettled { cell: cell, generation: 2, readiness: CellQuarantined { cell: cell, unproven: [] } }]
+  match apply_cell_readiness_write(records: newer, write: WriteReadbackSettled { cell: cell, generation: 1, attempt: "old" as NonEmptyStr, readiness: CellReady { cell: cell } }) {
+    WriteRefusedStale { cell: _, stored: 2, offered: 1 } => true
+    _ => false
+  }
+}
+
+// AN UNREADABLE OR NON-ROOT STORE WITHDRAWS THE HOST, not the cell -- including a cell whose record
+// would otherwise admit.
+test fn an_unreadable_or_foreign_owned_store_withdraws_the_host() -> Bool {
+  let ready = [CellSettled { cell: cell, generation: 0, readiness: CellReady { cell: cell } }]
+  let admits = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: ready }, cell: cell, allocation_generation: 1) {
+    CellIncarnationAdmitted { cell: _, generation: 1 } => true
+    _ => false
+  }
+  let unreadable = match cell_incarnation_admission(store: StoreUnreadable { reason: "EACCES" as NonEmptyStr }, cell: cell, allocation_generation: 1) {
+    HostWithdrawn { withdrawal: HostStoreUnreadable { reason: _ } } => true
+    _ => false
+  }
+  let foreign = match cell_incarnation_admission(store: StoreRead { ownership: StoreNotRootOwned { owner_uid: 1000, mode: "0666" as NonEmptyStr }, records: ready }, cell: cell, allocation_generation: 1) {
+    HostWithdrawn { withdrawal: HostStoreNotRootOwned { owner_uid: 1000, mode: _ } } => true
+    _ => false
+  }
+  let ambiguous = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: concat(ready, ready) }, cell: cell, allocation_generation: 1) {
+    HostWithdrawn { withdrawal: HostStoreAmbiguous { cell: _, records: 2 } } => true
+    _ => false
+  }
+  admits && unreadable && foreign && ambiguous
+}
+
+// A CELL NEVER SETTLED, AND A GENERATION THAT SKIPS, ARE CELL-GRAIN WITHDRAWALS.
+test fn a_never_settled_or_skipped_generation_withdraws_the_cell() -> Bool {
+  let never = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: [] }, cell: cell, allocation_generation: 1) {
+    CellWithdrawn { cell: _, withdrawal: CellNeverSettled } => true
+    _ => false
+  }
+  let skipped = match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: [CellSettled { cell: cell, generation: 0, readiness: CellReady { cell: cell } }] }, cell: cell, allocation_generation: 3) {
+    CellWithdrawn { cell: _, withdrawal: CellGenerationMismatch { settled: 0, allocated: 3 } } => true
+    _ => false
+  }
+  never && skipped
+}
+
+// BOOT RECOVERY RESUMES CLEANUP BEFORE ADMISSION: an in-flight record yields a recovery start, its
+// settlement is accepted by the store, and only then does the next generation admit.
+test fn boot_recovery_settles_the_lost_attempt_before_the_next_admission() -> Bool {
+  match identity(generation: 2, invocation: "inv-c") {
+    Absent => false
+    Present { value: next } => {
+      let lost = [CellAttemptInFlight { cell: cell, generation: 1, attempt: "gunbc-microvm-lost" as NonEmptyStr }]
+      let admission = cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: lost }, cell: cell, allocation_generation: 2)
+      match controller_start(admission: admission, ground: GroundClear, identity: next) {
+        StartRecovery { cell: c, generation: g, attempt: a, trigger: ControllerLost } =>
+          match apply_cell_readiness_write(records: lost, write: settle_recovery(cell: c, generation: g, attempt: a, host: clean_host(stop: StoppedGracefully, cgroup: CgroupSubtreeEmpty))) {
+            WriteAccepted { records: settled } =>
+              match controller_start(
+                admission: cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: settled }, cell: cell, allocation_generation: 2),
+                ground: GroundClear,
+                identity: next,
+              ) {
+                StartAttempt { identity: _, record: _ } => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    }
+  }
+}
+
+// RESOURCES FOUND ON AN ADMITTED CELL OUTRANK THE RECORD: the controller recovers, it does not launch.
+test fn resources_found_at_start_recover_instead_of_launching() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: id } =>
+      match controller_start(admission: CellIncarnationAdmitted { cell: cell, generation: 1 }, ground: GroundOccupied, identity: id) {
+        StartRecovery { cell: _, generation: 0, attempt: _, trigger: ResourcesFoundOnRecovery } => true
+        _ => false
+      }
+  }
+}
+
+// AN ATTEMPT START IS REFUSED BY THE STORE OVER A QUARANTINE, whatever generation it names.
+test fn the_store_refuses_to_record_a_start_over_a_quarantine() -> Bool {
+  let q = [CellSettled { cell: cell, generation: 1, readiness: CellQuarantined { cell: cell, unproven: [] } }]
+  match apply_cell_readiness_write(records: q, write: WriteAttemptStarted { cell: cell, generation: 2, attempt: "x" as NonEmptyStr }) {
+    WriteRefusedNotAdmitted { cell: _, admission: CellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: 1, unproven: _ } } } => true
+    _ => false
+  }
+}
+
+// BRING-UP ADVANCES ONE OBSERVED STEP AT A TIME, and refuses a skipped step and a foreign incarnation.
+test fn bring_up_refuses_a_skipped_phase_and_a_foreign_incarnation() -> Bool {
+  match identity(generation: 1, invocation: "inv-a") {
+    Absent => false
+    Present { value: live } =>
+      match identity(generation: 0, invocation: "inv-z") {
+        Absent => false
+        Present { value: foreign } => {
+          let steps = match advance_bring_up(live: live, at: AttemptPrepared, event: BringUpEvent { identity: live, reached: VmmStarted }) {
+            BringUpAdvanced { phase: VmmStarted } => true
+            _ => false
+          } && match advance_bring_up(live: live, at: RunnerListening, event: BringUpEvent { identity: live, reached: SlotServing }) {
+            BringUpAdvanced { phase: SlotServing } => true
+            _ => false
+          }
+          let skip = match advance_bring_up(live: live, at: VmmStarted, event: BringUpEvent { identity: live, reached: RunnerListening }) {
+            BringUpRefusedOutOfOrder { from: VmmStarted, to: RunnerListening } => true
+            _ => false
+          }
+          let other = match advance_bring_up(live: live, at: AttemptPrepared, event: BringUpEvent { identity: foreign, reached: VmmStarted }) {
+            BringUpRefusedForeignIncarnation => true
+            _ => false
+          }
+          steps && skip && other
+        }
+      }
+  }
+}
