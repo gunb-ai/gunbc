@@ -63,6 +63,7 @@ import gunbc.runner_host_file_converge {
   PathsUnobservable,
   PathsNotApplicable,
   runner_host_path_ancestors,
+  runner_host_file_scope,
   runner_host_root_only_find_argv,
   classify_root_only_paths,
   runner_host_path_metadata_wire,
@@ -120,8 +121,6 @@ import gunbc.runner_host_file_converge {
 
 // ── Placement (pure) ─────────────────────────────────────────────────────────────────────────────
 
-data controller_app_key_scope_root: FileTreeScope = FileTreeScope { root_path: "/etc" as NonEmptyStr }
-
 data controller_app_key_forbidden_tree: FileTreeScope = FileTreeScope { root_path: fabric_cell_base_dir as NonEmptyStr }
 
 type ControllerAppKeyPlacement
@@ -140,13 +139,13 @@ fn controller_app_key_placement(key_path: NonEmptyStr) -> ControllerAppKeyPlacem
     ControllerAppKeyPlacementRefused {
       cause: join(["controller app key path ", key_path as String, " is inside the fabric-cell tree ", fabric_cell_base_dir, ", which roots every attempt and jail"], "") as NonEmptyStr,
     }
-  } else if !path_within_file_tree_scope(scope: controller_app_key_scope_root, path: key_path) {
+  } else if !path_within_file_tree_scope(scope: runner_host_file_scope, path: key_path) {
     ControllerAppKeyPlacementRefused {
-      cause: join(["controller app key path ", key_path as String, " is outside /etc"], "") as NonEmptyStr,
+      cause: join(["controller app key path ", key_path as String, " is outside ", runner_host_file_scope.root_path as String], "") as NonEmptyStr,
     }
-  } else if dir == "" || dir == (controller_app_key_scope_root.root_path as String) {
+  } else if dir == "" || dir == (runner_host_file_scope.root_path as String) {
     ControllerAppKeyPlacementRefused {
-      cause: join(["controller app key path ", key_path as String, " has no dedicated directory below /etc to hold root-only"], "") as NonEmptyStr,
+      cause: join(["controller app key path ", key_path as String, " has no dedicated directory below ", runner_host_file_scope.root_path as String, " to hold root-only"], "") as NonEmptyStr,
     }
   } else {
     ControllerAppKeyPlaced {
