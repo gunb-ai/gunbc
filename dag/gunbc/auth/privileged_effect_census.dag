@@ -201,8 +201,19 @@ data approval_bootstrap_circularity: NonEmptyStr = "the approval loop's own MAC 
 data eager_bootstrap_fork_declared: NonEmptyStr = "gunbc.auth.access_token_source ensure_access_token_eager_bootstrap_fork_dissolve_on declares this eager gcloud call as a §3 fork with its dissolution condition" as NonEmptyStr
 
 // ── The roster ───────────────────────────────────────────────────────────────────────────────
+// Read in groups, in order: the (a) exemplars (dispatched runs under the federated identity); the
+// run-selected reads (federated in a dispatched run, the operator's own file in a session); the
+// trigger itself, gunbc.cloudflare.r2_token_mint_run -- irreversible and value-returned-once, so a
+// human witnesses it, and the run resolved the federated arm when dispatched and a relayed token in
+// a session; the one-off accessor-cell grants, which are the grant administrator's session and never
+// the workload; the entries with interactive gcloud bound at the call site -- the binding
+// gunbc.auth.access_token_source names as "not a selection", each a follow-up now that the federated
+// arm exists (two of them, managed_access_apply and fleet_multi_principal_probe, once carried
+// gunbc.spark.credential_workflow spark_credential_access_token_frontier_note as a reason; its
+// trigger has fired, and a reason whose trigger has fired is not a reason -- review 68577); and the
+// (c) exemplar, the Cloudflare bootstrap token, which has no API. Annotations sit here rather than
+// beside the rows because §4c admits them only at module-item grain.
 data privileged_effect_census: List<PrivilegedEffectSite> = [
-  // (a) exemplars: dispatched runs under the federated identity.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.auth.patterns", decl_name: "credential_chain"),
     effect: recurring_credential_read(subject: "GitHub OIDC -> STS exchange -> Secret Manager AccessVersion for a workflow credential" as NonEmptyStr),
@@ -229,7 +240,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
-  // Run-selected reads: federated in a dispatched run, the operator's own file in a session.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.tools.bmc_health_reader_converge", decl_name: "bmc_health_reader_converge"),
     effect: recurring_credential_read(subject: "BMC health reader credential read" as NonEmptyStr),
@@ -256,8 +266,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedRunSelected,
     divergence_reason: none,
   },
-  // THE TRIGGER. Irreversible, value-returned-once, so a human witnesses it; the run resolved the
-  // federated arm when dispatched and a relayed token in a session.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "r2_mint_bootstrap"),
     effect: PrivilegedEffect {
@@ -272,7 +280,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedRunSelected,
     divergence_reason: Present { value: interim_cloudflare_adapter_unlanded },
   },
-  // One-off accessor-cell grants: the grant administrator's session, never the workload.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.cloudflare.r2_mint_secret_access", decl_name: "r2_mint_bootstrap_read_access_converge"),
     effect: accessor_grant(subject: "the four R2 mint cells (bootstrap read, container read, version add, readback)" as NonEmptyStr),
@@ -353,12 +360,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedOperatorSession { arm: OperatorTokenFile },
     divergence_reason: none,
   },
-  // Interactive gcloud bound at the call site: the binding gunbc.auth.access_token_source names as
-  // "not a selection". The federated arm now exists, so each of these is a follow-up. Two of them
-  // (managed_access_apply, fleet_multi_principal_probe) once had a reason -- gunbc.spark.credential_workflow
-  // spark_credential_access_token_frontier_note, 2026-08-13: no federated arm existed -- and its
-  // trigger has fired. A reason whose trigger has fired is not a reason (review 68577), so these
-  // carry none and sit in the roster with the others.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
     effect: recurring_credential_read(subject: "BMC credential read for the fan converge" as NonEmptyStr),
@@ -437,7 +438,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     realized: RealizedOperatorSession { arm: GcloudInteractive },
     divergence_reason: none,
   },
-  // (c) exemplar: the Cloudflare bootstrap token has no API.
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.cloudflare.r2_token_mint", decl_name: "cloudflare_account_token_bootstrap_intervention"),
     effect: PrivilegedEffect {
