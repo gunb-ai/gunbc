@@ -1446,8 +1446,12 @@ fn first_key_admits_word(key: FirstKey, token_class: Symbol, word: String) -> Bo
   }
 }
 
+fn empty_symbol_list() -> List<Symbol> {
+  std.algebra.Empty
+}
+
 fn first_keys_classes(keys: List<FirstKey>) -> List<Symbol> {
-  fold_list(xs: keys, empty: std.algebra.Empty, cons: fn(acc, k) {
+  fold_list(xs: keys, empty: empty_symbol_list(), cons: fn(acc, k) {
     set_symbol_insert(s: acc, item: first_key_class(key: k))
   })
 }
@@ -1701,6 +1705,9 @@ type TokenPrefixRow {
   next: PreparedChoicePlan
 }
 
+// `ChoiceByWord` dispatches on the token's WORD inside one token-class bucket. `on_word` holds, per
+// exact word some alternative starts with, every alternative that can start on that word (the exact
+// ones and every any-of-class one, in authored order); `on_other` holds the any-of-class ones alone.
 type PreparedChoicePlan
   = ChoiceByToken {
       on_token: Map<Symbol, PreparedChoicePlan>
@@ -1712,9 +1719,6 @@ type PreparedChoicePlan
       suffix: PreparedChoicePlan
     }
   | ChoiceTokenPrefix { rows: List<TokenPrefixRow> }
-  // Inside one token-class bucket: dispatch on the token's WORD. `on_word` holds, per exact word
-  // some alternative starts with, every alternative that can start on that word (the exact ones
-  // and every any-of-class one, in authored order); `on_other` holds the any-of-class ones alone.
   | ChoiceByWord {
       on_word: Map<String, PreparedChoicePlan>
       on_other: PreparedChoicePlan
@@ -1925,6 +1929,8 @@ fn choice_alt_trees(alts: List<PreparedExprFold>) -> List<PreparedGrammarExpr> {
   }
 }
 
+// A class-only prefix cannot represent an exact word, so a literal terminal refuses the token-prefix
+// row form; its word was already dispatched by ChoiceByWord.
 fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<List<Symbol>> {
   if need == 0 {
     optional_present(value: std.algebra.Empty)
@@ -1936,8 +1942,6 @@ fn prepared_terminal_prefix(expr: PreparedGrammarExpr, need: Int) -> Optional<Li
         } else {
           optional_absent()
         }
-      // A class-only prefix cannot represent an exact word, so a literal terminal refuses the
-      // token-prefix row form; its word was already dispatched by ChoiceByWord.
       PreparedLiteralTerminal { token_class: _, lexeme: _ } => optional_absent()
       PreparedSequence { left: left, right: right } =>
         match left {
@@ -2201,7 +2205,7 @@ fn compile_choice_alts(
 
 // The exact words of one class that some alternative starts with, in authored order, deduplicated.
 fn class_bucket_words(alts: List<PreparedExprFold>, token_class: Symbol) -> List<Symbol> {
-  fold_list(xs: alts, empty: std.algebra.Empty, cons: fn(acc, alt) {
+  fold_list(xs: alts, empty: empty_symbol_list(), cons: fn(acc, alt) {
     fold_list(xs: prepared_expr_fold_first(alt: alt).terminals, empty: acc, cons: fn(acc2, k) {
       match k {
         FirstExactWord { token_class: c, lexeme: w } =>
@@ -3373,6 +3377,8 @@ fn parse_expr_repeat(
   }
 }
 
+// A PreparedLiteralTerminal is a MATCH constraint in front of an ordinary class terminal: it
+// captures and publishes exactly what a StampClass terminal of that class does, never its own text.
 fn parse_expr_with_first(
   expr: PreparedGrammarExpr,
   tokens: List<Token>,
@@ -3390,8 +3396,6 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    // An exact word is a MATCH constraint in front of an ordinary class terminal: it captures and
-    // publishes exactly what a StampClass terminal of that class does, never its own text.
     PreparedLiteralTerminal { token_class: token_class, lexeme: lexeme } =>
       match parse_token_first(tokens: tokens) {
         Absent => ParseExprRejected { diagnostics: [], table: table }
