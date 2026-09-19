@@ -114,7 +114,6 @@ type ResolutionContext {
   lm: LanguageModel
   roots: ValidatedModuleRoots
   symbol_index: SymbolIndex
-  canonical_symbols: PointwisePower<Symbol>
 }
 
 fn resolution_context(
@@ -131,8 +130,7 @@ fn resolution_context(
           symbol_index: symbol_index_fill_module_roots(
             index: empty_symbol_index(),
             roots: normalized_tree_roots_to_nodes(roots: validated_roots.roots)
-          ),
-          canonical_symbols: lm.canonical_symbols
+          )
         },
         diagnostics: d
       }
