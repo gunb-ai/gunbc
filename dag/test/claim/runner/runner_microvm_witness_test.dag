@@ -94,11 +94,13 @@ import extdeps.storage.types { Ephemeral }
 import gunbc.runner_guest_image { runner_guest_agent_unit }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import gunbc.floor_demand {
-  floor_storage_requirement, floor_memory_requirement, round_up_to_gibibyte_grain,
-  gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured,
+  floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable, floor_memory_requirement,
+  round_up_to_gibibyte_grain, GrainRounded, GrainUnrepresentable,
+  gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
   receipt_last_unstalled_beat, beat_reclaimable_cache,
 }
 import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend }
+import std.checked_arithmetic { int_inclusive_max }
 import gunbc.runner_slot_allocation {
   gunbc_runner_cores_per_slot,
   CoresPerSlotResolved,
@@ -726,7 +728,7 @@ test fn the_task_ceiling_is_applied_as_the_guest_units_tasks_max() -> Bool {
     && gunbc_runner_microvm_task_ceiling() == gunbc_runner_slot_desired().tasks_max
     && match shape_of(
       work: floor_like_work(),
-      storage: floor_storage_requirement(),
+      storage: fixture_storage(),
       cpu: fixture_entitlement(),
       envelope: fixture_cell(),
       reserve: fixture_reserve(),
@@ -747,15 +749,18 @@ test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat(
         AllowanceUnderivable { cause: _ } => true
         AllowanceDerived { bytes: _ } => false
       }
-    HeldSetMeasured { receipt: r } =>
+    HeldSetReceiptUnrepresentable { cause: _ } => false
+    HeldSetMeasured { receipt: r, peak: _ } =>
       match receipt_last_unstalled_beat(r: r) {
         Absent => false
         Present { value: b } =>
           match beat_reclaimable_cache(b: b) {
             MeasureSubtrahendExceedsMinuend => false
             MeasureDifference { value: cache } =>
-              allowance_is(bytes: round_up_to_gibibyte_grain(bytes: cache))
-                && events_per_minute_count(r: b.stall) == 0
+              match round_up_to_gibibyte_grain(bytes: cache) {
+                GrainUnrepresentable { cause: _ } => false
+                GrainRounded { bytes: g } => allowance_is(bytes: g) && events_per_minute_count(r: b.stall) == 0
+              }
           }
       }
   }
@@ -768,7 +773,7 @@ test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat(
 test fn a_torn_beat_with_more_shmem_than_file_refuses_the_allowance_and_the_shape() -> Bool {
   match runner_microvm_shape(
     work: floor_like_work(),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -903,6 +908,13 @@ fn work_with(threads: Int, envelope: ResourceEnvelope) -> ExecutionRequirements 
 // memory.stat receipt stands (gunbc.floor_demand) and these controls are about the fold's
 // arms, not about that standing. The production route is judged by
 // the_production_shape_answers_according_to_the_floor_demand_standing.
+// THE FLOOR'S STORAGE DEMAND AS A SUPPLIED REQUIREMENT: two gibibytes, the figure
+// gunbc.floor_demand states today, so these controls judge the fold's arms and not the demand's
+// representability (which floor_demand_witness_test judges).
+fn fixture_storage() -> StorageRequirement {
+  StorageRequirement { min_bytes: gibibyte_to_byte_size(gibibyte(count: 2)), persistence: Ephemeral }
+}
+
 fn floor_like_work() -> ExecutionRequirements {
   work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 25))))
 }
@@ -931,7 +943,7 @@ fn shape_of(
 test fn the_floor_work_resolves_to_a_shape_inside_a_cell_that_holds_it() -> Bool {
   match shape_of(
     work: floor_like_work(),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -950,7 +962,7 @@ test fn the_floor_work_resolves_to_a_shape_inside_a_cell_that_holds_it() -> Bool
 test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -> Bool {
   match shape_of(
     work: floor_like_work(),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -972,7 +984,7 @@ test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -
 test fn a_relative_only_entitlement_refuses_the_shape() -> Bool {
   match shape_of(
     work: floor_like_work(),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: CpuEntitlementRelativeOnly { cause: "fixture: relative share only" },
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -989,7 +1001,7 @@ test fn a_relative_only_entitlement_refuses_the_shape() -> Bool {
 test fn a_work_wanting_more_threads_than_the_cell_entitles_is_refused_with_both_counts() -> Bool {
   match shape_of(
     work: work_with(threads: 12, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 8)))),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -1011,7 +1023,7 @@ test fn a_work_wanting_more_threads_than_the_cell_entitles_is_refused_with_both_
 test fn a_work_with_an_unstated_memory_demand_cannot_be_given_a_shape() -> Bool {
   match shape_of(
     work: work_with(threads: 8, envelope: unstated_envelope()),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -1028,7 +1040,7 @@ test fn a_work_with_an_unstated_memory_demand_cannot_be_given_a_shape() -> Bool 
 test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_all_three_figures() -> Bool {
   match shape_of(
     work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 28)))),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -1052,7 +1064,7 @@ test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_all_three_
 test fn a_work_whose_demand_plus_allowance_exactly_fills_the_remainder_is_admitted_and_one_over_is_not() -> Bool {
   let exact = match shape_of(
     work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 26)))),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -1062,7 +1074,7 @@ test fn a_work_whose_demand_plus_allowance_exactly_fills_the_remainder_is_admitt
   }
   let over = match shape_of(
     work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 27)))),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: fixture_reserve(),
@@ -1081,7 +1093,7 @@ test fn a_work_whose_demand_plus_allowance_exactly_fills_the_remainder_is_admitt
 test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() -> Bool {
   match shape_of(
     work: floor_like_work(),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: CellMemoryEnvelope { bytes: byte_size(count: 1) },
     reserve: fixture_reserve(),
@@ -1098,7 +1110,7 @@ test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() 
 test fn an_unmodeled_reserve_refuses_the_shape_naming_its_cause() -> Bool {
   match shape_of(
     work: floor_like_work(),
-    storage: floor_storage_requirement(),
+    storage: fixture_storage(),
     cpu: fixture_entitlement(),
     envelope: fixture_cell(),
     reserve: ReserveUnmodeled { cause: "fixture: no footprint" },
@@ -1134,8 +1146,37 @@ test fn a_storage_demand_the_workspace_grant_does_not_hold_is_refused() -> Bool 
 // THE FLOOR'S OWN STORAGE DEMAND FITS THE GRANT, stated as a control rather than assumed: the
 // measured components in gunbc.floor_demand round to 2 GiB against a 4 GiB workspace.
 test fn the_floor_storage_demand_fits_the_workspace_grant() -> Bool {
-  byte_size_count(b: floor_storage_requirement().min_bytes)
-    <= byte_size_count(b: mebibyte_to_byte_size(m: runner_microvm_workspace_grant))
+  match floor_storage_demand() {
+    StorageDemandUnrepresentable { cause: _ } => false
+    StorageDemandStated { requirement: r } =>
+      byte_size_count(b: r.min_bytes) <= byte_size_count(b: mebibyte_to_byte_size(m: runner_microvm_workspace_grant))
+  }
+}
+
+// THE RED FOR THE FIT ARITHMETIC (review by side-chat at f35ce9db): a demand at the representable
+// bound with a one-byte allowance against a remainder at the bound. A sum would wrap negative and
+// admit; the subtraction form refuses with the three figures. The cell is the bound plus the 1 GiB
+// fixture reserve less one... which is itself unrepresentable, so the control supplies the
+// remainder directly through a zero reserve: envelope = int_inclusive_max, reserve = 0.
+test fn a_demand_at_the_representable_bound_with_a_one_byte_allowance_refuses_rather_than_wrapping() -> Bool {
+  match runner_microvm_shape(
+    work: work_with(threads: 8, envelope: memory_envelope(min_bytes: byte_size(int_inclusive_max()))),
+    storage: fixture_storage(),
+    cpu: fixture_entitlement(),
+    envelope: CellMemoryEnvelope { bytes: byte_size(int_inclusive_max()) },
+    reserve: ReserveDeclared { bytes: byte_size(0) },
+    cache_allowance: AllowanceDerived { bytes: byte_size(1) },
+    task_ceiling: 16384,
+    workspace: runner_microvm_workspace_grant,
+  ) {
+    MicroVmShapeResolved { shape: _ } => false
+    MicroVmShapeRefused { refusal: r } =>
+      match r {
+        ShapeRefusedWorkMemoryExceedsCellRemainder { required: n, allowance: a, remainder: m } =>
+          byte_size_count(b: n) == int_inclusive_max() && byte_size_count(b: a) == 1 && byte_size_count(b: m) == int_inclusive_max()
+        _ => false
+      }
+  }
 }
 
 // A GUEST WITH NO INTERFACE IS EXPRESSIBLE, AND A GUEST WITH ONE STILL CARRIES IT. The boot smoke

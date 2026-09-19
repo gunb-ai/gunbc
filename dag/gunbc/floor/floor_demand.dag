@@ -7,6 +7,9 @@ import std.measure {
   gibibyte_scale_factor_bytes, MeasureSubtraction, measure_sub, Memory, One,
 }
 import std.disposition { Disposition, SingleAuthority }
+import std.checked_arithmetic {
+  CheckedInt, CheckedIntReady, CheckedIntOverflow, IntegerOverflow, checked_int_add, checked_add_results,
+}
 import extdeps.storage.types { Ephemeral }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import product.fabric.envelope { MemoryRequirement, StorageRequirement }
@@ -213,8 +216,8 @@ fn gunbc_floor_cgroup_charge_ceiling() -> ByteSize {
 // ── the resident held-set demand ─────────────────────────────────────────────────────────────────
 //
 // WHAT A MACHINE HAS TO HOLD is the part of the charge reclaim cannot give back: anonymous pages,
-// unevictable pages, shmem, and the kernel's unreclaimable slab, stacks, page tables, per-cpu and
-// socket memory. The instrument is the floor heartbeat's own `[floor-cgroup] stat_level=` line
+// shmem, and the kernel's unreclaimable slab, stacks, page tables, per-cpu and socket memory --
+// the disjoint terms beat_held_set folds, stated there. The instrument is the floor heartbeat's own `[floor-cgroup] stat_level=` line
 // (v1_compiler cli_run required_floor_runner floor_cgroup_stat_beat), which reads the leaf's
 // memory.stat once per beat and prints its counters raw, one flat list, no grouping. A
 // receipt carries the raw beats, and the demand is the MAXIMUM of the held set (beat_held_set,
@@ -242,6 +245,7 @@ type FloorMemoryStatBeat {
   pagetables: ByteSize
   percpu: ByteSize
   sock: ByteSize
+  file_dirty: ByteSize
   stall: EventsPerMinute
 }
 
@@ -261,15 +265,29 @@ type FloorMemoryStatBeat {
 // `unevictable` is deliberately NOT a term, because its pages are already inside `anon` or `file`.
 // The figure this yields is a RESIDENT HELD-SET LOWER BOUND for the beat, and that is what the
 // Work's memory minimum is: the Work states what it must hold, at the grain the heartbeat samples.
-fn beat_held_set(b: FloorMemoryStatBeat) -> ByteSize {
-  byte_size(
-    byte_size_count(b: b.anon)
-      + byte_size_count(b: b.shmem)
-      + byte_size_count(b: b.slab_unreclaimable)
-      + byte_size_count(b: b.kernel_stack)
-      + byte_size_count(b: b.pagetables)
-      + byte_size_count(b: b.percpu)
-      + byte_size_count(b: b.sock)
+//
+// THE SUM IS CHECKED CONSTRUCTION, NOT A STRUCTURAL BOUND. Seven counters that are disjoint IN THE
+// KERNEL'S ACCOUNTING sum to at most memory.current, which fits the realization's i64 with room;
+// but this fold reads what a heartbeat LINE printed, and a torn line owes no such invariant. So the
+// terms are added through std.checked_arithmetic, pre-checked, and a beat whose sum would cross
+// the bound answers CheckedIntOverflow naming the operation and operands rather than a wrapped
+// count that would read as a small demand.
+fn beat_held_set(b: FloorMemoryStatBeat) -> CheckedInt {
+  checked_add_results(
+    a: checked_add_results(
+      a: checked_add_results(
+        a: checked_add_results(
+          a: checked_add_results(
+            a: checked_int_add(a: byte_size_count(b: b.anon), b: byte_size_count(b: b.shmem)),
+            b: CheckedIntReady { value: byte_size_count(b: b.slab_unreclaimable) },
+          ),
+          b: CheckedIntReady { value: byte_size_count(b: b.kernel_stack) },
+        ),
+        b: CheckedIntReady { value: byte_size_count(b: b.pagetables) },
+      ),
+      b: CheckedIntReady { value: byte_size_count(b: b.percpu) },
+    ),
+    b: CheckedIntReady { value: byte_size_count(b: b.sock) },
   )
 }
 
@@ -296,14 +314,40 @@ type FloorHeldSetReceipt {
   run_completed: Bool
 }
 
-fn larger_held_set(a: FloorMemoryStatBeat, b: FloorMemoryStatBeat) -> FloorMemoryStatBeat {
-  if byte_size_count(b: beat_held_set(b: b)) > byte_size_count(b: beat_held_set(b: a)) { b } else { a }
+// THE PEAK OVER A RUN'S BEATS, AS A COPRODUCT: the beat with the largest held set and that set's
+// bytes; no beats at all; or a beat whose held set the machine could not represent, carrying the
+// overflow -- which is a torn receipt and refuses everything downstream rather than being skipped.
+type HeldSetPeak
+  = HeldSetPeakAt { beat: FloorMemoryStatBeat, bytes: ByteSize }
+  | HeldSetPeakNoBeats
+  | HeldSetPeakUnrepresentable { cause: IntegerOverflow }
+
+fn held_set_peak_step(acc: HeldSetPeak, b: FloorMemoryStatBeat) -> HeldSetPeak {
+  match acc {
+    HeldSetPeakUnrepresentable { cause: c } => HeldSetPeakUnrepresentable { cause: c }
+    HeldSetPeakNoBeats =>
+      match beat_held_set(b: b) {
+        CheckedIntOverflow { cause: c } => HeldSetPeakUnrepresentable { cause: c }
+        CheckedIntReady { value: v } => HeldSetPeakAt { beat: b, bytes: byte_size(v) }
+      }
+    HeldSetPeakAt { beat: pb, bytes: pv } =>
+      match beat_held_set(b: b) {
+        CheckedIntOverflow { cause: c } => HeldSetPeakUnrepresentable { cause: c }
+        CheckedIntReady { value: v } =>
+          if v > byte_size_count(b: pv) { HeldSetPeakAt { beat: b, bytes: byte_size(v) } } else { HeldSetPeakAt { beat: pb, bytes: pv } }
+      }
+  }
+}
+
+fn receipt_held_set_peak(r: FloorHeldSetReceipt) -> HeldSetPeak {
+  fold(r.beats, init: HeldSetPeakNoBeats, f: (acc, b) => held_set_peak_step(acc: acc, b: b))
 }
 
 fn receipt_peak_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
-  match r.beats {
-    Empty {} => none
-    Cons { head: h, tail: t } => Present { value: fold(t, init: h, f: (best, b) => larger_held_set(a: best, b: b)) }
+  match receipt_held_set_peak(r: r) {
+    HeldSetPeakAt { beat: b, bytes: _ } => Present { value: b }
+    HeldSetPeakNoBeats => none
+    HeldSetPeakUnrepresentable { cause: _ } => none
   }
 }
 
@@ -324,16 +368,22 @@ fn receipt_last_unstalled_beat(r: FloorHeldSetReceipt) -> FloorMemoryStatBeat? {
   }
 }
 
-fn receipt_held_set_peak(r: FloorHeldSetReceipt) -> ByteSize? {
-  match receipt_peak_beat(r: r) {
-    Absent => none
-    Present { value: p } => Present { value: beat_held_set(b: p) }
-  }
-}
-
+// THE STANDING IS DERIVED FROM THE RECEIPT, NOT AUTHORED BESIDE IT: a receipt with no beats is
+// the unmeasured state; a receipt with a beat the machine cannot sum is a torn receipt and stands
+// as its own arm, carrying the overflow, so it can neither size anything nor be mistaken for
+// unmeasured; only a receipt with a representable peak is Measured.
 type FloorHeldSetStanding
   = HeldSetUnmeasured { instrument: NonEmptyStr }
-  | HeldSetMeasured { receipt: FloorHeldSetReceipt }
+  | HeldSetReceiptUnrepresentable { cause: IntegerOverflow }
+  | HeldSetMeasured { receipt: FloorHeldSetReceipt, peak: ByteSize }
+
+fn held_set_standing_of(receipt: FloorHeldSetReceipt, instrument: NonEmptyStr) -> FloorHeldSetStanding {
+  match receipt_held_set_peak(r: receipt) {
+    HeldSetPeakNoBeats => HeldSetUnmeasured { instrument: instrument }
+    HeldSetPeakUnrepresentable { cause: c } => HeldSetReceiptUnrepresentable { cause: c }
+    HeldSetPeakAt { beat: _, bytes: v } => HeldSetMeasured { receipt: receipt, peak: v }
+  }
+}
 
 // THE FIRST RECEIPT, FROM THE FIRST FLOOR RUN CARRYING THE INSTRUMENT (this change's own CI run
 // 35419304682, job 105838037678, srv4-04, 2026-09-19, sixteen beats at sixty seconds; beats 12 to
@@ -361,28 +411,28 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
       beat: 12, charge: byte_size(24022126592),
       anon: byte_size(21794160640), file: byte_size(2022780928), shmem: byte_size(51593216), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1560576), slab_reclaimable: byte_size(156761160), kernel_stack: byte_size(1097728),
-      pagetables: byte_size(44994560), percpu: byte_size(16640), sock: byte_size(0),
+      pagetables: byte_size(44994560), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
       stall: events_per_minute(count: 0),
     },
     FloorMemoryStatBeat {
       beat: 13, charge: byte_size(26838556672),
       anon: byte_size(24736395264), file: byte_size(1895120896), shmem: byte_size(51609600), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1574544), slab_reclaimable: byte_size(153271000), kernel_stack: byte_size(1114112),
-      pagetables: byte_size(50749440), percpu: byte_size(16640), sock: byte_size(0),
+      pagetables: byte_size(50749440), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
       stall: events_per_minute(count: 0),
     },
     FloorMemoryStatBeat {
       beat: 14, charge: byte_size(26841255936),
       anon: byte_size(26664632320), file: byte_size(13160448), shmem: byte_size(3547136), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1560576), slab_reclaimable: byte_size(103120256), kernel_stack: byte_size(1097728),
-      pagetables: byte_size(54919168), percpu: byte_size(16640), sock: byte_size(0),
+      pagetables: byte_size(54919168), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
       stall: events_per_minute(count: 6),
     },
     FloorMemoryStatBeat {
       beat: 15, charge: byte_size(26843291648),
       anon: byte_size(26578046976), file: byte_size(28610560), shmem: byte_size(13893632), unevictable: byte_size(0),
       slab_unreclaimable: byte_size(1591640), slab_reclaimable: byte_size(103131208), kernel_stack: byte_size(1146880),
-      pagetables: byte_size(54964224), percpu: byte_size(16640), sock: byte_size(0),
+      pagetables: byte_size(54964224), percpu: byte_size(16640), sock: byte_size(0), file_dirty: byte_size(0),
       stall: events_per_minute(count: 66940),
     },
   ],
@@ -397,11 +447,8 @@ data gunbc_floor_memory_stat_receipt_2026_09_19: FloorHeldSetReceipt = FloorHeld
 fn floor_memory_requirement_of(standing: FloorHeldSetStanding) -> MemoryRequirement? {
   match standing {
     HeldSetUnmeasured { instrument: _ } => none
-    HeldSetMeasured { receipt: r } =>
-      match receipt_held_set_peak(r: r) {
-        Absent => none
-        Present { value: peak } => Present { value: MemoryRequirement { min_bytes: peak } }
-      }
+    HeldSetReceiptUnrepresentable { cause: _ } => none
+    HeldSetMeasured { receipt: _, peak: v } => Present { value: MemoryRequirement { min_bytes: v } }
   }
 }
 
@@ -409,8 +456,10 @@ fn floor_memory_requirement_of(standing: FloorHeldSetStanding) -> MemoryRequirem
 // it stays constructible because a fresh corpus without the instrument's receipt is exactly the
 // state it represents; the Work states no memory while it stands, and the guest shape refuses on
 // that absence rather than being sized to the charge ceiling.
+data gunbc_floor_held_set_instrument: NonEmptyStr = "the required-witnesses-floor job's [floor-cgroup] stat_level= memory_stat= heartbeat lines on the host slot, raw beats transcribed, the held set derived by beat_held_set and its maximum taken over the run's beats"
+
 fn gunbc_floor_held_set_standing() -> FloorHeldSetStanding {
-  HeldSetMeasured { receipt: gunbc_floor_memory_stat_receipt_2026_09_19 }
+  held_set_standing_of(receipt: gunbc_floor_memory_stat_receipt_2026_09_19, instrument: gunbc_floor_held_set_instrument)
 }
 
 fn floor_memory_requirement() -> MemoryRequirement? {
@@ -459,27 +508,47 @@ data gunbc_floor_storage_components: List<StorageComponentReceipt> = [
   StorageComponentReceipt { component: "target after cold release build of claim_executor and gunbc", bytes: byte_size(558310704), measured_on: X86_64 },
 ]
 
-fn storage_components_total(components: List<StorageComponentReceipt>) -> ByteSize {
-  byte_size(fold(components, init: 0, f: (acc, c) => acc + byte_size_count(b: c.bytes)))
+// THE TOTAL IS CHECKED CONSTRUCTION for the same reason the held set is: the components are
+// transcribed receipts and a transcription owes no bound.
+fn storage_components_total(components: List<StorageComponentReceipt>) -> CheckedInt {
+  fold(components, init: CheckedIntReady { value: 0 }, f: (acc, c) => checked_add_results(a: acc, b: CheckedIntReady { value: byte_size_count(b: c.bytes) }))
 }
 
 // ROUNDED UP TO WHOLE-GIBIBYTE GRAIN, in the fail-closed direction the corpus already applies to
 // demand figures (gunbc.whole_corpus_compile_admission, gunbc.runner_slot_allocation): rounding
-// down would admit a workspace the measured sum does not fit.
-fn round_up_to_gibibyte_grain(bytes: ByteSize) -> ByteSize {
+// down would admit a workspace the measured sum does not fit. THE ROUND-UP IS CHECKED: n + (g - 1)
+// is the one addition here, pre-checked through std.checked_arithmetic, so a count within
+// grain - 1 of the bound refuses instead of wrapping to a small multiple of the grain.
+type GrainRounding
+  = GrainRounded { bytes: ByteSize }
+  | GrainUnrepresentable { cause: IntegerOverflow }
+
+fn round_up_to_gibibyte_grain(bytes: ByteSize) -> GrainRounding {
   let g = gibibyte_scale_factor_bytes()
-  let n = byte_size_count(b: bytes)
-  byte_size(((n + g - 1) / g) * g)
+  match checked_int_add(a: byte_size_count(b: bytes), b: g - 1) {
+    CheckedIntOverflow { cause: c } => GrainUnrepresentable { cause: c }
+    CheckedIntReady { value: n } => GrainRounded { bytes: byte_size((n / g) * g) }
+  }
 }
 
-fn gunbc_floor_storage_demand_lower_bound() -> ByteSize {
-  round_up_to_gibibyte_grain(bytes: storage_components_total(components: gunbc_floor_storage_components))
-}
+// THE FLOOR'S STORAGE DEMAND, OR THE OVERFLOW THAT KEPT IT FROM BEING STATED. A consumer that
+// wants a StorageRequirement matches this and refuses on the second arm; nothing here substitutes
+// a bound for a figure that could not be computed.
+type FloorStorageDemand
+  = StorageDemandStated { requirement: StorageRequirement }
+  | StorageDemandUnrepresentable { cause: IntegerOverflow }
 
 // EPHEMERAL, BECAUSE THE FLOOR KEEPS NOTHING: every job wipes its toolchain homes and starts from
 // a fresh checkout, and the microVM attempt's workspace ceases to exist with the attempt.
-fn floor_storage_requirement() -> StorageRequirement {
-  StorageRequirement { min_bytes: gunbc_floor_storage_demand_lower_bound(), persistence: Ephemeral }
+fn floor_storage_demand() -> FloorStorageDemand {
+  match storage_components_total(components: gunbc_floor_storage_components) {
+    CheckedIntOverflow { cause: c } => StorageDemandUnrepresentable { cause: c }
+    CheckedIntReady { value: total } =>
+      match round_up_to_gibibyte_grain(bytes: byte_size(total)) {
+        GrainUnrepresentable { cause: c } => StorageDemandUnrepresentable { cause: c }
+        GrainRounded { bytes: b } => StorageDemandStated { requirement: StorageRequirement { min_bytes: b, persistence: Ephemeral } }
+      }
+  }
 }
 
 // ── wall ───────────────────────────────────────────────────────────────────────────────────────

@@ -477,7 +477,7 @@ fn floor_isolation_requirement() -> IsolationProfile {
 // much memory it runs it in.
 //
 // Storage is a DECLARED FRONTIER, stated in gunbc.floor_demand
-// floor_storage_requirement and consumed there by the microVM shape's
+// floor_storage_demand and consumed there by the microVM shape's
 // workspace fit and the cold-build receipt plan, but NOT placed on this
 // envelope yet. product.fabric.supply compares no storage axis, so a stated
 // requirement here would be silently unchecked -- the fail-open absence of
@@ -486,7 +486,7 @@ fn floor_isolation_requirement() -> IsolationProfile {
 // no storage number to offer (gunbc.runner_slot_allocation: disk admits
 // nothing numeric anywhere). TRIGGER: an offer-side storage fact for the cells
 // the floor runs on, at which point the axis joins the fold and this field
-// reads floor_storage_requirement.
+// reads floor_storage_demand.
 //
 // Architecture is unstated because the Work does not require one: the job
 // builds what it runs, and the aarch64 the fleet provides is a fact about the

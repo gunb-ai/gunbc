@@ -20,8 +20,9 @@ import product.fabric.work { ExecutionRequirements }
 import product.fabric.envelope { StorageRequirement }
 import gunbc.fabric_witness_run { floor_execution_requirements }
 import gunbc.floor_demand {
-  floor_storage_requirement, round_up_to_gibibyte_grain,
-  gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured,
+  floor_storage_demand, StorageDemandStated, StorageDemandUnrepresentable,
+  round_up_to_gibibyte_grain, GrainRounded, GrainUnrepresentable,
+  gunbc_floor_held_set_standing, HeldSetUnmeasured, HeldSetMeasured, HeldSetReceiptUnrepresentable,
   receipt_last_unstalled_beat, beat_reclaimable_cache,
 }
 import std.measure { MeasureDifference, MeasureSubtrahendExceedsMinuend }
@@ -416,6 +417,7 @@ type RunnerMicroVmShapeRefusal
   | ShapeRefusedWorkMemoryExceedsCellRemainder { required: ByteSize, allowance: ByteSize, remainder: ByteSize }
   | ShapeRefusedWorkStorageExceedsWorkspace { required: ByteSize, workspace: ByteSize }
   | ShapeRefusedCacheAllowanceUnderivable { cause: String }
+  | ShapeRefusedWorkStorageUnstated { cause: String }
 
 type RunnerMicroVmShapeResolution
   = MicroVmShapeResolved { shape: RunnerMicroVmShape }
@@ -439,6 +441,8 @@ fn runner_microvm_shape_refusal_text(r: RunnerMicroVmShapeRefusal) -> String {
       join(["the work's storage demand of ", to_string(byte_size_count(b: r)), " bytes exceeds the ", to_string(byte_size_count(b: w)), " byte workspace grant"], "")
     ShapeRefusedCacheAllowanceUnderivable { cause: c } =>
       concat("the guest's cache allowance cannot be derived, so no memory fit can be judged: ", c)
+    ShapeRefusedWorkStorageUnstated { cause: c } =>
+      concat("the work's storage demand could not be stated, so no workspace fit can be judged: ", c)
   }
 }
 
@@ -521,8 +525,16 @@ fn runner_microvm_shape_after_allowance(
   task_ceiling: Int,
   workspace: Mebibyte,
 ) -> RunnerMicroVmShapeResolution {
+  // THE FIT IS DECIDED BY SUBTRACTION, NEVER BY need + allowance: that sum is the one expression
+  // here that can cross the realization's bound, and a wrapped sum reads as a small demand that
+  // FITS. So the two demands are subtracted from the remainder one at a time, each comparison
+  // pre-checked so no intermediate leaves the range -- the same construction guest_memory_fits uses
+  // against the reserve. RED: need = int_inclusive_max, allowance = 1, remainder = int_inclusive_max
+  // refuses here; a sum would have wrapped to a negative and admitted.
   let remainder = byte_size_count(b: envelope.bytes) - byte_size_count(b: reserve)
-  if remainder < byte_size_count(b: need) + byte_size_count(b: allowance) {
+  let need_count = byte_size_count(b: need)
+  let allowance_count = byte_size_count(b: allowance)
+  if need_count > remainder || allowance_count > remainder - need_count {
     MicroVmShapeRefused {
       refusal: ShapeRefusedWorkMemoryExceedsCellRemainder { required: need, allowance: allowance, remainder: byte_size(remainder) },
     }
@@ -571,14 +583,20 @@ fn gunbc_runner_microvm_guest_cache_allowance() -> GuestCacheAllowance {
   match gunbc_floor_held_set_standing() {
     HeldSetUnmeasured { instrument: i } =>
       AllowanceUnderivable { cause: concat("the floor's held-set demand is unmeasured, so there is no beat to read a cache from; instrument: ", i as String) }
-    HeldSetMeasured { receipt: r } =>
+    HeldSetReceiptUnrepresentable { cause: _ } =>
+      AllowanceUnderivable { cause: "the floor's memory.stat receipt carries a beat whose held set the machine cannot represent, so the receipt is torn and no beat of it is evidence" }
+    HeldSetMeasured { receipt: r, peak: _ } =>
       match receipt_last_unstalled_beat(r: r) {
         Absent => AllowanceUnderivable { cause: "the receipt has no unstalled beat before its peak, so no cache was observed beside the demand while the slot was not thrashing" }
         Present { value: b } =>
           match beat_reclaimable_cache(b: b) {
             MeasureSubtrahendExceedsMinuend =>
               AllowanceUnderivable { cause: "the last unstalled beat reports more shmem than file, which the kernel's accounting forbids; the line is torn and no cache can be read from it" }
-            MeasureDifference { value: cache } => AllowanceDerived { bytes: round_up_to_gibibyte_grain(bytes: cache) }
+            MeasureDifference { value: cache } =>
+              match round_up_to_gibibyte_grain(bytes: cache) {
+                GrainUnrepresentable { cause: _ } => AllowanceUnderivable { cause: "the last unstalled beat's cache is within a gibibyte of the representable bound, so its grain cannot be taken" }
+                GrainRounded { bytes: g } => AllowanceDerived { bytes: g }
+              }
           }
       }
   }
@@ -589,16 +607,21 @@ fn gunbc_runner_microvm_guest_cache_allowance() -> GuestCacheAllowance {
 // parameter a caller could use to hand the guest an envelope the cell did not declare.
 fn gunbc_runner_microvm_shape() -> RunnerMicroVmShapeResolution {
   let cell = gunbc_runner_slot_desired()
-  runner_microvm_shape(
-    work: floor_execution_requirements(),
-    storage: floor_storage_requirement(),
-    cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
-    envelope: CellMemoryEnvelope { bytes: cell.memory_max },
-    reserve: gunbc_runner_microvm_realization_reserve(),
-    cache_allowance: gunbc_runner_microvm_guest_cache_allowance(),
-    task_ceiling: gunbc_runner_microvm_task_ceiling(),
-    workspace: runner_microvm_workspace_grant,
-  )
+  match floor_storage_demand() {
+    StorageDemandUnrepresentable { cause: _ } =>
+      MicroVmShapeRefused { refusal: ShapeRefusedWorkStorageUnstated { cause: "the floor's storage components do not sum within the representable bound, so the demand is not a figure" } }
+    StorageDemandStated { requirement: storage } =>
+      runner_microvm_shape(
+        work: floor_execution_requirements(),
+        storage: storage,
+        cpu: gunbc_runner_microvm_cell_cpu_entitlement(),
+        envelope: CellMemoryEnvelope { bytes: cell.memory_max },
+        reserve: gunbc_runner_microvm_realization_reserve(),
+        cache_allowance: gunbc_runner_microvm_guest_cache_allowance(),
+        task_ceiling: gunbc_runner_microvm_task_ceiling(),
+        workspace: runner_microvm_workspace_grant,
+      )
+  }
 }
 
 // THE TASK CEILING, READ FROM THE CELL ROW ONCE, FOR THE TWO CONSUMERS THAT CARRY IT: the guest
