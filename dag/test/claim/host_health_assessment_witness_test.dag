@@ -207,7 +207,7 @@ test fn a_regression_a_reboot_or_a_new_endpoint_set_cannot_construct_a_delta() -
 // Without a green for SOME input, every red below could come from an assessment that never agrees.
 test fn a_clean_host_with_every_signal_established_is_satisfied() -> Bool {
   match assess_host_health(goal: srv2_goal(baseline: no_baseline()), observed: srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: srv2_soc_ok)) {
-    GoalSatisfied { evidence } => evidence.temperature_sensors_judged == 1 && evidence.fan_headers_judged == 5
+    GoalSatisfied { evidence } => evidence.temperature_sensors_judged == 1 && evidence.fan_headers_judged == 10
     GoalDiverged { deviations: _ } => false
     GoalIndeterminate { known_deviations: _, unknowns: _ } => false
     GoalAssessmentRefused { cause: _ } => false
