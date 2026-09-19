@@ -57,6 +57,18 @@ import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 // asserts that EVERY cited acceptance/pull link refuses as HistoryNodeUnsized, so the loss is
 // measured as total and loud rather than left as four observations quietly becoming zero.
 //
+// WHERE THAT CONTROL EXECUTES, STATED BECAUSE THE ANSWER IS LOAD-BEARING FOR THIS DROP. It runs
+// ON EVERY PULL REQUEST, on the required floor, in its own home
+// (dag/test/claim/roadmap/roadmap_forecast_witness_test.dag) -- NOT on a cadence and NOT in the
+// long home. That matters because the sentence above only holds if something runs the claim on the
+// day the deriver starts answering, and the floor plans a changed witness from the test fns a DIFF
+// TOUCHED rather than from the closure, so a home the floor declines would never run it on that
+// day. Its eval-step cost gate is a separate declared drop -- gunbc.rung_drop
+// roadmap_live_forecast_new_witness_eval_step_cost -- which lowers ONLY that one wall: the claim is
+// still planned, executed and measured every run, and a semantic red still blocks. So the control
+// this drop leans on is intact, and the thing that was given up is the cost ceiling over it, named
+// and bounded in its own row rather than folded into this one.
+//
 // THE TRIGGER NAMES THE CAPABILITY AND NOT THE ARTIFACT. "gunbc.roadmap_sizing derive_task_sizing
 // is replaced" would be satisfied by any function that returns a cell, including one that guesses,
 // and the capability would stay dead while the row retired. What must exist is a derivation that
