@@ -6,9 +6,8 @@ import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_list_has_reason }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -318,22 +317,12 @@ test fn body_lowering_call_before_chain_end_refuses() -> Bool {
     Accepted { value: parsed, diagnostics: _ } =>
       match normalize(parse_tree: parsed) {
         Rejected { diagnostics: d } =>
-          reasons_contain(
-            reasons: all_reasons(d: d),
-            sym: ^body_lowering_reason_dotted_call_before_chain_end
-          )
+          (d.head.reason == ^body_lowering_reason_dotted_call_before_chain_end)
+            || diagnostics_list_has_reason(
+              xs: d.tail,
+              reason: ^body_lowering_reason_dotted_call_before_chain_end
+            )
         Accepted { value: _, diagnostics: _ } => false
       }
   }
-}
-
-// The refusal must be THIS reason, not any earlier one (review 68211 on gunbc#11683).
-fn all_reasons(d: NonEmptyDiagnostics) -> List<Symbol> {
-  fold_list(xs: d.tail, empty: [d.head.reason], cons: fn(acc, item) {
-    concat(acc, [item.reason])
-  })
-}
-
-fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
-  fold_list(xs: reasons, empty: false, cons: fn(acc, r) { acc || (r == sym) })
 }
