@@ -81,15 +81,34 @@ fn host_capture_workload_command() -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
-// The census roster, in run order. The envelope's END marker follows the last stage and is the only
-// thing that may precede the halt; it is not a section, because a section can fail and still be
-// followed by more output, whereas END is the program's statement that it wrote everything.
+// The census roster, in run order: attempt=3's sections with attempt=3's argv, so the two captures
+// answer the same questions about the same machine -- including the DIMM inventory (dmidecode types
+// 16 and 17) and meminfo, which the memory intake this census serves reads. ONE SECTION IS
+// DELIBERATELY NOT CARRIED: attempt=3's `dmesg-full`. The image boots with console=ttyAMA0, so the
+// kernel ring buffer is already on the very serial stream the envelope is written to, and printing
+// it again inside the envelope made it most of attempt=3's capture without adding a fact. Re-adding it is one row here if a verdict ever needs the ring buffer inside the envelope.
+// The envelope's END marker follows the last stage and is the only thing that may precede the halt;
+// it is not a section, because a section can fail and still be followed by more output, whereas END
+// is the program's statement that it wrote everything.
 data host_capture_census_stages: List<HostCaptureStage> = [
   HostCaptureStage { name: "subject-system", command: "dmidecode --type 1" },
   HostCaptureStage { name: "subject-baseboard", command: "dmidecode --type 2" },
   HostCaptureStage { name: "subject-chassis", command: "dmidecode --type 3" },
+  HostCaptureStage { name: "boot-id", command: "cat /proc/sys/kernel/random/boot_id" },
+  HostCaptureStage { name: "boot-cmdline", command: "cat /proc/cmdline" },
+  HostCaptureStage { name: "kernel", command: "uname -a" },
   HostCaptureStage { name: "boot-media", command: "ls -l /dev/disk/by-label; blkid" },
   HostCaptureStage { name: "nproc", command: "nproc" },
+  HostCaptureStage { name: "lscpu", command: "lscpu" },
+  HostCaptureStage { name: "numa", command: "cat /sys/devices/system/node/online; numactl -H" },
+  HostCaptureStage { name: "meminfo", command: "grep -E 'MemTotal|MemAvailable' /proc/meminfo" },
+  HostCaptureStage { name: "dmidecode-type16", command: "dmidecode --type 16" },
+  HostCaptureStage { name: "dmidecode-type17", command: "dmidecode --type 17" },
+  HostCaptureStage {
+    name: "edac-mc-name",
+    command: "for d in /sys/devices/system/edac/mc/mc*; do echo \"$d/mc_name = $(cat $d/mc_name)\"; done",
+  },
+  HostCaptureStage { name: "edac-find", command: "find /sys/devices/system/edac | sort" },
   HostCaptureStage { name: "edac-before", command: host_capture_edac_counters_command() },
   HostCaptureStage { name: "workload", command: host_capture_workload_command() },
   HostCaptureStage { name: "edac-after", command: host_capture_edac_counters_command() },

@@ -36,9 +36,11 @@ test fn the_envelope_is_matched_against_its_own_machine() -> Bool {
   host_capture_envelope_complete(capture: census_capture_complete, machine: "mtcollins2") == false
 }
 
+// The brief's sections in the brief's order, with attempt=3's remaining sections where attempt=3
+// carried them; dmesg-full is the one declared omission (see host_capture_census_stages).
 test fn the_census_roster_is_the_brief_order() -> Bool {
   join(map(host_capture_census_stages, s => s.name as String), ",")
-    == "subject-system,subject-baseboard,subject-chassis,boot-media,nproc,edac-before,workload,edac-after"
+    == "subject-system,subject-baseboard,subject-chassis,boot-id,boot-cmdline,kernel,boot-media,nproc,lscpu,numa,meminfo,dmidecode-type16,dmidecode-type17,edac-mc-name,edac-find,edac-before,workload,edac-after"
 }
 
 fn census_program_index(needle: String) -> Int {

@@ -20,5 +20,8 @@ data seeded_install_media_pinned_dates: SeededInstallMediaPinnedDates = SeededIn
 // one. A bump costs one rebuild per image. A MISSED bump is not caught by anything downstream: the
 // old record and the old image still agree with each other, so re-measurement passes and consumers
 // keep receiving the previous builder's output under the same key. That is why the bump is owed at
-// the edit rather than left to a later check.
+// the edit rather than left to a later check -- and why this row is a declared below-ceiling class,
+// gunbc.recurring_failure_mode.a_hand_bumped_builder_revision_keys_a_derivation, not a wall. NEXT-RUNG
+// TRIGGER: an evaluation-time content hash of a named declaration closure, at which point this row
+// is deleted and the key reads the builder closure's hash instead.
 data seeded_install_media_builder_revision: NonEmptyStr = "xorriso-replay-pinned-dates/1"

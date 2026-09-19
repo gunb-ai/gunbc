@@ -1238,10 +1238,10 @@ fn floor_route_gap_expectation_chunk_16() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// The two test.claim.mtcollins1_census_image_local_wet identities: the census envelope grammar read
-// against the one capture a census host actually wrote, and the renderer's program executed under a
-// real shell and parsed back. Their first effects are Filesystem.Read over a checkout file and
-// shell.Exec.RunArgv, neither mocked by the hermetic envelope. Enrolled as the triple chunk_06's
+// The three test.claim.mtcollins1_census_image_local_wet identities: the census envelope grammar read
+// against the one capture a census host actually wrote, the renderer's program executed under a
+// real shell and parsed back, and the image resolver driven against a real directory. Their first
+// effects are Filesystem.Read over a checkout file, shell.Exec.RunArgv and shell.Mktemp.Dir, none mocked by the hermetic envelope. Enrolled as the triple chunk_06's
 // header requires: this expectation, the WetScheduledClaim rows in
 // v2.workflow.local_repo_wet_terminal local_repo_wet_schedule, and the gunbc.ci_layer_roots
 // witness_exclusion_frontier row classifying the file LocalRepoWetLane.
@@ -1250,7 +1250,10 @@ fn floor_route_gap_expectation_chunk_17() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_attempt_three_capture_parses_under_the_reconstructed_grammar", operation: "Read", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.the_rendered_program_runs_and_its_output_parses_by_real_execution", operation: "RunArgv", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.mtcollins1_census_image_local_wet.a_removed_image_is_absent_not_diverged_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Empty {}
+  }
   }
   }
 }

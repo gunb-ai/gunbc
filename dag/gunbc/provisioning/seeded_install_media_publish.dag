@@ -51,11 +51,15 @@ fn seeded_image_boundary_dir(boundary: SeededImageWriteBoundary) -> NonEmptyStr 
 
 // WHAT A CONSUMER THAT DID NOT RUN THE BUILD CAN KNOW. The derivation record names the digest these
 // inputs produced; the image under that digest's name is measured again before it is reported, so a
-// record is never taken as evidence for bytes nobody re-read.
+// record is never taken as evidence for bytes nobody re-read. Three unresolved states stay distinct
+// because they have different remedies: the named image is ABSENT (it was removed; rebuilding is
+// safe because the name is free), it holds DIFFERENT bytes (someone must look; nothing is replaced),
+// or it could not be READ (says nothing about the bytes; neither rebuild nor accuse them).
 type SeededImageResolution
   = SeededImageResolved { built: UbuntuSeededInstallMediaBuilt, path: NonEmptyStr }
   | SeededImageNotBuilt { record_path: NonEmptyStr }
-  | SeededImageRecordDiverged { path: NonEmptyStr, recorded: NonEmptyStr, observed: String }
+  | SeededImageRecordedImageAbsent { path: NonEmptyStr, recorded: NonEmptyStr }
+  | SeededImageRecordDiverged { path: NonEmptyStr, recorded: NonEmptyStr, observed: NonEmptyStr }
   | SeededImageUnobservable { reason: String }
 
 type SeededImagePublication
@@ -66,15 +70,19 @@ type SeededImagePublication
 fn resolve_seeded_image_named(input: UbuntuSeededInstallMediaBuildInput, dir: NonEmptyStr, recorded: NonEmptyStr) -> SeededImageResolution {
   let built = ubuntu_seeded_install_media_built(input: input, output_digest: recorded)
   let path = boot_image_published_path(export_dir: dir, image_name: built.image_name)
-  match sha256sum_file_digest_via_shell(path: path) {
-    Sha256FileDigestUnavailable { path: _, reason: r } =>
-      SeededImageRecordDiverged { path: path, recorded: recorded, observed: concat("unreadable: ", r) }
-    Sha256FileDigest { digest: d } =>
-      if (d.hex as String) == (recorded as String) {
-        SeededImageResolved { built: built, path: path }
-      } else {
-        SeededImageRecordDiverged { path: path, recorded: recorded, observed: d.hex as String }
-      }
+  if shell.Test.IsFile(path: path as FilePath).is_file == false {
+    SeededImageRecordedImageAbsent { path: path, recorded: recorded }
+  } else {
+    match sha256sum_file_digest_via_shell(path: path) {
+      Sha256FileDigestUnavailable { path: _, reason: r } =>
+        SeededImageUnobservable { reason: concat("the image at ", path as String, " exists but its digest could not be read: ", r) }
+      Sha256FileDigest { digest: d } =>
+        if (d.hex as String) == (recorded as String) {
+          SeededImageResolved { built: built, path: path }
+        } else {
+          SeededImageRecordDiverged { path: path, recorded: recorded, observed: d.hex }
+        }
+    }
   }
 }
 
@@ -157,17 +165,26 @@ fn publish_seeded_image(input: UbuntuSeededInstallMediaBuildInput, stock_path: N
   match resolve_seeded_image(input: input, dir: dir) {
     SeededImageResolved { built: b, path: p } => SeededImageAlreadyPublished { built: b, path: p }
     SeededImageRecordDiverged { path: p, recorded: r, observed: o } =>
-      SeededImagePublicationRefused { reason: concat("derivation record names ", r as String, " but ", p as String, " reads ", o) }
+      SeededImagePublicationRefused { reason: concat("derivation record names ", r as String, " but ", p as String, " reads ", o as String) }
     SeededImageUnobservable { reason: r } => SeededImagePublicationRefused { reason: r }
-    SeededImageNotBuilt { record_path: _ } =>
-      publish_built_seeded_image(
-        input: input,
-        boundary: boundary,
-        staged: seeded_install_media_stage(
-          input: input,
-          stock_path: stock_path,
-          staging_path: ubuntu_seeded_install_media_staging_path(dir: dir, input: input),
-        ),
-      )
+    SeededImageRecordedImageAbsent { path: _, recorded: _ } => build_and_publish_seeded_image(input: input, stock_path: stock_path, boundary: boundary)
+    SeededImageNotBuilt { record_path: _ } => build_and_publish_seeded_image(input: input, stock_path: stock_path, boundary: boundary)
   }
+}
+
+// The record's image is gone or there is no record: the name is free, so the derivation is built
+// and published create-only. With pinned dates a rebuild of the same inputs reproduces the recorded
+// digest; if it does not, the new record names what was actually built and the earlier digest is
+// simply no longer claimed.
+fn build_and_publish_seeded_image(input: UbuntuSeededInstallMediaBuildInput, stock_path: NonEmptyStr, boundary: SeededImageWriteBoundary) -> SeededImagePublication {
+  let dir = seeded_image_boundary_dir(boundary: boundary)
+  publish_built_seeded_image(
+    input: input,
+    boundary: boundary,
+    staged: seeded_install_media_stage(
+      input: input,
+      stock_path: stock_path,
+      staging_path: ubuntu_seeded_install_media_staging_path(dir: dir, input: input),
+    ),
+  )
 }

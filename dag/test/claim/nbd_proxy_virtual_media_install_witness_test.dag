@@ -178,5 +178,6 @@ test fn nbd_serve_step_serves_the_resolved_image_and_refuses_an_unresolved_one()
   served
     && nbd_serve_step_refuses_image(step: step, image: SeededImageNotBuilt { record_path: "/var/lib/gunbc/artifacts/.x.built" })
     && nbd_serve_step_refuses_image(step: step, image: SeededImageRecordDiverged { path: "/var/lib/gunbc/artifacts/x.iso", recorded: "ab", observed: "cd" })
+    && nbd_serve_step_refuses_image(step: step, image: SeededImageRecordedImageAbsent { path: "/var/lib/gunbc/artifacts/x.iso", recorded: "ab" })
     && nbd_serve_step_refuses_image(step: step, image: SeededImageUnobservable { reason: "record unreadable" })
 }

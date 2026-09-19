@@ -41,6 +41,7 @@ import gunbc.seeded_install_media_publish {
   SeededImageResolution,
   SeededImageResolved,
   SeededImageNotBuilt,
+  SeededImageRecordedImageAbsent,
   SeededImageRecordDiverged,
   SeededImageUnobservable,
 }
@@ -242,8 +243,10 @@ fn actuator_image_unresolved_reason(image: SeededImageResolution) -> String {
   match image {
     SeededImageResolved { built: _, path: p } => concat("resolved at ", p as String)
     SeededImageNotBuilt { record_path: r } => concat("no derivation record at ", r as String)
+    SeededImageRecordedImageAbsent { path: p, recorded: r } =>
+      concat("record names ", r as String, " but ", p as String, " is absent")
     SeededImageRecordDiverged { path: p, recorded: r, observed: o } =>
-      concat("record names ", r as String, " but ", p as String, " reads ", o)
+      concat("record names ", r as String, " but ", p as String, " reads ", o as String)
     SeededImageUnobservable { reason: r } => r
   }
 }
