@@ -22,7 +22,7 @@ import gunbc.auth.approval_decision_store { StoredApprovalRequest, stored_reques
 import std.scoped_authorization { AttemptIdentity }
 import std.logic { Bool }
 import extdeps.languages.json.emit { json_bool }
-import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest }
+import gunbc.auth.approval_device_redemption { redemption_response_of, DeviceLostTheRace, DeviceChallengeExpired, DeviceSignedForAnotherRequest, DeviceEnrollmentRevoked, DeviceEnrollmentUnknown }
 
 // ── The cross-language byte contract ─────────────────────────────────────────────────────────
 // The iOS app builds the signing input and the enrolment transcript in Swift; the server builds
@@ -183,6 +183,8 @@ data envelope_vectors: List<EnvelopeVector> = [
   EnvelopeVector { name: "redemption_response_lost_the_race", body: redemption_response_json(r: redemption_response_of(o: DeviceLostTheRace)) },
   EnvelopeVector { name: "redemption_response_challenge_expired", body: redemption_response_json(r: redemption_response_of(o: DeviceChallengeExpired { expires_at: "2026-09-18T12:05:00Z" as Timestamp, observed_at: "2026-09-18T12:06:00Z" as Timestamp })) },
   EnvelopeVector { name: "redemption_response_signed_for_another_request", body: redemption_response_json(r: redemption_response_of(o: DeviceSignedForAnotherRequest { field: "stored_request_text" })) },
+  EnvelopeVector { name: "redemption_response_enrollment_revoked", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentRevoked { enrollment_id: "enr-482913" })) },
+  EnvelopeVector { name: "redemption_response_enrollment_unknown", body: redemption_response_json(r: redemption_response_of(o: DeviceEnrollmentUnknown)) },
   EnvelopeVector { name: "push_update_client_data", body: device_push_update_client_data(enrollment_id: "enr-482913", requested_at: "2026-09-18T12:00:30Z" as Timestamp, push: fx_push) as String },
   EnvelopeVector { name: "request_path", body: device_request_path(escalation_id: "esc-mtc1-boot-1") as String },
   EnvelopeVector { name: "enrollment_id_for_code_482913", body: enrollment_id_for_code(code: "482913") as String },
