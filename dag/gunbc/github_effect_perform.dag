@@ -1,9 +1,11 @@
 module gunbc.github_effect_perform
 
-import std.types { String, NonEmptyStr, Int, List, Secret }
+import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs }
 import std.resources { Network }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.clock {
+  clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
+}
 import extdeps.auth.jws { jws_rs256_signing_input, jws_compact_serialization }
 import extdeps.tools.openssl { openssl_sign_sha256, OpensslSigned, OpensslSignRefused }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
@@ -76,7 +78,7 @@ type JitMintPerformance
   | JitMintAppJwtUnsigned { detail: String }
   | JitMintStepNotSucceeded { step: JitMintStep, performance: RestExchangePerformance }
 
-fn app_jwt_for(dispatch_app_id: Int, key_file: NonEmptyStr, now_epoch_secs: Int) -> JitMintAppJwt {
+fn app_jwt_for(dispatch_app_id: Int, key_file: NonEmptyStr, now_epoch_secs: EpochSecs) -> JitMintAppJwt {
   let signing_input = jws_rs256_signing_input(
     payload_json: github_app_jwt_claims_json(app_id: dispatch_app_id, now_epoch_secs: now_epoch_secs),
   )
@@ -142,7 +144,7 @@ fn perform_organization_jit_mint(dispatch: JitMintDispatch) -> JitMintPerformanc
           match clock_unix_millis_read() {
             ClockUnixMillisRefused { detail: d } => JitMintClockUnread { detail: d }
             ClockUnixMillisObserved { millis: ms } =>
-              match app_jwt_for(dispatch_app_id: app.app_id.value, key_file: lifecycle_controller_app_key_path, now_epoch_secs: ms / 1000) {
+              match app_jwt_for(dispatch_app_id: app.app_id.value, key_file: lifecycle_controller_app_key_path, now_epoch_secs: epoch_secs_of_millis(millis: ms)) {
                 AppJwtUnsigned { detail: d } => JitMintAppJwtUnsigned { detail: d }
                 AppJwtSigned { jwt: jwt } => {
                   let token = github.AppInstallationAccessTokens.Create(

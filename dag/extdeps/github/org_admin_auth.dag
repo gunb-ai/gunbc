@@ -1,6 +1,6 @@
 module extdeps.github.org_admin_auth
 
-import std.types { NonEmptyStr, Timestamp, String, Int }
+import std.types { NonEmptyStr, Timestamp, String, Int, EpochSecs }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -49,7 +49,7 @@ fn github_app_jwt_claims_json_of(iat: String, exp: String, iss: String) -> Strin
   join(["\{\"iat\":", iat, ",\"exp\":", exp, ",\"iss\":\"", iss, "\"}"], "")
 }
 
-fn github_app_jwt_claims_json(app_id: Int, now_epoch_secs: Int) -> String {
+fn github_app_jwt_claims_json(app_id: Int, now_epoch_secs: EpochSecs) -> String {
   github_app_jwt_claims_json_of(
     iat: to_string(now_epoch_secs - github_app_jwt_backdate_seconds),
     exp: to_string(now_epoch_secs + github_app_jwt_lifetime_seconds),
