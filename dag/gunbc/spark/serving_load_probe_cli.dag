@@ -29,8 +29,7 @@ import gunbc.spark.serving_load_probe {
   serving_load_observation, serving_load_observation_text,
   drain_from_queue, window_from_drain, counter_continuity,
   occupancy_trace_from_endpoint_scrapes,
-  bench_serve_from_remote, bench_serve_bucket_peak, bench_serve_itl,
-  client_second_bucket_peak_establishes_foreign_work, itl_tail_cause_is_unestablished,
+  bench_serve_from_remote, bench_serve_bucket_peak, bench_serve_itl, client_itl_text, client_bucket_peak_text,
   WindowIsolated, WindowIsolationNotEstablished,
   ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread,
   DrainObservedIdle, DrainNotIdle, DrainUnread,
@@ -145,8 +144,6 @@ fn glm_native_serving_load_run() -> ProcessExit
             let before_launch = harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: before)
             let after_launch = harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: after)
             let occ = occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after)
-            let bucket = bench_serve_bucket_peak(e: bench)
-            let itl = bench_serve_itl(e: bench)
             let obs = serving_load_observation(
               subject: glm_native_live_subject_standing(),
               window: window,
@@ -161,8 +158,8 @@ fn glm_native_serving_load_run() -> ProcessExit
             let body = join([
               "glm native serving-load wet at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
               serving_load_observation_text(o: obs),
-              "bucket_peak_establishes_foreign_work=", if client_second_bucket_peak_establishes_foreign_work(p: bucket) { "yes" } else { "no" }, "\n",
-              "itl_tail_cause_unestablished=", if itl_tail_cause_is_unestablished(d: itl) { "yes" } else { "no" }, "\n",
+              "client itl (bench stdout): ", client_itl_text(d: bench_serve_itl(e: bench)), "\n",
+              "client bucket peak (bench stdout): ", client_bucket_peak_text(p: bench_serve_bucket_peak(e: bench)), "\n",
             ], "")
             let w = Filesystem.Write(path: glm_native_serving_load_receipt_path, content: body)
             if !w.success {

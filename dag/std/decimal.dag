@@ -132,9 +132,12 @@ fn exact_decimal_equal(a: ExactDecimal, b: ExactDecimal) -> Bool {
 // dropped and a decrease smaller than either operand's last shared digit still comes out negative.
 // Int is i64 in every realization, so alignment and subtraction are CHECKED: a difference that does
 // not fit is ExactDifferenceUnrepresentable with the overflow that refused it, never a wrapped value.
+// An operand whose scale is negative (a computed value the refinement cannot stop) is refused BEFORE
+// any alignment: checking arithmetic overflow does not validate the decimal's domain.
 type ExactDecimalDifference
   = ExactDifference { value: ExactDecimal }
   | ExactDifferenceUnrepresentable { cause: IntegerOverflow }
+  | ExactDifferenceOperandScaleRefused { observed_fraction_digits: Int }
 
 fn checked_decimal_pow10(exponent: Int) -> CheckedInt {
   if exponent <= 0 {
@@ -155,6 +158,17 @@ fn checked_decimal_rescale(units: Int, by: Int) -> CheckedInt {
 }
 
 fn exact_decimal_sub(a: ExactDecimal, b: ExactDecimal) -> ExactDecimalDifference {
+  if a.fraction_digits < 0 {
+    ExactDifferenceOperandScaleRefused { observed_fraction_digits: a.fraction_digits }
+  } else if b.fraction_digits < 0 {
+    ExactDifferenceOperandScaleRefused { observed_fraction_digits: b.fraction_digits }
+  } else {
+    exact_decimal_sub_admitted(a: canonical_exact_decimal(d: a), b: canonical_exact_decimal(d: b))
+  }
+}
+
+// Both operands have a nonnegative, canonical scale here; only the i64 bound remains to check.
+fn exact_decimal_sub_admitted(a: ExactDecimal, b: ExactDecimal) -> ExactDecimalDifference {
   let digits = if a.fraction_digits > b.fraction_digits { a.fraction_digits } else { b.fraction_digits }
   match checked_decimal_rescale(units: a.units, by: digits - a.fraction_digits) {
     CheckedIntOverflow { cause: c } => ExactDifferenceUnrepresentable { cause: c }

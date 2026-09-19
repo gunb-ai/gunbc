@@ -4,6 +4,8 @@ import std.types { Bool, String, NonEmptyStr, EpochSecs, List }
 import std.nat { Nat }
 import v2.std.algebra { length, filter }
 import v2.std.optional { Present, Absent }
+import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
+import extdeps.prometheus.client { prometheus_sample_value_reading, SampleValueExact, SampleValueNotFinite, SampleValueUnreadable }
 import std.measure { token_count, token_count_value, millisecond, millisecond_count, milli_tokens_per_second_count }
 import product.capacity.lease { LeaseGrant, lease_fence_of, lease_grant, LeasePolicy, FencedResource }
 import product.capacity.event_chain { EventId }
@@ -65,11 +67,11 @@ import gunbc.spark.serving_load_probe {
   decode_corroboration_for_protocol, CorroborationNotApplicable, CorroborationUnread,
   glm_native_wiring_smoke_protocol, glm_native_contended_sweep_c1, glm_native_contended_sweep_c2,
   glm_native_contended_sweep_c16, glm_native_contended_sweep_points,
-  glm_native_contended_sweep_elasticity, elasticity_is_off_the_uncontrolled_series,
+  
   glm_native_wet_smoke_is_not_sweep_c1_protocol, glm_native_wet_smoke_rate_is_output_tokens,
   glm_native_window_standing_specimen, window_standing_gap_is_unattributed,
-  cap_2_bucket_peak_4_is_not_foreign_work, SuccessfulClientRequestSecondBucketPeak,
-  ClientItlDistributionObserved, ClientItlDistributionUnread, itl_tail_cause_is_unestablished,
+  SuccessfulClientRequestSecondBucketPeak,
+  ClientItlDistributionObserved, ClientItlDistributionUnread, client_itl_text, client_bucket_peak_text,
   ledger_from_bench_stdout, client_output_from_bench_stdout, scrape_millis_from_bench_stdout,
   client_itl_from_bench_stdout, client_bucket_peak_from_bench_stdout,
   ClientOutputTokensObserved,
@@ -575,18 +577,11 @@ data fx_bench_stdout_short: String = join([
   "Total generated tokens:                  512\n",
 ], "")
 
-test fn a_cap_2_second_bucket_peak_4_does_not_establish_foreign_work() -> Bool {
-  cap_2_bucket_peak_4_is_not_foreign_work(p: SuccessfulClientRequestSecondBucketPeak {
-    client_max_concurrency: 2,
-    bucket_peak: 4,
-  })
-}
-
 test fn parsed_itl_distribution_does_not_establish_a_cause() -> Bool {
   let d = client_itl_from_bench_stdout(body: fx_bench_stdout)
   match d {
     ClientItlDistributionObserved { mean_milli: mean_m, median_milli: med, p99_milli: p99, cause: _ } =>
-      millisecond_count(m: mean_m) == 83 && millisecond_count(m: med) == 82 && millisecond_count(m: p99) == 165 && itl_tail_cause_is_unestablished(d: d)
+      millisecond_count(m: mean_m) == 83 && millisecond_count(m: med) == 82 && millisecond_count(m: p99) == 165
     ClientItlDistributionUnread { cause: _ } => false
   }
 }
@@ -625,10 +620,6 @@ test fn the_contended_sweep_is_five_shared_window_client_points() -> Bool {
     && millisecond_count(m: glm_native_contended_sweep_c1.latency.tpot_milli) == 81
     && millisecond_count(m: glm_native_contended_sweep_c1.latency.ttft_milli) == 1542
     && glm_native_contended_sweep_c1.concurrency == 1
-}
-
-test fn scaling_elasticity_is_off_the_uncontrolled_series() -> Bool {
-  elasticity_is_off_the_uncontrolled_series(s: glm_native_contended_sweep_elasticity)
 }
 
 test fn ttft_c8_and_c16_remain_primitive_observations() -> Bool {
@@ -823,12 +814,48 @@ test fn a_negative_cumulative_sum_is_unread_not_a_positive_delta() -> Bool {
   }
 }
 
-test fn an_alignment_that_overflows_i64_is_unread_not_wrapped() -> Bool {
-  let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10", itl_count: "10.0", itok_sum: "10", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
-  let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10.0000000000000000001", itl_count: "11.0", itok_sum: "10.0000000000000000001", itok_count: "11.0", gen: "1000.0", start: "1789300000.12")
-  match iteration_tokens_booked_delta(before_body: before, after_body: after) {
-    TokenHistogramUnread { cause: _ } => true
-    TokenHistogramRead { booked: _, observations: _ } => false
-    TokenHistogramReset { cause: _ } => false
+test fn an_alignment_that_overflows_i64_is_unrepresentable_after_both_samples_parse() -> Bool {
+  match prometheus_sample_value_reading(field: "1e-18") {
+    SampleValueExact { value: small } =>
+      match prometheus_sample_value_reading(field: "10") {
+        SampleValueExact { value: ten } =>
+          match exact_decimal_sub(a: ten, b: small) {
+            ExactDifferenceUnrepresentable { cause: _ } => {
+              let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1e-18", itl_count: "10.0", itok_sum: "1e-18", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
+              let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10", itl_count: "11.0", itok_sum: "10", itok_count: "11.0", gen: "1000.0", start: "1789300000.12")
+              match iteration_tokens_booked_delta(before_body: before, after_body: after) {
+                TokenHistogramUnread { cause: c } => string_contains(s: c as String, pattern: "does not fit a 64-bit")
+                TokenHistogramRead { booked: _, observations: _ } => false
+                TokenHistogramReset { cause: _ } => false
+              }
+            }
+            ExactDifference { value: _ } => false
+            ExactDifferenceOperandScaleRefused { observed_fraction_digits: _ } => false
+          }
+        SampleValueNotFinite { lexeme: _ } => false
+        SampleValueUnreadable { lexeme: _ } => false
+      }
+    SampleValueNotFinite { lexeme: _ } => false
+    SampleValueUnreadable { lexeme: _ } => false
   }
+}
+
+test fn a_computed_negative_operand_scale_is_refused_not_rescaled() -> Bool {
+  let bad = 0 - 1
+  match exact_decimal_sub(a: ExactDecimal { units: 1, fraction_digits: bad }, b: ExactDecimal { units: 0, fraction_digits: 0 }) {
+    ExactDifferenceOperandScaleRefused { observed_fraction_digits: d } => d == bad
+    ExactDifference { value: _ } => false
+    ExactDifferenceUnrepresentable { cause: _ } => false
+  }
+}
+
+test fn the_receipt_itl_line_prints_the_parsed_distribution() -> Bool {
+  let t = client_itl_text(d: client_itl_from_bench_stdout(body: fx_bench_stdout))
+  string_contains(s: t, pattern: "mean_ms=83 median_ms=82 p99_ms=165") && string_contains(s: t, pattern: "tail_cause=unestablished")
+}
+
+test fn the_receipt_bucket_line_prints_the_parsed_peak_not_a_verdict() -> Bool {
+  let t = client_bucket_peak_text(p: client_bucket_peak_from_bench_stdout(body: fx_bench_stdout, client_max_concurrency: 2))
+  string_contains(s: t, pattern: "client_max_concurrency=2 successful_request_second_bucket_peak=")
+    && !string_contains(s: t, pattern: "foreign")
 }

@@ -9,7 +9,7 @@ import std.measure {
   MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
   MilliRequestsPerSecond, milli_requests_per_second,
 }
-import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable }
+import std.decimal { ExactDecimal, canonical_exact_decimal, decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
 import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
@@ -351,6 +351,7 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
                                     } else {
                                     match exact_decimal_sub(a: asm, b: bsm) {
                                       ExactDifferenceUnrepresentable { cause: _ } => HistogramDeltaUnread { cause: "histogram sum delta does not fit a 64-bit exact decimal" as NonEmptyStr }
+                                      ExactDifferenceOperandScaleRefused { observed_fraction_digits: _ } => HistogramDeltaUnread { cause: "histogram sum carried a negative decimal scale" as NonEmptyStr }
                                       ExactDifference { value: ds } =>
                                     if ds.units < 0 {
                                       HistogramCounterReset { cause: "histogram sum decreased across the window" as NonEmptyStr }
@@ -947,6 +948,27 @@ fn bench_serve_latency(e: BenchServeExecution, window: ProbeWindowStanding) -> C
   match bench_summary_stdout(e: e) {
     Absent => ClientBenchLatencyUnread { cause: bench_summary_unread_cause(e: e) }
     Present { value: body } => client_latency_from_bench_stdout(body: body, window: window)
+  }
+}
+
+fn client_itl_text(d: ClientItlDistribution) -> String {
+  match d {
+    ClientItlDistributionUnread { cause: c } => join(["unread ", c as String], "")
+    ClientItlDistributionObserved { mean_milli: m, median_milli: md, p99_milli: p, cause: ItlTailCauseUnestablished { because: b } } =>
+      join([
+        "mean_ms=", to_string(millisecond_count(m: m)),
+        " median_ms=", to_string(millisecond_count(m: md)),
+        " p99_ms=", to_string(millisecond_count(m: p)),
+        " tail_cause=unestablished (", b as String, ")",
+      ], "")
+  }
+}
+
+fn client_bucket_peak_text(p: ClientRequestConcurrencyStanding) -> String {
+  match p {
+    ClientConcurrencyUnread { cause: c } => join(["unread ", c as String], "")
+    SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: c, bucket_peak: b } =>
+      join(["client_max_concurrency=", to_string(c), " successful_request_second_bucket_peak=", to_string(b), " (a per-second completion bucket, not concurrent occupancy)"], "")
   }
 }
 
@@ -1552,30 +1574,6 @@ data glm_native_wet_smoke_client_latency: TranscribedClientLatency = Transcribed
   standing: glm_native_wet_smoke_standing
 }
 
-fn itl_tail_cause_is_unestablished(d: ClientItlDistribution) -> Bool {
-  match d {
-    ClientItlDistributionUnread { cause: _ } => true
-    ClientItlDistributionObserved { mean_milli: _, median_milli: _, p99_milli: _, cause: ItlTailCauseUnestablished { because: _ } } => true
-  }
-}
-
-fn client_second_bucket_peak_establishes_foreign_work(p: ClientRequestConcurrencyStanding) -> Bool {
-  match p {
-    ClientConcurrencyUnread { cause: _ } => false
-    SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: _, bucket_peak: _ } => false
-  }
-}
-
-fn cap_2_bucket_peak_4_is_not_foreign_work(p: ClientRequestConcurrencyStanding) -> Bool {
-  match p {
-    ClientConcurrencyUnread { cause: _ } => false
-    SuccessfulClientRequestSecondBucketPeak { client_max_concurrency: c, bucket_peak: b } =>
-      c == 2
-        && b == 4
-        && !client_second_bucket_peak_establishes_foreign_work(p: p)
-  }
-}
-
 fn bench_labeled_nat(body: String, label: String) -> Nat? {
   text_labeled_count(body: text_without_sudo_prompt(body: body), label: label)
 }
@@ -1812,22 +1810,6 @@ data glm_native_contended_sweep_points: List<ContendedSweepPoint> = [
   glm_native_contended_sweep_c8,
   glm_native_contended_sweep_c16,
 ]
-
-// ABSOLUTE tok/s ARE NOT A CAPACITY without an exclusive window. Elasticity
-// log(throughput ratio)/log(concurrency ratio) is a SHAPE that requires a controlled series.
-// The five contended points are shared-window client latency; they are not that series.
-type UncontrolledSeriesElasticity
-  = ElasticityNotOnUncontrolledSeries { because: NonEmptyStr }
-
-data glm_native_contended_sweep_elasticity: UncontrolledSeriesElasticity = ElasticityNotOnUncontrolledSeries {
-  because: "glm_native_contended_sweep_points were taken without an exclusive window; log(throughput ratio)/log(concurrency ratio) on that series is not a scaling elasticity" as NonEmptyStr
-}
-
-fn elasticity_is_off_the_uncontrolled_series(s: UncontrolledSeriesElasticity) -> Bool {
-  match s {
-    ElasticityNotOnUncontrolledSeries { because: _ } => true
-  }
-}
 
 fn glm_native_sweep_ttft_c8() -> Nat {
   millisecond_count(m: glm_native_contended_sweep_c8.latency.ttft_milli)
