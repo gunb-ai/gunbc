@@ -239,5 +239,9 @@ test fn witness_decode_path_segment_is_the_canonical_inverse() -> Bool {
     && match decode_path_segment(presented: "id-gA==") { PathSegmentMalformed { cause: _ } => true  _ => false }
     && match decode_path_segment(presented: "id-") { PathSegmentMalformed { cause: _ } => true  _ => false }
     && match decode_path_segment(presented: "id-YR==") { PathSegmentDecoded { identity: _ } => false  _ => true }
+    && match decode_path_segment(presented: "id-4ICA") { PathSegmentMalformed { cause: _ } => true  _ => false }
+    && match decode_path_segment(presented: "id-7aCA") { PathSegmentMalformed { cause: _ } => true  _ => false }
+    && match decode_path_segment(presented: "id-8ICAgA==") { PathSegmentMalformed { cause: _ } => true  _ => false }
+    && match decode_path_segment(presented: "id-9JCAgA==") { PathSegmentMalformed { cause: _ } => true  _ => false }
     && match decode_path_segment(presented: "id-YQ") { PathSegmentDecoded { identity: _ } => false  _ => true }
 }
