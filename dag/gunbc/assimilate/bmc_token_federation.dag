@@ -21,10 +21,10 @@ import extdeps.github.actions {
   Step, RunStep, UsesStep,
   Workflow, Job,
   WorkflowTrigger, WorkflowDispatch,
-  WorkflowPermissions, PermRead, PermWrite,
-  google_auth_action, checkout_action,
+  WorkflowPermissions, PermRead, PermWrite,  
   default_job_timeout_minutes
 }
+import gunbc.action_use_admission { checkout_action, google_auth_action }
 import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }

@@ -3037,30 +3037,30 @@ data dag_loop_arrow_with_body_wrong_value_fixture: Node = dag_loop_arrow_with_bo
 data dag_fixture_emitted_loop_fn: Node = dag_loop_arrow_with_body_fixture
 
 fn dag_node_is_kw_true_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_kw_true
+    Absent => false
   }
 }
 
 fn dag_node_is_kw_false_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_false
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_kw_false
+    Absent => false
   }
 }
 
 fn dag_node_is_int_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_int_literal
+    Absent => false
   }
 }
 
 fn dag_node_is_float_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_float_literal
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_float_literal
+    Absent => false
   }
 }
 
@@ -3098,10 +3098,9 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
   dag_node_is_kw_true_atom(node: node)
     || dag_node_is_kw_false_atom(node: node)
     || dag_node_is_int_literal_atom(node: node)
-    || match node.kind {
-         TypeNode { connective: Atom { identity: id } } =>
-           dag_symbol_is_fixture_body_literal_atom(id: id)
-         _ => false
+    || match node_atom_identity_optional(node: node) {
+         Present { value: id } => dag_symbol_is_fixture_body_literal_atom(id: id)
+         Absent => false
        }
 }
 

@@ -23,7 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // THE INSTANTIATION, and the whole point of the split. extdeps.pin owns the pinning DIMENSION as
 // Pin<Subject>; this module binds that dimension to ONE subject, CliTool, and owns only what is
 // genuinely subject-specific: how to project an identity out of a CliTool, and what ingesting the
-// existing roster means. Adding a second pinnable subject — SccacheBinaryArtifact, ActionRef, a
+// existing roster means. Adding a second pinnable subject — SccacheBinaryArtifact, an action tag coordinate, a
 // container image, a GitHub release — is a new sibling instantiation, NOT an edit to extdeps.pin
 // and NOT a second pin type (DESIGN section 2 horizontal: one concept, every breadth; the
 // Vendor<Domain> shape). If a future change to extdeps.pin is needed to admit a new subject, that
