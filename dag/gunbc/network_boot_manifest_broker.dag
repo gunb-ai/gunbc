@@ -1,0 +1,385 @@
+module gunbc.network_boot_manifest_broker
+
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.content_hash { serialize_content_hash }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.dissolution { unbound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.materialization_provider { length_prefixed_encode }
+import extdeps.uri { uri_wire }
+import extdeps.toolchain.types { Architecture, X86_64, X86, Aarch64, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
+import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiHttpBoot, UefiPxe, LegacyBiosPxe }
+import extdeps.provisioning.dhcp_client_arch {
+  dhcp_processor_architecture_code,
+  dhcp_client_processor_architecture,
+}
+import extdeps.crypto.mac {
+  MacKey,
+  MacKeyId,
+  MacSuite,
+  HmacSha256,
+  MacVerification,
+  MacVerified,
+  MacTagMismatch,
+  MacKeyUnknown,
+  MacKeyRetired,
+  MacSuiteMismatch,
+  MacTagMalformed,
+  MacTagNotHex,
+  MacKeyMaterialMalformed,
+  MacVerificationRefused,
+  VerifiedMessage,
+  MacSigning,
+  MacSigned,
+  MacKeyMaterialNotHex,
+  MacComputationRefused,
+  HmacRefusal,
+  mac_sign,
+  mac_verify,
+}
+import gunbc.machine_intake_subject { IntakeAttemptId }
+import gunbc.secret_provision { SecretRef, fleet_secret_ref }
+import gunbc.network_boot_delivery {
+  signed_boot_manifest_window,
+  ManifestWindowOpen,
+  ManifestWindowNotYetValid,
+  ManifestWindowExpired,
+  ManifestVerificationNotYetValid,
+  ManifestVerificationExpired,
+  SignedBootManifestIdentity,
+  SignedBootManifestStanding,
+  SignedBootManifestVerified,
+  SignedBootManifestVerificationRefused,
+  BootstrapTrustStanding,
+  ProductionTrustedBootstrap,
+  ControlledNetworkBootstrap,
+  BootstrapTrustUnestablished,
+  NetworkBootManifestVerificationClass,
+  ManifestVerificationMac,
+  ManifestVerificationWrongMessage,
+  ManifestVerificationWrongArchitecture,
+  ManifestVerificationReplay,
+  ManifestVerificationSigningKey,
+  ManifestVerificationVerifiedKey,
+  ManifestVerificationSuite,
+  ManifestVerificationTrust,
+}
+
+// Protocol id bound into the HMAC preimage so a tag from another envelope cannot verify here.
+data boot_manifest_protocol: NonEmptyStr = "gunbc.signed-boot-manifest.v1" as NonEmptyStr
+
+// The signing key's locus. Its version is pending (HashPending): no secret has
+// been materialized, and for HMAC read access is signing access, so this ref
+// is NOT a row in the live fleet accessor roster. The grant is allocated by
+// the frontier row below, to a dedicated broker principal, at a pinned version.
+data boot_manifest_mac_key_secret_ref: SecretRef = fleet_secret_ref(secret_id: "boot-manifest-mac-key")
+
+data boot_manifest_mac_suite: MacSuite = HmacSha256
+
+// Digests, identities, and a MAC tag only — no host credential, cloud token, or install secret field exists to put on a public origin.
+type SignedBootManifestTicket {
+  identity: SignedBootManifestIdentity
+  tag_hex: NonEmptyStr
+}
+
+type BootManifestIssuanceRefusal
+  = ManifestIssuanceKeyIdDisagrees { claimed: MacKeyId, signing_key: MacKeyId }
+  | ManifestIssuanceKeyMaterialNotHex { key_id: MacKeyId }
+  | ManifestIssuanceComputationRefused { key_id: MacKeyId, cause: HmacRefusal }
+  | ManifestIssuanceWindowInverted { not_before: EpochMs, expiry: EpochMs }
+  | ManifestIssuanceTrustUnestablished
+  | ManifestIssuanceDhcpArchUnpublished
+
+type BootManifestIssuance
+  = BootManifestIssued { ticket: SignedBootManifestTicket }
+  | BootManifestIssuanceRefused { cause: BootManifestIssuanceRefusal }
+
+type SpentAttemptNonce {
+  attempt_id: IntakeAttemptId
+  nonce: NonEmptyStr
+}
+
+type BootstrapTrustRoot {
+  signing_key_id: MacKeyId
+  standing: BootstrapTrustStanding
+}
+
+type BootManifestExpectation {
+  trust: BootstrapTrustRoot
+  spent_attempt_nonces: List<SpentAttemptNonce>
+  redeemed_at: EpochMs
+}
+
+type BootManifestVerification
+  = BootManifestAuthentic { identity: SignedBootManifestIdentity }
+  | BootManifestRefused { class: NetworkBootManifestVerificationClass }
+
+// A ticket bound to the signing input derived from ITS OWN claims. Only
+// present_boot_manifest mints one, so a verifier cannot be handed claims B
+// beside the input of claims A: the message a MacVerified must equal is the
+// one this carrier derived, and the claims it authenticates are the ones it
+// was derived from.
+type PresentedBootManifest sole_constructor {
+  ticket: SignedBootManifestTicket
+  signing_input: NonEmptyStr
+}
+
+fn present_boot_manifest(ticket: SignedBootManifestTicket) -> PresentedBootManifest? {
+  match signed_boot_manifest_signing_input(id: ticket.identity) {
+    Absent => none
+    Present { value: message } => Present { value: PresentedBootManifest { ticket: ticket, signing_input: message } }
+  }
+}
+
+fn refused(class: NetworkBootManifestVerificationClass) -> BootManifestVerification {
+  BootManifestRefused { class: class }
+}
+
+fn boot_mode_preimage(mode: ClientNetworkBootMode) -> String {
+  match mode {
+    UefiHttpBoot => "uefi-http"
+    UefiPxe { tftp_root: u } => concat("uefi-pxe:", uri_wire(uri: u) as String)
+    LegacyBiosPxe { tftp_root: u } => concat("legacy-bios-pxe:", uri_wire(uri: u) as String)
+  }
+}
+
+// The broker's own signing token for the authored architecture: total and
+// one-to-one over the variant, carrying no firmware family (that lives in
+// boot_mode) and owned by this protocol, so a rename in a diagnostic renderer
+// or an upstream label cannot move the key space. It is a protocol token, not
+// an upstream wire label — and not gunbc.devboot.subject architecture_identity_tag
+// either: that table keys a STORE, this one keys SIGNED TICKETS, and the two
+// lifetimes must stay separate. Sharing one table would let a devboot tag
+// version bump silently re-key every issued manifest, and a signing-protocol
+// change orphan every stored devboot artifact.
+fn boot_manifest_architecture_token(arch: Architecture) -> NonEmptyStr {
+  match arch {
+    X86_64 => "x86_64" as NonEmptyStr
+    X86 => "x86" as NonEmptyStr
+    Aarch64 => "aarch64" as NonEmptyStr
+    Arm => "arm" as NonEmptyStr
+    Armv7 => "armv7" as NonEmptyStr
+    Mips => "mips" as NonEmptyStr
+    Mipsel => "mipsel" as NonEmptyStr
+    Mips64 => "mips64" as NonEmptyStr
+    Mips64el => "mips64el" as NonEmptyStr
+    Riscv64 => "riscv64" as NonEmptyStr
+    Wasm32 => "wasm32" as NonEmptyStr
+  }
+}
+
+// Each field is length-prefixed, so no field value can shift a boundary, and
+// the authored architecture is signed by its own token: the DHCP class beside
+// it is a derived projection that sends X86 and X86_64 to one BiosX86 code
+// under legacy BIOS, so it cannot stand in for the field the join admits on.
+// The DHCP projection keeps its fail-closed arm (Absent refuses).
+fn signed_boot_manifest_signing_input(id: SignedBootManifestIdentity) -> NonEmptyStr? {
+  match dhcp_client_processor_architecture(arch: id.architecture, mode: id.boot_mode) {
+    Absent => none
+    Present { value: dhcp_arch } =>
+      Present {
+        value: join(
+          [
+            boot_manifest_protocol as String,
+            id.target_unit as String,
+            id.attempt_id as String,
+            id.nonce as String,
+            boot_manifest_architecture_token(arch: id.architecture) as String,
+            to_string(dhcp_processor_architecture_code(a: dhcp_arch)),
+            boot_mode_preimage(mode: id.boot_mode),
+            serialize_content_hash(hash: id.chainloader_digest) as String,
+            serialize_content_hash(hash: id.kernel_digest) as String,
+            serialize_content_hash(hash: id.initrd_digest) as String,
+            serialize_content_hash(hash: id.root_digest) as String,
+            id.kernel_cmdline as String,
+            to_string(id.not_before),
+            to_string(id.expiry),
+            id.signing_key_identity as String,
+            id.callback_identity as String,
+          ] |> map(f => length_prefixed_encode(s: f)),
+          "",
+        ) as NonEmptyStr,
+      }
+  }
+}
+
+fn issue_signed_boot_manifest(
+  identity: SignedBootManifestIdentity,
+  key: MacKey,
+  trust: BootstrapTrustStanding,
+) -> BootManifestIssuance {
+  match trust {
+    BootstrapTrustUnestablished => BootManifestIssuanceRefused { cause: ManifestIssuanceTrustUnestablished }
+    ProductionTrustedBootstrap { grounds: _ } => issue_signed_boot_manifest_under_trust(identity: identity, key: key)
+    ControlledNetworkBootstrap { evidence: _ } => issue_signed_boot_manifest_under_trust(identity: identity, key: key)
+  }
+}
+
+fn issue_signed_boot_manifest_under_trust(identity: SignedBootManifestIdentity, key: MacKey) -> BootManifestIssuance {
+  if identity.signing_key_identity != key.id {
+    BootManifestIssuanceRefused {
+      cause: ManifestIssuanceKeyIdDisagrees {
+        claimed: identity.signing_key_identity,
+        signing_key: key.id,
+      },
+    }
+  } else if identity.expiry <= identity.not_before {
+    BootManifestIssuanceRefused {
+      cause: ManifestIssuanceWindowInverted {
+        not_before: identity.not_before,
+        expiry: identity.expiry,
+      },
+    }
+  } else {
+    match signed_boot_manifest_signing_input(id: identity) {
+      Absent => BootManifestIssuanceRefused { cause: ManifestIssuanceDhcpArchUnpublished }
+      Present { value: message } =>
+        match mac_sign(key: key, message: message) {
+          MacKeyMaterialNotHex { key_id: k } =>
+            BootManifestIssuanceRefused { cause: ManifestIssuanceKeyMaterialNotHex { key_id: k } }
+          MacComputationRefused { key_id: k, cause: c } =>
+            BootManifestIssuanceRefused { cause: ManifestIssuanceComputationRefused { key_id: k, cause: c } }
+          MacSigned { tag: t } =>
+            BootManifestIssued {
+              ticket: SignedBootManifestTicket { identity: identity, tag_hex: t.hex },
+            }
+        }
+    }
+  }
+}
+
+// A lookup over a read-only snapshot: two redemptions of one ticket that both
+// read the ledger before either marks it both pass this. Refusing a replay the
+// snapshot already records is real; refusing a concurrent one needs the
+// claim-and-mark the frontier row below names.
+fn attempt_nonce_spent(spent: List<SpentAttemptNonce>, attempt_id: IntakeAttemptId, nonce: NonEmptyStr) -> Bool {
+  spent |> any(row => row.attempt_id == attempt_id && row.nonce == nonce)
+}
+
+// `presented` is the claims-derived signing input, computed once by the caller
+// that also handed it to the MAC; the verified message is compared against it
+// rather than against a second derivation of the same claims.
+fn verify_signed_boot_manifest(
+  presented: PresentedBootManifest,
+  expectation: BootManifestExpectation,
+  mac_result: MacVerification,
+) -> BootManifestVerification {
+  match expectation.trust.standing {
+    BootstrapTrustUnestablished => refused(class: ManifestVerificationTrust)
+    ProductionTrustedBootstrap { grounds: _ } => verify_signed_boot_manifest_under_trust(presented: presented, expectation: expectation, mac_result: mac_result)
+    ControlledNetworkBootstrap { evidence: _ } => verify_signed_boot_manifest_under_trust(presented: presented, expectation: expectation, mac_result: mac_result)
+  }
+}
+
+fn verify_signed_boot_manifest_under_trust(
+  presented: PresentedBootManifest,
+  expectation: BootManifestExpectation,
+  mac_result: MacVerification,
+) -> BootManifestVerification {
+  match mac_result {
+    MacVerified { verified: v } =>
+      if v.message != presented.signing_input {
+        refused(class: ManifestVerificationWrongMessage)
+      } else {
+        join_verified_mac(ticket: presented.ticket, expectation: expectation, verified: v)
+      }
+    MacTagMismatch { key_id: _ } => refused(class: ManifestVerificationMac)
+    MacTagMalformed { octets_declared: _, octets_expected: _ } => refused(class: ManifestVerificationMac)
+    MacSuiteMismatch { expected: _, key_suite: _ } => refused(class: ManifestVerificationSuite)
+    MacKeyUnknown { key_id: _ } => refused(class: ManifestVerificationSigningKey)
+    MacKeyRetired { key_id: _, retired_at: _ } => refused(class: ManifestVerificationSigningKey)
+    MacTagNotHex { key_id: _ } => refused(class: ManifestVerificationMac)
+    MacKeyMaterialMalformed { key_id: _ } => refused(class: ManifestVerificationSigningKey)
+    MacVerificationRefused { key_id: _, cause: _ } => refused(class: ManifestVerificationMac)
+  }
+}
+
+fn join_verified_mac(
+  ticket: SignedBootManifestTicket,
+  expectation: BootManifestExpectation,
+  verified: VerifiedMessage,
+) -> BootManifestVerification {
+  if verified.suite != boot_manifest_mac_suite {
+    refused(class: ManifestVerificationSuite)
+  } else if verified.key_id != expectation.trust.signing_key_id {
+    refused(class: ManifestVerificationVerifiedKey)
+  } else if ticket.identity.signing_key_identity != verified.key_id {
+    refused(class: ManifestVerificationSigningKey)
+  } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: ticket.identity.attempt_id, nonce: ticket.identity.nonce) {
+    refused(class: ManifestVerificationReplay)
+  } else {
+    match signed_boot_manifest_window(identity: ticket.identity, at: expectation.redeemed_at) {
+      ManifestWindowNotYetValid => refused(class: ManifestVerificationNotYetValid)
+      ManifestWindowExpired => refused(class: ManifestVerificationExpired)
+      ManifestWindowOpen => BootManifestAuthentic { identity: ticket.identity }
+    }
+  }
+}
+
+fn redeem_signed_boot_manifest(ticket: SignedBootManifestTicket, key: MacKey, expectation: BootManifestExpectation) -> BootManifestVerification {
+  match present_boot_manifest(ticket: ticket) {
+    Absent => refused(class: ManifestVerificationWrongArchitecture)
+    Present { value: p } =>
+      verify_signed_boot_manifest(
+        presented: p,
+        expectation: expectation,
+        mac_result: mac_verify(key: key, message: p.signing_input, tag_hex: ticket.tag_hex),
+      )
+  }
+}
+
+fn signed_boot_manifest_standing(
+  verification: BootManifestVerification,
+  observation: DeclarationRef,
+  observed_at: EpochMs,
+) -> SignedBootManifestStanding {
+  match verification {
+    BootManifestAuthentic { identity: id } =>
+      SignedBootManifestVerified {
+        identity: id,
+        observation: observation,
+        observed_at: observed_at,
+      }
+    BootManifestRefused { class: c } =>
+      SignedBootManifestVerificationRefused {
+        observation: observation,
+        observed_at: observed_at,
+        class: c,
+      }
+  }
+}
+
+// Issuance and redemption are pure folds with no production caller yet: the
+// broker is the 0D receipt family, and the lane that mints a ticket at attempt
+// admission and the boot authority that redeems it at fetch time are the
+// consumers that retire these rows. Counted in the census, not in prose.
+data network_boot_manifest_broker_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_manifest_broker", decl_name: "issue_signed_boot_manifest"),
+    reason: "issue_signed_boot_manifest is called only by its witness; no production fold mints a SignedBootManifestTicket for an admitted intake attempt, so no ticket the broker signs ever reaches a client",
+    dissolution: unbound_dissolution(
+      description: "dissolves when an intake attempt admission fold in gunbc.machine_intake calls issue_signed_boot_manifest with the identity built from the admitted attempt and the fleet signing key from boot_manifest_mac_key_secret_ref, and binds the BootManifestIssued ticket into the boot offer the site edge serves; a witness that issues against a hand-built identity does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_manifest_broker", decl_name: "redeem_signed_boot_manifest"),
+    reason: "redeem_signed_boot_manifest and signed_boot_manifest_standing are called only by their witness; no production fold redeems a presented ticket, so SignedBootManifestVerified is never minted on a path that reaches join_network_boot_delivery",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the boot-authority fetch handler for the global HTTPS boot origin calls redeem_signed_boot_manifest on the ticket a client presents, with the BootManifestExpectation built from the fleet trust root and the spent-nonce ledger, and the resulting signed_boot_manifest_standing is the manifest arm of the NetworkBootJoinInputs the intake assembler joins; a witness that redeems a ticket it issued in the same claim does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_field_ref(module_path: "gunbc.network_boot_manifest_broker", decl_name: "BootManifestExpectation", field_name: "spent_attempt_nonces"),
+    reason: "replay is refused against a read-only snapshot of spent attempt nonces, so two concurrent redemptions of one ticket that both read the ledger before either marks it can both mint SignedBootManifestVerified",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the redeeming handler performs a durable atomic claim-and-mark of (attempt_id, nonce) through std.durable_compare_and_set before signed_boot_manifest_standing may mint SignedBootManifestVerified, and a second redemption of the same ticket refuses ManifestVerificationReplay from that mark; a lookup over a snapshot List cannot satisfy this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.network_boot_manifest_broker", decl_name: "boot_manifest_mac_key_secret_ref"),
+    reason: "the signing key ref has version pending and HashPending: no secret version is materialized and no accessor grant exists, and for HMAC read access is signing access, so it is deliberately absent from gunbc.auth.fleet_secret_accessor_roster",
+    dissolution: unbound_dissolution(
+      description: "dissolves when boot_manifest_mac_key_secret_ref pins an exact materialized version with a hash, and the accessor grant on that version is allocated through gunbc.auth.gcp_secret_access to a dedicated broker principal only, never the fleet-wide convergence principal; adding the ref to fleet_accessor_grant_roster does not fire this"
+    )
+  ),
+]

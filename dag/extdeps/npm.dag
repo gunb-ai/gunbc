@@ -17,7 +17,7 @@ import std.content_hash {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.numeric.base16 { byte_hex_lower }
+import extdeps.numeric.base16 { base16_encode_lower }
 import extdeps.version { VersionIdentity }
 import extdeps.pin { Pin, ExactPin }
 import extdeps.package { PackageCoordinate, PackageLockNode, PackageLockGraph }
@@ -265,10 +265,6 @@ fn npm_registry_integrity_from_decode(
   }
 }
 
-fn npm_octets_to_lower_hex(octets: List<UInt8>) -> String {
-  map(octets, octet => byte_hex_lower(v: octet)) |> join(separator: "")
-}
-
 fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<UInt8>) -> Bool {
   match base64_encode(octets: octets, variant: Standard) {
     Present { value: canonical } => encoded == canonical
@@ -285,7 +281,7 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
       Present { value: octets } =>
         if count(octets) == 64 {
           if npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
-            match sha512_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
+            match sha512_hex_digest(hex: base16_encode_lower(octets: octets)) {
               Present { value: digest } => NpmSingleSha512Integrity { digest: digest }
               Absent =>
                 NpmIntegrityMalformed {
@@ -313,7 +309,7 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
       Present { value: octets } =>
         if count(octets) == 20 {
           if npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
-            match sha1_hex_digest(hex: npm_octets_to_lower_hex(octets: octets)) {
+            match sha1_hex_digest(hex: base16_encode_lower(octets: octets)) {
               Present { value: digest } => NpmSingleSha1Integrity { digest: digest }
               Absent =>
                 NpmIntegrityMalformed {
