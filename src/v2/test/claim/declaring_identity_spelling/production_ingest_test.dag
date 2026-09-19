@@ -383,7 +383,7 @@ test fn an_unbound_type_position_name_is_unresolvable_today() -> Bool {
   }
 }
 
-test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
+test fn a_callee_name_reaches_the_census_holds() -> Bool {
   match census_of(
     path: call_only_path,
     unit: ^xl3_call_only
@@ -391,7 +391,7 @@ test fn a_callee_name_is_absent_from_the_census_today() -> Bool {
     Present { value: census } =>
       census_unreadable_roots_empty(census: census)
         && authored_is(census: census, spelling: "LocalParam")
-        && !authored_is(census: census, spelling: "helper")
+        && authored_is(census: census, spelling: "helper")
     Absent => false
   }
 }
@@ -453,31 +453,45 @@ fn two_module_usable_class_probe(census: DeclaringIdentitySpellingCensus) -> Boo
 }
 
 // THE USABLE CLASS: a qualified cross-module value mention outside any call, and
-// nothing else in the ingest can produce that spelling. Absent today. A bare
-// same-module name is not this row. Goes red when the mention reaches the census.
-// LocalParam is the positive control: Rejected ingest cannot green these.
-test fn a_qualified_cross_module_mention_is_absent_from_the_census_today() -> Bool {
+// nothing else in the ingest can produce that spelling. A bare same-module name
+// is not this row. LocalParam is the positive control: Rejected ingest cannot
+// green these.
+//
+// THIS ROW WAS ENROLLED AS "IS ABSENT TODAY" AND WENT RED ON 2026-09-18 FOR THE
+// REASON IT WAS ENROLLED: the mention now reaches the census as one authored
+// spelling of the whole chain. The gap was v2 body lowering, not qualification
+// (gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering).
+// What this row asserts is the MENTION reaching, which is the census's own
+// subject; whether it BINDS is a second fact -- `Probe` is a data declaration,
+// and a data declaration is not yet grafted into the containment tree, so the
+// row today is UnresolvableSpelling / IdentityUnbound. That binding fact has
+// its own trigger (declaration grafting) and is not asserted either way here.
+test fn a_qualified_cross_module_mention_reaches_the_census_holds() -> Bool {
   match two_module_census() {
     Present { value: census } =>
       two_module_usable_class_probe(census: census)
-        && !authored_is(census: census, spelling: qualified_cross_module_spelling)
+        && authored_is(census: census, spelling: qualified_cross_module_spelling)
     Absent => false
   }
 }
 
-// QUALIFIED parameter-type, no call. Same ingest as the value-position Probe miss.
-// Absent while bare LocalParam reaches: this miss is qualification, not field position.
-test fn a_qualified_type_position_mention_is_absent_from_the_census_today() -> Bool {
+// QUALIFIED parameter-type, no call. Same ingest as the value-position Probe
+// row, and it flipped with it: a multi-segment qualified name in parameter
+// position now lowers to the same spine a body chain does. Bare LocalParam is
+// the control beside it.
+test fn a_qualified_type_position_mention_reaches_the_census_holds() -> Bool {
   match two_module_census() {
     Present { value: census } =>
       two_module_usable_class_probe(census: census)
-        && !authored_is(census: census, spelling: qualified_type_position_spelling)
+        && authored_is(census: census, spelling: qualified_type_position_spelling)
     Absent => false
   }
 }
 
-// QUALIFIED field type. Absent for two independent reasons (qualification AND
-// field position) so it cannot discriminate. The discriminator is field_vs_parameter.
+// QUALIFIED field type. Still absent, and now for ONE reason rather than two:
+// qualification no longer hides a mention (the two rows above reach), so what is
+// left is field position -- the record declaration is not grafted into the
+// containment tree at all. The discriminator is field_vs_parameter.
 test fn a_qualified_field_type_mention_is_absent_from_the_census_today() -> Bool {
   match two_module_census() {
     Present { value: census } =>
