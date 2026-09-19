@@ -2,7 +2,7 @@ module extdeps.bmc.ipmi_sdr
 
 import std.algebra { trim }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { Percent, RevolutionsPerMinute, SdrUndecodedLineCount, percent, rpm, sdr_undecoded_line_count }
+import std.measure { Celsius, Percent, RevolutionsPerMinute, SdrUndecodedLineCount, celsius, percent, rpm, sdr_undecoded_line_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -159,7 +159,7 @@ fn sdr_fan_reading(reading_text: NonEmptyStr) -> SdrFanReading {
 // it deliberately does not model thresholds, hysteresis or entity association - a consumer needing
 // those is asking a different question and should not reach it through this decoder.
 type SdrTemperatureReading
-  = SdrTemperatureDegreesC { degrees: Int }
+  = SdrTemperatureDegreesC { degrees: Celsius }
   | SdrTemperatureNoReading
   | SdrTemperatureUnrecognised { text: String }
 
@@ -173,7 +173,7 @@ fn sdr_temperature_reading(reading_text: NonEmptyStr) -> SdrTemperatureReading {
       Present { value: magnitude } => match parse_int(s: trim(magnitude)) {
         Absent => SdrTemperatureNoReading
         Present { value: n } => if sdr_field_at(fields: words, index: 1) == "degrees" {
-          SdrTemperatureDegreesC { degrees: n }
+          SdrTemperatureDegreesC { degrees: celsius(n) }
         } else {
           SdrTemperatureUnrecognised { text: reading_text as String }
         }

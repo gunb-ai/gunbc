@@ -1,7 +1,7 @@
 module test.claim.fan_policy_standing_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure { RevolutionsPerMinute, fan_count, fan_count_value, percent, percent_count, published_level_count_value, rpm, rpm_count, sdr_undecoded_line_count, sdr_undecoded_line_count_value, second, second_count }
+import std.measure { RevolutionsPerMinute, celsius_count, fan_count, fan_count_value, percent, percent_count, published_level_count_value, rpm, rpm_count, sdr_undecoded_line_count, sdr_undecoded_line_count_value, second, second_count }
 import extdeps.units.iec_61672 { dba_difference_tenths, tenths_dba }
 import extdeps.fans.dynatron { dynatron_df126025bu_pwmh_catalog }
 import extdeps.bmc.endpoint { Ipmi }
@@ -232,7 +232,7 @@ test fn witness_temperature_publication_discriminates_post() -> Bool {
   sdr_any_temperature_reading(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_posted)))
     && !sdr_any_temperature_reading(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_prepost)))
     && match sdr_temperature_reading(reading_text: "45 degrees C") {
-      SdrTemperatureDegreesC { degrees: d } => d == 45
+      SdrTemperatureDegreesC { degrees: d } => celsius_count(c: d) == 45
       _ => false
     }
 }
