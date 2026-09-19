@@ -642,9 +642,15 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
 // ValidatedHeaderSchema is sole_constructor and validate_header_schema is its only mint, so a writer
 // that demands the carrier cannot be handed a schema whose header row is malformed: the invalid
 // state has no constructor outside this module (DESIGN 4b rung 4 for the population that takes the
-// carrier). What the carrier does NOT claim is that every consumer takes it; a consumer still
-// holding a bare ReviewSheetSchema is outside the wall, which is why the readers below were moved
-// onto it rather than left beside it.
+// carrier).
+//
+// THE RUNG IS STATED AT WHAT THE EVIDENCE HOLDS, and it has TWO limits rather than one. First, the
+// carrier does not claim every consumer takes it: a consumer still holding a bare ReviewSheetSchema
+// is outside the wall, which is why the readers below were moved onto it rather than left beside
+// it. Second, rung 4 holds only while no OTHER function in this module returns the carrier --
+// .dag has no module-private, so such a function would be an exported second mint and the rung
+// would be inflated rather than held. See the obligation stated at header_names_for; it is a
+// standing property of this module that nothing currently enforces.
 //
 // AN IDENTITY COLUMN THAT IS ONE OF THE SCHEMA'S OWN COLUMNS IS LEGITIMATE AND IS RENDERED ONCE, IN
 // PLACE. identity_column says which column keys the rows; it does not declare a second column. Both
@@ -718,15 +724,28 @@ fn review_column_kind_label(kind: ReviewColumnKind) -> String {
   }
 }
 
-fn validated_header_schema(schema: ReviewSheetSchema, identity_in_columns: Bool) -> ValidatedHeaderSchema {
+// THIS RETURNS THE NAMES, NEVER THE CARRIER, and that distinction is the wall rather than a
+// stylistic one. An earlier revision of this change had a `validated_header_schema(schema,
+// identity_in_columns)` helper returning ValidatedHeaderSchema, which .dag exports like everything
+// else -- so a foreign module could import it, pass identity_in_columns: false for a schema whose
+// identity IS in the roster, and hold a carrier whose header row renders that name twice: exactly
+// the state the mint below refuses. The rung claim was inflated and the probe did not catch it,
+// because the probe exercised the record-literal form only (review 68430, gunbc#11705). The class
+// is rostered: gunbc.recurring_failure_mode admitted_call_edge_with_unrestricted_value_egress --
+// with no module-private, an admitted wrapper IS an exported unrestricted constructor.
+//
+// So the standing obligation on this module is narrow and mechanical: NO function here may return
+// ValidatedHeaderSchema except validate_header_schema. A helper that shapes the names is safe
+// because a List<NonEmptyStr> is not the carrier and confers nothing; a helper that assembles the
+// carrier is a second mint however carefully it is written. Nothing enforces that today -- there is
+// no lens over "exported function returning a sole_constructor type" -- so it is stated here rather
+// than claimed as covered.
+fn header_names_for(schema: ReviewSheetSchema, identity_in_columns: Bool) -> List<NonEmptyStr> {
   let column_names = map(schema.columns, c => c.name)
-  ValidatedHeaderSchema {
-    schema: schema,
-    header_names: if identity_in_columns {
-      column_names
-    } else {
-      concat([schema.identity_column], column_names)
-    },
+  if identity_in_columns {
+    column_names
+  } else {
+    concat([schema.identity_column], column_names)
   }
 }
 
@@ -744,12 +763,18 @@ fn validate_header_schema(schema: ReviewSheetSchema) -> HeaderSchemaValidation {
       match identity_column_in_roster(schema: schema) {
         Absent =>
           HeaderSchemaValidated {
-            validated: validated_header_schema(schema: schema, identity_in_columns: false)
+            validated: ValidatedHeaderSchema {
+              schema: schema,
+              header_names: header_names_for(schema: schema, identity_in_columns: false),
+            }
           }
         Present { value: col } =>
           if identity_column_kind_renders_identity(kind: col.kind) {
             HeaderSchemaValidated {
-              validated: validated_header_schema(schema: schema, identity_in_columns: true)
+              validated: ValidatedHeaderSchema {
+                schema: schema,
+                header_names: header_names_for(schema: schema, identity_in_columns: true),
+              }
             }
           } else {
             HeaderSchemaRefused {

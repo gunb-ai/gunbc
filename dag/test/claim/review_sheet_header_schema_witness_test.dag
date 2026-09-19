@@ -315,10 +315,15 @@ test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
   blocking_total(c: census_of(source: harness_control_source)) == 0
 }
 
+// TWO forged carriers are enrolled, so the count is asserted at 2 rather than at "at least one":
+// the record literal, and the identity-prepended-twice state that the deleted
+// validated_header_schema helper would have handed a foreign caller (review 68430). A single
+// refusal would satisfy a >= 1 assertion while the second forgery compiled, which is the shape of
+// evidence that let the helper through in the first place.
 test fn a_validated_header_schema_cannot_be_authored_outside_the_mint() -> Bool {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "review_sheet_validated_header_schema_forged_probe")),
     wanted: "SoleConstructorViolation",
     subject: "ValidatedHeaderSchema",
-  ) >= 1
+  ) == 2
 }
