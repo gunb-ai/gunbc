@@ -5,7 +5,8 @@ import v2.std.collection { List }
 import v2.std.node { Symbol }
 
 // The authored `test` marker segregates test code from serving code (owner ruling 2026-09-16/17), and
-// name resolution CONSUMES it: a reference to a marked declaration is refused there. What it must not
+// its consumer is a declared frontier: name resolution will refuse a reference to a marked declaration
+// (TRIGGER: gunbc#11580 merging, the change named in v2.compiler.test_marker_capture). What it must not
 // touch is the semantic tree -- a marked declaration's semantic graph and content hash are identical
 // to an unmarked one's -- so it rides this channel beside the tree rather than as a child edge. It
 // borrows the SHAPE of the DESIGN section 4c annotation channel (captured beside the semantic result,
