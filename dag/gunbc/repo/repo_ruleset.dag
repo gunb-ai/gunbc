@@ -25,8 +25,10 @@ import extdeps.github.rulesets {
   RulesetRuleWire,
   RulesetConditionsWire,
   RulesetRuleType,
+  CreationRule,
   DeletionRule,
   NonFastForwardRule,
+  RequiredLinearHistoryRule,
   RequiredStatusChecksRule,
   RulesetEnforcement,
   RulesetActive,
@@ -207,10 +209,26 @@ fn desired_required_status_checks() -> List<RequiredStatusCheckWire> {
     required_status_check_row(context: c, integration_id: github_actions_app_integration_id))
 }
 
+// CREATION AND LINEAR HISTORY JOIN THE PROJECTION (operator direction 2026-09-17), AND `update` IS
+// DELIBERATELY NOT AMONG THEM. Restrict-creations matches ~DEFAULT_BRANCH, so it forbids re-creating
+// main rather than making a branch; require-linear-history states at the ref's own grain the shape
+// squash-through-the-queue already produces.
+//
+// RESTRICT-UPDATES IS THE ONE THAT WAS ASKED FOR AND REFUSED, and the reason is a mechanism rather
+// than a preference: the merge queue lands by UPDATING this ref -- it builds gh-readonly-queue/*
+// compositions and then advances main to one -- and neither GitHub's available-rules page nor its
+// merge-queue page says the queue is exempt from a rule that limits updates to bypass actors. Adding
+// it could therefore stop every landing in the repository, and it would buy almost nothing: a direct
+// push to main must already satisfy the required `witnesses` context and the merge_queue rule. The
+// operator ruled on 2026-09-17 to leave it off until that interaction is established, not to forbid
+// it; establishing it is a live observation of one queue landing under the rule, which is a change
+// with a receipt rather than a paragraph.
 fn desired_ruleset_rules_without_queue() -> List<RulesetRuleWire> {
   [
+    parameterless_rule(t: CreationRule),
     parameterless_rule(t: DeletionRule),
     parameterless_rule(t: NonFastForwardRule),
+    parameterless_rule(t: RequiredLinearHistoryRule),
     required_status_checks_rule(
       checks: desired_required_status_checks(),
       strict: desired_strict_required_status_checks_policy,
@@ -300,13 +318,17 @@ type BypassRosterDesire
 // the row that owns it -- and the witness asserts the ordering rather than the value, so raising
 // the floor's timeout cannot silently invert it.
 //
-// THE ENTRY COUNTS ARE THE OPERATOR'S LIVE CHOICE, not the commissioning 1s this file first
-// proposed. Merging one at a time still means a failure names one pull request rather than a
-// batch. Building three at a time is what the operator set on 2026-09-13 after the one-entry
-// protocol was observed converging; declaring 1 would PUT over that raise. Re-derive live
-// parameters with github.Rulesets.Get / `verify`, not a transcribed GET snapshot.
+// THE ENTRY COUNTS ARE THE OPERATOR'S CHOICE, and they moved twice: the commissioning 1s, then
+// build 3 / merge 1 / wait 1 on 2026-09-13, then batching on 2026-09-17 -- build 5, merge groups of
+// 2 to 8, wait 10 minutes for the minimum. What batching buys is throughput per composed run; what
+// it costs is attribution, because a red group names up to eight pull requests rather than one. That
+// cost is bounded by the grouping strategy above rather than by the counts: under ALLGREEN every
+// entry's own checks must pass, so a group that lands vouches for each member, and a group that
+// fails is re-split by the queue rather than landing a member nothing judged.
 //
-// min_entries_to_merge_wait follows the same live choice (1), not the commissioning 5.
+// Re-derive live parameters with github.Rulesets.Get / `verify`, not a transcribed GET snapshot: the
+// declared values are what `converge` will PUT, and the live ones are whatever the web form last
+// held.
 // The margin covers queue-side scheduling either side of the check itself -- the composition being
 // built and the result being reported -- which is time the floor's own job timeout does not bound.
 data merge_queue_response_margin: Minute = minute(count: 30)
@@ -356,16 +378,16 @@ fn merge_queue_floor_aligned_policy() -> MergeQueuePolicy {
     grouping_strategy: AllGreenGrouping,
     merge_method: QueueSquash,
     check_response_timeout: merge_queue_check_response_timeout(),
-    max_entries_to_build: merge_queue_entry_count(count: 3),
-    max_entries_to_merge: merge_queue_entry_count(count: 1),
-    min_entries_to_merge: merge_queue_entry_count(count: 1),
-    min_entries_to_merge_wait: minute(count: 1),
+    max_entries_to_build: merge_queue_entry_count(count: 5),
+    max_entries_to_merge: merge_queue_entry_count(count: 8),
+    min_entries_to_merge: merge_queue_entry_count(count: 2),
+    min_entries_to_merge_wait: minute(count: 10),
   }
 }
 
 data desired_merge_queue: MergeQueueDesire = MergeQueueSignedOff {
   policy: merge_queue_floor_aligned_policy(),
-  ruling: "Operator direction 2026-09-13: converge the passing-CI ruleset via dag workflows after they enabled merge queue by hand. Timeout is merge_queue_check_response_timeout, not the live GET's 90. Operator raised max_entries_to_build to 3 on 2026-09-13 after ~40 queue landings; declare 3 so Apply does not PUT 1 over it. Re-derive with github.Rulesets.Get / verify." as NonEmptyStr,
+  ruling: "Operator direction 2026-09-17: batch the queue -- build 5, merge groups of 2 to 8, wait 10 minutes for the minimum -- and keep ALLGREEN, so a group lands only when every entry in it passed rather than only the group head. The timeout stays merge_queue_check_response_timeout (the floor lane's own envelope plus a margin) and NOT the 90 the live rule carries: 90 is below that envelope, so a required run that is merely slow is dequeued as if it had failed. Supersedes the 2026-09-13 direction that set build 3 / merge 1 / wait 1. Re-derive live parameters with github.Rulesets.Get / verify, not a transcribed GET snapshot." as NonEmptyStr,
 }
 
 data desired_bypass_roster: BypassRosterDesire = BypassRosterSignedOff {
