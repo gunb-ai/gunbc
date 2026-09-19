@@ -348,31 +348,46 @@ type CliVersionLineParse
 
 fn gunbc_cli_version_line_parse(line: String) -> CliVersionLineParse {
   let fields = split(s: trim(s: line), delimiter: " ")
-  if list_length(fields) != 2 {
+  match fields[0] {
+    Absent =>
+      CliVersionLineRefused { cause: "a gunbc version line is `<binary name> <identity>`, and this line is empty" }
+    Present { value: program } =>
+      match fields[1] {
+        Absent =>
+          CliVersionLineRefused {
+            cause: concat("a gunbc version line is `<binary name> <identity>`, which this is not: ", trim(s: line)),
+          }
+        Present { value: identity } =>
+          if list_length(fields) != 2 {
+            CliVersionLineRefused {
+              cause: concat("a gunbc version line is `<binary name> <identity>`, which this is not: ", trim(s: line)),
+            }
+          } else if program != gunbc_cli_binary_name() {
+            CliVersionLineRefused {
+              cause: join(["the version line names the program ", program, ", not ", gunbc_cli_binary_name()], ""),
+            }
+          } else {
+            gunbc_cli_version_identity_parse(identity: identity)
+          }
+      }
+  }
+}
+
+fn gunbc_cli_version_identity_parse(identity: String) -> CliVersionLineParse {
+  let dirty_suffix = "-dirty"
+  let dirty = ends_with(s: identity, suffix: dirty_suffix)
+  let commit = if dirty {
+    substring(s: identity, start: 0, end: identity.length() - dirty_suffix.length())
+  } else {
+    identity
+  }
+  if !content_hash_validate_lower_hex_length(text: commit, expected_hex_digits: 40) {
     CliVersionLineRefused {
-      cause: concat("a gunbc version line is `<binary name> <identity>`, which this is not: ", trim(s: line)),
-    }
-  } else if fields[0] != gunbc_cli_binary_name() {
-    CliVersionLineRefused {
-      cause: join(["the version line names the program ", fields[0], ", not ", gunbc_cli_binary_name()], ""),
+      cause: concat("the version identity is not a 40-digit lower-hex source commit (a materialized-tree identity or other spelling): ", identity),
     }
   } else {
-    let identity = fields[1]
-    let dirty_suffix = "-dirty"
-    let dirty = ends_with(s: identity, suffix: dirty_suffix)
-    let commit = if dirty {
-      substring(s: identity, start: 0, end: length(identity) - length(dirty_suffix))
-    } else {
-      identity
-    }
-    if !content_hash_validate_lower_hex_length(text: commit, expected_hex_digits: 40) {
-      CliVersionLineRefused {
-        cause: concat("the version identity is not a 40-digit lower-hex source commit (a materialized-tree identity or other spelling): ", identity),
-      }
-    } else {
-      CliVersionLineParsed {
-        identity: gunbc_cli_version_identity(source_commit: commit as CommitSha, source_dirty: dirty),
-      }
+    CliVersionLineParsed {
+      identity: gunbc_cli_version_identity(source_commit: commit as CommitSha, source_dirty: dirty),
     }
   }
 }
