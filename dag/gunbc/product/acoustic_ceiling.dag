@@ -140,11 +140,18 @@ fn row_published_level_count(row: FanCatalogRow) -> PublishedLevelCount {
   published_level_count(count: filter(row.published_points, p => match p.sound_pressure { none => false, Present { value: _ } => true }).length())
 }
 
+// THE none ARM TAKES THE ROW SO IT CANNOT FABRICATE A ZERO. It is unreachable today - every caller
+// arrives through points_within_ceiling, which admits only points whose sound_pressure is Present -
+// but an unreachable arm that reports "this row publishes no levels" about a row that publishes
+// three is a wrong answer waiting for the filter to change, and the count is the one fact that arm
+// exists to carry. Taking the row means the refusal reports the row's real evidence size whether or
+// not anybody ever reaches it.
 fn duty_ceiling_of_result(
+  row: FanCatalogRow,
   point: FanPublishedOperatingPoint,
 ) -> DutyCeilingResult {
   match point.sound_pressure {
-    none => DutyCeilingNoPublishedPointWithin { published_level_count: published_level_count(count: 0) }
+    none => DutyCeilingNoPublishedPointWithin { published_level_count: row_published_level_count(row: row) }
     Present { value: level } => DutyCeilingPublished { duty: point.duty, level: level }
   }
 }
@@ -168,6 +175,7 @@ fn duty_ceiling_for_fan(
       match within.first() {
         Absent => DutyCeilingNoPublishedPointWithin { published_level_count: row_published_level_count(row: row) }
         Present { value: head } => duty_ceiling_of_result(
+          row: row,
           point: fold(within.skip(n: 1), init: head, f: (acc, p) => higher_duty_point(a: acc, b: p)),
         )
       }

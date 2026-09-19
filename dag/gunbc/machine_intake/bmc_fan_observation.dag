@@ -271,14 +271,6 @@ fn samples_of_round(host: HostIdentity, round: FanObservationRound) -> List<FanP
   })
 }
 
-fn samples_of_series(host: HostIdentity, rounds: List<FanObservationRound>) -> List<FanPolicySample> {
-  fold(rounds, init: [], f: (acc, r) => concat_samples(a: acc, b: samples_of_round(host: host, round: r)))
-}
-
-fn concat_samples(a: List<FanPolicySample>, b: List<FanPolicySample>) -> List<FanPolicySample> {
-  fold(b, init: a, f: (acc, s) => acc.append(s))
-}
-
 // HOW LONG THE HOST HAS BEEN PUBLISHING THERMALS, DERIVED FROM THE SERIES ITSELF RATHER THAN FROM A
 // CLOCK DIFFERENCE. The run controls its own interval, so the elapsed time since the first posted
 // round is (rounds since that one) x interval - a quantity this run can defend. Reading two
@@ -289,11 +281,23 @@ fn concat_samples(a: List<FanPolicySample>, b: List<FanPolicySample>) -> List<Fa
 // underdetermined rather than as zero. A series that starts with the host already posted also
 // answers from its FIRST round, and that is an honest lower bound rather than a claim about when
 // POST happened - the series cannot see before its own first sample.
-fn rounds_since_first_posted(rounds: List<FanObservationRound>) -> Int? {
+//
+// ELAPSED IS PER ROUND AND MUST NOT BE COMPUTED ONCE FOR THE SERIES. An earlier revision folded the
+// whole list into a single elapsed and stamped every sample with it, which is the elapsed of the
+// LAST round: a sample taken one interval after POST carried the final round's age. Nothing broke
+// while the run was shorter than its window, and that is exactly what made it dangerous - lengthen
+// the series, which this module's own note says a FailsafeHeldAfterPost finding requires, and every
+// sample crosses the window at once, including the ones inside it. A reading would get an answer it
+// did not earn, which is the fabricated output DESIGN §5 forbids, in the arm this lane exists to
+// report.
+//
+// The round already carries what is needed: its own index. Elapsed at a round is its distance from
+// the FIRST POSTED round times the interval, and Absent for any round at or before that one.
+fn first_posted_round_index(rounds: List<FanObservationRound>) -> Int? {
   fold(rounds, init: Absent, f: (acc, r) => match acc {
-    Present { value: n } => Present { value: n + 1 }
+    Present { value: i } => Present { value: i }
     Absent => match post_state_of_round(round: r) {
-      HostPosted => Present { value: 0 }
+      HostPosted => Present { value: r.round_index }
       HostPoweredOff => Absent
       HostPoweredOnPrePost => Absent
       HostPostStateUnobserved => Absent
@@ -301,10 +305,18 @@ fn rounds_since_first_posted(rounds: List<FanObservationRound>) -> Int? {
   })
 }
 
-fn elapsed_since_post(rounds: List<FanObservationRound>, interval: Second) -> Second? {
-  match rounds_since_first_posted(rounds: rounds) {
+fn elapsed_at_round(
+  round: FanObservationRound,
+  first_posted_index: Int?,
+  interval: Second,
+) -> Second? {
+  match first_posted_index {
     Absent => Absent
-    Present { value: n } => Present { value: second(count: n * second_count(s: interval)) }
+    Present { value: first } => if round.round_index < first {
+      none
+    } else {
+      Present { value: second(count: (round.round_index - first) * second_count(s: interval)) }
+    }
   }
 }
 

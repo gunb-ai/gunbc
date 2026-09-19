@@ -27,10 +27,11 @@ import gunbc.machine_intake_bmc_fan_observation {
   FanObservationRound,
   FanObservationSeries,
   FanObservationTaken,
-  elapsed_since_post,
+  elapsed_at_round,
+  first_posted_round_index,
   observe_fan_policy,
   render_series,
-  samples_of_series,
+  samples_of_round,
 }
 import gunbc.fleet_acoustic_intent { residence_duty_verdict }
 
@@ -159,18 +160,29 @@ fn render_duty_verdict(verdict: FanDutyCeilingVerdict) -> String {
   }
 }
 
+// EACH ROUND'S SAMPLES ARE STAMPED WITH THAT ROUND'S OWN ELAPSED, never with the series'. The first
+// posted index is computed once because it is a property of the series; the elapsed is computed per
+// round from it, because that is a property of the round.
 fn render_observation(rounds: List<FanObservationRound>, interval: Second) -> String {
-  let elapsed = elapsed_since_post(rounds: rounds, interval: interval)
+  let first_posted = first_posted_round_index(rounds: rounds)
   join([
     render_series(rounds: rounds),
     join(
-      map(
-        samples_of_series(host: mtcollins1_endpoint.host as HostIdentity, rounds: rounds),
-        s => render_sample_standing(sample: s, elapsed: elapsed),
-      ),
+      map(rounds, r => render_round_standings(round: r, first_posted: first_posted, interval: interval)),
       "\n",
     ),
   ], "\n")
+}
+
+fn render_round_standings(round: FanObservationRound, first_posted: Int?, interval: Second) -> String {
+  let elapsed = elapsed_at_round(round: round, first_posted_index: first_posted, interval: interval)
+  join(
+    map(
+      samples_of_round(host: mtcollins1_endpoint.host as HostIdentity, round: round),
+      s => render_sample_standing(sample: s, elapsed: elapsed),
+    ),
+    "\n",
+  )
 }
 
 // REFUSALS BEFORE THE FIRST REQUEST, EACH NAMING WHAT IS MISSING. A run that reaches the controller

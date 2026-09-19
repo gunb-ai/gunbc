@@ -93,9 +93,9 @@ import product.fan_policy_standing {
 import gunbc.machine_intake_bmc_fan_observation {
   FanObservationRound,
   chassis_power_on,
-  elapsed_since_post,
+  elapsed_at_round,
   post_state_of_round,
-  rounds_since_first_posted,
+  first_posted_round_index,
   samples_of_round,
   render_series,
 }
@@ -329,15 +329,34 @@ test fn witness_samples_are_per_endpoint_and_skip_unreadable() -> Bool {
 // ELAPSED-SINCE-POST IS DERIVED FROM THE SERIES AND IS ABSENT WHEN NO ROUND WAS POSTED. Absent is
 // not zero, and the standing derivation below turns that difference into a refusal rather than a
 // finding.
-test fn witness_elapsed_since_post_is_absent_without_a_posted_round() -> Bool {
+// ELAPSED IS ATTRIBUTED PER ROUND, AND THIS IS THE DISCRIMINATING RED FOR A LATENT DEFECT THAT NO
+// EXISTING CLAIM COULD SEE. An earlier revision folded the series into ONE elapsed -- the last
+// round's -- and stamped every sample with it. Nothing visibly broke while the run was shorter than
+// its window; on a longer series every sample would cross the window at once, including one taken a
+// single interval after POST, minting FailsafeHeldAfterPost for readings inside their window.
+//
+// So this claim uses a series LONGER than the 60s window on purpose: posted at round 1, and rounds
+// 2 and 7 must carry 10s and 60s rather than both carrying the series' final 60s. A revision that
+// reintroduces the series-wide fold makes round 2 read 60 and reds here.
+test fn witness_elapsed_is_attributed_per_round_not_per_series() -> Bool {
   let never = [witness_round(index: 0, power_on: true, thermal: false), witness_round(index: 1, power_on: true, thermal: false)]
-  let posted = [witness_round(index: 0, power_on: true, thermal: false), witness_round(index: 1, power_on: true, thermal: true), witness_round(index: 2, power_on: true, thermal: true)]
-  match rounds_since_first_posted(rounds: never) {
+  let posted = map([0, 1, 2, 3, 4, 5, 6, 7], i => witness_round(index: i, power_on: true, thermal: i >= 1))
+  let first = first_posted_round_index(rounds: posted)
+  match first_posted_round_index(rounds: never) {
     Present { value: _ } => false
-    Absent => match elapsed_since_post(rounds: posted, interval: second(count: 10)) {
+    Absent => match first {
       Absent => false
-      Present { value: e } => second_count(s: e) == 10
+      Present { value: f } => f == 1
     }
+  } && match elapsed_at_round(round: witness_round(index: 2, power_on: true, thermal: true), first_posted_index: first, interval: second(count: 10)) {
+    Present { value: e } => second_count(s: e) == 10
+    Absent => false
+  } && match elapsed_at_round(round: witness_round(index: 7, power_on: true, thermal: true), first_posted_index: first, interval: second(count: 10)) {
+    Present { value: e } => second_count(s: e) == 60
+    Absent => false
+  } && match elapsed_at_round(round: witness_round(index: 0, power_on: true, thermal: false), first_posted_index: first, interval: second(count: 10)) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 

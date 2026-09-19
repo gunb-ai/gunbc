@@ -4,7 +4,6 @@ import std.types { Bool, NonEmptyStr }
 import std.measure { FanCount, Percent, percent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.fans.types { FanCatalogRow }
-import product.placement_supply { SiteIdentity }
 import product.acoustic_ceiling {
   AcousticCeiling,
   AcousticCeilingBasis,
@@ -17,7 +16,6 @@ import product.fan_policy_standing {
   FanPolicyStanding,
   fan_policy_against_duty_ceiling,
 }
-import gunbc.fleet_physical_inventory { operator_site }
 
 // THE SITE'S ACOUSTIC INTENT, WHICH IS A POLICY THE OPERATOR STATES AND NOT A NUMBER ANYTHING READ.
 //
@@ -39,9 +37,12 @@ import gunbc.fleet_physical_inventory { operator_site }
 // machines are; minting a second identity for the same place - "operator-residence" beside
 // "operator-lab" - would be the §3 fork, arrived at from the direction where both spellings look
 // reasonable.
-
-data operator_residence_site: SiteIdentity = operator_site
-
+//
+// AND AN ALIAS ROW IS THAT FORK, which this module argued against and then committed anyway. It
+// carried `data operator_residence_site: SiteIdentity = operator_site` directly beneath the
+// paragraph above - a second name for one concept, with no consumer at all, so it was §3 nicknaming
+// and §3c dangling at once. Deleted rather than wired up: a caller that needs this site imports
+// operator_site, which is the name that already exists.
 // THE DUTY THE OPERATOR WILL TOLERATE SUSTAINED, AS A CEILING AND NOT A TARGET.
 //
 // Sixty percent is the operator's stated boundary read conservatively: "not sustained full duty" is
