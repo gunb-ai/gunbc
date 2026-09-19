@@ -3,8 +3,8 @@ module gunbc.runner_microvm_cell_readiness
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.sanitation {
-  CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact,
-  cell_readiness_line,
+  CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved,
+  required_sanitation_facts, cell_readiness_line,
 }
 
 data runner_microvm_cell_readiness_disposition: Disposition = SingleAuthority
@@ -188,9 +188,17 @@ fn cell_incarnation_admission_text(admission: CellIncarnationAdmission) -> Strin
 // attempt's readback), but a Quarantined record is never loosened: clearing a quarantine is a NEW
 // readback that establishes the facts, and it is recorded at a new generation so the clearing event
 // is distinguishable from a late copy of the old one.
+//
+// UNATTRIBUTED RESIDUE HAS NO ATTEMPT TO NAME, SO IT HAS ITS OWN WRITE AND THAT WRITE CAN ONLY
+// QUARANTINE. Residue found on a cell the store called Ready belongs to no attempt the store knows,
+// and inventing one -- the cell's name, the previous generation -- would be a record claiming an
+// identity nobody observed. It carries no readiness parameter: its record is a quarantine with every
+// sanitation fact unobserved, at the generation that was about to run, and only a later readback at
+// a higher generation that establishes the facts can clear it.
 type CellReadinessWrite
   = WriteAttemptStarted { cell: CellId, generation: Int, attempt: NonEmptyStr }
   | WriteReadbackSettled { cell: CellId, generation: Int, attempt: NonEmptyStr, readiness: CellReadiness }
+  | WriteUnattributedResidue { cell: CellId, generation: Int }
 
 type CellReadinessWriteResult
   = WriteAccepted { records: List<CellReadinessRecord> }
@@ -204,6 +212,7 @@ fn write_cell(write: CellReadinessWrite) -> CellId {
   match write {
     WriteAttemptStarted { cell: c, generation: _, attempt: _ } => c
     WriteReadbackSettled { cell: c, generation: _, attempt: _, readiness: _ } => c
+    WriteUnattributedResidue { cell: c, generation: _ } => c
   }
 }
 
@@ -211,6 +220,12 @@ fn record_of_write(write: CellReadinessWrite) -> CellReadinessRecord {
   match write {
     WriteAttemptStarted { cell: c, generation: g, attempt: a } => CellAttemptInFlight { cell: c, generation: g, attempt: a }
     WriteReadbackSettled { cell: c, generation: g, attempt: _, readiness: r } => CellSettled { cell: c, generation: g, readiness: r }
+    WriteUnattributedResidue { cell: c, generation: g } =>
+      CellSettled {
+        cell: c,
+        generation: g,
+        readiness: CellQuarantined { cell: c, unproven: map(required_sanitation_facts(), f => FactNotObserved { fact: f }) },
+      }
   }
 }
 
@@ -231,6 +246,16 @@ fn apply_cell_readiness_write(
       match admission_of_cell_records(cell: c, records: records_for_cell(records: records, cell: c), allocation_generation: g) {
         CellIncarnationAdmitted { cell: _, generation: _ } => WriteAccepted { records: replaced }
         refused => WriteRefusedNotAdmitted { cell: c, admission: refused }
+      }
+    WriteUnattributedResidue { cell: c, generation: g } =>
+      match records_for_cell(records: records, cell: c).first() {
+        Absent => WriteAccepted { records: replaced }
+        Present { value: stored } =>
+          if g < record_generation(record: stored) {
+            WriteRefusedStale { cell: c, stored: record_generation(record: stored), offered: g }
+          } else {
+            WriteAccepted { records: replaced }
+          }
       }
     WriteReadbackSettled { cell: _, generation: _, attempt: _, readiness: _ } =>
       match records_for_cell(records: records, cell: cell).first() {
@@ -258,6 +283,7 @@ fn same_generation_settle(
   match write {
     WriteAttemptStarted { cell: c, generation: g, attempt: _ } =>
       WriteRefusedAttemptAlreadyRecorded { cell: c, generation: g }
+    WriteUnattributedResidue { cell: _, generation: _ } => WriteAccepted { records: replaced }
     WriteReadbackSettled { cell: c, generation: g, attempt: a, readiness: r } =>
       match stored {
         CellAttemptInFlight { cell: _, generation: _, attempt: sa } =>

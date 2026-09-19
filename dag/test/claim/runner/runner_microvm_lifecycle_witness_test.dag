@@ -14,14 +14,14 @@ import gunbc.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn,
   HostWithdrawn, HostStoreUnreadable, HostStoreNotRootOwned, HostStoreAmbiguous,
   CellNeverSettled, CellQuarantinedAt, CellGenerationMismatch,
-  CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled,
+  CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
   CellReadinessWriteResult, WriteAccepted, WriteRefusedStale, WriteRefusedWouldLoosenQuarantine,
   WriteRefusedAttemptMismatch, WriteRefusedAttemptAlreadyRecorded, WriteRefusedNotAdmitted,
   cell_incarnation_admission, apply_cell_readiness_write,
 }
 import gunbc.runner_microvm_lifecycle {
   AttemptIdentity, attempt_identity_vmm,
-  ControllerStart, StartAttempt, StartRecovery, StartRefused, StartIdentityDisagrees, controller_start,
+  ControllerStart, StartAttempt, StartRecovery, StartQuarantineUnattributedResidue, StartRefused, StartIdentityDisagrees, controller_start,
   BringUpPhase, AttemptPrepared, VmmStarted, GuestBooted, RunnerListening, SlotServing,
   BringUpEvent, BringUpTransition, BringUpAdvanced, BringUpRefusedForeignIncarnation,
   BringUpRefusedOutOfOrder, advance_bring_up,
@@ -258,13 +258,29 @@ test fn boot_recovery_settles_the_lost_attempt_before_the_next_admission() -> Bo
   }
 }
 
-// RESOURCES FOUND ON AN ADMITTED CELL OUTRANK THE RECORD: the controller recovers, it does not launch.
-test fn resources_found_at_start_recover_instead_of_launching() -> Bool {
-  match identity(generation: 1, invocation: "inv-a") {
+// RESOURCES FOUND ON AN ADMITTED CELL OUTRANK THE RECORD, AND THE RESIDUE IS NOT GIVEN AN IDENTITY.
+// The old arm wrote the cell's name as an attempt at generation g - 1 (review on #11670). Now the
+// controller records an unattributed quarantine at the generation that was about to run, the store
+// accepts it over the Ready record, and the next admission is withdrawn, not admitted.
+test fn unattributed_residue_quarantines_at_the_admitted_generation_without_an_invented_attempt() -> Bool {
+  match identity(generation: 1, invocation: "inv-first") {
     Absent => false
     Present { value: id } =>
       match controller_start(admission: CellIncarnationAdmitted { cell: cell, generation: 1 }, ground: GroundOccupied, identity: id) {
-        StartRecovery { cell: _, generation: 0, attempt: _, trigger: ResourcesFoundOnRecovery } => true
+        StartQuarantineUnattributedResidue { trigger: ResourcesFoundOnRecovery, record: w } =>
+          match w {
+            WriteUnattributedResidue { cell: _, generation: g } =>
+              g == 1
+                && match apply_cell_readiness_write(records: [CellSettled { cell: cell, generation: 0, readiness: CellReady { cell: cell } }], write: w) {
+                  WriteAccepted { records: after } =>
+                    match cell_incarnation_admission(store: StoreRead { ownership: StoreRootOwned, records: after }, cell: cell, allocation_generation: 2) {
+                      CellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: q, unproven: u } } => q == 1 && (u |> count) == 6
+                      _ => false
+                    }
+                  _ => false
+                }
+            _ => false
+          }
         _ => false
       }
   }

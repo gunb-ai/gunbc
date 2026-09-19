@@ -16,7 +16,7 @@ import gunbc.runner_microvm_attempt {
 import gunbc.runner_attempt_launch { AttemptGround, GroundClear, GroundOccupied }
 import gunbc.runner_microvm_cell_readiness {
   CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired,
-  CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled,
+  CellReadinessWrite, WriteAttemptStarted, WriteReadbackSettled, WriteUnattributedResidue,
 }
 
 data runner_microvm_lifecycle_disposition: Disposition = SingleAuthority
@@ -79,6 +79,7 @@ fn attempt_identity_same(a: AttemptIdentity, b: AttemptIdentity) -> Bool {
 type ControllerStart
   = StartAttempt { identity: AttemptIdentity, record: CellReadinessWrite }
   | StartRecovery { cell: CellId, generation: Int, attempt: NonEmptyStr, trigger: TerminalTrigger }
+  | StartQuarantineUnattributedResidue { trigger: TerminalTrigger, record: CellReadinessWrite }
   | StartRefused { admission: CellIncarnationAdmission }
   | StartIdentityDisagrees { admitted_generation: Int, identity_generation: Int }
 
@@ -86,7 +87,9 @@ type ControllerStart
 // THE GROUND IS gunbc.runner_attempt_launch's AttemptGround, the host's own check for prior attempt
 // resources, and it outranks an admitting record: a store that says Ready over a cell whose jail or
 // attempt directory is still present is a store that missed something, and the answer is a
-// ResourcesFoundOnRecovery teardown at the settled generation, not a launch onto the residue.
+// quarantine, not a launch onto the residue. The residue names no attempt the store knows, so the
+// controller does not invent one: it records WriteUnattributedResidue at the generation that was
+// about to run, which can only quarantine (gunbc.runner_microvm_cell_readiness).
 fn controller_start(
   admission: CellIncarnationAdmission,
   ground: AttemptGround,
@@ -96,7 +99,10 @@ fn controller_start(
     CellIncarnationAdmitted { cell: c, generation: g } =>
       match ground {
         GroundOccupied =>
-          StartRecovery { cell: c, generation: g - 1, attempt: c as String as NonEmptyStr, trigger: ResourcesFoundOnRecovery }
+          StartQuarantineUnattributedResidue {
+            trigger: ResourcesFoundOnRecovery,
+            record: WriteUnattributedResidue { cell: c, generation: g },
+          }
         GroundClear =>
           if g == identity.allocation_generation {
             StartAttempt {
