@@ -28,18 +28,25 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_live_fo
 // assertion. DESIGN section 3's rule against buying reach with a debt row is not engaged: the live
 // authority is this claim's SUBJECT, not reach it acquired.
 //
-// THREE CANDIDATE REDUCTIONS WERE MEASURED, AND ALL THREE FAILED -- RECORDED BECAUSE A DROP WHOSE
-// IRREDUCIBILITY IS ASSERTED RATHER THAN TESTED IS THE INFLATION SECTION 4b(1) FORBIDS.
+// THE IRREDUCIBILITY IS TESTED, NOT ASSERTED -- A DROP THAT MERELY CLAIMS IT IS THE INFLATION
+// SECTION 4b(1) FORBIDS. Two candidate reductions were measured and FALSIFIED.
 // (1) Binding the cycle-time history lazily inside the non-refusing branch of
 // `roadmap_schedule_forecast_over` moved the claim by ONE eval step: the substrate already
-// evaluates a `let` on demand, so the binding was never paid. (2) Replacing the copied accumulator
-// in `derived_node_sizings` (`concat(acc, one)` under a fold) moved it by 16 steps of 613,137.
-// (3) Routing the claim through `frontier_sets_from_live_history` with an empty document showed a
-// 2.5x win under `claim_batch` and was REVERTED: `v2.workflow.floor_pure_producer_share` enrols
+// evaluates a `let` on demand, so the binding was never paid.
+// (2) Routing the claim through `frontier_sets_from_live_history` with an empty document showed a
+// large win under `claim_batch` and was REVERTED: `v2.workflow.floor_pure_producer_share` enrols
 // `roadmap_authority_projection` as a served carried-input warm row and does not serve that
 // spelling, so the local win would have RAISED the gated figure. `claim_batch` has no cross-claim
 // share and is therefore not the instrument that decides this; the floor's own
-// `required_floor_claim_cost` is.
+// `required_floor_claim_cost` is, and the standing figure is read from it rather than copied here.
+//
+// A THIRD CANDIDATE WAS NOT A REDUCTION BUT A DEFECT, AND IT IS FIXED RATHER THAN RECORDED.
+// `derived_node_sizings` rebuilt both halves of its accumulator per node. That is a copied
+// accumulator, which DESIGN section 6 fixes AT ANY N, so measuring that the repair barely moved
+// this claim was never a reason to decline it -- the realized-n rebuttal is the one section 6
+// rules out by name. It is now an append-free `flat_map` on each independent list, and it is NOT
+// part of this row's irreducibility case (gunbc#10994 review 68130). What remains after that
+// repair is the per-node sizing derivation itself, which is what clause (i) below names.
 //
 // WHY NOT THE LONG HOME, WHICH IS THE FLOOR'S OTHER SANCTIONED REMEDY. Because there it would stop
 // running on the change it exists to catch. The floor plans a changed witness from

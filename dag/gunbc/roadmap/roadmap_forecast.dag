@@ -612,14 +612,20 @@ fn node_sizing_adaptation(rn: RoadmapNode, d: NodeSizingDerivation) -> NodeSizin
 // gunbc.rung_drop.roadmap_sizing_authored_to_derived; it is written as a fold over the real deriver
 // rather than as a literal empty list, so the day the deriver answers this function starts
 // producing without being edited.
+// APPEND-FREE: THE TWO LISTS ARE INDEPENDENT, SO EACH IS ONE flat_map RATHER THAN A REBUILT PAIR.
+// The first form folded a NodeSizingAdaptation and rebuilt both halves with
+// concat(acc.x, one.x) on every node -- a copied accumulator, quadratic in the active node count.
+// DESIGN section 6 fixes that shape AT ANY N: "n is small here" is not a time-stable fact, because
+// reuse changes n. It is recorded here that this repair barely moves this fold's measured cost,
+// and that is deliberately NOT a reason to skip it -- the realized-n rebuttal is the one section 6
+// rules out by name, and leaning on it would have made a cost-shape defect part of an
+// irreducibility argument (gunbc#10994 review 68130).
 fn derived_node_sizings(nodes: List<RoadmapNode>) -> NodeSizingAdaptation {
-  nodes |> fold(init: NodeSizingAdaptation { assignments: [], refusals: [] }, f: (acc, n) => {
-    let one = node_sizing_adaptation(rn: n, d: node_sizing_derivation(rn: n))
-    NodeSizingAdaptation {
-      assignments: concat(acc.assignments, one.assignments),
-      refusals: concat(acc.refusals, one.refusals),
-    }
-  })
+  let adaptations = nodes |> map(n => node_sizing_adaptation(rn: n, d: node_sizing_derivation(rn: n)))
+  NodeSizingAdaptation {
+    assignments: adaptations |> flat_map(a => a.assignments),
+    refusals: adaptations |> flat_map(a => a.refusals),
+  }
 }
 
 // LIST ORDER IS NOT AN ARBITER, AND std.keyed_roster IS WHAT SAYS SO. assigned_sizing takes the
