@@ -310,43 +310,41 @@ fn scan_partition(
       )
     },
   )
-  scan_outcome(
-    receipt: ScanReceipt {
-      query: query,
-      per_page: per_page,
-      page_bound: bound,
+  let receipt = ScanReceipt {
+    query: query,
+    per_page: per_page,
+    page_bound: bound,
+    pages_read: walked.pages_read,
+    hits_read: count(walked.hits),
+    enumerability: partition_enumerability(
+      total_count_seen: walked.total_count_seen,
       pages_read: walked.pages_read,
-      hits_read: count(walked.hits),
-      enumerability: partition_enumerability(
-        total_count_seen: walked.total_count_seen,
-        pages_read: walked.pages_read,
-      ),
-      stop: walk_stop_or_bound(state: walked),
-      records: walked.records,
-    },
-    hits: walked.hits,
-  )
-}
-
-// THE HITS AND THE STANDING TRAVEL AS ONE VALUE, AND AN EARLIER REVISION GOT THIS EXACTLY BACKWARDS.
-// It kept the hits off the receipt and offered scan_hits_if_declared_population(receipt, hits) to
-// gate them -- reasoning that a reader handed a bare list cannot see the standing, which is a real
-// concern and the right one. But scan_partition returned the receipt ALONE and dropped walked.hits,
-// so no caller could obtain the list the gate wanted, and the one function that existed to hand out
-// a population was uninvokable: a wall nothing could reach, guarding a product nothing could get.
-//
-// The concern is better served by construction than by a gate (DESIGN section 5). A coproduct makes
-// the standing the THING YOU MATCH ON to reach the hits, so a caller cannot hold the population
-// without having passed through the arm that says it is one -- and the failing arm still carries the
-// receipt, because a caller that got no population needs to know why.
-type ScanOutcome
-  = ScanDeclaredPopulation { receipt: ScanReceipt, hits: List<CodeSearchHit> }
-  | ScanNotAPopulation { receipt: ScanReceipt }
-
-fn scan_outcome(receipt: ScanReceipt, hits: List<CodeSearchHit>) -> ScanOutcome {
+    ),
+    stop: walk_stop_or_bound(state: walked),
+    records: walked.records,
+  }
   if scan_is_a_declared_population(receipt: receipt) {
-    ScanDeclaredPopulation { receipt: receipt, hits: hits }
+    ScanDeclaredPopulation { receipt: receipt, hits: walked.hits }
   } else {
     ScanNotAPopulation { receipt: receipt }
   }
 }
+
+// THE HITS AND THE STANDING ARE BOUND, NOT MERELY COLOCATED, AND THE DIFFERENCE IS THE WHOLE POINT.
+// Two revisions got this wrong in opposite directions. The first kept the hits off the receipt and
+// offered a gate taking (receipt, hits) -- but scan_partition dropped walked.hits, so no caller
+// could obtain the list and the gate was uninvokable. The second added this coproduct and an
+// EXPORTED MINT over two independently supplied values, which fixes the honest production call and
+// leaves the dishonest one writable: a caller could still pair a green receipt for population A
+// with hits from population B and get ScanDeclaredPopulation, because ScanReceipt is freely
+// constructible and nothing bound the two arguments to one walk.
+//
+// SO THE POSITIVE CARRIER IS sole_constructor AND IS MINTED ONLY HERE, inside the fold that HAS the
+// walk state -- the receipt and the hits come from one `walked` and cannot come from anywhere else.
+// The judgement itself stays ordinary and freely testable as scan_is_a_declared_population over a
+// receipt, which is what the hermetic claims exercise; what they can no longer do is mint the
+// production-positive carrier, which is correct, because the live route that would justify one is
+// still missing and says so.
+type ScanOutcome sole_constructor
+  = ScanDeclaredPopulation { receipt: ScanReceipt, hits: List<CodeSearchHit> }
+  | ScanNotAPopulation { receipt: ScanReceipt }

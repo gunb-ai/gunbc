@@ -42,10 +42,6 @@ import gunbc.ci_workflow_scan_producer {
   exhausted_if_short,
   scan_is_a_declared_population,
   walk_stop_or_bound,
-  ScanOutcome,
-  ScanDeclaredPopulation,
-  ScanNotAPopulation,
-  scan_outcome,
 }
 
 // THE DECISIONS THIS DRIVES ARE THE ONES THAT DECIDE WHETHER A SAMPLE GETS CALLED A CENSUS, and
@@ -240,35 +236,35 @@ test fn an_exhausted_walk_over_a_saturated_query_is_not_a_population() -> Bool {
   )) == false
 }
 
-// THE PRODUCT OF THIS MODULE IS A GATED POPULATION, AND THESE TWO CLAIMS ARE ITS WALL AND ITS
-// CONTROL. The gate used to be a function taking hits the caller had no way to obtain; it is a
-// coproduct now, so the only route to the hits is the arm that says they are a declared population.
-test fn a_declared_population_hands_out_its_hits() -> Bool {
-  match scan_outcome(receipt: w_receipt(
-      stop: StoppedExhausted { pages_read: 3 },
-      enumerability: PartitionFullyEnumerable { total_count: 250 },
-    ), hits: [w_hit()]) {
-    ScanDeclaredPopulation { receipt: _, hits: h } => count(h) == 1
-    ScanNotAPopulation { receipt: _ } => false
-  }
+// THE PRODUCT OF THIS MODULE IS A GATED POPULATION, AND THESE CLAIMS TEST THE JUDGEMENT RATHER THAN
+// THE CARRIER -- deliberately, and the reason is the point of the repair. ScanOutcome is
+// sole_constructor and is minted only inside scan_partition, where the receipt and the hits both
+// come from one walk state. A claim that could construct ScanDeclaredPopulation would be able to
+// pair a green receipt for one population with hits from another, which is exactly the invalid state
+// the carrier exists to make unwritable; being unable to mint it here is the wall working, not a
+// coverage gap.
+//
+// So what is freely testable is scan_is_a_declared_population over a supplied receipt, which is the
+// ordinary judgement the mint consults. The claims below are its wall and its control, and the two
+// population claims further down exercise the same fold through the walk-shaped receipts.
+test fn a_saturated_walk_is_not_a_declared_population() -> Bool {
+  scan_is_a_declared_population(receipt: w_receipt(
+    stop: StoppedExhausted { pages_read: 10 },
+    enumerability: PartitionSaturated {
+      total_count: 5000,
+      ceiling: retrievable_result_ceiling,
+      cause: "fixture" as NonEmptyStr,
+    },
+  )) == false
 }
 
-// THE CONTROL, AND IT IS THE ARM THAT MATTERS: a walk that saturated the retrievable ceiling is a
-// SAMPLE, and handing its hits out as a population is how a lower bound gets reported as a total --
-// which this lane has already done once, with the occupancy figures. The receipt still travels, so
-// a caller that got nothing can say why.
-test fn a_saturated_walk_withholds_its_hits_and_keeps_the_receipt() -> Bool {
-  match scan_outcome(receipt: w_receipt(
-      stop: StoppedExhausted { pages_read: 10 },
-      enumerability: PartitionSaturated {
-        total_count: 5000,
-        ceiling: retrievable_result_ceiling,
-        cause: "fixture" as NonEmptyStr,
-      },
-    ), hits: [w_hit()]) {
-    ScanNotAPopulation { receipt: r } => (r.query as String) == "fixture-query"
-    ScanDeclaredPopulation { receipt: _, hits: _ } => false
-  }
+// The control: a walk that exhausted an enumerable partition IS a population, so the judgement has
+// not been made unconditionally false.
+test fn an_exhausted_enumerable_walk_is_a_declared_population() -> Bool {
+  scan_is_a_declared_population(receipt: w_receipt(
+    stop: StoppedExhausted { pages_read: 3 },
+    enumerability: PartitionFullyEnumerable { total_count: 250 },
+  ))
 }
 
 // THE BOUND IS DERIVED FROM THE ENDPOINT'S CEILING, not authored beside it, so a caller cannot ask
