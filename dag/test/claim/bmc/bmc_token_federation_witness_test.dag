@@ -46,7 +46,7 @@ test fn bmc_wif_principal_set_pins_repo() -> Bool {
 test fn bmc_smoke_workflow_is_keyless_with_id_token_write() -> Bool {
   let y = emit_bmc_token_smoke_workflow_yaml()
   string_contains(s: y, pattern: "id-token: write")
-    && string_contains(s: y, pattern: "google-github-actions/auth@v2")
+    && string_contains(s: y, pattern: action_release_uses_text(action_release: google_auth_action))
     && string_contains(s: y, pattern: "workload_identity_provider:")
     && string_contains(s: y, pattern: "service_account: bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com")
     && string_contains(s: y, pattern: "gcloud auth print-access-token")

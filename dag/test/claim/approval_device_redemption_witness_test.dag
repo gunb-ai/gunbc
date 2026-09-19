@@ -1,0 +1,429 @@
+module test.claim.approval_device_redemption_witness_test
+
+import std.logic { Bool }
+import std.types { String, NonEmptyStr, Timestamp, Secret }
+import std.measure { byte_size }
+import std.scoped_authorization { AttemptIdentity }
+import extdeps.crypto.mac { MacKey, HmacSha256, mac_sign, MacSigned, MacKeyMaterialNotHex }
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.apple.apns { apns_send_outcome_of }
+import extdeps.apple.app_attest {
+  AppAttestProduction, AttestationVerification, AssertionVerification, AssertionSignatureInvalid, AttestationNonceMismatch,
+  attestation_verification_from_implementation, assertion_verification_from_implementation,
+}
+import extdeps.crypto.signature {
+  VerifyingKey, SignatureBytes, SignatureVerification, EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth,
+  signature_verification_from_implementation,
+}
+import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input, issue_capability, CapabilityIssued, CapabilityIssuanceRefused }
+import gunbc.auth.approval_device_redemption {
+  EnrolmentChallenge,
+  PushProviderAccepted, PushProviderRefused, PushRegistrationInvalid, PushProviderUnreached, PushProviderUndecodable,
+  push_outcome_of_apns,
+  VerifiedDeviceEnrollment, EnrolmentSlotStanding, EnrolmentCodeUnspent, EnrolmentCodeConsumed, EnrolmentRevoked, EnrolmentCodeUnknown, EnrolmentSlotUnreadable,
+  EnrolmentAdmitted, EnrolmentRefused, EnrolmentCodeAlreadyUsed, EnrolmentCodeExpired, EnrolmentAttestationForOtherBytes,
+  EnrolmentAttestationRefused, EnrolmentAndroidUnrealized, enrolment_admission,
+  DeviceAdmission, DeviceAdmitted, DeviceNotAdmitted,
+  DeviceSignedForAnotherRequest, DeviceChallengeExpired, DeviceChallengeNotIssuedHere, DeviceCapabilityRefused, DeviceCapabilityTagMalformed,
+  DeviceSignatureRefused, DevicePlatformProofRefused, DevicePlatformProofForOtherBytes, DevicePlatformProofWrongKey,
+  DeviceEnrollmentRevoked, DeviceEnrollmentForAnotherOperator, DeviceEnrollmentUnknown,
+  device_redemption_admission, redeem_device_over_store,
+  parse_enrolment_record, enrolment_json, enrolment_code_json, code_of_enrollment_id,
+}
+import gunbc.auth.approval_device_wire {
+  DeviceRedemptionSigningInput, RedemptionChallenge, MobileIos, MobileAndroid,
+  device_redemption_signing_input, enrolment_transcript, redemption_challenge_message, approval_device_audience,
+}
+import gunbc.auth.approval_decision_store {
+  StoredApprovalRequest, stored_request_json, claims_for, approval_mac_key_id, approval_operator_login, ApprovalKeyLoaded,
+}
+
+data key_a: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYA" }
+data key_b: VerifyingKey = VerifyingKey { suite: EcdsaP256Sha256, encoding: Sec1Uncompressed, point_b64url: "BKEYB" }
+data sig: SignatureBytes = SignatureBytes { suite: EcdsaP256Sha256, encoding: P1363FixedWidth, b64url: "SIG" }
+
+// ── Push outcomes ────────────────────────────────────────────────────────────────────────────
+
+// 410 IS THE ONE STATUS THAT IS NOT A RETRY: the registration is dead.
+test fn witness_apns_410_becomes_registration_invalid() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestStatusRefused { status: 410, body: "{\"reason\":\"Unregistered\"}" }, apns_id: "")) {
+    PushRegistrationInvalid { provider: _, detail } => detail != ""
+    _ => false
+  }
+}
+
+test fn witness_apns_429_stays_a_retryable_refusal_carrying_its_status() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestStatusRefused { status: 429, body: "{\"reason\":\"TooManyRequests\"}" }, apns_id: "")) {
+    PushProviderRefused { provider: _, status, detail: _, retryable } => status == 429 && retryable
+    _ => false
+  }
+}
+
+test fn witness_apns_ok_carries_apns_id() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestOk, apns_id: "id-7")) {
+    PushProviderAccepted { provider: _, receipt } => receipt as String == "id-7"
+    _ => false
+  }
+}
+
+// A 200 WITHOUT apns-id IS NOT AN ACCEPTANCE: it must not become PushProviderAccepted on an empty id.
+test fn witness_apns_ok_without_apns_id_is_undecodable() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestOk, apns_id: "")) {
+    PushProviderUndecodable { provider: _, status, cause: _ } => status == 200
+    _ => false
+  }
+}
+
+test fn witness_apns_transport_refusal_has_no_status() -> Bool {
+  match push_outcome_of_apns(o: apns_send_outcome_of(rest: RestTransportRefused { cause: "connect refused" }, apns_id: "")) {
+    PushProviderUnreached { provider: _, cause } => cause == "connect refused"
+    _ => false
+  }
+}
+
+
+// ── Enrolment ────────────────────────────────────────────────────────────────────────────────
+data fx_code: NonEmptyStr = "482913"
+data fx_observed_at: Timestamp = "2026-09-17T10:00:00Z"
+
+fn fx_code_challenge(expires_at: Timestamp) -> EnrolmentChallenge {
+  EnrolmentChallenge { code: fx_code, issued_to_login: approval_operator_login, issued_at: "2026-09-17T09:55:00Z", expires_at: expires_at }
+}
+
+data fx_live_code: EnrolmentSlotStanding = EnrolmentCodeUnspent { challenge: fx_code_challenge(expires_at: "2026-09-17T10:05:00Z") }
+
+fn fx_attestation(client_data: NonEmptyStr) -> AttestationVerification {
+  attestation_verification_from_implementation(key_id: "attest-1", public_key_point_b64url: "BATTEST", receipt_b64: "RECEIPT", environment: AppAttestProduction, client_data: client_data, refusal: none)
+}
+
+fn fx_admitted_enrollment() -> VerifiedDeviceEnrollment? {
+  match enrolment_admission(slot: fx_live_code, platform: MobileIos, decision_key: key_a, attestation: fx_attestation(client_data: enrolment_transcript(code: fx_code, decision_key: key_a, platform: MobileIos)), observed_at: fx_observed_at) {
+    EnrolmentAdmitted { enrollment: e } => Present { value: e }
+    EnrolmentRefused { cause: _ } => none
+  }
+}
+
+// THE POSITIVE CONTROL: the login comes from the code's issuance, never from the app.
+test fn witness_enrolment_admits_a_live_code_with_an_attestation_over_its_transcript() -> Bool {
+  match fx_admitted_enrollment() {
+    Present { value: e } => e.operator_login == approval_operator_login && e.enrollment_id as String == "enr-482913"
+    Absent => false
+  }
+}
+
+test fn witness_enrolment_refuses_a_consumed_code() -> Bool {
+  match fx_admitted_enrollment() {
+    Absent => false
+    Present { value: e } =>
+      match enrolment_admission(slot: EnrolmentCodeConsumed { enrollment: e }, platform: MobileIos, decision_key: key_a, attestation: fx_attestation(client_data: enrolment_transcript(code: fx_code, decision_key: key_a, platform: MobileIos)), observed_at: fx_observed_at) {
+        EnrolmentRefused { cause: EnrolmentCodeAlreadyUsed } => true
+        _ => false
+      }
+  }
+}
+
+test fn witness_enrolment_refuses_an_expired_code() -> Bool {
+  match enrolment_admission(slot: EnrolmentCodeUnspent { challenge: fx_code_challenge(expires_at: "2026-09-17T09:59:59Z") }, platform: MobileIos, decision_key: key_a, attestation: fx_attestation(client_data: enrolment_transcript(code: fx_code, decision_key: key_a, platform: MobileIos)), observed_at: fx_observed_at) {
+    EnrolmentRefused { cause: EnrolmentCodeExpired { expires_at: _, observed_at: _ } } => true
+    _ => false
+  }
+}
+
+// An attestation over ANOTHER key's transcript cannot enrol this key.
+test fn witness_enrolment_refuses_an_attestation_over_another_key() -> Bool {
+  match enrolment_admission(slot: fx_live_code, platform: MobileIos, decision_key: key_a, attestation: fx_attestation(client_data: enrolment_transcript(code: fx_code, decision_key: key_b, platform: MobileIos)), observed_at: fx_observed_at) {
+    EnrolmentRefused { cause: EnrolmentAttestationForOtherBytes } => true
+    _ => false
+  }
+}
+
+test fn witness_enrolment_refuses_a_refused_attestation() -> Bool {
+  let refused = attestation_verification_from_implementation(key_id: "attest-1", public_key_point_b64url: "BATTEST", receipt_b64: "RECEIPT", environment: AppAttestProduction, client_data: "x", refusal: Present { value: AttestationNonceMismatch })
+  match enrolment_admission(slot: fx_live_code, platform: MobileIos, decision_key: key_a, attestation: refused, observed_at: fx_observed_at) {
+    EnrolmentRefused { cause: EnrolmentAttestationRefused { cause: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_enrolment_refuses_android_until_its_verifier_exists() -> Bool {
+  match enrolment_admission(slot: fx_live_code, platform: MobileAndroid, decision_key: key_a, attestation: fx_attestation(client_data: enrolment_transcript(code: fx_code, decision_key: key_a, platform: MobileAndroid)), observed_at: fx_observed_at) {
+    EnrolmentRefused { cause: EnrolmentAndroidUnrealized } => true
+    _ => false
+  }
+}
+
+// ── Redemption admission: every gate, real MACs, no store ────────────────────────────────────
+// The key and request are the store witness's fixtures (approval_decision_store_witness_test); the
+// challenge nonce and capability tag are minted here by mac_sign under that key, so each refusal
+// differs from the admitted control in exactly one input.
+data fx_key_hex: String = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+fn fx_key() -> MacKey {
+  MacKey { id: approval_mac_key_id, suite: HmacSha256, material: fx_key_hex as Secret }
+}
+
+fn fx_request() -> StoredApprovalRequest {
+  StoredApprovalRequest {
+    escalation_id: "esc-mtc1-boot-1",
+    request_revision: "sha256:abababababababababababababababababababababababababababababababab",
+    attempt: "mtc1-boot-attempt-1" as AttemptIdentity,
+    requester: "eager-owl-205",
+    purpose: "Boot Mt. Collins unit 1 once from the diskless image over BMC virtual media.",
+    destructive: true,
+    issued_at: "2026-09-16T20:00:00Z",
+    expires_at: "2026-09-17T20:00:00Z",
+    key_id: approval_mac_key_id,
+  }
+}
+
+data fx_challenge_expiry: Timestamp = "2026-09-17T10:05:00Z"
+
+fn mac_hex(message: NonEmptyStr) -> NonEmptyStr {
+  match mac_sign(key: fx_key(), message: message) {
+    MacSigned { tag: t } => t.hex
+    MacKeyMaterialNotHex { key_id: _ } => "not-hex"
+  }
+}
+
+fn fx_signing_input(request_text: NonEmptyStr, expiry: Timestamp, nonce: NonEmptyStr, tag: NonEmptyStr) -> DeviceRedemptionSigningInput {
+  DeviceRedemptionSigningInput {
+    audience: approval_device_audience,
+    enrollment_id: "enr-482913",
+    challenge: RedemptionChallenge { expires_at: expiry, nonce_hex: nonce },
+    escalation_id: fx_request().escalation_id,
+    request_revision: fx_request().request_revision,
+    stored_request_text: request_text,
+    decision: ProposeApprove,
+    capability_text: approval_capability_signing_input(c: claims_for(request: fx_request(), decision: ProposeApprove)),
+    capability_tag_b64url: tag,
+  }
+}
+
+fn fx_nonce() -> NonEmptyStr {
+  mac_hex(message: redemption_challenge_message(escalation_id: fx_request().escalation_id, request_revision: fx_request().request_revision, enrollment_id: "enr-482913", expires_at: fx_challenge_expiry))
+}
+
+// THE TAG COMES FROM REAL ISSUANCE, in its canonical base64url wire spelling -- the same route the
+// server's links take -- so admission's capability_tag_hex conversion is exercised, not bypassed.
+fn issued_tag(decision: ProposedDecision) -> NonEmptyStr {
+  match issue_capability(claims: claims_for(request: fx_request(), decision: decision), key: fx_key()) {
+    CapabilityIssued { capability: c } => c.tag_b64url
+    CapabilityIssuanceRefused { cause: _ } => "issuance-refused"
+  }
+}
+
+fn fx_tag() -> NonEmptyStr {
+  issued_tag(decision: ProposeApprove)
+}
+
+fn fx_good_input() -> DeviceRedemptionSigningInput {
+  fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: fx_challenge_expiry, nonce: fx_nonce(), tag: fx_tag())
+}
+
+fn verdict(key: VerifyingKey, message: NonEmptyStr) -> SignatureVerification {
+  signature_verification_from_implementation(key: key, key_size: byte_size(count: 65), signature: sig, signature_size: byte_size(count: 64), message: message, implementation_verified: true)
+}
+
+fn assertion_over(key_id: NonEmptyStr, client_data: NonEmptyStr) -> AssertionVerification {
+  assertion_verification_from_implementation(key_id: key_id, public_key_point_b64url: "BATTEST", counter: 1, client_data: client_data, refusal: none)
+}
+
+fn admit(input: DeviceRedemptionSigningInput, signature: SignatureVerification, assertion: AssertionVerification) -> DeviceAdmission {
+  match fx_admitted_enrollment() {
+    Absent => DeviceNotAdmitted { outcome: DeviceEnrollmentUnknown }
+    Present { value: e } =>
+      device_redemption_admission(key: fx_key(), enrollment: e, request: fx_request(), signed: input, signature: signature, assertion: assertion, observed_at: fx_observed_at)
+  }
+}
+
+fn good_signature() -> SignatureVerification {
+  verdict(key: key_a, message: device_redemption_signing_input(i: fx_good_input()))
+}
+
+fn good_assertion() -> AssertionVerification {
+  assertion_over(key_id: "attest-1", client_data: device_redemption_signing_input(i: fx_good_input()))
+}
+
+// THE POSITIVE CONTROL: every gate passes; the admitted value names the ENROLMENT'S login.
+test fn witness_device_admission_admits_the_exact_signed_request() -> Bool {
+  match admit(input: fx_good_input(), signature: good_signature(), assertion: good_assertion()) {
+    DeviceAdmitted { admitted: a } => a.decided_by == approval_operator_login && a.claims.escalation_id == fx_request().escalation_id
+    DeviceNotAdmitted { outcome: _ } => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_different_displayed_request() -> Bool {
+  let i = fx_signing_input(request_text: "{\"kind\":\"request\"}", expiry: fx_challenge_expiry, nonce: fx_nonce(), tag: fx_tag())
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), assertion: assertion_over(key_id: "attest-1", client_data: device_redemption_signing_input(i: i))) {
+    DeviceNotAdmitted { outcome: DeviceSignedForAnotherRequest { field: f } } => f as String == "stored_request_text"
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_an_expired_challenge() -> Bool {
+  let i = fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: "2026-09-17T09:59:00Z", nonce: fx_nonce(), tag: fx_tag())
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), assertion: assertion_over(key_id: "attest-1", client_data: device_redemption_signing_input(i: i))) {
+    DeviceNotAdmitted { outcome: DeviceChallengeExpired { expires_at: _, observed_at: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_challenge_not_issued_here() -> Bool {
+  let forged = mac_hex(message: redemption_challenge_message(escalation_id: fx_request().escalation_id, request_revision: fx_request().request_revision, enrollment_id: "enr-482913", expires_at: "2026-09-17T11:00:00Z"))
+  let i = fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: fx_challenge_expiry, nonce: forged, tag: fx_tag())
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), assertion: assertion_over(key_id: "attest-1", client_data: device_redemption_signing_input(i: i))) {
+    DeviceNotAdmitted { outcome: DeviceChallengeNotIssuedHere } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_capability_for_the_other_verb() -> Bool {
+  let deny_tag = issued_tag(decision: ProposeDeny)
+  let i = fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: fx_challenge_expiry, nonce: fx_nonce(), tag: deny_tag)
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), assertion: assertion_over(key_id: "attest-1", client_data: device_redemption_signing_input(i: i))) {
+    DeviceNotAdmitted { outcome: DeviceCapabilityRefused { cause: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_signature_over_other_bytes() -> Bool {
+  match admit(input: fx_good_input(), signature: verdict(key: key_a, message: "something else"), assertion: good_assertion()) {
+    DeviceNotAdmitted { outcome: DeviceSignatureRefused { verification: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_signature_under_another_key() -> Bool {
+  match admit(input: fx_good_input(), signature: verdict(key: key_b, message: device_redemption_signing_input(i: fx_good_input())), assertion: good_assertion()) {
+    DeviceNotAdmitted { outcome: DeviceSignatureRefused { verification: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_a_refused_assertion() -> Bool {
+  let refused = assertion_verification_from_implementation(key_id: "attest-1", public_key_point_b64url: "BATTEST", counter: 1, client_data: device_redemption_signing_input(i: fx_good_input()), refusal: Present { value: AssertionSignatureInvalid })
+  match admit(input: fx_good_input(), signature: good_signature(), assertion: refused) {
+    DeviceNotAdmitted { outcome: DevicePlatformProofRefused { cause: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_an_assertion_from_another_app_key() -> Bool {
+  match admit(input: fx_good_input(), signature: good_signature(), assertion: assertion_over(key_id: "attest-other", client_data: device_redemption_signing_input(i: fx_good_input()))) {
+    DeviceNotAdmitted { outcome: DevicePlatformProofWrongKey } => true
+    _ => false
+  }
+}
+
+test fn witness_device_admission_refuses_an_assertion_over_other_bytes() -> Bool {
+  match admit(input: fx_good_input(), signature: good_signature(), assertion: assertion_over(key_id: "attest-1", client_data: "other")) {
+    DeviceNotAdmitted { outcome: DevicePlatformProofForOtherBytes } => true
+    _ => false
+  }
+}
+
+// These refuse on the enrolment slot, before any store read, so the nonexistent root is untouched.
+test fn witness_device_redemption_refuses_a_revoked_enrollment_before_the_store() -> Bool {
+  match fx_admitted_enrollment() {
+    Absent => false
+    Present { value: e } =>
+      match redeem_device_over_store(
+        root: "/nonexistent/approvals",
+        keyring: ApprovalKeyLoaded { key: fx_key() },
+        enrolment: EnrolmentRevoked { enrollment: e, revoked_at: "2026-09-17T09:59:00Z", reason: "lost phone" },
+        signed: fx_good_input(),
+        signature: good_signature(),
+        assertion: good_assertion(),
+        observed_at: fx_observed_at,
+      ) {
+        DeviceEnrollmentRevoked { enrollment_id: id } => id as String == "enr-482913"
+        _ => false
+      }
+  }
+}
+
+test fn witness_device_redemption_refuses_an_unknown_enrollment_before_the_store() -> Bool {
+  match redeem_device_over_store(
+    root: "/nonexistent/approvals",
+    keyring: ApprovalKeyLoaded { key: fx_key() },
+    enrolment: EnrolmentCodeUnknown,
+    signed: fx_good_input(),
+    signature: good_signature(),
+    assertion: good_assertion(),
+    observed_at: fx_observed_at,
+  ) {
+    DeviceEnrollmentUnknown => true
+    _ => false
+  }
+}
+
+// An enrolment made from a code issued to another login is refused even with every proof valid.
+test fn witness_device_admission_refuses_an_enrollment_for_another_operator() -> Bool {
+  let other_code = EnrolmentCodeUnspent { challenge: EnrolmentChallenge { code: fx_code, issued_to_login: "someone-else@example.com", issued_at: "2026-09-17T09:55:00Z", expires_at: "2026-09-17T10:05:00Z" } }
+  match enrolment_admission(slot: other_code, platform: MobileIos, decision_key: key_a, attestation: fx_attestation(client_data: enrolment_transcript(code: fx_code, decision_key: key_a, platform: MobileIos)), observed_at: fx_observed_at) {
+    EnrolmentRefused { cause: _ } => false
+    EnrolmentAdmitted { enrollment: e } =>
+      match device_redemption_admission(key: fx_key(), enrollment: e, request: fx_request(), signed: fx_good_input(), signature: good_signature(), assertion: good_assertion(), observed_at: fx_observed_at) {
+        DeviceNotAdmitted { outcome: DeviceEnrollmentForAnotherOperator { enrolled: _, expected: _ } } => true
+        _ => false
+      }
+  }
+}
+
+// ── The enrolment store's records ────────────────────────────────────────────────────────────
+// A persisted enrolment reads back as the SAME verified enrolment, and a record at the wrong
+// generation for its kind is unreadable -- never reinterpreted as a live enrolment.
+test fn witness_enrolment_record_round_trips_at_generation_two() -> Bool {
+  match fx_admitted_enrollment() {
+    Absent => false
+    Present { value: e } =>
+      match parse_enrolment_record(text: enrolment_json(e: e), generation: 2) {
+        EnrolmentCodeConsumed { enrollment: r } =>
+          r.enrollment_id == e.enrollment_id && r.operator_login == e.operator_login && r.decision_key.point_b64url == e.decision_key.point_b64url
+        _ => false
+      }
+  }
+}
+
+test fn witness_enrolment_record_at_the_wrong_generation_is_unreadable() -> Bool {
+  match fx_admitted_enrollment() {
+    Absent => false
+    Present { value: e } =>
+      match parse_enrolment_record(text: enrolment_json(e: e), generation: 1) {
+        EnrolmentSlotUnreadable { detail: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn witness_issued_code_record_round_trips_at_generation_one() -> Bool {
+  match parse_enrolment_record(text: enrolment_code_json(c: fx_code_challenge(expires_at: "2026-09-17T10:05:00Z")), generation: 1) {
+    EnrolmentCodeUnspent { challenge: c } => c.code == fx_code && c.issued_to_login == approval_operator_login
+    _ => false
+  }
+}
+
+test fn witness_enrollment_id_names_its_code_slot() -> Bool {
+  code_of_enrollment_id(enrollment_id: "enr-482913") == "482913" && code_of_enrollment_id(enrollment_id: "other") == ""
+}
+
+// THE ENCODING THE REVIEW CAUGHT: the raw lowercase-hex tag placed where the canonical base64url
+// spelling belongs is refused, never verified as if it were the tag.
+test fn witness_device_admission_refuses_a_hex_tag_in_the_base64url_field() -> Bool {
+  let hex = mac_hex(message: approval_capability_signing_input(c: claims_for(request: fx_request(), decision: ProposeApprove)))
+  let i = fx_signing_input(request_text: stored_request_json(r: fx_request()) as NonEmptyStr, expiry: fx_challenge_expiry, nonce: fx_nonce(), tag: hex)
+  match admit(input: i, signature: verdict(key: key_a, message: device_redemption_signing_input(i: i)), assertion: assertion_over(key_id: "attest-1", client_data: device_redemption_signing_input(i: i))) {
+    DeviceNotAdmitted { outcome: DeviceCapabilityTagMalformed } => true
+    DeviceNotAdmitted { outcome: DeviceCapabilityRefused { cause: _ } } => true
+    _ => false
+  }
+}
+
+// An assertion under the enrolled key id but a DIFFERENT public key is not the enrolled app instance.
+test fn witness_device_admission_refuses_an_assertion_under_another_public_key() -> Bool {
+  let other = assertion_verification_from_implementation(key_id: "attest-1", public_key_point_b64url: "BOTHER", counter: 1, client_data: device_redemption_signing_input(i: fx_good_input()), refusal: none)
+  match admit(input: fx_good_input(), signature: good_signature(), assertion: other) {
+    DeviceNotAdmitted { outcome: DevicePlatformProofWrongKey } => true
+    _ => false
+  }
+}
