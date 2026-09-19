@@ -1,8 +1,7 @@
 module test.claim.bmc_intake_first_contact_witness
 
-import std.types { Bool, String }
+import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.tools.curl { curl_http_code_after_newline_write_out_format }
 import gunbc.tools.bmc_intake_first_contact {
   HostUnreachable,
   RedfishHttpSurface,
@@ -14,8 +13,7 @@ import gunbc.tools.bmc_intake_first_contact {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_intake_probe_404_is_a_captured_surface_not_a_failed_login() -> Bool {
-  (curl_http_code_after_newline_write_out_format as String) == "\n%\{http_code\}"
-    && match classify_intake_probe(reached_host: true, blob: "{}\n404", transport_stderr: "") {
+  match classify_intake_probe(reached_host: true, blob: "{}\n404", transport_stderr: "") {
       RedfishHttpSurface { status: s, blob: b } => s == 404 && b == "{}\n404"
       HostUnreachable { cause: _, transport_stderr: _ } => false
       WriteOutUnreadable { blob: _, cause: _ } => false

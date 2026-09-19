@@ -25,6 +25,25 @@ fn gsg_chassis_decl(name: String) -> DeclarationRef {
   decl_ref(module_path: "extdeps.ampere.mt_jade_getting_started_guide.chassis", decl_name: name)
 }
 
+fn gsg_subject_decl(name: String) -> DeclarationRef {
+  decl_ref(
+    module_path: "extdeps.ampere.mt_jade_getting_started_guide.subject",
+    decl_name: name,
+  )
+}
+
+// THE SUBJECT MODULE WAS OUT OF THIS ROSTER'S SCOPE, which is the third time this roster has
+// under-reported its own subject (reviews 67996, 68026, 68056). Every previous instance was a row
+// inside a module the roster already covered; this one was a whole MODULE the scope conjunct did
+// not admit, so the gap was invisible to the very claim that checks for gaps.
+data mtjade1_gsg_subject_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: gsg_subject_decl(name: "mt_jade_gsg_publication_status"),
+    reason: "Whether the GSG is publicly published, which gates whether its facts may be carried into this corpus at all. Read only by a witness: upstream_fact_carriage is called on it there, but no production fold consults the status before consuming a GSG row.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: a carriage gate that refuses a GSG-derived declaration when upstream_fact_carriage(status) is not FactsMayBeCarried, rather than leaving the permission checked once in a claim. TRIGGER: a production fold reads this status on the path that consumes a GSG fact. SUFFICIENT FOR deleting this row. NOT satisfied by a witness asserting the status is publicly published, which is what reads it today."),
+  ),
+]
+
 fn gsg_memory_population_decl(name: String) -> DeclarationRef {
   decl_ref(
     module_path: "extdeps.ampere.mt_jade_getting_started_guide.memory_population",
@@ -149,7 +168,7 @@ data mtjade1_fan_standing_frontier_rows: List<FrontierRow> = frontier_rows_for_d
 data mtjade1_coverage_frontier_rows: List<FrontierRow> = concat(
   mtjade1_gsg_document_frontier_rows,
   concat(
-    mtjade1_gsg_memory_frontier_rows,
+    concat(mtjade1_gsg_subject_frontier_rows, mtjade1_gsg_memory_frontier_rows),
     concat(mtjade1_first_dpc_plan_frontier_rows, mtjade1_fan_standing_frontier_rows),
   ),
 )

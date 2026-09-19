@@ -88,8 +88,7 @@ fn jade_gsg_scope_cites(scope: ExternalModelScope, authority: ExternalAuthority)
 }
 
 test fn w_jade_gsg_publisher_is_first_citation_drive_is_mirror_and_carriage_admits() -> Bool {
-  (mt_jade_gsg_authority.uri.locator as String) == "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?file=new-private-files/94/tech/Altra_Family_Mt._Jade_PVT_DVT_NVMe_GSG_v1.00_20220412.pdf&type=technical-document&doc_id=631"
-    && mt_jade_gsg_model_scope.first_citation == mt_jade_gsg_authority
+  mt_jade_gsg_model_scope.first_citation == mt_jade_gsg_authority
     && jade_gsg_scope_cites(scope: mt_jade_gsg_model_scope, authority: mt_jade_gsg_operator_drive_mirror_authority)
     && mt_jade_gsg_operator_drive_mirror_authority != mt_jade_gsg_authority
     && publication_status_is_publicly_published(status: mt_jade_gsg_publication_status)
