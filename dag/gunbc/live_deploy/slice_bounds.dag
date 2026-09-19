@@ -42,32 +42,70 @@ import std.measure { ByteSize, byte_size }
 // consulted, so while the number was the runner row's, any move to that row propagated to a host
 // whose runner allocation may have been REFUSED. Decoupling removes the propagation rather than
 // gating it: there is no longer a runner-derived number here to leak.
-data live_deploy_slice_memory_max: ByteSize = byte_size(17179869184)
+// THE ENVELOPE IS SIZED FROM THE UNIT'S OWN MEASURED PEAK, not from the 3.46 GB the 2026-09-12
+// note cited. With swap forbidden below, the bound stopped being decorative: at the 16 GiB bound the
+// serve process -- which systemd's unit accounting reported at "8.1G memory peak, 9.6G memory swap
+// peak" for its previous incarnation -- was OOM-killed inside the slice on 2026-09-18 23:07 UTC, and
+// the deployed-tree convergence oneshot ("5.2G memory peak") beside its restart at 23:44. Swap had
+// been absorbing the ~2 GB the serve workload exceeds the old bound by, silently. The instrument is
+// the unit's journal "Consumed ... memory peak, ... memory swap peak" line (systemd unit accounting)
+// for gunbc-roadmap.service and gunbc-tree-sync.service; re-derive there. 26 GiB max / 24 GiB high
+// (operator ruling 2026-09-18, the same envelope the runner slots moved to that day) covers serve
+// peak + convergence peak concurrently (~23 GB); why the serve footprint grew from 3.46 GB to ~18 GB
+// is a demand question (DESIGN section 2) this row does not answer and does not hide. That this
+// number EQUALS the runner slot's is a coincidence of two rulings on one day, not a derivation: the
+// row is authored here, and the witness pins that by reading this declaration, not by inequality.
+data live_deploy_slice_memory_max: ByteSize = byte_size(27917287424)
 
-data live_deploy_slice_memory_high: ByteSize = byte_size(16106127360)
+data live_deploy_slice_memory_high: ByteSize = byte_size(25769803776)
 
-// ── THE APPROVAL BROKER'S SLICE AND UNIT ─────────────────────────────────────────────────────
-// THE BOUND IS DERIVED FROM A MEASURED UPPER BOUND, NOT GUESSED AND NOT COPIED. DESIGN section 5's
-// oracle rule admits a numeric literal grounded in an explicit policy budget and rejects one
-// grounded in a measurement of the current tree, so the basis is recorded beside the policy:
+// THE SLICE FORBIDS SWAP, because the deployment is a latency-bound operator-facing service and a
+// swapped page is a stall on the request path, not a memory saving. The host it shares (srv1) also
+// runs the required floor's runners, whose working sets outrank an idle interpreter heap under
+// global reclaim; the observed state before this row was the serve process at VmSwap 9.7 GB against
+// VmRSS 0.4 GB, and every request after an idle gap paying the swap-in -- the 5-10 s /healthz and
+// /approvals stalls that refused a live deploy and two approval-gated boot transactions (GH runs
+// 35377916920 and 35380154698, both fail-closed on a poll that returned no bytes in 5 s). The
+// instrument is /proc/<serve pid>/status VmSwap beside the unit's journal gap; re-derive there, not
+// from this sentence. Zero rather than a bound: any admitted swap is admitted latency. Growth stays
+// bounded by MemoryHigh and MemoryMax above -- a hard kernel boundary (throttling, allocation
+// failure, or the cgroup's own OOM kill), not an application refusal value -- so the deployment
+// fails or restarts inside its declared envelope rather than becoming a silently swapped control
+// plane. Lowering swap.max below existing usage does NOT drain what is already paged out: the live
+// closure is a new service incarnation whose MainPID reads VmSwap 0 kB and answers /healthz and
+// one status GET inside the client bound.
+data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
+
+// ── THE APPROVAL BROKER'S OWN BOUND ─────────────────────────────────────────────────────────
+// THE DERIVATION THIS ROW ORIGINALLY CARRIED IS FALSIFIED, AND THE NUMBER SURVIVES ON A WEAKER
+// FOOTING RATHER THAN THE OLD ONE RESTATED. It read: the pre-split roadmap process served these
+// four routes, so its measured 3.46 GB peak bounds a strict subset of its closure, and 6 GiB is
+// comfortably above that. The containment half is still true -- the broker's closure IS a subset of
+// the pre-split roadmap's. The MEASUREMENT half is not: the row above now records the same serve
+// process OOM-killed at a 16 GiB bound on 2026-09-18 with an 8.1 GB resident peak and 9.6 GB of
+// swap, and states outright that the growth from 3.46 GB to roughly 18 GB is an unanswered demand
+// question. A ceiling proved by containment against that superset is about 26 GiB, which bounds
+// nothing useful.
 //
-//   Before this split, the roadmap serve process served these four routes. Its closure therefore
-//   CONTAINED the broker's closure, and that process's resident peak was measured at 3.46 GB on
-//   srv1 (2026-09-04, the same measurement live_deploy_slice_memory_max cites). A strict subset of
-//   a closure cannot demand more than the whole of it, so 3.46 GB is a sound UPPER BOUND on the
-//   broker's cold-load and steady demand rather than an analogy from a similar workload.
+// SO THIS IS A DECLARED POLICY BUDGET WITH AN UNMEASURED SUBJECT, said plainly because DESIGN 4d
+// forbids carrying an inference in the vocabulary of a deduction. What supports 6 GiB is a
+// qualitative fact -- the broker compiles and serves four routes that consult no roadmap, no plan,
+// no site bundle and no attempt evidence, which is the work the roadmap's footprint is made of --
+// and that is a reason to expect a much smaller process, not a measurement of one.
 //
-// The cap is set above that bound with headroom and far below the roadmap's, which is the property
-// that matters: the roadmap's demand has no route by which it can reach this slice's allowance.
+// WHAT THE RISK ACTUALLY IS, IF THE NUMBER IS WRONG. With MemorySwapMax=0 below, a broker that
+// exceeds this bound is killed at the boundary and restarted by systemd: a loud, attributable
+// failure on its own lifecycle. That is the failure mode the split exists to produce, and it is
+// strictly better than the one this whole change is a response to -- a process silently swapped
+// until an approval poll times out. A wrong bound here costs a restart; a shared heap cost boot 15.
 //
-// IT IS AN UPPER BOUND AND THE MODEL SAYS SO. What is NOT established is the broker's OWN demand at
-// the six points the split was asked to size against -- cold bind and load peak, idle resident,
-// submission-plus-notification peak, confirm-page peak, redemption peak, status-poll peak -- and a
-// bound derived from a superset is a ceiling, not a measurement. Stage 2 of
-// gunbc.auth.approval_broker_cutover is the instrument that produces those readings against the
-// dark deployment, and tightening these two rows from them is that stage's product. Until it runs,
-// a ceiling proved by containment is the honest arm, and asserting the tighter number the six
-// readings would probably support would be exactly the deduced-from-inferred move DESIGN 4d forbids.
+// THE MEASUREMENT IS STAGE 3 AND THE PLAN REFUSES WITHOUT IT. gunbc.auth.approval_broker_cutover
+// will not admit repointing the front door while BrokerDemandReading is DemandUnmeasured, so the
+// six readings -- cold bind and load peak, idle resident, submission-plus-notification peak,
+// confirm-page peak, redemption peak, status-poll peak -- are taken against the dark broker before
+// anything routes to it, and these two rows are tightened from them. The instrument is the unit's
+// journal "Consumed ... memory peak" line for gunbc-approval-broker.service, the same one the row
+// above names; re-derive there rather than from this sentence.
 data approval_broker_slice_memory_max: ByteSize = byte_size(6442450944)
 
 data approval_broker_slice_memory_high: ByteSize = byte_size(5368709120)

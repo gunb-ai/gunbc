@@ -192,7 +192,7 @@ test fn cutover_refuses_a_dark_stage_that_bound_the_serving_port() -> Bool {
 // ── MEASUREMENT CANNOT BE SKIPPED BY SUCCEEDING AT THE NEXT THING ────────────────────────────
 // Admission is cumulative, which is the ordering law rather than a convenience. With the six
 // readings absent but every later observation present, repointing is still refused -- because a
-// bound sized from a ceiling proved by containment is not a bound sized from this process.
+// bound declared over an unmeasured subject is not a bound sized from this process.
 test fn cutover_refuses_repointing_while_the_demand_is_unmeasured() -> Bool {
   let full = everything_observed()
   let e = ApprovalBrokerCutoverEvidence {

@@ -35,8 +35,8 @@ import gunbc.runner_slot_allocation {
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
-  lifecycle_intent_cannot_orphan,
-  gunbc_runner_listener_is_main_process,
+  lifecycle_intent_stops_finished_incarnation,
+  gunbc_runner_main_exits_when_incarnation_ends,
 }
 import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_337_0 }
 import extdeps.virtualization.firecracker {
@@ -425,10 +425,18 @@ type VmmProcessTopology = VmmIsMainProcess | VmmUnderLifecycleController
 // its guest alive holding the same credential. "Everything inside the VM dies together" is true and
 // does not help when the VM is what survived.
 //
-// gunbc.runner_unit already owns the deciding predicate and the measured input (the listener is a
-// GRANDCHILD of MainPID because GitHub's stock run.sh does not exec), so this consumes that
-// authority rather than re-deriving it. Stating the dependency in prose would have left it
-// satisfiable by an author who never read the paragraph.
+// gunbc.runner_unit already owns the deciding predicate and the measured input (whether the tracked
+// main process exits when the incarnation ends), so this consumes that authority rather than
+// re-deriving it. Stating the dependency in prose would have left it satisfiable by an author who
+// never read the paragraph.
+//
+// THIS IS A NECESSARY GATE, NOT A SUFFICIENT ONE, and the gap is a declared frontier. The predicate
+// is static: it says a finished incarnation makes systemd issue a stop that reaches the cgroup. It
+// cannot say the VMM is gone afterwards -- a task in uninterruptible sleep survives SIGKILL, and a
+// main process that outlives its incarnation issues no stop at all -- nor that the cell is safe to
+// reuse. That is gunbc.product.fabric.sanitation's CellReadiness, established by a terminalizer's
+// readback, which this admission will consume once the terminalizer lands. Until then an Admitted
+// verdict here is not sufficient grounds to run customer work.
 type RunnerMicroVmAdmission
   = RunnerMicroVmAdmitted
   | RunnerMicroVmRefusedOrphanableUnit { reason: String }
@@ -452,7 +460,7 @@ type RunnerMicroVmAdmission
 fn runner_microvm_admission(
   topology: VmmProcessTopology,
   intent: RunnerUnitLifecycleIntent,
-  listener_is_main_process: Bool,
+  main_exits_when_incarnation_ends: Bool,
   transport: JitCredentialTransport,
   config: FirecrackerVmConfig,
   reserve: RealizationReserve,
@@ -461,11 +469,11 @@ fn runner_microvm_admission(
     VmmIsMainProcess =>
       runner_microvm_admission_after_topology(transport: transport, config: config, reserve: reserve)
     VmmUnderLifecycleController =>
-      if lifecycle_intent_cannot_orphan(intent: intent, listener_is_main_process: listener_is_main_process) {
+      if lifecycle_intent_stops_finished_incarnation(intent: intent, main_exits_when_incarnation_ends: main_exits_when_incarnation_ends) {
         runner_microvm_admission_after_topology(transport: transport, config: config, reserve: reserve)
       } else {
         RunnerMicroVmRefusedOrphanableUnit {
-          reason: "this topology keeps a lifecycle controller above the VMM, and the unit's teardown can leave a live process behind, so an orphaned VMM would keep its guest and its credential alive -- the microVM relocates the orphan rather than removing it. Deploy the cgroup-reaching intent, or exec the VMM directly as MainPID",
+          reason: "this topology keeps a lifecycle controller above the VMM, and the unit's teardown can leave a live process behind, so an orphaned VMM would keep its guest and its credential alive -- the microVM relocates the orphan rather than removing it. Deploy the declared intent (ExitType=main with KillMode=control-group), or exec the VMM directly as MainPID",
         }
       }
   }
@@ -631,7 +639,7 @@ fn gunbc_runner_microvm_admission(
   runner_microvm_admission(
     topology: topology,
     intent: gunbc_runner_lifecycle_intent,
-    listener_is_main_process: gunbc_runner_listener_is_main_process,
+    main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
     transport: gunbc_runner_jit_transport,
     config: config,
     reserve: gunbc_runner_microvm_realization_reserve(),

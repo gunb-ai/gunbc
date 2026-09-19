@@ -63,7 +63,7 @@ import gunbc.live_deploy.member_identity {
 }
 import extdeps.crypto.hash { digest_shell_verify_line }
 import gunbc.live_deploy.slice_bounds {
-  live_deploy_slice_memory_max, live_deploy_slice_memory_high,
+  live_deploy_slice_memory_max, live_deploy_slice_memory_high, live_deploy_slice_memory_swap_max,
   approval_broker_slice_memory_max, approval_broker_slice_memory_high,
 }
 import gunbc.live_deploy.spec {
@@ -430,6 +430,7 @@ fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
     slice: [
       slice_memory_max(bytes: live_deploy_slice_memory_max),
       slice_memory_high(bytes: live_deploy_slice_memory_high),
+      slice_memory_swap_max(bytes: live_deploy_slice_memory_swap_max),
     ],
     install: NotInstallable,
   }

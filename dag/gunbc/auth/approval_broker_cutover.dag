@@ -161,9 +161,11 @@ fn approval_broker_cutover_stage_label(stage: ApprovalBrokerCutoverStage) -> Non
 //   3. MeasureDemand     -- the six readings the slice bound was asked to be derived from, taken
 //                           against the dark process: cold bind and load peak, idle resident,
 //                           submission-plus-notification peak, confirm-page peak, redemption peak,
-//                           status-poll peak. Until this stage the bound in gunbc.live_deploy.emit
-//                           is a ceiling proved by containment, not a measurement (that row says so
-//                           itself), and this stage is what replaces it.
+//                           status-poll peak. Until this stage the bound in
+//                           gunbc.live_deploy.slice_bounds is a declared policy budget over an
+//                           UNMEASURED subject -- its original containment derivation was falsified
+//                           when the roadmap serve process it bounded turned out to peak near 18 GB
+//                           -- and this stage is what replaces it with the broker's own numbers.
 //   4. RepointFrontDoor  -- the two approval mounts move to the broker. THIS is the stage that
 //                           makes the broker a writer, and stage 6 is what stops the roadmap being
 //                           one; between them the roadmap is REACHABLE but no longer ROUTED, which
@@ -493,9 +495,9 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
     DemandNotMeasured { missing: m } =>
       join([
         "the broker's own memory demand is unmeasured: ", m as String,
-        ". Its slice bound is currently a ceiling proved by containment in the pre-split roadmap ",
-        "closure, not a measurement, and repointing traffic before measuring would mean sizing a ",
-        "live writer from a number about a different process.",
+        ". Its slice bound is currently a declared policy budget over an unmeasured subject, and ",
+        "repointing traffic before measuring would mean sizing a live writer from a number nothing ",
+        "has observed.",
       ], "") as NonEmptyStr
     FrontDoorStillAtRoadmap =>
       "the front door still proxies the approval paths to the roadmap port; nothing has moved yet" as NonEmptyStr

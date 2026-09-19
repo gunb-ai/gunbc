@@ -64,9 +64,12 @@ data served_deployment_placement: ServedDeploymentPlacement = ServedDeploymentPi
 // THE ALLOWANCE IS THE DECLARED CAP, NOT THE MEASURED RESIDENT, and the difference is the whole
 // point of charging it. A budget asks what a host may be REQUIRED to provide, and what systemd will
 // let these units hold is MemoryMax -- 16 GiB for the roadmap deployment slice plus 6 GiB for the
-// broker slice. Charging measured residents instead (3.46 GB and less) would charge what the
-// processes happen to use today and would conserve on a host that cannot survive them using what
-// they were permitted to.
+// broker slice. Charging measured residents instead would charge what the processes happen to use
+// today and would conserve on a host that cannot survive them using what they were permitted to --
+// and the roadmap deployment is the receipt for that: its serve process sat near 3.46 GB when the
+// bound was first written and was OOM-killed at a 16 GiB bound on 2026-09-18 with an 8.1 GB
+// resident peak against 9.6 GB of swap. A budget charging the smaller number would have called that
+// host conservative right up to the kill.
 //
 // MemoryHigh IS NOT CHARGED, deliberately: High throttles and Max kills, so High is a pressure
 // point inside an allowance rather than a second allowance. Summing both would double-count.
