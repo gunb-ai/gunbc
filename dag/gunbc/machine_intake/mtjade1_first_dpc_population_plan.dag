@@ -10,7 +10,6 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import extdeps.ampere.mt_jade_getting_started_guide.memory_population {
   MtJadeGsgSlotLabelKind,
-  mt_jade_gsg_one_dpc_empty_slot_labels,
   mt_jade_gsg_population_2s2p_16_dimms,
   mt_jade_gsg_population_2s2p_16_dimms_citation,
   mt_jade_gsg_slot_label_kind,

@@ -2,7 +2,7 @@ module gunbc.machine_intake_mtjade1_coverage_frontier
 
 import std.types { List, String }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_rows_for_decls }
 
 // COVERAGE STATE FOR THE MT. JADE UNIT 1 INTAKE, DOCUMENT ROWS AND GUNBC ROWS ALIKE, HOMED DOWNSTREAM OF THE DOCUMENT IT IS ABOUT.
@@ -24,6 +24,25 @@ import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_rows_for_d
 fn gsg_chassis_decl(name: String) -> DeclarationRef {
   decl_ref(module_path: "extdeps.ampere.mt_jade_getting_started_guide.chassis", decl_name: name)
 }
+
+fn gsg_memory_population_decl(name: String) -> DeclarationRef {
+  decl_ref(
+    module_path: "extdeps.ampere.mt_jade_getting_started_guide.memory_population",
+    decl_name: name,
+  )
+}
+
+// THE MEMORY-POPULATION SIDE. Every other row in that module is consumed WITHIN it -- the channel
+// pairs build the 1DPC labels, which build the 2S2P population -- so this is the only one on the
+// frontier. A census that excludes the declaring file reports three more and is wrong; in-module
+// consumption is consumption, and rostering a consumed row breaks the roster the other way.
+data mtjade1_gsg_memory_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: gsg_memory_population_decl(name: "mt_jade_gsg_one_dpc_empty_slot_labels"),
+    reason: "The slots Table 11's 16-DIMM 1DPC row leaves empty. Nothing reads it: the plan module imported the name without referencing it, which is what made the row look consumed and kept it off this roster (review 68045), and its only real readers are witnesses.",
+    dissolution: unbound_dissolution(description: "NAMED CONSUMER: an installed-DIMM observation for unit 1 that asserts the empty slots are in fact empty, which is the half of the 1DPC fill a populated-slot join cannot check. TRIGGER: that observation exists and a production fold reads this list against it. SUFFICIENT FOR deleting this row. NOT satisfied by a witness comparing its length to the DIMM count, which is what reads it today."),
+  ),
+]
 
 data mtjade1_gsg_document_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
@@ -129,5 +148,8 @@ data mtjade1_fan_standing_frontier_rows: List<FrontierRow> = frontier_rows_for_d
 // ONE LIST SO A READER ASKS ONE QUESTION. The witness folds this, not the three parts.
 data mtjade1_coverage_frontier_rows: List<FrontierRow> = concat(
   mtjade1_gsg_document_frontier_rows,
-  concat(mtjade1_first_dpc_plan_frontier_rows, mtjade1_fan_standing_frontier_rows),
+  concat(
+    mtjade1_gsg_memory_frontier_rows,
+    concat(mtjade1_first_dpc_plan_frontier_rows, mtjade1_fan_standing_frontier_rows),
+  ),
 )
