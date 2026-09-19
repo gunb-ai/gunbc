@@ -11,6 +11,7 @@ import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
 }
 import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
+import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
 import extdeps.http.server {
   MediaType, text_html_utf8, text_plain_utf8, application_json_utf8, text_javascript_utf8,
   ServeHttpRequest,
@@ -664,8 +665,15 @@ fn roadmap_serve_invoke_over(
     ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
+    // THE ARM DECLARES WHICH PROCESS IT IS, and that is what stops this mount being a second
+    // writer. The handler folds are the broker's own, so nothing inside them can tell they were
+    // reached from here; passing RoadmapProcess means the two mutating routes consult
+    // gunbc.auth.approval_writer_authority and refuse the moment authority moves to the broker,
+    // while this table is still mounting them for rollback (side-chat HOLD item 3: port identity is
+    // not writer authority, and route code may stay only if its store effects are gated by the same
+    // authority).
     ApprovalBrokerCutoverHandler { route: r } =>
-      approval_broker_invoke(handler: r, params: params, request: request)
+      approval_broker_invoke(handler: r, params: params, request: request, process: RoadmapProcess)
   }
 }
 

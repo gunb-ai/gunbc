@@ -46,7 +46,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_compute_root, dashboard_instance_event_log_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
-import gunbc.auth.approval_broker_cutover { approval_broker_deploy_port }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
@@ -437,14 +437,13 @@ fn gunbc_approval_broker_slice_unit_path() -> NonEmptyStr {
 // because a tree is read and a heap is not. What it does NOT share is the cgroup, the process, the
 // restart lifecycle or the port -- which is the entire content of the split.
 //
-// THE PORT IS DERIVED AND NOT PASSED BY A CALLER'S CHOICE. deployment_spec_for supplies
-// gunbc.auth.approval_broker_cutover approval_broker_deploy_port(), which answers the DARK port for
-// as long as the roadmap still mounts the approval routes. That is the wall review 68050 asked for:
-// while two route tables could serve the approval paths, no deploy path -- ordinary release apply
-// or staged dark install -- has a spelling that puts the broker where the front door can reach it,
-// so the two-writer state against the single-writer store is unwritable rather than forbidden by a
-// note. The parameter remains, because the emitter's port argument is what lets a witness render
-// both placements and compare them.
+// ONE PORT, FOR THE PROCESS'S WHOLE LIFE (side-chat HOLD item 1). An earlier cut derived this from
+// the cutover's routing row so the broker sat on a second "dark" port until the front door moved;
+// that made the repoint stage name a port nothing was bound to, and it never delivered the property
+// it was reaching for, because a loopback client reaches a process whatever the front door says.
+// What actually keeps a second writer off the store is gunbc.auth.approval_writer_authority,
+// consulted by both serving processes before any store effect, and this address stays put so that
+// every stage's release readback, MainPID and measured demand describe the same process.
 //
 // THE EVALUATION CAPS ARE THE ROADMAP'S, and that is a stated divergence rather than a derivation:
 // the broker's own per-request cost has never been measured, the roadmap's caps are an order of
@@ -1138,7 +1137,7 @@ fn deployment_spec_for(
     ),
     approval_broker: approval_broker_service_config(
       instance: instance,
-      port: approval_broker_deploy_port(),
+      port: approval_broker_listen_port,
     ),
     names: names,
     instance_id: instance.instance_id,

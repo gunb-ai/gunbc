@@ -38,14 +38,22 @@ data approval_broker_status_path_template: NonEmptyStr = "/approvals/\{escalatio
 // A SEPARATE PORT IS WHAT MAKES THE SEPARATE PROCESS OBSERVABLE. Two units with two MainPIDs that
 // shared a socket would be a lie the first `ss` would expose; the broker binds its own loopback
 // port, and the front door is what joins the public path contract to it.
+// ONE PORT FOR THE PROCESS'S WHOLE LIFE, and the alternative was tried and refused (side-chat HOLD
+// item 1). An earlier cut bound the broker to a second "dark" port until the front door moved,
+// deriving the port from the cutover's ownership row. Two things broke. The front-door mounts named
+// the serving port while the unit bound the other, so the repoint stage would have pointed
+// /approve at nothing and the probes that gate retirement could never pass -- a cutover graph with
+// no path to its own last stage. And more fundamentally, a port is not an authority: a client on
+// the host reaches loopback whatever the front door says, so "bound somewhere unrouted" never meant
+// "unable to write".
+//
+// DARK IS NOW A PROPERTY OF ROUTING AND AUTHORITY, NOT OF THE ADDRESS. The broker binds this port
+// from its first dark install to its last, so every stage observes the same process at the same
+// address; what changes is whether the front door names it (gunbc.auth.approval_broker_cutover
+// approval_route_ownership) and whether it holds the store (gunbc.auth.approval_writer_authority).
+// A process whose address never moves is also the only kind whose release readback, MainPID and
+// measured demand mean the same thing at every stage.
 data approval_broker_listen_port: Port = 8085
-
-// THE DARK PORT IS A CUTOVER STAGE, NOT A SECOND DEPLOYMENT. Stage 1 of the cutover
-// (gunbc.auth.approval_broker_cutover) deploys the broker here, where nothing routes to it, so its
-// release readback and its memory demand can be measured while the roadmap is still the only
-// writer. It is retired by the stage that repoints the front door, and the plan refuses to advance
-// past that stage while anything still routes here.
-data approval_broker_dark_listen_port: Port = 18085
 
 // ── THE LOOPBACK BASE A LOCAL CLIENT POSTS TO, PARAMETERIZED BY PORT ────────────────────────
 // THE PORT IS AN ARGUMENT AND THAT IS THE POINT, not an oversight left to a caller. A boot run

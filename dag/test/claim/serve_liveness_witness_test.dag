@@ -16,7 +16,7 @@ import gunbc.auth.approval_broker_cutover {
   release_readback_from_read,
   approval_broker_liveness_url,
 }
-import gunbc.auth.approval_broker_endpoint { approval_broker_dark_listen_port }
+import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -115,10 +115,11 @@ test fn the_cutover_release_evidence_is_decided_by_the_served_document() -> Bool
   good && bad
 }
 
-// THE PROBE URL IS THE LIVENESS PATH ON THE DARK PORT. Stage 2 runs before anything is repointed,
-// so a probe that reached the serving port would be measuring whatever is already there.
-test fn the_stage_two_probe_targets_the_liveness_path_on_the_dark_port() -> Bool {
-  let url = approval_broker_liveness_url(port: approval_broker_dark_listen_port) as String
+// THE PROBE URL IS THE LIVENESS PATH ON THE BROKER'S ONE PORT. The broker binds the same address
+// from its dark install onward, so this probe reaches the same process at every stage -- which is
+// what makes a release readback taken here describe the process that later serves.
+test fn the_stage_two_probe_targets_the_liveness_path_on_the_broker_port() -> Bool {
+  let url = approval_broker_liveness_url(port: approval_broker_listen_port) as String
   string_contains(s: url, pattern: serve_liveness_path as String)
-    && string_contains(s: url, pattern: join(["127.0.0.1:", to_string(approval_broker_dark_listen_port)], ""))
+    && string_contains(s: url, pattern: join(["127.0.0.1:", to_string(approval_broker_listen_port)], ""))
 }

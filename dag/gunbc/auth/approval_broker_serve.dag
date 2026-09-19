@@ -18,6 +18,11 @@ import gunbc.auth.approval_decision_store {
   parse_capability_segment, CapabilitySegmentParsed, CapabilitySegmentMalformed,
 }
 import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
+import gunbc.auth.approval_writer_authority {
+  ApprovalServingProcess, RoadmapProcess, BrokerProcess,
+  ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
+  approval_write_admission, approval_write_refusal_reason,
+}
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
@@ -186,6 +191,7 @@ fn approval_confirm_page_response(
 fn approval_decide_response(
   request: ServeHttpRequest,
   params: List<PathParamBinding>,
+  process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   let segment = path_param_value(params: params, name: "capability")
   match parse_capability_segment(segment: segment) {
@@ -195,7 +201,17 @@ fn approval_decide_response(
         content_type: text_plain_utf8,
         body: join(["approval decision: ", d as String, "\ncapability: ", segment, "\nidentity: ", tailnet_identity_login(i: request.identity), "\n"], ""),
       )
-    CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } => approval_decide_parsed_response(request: request, segment: segment)
+    CapabilitySegmentParsed { escalation_id: _, decision: _, tag_hex: _ } =>
+      match approval_write_admission(asker: process) {
+        ApprovalWriteRefused { holder: h, asker: a } =>
+          broker_text_response(
+            status: 503,
+            content_type: text_plain_utf8,
+            body: join([approval_write_refusal_reason(holder: h, asker: a) as String, "\ncapability: ", segment, "\n"], ""),
+          )
+        ApprovalWriteAdmitted { writer: _ } =>
+          approval_decide_parsed_response(request: request, segment: segment)
+      }
   }
 }
 
@@ -249,7 +265,23 @@ fn approval_decide_parsed_response(request: ServeHttpRequest, segment: String) -
 // key (gunbc.auth.approval_request_submission). Every refusal is the fold's; this handler passes
 // the body and renders the outcome, and the response never carries a link -- links go only to the
 // operator's phone.
-fn approval_submit_response(request: ServeHttpRequest) -> ServeHttpResponse {
+fn approval_submit_response(request: ServeHttpRequest, process: ApprovalServingProcess) -> ServeHttpResponse {
+  match approval_write_admission(asker: process) {
+    ApprovalWriteRefused { holder: h, asker: a } =>
+      broker_text_response(
+        status: 503,
+        content_type: text_plain_utf8,
+        body: join([approval_write_refusal_reason(holder: h, asker: a) as String, "\n"], ""),
+      )
+    ApprovalWriteAdmitted { writer: _ } => approval_submit_admitted_response(request: request)
+  }
+}
+
+// THE GATE IS AHEAD OF THE ENVELOPE PARSE, deliberately. A non-writer that parsed the body first
+// would be doing the filer's work and then discarding it, and a parse refusal from a process with
+// no authority to file would tell the caller its envelope was wrong when the real answer is that it
+// is talking to the wrong process. Refusing first makes the response name the actual condition.
+fn approval_submit_admitted_response(request: ServeHttpRequest) -> ServeHttpResponse {
   let outcome = match parse_submission_envelope(text: request.body) {
     SubmissionEnvelopeUnreadable { detail: d } => SubmissionRefused { refusal: SubmissionUnreadable { detail: d } }
     SubmissionEnvelopeParsed { tag_hex: tag, request: r } =>
@@ -313,10 +345,11 @@ fn approval_status_response(params: List<PathParamBinding>) -> ServeHttpResponse
 fn approval_broker_selection_response(
   sel: RouteSelection<ApprovalBrokerHandler>,
   request: ServeHttpRequest,
+  process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match sel {
     SelectedDynamic { handler: h, params: ps } =>
-      approval_broker_invoke(handler: h, params: ps, request: request)
+      approval_broker_invoke(handler: h, params: ps, request: request, process: process)
     SelectedStatic { route: r } =>
       ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
     MethodNotAllowed { allowed: ms } =>
@@ -342,15 +375,28 @@ fn broker_http_method_label_join(methods: List<HttpMethod>) -> String {
   }), ", ")
 }
 
+// THE INVOKE TAKES THE CALLING PROCESS, and that parameter is the whole of item 3 of the cutover
+// HOLD. Both serving processes run these same four folds, so nothing inside them can tell which
+// process it is in; the ENTRY knows, because `gunbc serve --function` binds one entry per process
+// for its life. Threading it here means the two routes that mutate the store consult
+// gunbc.auth.approval_writer_authority before touching it, and the process that is not the declared
+// writer has no spelling that reaches the store -- whether the request arrived through the front
+// door or over loopback from a client that knew the port.
+//
+// THE TWO READ ROUTES DO NOT TAKE IT. The confirmation page renders what a URL claims and writes
+// nothing; the status route observes a standing and writes nothing. Gating a read would refuse a
+// poll that is safe from either process and would say nothing true about single-writer discipline,
+// which is about mutation.
 fn approval_broker_invoke(
   handler: ApprovalBrokerHandler,
   params: List<PathParamBinding>,
   request: ServeHttpRequest,
+  process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match handler {
     ApprovalConfirmPageHandler => approval_confirm_page_response(request: request, params: params)
-    ApprovalDecideHandler => approval_decide_response(request: request, params: params)
-    ApprovalSubmitHandler => approval_submit_response(request: request)
+    ApprovalDecideHandler => approval_decide_response(request: request, params: params, process: process)
+    ApprovalSubmitHandler => approval_submit_response(request: request, process: process)
     ApprovalStatusHandler => approval_status_response(params: params)
   }
 }
@@ -360,6 +406,27 @@ fn approval_broker_respond(
   path: String,
   body: String,
   tailscale_identity: String,
+) -> ServeHttpResponse {
+  approval_broker_respond_as(
+    method_label: method_label,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    process: BrokerProcess,
+  )
+}
+
+// THE PROCESS IDENTITY IS A PARAMETER OF THE ADAPTER, and the broker's own entry supplies
+// BrokerProcess above. It is threaded rather than assumed so that the roadmap's cutover mount
+// reaches these same folds declaring RoadmapProcess, and so a claim can run the real request path
+// under either identity -- which is the only way to establish that the writer gate is ON the path
+// rather than merely declared beside it.
+fn approval_broker_respond_as(
+  method_label: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  process: ApprovalServingProcess,
 ) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
     UnknownMethod { label: l } =>
@@ -384,6 +451,7 @@ fn approval_broker_respond(
         ServedRouteTableBuilt { table: t } =>
           approval_broker_selection_response(
             sel: serve_select_route(table: t, method: m, path: path),
+            process: process,
             request: ServeHttpRequest {
               method: m,
               path: path,

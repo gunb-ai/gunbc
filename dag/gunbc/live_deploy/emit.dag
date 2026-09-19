@@ -2126,14 +2126,13 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
 // about, so "what did stage 1 install" is answerable from the model rather than from a terminal
 // transcript.
 //
-// IT CANNOT BIND THE SERVING PORT, AND THAT IS NOW A CONSTRUCTION RATHER THAN THIS STAGE'S CARE.
-// The port comes from the spec, and gunbc.live_deploy.spec derives the spec's broker port from
-// gunbc.auth.approval_broker_cutover approval_broker_deploy_port() -- the dark port for as long as
-// the roadmap still mounts the approval routes. So this stage and the ordinary release apply write
-// the SAME placement, and neither has a spelling that produces two writers (review 68050). The
-// plan's dark_deployment_admission still refuses a broker OBSERVED on the serving port, which is
-// the other side of the same property: the emitter cannot write it and the plan will not believe
-// it if something else did.
+// IT BINDS THE BROKER'S ONE PORT, the same one every later stage observes (side-chat HOLD item 1).
+// This stage and the ordinary release apply therefore write the SAME placement, which is what lets
+// the release readback, the MainPID and the measured demand taken here describe the process that
+// later serves. What makes this stage DARK is not the address: nothing routes the public paths to
+// the broker yet (gunbc.auth.approval_broker_cutover approval_route_ownership) and the broker does
+// not hold the store (gunbc.auth.approval_writer_authority), so a loopback client that finds the
+// port is REFUSED rather than merely unlikely to look.
 fn approval_broker_dark_install_intent(
   spec: DeploymentSpec,
   revision: ReleaseRevisionBinding,

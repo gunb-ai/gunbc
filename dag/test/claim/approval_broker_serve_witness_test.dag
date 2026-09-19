@@ -15,7 +15,15 @@ import gunbc.auth.approval_broker_serve {
   approval_broker_route_specs,
   approval_broker_route_table_build,
   approval_broker_respond,
+  approval_broker_respond_as,
 }
+import gunbc.auth.approval_writer_authority {
+  ApprovalServingProcess, RoadmapProcess, BrokerProcess,
+  ApprovalWriterAuthority, RoadmapWriter, BrokerWriter,
+  ApprovalWriteAdmission, ApprovalWriteAdmitted, ApprovalWriteRefused,
+  approval_write_admission_under,
+}
+import extdeps.http.server { ServeHttpResponse }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_path_template,
   approval_broker_decide_path_template,
@@ -23,7 +31,6 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_status_path_template,
   approval_broker_confirm_path_prefix,
   approval_broker_listen_port,
-  approval_broker_dark_listen_port,
   approval_broker_submit_url,
   approval_broker_status_url,
 }
@@ -98,13 +105,6 @@ test fn approval_broker_link_prefix_matches_the_confirm_route() -> Bool {
     == approval_broker_confirm_path_template as String
 }
 
-// THE DARK PORT IS NOT THE SERVING PORT. Stage 1 of the cutover deploys the broker where nothing
-// routes to it; a deployment in which those coincide would run the measurement stage against live
-// traffic, which is the one thing the staging exists to prevent.
-test fn approval_broker_dark_port_is_distinct_from_the_serving_port() -> Bool {
-  !(approval_broker_dark_listen_port == approval_broker_listen_port)
-}
-
 // ── THE INHABITANCE CLAIM ────────────────────────────────────────────────────────────────────
 // Every claim above supplies a (method, path) at the ROUTE TABLE boundary and inspects what the
 // table answers. DESIGN section 3's pairing obligation is that some claim still runs the real path,
@@ -142,28 +142,107 @@ test fn approval_broker_entry_refuses_a_roadmap_path() -> Bool {
 }
 
 // ── THE LOOPBACK ENDPOINT A BOOT RUN IS POINTED AT ──────────────────────────────────────────
-// THE PORT IS THE ONLY DIFFERENCE BETWEEN DARK AND SERVING, which is what makes the cutover a
-// parameter for a local client rather than an edit. A boot run files and polls over loopback; while
-// the broker is dark, nothing proxies to it, so a client that could not be pointed at the dark port
-// could not exercise the process the staging exists to exercise (#11484, tidy-wren-372).
-//
-// THE RED: reintroduce a hardcoded port anywhere in the URL builders and the two stop differing
-// only where they should.
-test fn the_loopback_submit_url_differs_from_the_dark_one_only_in_port() -> Bool {
-  let serving = approval_broker_submit_url(port: approval_broker_listen_port) as String
-  let dark = approval_broker_submit_url(port: approval_broker_dark_listen_port) as String
-  !(serving == dark)
-    && string_contains(s: serving, pattern: join(["127.0.0.1:", to_string(approval_broker_listen_port)], ""))
-    && string_contains(s: dark, pattern: join(["127.0.0.1:", to_string(approval_broker_dark_listen_port)], ""))
-    && string_contains(s: serving, pattern: approval_broker_submit_path as String)
-    && string_contains(s: dark, pattern: approval_broker_submit_path as String)
+// ONE ADDRESS FOR THE PROCESS'S WHOLE LIFE, so a boot client needs no cutover-aware port logic: the
+// same URL reaches the broker while it is dark and after it holds the store, and what changes is
+// whether the write is ADMITTED (gunbc.auth.approval_writer_authority), not where it lands. An
+// earlier cut parameterised this over a dark port and a serving port, which made the client's
+// correctness depend on knowing which stage the deployment was in (side-chat HOLD item 1).
+test fn the_loopback_submit_url_names_the_brokers_one_port() -> Bool {
+  let url = approval_broker_submit_url(port: approval_broker_listen_port) as String
+  string_contains(s: url, pattern: join(["127.0.0.1:", to_string(approval_broker_listen_port)], ""))
+    && string_contains(s: url, pattern: approval_broker_submit_path as String)
 }
 
 // THE STATUS URL IS THE SUBMIT COLLECTION PLUS A MEMBER, and the claim is here because the obvious
 // implementation is a second "/approvals/" literal that agrees until one of them moves. A status URL
 // built this way reaches the route the broker's table actually carries.
 test fn the_loopback_status_url_is_the_submit_collection_plus_the_escalation() -> Bool {
-  let url = approval_broker_status_url(port: approval_broker_dark_listen_port, escalation_id: "esc-1" as NonEmptyStr) as String
-  url == join([approval_broker_submit_url(port: approval_broker_dark_listen_port) as String, "/esc-1"], "")
+  let url = approval_broker_status_url(port: approval_broker_listen_port, escalation_id: "esc-1" as NonEmptyStr) as String
+  url == join([approval_broker_submit_url(port: approval_broker_listen_port) as String, "/esc-1"], "")
     && broker_selects(method: GET, path: join([approval_broker_submit_path as String, "/esc-1"], ""), want: ApprovalStatusHandler)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// WRITER AUTHORITY IS CONSULTED BEFORE ANY STORE MUTATION — side-chat HOLD item 3
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// PORT IDENTITY IS NOT WRITER AUTHORITY. The earlier design kept the broker on a separate port and
+// treated being off the front door as being unable to write. That holds only for traffic arriving
+// through the front door; a boot client on the same host reaches loopback directly, and the moment
+// one does, two processes with working keyrings and one store root are both able to write it.
+//
+// So the two MUTATING routes consult gunbc.auth.approval_writer_authority before the store, and the
+// process that is not the declared writer refuses. These claims run the real entry fold for both
+// process identities, which is the only way to establish that the gate is on the path rather than
+// merely declared beside it.
+
+fn broker_respond_as(process: ApprovalServingProcess, method_label: String, path: String, body: String) -> ServeHttpResponse {
+  approval_broker_respond_as(
+    method_label: method_label,
+    path: path,
+    body: body,
+    tailscale_identity: "",
+    process: process,
+  )
+}
+
+// THE ROADMAP MOUNT CANNOT FILE WHILE THE BROKER HOLDS AUTHORITY, and vice versa. Exactly one of
+// the two process identities is admitted at any value of the row, which is the single-writer
+// property stated where it is decided.
+test fn exactly_one_process_may_write_at_every_authority_value() -> Bool {
+  let roadmap_holds = approval_write_admission_under(authority: RoadmapWriter, asker: RoadmapProcess)
+  let roadmap_holds_broker_asks = approval_write_admission_under(authority: RoadmapWriter, asker: BrokerProcess)
+  let broker_holds = approval_write_admission_under(authority: BrokerWriter, asker: BrokerProcess)
+  let broker_holds_roadmap_asks = approval_write_admission_under(authority: BrokerWriter, asker: RoadmapProcess)
+  admitted(a: roadmap_holds) && !admitted(a: roadmap_holds_broker_asks)
+    && admitted(a: broker_holds) && !admitted(a: broker_holds_roadmap_asks)
+}
+
+fn admitted(a: ApprovalWriteAdmission) -> Bool {
+  match a {
+    ApprovalWriteAdmitted { writer: _ } => true
+    ApprovalWriteRefused { holder: _, asker: _ } => false
+  }
+}
+
+// THE GATE IS ON THE REQUEST PATH, NOT BESIDE IT. This runs the broker's own adapter with the
+// NON-WRITER identity and asserts the submission is refused with the authority's own reason -- so a
+// future edit that removes the consult from approval_submit_response reds here even though the
+// admission fold itself still exists and its own claims still pass.
+//
+// THE RED: delete the approval_write_admission call in approval_submit_response and this answers a
+// submission outcome instead of the authority refusal.
+test fn a_non_writer_submission_is_refused_before_the_store() -> Bool {
+  let r = broker_respond_as(
+    process: RoadmapProcess,
+    method_label: "POST",
+    path: approval_broker_submit_path as String,
+    body: "{}",
+  )
+  r.status == 503 && string_contains(s: r.body, pattern: "writer authority is held by")
+}
+
+// THE SAME FOR THE ONE ROUTE THAT COMMITS A DECISION. A capability that parses is the input that
+// would otherwise reach redeem_over_store, so this asserts the gate sits between the parse and the
+// store rather than after it.
+test fn a_non_writer_decision_is_refused_before_the_store() -> Bool {
+  let r = broker_respond_as(
+    process: RoadmapProcess,
+    method_label: "POST",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+  )
+  r.status == 503 && string_contains(s: r.body, pattern: "writer authority is held by")
+}
+
+// THE POSITIVE CONTROL: the READ routes are not gated, because gating a read would refuse a poll
+// that is safe from either process and would say nothing true about single-writer discipline. The
+// confirmation page renders what a URL claims and writes nothing.
+test fn a_non_writer_may_still_render_the_confirmation_page() -> Bool {
+  let r = broker_respond_as(
+    process: RoadmapProcess,
+    method_label: "GET",
+    path: "/approve/esc-1.approve.0badc0de",
+    body: "",
+  )
+  r.status == 200 && string_contains(s: r.body, pattern: "APPROVE")
 }

@@ -12,12 +12,15 @@ import gunbc.serve_liveness {
 }
 import gunbc.auth.approval_broker_endpoint {
   approval_broker_loopback_base_url,
-  approval_broker_listen_port, approval_broker_dark_listen_port,
+  approval_broker_listen_port,
   approval_broker_confirm_path_template, approval_broker_submit_path,
   approval_broker_status_path_template,
   approval_broker_confirm_front_door, approval_broker_status_front_door,
 }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_argv }
+import gunbc.auth.approval_writer_authority {
+  ApprovalWriterAuthority, RoadmapWriter, BrokerWriter, approval_writer_authority,
+}
 
 // ── MOVING THE APPROVAL LOOP WITHOUT EVER HAVING TWO WRITERS ─────────────────────────────────
 // THE HAZARD IS NOT THE MOVE, IT IS THE OVERLAP. The approval store keeps 0600 generations under a
@@ -62,38 +65,34 @@ import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_
 // state -- the broker is routed, the roadmap still HOLDS the rows but nothing reaches them -- and a
 // two-valued row cannot express it, so it collapsed either into an outage or into two writers.
 //
-//   ApprovalPathsRoutedToRoadmap  stages 1-3: the roadmap answers; the broker is deployed on the
-//                                 dark port with no front-door mount. Unreachable twice over.
-//   ApprovalPathsRoutedToBroker   stages 4-5: the broker answers on the serving port behind the
-//                                 two mounts; the roadmap's rows exist and nothing routes to them.
+//   ApprovalPathsRoutedToRoadmap  stages A-C: the roadmap answers the public paths; the broker is
+//                                 deployed on its final port with no front-door mount and no writer
+//                                 authority, so a loopback client reaching it is REFUSED rather
+//                                 than merely unlikely to find it.
+//   ApprovalPathsRoutedToBroker   stages D-F: the broker answers behind the two mounts; the
+//                                 roadmap's rows exist and nothing routes to them.
 //   ApprovalPathsOwnedByBroker    stage 6+: the roadmap's rows are gone.
 //
-// EVERY DERIVED FACT READS THIS ONE ROW -- the broker's deploy port, whether the front-door mounts
-// are installed, and whether the roadmap projects its four rows -- so they cannot disagree about
-// who may write the store, and AT MOST ONE PARTY IS ROUTED AT EVERY VALUE. That is the property the
-// port proxy was reaching for, stated over routing, which is what actually decides it.
+// THIS ROW DECIDES ROUTING AND NOTHING ELSE, which is the correction the cutover HOLD forced. An
+// earlier cut also derived the broker's PORT from it, so "not routed" and "bound elsewhere" were
+// one fact -- and the front-door mounts named the serving port while the unit bound the other, a
+// graph with no path to its own last stage. The port is now fixed for the process's whole life
+// (gunbc.auth.approval_broker_endpoint approval_broker_listen_port).
 //
-// EACH ADVANCE IS ONE ROW EDIT WITH ITS CONSEQUENCES BOUND TOGETHER: stage 4 moves the broker onto
-// the serving port AND installs the mounts pointing at it, in one motion, so the front door can
-// never name a port nothing is bound to. Stage 6 deletes the roadmap's rows and changes nothing
-// about routing. The plan still refuses each advance until the prior stage is discharged.
+// AND ROUTING IS NOT AUTHORITY EITHER. Who may MUTATE the store is a separate declared fact,
+// gunbc.auth.approval_writer_authority, consulted by both processes before any store effect --
+// because a client on the host reaches loopback whatever the front door says, so an unrouted
+// process was never an unable-to-write one. This row answers who ANSWERS the public paths; that row
+// answers who may WRITE. Stage D/E of the ordered sequence moves them together as one transaction,
+// and the two are separate declarations because they fail independently: a front door repointed
+// without the authority move is a broker refusing every decision, and an authority move without the
+// repoint is a roadmap refusing every decision. Both are loud, and neither is two writers.
 type ApprovalRouteOwnership
   = ApprovalPathsRoutedToRoadmap
   | ApprovalPathsRoutedToBroker
   | ApprovalPathsOwnedByBroker
 
 data approval_route_ownership: ApprovalRouteOwnership = ApprovalPathsRoutedToRoadmap
-
-// THE PORT THE DEPLOY BINDS THE BROKER TO, derived rather than chosen. While the roadmap is the
-// routed answerer the only admissible port is the dark one; from the moment the front door names
-// the broker, the two must agree, so they are read from the same row.
-fn approval_broker_deploy_port() -> Port {
-  match approval_route_ownership {
-    ApprovalPathsRoutedToRoadmap => approval_broker_dark_listen_port
-    ApprovalPathsRoutedToBroker => approval_broker_listen_port
-    ApprovalPathsOwnedByBroker => approval_broker_listen_port
-  }
-}
 
 // WHETHER THE FRONT DOOR CARRIES THE TWO APPROVAL MOUNTS AT ALL. This is the half the port proxy
 // could not express: a mount that exists must name the port the broker is on, and while the roadmap
@@ -294,7 +293,8 @@ type ApprovalBrokerCutoverEvidence {
 // refusal and a gate.
 type CutoverRefusal
   = DarkDeploymentNotListening { detail: NonEmptyStr }
-  | DarkDeploymentOnTheServingPort { port: Port }
+  | DarkDeploymentOnUnexpectedPort { observed: Port, expected: Port }
+  | DarkStageBrokerAlreadyHoldsWriterAuthority
   | ReleaseUnreadable { detail: NonEmptyStr }
   | DemandNotMeasured { missing: NonEmptyStr }
   | FrontDoorStillAtRoadmap
@@ -333,17 +333,28 @@ fn all_route_classes_probed(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal?
   ])
 }
 
-// THE DARK STAGE'S OWN REFUSAL IS THE ONE THAT KEEPS THE STAGING HONEST. A "dark" deployment that
-// came up on the SERVING port is not dark: the front door would reach it, and the stage whose whole
-// purpose is to observe the broker while it is not a writer would be observing a second writer.
+// WHAT MAKES THE DARK STAGE DARK, RESTATED AFTER THE PORT PROXY WAS REMOVED. This refusal used to
+// say a broker on the SERVING port is not dark. That was the port proxy's own logic and it is now
+// backwards: the broker binds one port for its whole life, so being on that port is what a correct
+// dark deployment looks like, and being anywhere else means the unit is not the one this plan
+// reasons about (side-chat HOLD item 1).
+//
+// DARKNESS IS NOW THE TWO FACTS THAT ACTUALLY DECIDE IT: nothing routes the public paths to the
+// broker, and the broker does not hold writer authority. The second is the one a port could never
+// express -- a loopback client reaches the process whatever the front door says -- so a broker
+// already holding authority at the dark stage is refused by name rather than observed to be
+// unlikely.
 fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   match e.dark {
     DarkUnitNotStarted { detail: d } => Present { value: DarkDeploymentNotListening { detail: d } }
     DarkUnitListening { port: p } =>
-      if p == approval_broker_listen_port {
-        Present { value: DarkDeploymentOnTheServingPort { port: p } }
+      if !(p == approval_broker_listen_port) {
+        Present { value: DarkDeploymentOnUnexpectedPort { observed: p, expected: approval_broker_listen_port } }
       } else {
-        Absent
+        match approval_writer_authority {
+          BrokerWriter => Present { value: DarkStageBrokerAlreadyHoldsWriterAuthority }
+          RoadmapWriter => Absent
+        }
       }
   }
 }
@@ -480,12 +491,19 @@ fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
   match c {
     DarkDeploymentNotListening { detail: d } =>
       join(["the approval broker is not listening on its dark port: ", d as String], "") as NonEmptyStr
-    DarkDeploymentOnTheServingPort { port: p } =>
+    DarkDeploymentOnUnexpectedPort { observed: o, expected: x } =>
       join([
-        "the approval broker came up on the SERVING port ", to_string(p),
-        ", so it is not dark: the front door can reach it and the store would have two writers. ",
-        "Bind the dark port (gunbc.auth.approval_broker_endpoint approval_broker_dark_listen_port) ",
-        "for every stage before the front door is repointed.",
+        "the approval broker answered on port ", to_string(o), " but this deployment binds it to ",
+        to_string(x), " for the process's whole life, so whatever answered is not the unit this ",
+        "plan is reasoning about -- and every later reading, release, identity and demand alike, ",
+        "would be about a process nobody deployed.",
+      ], "") as NonEmptyStr
+    DarkStageBrokerAlreadyHoldsWriterAuthority =>
+      join([
+        "the broker already holds approval-store writer authority, so this is not a dark stage: ",
+        "the stage whose purpose is to observe the broker while it CANNOT mutate the store would ",
+        "be observing the live writer. Writer authority moves in one modeled transaction after the ",
+        "demand is measured (gunbc.auth.approval_writer_authority approval_writer_authority).",
       ], "") as NonEmptyStr
     ReleaseUnreadable { detail: d } =>
       join(["the dark broker did not read back a release revision: ", d as String,
@@ -565,12 +583,13 @@ fn approval_broker_front_door_endpoints(https_port: Port, backend_port: Port) ->
   ]
 }
 
-// THE BACKEND IS approval_broker_deploy_port(), NOT A LITERAL. Naming the serving port here while
-// the broker was bound to the dark one is the defect review 68075 found: the mounts and the unit
-// read the same row now, so the front door cannot name a port nothing is listening on.
+// THE BACKEND IS THE BROKER'S ONE PORT. Review 68075 found these mounts naming a port the unit was
+// not bound to; the repair derived both from an ownership row, and the cutover HOLD then removed
+// the port from that row entirely. With one port for the process's whole life, the mount and the
+// unit cannot disagree because there is nothing left for them to disagree about.
 fn approval_broker_front_door_enable_argv(https_port: Port) -> List<List<String>> {
   map(
-    approval_broker_front_door_endpoints(https_port: https_port, backend_port: approval_broker_deploy_port()),
+    approval_broker_front_door_endpoints(https_port: https_port, backend_port: approval_broker_listen_port),
     e => tailscale_serve_enable_argv(endpoint: e),
   )
 }
@@ -616,9 +635,14 @@ fn dark_install_evidence(listening_port: Port, read: ServeLivenessRead) -> Appro
 // WHAT NOW GOES RED FROM THIS CALLER, stated so the claim is not read as stronger than it is: a
 // probe that did not land, bytes that are not JSON, a JSON value that is not an object, a document
 // with no revision member or two of them, a non-string revision, and a revision that is not 40
-// lowercase hex. What CANNOT go red from here is the serving-port arm of dark_deployment_admission,
-// because approval_broker_deploy_port() makes that placement unwritable -- that arm's red is
-// authorable only over a supplied observation, and it is exercised there.
+// lowercase hex -- plus, through dark_deployment_admission, a unit answering on a port this
+// deployment does not bind, and a broker that already holds writer authority at a dark stage.
+//
+// WHAT THIS CALLER STILL CANNOT ESTABLISH, and the HOLD's item 4 names it: that the release read
+// back IS THE CANDIDATE this deploy installed. Any 40-hex value satisfies the reading today, so a
+// broker running a different admitted release passes. Closing that needs the evidence producers to
+// derive ReleaseMatchesCandidate rather than accept a well-formed revision, which is deferred work
+// and is recorded here rather than implied away.
 fn dark_install_release_discharged(listening_port: Port, read: ServeLivenessRead) -> CutoverAdmission {
   approval_broker_cutover_stage_discharged(
     stage: ProveRelease,

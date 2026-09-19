@@ -1,0 +1,119 @@
+module gunbc.auth.approval_writer_authority
+
+import std.types { NonEmptyStr, String, Bool }
+
+// ── WHICH PROCESS MAY MUTATE THE APPROVAL STORE ─────────────────────────────────────────────
+// PORT IDENTITY IS NOT WRITER AUTHORITY, and an earlier cut of this change confused them (side-chat
+// HOLD, item 3). It kept the broker on a separate "dark" port and treated being off the front door
+// as being unable to write: a process bound somewhere nothing routes cannot receive a request, so
+// it cannot mutate. That reasoning holds only for traffic arriving through the front door. A boot
+// client on the same host reaches loopback directly, and the moment one does, two processes with
+// working keyrings and the same store root are both able to write it -- which is the single-writer
+// premise the whole cutover rests on, defeated by a client that knew a port number.
+//
+// SO AUTHORITY IS DECLARED AND CONSULTED AT THE MUTATION, not inferred from where a request came
+// from. One row says who the writer is; both serving processes read it before they touch the store,
+// and the one that is not the writer refuses. That makes "exactly one writer" a property of the
+// deployment rather than a property of the traffic -- the distinction the split was ordered to
+// establish, now stated at the only boundary that decides it.
+//
+// WHY A ROW RATHER THAN AN EXCLUSIVE LEASE, for now. A lease over the store is the stronger
+// construction and is the terminal shape: it makes the invalid state unrepresentable rather than
+// refused, and it survives a process that disagrees with the row. It also needs a durable
+// compare-and-set surface beside the 0600 generations and a holder identity that outlives a
+// restart, which is its own change. This row is the transition's decidable half and lands first;
+// the lease trigger is stated on approval_writer_authority_lease_frontier below rather than left as
+// an intention.
+
+type ApprovalWriterAuthority
+  = RoadmapWriter
+  | BrokerWriter
+
+// THE LIVE VALUE. It is RoadmapWriter because the roadmap process is what has been writing this
+// store, and it stays RoadmapWriter until the writer transition is executed as one modeled
+// transaction. Flipping it is not a tidy-up: it is the cut, and gunbc.auth.approval_broker_cutover
+// refuses to admit the flip until the broker's release, identity and demand have been observed.
+data approval_writer_authority: ApprovalWriterAuthority = RoadmapWriter
+
+// WHO IS ASKING. The two serving processes run the SAME four handler folds -- that is the point of
+// the extraction -- so the fold cannot tell which process it is in. The entry can: an entry is
+// bound once per process by `gunbc serve --function`, so each supplies its own identity and no
+// request can claim to be the other.
+type ApprovalServingProcess
+  = RoadmapProcess
+  | BrokerProcess
+
+// THE ADMISSION, AND WHY IT CARRIES BOTH NAMES. A bare false could not tell an operator whether the
+// broker refused because the roadmap still holds authority (expected, mid-cutover) or because the
+// row was flipped and the roadmap is still being asked (a routing mistake after the cut). Those are
+// opposite states with opposite remedies, so the refusal names the holder and the asker.
+type ApprovalWriteAdmission
+  = ApprovalWriteAdmitted { writer: ApprovalServingProcess }
+  | ApprovalWriteRefused { holder: ApprovalWriterAuthority, asker: ApprovalServingProcess }
+
+fn approval_writer_process(authority: ApprovalWriterAuthority) -> ApprovalServingProcess {
+  match authority {
+    RoadmapWriter => RoadmapProcess
+    BrokerWriter => BrokerProcess
+  }
+}
+
+fn approval_serving_process_label(p: ApprovalServingProcess) -> NonEmptyStr {
+  match p {
+    RoadmapProcess => "the roadmap serve process (gunbc-roadmap.service)" as NonEmptyStr
+    BrokerProcess => "the approval broker process (gunbc-approval-broker.service)" as NonEmptyStr
+  }
+}
+
+fn approval_serving_process_eq(a: ApprovalServingProcess, b: ApprovalServingProcess) -> Bool {
+  match a {
+    RoadmapProcess => match b { RoadmapProcess => true  BrokerProcess => false }
+    BrokerProcess => match b { BrokerProcess => true  RoadmapProcess => false }
+  }
+}
+
+// EVERY STORE MUTATION GOES THROUGH THIS. It is deliberately total and deliberately has no
+// parameter that could widen it: there is no "force", no environment override and no arm that
+// admits both. A process that is not the declared writer has no spelling that reaches the store.
+fn approval_write_admission(asker: ApprovalServingProcess) -> ApprovalWriteAdmission {
+  approval_write_admission_under(authority: approval_writer_authority, asker: asker)
+}
+
+fn approval_write_admission_under(
+  authority: ApprovalWriterAuthority,
+  asker: ApprovalServingProcess,
+) -> ApprovalWriteAdmission {
+  if approval_serving_process_eq(a: approval_writer_process(authority: authority), b: asker) {
+    ApprovalWriteAdmitted { writer: asker }
+  } else {
+    ApprovalWriteRefused { holder: authority, asker: asker }
+  }
+}
+
+fn approval_write_refusal_reason(holder: ApprovalWriterAuthority, asker: ApprovalServingProcess) -> NonEmptyStr {
+  join([
+    "approval store write refused: writer authority is held by ",
+    approval_serving_process_label(p: approval_writer_process(authority: holder)) as String,
+    " and this request reached ",
+    approval_serving_process_label(p: asker) as String,
+    ". The approval store keeps single-writer 0600 generations, so a second process writing it is ",
+    "not a slower cutover but a different store -- a request filed by one process and redeemed by ",
+    "the other, or two redemptions each believing they won. Authority moves in one modeled ",
+    "transaction (gunbc.auth.approval_broker_cutover), never by a request arriving somewhere new.",
+  ], "") as NonEmptyStr
+}
+
+// THE FRONTIER, NAMED SO IT IS NOT AN INTENTION. This row is decidable and refuses correctly, and
+// it is NOT the terminal construction: it makes a second writer REFUSE rather than making it
+// unrepresentable, so it holds only while both processes read this declaration. A process running
+// an older release, or a hand-run binary, reads whatever it was built with.
+//
+// The terminal shape is an exclusive store-writer lease -- a durable compare-and-set over the
+// store root with a holder identity that survives a restart -- or a principal ACL under which only
+// the broker's account can open the generations at all, which is the same guarantee enforced by the
+// filesystem rather than by agreement. THE TRIGGER: this row retires when the store's generations
+// are writable by exactly one POSIX principal and the other serving process's account cannot open
+// them, verified by attempting the write as the non-writer and observing the OS refusal -- at which
+// point the admission above becomes a readback of a permission rather than a declaration consulted
+// by consent.
+data approval_writer_authority_lease_frontier: NonEmptyStr = "Retires when the approval store's generations are restricted to one POSIX principal and the non-writer serving account cannot open them -- verified by attempting the write as the non-writer and observing the OS refusal, not by reading this row. Until then the guarantee is by agreement between two processes that read the same declaration, and a process built from a different revision does not read it."
