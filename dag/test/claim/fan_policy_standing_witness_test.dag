@@ -99,8 +99,12 @@ import gunbc.machine_intake_bmc_fan_observation {
   ChassisPowerRead,
   ChassisUnreadable,
   FanObservationRound,
+  FanSensorObservation,
+  FanSensorsRead,
+  FanSensorsUnreadable,
   ThermalRead,
   ThermalUnreadable,
+  round_fan_lines,
   chassis_power_on,
   elapsed_at_round,
   post_state_of_round,
@@ -321,10 +325,8 @@ fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservati
     observed_at: "2026-09-19T00:00:00Z" as NonEmptyStr,
     round_index: 0,
     chassis: ChassisPowerRead { power_on: true },
-    thermal: ThermalRead { publication: publication },
-    fan_lines: [],
-    fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
-    temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    thermal: ThermalRead { publication: publication, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) },
   }
 }
 
@@ -333,10 +335,11 @@ fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readabl
     observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
     round_index: index,
     chassis: ChassisPowerRead { power_on: power_on },
-    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent } } } else { ThermalUnreadable },
-    fan_lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
-    fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
-    temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    thermal: if thermal_readable { ThermalRead { publication: if thermal { TemperaturePublished } else { TemperatureSensorsSilent }, undecoded_line_count: sdr_undecoded_line_count(count: 0) } } else { ThermalUnreadable },
+    fans: FanSensorsRead {
+      lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
+      undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    },
   }
 }
 
@@ -379,10 +382,8 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
     observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
     round_index: 0,
     chassis: ChassisUnreadable,
-    thermal: ThermalRead { publication: TemperatureSensorsSilent },
-    fan_lines: [],
-    fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
-    temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    thermal: ThermalRead { publication: TemperatureSensorsSilent, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) },
   }
 }
 
@@ -855,4 +856,34 @@ test fn witness_duty_ceiling_separates_curve_from_excursion() -> Bool {
       FanDutyWithinCeiling { duty: _, ceiling: _ } => true
       _ => false
     }
+}
+
+// AN UNREAD FAN LIST IS NOT A FANLESS CHASSIS, and this is the discriminating red for the fourth
+// and last appearance of one defect in this module. fan_lines kept `else { [] }` after the chassis
+// and thermal reads had both been given arms, so a FAILED fan read produced an empty list, an
+// undecoded count of zero, and a receipt reading `fan_sensors=0 fan_undecoded_line_count=0` --
+// byte-identical to a controller that answered and published no fan sensors, with the series still
+// reported as taken.
+//
+// The two rounds below differ ONLY in whether the read succeeded, and the claim is that they do not
+// render the same. A revision that reinstates the empty-list substitution makes them identical and
+// reds here.
+test fn witness_unread_fan_list_is_not_a_fanless_chassis() -> Bool {
+  let unread = witness_round_fans(fans: FanSensorsUnreadable)
+  let empty_read = witness_round_fans(fans: FanSensorsRead { lines: [], undecoded_line_count: sdr_undecoded_line_count(count: 0) })
+  round_fan_lines(round: unread).length() == 0
+    && round_fan_lines(round: empty_read).length() == 0
+    && string_contains(render_series(rounds: [unread]), "fans=UNREAD")
+    && string_contains(render_series(rounds: [empty_read]), "fans=sensors=0")
+    && !string_contains(render_series(rounds: [empty_read]), "UNREAD")
+}
+
+fn witness_round_fans(fans: FanSensorObservation) -> FanObservationRound {
+  FanObservationRound {
+    observed_at: "2026-09-19T00:00:00Z" as NonEmptyStr,
+    round_index: 0,
+    chassis: ChassisPowerRead { power_on: true },
+    thermal: ThermalRead { publication: TemperaturePublished, undecoded_line_count: sdr_undecoded_line_count(count: 0) },
+    fans: fans,
+  }
 }

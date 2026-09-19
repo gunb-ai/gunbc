@@ -89,17 +89,32 @@ type ChassisPowerObservation
   | ChassisUnreadable
 
 type ThermalObservation
-  = ThermalRead { publication: SdrTemperaturePublication }
+  = ThermalRead { publication: SdrTemperaturePublication, undecoded_line_count: SdrUndecodedLineCount }
   | ThermalUnreadable
+
+// THE FAN READ GETS THE SAME ARM, AND IT IS THE FOURTH TIME THIS ONE DEFECT HAS BEEN FIXED IN THIS
+// MODULE. The sentinel window zero, the substituted SDR field, the benign chassis and thermal else
+// branches - and then fan_lines, which kept `else { [] }` while the header above declared the class
+// closed. An empty list from a FAILED read is byte-identical to a controller that answered and
+// published no fan sensors: sdr_unstructured_count over the same empty results is 0, so the receipt
+// printed `fan_sensors=0 fan_undecoded_line_count=0` for both, samples_of_round emitted nothing,
+// and the series was still reported as taken.
+//
+// THE UNDECODED COUNTS MOVE INSIDE THEIR READS FOR THE SAME REASON. They were separate fields
+// computed from the decode results whether or not the read succeeded, so a failed read printed a
+// count of zero undecoded lines - a measurement of text nobody received. A count is a property OF a
+// read, not of a round, and putting it inside the arm makes that unwritable rather than merely
+// avoided.
+type FanSensorObservation
+  = FanSensorsRead { lines: List<SdrTypeLine>, undecoded_line_count: SdrUndecodedLineCount }
+  | FanSensorsUnreadable
 
 type FanObservationRound {
   observed_at: NonEmptyStr
   round_index: Int
   chassis: ChassisPowerObservation
   thermal: ThermalObservation
-  fan_lines: List<SdrTypeLine>
-  fan_undecoded_line_count: SdrUndecodedLineCount
-  temperature_undecoded_line_count: SdrUndecodedLineCount
+  fans: FanSensorObservation
 }
 
 // AN UNREADABLE THERMAL SENSOR LIST IS NOT "THIS HOST PUBLISHES NO THERMALS", AND THE FIRST
@@ -147,7 +162,7 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
     } else {
       match round.thermal {
         ThermalUnreadable => HostPostStateUnobserved
-        ThermalRead { publication: p } => match p {
+        ThermalRead { publication: p, undecoded_line_count: _ } => match p {
           TemperaturePublished => HostPosted
           TemperatureSensorsSilent => HostPoweredOnPrePost
           TemperatureUndecodable => HostPostStateUnobserved
@@ -224,10 +239,19 @@ fn observe_fan_round(
     observed_at: clock_now_probed_at_or_unknown(),
     round_index: round_index,
     chassis: chassis_observation(success: status.success, stdout: status.stdout),
-    thermal: thermal_observation(success: temps.success, lines: sdr_decoded_lines(results: temp_results)),
-    fan_lines: if fans.success { sdr_decoded_lines(results: fan_results) } else { [] },
-    fan_undecoded_line_count: sdr_unstructured_count(results: fan_results),
-    temperature_undecoded_line_count: sdr_unstructured_count(results: temp_results),
+    thermal: thermal_observation(success: temps.success, results: temp_results),
+    fans: fan_observation(success: fans.success, results: fan_results),
+  }
+}
+
+fn fan_observation(success: Bool, results: List<SdrLineResult>) -> FanSensorObservation {
+  if success {
+    FanSensorsRead {
+      lines: sdr_decoded_lines(results: results),
+      undecoded_line_count: sdr_unstructured_count(results: results),
+    }
+  } else {
+    FanSensorsUnreadable
   }
 }
 
@@ -246,9 +270,12 @@ fn chassis_observation(success: Bool, stdout: String) -> ChassisPowerObservation
   }
 }
 
-fn thermal_observation(success: Bool, lines: List<SdrTypeLine>) -> ThermalObservation {
+fn thermal_observation(success: Bool, results: List<SdrLineResult>) -> ThermalObservation {
   if success {
-    ThermalRead { publication: sdr_temperature_publication(lines: lines) }
+    ThermalRead {
+      publication: sdr_temperature_publication(lines: sdr_decoded_lines(results: results)),
+      undecoded_line_count: sdr_unstructured_count(results: results),
+    }
   } else {
     ThermalUnreadable
   }
@@ -316,7 +343,7 @@ fn drive_of_fan_line(line: SdrTypeLine) -> FanDriveReading? {
 }
 
 fn samples_of_round(host: HostIdentity, round: FanObservationRound) -> List<FanPolicySample> {
-  fold(round.fan_lines, init: [], f: (acc, line) => match drive_of_fan_line(line: line) {
+  fold(round_fan_lines(round: round), init: [], f: (acc, line) => match drive_of_fan_line(line: line) {
     Absent => acc
     Present { value: drive } => acc.append(FanPolicySample {
       observed_at: round.observed_at,
@@ -384,24 +411,41 @@ fn render_round(round: FanObservationRound) -> String {
     "round=", to_string(round.round_index),
     " at=", round.observed_at as String,
     " chassis=", render_chassis(chassis: round.chassis),
-    " thermal=", render_thermal(thermal: round.thermal),
-    " fan_sensors=", to_string(round.fan_lines.length()),
-    " fan_undecoded_line_count=", to_string(sdr_undecoded_line_count_value(c: round.fan_undecoded_line_count)),
-    " temperature_undecoded_line_count=", to_string(sdr_undecoded_line_count_value(c: round.temperature_undecoded_line_count)),
+    " thermal=", render_thermal_detail(thermal: round.thermal),
+    " fans=", render_fan_observation(fans: round.fans),
   ], "")
+}
+
+// THE LINES A ROUND ACTUALLY HAS, WHICH IS NONE WHEN THE READ FAILED. Callers that only want to
+// walk the sensors use this; callers that need to know WHY there are none match the arm, and the
+// receipt does exactly that so an unread fan list never looks like a fanless chassis.
+fn round_fan_lines(round: FanObservationRound) -> List<SdrTypeLine> {
+  match round.fans {
+    FanSensorsUnreadable => []
+    FanSensorsRead { lines: l, undecoded_line_count: _ } => l
+  }
+}
+
+fn render_fan_observation(fans: FanSensorObservation) -> String {
+  match fans {
+    FanSensorsUnreadable => "UNREAD"
+    FanSensorsRead { lines: l, undecoded_line_count: u } =>
+      join(["sensors=", to_string(l.length()), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u))], "")
+  }
+}
+
+fn render_thermal_detail(thermal: ThermalObservation) -> String {
+  match thermal {
+    ThermalUnreadable => "UNREAD"
+    ThermalRead { publication: p, undecoded_line_count: u } =>
+      join([render_thermal_publication(publication: p), " undecoded=", to_string(sdr_undecoded_line_count_value(c: u))], "")
+  }
 }
 
 fn render_chassis(chassis: ChassisPowerObservation) -> String {
   match chassis {
     ChassisUnreadable => "UNREAD"
     ChassisPowerRead { power_on: on } => if on { "on" } else { "off" }
-  }
-}
-
-fn render_thermal(thermal: ThermalObservation) -> String {
-  match thermal {
-    ThermalUnreadable => "UNREAD"
-    ThermalRead { publication: p } => render_thermal_publication(publication: p)
   }
 }
 
@@ -424,7 +468,7 @@ fn render_fan_line(round: FanObservationRound, line: SdrTypeLine) -> String {
 
 fn render_round_block(round: FanObservationRound) -> String {
   join([render_round(round: round)]
-    .concat(map(round.fan_lines, l => render_fan_line(round: round, line: l))), "\n")
+    .concat(map(round_fan_lines(round: round), l => render_fan_line(round: round, line: l))), "\n")
 }
 
 fn render_series(rounds: List<FanObservationRound>) -> String {
