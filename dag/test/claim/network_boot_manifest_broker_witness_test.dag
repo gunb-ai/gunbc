@@ -23,6 +23,7 @@ import gunbc.network_boot_delivery {
   ManifestVerificationNotYetValid,
   ManifestVerificationMac,
   ManifestVerificationVerifiedKey,
+  ManifestVerificationSigningKey,
   ManifestVerificationWrongMessage,
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
@@ -36,6 +37,7 @@ import gunbc.network_boot_delivery {
 import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.network_boot_manifest_broker {
+  present_boot_manifest,
   boot_manifest_architecture_token,
   network_boot_manifest_broker_frontier_rows,
   SignedBootManifestClaims,
@@ -298,17 +300,16 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
   let claims = claims_for(id: good_identity())
   let other_key_id: MacKeyId = "boot-manifest-impostor" as MacKeyId
   let ticket = SignedBootManifestTicket { claims: claims, tag_hex: "00" }
-  match signed_boot_manifest_signing_input(c: claims) {
+  match present_boot_manifest(ticket: ticket) {
     Absent => false
-    Present { value: presented } =>
+    Present { value: p } =>
       match verify_signed_boot_manifest(
-        ticket: ticket,
+        presented: p,
         expectation: expectation_at(spent: []),
-        presented: presented,
         mac_result: mac_verification_from_implementation(
           key_id: other_key_id,
           suite: HmacSha256,
-          message: presented,
+          message: p.signing_input,
           implementation_verified: true,
         ),
       ) {
@@ -325,21 +326,88 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
 test fn a_mac_verified_over_a_different_message_is_refused() -> Bool {
   let claims = claims_for(id: good_identity())
   let ticket = SignedBootManifestTicket { claims: claims, tag_hex: "00" }
-  match signed_boot_manifest_signing_input(c: claims) {
+  match present_boot_manifest(ticket: ticket) {
     Absent => false
-    Present { value: presented } =>
+    Present { value: p } =>
       match verify_signed_boot_manifest(
-        ticket: ticket,
+        presented: p,
         expectation: expectation_at(spent: []),
-        presented: presented,
         mac_result: mac_verification_from_implementation(
           key_id: broker_key_id,
           suite: HmacSha256,
-          message: concat(presented as String, "-tampered") as NonEmptyStr,
+          message: concat(p.signing_input as String, "-tampered") as NonEmptyStr,
           implementation_verified: true,
         ),
       ) {
         BootManifestRefused { class: c } => c == ManifestVerificationWrongMessage
+        BootManifestAuthentic { claims: _ } => false
+      }
+  }
+}
+
+// Claims B presented beside a MAC verified over claims A's signing input: the
+// carrier binds B to B's own input, so the A-message does not authenticate B.
+test fn a_mac_over_another_tickets_input_does_not_authenticate_this_ticket() -> Bool {
+  let a = claims_for(id: identity_with_attempt_and_nonce(attempt_id: attempt, nonce: "nonce-a"))
+  let b = claims_for(id: identity_with_attempt_and_nonce(attempt_id: attempt, nonce: "nonce-b"))
+  match signed_boot_manifest_signing_input(c: a) {
+    Absent => false
+    Present { value: input_a } =>
+      match present_boot_manifest(ticket: SignedBootManifestTicket { claims: b, tag_hex: "00" }) {
+        Absent => false
+        Present { value: presented_b } =>
+          match verify_signed_boot_manifest(
+            presented: presented_b,
+            expectation: expectation_at(spent: []),
+            mac_result: mac_verification_from_implementation(
+              key_id: broker_key_id,
+              suite: HmacSha256,
+              message: input_a,
+              implementation_verified: true,
+            ),
+          ) {
+            BootManifestRefused { class: c } => c == ManifestVerificationWrongMessage
+            BootManifestAuthentic { claims: _ } => false
+          }
+      }
+  }
+}
+
+// A valid MAC under the pinned key does not authenticate claims that name a
+// different signing key: claimed, verified and pinned must all agree.
+test fn claims_naming_a_key_other_than_the_one_that_verified_are_refused() -> Bool {
+  let other_key_id: MacKeyId = "boot-manifest-other" as MacKeyId
+  let id = good_identity()
+  let claims = claims_for(id: SignedBootManifestIdentity {
+    target_unit: id.target_unit,
+    attempt_id: id.attempt_id,
+    nonce: id.nonce,
+    architecture: id.architecture,
+    boot_mode: id.boot_mode,
+    chainloader_digest: id.chainloader_digest,
+    kernel_digest: id.kernel_digest,
+    initrd_digest: id.initrd_digest,
+    root_digest: id.root_digest,
+    kernel_cmdline: id.kernel_cmdline,
+    not_before: id.not_before,
+    expiry: id.expiry,
+    signing_key_identity: other_key_id,
+    callback_identity: id.callback_identity,
+  })
+  match present_boot_manifest(ticket: SignedBootManifestTicket { claims: claims, tag_hex: "00" }) {
+    Absent => false
+    Present { value: p } =>
+      match verify_signed_boot_manifest(
+        presented: p,
+        expectation: expectation_at(spent: []),
+        mac_result: mac_verification_from_implementation(
+          key_id: broker_key_id,
+          suite: HmacSha256,
+          message: p.signing_input,
+          implementation_verified: true,
+        ),
+      ) {
+        BootManifestRefused { class: c } => c == ManifestVerificationSigningKey
         BootManifestAuthentic { claims: _ } => false
       }
   }
