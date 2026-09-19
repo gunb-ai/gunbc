@@ -406,18 +406,144 @@ type FormatObservation
   = FormatObserved { frozen_rows: Int, header: SheetsCellFormatRead?, rule_count: Int }
   | FormatUnreadable { cause: NonEmptyStr }
 
+// THE SECOND READ IS UNRANGED AND CARRIES NO GRID DATA, so the conditional rules are not filtered
+// away by a range chosen to bound something else. It is cheap for the same reason: sheet metadata
+// without grid data does not grow with the census.
+fn read_format_meta(spreadsheet_id: NonEmptyStr, grid: SpreadsheetRead) -> FormatObservation uses net: Network {
+  let meta = sheets.Spreadsheets.GetSpreadsheetMetadata(
+    spreadsheet_id: spreadsheet_id as String,
+    fields: review_sheet_format_meta_field_mask,
+  )
+  match classify_rest_outcome(standing: RestReadExchange { rest: meta.outcome }) {
+    RestExchangeSucceeded =>
+      match first_sheet(read: meta.result) {
+        Absent =>
+          FormatUnreadable {
+            cause: "spreadsheets.get answered with no sheets for the metadata read, so the frozen row count and the conditional rules could not be observed" as NonEmptyStr
+          }
+        Present { value: meta_sheet } =>
+          match header_format_of(read: grid) {
+            HeaderFormatUnreadable { cause: c } => FormatUnreadable { cause: c }
+            HeaderFormatRead { format: h } =>
+              FormatObserved {
+                frozen_rows: observed_frozen_rows(sheet: meta_sheet),
+                header: h,
+                rule_count: observed_rule_count(sheet: meta_sheet),
+              }
+          }
+      }
+    RestExchangeStatusRefused { status, body } =>
+      FormatUnreadable {
+        cause: join(["the metadata read answered ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      FormatUnreadable {
+        cause: join(["the metadata read never reached Sheets: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      FormatUnreadable {
+        cause: join(["the metadata read answered ", to_string(status), " with a body this model could not decode: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeCommitAmbiguous { detail } =>
+      FormatUnreadable {
+        cause: join(["the metadata read is a read and reported an ambiguous commit: ", detail], "") as NonEmptyStr
+      }
+  }
+}
+
+// A GRID RESPONSE WITH NO SHEETS IS NOT A HEADER CARRYING NO FORMAT, and collapsing the two into
+// one `none` is what this type exists to prevent. `SheetsCellFormatRead?` can say "the header cell
+// has no userEnteredFormat" -- a fact about a sheet that was READ -- and it cannot say "the grid
+// response contained no sheet at all", which is the absence of a reading. Folded together, an
+// unreadable grid answers `header_matches` false, answers `format_is_converged` false, and the
+// converge proceeds to issue batchUpdates against a spreadsheet whose grid response it never read:
+// the rostered class absent_reads_identically_to_never_looked, and a widening failure arm where
+// DESIGN §5 requires a refusal.
+type HeaderFormatReading
+  = HeaderFormatRead { format: SheetsCellFormatRead? }
+  | HeaderFormatUnreadable { cause: NonEmptyStr }
+
+fn header_format_of(read: SpreadsheetRead) -> HeaderFormatReading {
+  match first_sheet(read: read) {
+    Absent =>
+      HeaderFormatUnreadable {
+        cause: "the grid read answered with no sheets, so the first sheet's header format could not be read and nothing may be adopted from it" as NonEmptyStr
+      }
+    Present { value: sheet } => HeaderFormatRead { format: observed_header_format(sheet: sheet) }
+  }
+}
+
 // THE FIELD MASK AND THE RANGE ARE DECLARED HERE because they are a fact about what this module
 // inspects, not about the Sheets API. The range is the header row alone: nothing below it is read,
 // so the cost of this readback does not grow with the census.
-data review_sheet_format_field_mask: String = "sheets.properties.gridProperties.frozenRowCount,sheets.conditionalFormats,sheets.data.rowData.values.userEnteredFormat"
+// TWO READS, BECAUSE ONE RANGE CANNOT ANSWER BOTH QUESTIONS. An earlier revision asked for the
+// header cell format, the frozen row count and the conditional rules in ONE ranged call, and the
+// range silently ate the rules: Sheets filters conditionalFormats to those INTERSECTING the
+// requested ranges, this sheet's rules start at row index 1, and the range that bounds the grid read
+// to the header row is row 0 only. So the rules came back absent, the fold counted zero, and the
+// converge reported UNVERIFIED over a sheet it had just formatted correctly.
+//
+// That is not a cosmetic false negative. format_is_converged compares the rule COUNT, so a run
+// reading zero would have applied five more rules, and the next run five more again -- the exact
+// accumulation the readback exists to prevent, caused by the readback. It was invisible until the
+// converge ran against a real spreadsheet: every witness supplies its own observation, so none of
+// them can discover that the request does not return what the request asked for.
+//
+// The split is along what each question actually needs. Grid data is expensive and MUST stay bounded
+// to the header row. The frozen row count and the conditional rules are sheet metadata, need no grid
+// data at all, and must NOT be range-filtered.
+data review_sheet_format_grid_field_mask: String = "sheets.data.rowData.values.userEnteredFormat"
+
+data review_sheet_format_meta_field_mask: String = "sheets.properties.gridProperties.frozenRowCount,sheets.conditionalFormats"
 
 data review_sheet_header_range: String = "A1:Q1"
 
-// THE FIRST ELEMENT OF A LIST, AS A FOLD, because this corpus has no head. Written once here and
-// reused by every nesting level of the response walk below, rather than five copies of the same
-// match. It answers Absent for an empty list, which is what every caller needs: a response branch
-// the API did not send is not an error, it is an absence with a meaning the caller decides.
-fn first_of<T>(items: List<T>) -> T? {
+// THE FIRST ELEMENT OF A LIST, ONCE PER TYPE, AND THE GENERIC IT REPLACES DID NOT SURVIVE CONTACT.
+// An earlier revision wrote one generic first_of<T> folding over List<T> with `none` as the initial
+// accumulator. It typechecked and then failed at EVALUATION against the live response with an error
+// type cascade: the accumulator is an untyped Optional at the fold's start and nothing in the
+// expression fixes T, so the return type could not be resolved where it was used. The three
+// monomorphic folds below say what they return, which is what the runtime needs.
+//
+// This is the `as Nat` shape again -- an expression the compiler accepts and the evaluator refuses --
+// and it is why the readback had to be run against a real spreadsheet before it could be believed.
+fn first_grid(items: List<SheetsGridDataRead>) -> SheetsGridDataRead? {
+  fold_list(
+    items,
+    none,
+    (acc, x) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => Present { value: x }
+      },
+  )
+}
+
+fn first_row(items: List<SheetsRowDataRead>) -> SheetsRowDataRead? {
+  fold_list(
+    items,
+    none,
+    (acc, x) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => Present { value: x }
+      },
+  )
+}
+
+fn first_cell(items: List<SheetsCellDataRead>) -> SheetsCellDataRead? {
+  fold_list(
+    items,
+    none,
+    (acc, x) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent => Present { value: x }
+      },
+  )
+}
+
+fn first_sheet_of(items: List<SheetsSheetRead>) -> SheetsSheetRead? {
   fold_list(
     items,
     none,
@@ -432,7 +558,7 @@ fn first_of<T>(items: List<T>) -> T? {
 fn first_sheet(read: SpreadsheetRead) -> SheetsSheetRead? {
   match read.sheets {
     Absent => none
-    Present { value: sheets } => first_of(items: sheets)
+    Present { value: sheets } => first_sheet_of(items: sheets)
   }
 }
 
@@ -462,19 +588,19 @@ fn observed_header_format(sheet: SheetsSheetRead) -> SheetsCellFormatRead? {
   match sheet.data {
     Absent => none
     Present { value: grids } =>
-      match first_of(items: grids) {
+      match first_grid(items: grids) {
         Absent => none
         Present { value: grid } =>
           match grid.rowData {
             Absent => none
             Present { value: rows } =>
-              match first_of(items: rows) {
+              match first_row(items: rows) {
                 Absent => none
                 Present { value: row } =>
                   match row.values {
                     Absent => none
                     Present { value: cells } =>
-                      match first_of(items: cells) {
+                      match first_cell(items: cells) {
                         Absent => none
                         Present { value: cell } => cell.userEnteredFormat
                       }
@@ -486,26 +612,14 @@ fn observed_header_format(sheet: SheetsSheetRead) -> SheetsCellFormatRead? {
 }
 
 fn read_format(spreadsheet_id: NonEmptyStr) -> FormatObservation uses net: Network {
-  let read = sheets.Spreadsheets.GetSpreadsheet(
+  let grid = sheets.Spreadsheets.GetSpreadsheet(
     spreadsheet_id: spreadsheet_id as String,
     range: review_sheet_header_range,
-    fields: review_sheet_format_field_mask,
+    fields: review_sheet_format_grid_field_mask,
     include_grid_data: true,
   )
-  match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
-    RestExchangeSucceeded =>
-      match first_sheet(read: read.result) {
-        Absent =>
-          FormatUnreadable {
-            cause: "spreadsheets.get answered with no sheets, so the first sheet's format could not be read and nothing may be adopted from it" as NonEmptyStr
-          }
-        Present { value: sheet } =>
-          FormatObserved {
-            frozen_rows: observed_frozen_rows(sheet: sheet),
-            header: observed_header_format(sheet: sheet),
-            rule_count: observed_rule_count(sheet: sheet),
-          }
-      }
+  match classify_rest_outcome(standing: RestReadExchange { rest: grid.outcome }) {
+    RestExchangeSucceeded => read_format_meta(spreadsheet_id: spreadsheet_id, grid: grid.result)
     RestExchangeStatusRefused { status, body } =>
       FormatUnreadable {
         cause: join(["spreadsheets.get answered ", to_string(status), ": ", body], "") as NonEmptyStr

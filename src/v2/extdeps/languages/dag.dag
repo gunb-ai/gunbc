@@ -83,7 +83,8 @@ import v2.std.compilers.lexing {
   TokenRule,
   TriviaRule,
   WhitespaceChar,
-  lex_rule_set_token_class_member
+  lex_rule_set_token_class_member,
+  symbol_intern_lexeme
 }
 import v2.std.node {
   Arrow,
@@ -165,6 +166,8 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import std.algebra { Empty }
+import std.decl_ref { decl_ref }
+import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,
@@ -445,6 +448,27 @@ fn dag_int_literal_lex_rule() -> LexRule {
   }
 }
 
+// v1 `scan_number` (v1.compiler.tokenize): digits, then `.` followed by at least one digit, is
+// ShLitFloat. v2 G0 had only the integer arm, so `1.8` tokenized as int + dot + int. Postfix
+// field access demands a binding name after `.`, so the primary failed, the fn_decl failed as a
+// top-level item, the module `repeat` stopped, and `parse_g0_tokens_remain` pointed at leftover
+// `fn` — the first remaining token, not the float. The float pattern is strictly longer than the
+// integer prefix, so longest-match selects it regardless of list order. Equal-length ties go to
+// the LATER rule (`v2.compiler.tokenize`); these two patterns never tie, so this row is not
+// placed to win a tie.
+fn dag_float_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ^dag_token_float_literal,
+    pattern: SequencePattern {
+      left: OneOrMorePattern { element: CharClassPattern { class: DigitChar } },
+      right: SequencePattern {
+        left: LiteralPattern { text: "." },
+        right: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+      }
+    }
+  }
+}
+
 fn dag_string_escape_char_pattern() -> LexPattern {
   ChoicePattern {
     left: CharPattern { char: 34 },
@@ -519,6 +543,7 @@ fn dag_lex_rules() -> LexRuleSet {
       dag_whitespace_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_line_comment_annotation_rule(),
+      dag_float_literal_lex_rule(),
       dag_int_literal_lex_rule(),
       dag_ident_lex_rule(),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_module, text: "module"),
@@ -1273,6 +1298,8 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
     right: dag_grammar_choice(
       left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
       right: dag_grammar_choice(
+        left: dag_grammar_terminal(token_class: ^dag_token_float_literal),
+        right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
             left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
@@ -1314,6 +1341,7 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
               )
             )
           )
+        )
         )
     )
   )
@@ -1424,7 +1452,10 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
         left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
-          right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
+          right: dag_grammar_choice(
+            left: dag_grammar_terminal(token_class: ^dag_token_float_literal),
+            right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
+          )
         )
       )
     )
@@ -3006,23 +3037,30 @@ data dag_loop_arrow_with_body_wrong_value_fixture: Node = dag_loop_arrow_with_bo
 data dag_fixture_emitted_loop_fn: Node = dag_loop_arrow_with_body_fixture
 
 fn dag_node_is_kw_true_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_kw_true
+    Absent => false
   }
 }
 
 fn dag_node_is_kw_false_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_false
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_kw_false
+    Absent => false
   }
 }
 
 fn dag_node_is_int_literal_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } => id == ^dag_token_int_literal
-    _ => false
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_int_literal
+    Absent => false
+  }
+}
+
+fn dag_node_is_float_literal_atom(node: Node) -> Bool {
+  match node_atom_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_token_float_literal
+    Absent => false
   }
 }
 
@@ -3060,10 +3098,9 @@ fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
   dag_node_is_kw_true_atom(node: node)
     || dag_node_is_kw_false_atom(node: node)
     || dag_node_is_int_literal_atom(node: node)
-    || match node.kind {
-         TypeNode { connective: Atom { identity: id } } =>
-           dag_symbol_is_fixture_body_literal_atom(id: id)
-         _ => false
+    || match node_atom_identity_optional(node: node) {
+         Present { value: id } => dag_symbol_is_fixture_body_literal_atom(id: id)
+         Absent => false
        }
 }
 
@@ -3112,6 +3149,32 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenc
       )
   }
 }
+
+// Lexeme capture, not IEEE decode. Identity stays `dag_token_float_literal` so 1.8 and 2.5
+// are not the same class-stamped atom. Magnitude home is the dissolve-on below, not this string.
+fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^dag_token_float_literal } },
+    children: [
+      Edge {
+        label: Named { name: ^float_literal_lexeme_field },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      }
+    ],
+    occurrence_id: occurrence_id
+  }
+}
+
+data dag_float_literal_magnitude_home_dissolve_on: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "v2.extdeps.languages.dag",
+    decl_name: "dag_float_literal_node_from_lexeme"
+  )
+)
 
 fn dag_int_literal_magnitude_edge_target_optional(edge: Edge) -> Optional<Node> {
   match edge {

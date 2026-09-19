@@ -4,9 +4,13 @@ Operator-approved workaround (2026-09-17): the switch and host link modes were d
 directly over the RouterOS REST API and the host's `mstlink`, from a session on the LAN,
 ahead of the modeled convergence path (docs/plans/fabric-switch-convergence-build-plan.md).
 
-**This file is the transcription source for that modeled apply, and its dissolution
-trigger.** It records the facts established, the exact commands that were run, and the
-verdict — so PR-3's converge is a transcription of what worked, not a fresh guess. The
+**This file is an INPUT to the modeled apply, and its dissolution trigger** -- it is NOT an
+exact transcription of a successful configuration, because no bilateral 100G configuration
+worked. It records the facts established, the NORMALIZED operation shapes attempted (with
+placeholders like `<iface>`/`<pci>`/`<dev>`, and RouterOS CLI equivalents for REST
+mutations), and the verdict. A future receipt may carry the exact REST method, resource
+identity, request body, real interface/PCI identifiers, timestamps and pre/post
+observations; that is safely deferred. The
 scaffold is retired when that modeled path lands and reproduces this end state. Round-by-
 round exploration (wrong turns, corrected framings) is intentionally NOT preserved here;
 git history carries it, and this file states each conclusion once, at witnessed confidence.
@@ -27,7 +31,7 @@ git history carries it, and this file states each conclusion once, at witnessed 
 - Lane roster (cage:lane -> host): 1:1 srv5, 1:3 srv8, 1:5 srv7, 1:7 srv6, 2:1 srv10,
   2:3 srv12, 2:5 srv9, 2:7 srv11.
 
-## Commands run (the transcription source)
+## Normalized operation shapes attempted (an input to the modeled actuator)
 
 Switch, per lane, over `/rest/interface/ethernet/<iface>` (RouterOS CLI form):
 ```
@@ -57,7 +61,45 @@ locally while the host never trains. On the autoneg path, RouterOS reports
 
 This makes **switch-side QSFP-DD coding/compatibility the leading hypothesis, NOT a proven
 cause**: the current tests do not isolate it from signal integrity, lane grouping,
-firmware, or endpoint interoperability. All 8 legs were restored and verified at 50G.
+firmware, or endpoint interoperability. The tested srv5 leg was the mutated specimen and
+was restored and verified at 50G; all eight legs were verified at their known-good 50G state
+after the experiment.
+
+## FS support escalation (2026-09-18)
+
+FS support asked us to follow the CRS812 breakout documentation: force the port speed with
+auto-negotiation off (`auto-negotiation=no speed=100G-baseCR2` on the odd sub-ports). That
+is the configuration already tested above. They also asked whether the ConnectX-7 was
+actually up when the switch reported link-ok. To answer, one operator-approved retest ran on
+the srv5 leg only (`qsfp56-dd-1-1`, 12:55:07-12:56:00 UTC). Both credentials were loaded
+before the change and the restore was armed to run on exit, which closes the expired-token
+failure above.
+
+- **FS's exact configuration was applied** on the switch with `fec91` and a bounce. The
+  host was forced to `100G_2X` with RS-FEC and bounced.
+- **Both ends were read at +10s and +30s, with the same result each time:**
+  - CRS812: `link-ok`, `rate=100Gbps`.
+  - ConnectX-7: `mstlink State: Polling`, speed N/A.
+  - Linux: `NO-CARRIER`, carrier 0. `ethtool`: `Link detected: no (Autoneg, No partner
+    detected)`, active FEC None.
+  - Ping across the fabric link: 100% loss.
+- **Answer to FS: no, the ConnectX-7 was not operationally up.** The switch's 100G reading
+  describes only its own side.
+- **RouterOS reports `eeprom-checksum: bad` for the QSFP-DD end at the healthy 50G state
+  too.** On its own, the flag therefore does not explain the 100G failure.
+- **The restore was verified from both ends:**
+  - Switch: 50G-baseCR2, fec91, link-ok.
+  - Host: Active, 50G, 2 lanes, RS(528,514), carrier 1.
+  - Ping to .14 and .12: 0% loss.
+- **Operator sent the evidence to FS the same day** (after redacting it): the CRS812 system
+  information and hide-sensitive export, the port and module information, the ConnectX-7
+  mstlink/ethtool/module EEPROM baselines, and simultaneous captures from both ends for the
+  forced test and the restore. Awaiting FS engineering's review. Cable: FS
+  QDD-400G-4QPC015, host-end serial S2630771509-2. Switch: RouterOS 7.20.8. NIC firmware:
+  28.45.4028.
+
+The verdict above stands unchanged. The leading hypothesis is still unproven, and the next
+step is still the substitution control below, unless FS identifies a configuration error.
 
 ## Next step: a substitution control, not more configuration
 

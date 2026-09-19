@@ -7,9 +7,12 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push,
   WorkflowPermissions, PermWrite, PermRead,
-  ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
-  checkout_action,
+  ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse, 
   github_event_path_env,
+}
+import gunbc.action_use_admission {
+  checkout_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
@@ -430,12 +433,17 @@ type FleetDesiredGenerationOutcome
   | FleetDesiredGenerationRefused { reason: String }
 
 fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: fleet_desired_admission_workflow) {
-    WorkflowToolchainHomesAdmitted =>
-      FleetDesiredGenerated {
-        content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
+  match admit_workflow_action_uses(workflow: fleet_desired_admission_workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      FleetDesiredGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_desired_admission_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: fleet_desired_admission_workflow) {
+        WorkflowToolchainHomesAdmitted =>
+          FleetDesiredGenerated {
+            content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
+          }
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          FleetDesiredGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
       }
-    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-      FleetDesiredGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
   }
 }

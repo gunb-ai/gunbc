@@ -1,6 +1,7 @@
 module gunbc.live_deploy.fleet_request
 
 import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
 import v2.std.collection { Present, Absent }
 import std.algebra { Empty, Cons }
 import std.goal_assessment {
@@ -23,11 +24,22 @@ import gunbc.host_convergence_protocol {
   inspect_via_host_effect_projection,
 }
 import gunbc.live_deploy.candidate { CandidateRelease }
+import gunbc.live_deploy.desired {
+  DesiredDeployment,
+  DesiredRosterRefusal,
+  DesiredSelectedIdentityBound,
+  DesiredSelectedIdentityUnknownInstance,
+  DesiredSelectedIdentityRosterRefused,
+  DesiredSelectedIdentityMismatch,
+  bind_desired_selected_identity,
+}
 import gunbc.live_deploy.member_identity {
   ConvergedMember,
   Executable,
   DirectoryRoot,
   MemberIdentity,
+  ExecutableIdentity,
+  UnitFile,
   UnitFileAt,
   UnitFileIdentity,
   RootAt,
@@ -48,6 +60,7 @@ import gunbc.live_deploy.member_identity {
   observed_member_member,
   converged_member_eq,
   converged_member_label,
+  observed_member_wire,
   release_member_roster,
   derive_member_plan,
   EffectDerivation,
@@ -57,21 +70,14 @@ import gunbc.live_deploy.member_identity {
   ReleaseTarget,
 }
 
-// CONVERGENCE-ONE C3, independent of C2's selected-identity field.
-//
-// Selected deployment identity is DesiredDeployment (gunbc.live_deploy.desired). That type is
-// not on main yet. This module does not mint a stand-in for it. The FleetConvergeRequest arm
-// that would carry that field waits for #11425. What this cut does construct is the MEMBER
-// BASIS — candidate, roster, observed population, decisions, effect plan — whose mint cannot
-// be a host name.
-//
-// LiveDeployMemberBasis is sole_constructor. There is no host field. A host-only
-// FleetConvergeRequest for this scope is UNCONSTRUCTIBLE: LiveDeploy is a scope with no
-// request variant until C2 supplies DesiredDeployment, and observe_fleet_converge_request_wet
-// therefore cannot build one from hostname.
+// CONVERGENCE-ONE C3 remainder. LiveDeployMemberBasis is sole_constructor; there is no host
+// field. A host-only FleetConvergeRequest for this scope is UNCONSTRUCTIBLE: observe_fleet_converge_request_wet
+// still cannot build one from hostname. The request arm is LiveDeployConverge over a
+// DesiredDeployment whose selected_identity was bound to the roster (gunbc.live_deploy.desired
+// bind_desired_selected_identity) plus this member basis.
 //
 // Plan-side C1 projection is consumed here (inspect_via_host_effect_projection). The
-// protocol module is not edited. C4 still owns converge_apply_for_host.
+// protocol module is not edited. C4 still owns converge_apply_for_host. C8 still owns wet apply.
 
 type LiveDeployMemberBasis sole_constructor {
   candidate: CandidateRelease
@@ -318,6 +324,92 @@ fn live_deploy_admission_refusal_text(cause: LiveDeployAdmissionRefusal) -> Stri
   }
 }
 
-fn live_deploy_host_only_request_refusal_reason() -> String {
-  "live-deploy FleetConvergeRequest is unconstructible until DesiredDeployment lands; a host-only LiveDeploy request has no spelling"
+fn observed_member_baseline_row(o: ObservedMember) -> String {
+  observed_member_wire(o: o)
+}
+
+fn live_deploy_member_basis_baseline_rows(basis: LiveDeployMemberBasis) -> List<String> {
+  map(basis.observed, o => observed_member_baseline_row(o: o))
+}
+
+type LiveDeployFleetRequestAdmission
+  = LiveDeployFleetRequestAdmitted { desired: DesiredDeployment, basis: LiveDeployMemberBasis }
+  | LiveDeployFleetRequestUnknownInstance { instance_id: String }
+  | LiveDeployFleetRequestRosterRefused { refusal: DesiredRosterRefusal }
+  | LiveDeployFleetRequestIdentityMismatch { carried: DeclarationRef, rostered: DeclarationRef }
+  | LiveDeployFleetRequestUnitMismatch { carried: NonEmptyStr, rostered: NonEmptyStr }
+  | LiveDeployFleetRequestUnitFileUnbound
+  | LiveDeployFleetRequestExecutableUnbound
+  | LiveDeployFleetRequestBasisRefused { cause: LiveDeployAdmissionRefusal }
+
+// THE UNIT IS THE ROW'S, NOT A SECOND ARGUMENT. ReleaseTarget.unit and DesiredDeployment.names.unit_name
+// answered the same question; a caller-supplied target made a different unit undetectable (review 67399).
+// The executable digest is the candidate bytes named by desired_member(Executable); the unit is
+// taken from the bound roster row. first_foreign / unit_owned_by_target then key on that same unit.
+// ONE MATCH ON Executable: the helper returns the bound target or the refusal (review 67431).
+type LiveDeployReleaseTargetBind
+  = LiveDeployReleaseTargetBound { target: ReleaseTarget }
+  | LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestAdmission }
+
+fn bind_release_target_to_desired(
+  row: DesiredDeployment,
+  candidate: CandidateRelease,
+  desired_member: fn(ConvergedMember) -> MemberIdentity,
+) -> LiveDeployReleaseTargetBind {
+  match desired_member(UnitFile) {
+    UnitFileAt { file } =>
+      if (file.unit as String) != (row.names.unit_name as String) {
+        LiveDeployReleaseTargetRefused {
+          cause: LiveDeployFleetRequestUnitMismatch {
+            carried: file.unit,
+            rostered: row.names.unit_name,
+          },
+        }
+      } else {
+        match desired_member(Executable) {
+          ExecutableIdentity { digest } =>
+            LiveDeployReleaseTargetBound {
+              target: ReleaseTarget {
+                revision: candidate.revision,
+                executable: digest,
+                unit: row.names.unit_name,
+              },
+            }
+          _ => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestExecutableUnbound }
+        }
+      }
+    _ => LiveDeployReleaseTargetRefused { cause: LiveDeployFleetRequestUnitFileUnbound }
+  }
+}
+
+fn admit_live_deploy_fleet_request(
+  desired: DesiredDeployment,
+  candidate: CandidateRelease,
+  observed: List<ObservedMember>,
+  desired_member: fn(ConvergedMember) -> MemberIdentity,
+) -> LiveDeployFleetRequestAdmission {
+  match bind_desired_selected_identity(desired: desired) {
+    DesiredSelectedIdentityUnknownInstance { instance_id } =>
+      LiveDeployFleetRequestUnknownInstance { instance_id: instance_id }
+    DesiredSelectedIdentityRosterRefused { refusal } =>
+      LiveDeployFleetRequestRosterRefused { refusal: refusal }
+    DesiredSelectedIdentityMismatch { carried, rostered } =>
+      LiveDeployFleetRequestIdentityMismatch { carried: carried, rostered: rostered }
+    DesiredSelectedIdentityBound { row } =>
+      match bind_release_target_to_desired(row: row, candidate: candidate, desired_member: desired_member) {
+        LiveDeployReleaseTargetRefused { cause } => cause
+        LiveDeployReleaseTargetBound { target } =>
+          match admit_live_deploy_member_basis(
+            candidate: candidate,
+            target: target,
+            observed: observed,
+            desired: desired_member,
+          ) {
+            LiveDeployBasisRefused { cause } =>
+              LiveDeployFleetRequestBasisRefused { cause: cause }
+            LiveDeployBasisAdmitted { basis } =>
+              LiveDeployFleetRequestAdmitted { desired: row, basis: basis }
+          }
+      }
+  }
 }

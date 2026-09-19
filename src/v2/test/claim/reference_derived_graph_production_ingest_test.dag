@@ -52,7 +52,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // MEASUREMENTS OF TODAY'S XL-4 ROUTE over the shared ingest xl4_fixture_trees.located.
 // The collector and edge fold stay per claim. Call-argument and callee: tree-side.
-// Qualified mentions: dotted-reference capability. Bare field-type: tree-side census.
+// Qualified mentions: the SITE reaches since the dotted-reference lowering (2026-09-18); the EDGE
+// waits on declaration grafting for type/data targets. Bare field-type: tree-side census.
 
 data provided_marker_dotted: String = "test.fixture.reference_derived_graph.provider.ProvidedMarker"
 
@@ -189,8 +190,13 @@ test fn production_route_call_contents_are_missing_today_holds() -> Bool {
   production_edge_count(path: consumer_call_only_path, target: provider_module) == 0
 }
 
-test fn production_route_type_position_qualified_site_is_missing_today_holds() -> Bool {
-  site_spelling_count(path: consumer_type_only_path, needle: provided_marker_dotted) == 0
+// FLIPPED 2026-09-18: enrolled as "site is missing today", it went red when v2 body lowering
+// began building the qualified-name spine for a multi-segment type-position name
+// (gunbc.recurring_failure_mode dotted_reference_truncated_at_v2_body_lowering). The site now
+// reaches as ONE spelling of the whole chain; the EDGE row beside it stays missing because
+// ProvidedMarker is a type declaration the graft never rehomes, so the site resolves to nothing.
+test fn production_route_type_position_qualified_site_is_present_holds() -> Bool {
+  site_spelling_count(path: consumer_type_only_path, needle: provided_marker_dotted) == 1
 }
 
 test fn production_route_type_position_qualified_edge_is_missing_today_holds() -> Bool {

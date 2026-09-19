@@ -2,7 +2,13 @@
 # On 16 GB machines, parallel cargo runs cause OOM → system watchdog restart.
 
 [build]
-jobs = 2                          # max parallel rustc/linker invocations per cargo run
+jobs = 2  # max parallel rustc/linker invocations per cargo run
+# A warning is an error in this repository. The policy row is
+# `gunbc.repo_self_warning_policy` `repo_self_warning_denial`; this is the channel that
+# reaches an ORDINARY `cargo build`/`cargo test` run from a clone, which the clippy command
+# and the workflow's toolchain step do not. An ambient RUSTFLAGS overrides this file rather
+# than composing with it, and CI sets the same value, so the two channels agree by value.
+rustflags = ["-D", "warnings"]
 
 [env]
 # v1/v2 tests build large `Dag` fixtures; the default thread stack overflows (WSL / ctrl-build).
