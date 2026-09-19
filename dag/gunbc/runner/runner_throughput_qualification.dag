@@ -1,0 +1,684 @@
+module gunbc.runner_throughput_qualification
+
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Timestamp, WorkflowRunId }
+import std.nat { Nat }
+import std.measure {
+  ByteSize, byte_size, byte_size_count,
+  EvalStepCount, eval_step_count, eval_step_count_value,
+  EvalStepsPerMillisecond, eval_steps_per_millisecond, eval_steps_per_millisecond_count,
+  HardwareThreadCount, hardware_thread_count, hardware_thread_count_value,
+  Millisecond, millisecond, millisecond_count, Second,
+}
+import std.realization_width { byte_size_saturating_sub }
+import product.placement_supply { HostIdentity }
+import product.fabric.work {
+  CapacityClass, capacity_class_wire, Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef,
+}
+import product.fabric.envelope { cpu_memory_envelope }
+import product.fabric.identity { FabricIdentity, OfferKey }
+import product.fabric.provider_route { ProviderRoute }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, OfferQuote, ObservedSupply }
+import product.fabric.demand { ObservationReceiptRef }
+import extdeps.toolchain.types { Architecture }
+import gunbc.required_ci_phase_roster { RequiredCiPhase, required_ci_phase_name }
+import gunbc.runner_slot_allocation {
+  RunnerSlotDesired, gunbc_floor_minimum_viable_armed_budget,
+  RunnerCoresPerSlotResolution, CoresPerSlotResolved, CoresPerSlotUnresolved,
+  CpuQuotaResolved, CpuQuotaRefused,
+}
+import gunbc.host_budget_source {
+  HostBudgetResolution, HostBudgetResolved, HostBudgetDeclaredUnverified, HostBudgetUnreadable,
+}
+import gunbc.fleet_host_budget { runner_slice_cap, oomd_actuation_floor }
+import gunbc.fabric_executor_class { ExecutorSanction, ExecutorSanctioned, ExecutorUnclassified }
+import v2.workflow.floor_eval_step_calibration {
+  EvalStepCalibration, calibration_rate, calibration_specimen_eval_steps,
+}
+
+// A RUNNER-THROUGHPUT QUALIFICATION IS A FACT ABOUT ONE HOST AT ONE REVISION, CITED TO ONE RUN.
+//
+// Mt. Collins unit 1 booted under the modeled approval gate (the census lane's boot 22). Booting
+// is not qualifying: a host that reaches userspace with 160 threads and 250 GiB has established
+// nothing about how much fleet work it can carry, and the fleet's capacity vocabulary must not be
+// allowed to read a hardware census as a capacity class. This module is the join between a
+// measured floor run on the host and the admission the fabric already owns.
+//
+// NOTHING HERE IS A NEW BENCHMARK. The unit of fleet work is the required floor -- one
+// `claim_executor --required-ci` process at a pinned revision -- and every instrument this receipt
+// carries is one that run already emits: the eval-step total of the floor phase, the wall of each
+// `gunbc.required_ci_phase_roster` phase from its `[floor-phase]` rows, the cgroup `memory.peak`
+// from its `[floor-cgroup]` rows, and the calibration specimen's `[witness]` line, whose steps and
+// CPU milliseconds are exactly what `v2.workflow.floor_eval_step_calibration` pinned the floor's
+// rate from. A host's throughput is therefore denominated in `std.measure EvalStepsPerMillisecond`
+// and compared to the pin the floor's ceilings were derived under -- the same measure, the same
+// specimen, the same protocol (slowest reading wins), on a different machine.
+//
+// EACH AXIS IS THREE-VALUED, AS product.fabric.node_qualification RULES: holds with the numbers,
+// falls short with the numbers, or unread. Unread is never agreement, and there is no Bool that
+// answers false for it. A host with no run is UNQUALIFIED, not slow; a run at another revision is
+// STALE, not admitted; a run whose cgroup could not be read REFUSES through
+// `gunbc.host_budget_source HostBudgetUnreadable` rather than reporting a peak it never saw.
+//
+// MEASUREMENTS ARE SUPPLIED READINGS. This module runs nothing: the route that boots the host,
+// registers the slot, dispatches the floor and collects these lines is
+// `gunbc.runner_throughput_qualification_route`, and the values arrive here as the run's own
+// numbers. Transcribing them into a data row would be the §6 failure this receipt exists to make
+// unnecessary -- the receipt names the run that re-derives it.
+
+// ── THE WORKLOAD: THE FLOOR AT A PINNED REVISION ──────────────────────────────────────────────
+//
+// `program` names the producer (gunbc.fabric_witness_run floor_work_contract names the same one),
+// `revision` pins the corpus it walked. Two runs at different revisions measured different work,
+// so a receipt is comparable only to the pin it was taken against.
+type FloorWorkloadPin {
+  program: NonEmptyStr
+  revision: CommitSha
+}
+
+// WHERE THE ATTEMPT WORKSPACE LIVES DECIDES WHAT THE MEMORY PEAK MEANS, so the backing is part of
+// the subject rather than an operational detail. On a diskless live host a tmpfs workspace is
+// charged to the cgroup that faults its pages in -- the checkout, the build tree and the floor's
+// resident set all land in ONE `memory.current` -- so the peak this receipt carries is
+// workspace-inclusive, and a fleet host whose workspace is on NVMe reports a strictly smaller
+// number for the same work. A peer scratch export moves those bytes off the host and onto a LAN
+// and another machine, which is a fact about the export rather than about the subject. The
+// mtcollins1 decision and its reasoning live in the route module.
+type WorkspaceBacking
+  = RamBackedTmpfs
+  | HostLocalDisk
+  | PeerScratchExport { peer: HostIdentity }
+
+fn workspace_backing_is_charged_to_slot(backing: WorkspaceBacking) -> Bool {
+  match backing {
+    RamBackedTmpfs => true
+    HostLocalDisk => false
+    PeerScratchExport { peer: _ } => false
+  }
+}
+
+fn workspace_backing_wire(backing: WorkspaceBacking) -> NonEmptyStr {
+  match backing {
+    RamBackedTmpfs => "ram-backed tmpfs, charged to the slot cgroup" as NonEmptyStr
+    HostLocalDisk => "host-local disk" as NonEmptyStr
+    PeerScratchExport { peer: p } => concat("scratch export from ", p as String) as NonEmptyStr
+  }
+}
+
+// ── THE INSTRUMENTS, ONE READING PER RUN ──────────────────────────────────────────────────────
+
+type PhaseWall {
+  phase: RequiredCiPhase
+  wall: Millisecond
+}
+
+// THE CALIBRATION SPECIMEN'S OWN LINE, on this host. Steps are a property of the tree and must
+// equal the pinned specimen's count; the CPU milliseconds are the only thing the host changes.
+type RateSpecimenReading
+  = RateSpecimenRead { eval_steps: EvalStepCount, cpu: Millisecond }
+  | RateSpecimenUnread { because: NonEmptyStr }
+
+// THE SLOT CGROUP AS THE RUN SAW IT. `bound` is what limited the run (the slot's memory.high, read
+// through the same resolution the executor arms against) and `peak` is memory.peak at the same
+// level. A bound that resolved as HostBudgetUnreadable is a run that ran unbounded, and its peak --
+// even if the file was readable -- was taken under no envelope, so it is not evidence about the
+// slot shape at all.
+type CgroupMemoryReading
+  = CgroupMemoryRead { level: NonEmptyStr, bound: HostBudgetResolution, peak: ByteSize }
+  | CgroupMemoryUnreadable { reason: NonEmptyStr }
+
+type QualificationRun {
+  run: WorkflowRunId
+  attempt_label: NonEmptyStr
+  observed_at: Timestamp
+  revision: CommitSha
+  host_memory_total: ByteSize
+  host_memory_available_idle: ByteSize
+  host_threads: HardwareThreadCount
+  host_architecture: Architecture
+  phase_wall: List<PhaseWall>
+  floor_eval_steps: EvalStepCount
+  rate_specimen: RateSpecimenReading
+  memory: CgroupMemoryReading
+}
+
+// ── THE SUBJECT ───────────────────────────────────────────────────────────────────────────────
+
+type RunnerThroughputQualification {
+  host: HostIdentity
+  capacity_class_candidate: CapacityClass
+  workload: FloorWorkloadPin
+  slot_envelope: RunnerSlotDesired
+  workspace_backing: WorkspaceBacking
+  cores_per_slot: RunnerCoresPerSlotResolution
+  calibration: EvalStepCalibration
+  runs: List<QualificationRun>
+}
+
+// ── THREE-VALUED STANDINGS ────────────────────────────────────────────────────────────────────
+
+// THE PIN IS THE FLOOR'S DECLARED MINIMUM-VIABLE THROUGHPUT. Every claim ceiling the floor enforces
+// is `envelope_ms x steps_per_ms` at the pinned rate, so a host delivering fewer steps per
+// millisecond than the pin runs every claim past the wall its budget was derived for. A host is
+// admitted to carry the floor only at or above that rate; a shortfall is reported with both
+// numbers. The measured rate is the floored ratio, exactly as the pin was taken.
+type ThroughputStanding
+  = ThroughputMeetsPin { measured: EvalStepsPerMillisecond, pinned: EvalStepsPerMillisecond }
+  | ThroughputBelowPin { measured: EvalStepsPerMillisecond, pinned: EvalStepsPerMillisecond }
+  | ThroughputUnread { because: NonEmptyStr }
+
+// THE SLOT ENVELOPE MUST HOLD THE FLOOR TWICE OVER: its high line must sit at or above
+// `gunbc_floor_minimum_viable_armed_budget` (or the executor refuses to arm at all), and the run's
+// measured peak must sit within that line, or the run was held by the throttle rather than
+// measured -- the censored-lower-bound lesson `gunbc.runner_slot_allocation` records for the srv1
+// pins.
+type MemoryEnvelopeStanding
+  = PeakWithinSlotHigh { peak: ByteSize, high: ByteSize }
+  | PeakExceedsSlotHigh { peak: ByteSize, high: ByteSize }
+  | SlotHighBelowFloorMinimum { high: ByteSize, minimum: ByteSize }
+  | RunBoundUnreadable { reason: NonEmptyStr }
+
+type RevisionStanding
+  = RevisionMatchesPin { revision: CommitSha }
+  | RevisionStale { pinned: CommitSha, observed: CommitSha }
+
+// THE SLOT COUNT IS DERIVED THE WAY THE FLEET DERIVES IT: the runner slice is what the host
+// leaves after its measured idle overhead and the oomd actuation floor, and width is the minimum
+// over the memory and CPU axes. Nothing about the host's disk enters, because a diskless host has
+// none and a fleet host's disk axis is DiskWidthUnconstrained today. The overhead is the run's own
+// idle reading (MemTotal minus MemAvailable before the job), not a fleet allowance carried over
+// from a machine with a different OS image.
+type SlotWidthStanding
+  = SlotWidthDerived { by_memory: Int, by_cpu: Int, slots: Int }
+  | SlotWidthUnderivable { cause: NonEmptyStr }
+
+// ── THE RECEIPT ───────────────────────────────────────────────────────────────────────────────
+//
+// Every field names the run it came from through `run`; nothing is a number without a producer.
+type RunnerThroughputReceipt {
+  host: HostIdentity
+  workload: FloorWorkloadPin
+  run: WorkflowRunId
+  attempt_label: NonEmptyStr
+  observed_at: Timestamp
+  host_architecture: Architecture
+  host_threads: HardwareThreadCount
+  slot_envelope: RunnerSlotDesired
+  revision: RevisionStanding
+  throughput: ThroughputStanding
+  memory: MemoryEnvelopeStanding
+  phase_wall: List<PhaseWall>
+  floor_eval_steps: EvalStepCount
+  slot_width: SlotWidthStanding
+  workspace_backing: WorkspaceBacking
+}
+
+type ThroughputRefusal
+  = ThroughputDidNotHold { standing: ThroughputStanding }
+  | MemoryEnvelopeDidNotHold { standing: MemoryEnvelopeStanding }
+  | SlotWidthDidNotHold { standing: SlotWidthStanding }
+
+// ── THE ADMISSION ─────────────────────────────────────────────────────────────────────────────
+//
+// FIVE ARMS THAT ARE NOT ONE ARM. Admitted carries the receipt and the class it was a candidate
+// for. Not-admitted carries the receipt and every refusal with its numbers. Unqualified is a host
+// with no run at all -- the arm a roster row must never fabricate its way out of. Stale is a
+// receipt that exists and was taken against a different pin. Unreadable is a run whose cgroup
+// accounting could not be read, which refuses before a receipt is minted: a peak nobody observed
+// is not a small peak.
+type RunnerThroughputAdmission
+  = HostAdmittedToClass { receipt: RunnerThroughputReceipt, class: CapacityClass }
+  | HostNotAdmittedToClass {
+      receipt: RunnerThroughputReceipt,
+      candidate: CapacityClass,
+      refusals: List<ThroughputRefusal>,
+    }
+  | HostUnqualified { host: HostIdentity, candidate: CapacityClass }
+  | ReceiptStale { receipt: RunnerThroughputReceipt, pinned: CommitSha, observed: CommitSha }
+  | HostBudgetUnreadableRefusal { host: HostIdentity, run: WorkflowRunId, reason: NonEmptyStr }
+
+// ── QUALIFYING ONE AXIS AT A TIME ─────────────────────────────────────────────────────────────
+
+fn qualify_throughput(calibration: EvalStepCalibration, reading: RateSpecimenReading) -> ThroughputStanding {
+  match reading {
+    RateSpecimenUnread { because: b } => ThroughputUnread { because: b }
+    RateSpecimenRead { eval_steps: steps, cpu: cpu } => {
+      let pinned_steps = eval_step_count_value(s: calibration_specimen_eval_steps(calibration: calibration))
+      let observed_steps = eval_step_count_value(s: steps)
+      let cpu_ms = millisecond_count(m: cpu)
+      if observed_steps != pinned_steps {
+        ThroughputUnread {
+          because: "the specimen performed a different step count than the pinned specimen, so the reading is of a different program and not a rate sample" as NonEmptyStr,
+        }
+      } else if cpu_ms == 0 {
+        ThroughputUnread {
+          because: "the specimen reported zero CPU milliseconds, so no ratio exists to floor" as NonEmptyStr,
+        }
+      } else {
+        let measured = eval_steps_per_millisecond(count: observed_steps / cpu_ms)
+        let pinned = eval_steps_per_millisecond(count: calibration_rate(calibration: calibration))
+        if eval_steps_per_millisecond_count(r: measured) >= eval_steps_per_millisecond_count(r: pinned) {
+          ThroughputMeetsPin { measured: measured, pinned: pinned }
+        } else {
+          ThroughputBelowPin { measured: measured, pinned: pinned }
+        }
+      }
+    }
+  }
+}
+
+fn qualify_memory_envelope(envelope: RunnerSlotDesired, reading: CgroupMemoryReading) -> MemoryEnvelopeStanding {
+  let high = byte_size_count(b: envelope.memory_high)
+  let minimum = byte_size_count(b: gunbc_floor_minimum_viable_armed_budget)
+  if high < minimum {
+    SlotHighBelowFloorMinimum { high: envelope.memory_high, minimum: gunbc_floor_minimum_viable_armed_budget }
+  } else {
+    match reading {
+      CgroupMemoryUnreadable { reason: r } => RunBoundUnreadable { reason: r }
+      CgroupMemoryRead { level: _, bound: bound, peak: peak } =>
+        match bound {
+          HostBudgetUnreadable { reason: r } => RunBoundUnreadable { reason: r }
+          HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } =>
+            RunBoundUnreadable {
+              reason: concat("the run's bound was a declaration nobody verified: ", r as String) as NonEmptyStr,
+            }
+          HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } =>
+            if byte_size_count(b: peak) < high {
+              PeakWithinSlotHigh { peak: peak, high: envelope.memory_high }
+            } else {
+              PeakExceedsSlotHigh { peak: peak, high: envelope.memory_high }
+            }
+        }
+    }
+  }
+}
+
+fn qualify_revision(pin: FloorWorkloadPin, observed: CommitSha) -> RevisionStanding {
+  if pin.revision == observed {
+    RevisionMatchesPin { revision: observed }
+  } else {
+    RevisionStale { pinned: pin.revision, observed: observed }
+  }
+}
+
+fn qualify_slot_width(
+  envelope: RunnerSlotDesired,
+  cores_per_slot: RunnerCoresPerSlotResolution,
+  run: QualificationRun,
+) -> SlotWidthStanding {
+  match cores_per_slot {
+    CoresPerSlotUnresolved { cause: c } => SlotWidthUnderivable { cause: c as NonEmptyStr }
+    CoresPerSlotResolved { threads: per_slot } => {
+      let per_slot_threads = hardware_thread_count_value(t: per_slot)
+      let per_slot_bytes = byte_size_count(b: envelope.memory_max)
+      if per_slot_threads == 0 || per_slot_bytes == 0 {
+        SlotWidthUnderivable {
+          cause: "the slot shape admits zero threads or zero bytes per slot, so no width divides" as NonEmptyStr,
+        }
+      } else {
+        let overhead = byte_size_saturating_sub(total: run.host_memory_total, reserved: run.host_memory_available_idle)
+        let slice = runner_slice_cap(
+          host: run.host_memory_total,
+          overhead: overhead,
+          session_slice: byte_size(count: 0),
+          headroom: oomd_actuation_floor(host: run.host_memory_total),
+          compile_pool: byte_size(count: 0),
+        )
+        let by_memory = byte_size_count(b: slice) / per_slot_bytes
+        let by_cpu = hardware_thread_count_value(t: run.host_threads) / per_slot_threads
+        SlotWidthDerived {
+          by_memory: by_memory,
+          by_cpu: by_cpu,
+          slots: if by_cpu < by_memory { by_cpu } else { by_memory },
+        }
+      }
+    }
+  }
+}
+
+// ── THE RECEIPT FROM ONE RUN ──────────────────────────────────────────────────────────────────
+
+fn receipt_for_run(subject: RunnerThroughputQualification, run: QualificationRun) -> RunnerThroughputReceipt {
+  RunnerThroughputReceipt {
+    host: subject.host,
+    workload: subject.workload,
+    run: run.run,
+    attempt_label: run.attempt_label,
+    observed_at: run.observed_at,
+    host_architecture: run.host_architecture,
+    host_threads: run.host_threads,
+    slot_envelope: subject.slot_envelope,
+    revision: qualify_revision(pin: subject.workload, observed: run.revision),
+    throughput: qualify_throughput(calibration: subject.calibration, reading: run.rate_specimen),
+    memory: qualify_memory_envelope(envelope: subject.slot_envelope, reading: run.memory),
+    phase_wall: run.phase_wall,
+    floor_eval_steps: run.floor_eval_steps,
+    slot_width: qualify_slot_width(envelope: subject.slot_envelope, cores_per_slot: subject.cores_per_slot, run: run),
+    workspace_backing: subject.workspace_backing,
+  }
+}
+
+fn throughput_refusal(s: ThroughputStanding) -> List<ThroughputRefusal> {
+  match s {
+    ThroughputMeetsPin { measured: _, pinned: _ } => []
+    ThroughputBelowPin { measured: _, pinned: _ } => [ThroughputDidNotHold { standing: s }]
+    ThroughputUnread { because: _ } => [ThroughputDidNotHold { standing: s }]
+  }
+}
+
+fn memory_refusal(s: MemoryEnvelopeStanding) -> List<ThroughputRefusal> {
+  match s {
+    PeakWithinSlotHigh { peak: _, high: _ } => []
+    PeakExceedsSlotHigh { peak: _, high: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    SlotHighBelowFloorMinimum { high: _, minimum: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    RunBoundUnreadable { reason: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+  }
+}
+
+// A WIDTH OF ZERO IS A REFUSAL, NOT A SMALL FLEET. `gunbc.ci_runner_placement` refuses a zero-width
+// host by name rather than deploying nothing to it, and this admission does the same: a host that
+// cannot hold one slot at the fleet shape is not admitted at that shape.
+fn slot_width_refusal(s: SlotWidthStanding) -> List<ThroughputRefusal> {
+  match s {
+    SlotWidthDerived { by_memory: _, by_cpu: _, slots: n } =>
+      if n >= 1 { [] } else { [SlotWidthDidNotHold { standing: s }] }
+    SlotWidthUnderivable { cause: _ } => [SlotWidthDidNotHold { standing: s }]
+  }
+}
+
+fn receipt_refusals(receipt: RunnerThroughputReceipt) -> List<ThroughputRefusal> {
+  concat(
+    throughput_refusal(s: receipt.throughput),
+    concat(memory_refusal(s: receipt.memory), slot_width_refusal(s: receipt.slot_width)),
+  )
+}
+
+// ── CHOOSING THE RUN THAT SPEAKS FOR THE HOST ─────────────────────────────────────────────────
+//
+// THE SLOWEST READING SPEAKS, never the fastest and never a mean -- the same protocol the pin was
+// taken under. A run at another revision cannot speak at all: it is carried into the Stale arm so
+// the reader sees which revision was measured, and it is never averaged with a matching one.
+fn runs_at_pin(pin: FloorWorkloadPin, runs: List<QualificationRun>) -> List<QualificationRun> {
+  fold(runs, init: [], f: (acc, r) => if r.revision == pin.revision { list_push(acc, r) } else { acc })
+}
+
+fn run_rate_upper_bound(run: QualificationRun) -> Nat {
+  match run.rate_specimen {
+    RateSpecimenUnread { because: _ } => 0
+    RateSpecimenRead { eval_steps: steps, cpu: cpu } => {
+      let cpu_ms = millisecond_count(m: cpu)
+      if cpu_ms == 0 { 0 } else { eval_step_count_value(s: steps) / cpu_ms }
+    }
+  }
+}
+
+fn slowest_run(runs: List<QualificationRun>) -> QualificationRun? {
+  fold(runs, init: none, f: (acc, r) =>
+    match acc {
+      Absent => Present { value: r }
+      Present { value: held } =>
+        if run_rate_upper_bound(run: r) < run_rate_upper_bound(run: held) { Present { value: r } } else { acc }
+    }
+  )
+}
+
+fn first_unreadable_run(runs: List<QualificationRun>) -> QualificationRun? {
+  fold(runs, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match r.memory {
+          CgroupMemoryUnreadable { reason: _ } => Present { value: r }
+          CgroupMemoryRead { level: _, bound: b, peak: _ } =>
+            match b {
+              HostBudgetUnreadable { reason: _ } => Present { value: r }
+              HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => acc
+              HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } => acc
+            }
+        }
+    }
+  )
+}
+
+fn unreadable_reason(run: QualificationRun) -> NonEmptyStr {
+  match run.memory {
+    CgroupMemoryUnreadable { reason: r } => r
+    CgroupMemoryRead { level: _, bound: b, peak: _ } =>
+      match b {
+        HostBudgetUnreadable { reason: r } => r
+        HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => r
+        HostBudgetResolved { effective_bytes: _, requested_bytes: _, observation: _ } =>
+          "the run's bound resolved" as NonEmptyStr
+      }
+  }
+}
+
+// ── THE FOLD ──────────────────────────────────────────────────────────────────────────────────
+
+fn qualify_runner_throughput(subject: RunnerThroughputQualification) -> RunnerThroughputAdmission {
+  match subject.runs.first() {
+    Absent => HostUnqualified { host: subject.host, candidate: subject.capacity_class_candidate }
+    Present { value: first } => {
+      let at_pin = runs_at_pin(pin: subject.workload, runs: subject.runs)
+      match slowest_run(runs: at_pin) {
+        Absent =>
+          ReceiptStale {
+            receipt: receipt_for_run(subject: subject, run: first),
+            pinned: subject.workload.revision,
+            observed: first.revision,
+          }
+        Present { value: _ } =>
+          match first_unreadable_run(runs: at_pin) {
+            Present { value: unreadable } =>
+              HostBudgetUnreadableRefusal {
+                host: subject.host,
+                run: unreadable.run,
+                reason: unreadable_reason(run: unreadable),
+              }
+            Absent =>
+              match slowest_run(runs: at_pin) {
+                Absent => HostUnqualified { host: subject.host, candidate: subject.capacity_class_candidate }
+                Present { value: speaks } => {
+                  let receipt = receipt_for_run(subject: subject, run: speaks)
+                  let refusals = receipt_refusals(receipt: receipt)
+                  if refusals.length() == 0 {
+                    HostAdmittedToClass { receipt: receipt, class: subject.capacity_class_candidate }
+                  } else {
+                    HostNotAdmittedToClass {
+                      receipt: receipt,
+                      candidate: subject.capacity_class_candidate,
+                      refusals: refusals,
+                    }
+                  }
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
+// ── THE JOIN INTO THE FABRIC'S ADMISSION ──────────────────────────────────────────────────────
+//
+// `gunbc.fabric_executor_class` decides CapacityClassAdmission from a sanction roster, and mints a
+// fleet cell's sanction BY CONSTRUCTION from its RunnerSlotIdentity. A host that is not yet a
+// fleet cell has no such identity, and this is the only other way onto that roster: a sanction
+// minted from an admitted receipt and from nothing else. Every non-admitted arm is
+// ExecutorUnclassified, which `admit_executor_capacity` refuses as ExecutorNotClassified -- the
+// remedy is to qualify, which is a thing a run does once.
+fn qualified_executor_sanction(admission: RunnerThroughputAdmission) -> ExecutorSanction {
+  match admission {
+    HostAdmittedToClass { receipt: r, class: c } =>
+      ExecutorSanctioned { executor: r.host as NonEmptyStr, sanctioned: c }
+    HostNotAdmittedToClass { receipt: r, candidate: _, refusals: _ } =>
+      ExecutorUnclassified { executor: r.host as NonEmptyStr }
+    HostUnqualified { host: h, candidate: _ } => ExecutorUnclassified { executor: h as NonEmptyStr }
+    ReceiptStale { receipt: r, pinned: _, observed: _ } => ExecutorUnclassified { executor: r.host as NonEmptyStr }
+    HostBudgetUnreadableRefusal { host: h, run: _, reason: _ } => ExecutorUnclassified { executor: h as NonEmptyStr }
+  }
+}
+
+fn admitted_receipt(admission: RunnerThroughputAdmission) -> RunnerThroughputReceipt? {
+  match admission {
+    HostAdmittedToClass { receipt: r, class: _ } => Present { value: r }
+    HostNotAdmittedToClass { receipt: _, candidate: _, refusals: _ } => none
+    HostUnqualified { host: _, candidate: _ } => none
+    ReceiptStale { receipt: _, pinned: _, observed: _ } => none
+    HostBudgetUnreadableRefusal { host: _, run: _, reason: _ } => none
+  }
+}
+
+fn admission_refusals(admission: RunnerThroughputAdmission) -> List<ThroughputRefusal> {
+  match admission {
+    HostAdmittedToClass { receipt: _, class: _ } => []
+    HostNotAdmittedToClass { receipt: _, candidate: _, refusals: r } => r
+    HostUnqualified { host: _, candidate: _ } => []
+    ReceiptStale { receipt: _, pinned: _, observed: _ } => []
+    HostBudgetUnreadableRefusal { host: _, run: _, reason: _ } => []
+  }
+}
+
+// ── THE SUPPLY ROW A QUALIFIED HOST ENTERS WITH ──────────────────────────────────────────────
+//
+// product.fabric.selection select_supply prices SupplierOffer rows. The row a qualified host enters
+// with is DERIVED from its receipt and asserts nothing the receipt does not carry: the shape is
+// the slot it was measured in (the fleet's cores-per-slot as hard threads, the slot's MemoryMax as
+// the memory axis, the architecture the guest reported), the quantity bound is the slot width the
+// receipt derived under the host budget, and the evidence is ObservedSupply naming the run. Every
+// other field is POLICY -- who the provider is, what it charges, what it is trusted for -- and is
+// supplied by the caller who owns that policy, never minted here. Nothing about price or seats is
+// asserted by qualification: a zero quote is the caller's statement about an owned host, exactly as
+// it is for srv3 and srv4, and the receipt says only what the host measured.
+//
+// A host that is not admitted derives NO row. Absent from the field is the honest standing; an
+// offer with quantity zero would be a row the ranking has to remember to exclude.
+fn qualified_supplier_offer(
+  admission: RunnerThroughputAdmission,
+  id: FabricIdentity<HostIdentity, OfferKey>,
+  route: ProviderRoute,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  isolation: IsolationProfile,
+  quote: OfferQuote,
+  billing_quantum: Second,
+) -> SupplierOffer<HostIdentity>? {
+  match admitted_receipt(admission: admission) {
+    Absent => none
+    Present { value: r } =>
+      match r.slot_width {
+        SlotWidthUnderivable { cause: _ } => none
+        SlotWidthDerived { by_memory: _, by_cpu: _, slots: n } =>
+          match slot_hard_threads(envelope: r.slot_envelope) {
+            Absent => none
+            Present { value: threads } =>
+              Present {
+                value: SupplierOffer {
+                  id: id,
+                  executor: r.host,
+                  route: route,
+                  shape: Shape {
+                    hard: HardRequirements { threads: threads },
+                    envelope: cpu_memory_envelope(
+                      min_threads: threads,
+                      architecture: Present { value: r.host_architecture },
+                      min_bytes: r.slot_envelope.memory_max,
+                    ),
+                  },
+                  capabilities: capabilities,
+                  trust_domain: trust_domain,
+                  isolation: isolation,
+                  quantity_bound: n,
+                  ready_at: r.observed_at,
+                  quote: quote,
+                  billing_quantum: billing_quantum,
+                  evidence: ObservedSupply {
+                    observed_at: r.observed_at,
+                    receipt: concat("gunbc.runner_throughput_qualification run ", r.run as String) as ObservationReceiptRef,
+                  },
+                },
+              }
+          }
+      }
+  }
+}
+
+// THE SLOT'S THREADS ARE ITS CPU QUOTA, and a refused quota is an offer with no thread axis, which
+// is not an offer.
+fn slot_hard_threads(envelope: RunnerSlotDesired) -> HardwareThreadCount? {
+  match envelope.cpu_quota {
+    CpuQuotaResolved { threads: t } => Present { value: t }
+    CpuQuotaRefused { cause: _ } => none
+  }
+}
+
+// ── WIRE ──────────────────────────────────────────────────────────────────────────────────────
+
+fn nat_wire(n: Nat) -> String {
+  n as String
+}
+
+fn throughput_standing_wire(s: ThroughputStanding) -> NonEmptyStr {
+  match s {
+    ThroughputMeetsPin { measured: m, pinned: p } =>
+      join(["throughput ", nat_wire(n: eval_steps_per_millisecond_count(r: m)), " steps/ms meets the pin ", nat_wire(n: eval_steps_per_millisecond_count(r: p))], "") as NonEmptyStr
+    ThroughputBelowPin { measured: m, pinned: p } =>
+      join(["throughput ", nat_wire(n: eval_steps_per_millisecond_count(r: m)), " steps/ms is below the pin ", nat_wire(n: eval_steps_per_millisecond_count(r: p))], "") as NonEmptyStr
+    ThroughputUnread { because: b } => concat("throughput unread: ", b as String) as NonEmptyStr
+  }
+}
+
+fn memory_standing_wire(s: MemoryEnvelopeStanding) -> NonEmptyStr {
+  match s {
+    PeakWithinSlotHigh { peak: p, high: h } =>
+      join(["peak ", nat_wire(n: byte_size_count(b: p)), " B within slot high ", nat_wire(n: byte_size_count(b: h))], "") as NonEmptyStr
+    PeakExceedsSlotHigh { peak: p, high: h } =>
+      join(["peak ", nat_wire(n: byte_size_count(b: p)), " B exceeds slot high ", nat_wire(n: byte_size_count(b: h))], "") as NonEmptyStr
+    SlotHighBelowFloorMinimum { high: h, minimum: m } =>
+      join(["slot high ", nat_wire(n: byte_size_count(b: h)), " B is below the floor's minimum viable armed budget ", nat_wire(n: byte_size_count(b: m))], "") as NonEmptyStr
+    RunBoundUnreadable { reason: r } => concat("run bound unreadable: ", r as String) as NonEmptyStr
+  }
+}
+
+fn slot_width_wire(s: SlotWidthStanding) -> NonEmptyStr {
+  match s {
+    SlotWidthDerived { by_memory: m, by_cpu: c, slots: n } =>
+      join(["slots ", n as String, " (memory admits ", m as String, ", cpu admits ", c as String, ")"], "") as NonEmptyStr
+    SlotWidthUnderivable { cause: c } => concat("slot width underivable: ", c as String) as NonEmptyStr
+  }
+}
+
+fn phase_wall_wire(w: PhaseWall) -> String {
+  join([required_ci_phase_name(p: w.phase), "=", nat_wire(n: millisecond_count(m: w.wall)), "ms"], "")
+}
+
+fn refusal_wire(r: ThroughputRefusal) -> String {
+  match r {
+    ThroughputDidNotHold { standing: s } => throughput_standing_wire(s: s) as String
+    MemoryEnvelopeDidNotHold { standing: s } => memory_standing_wire(s: s) as String
+    SlotWidthDidNotHold { standing: s } => slot_width_wire(s: s) as String
+  }
+}
+
+fn admission_wire(admission: RunnerThroughputAdmission) -> NonEmptyStr {
+  match admission {
+    HostAdmittedToClass { receipt: r, class: c } =>
+      join([
+        "admitted ", r.host as String, " to ", capacity_class_wire(c: c) as String,
+        " from run ", r.run as String, ": ", throughput_standing_wire(s: r.throughput) as String,
+        "; ", memory_standing_wire(s: r.memory) as String, "; ", slot_width_wire(s: r.slot_width) as String,
+        "; phases ", join(map(r.phase_wall, w => phase_wall_wire(w: w)), " "),
+        "; workspace ", workspace_backing_wire(backing: r.workspace_backing) as String,
+      ], "") as NonEmptyStr
+    HostNotAdmittedToClass { receipt: r, candidate: c, refusals: rs } =>
+      join([
+        "not admitted ", r.host as String, " to ", capacity_class_wire(c: c) as String,
+        " from run ", r.run as String, ": ", join(map(rs, x => refusal_wire(r: x)), "; "),
+      ], "") as NonEmptyStr
+    HostUnqualified { host: h, candidate: c } =>
+      join(["unqualified ", h as String, " for ", capacity_class_wire(c: c) as String, ": no qualification run"], "") as NonEmptyStr
+    ReceiptStale { receipt: r, pinned: p, observed: o } =>
+      join(["stale receipt for ", r.host as String, ": measured at ", o, ", pinned ", p], "") as NonEmptyStr
+    HostBudgetUnreadableRefusal { host: h, run: run, reason: reason } =>
+      join(["refused ", h as String, ": run ", run as String, " host budget unreadable: ", reason as String], "") as NonEmptyStr
+  }
+}

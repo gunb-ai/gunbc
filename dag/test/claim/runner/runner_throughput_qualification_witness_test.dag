@@ -1,0 +1,459 @@
+module test.claim.runner_throughput_qualification_witness
+
+import std.logic { Bool }
+import std.types { Int, List, NonEmptyStr, String, Timestamp, WorkflowRunId }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure {
+  byte_size, byte_size_count, eval_step_count, eval_steps_per_millisecond_count,
+  hardware_thread_count, hardware_thread_count_value, millisecond, second, MoneyPerSecond, money_amount_micro,
+}
+import std.decl_ref { decl_ref }
+import extdeps.currency.currency { Usd }
+import extdeps.toolchain.types { Aarch64 }
+import product.fabric.work { ControlPlaneCapacity, CustomerExecutableCapacity }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.provider_route { ProviderRoute }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { QuotedPerSecond, OfferFungibility, Fungible }
+import gunbc.host_budget_source {
+  HostBudgetResolution, HostBudgetResolved, HostBudgetUnreadable, HostBudgetObserved,
+  BudgetSourceCgroupMemoryHigh,
+}
+import product.placement_supply { HostIdentity }
+import product.fabric.supply { SupplierOffer }
+import gunbc.required_ci_phase_roster { ParsePhase, FloorPhase }
+import gunbc.runner_slot_allocation {
+  RunnerSlotDesired, gunbc_runner_slot_desired, gunbc_runner_cores_per_slot,
+  CoresPerSlotResolved, CoresPerSlotUnresolved, CpuQuotaResolved, CpuQuotaRefused,
+}
+import gunbc.fabric_executor_class {
+  CapacityClassAdmitted, CapacityClassRefused, ExecutorNotClassified, admit_executor_capacity,
+}
+import gunbc.fabric_witness_run { floor_execution_requirements, floor_offer_fungibility }
+import v2.workflow.floor_eval_step_calibration { floor_eval_step_calibration, calibration_rate }
+import gunbc.runner_throughput_qualification {
+  FloorWorkloadPin, RamBackedTmpfs, PeerScratchExport,
+  RateSpecimenRead, RateSpecimenUnread, CgroupMemoryRead, CgroupMemoryUnreadable,
+  QualificationRun, PhaseWall, RunnerThroughputQualification,
+  ThroughputMeetsPin, ThroughputBelowPin, ThroughputUnread,
+  PeakWithinSlotHigh, PeakExceedsSlotHigh, SlotHighBelowFloorMinimum, RunBoundUnreadable,
+  SlotWidthDerived, SlotWidthUnderivable,
+  ThroughputDidNotHold, MemoryEnvelopeDidNotHold, SlotWidthDidNotHold,
+  HostAdmittedToClass, HostNotAdmittedToClass, HostUnqualified, ReceiptStale, HostBudgetUnreadableRefusal,
+  qualify_runner_throughput, qualified_executor_sanction, qualified_supplier_offer, admission_wire,
+  admission_refusals, workspace_backing_is_charged_to_slot,
+}
+import gunbc.runner_throughput_qualification_route {
+  QualificationStage, mtcollins1_qualification_route, ephemeral_slot_argv, ephemeral_slot_labels,
+  route_controller_writes_are_gated, route_controller_write_count, route_registers_one_slot,
+  route_deregisters_what_it_registered, route_dispatch_selector_names_the_attempt,
+  route_boot_leg_is_bound, mtcollins1_qualification_workspace_backing,
+  workspace_backing_keeps_bytes_on_subject, stage_egress, BootHostUnderApprovalGate,
+  RegisterEphemeralRunnerSlot, DispatchFloorToSlot, CollectInstruments, DeregisterRunnerSlot,
+}
+import gunbc.runner_host_filtered_egress { DefaultDrop, DefaultAccept }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INPUTS ARE SUPPLIED AT THE INTERFACE (DESIGN section 3, a witness discriminates at one
+// interface). No run is executed here: the readings below are the SHAPE of what the route's
+// collect stage produces, and each claim varies exactly one of them. The pairing obligation --
+// that the real producer emits this shape -- is the route's frontier, stated in
+// `route_frontier_is_declared_not_claimed` rather than faked with a fixture run.
+
+data pin_revision: String = "43643bad4f0000000000000000000000000000ab"
+
+fn pin() -> FloorWorkloadPin {
+  FloorWorkloadPin {
+    program: "gunbc.claim_executor --required-ci" as NonEmptyStr,
+    revision: pin_revision,
+  }
+}
+
+fn slot_high_bytes() -> Int {
+  byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+}
+
+fn bound_at_slot_high() -> HostBudgetResolution {
+  HostBudgetResolved {
+    effective_bytes: gunbc_runner_slot_desired().memory_high,
+    requested_bytes: none,
+    observation: HostBudgetObserved {
+      source: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice/gunbc-qualification-mtcollins1-mtcollins1-qual-1.service" as NonEmptyStr },
+      bytes: gunbc_runner_slot_desired().memory_high,
+    },
+  }
+}
+
+// A RUN THAT MEETS EVERY AXIS: the specimen at its pinned step count in 50 ms (1100 steps/ms
+// against a pin of 723), a peak 5 GiB under the slot high, 250 GiB with 245 GiB idle-available,
+// 160 threads. The numbers are chosen to sit clearly on one side of every line.
+fn good_run(revision: String) -> QualificationRun {
+  QualificationRun {
+    run: "35447067113" as WorkflowRunId,
+    attempt_label: "mtcollins1-qual-1" as NonEmptyStr,
+    observed_at: "2026-09-19T12:00:00Z",
+    revision: revision,
+    host_memory_total: byte_size(count: 268435456000),
+    host_memory_available_idle: byte_size(count: 263066746880),
+    host_threads: hardware_thread_count(count: 160),
+    host_architecture: Aarch64,
+    phase_wall: [
+      PhaseWall { phase: ParsePhase, wall: millisecond(count: 90000) },
+      PhaseWall { phase: FloorPhase, wall: millisecond(count: 1500000) },
+    ],
+    floor_eval_steps: eval_step_count(count: 900000000),
+    rate_specimen: RateSpecimenRead { eval_steps: eval_step_count(count: 55011), cpu: millisecond(count: 50) },
+    memory: CgroupMemoryRead {
+      level: "/sys/fs/cgroup/system.slice/gunbc-qualification-mtcollins1-mtcollins1-qual-1.service" as NonEmptyStr,
+      bound: bound_at_slot_high(),
+      peak: byte_size(count: slot_high_bytes() - 5368709120),
+    },
+  }
+}
+
+fn subject(runs: List<QualificationRun>) -> RunnerThroughputQualification {
+  RunnerThroughputQualification {
+    host: "mtcollins1",
+    capacity_class_candidate: ControlPlaneCapacity,
+    workload: pin(),
+    slot_envelope: gunbc_runner_slot_desired(),
+    workspace_backing: RamBackedTmpfs,
+    cores_per_slot: CoresPerSlotResolved { threads: hardware_thread_count(count: 6) },
+    calibration: floor_eval_step_calibration,
+    runs: runs,
+  }
+}
+
+// ── the positive control ──────────────────────────────────────────────────────────────────────
+
+test fn a_run_meeting_every_axis_admits_the_host_to_its_candidate_class() -> Bool {
+  match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])) {
+    HostAdmittedToClass { receipt: r, class: c } =>
+      match c {
+        ControlPlaneCapacity =>
+          match r.throughput {
+            ThroughputMeetsPin { measured: m, pinned: p } =>
+              eval_steps_per_millisecond_count(r: m) == 1100
+                && eval_steps_per_millisecond_count(r: p) == calibration_rate(calibration: floor_eval_step_calibration)
+            _ => false
+          }
+        CustomerExecutableCapacity => false
+      }
+    _ => false
+  }
+}
+
+// THE SLOT COUNT IS DERIVED UNDER THE HOST BUDGET, NOT READ OFF THE HOST'S SIZE: 250 GiB minus the
+// 5 GiB idle overhead minus the oomd floor (1/16 of the host) leaves 229.4 GiB, which holds 8 slots
+// of 26 GiB; 160 threads hold 26 slots of 6. Memory binds, at 8.
+test fn the_receipt_derives_slot_width_as_the_minimum_over_memory_and_cpu() -> Bool {
+  match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])) {
+    HostAdmittedToClass { receipt: r, class: _ } =>
+      match r.slot_width {
+        SlotWidthDerived { by_memory: m, by_cpu: c, slots: n } => m == 8 && c == 26 && n == 8
+        SlotWidthUnderivable { cause: _ } => false
+      }
+    _ => false
+  }
+}
+
+// ── the REDs ──────────────────────────────────────────────────────────────────────────────────
+
+test fn a_host_with_no_run_is_unqualified_not_slow() -> Bool {
+  match qualify_runner_throughput(subject: subject(runs: [])) {
+    HostUnqualified { host: h, candidate: _ } => (h as String) == "mtcollins1"
+    _ => false
+  }
+}
+
+test fn a_run_at_another_revision_is_stale_and_not_admitted() -> Bool {
+  let other = "0000000000000000000000000000000000000000"
+  match qualify_runner_throughput(subject: subject(runs: [good_run(revision: other)])) {
+    ReceiptStale { receipt: _, pinned: p, observed: o } => p == pin_revision && o == other
+    _ => false
+  }
+}
+
+fn unreadable_run() -> QualificationRun {
+  let g = good_run(revision: pin_revision)
+  QualificationRun {
+    run: g.run, attempt_label: g.attempt_label, observed_at: g.observed_at, revision: g.revision,
+    host_memory_total: g.host_memory_total, host_memory_available_idle: g.host_memory_available_idle,
+    host_threads: g.host_threads, host_architecture: g.host_architecture,
+    phase_wall: g.phase_wall, floor_eval_steps: g.floor_eval_steps, rate_specimen: g.rate_specimen,
+    memory: CgroupMemoryRead {
+      level: "/sys/fs/cgroup" as NonEmptyStr,
+      bound: HostBudgetUnreadable { reason: "no cgroup memory.high or memory.max binds this process" as NonEmptyStr },
+      peak: byte_size(count: 1024),
+    },
+  }
+}
+
+// A READABLE PEAK UNDER AN UNREADABLE BOUND IS STILL A REFUSAL: the number exists, and it was taken
+// under no envelope, so it is not evidence about the slot shape.
+test fn a_run_whose_cgroup_bound_is_unreadable_refuses_by_the_host_budget_class() -> Bool {
+  match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision), unreadable_run()])) {
+    HostBudgetUnreadableRefusal { host: _, run: r, reason: _ } => (r as String) == "35447067113"
+    _ => false
+  }
+}
+
+fn slow_run() -> QualificationRun {
+  let g = good_run(revision: pin_revision)
+  QualificationRun {
+    run: g.run, attempt_label: g.attempt_label, observed_at: g.observed_at, revision: g.revision,
+    host_memory_total: g.host_memory_total, host_memory_available_idle: g.host_memory_available_idle,
+    host_threads: g.host_threads, host_architecture: g.host_architecture,
+    phase_wall: g.phase_wall, floor_eval_steps: g.floor_eval_steps,
+    rate_specimen: RateSpecimenRead { eval_steps: eval_step_count(count: 55011), cpu: millisecond(count: 110) },
+    memory: g.memory,
+  }
+}
+
+// 55,011 steps in 110 ms floors to 500 steps/ms, below the 723 pin: not admitted, with both numbers.
+test fn throughput_below_the_pinned_rate_is_not_admitted_with_the_number() -> Bool {
+  match qualify_runner_throughput(subject: subject(runs: [slow_run()])) {
+    HostNotAdmittedToClass { receipt: _, candidate: _, refusals: rs } =>
+      rs.length() == 1 && (rs |> all(x =>
+        match x {
+          ThroughputDidNotHold { standing: s } =>
+            match s {
+              ThroughputBelowPin { measured: m, pinned: p } =>
+                eval_steps_per_millisecond_count(r: m) == 500 && eval_steps_per_millisecond_count(r: p) == 723
+              _ => false
+            }
+          _ => false
+        }
+      ))
+    _ => false
+  }
+}
+
+// THE SLOWEST RUN SPEAKS: a fast run beside a slow one does not rescue the host, and the wire
+// rendering of the refusal carries the measured number so a reader is told 500, not "slow".
+test fn the_slowest_reading_at_the_pin_speaks_for_the_host() -> Bool {
+  let admission = qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision), slow_run()]))
+  admission_refusals(admission: admission).length() == 1
+    && string_contains(s: admission_wire(admission: admission) as String, pattern: "throughput 500 steps/ms is below the pin 723")
+}
+
+// THE RECEIPT SAYS ITS PEAK IS WORKSPACE-INCLUSIVE, because the backing it was taken under charges
+// the workspace to the slot -- so nobody compares it to an NVMe-backed fleet peak as the same fact.
+test fn a_tmpfs_backed_receipt_declares_its_peak_workspace_inclusive() -> Bool {
+  match qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])) {
+    HostAdmittedToClass { receipt: r, class: _ } => workspace_backing_is_charged_to_slot(backing: r.workspace_backing)
+    _ => false
+  }
+}
+
+fn peak_over_high_run() -> QualificationRun {
+  let g = good_run(revision: pin_revision)
+  QualificationRun {
+    run: g.run, attempt_label: g.attempt_label, observed_at: g.observed_at, revision: g.revision,
+    host_memory_total: g.host_memory_total, host_memory_available_idle: g.host_memory_available_idle,
+    host_threads: g.host_threads, host_architecture: g.host_architecture,
+    phase_wall: g.phase_wall, floor_eval_steps: g.floor_eval_steps, rate_specimen: g.rate_specimen,
+    memory: CgroupMemoryRead {
+      level: "/sys/fs/cgroup/system.slice/x.service" as NonEmptyStr,
+      bound: bound_at_slot_high(),
+      peak: gunbc_runner_slot_desired().memory_high,
+    },
+  }
+}
+
+// A PEAK AT THE HIGH LINE IS THE THROTTLE PIN, NOT A MEASUREMENT (runner_slot_allocation's srv1
+// lesson), so equality refuses as well as excess.
+test fn a_peak_at_or_over_the_slot_high_is_not_admitted() -> Bool {
+  match qualify_runner_throughput(subject: subject(runs: [peak_over_high_run()])) {
+    HostNotAdmittedToClass { receipt: _, candidate: _, refusals: rs } =>
+      rs |> any(x =>
+        match x {
+          MemoryEnvelopeDidNotHold { standing: s } =>
+            match s {
+              PeakExceedsSlotHigh { peak: p, high: h } => byte_size_count(b: p) == byte_size_count(b: h)
+              _ => false
+            }
+          _ => false
+        }
+      )
+    _ => false
+  }
+}
+
+// ── the join into the fabric's admission ──────────────────────────────────────────────────────
+
+// THE SANCTION IS MINTED FROM THE RECEIPT AND FROM NOTHING ELSE. The floor's real requirements
+// (control-plane class) admit the qualified host through the fabric's own fold, and the same fold
+// refuses the unqualified host as not classified -- not as slow, not as customer capacity.
+test fn an_admitted_receipt_is_admitted_by_the_fabric_for_the_floor() -> Bool {
+  let sanction = qualified_executor_sanction(
+    admission: qualify_runner_throughput(subject: subject(runs: [good_run(revision: pin_revision)])),
+  )
+  match admit_executor_capacity(
+    requirements: floor_execution_requirements(),
+    roster: [sanction],
+    executor: "mtcollins1" as NonEmptyStr,
+  ) {
+    CapacityClassAdmitted { executor: e, class: _ } => (e as String) == "mtcollins1"
+    _ => false
+  }
+}
+
+test fn an_unqualified_host_is_not_classified_by_the_fabric() -> Bool {
+  let sanction = qualified_executor_sanction(admission: qualify_runner_throughput(subject: subject(runs: [])))
+  match admit_executor_capacity(
+    requirements: floor_execution_requirements(),
+    roster: [sanction],
+    executor: "mtcollins1" as NonEmptyStr,
+  ) {
+    ExecutorNotClassified { executor: e } => (e as String) == "mtcollins1"
+    _ => false
+  }
+}
+
+test fn a_stale_receipt_is_not_classified_by_the_fabric() -> Bool {
+  let sanction = qualified_executor_sanction(
+    admission: qualify_runner_throughput(subject: subject(runs: [good_run(revision: "0000000000000000000000000000000000000000")])),
+  )
+  match admit_executor_capacity(
+    requirements: floor_execution_requirements(),
+    roster: [sanction],
+    executor: "mtcollins1" as NonEmptyStr,
+  ) {
+    ExecutorNotClassified { executor: _ } => true
+    _ => false
+  }
+}
+
+// ── the supply row ────────────────────────────────────────────────────────────────────────────
+
+fn owned_route() -> ProviderRoute {
+  ProviderRoute {
+    provider: decl_ref(module_path: "gunbc.fleet_intent_network", decl_name: "operator_host_mtcollins1"),
+    service: decl_ref(module_path: "gunbc.fabric_witness_run", decl_name: "floor_execution_requirements"),
+    region: decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_hostname_allocations"),
+  }
+}
+
+fn derived_offer(runs: List<QualificationRun>) -> SupplierOffer<HostIdentity>? {
+  qualified_supplier_offer(
+    admission: qualify_runner_throughput(subject: subject(runs: runs)),
+    id: FabricIdentity { principal: "mtcollins1", key: "offer-mtcollins1-qual-1" },
+    route: owned_route(),
+    capabilities: "gunbc.capabilities.linux-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+    isolation: IsolationProfile { guarantees: [] },
+    quote: QuotedPerSecond(MoneyPerSecond { amount: money_amount_micro(count: 0), currency: Usd }),
+    billing_quantum: second(count: 0),
+  )
+}
+
+// THE ROW CARRIES THE RECEIPT'S NUMBERS AND NOTHING MORE: eight slots, the slot's memory as its
+// envelope, and it is fungible for the floor through the fabric's own fold.
+test fn a_qualified_host_enters_the_supply_with_its_measured_envelope() -> Bool {
+  match derived_offer(runs: [good_run(revision: pin_revision)]) {
+    Absent => false
+    Present { value: o } =>
+      o.quantity_bound == 8
+        && match floor_offer_fungibility(offer: o) {
+          Fungible => true
+          _ => false
+        }
+  }
+}
+
+test fn an_unqualified_host_derives_no_supply_row() -> Bool {
+  match derived_offer(runs: []) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_slow_host_derives_no_supply_row() -> Bool {
+  match derived_offer(runs: [slow_run()]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// ── the route ─────────────────────────────────────────────────────────────────────────────────
+
+fn route() -> List<QualificationStage> {
+  mtcollins1_qualification_route(attempt: "mtcollins1-qual-1" as NonEmptyStr, workload: pin())
+}
+
+test fn the_route_writes_a_controller_exactly_once_and_only_under_the_approval_gate() -> Bool {
+  route_controller_writes_are_gated(route: route()) && route_controller_write_count(route: route()) == 1
+}
+
+test fn the_route_registers_one_slot_and_deregisters_it() -> Bool {
+  route_registers_one_slot(route: route()) && route_deregisters_what_it_registered(route: route())
+}
+
+test fn the_dispatch_selector_names_the_attempt_label() -> Bool {
+  route_dispatch_selector_names_the_attempt(route: route(), attempt: "mtcollins1-qual-1" as NonEmptyStr)
+}
+
+// THE FRONTIER IS DECLARED, NOT CLAIMED. This claim flips when gunbc#11484 and the census image
+// land and the legs bind: at that point it becomes the regression control that the binding stays.
+test fn route_frontier_is_declared_not_claimed() -> Bool {
+  !route_boot_leg_is_bound(route: route())
+}
+
+// ONLY THE RUNNER STAGES OPEN THE NETWORK, AND THEY OPEN THE FLEET'S DEFAULT-DROP POLICY: the boot
+// and collect stages answer none, and no stage answers with an accepting chain.
+test fn only_the_runner_stages_open_the_network_and_only_default_drop() -> Bool {
+  route() |> all(s =>
+    match stage_egress(stage: s) {
+      Absent =>
+        match s {
+          BootHostUnderApprovalGate { host: _, boot: _, image: _ } => true
+          CollectInstruments { instruments: _ } => true
+          _ => false
+        }
+      Present { value: policy } =>
+        (match policy.forward { DefaultDrop => true DefaultAccept => false })
+          && (match s {
+            RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _ } => true
+            DispatchFloorToSlot { workload: _, selector: _ } => true
+            DeregisterRunnerSlot { unit: _ } => true
+            _ => false
+          })
+    }
+  )
+}
+
+test fn the_workspace_keeps_every_byte_on_the_subject() -> Bool {
+  workspace_backing_keeps_bytes_on_subject(backing: mtcollins1_qualification_workspace_backing)
+    && !workspace_backing_keeps_bytes_on_subject(backing: PeerScratchExport { peer: "srv2" })
+}
+
+// THE EPHEMERAL SLOT CARRIES THE FLEET SLOT SHAPE, spelled through the systemd-run authority: the
+// declared MemoryMax and the resolved CPU quota both appear as property words.
+test fn the_ephemeral_slot_argv_carries_the_fleet_memory_max() -> Bool {
+  match ephemeral_slot_argv(
+    unit: "gunbc-qualification-mtcollins1-x.service" as NonEmptyStr,
+    desired: gunbc_runner_slot_desired(),
+    command_argv: ["/mnt/runner/run.sh"],
+  ) {
+    Absent => false
+    Present { value: argv } =>
+      (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
+        && (argv |> any(w => w == "--property=CPUQuota=600%"))
+  }
+}
+
+test fn the_ephemeral_slot_labels_carry_class_host_and_attempt() -> Bool {
+  let labels = ephemeral_slot_labels(host: "mtcollins1", attempt: "mtcollins1-qual-1" as NonEmptyStr)
+  (labels |> any(l => l == "gunbc-heavy")) && (labels |> any(l => l == "mtcollins1")) && (labels |> any(l => l == "mtcollins1-qual-1"))
+}
+
+// THE INHABITANCE CLAIM FOR THE SUPPLIED cores_per_slot: the real producer resolves, and to the
+// value the fixture supplied, so the width derivation above is denominated in the fleet's slot.
+test fn the_fleet_cores_per_slot_resolves_to_the_supplied_width() -> Bool {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotResolved { threads: t } => hardware_thread_count_value(t: t) == 6
+    CoresPerSlotUnresolved { cause: _ } => false
+  }
+}
