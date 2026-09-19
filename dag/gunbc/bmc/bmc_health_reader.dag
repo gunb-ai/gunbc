@@ -1,0 +1,149 @@
+module gunbc.bmc_health_reader
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
+import extdeps.bmc.types { AccountRoleReadOnly, redfish_account_role_wire }
+import extdeps.languages.json.emit { JsonBool, JsonValue, json_bool, json_kv, json_object, json_string, serialize_json }
+import gunbc.scm.json_member {
+  MemberArray,
+  MemberString,
+  MemberValue,
+  read_member,
+  read_member_value,
+  read_string_member,
+}
+import extdeps.languages.json.parse {
+  JsonDocumentParsed,
+  JsonDocumentUnreadable,
+  parse_json_document,
+}
+
+// THE LEAST-PRIVILEGED PRINCIPAL THE FLEET HEALTH CHECK READS A BMC AS.
+//
+// Fleet health acquisition is out of band and must never hold a BMC administrator credential
+// (operator ruling, 2026-09-18): its reads run on a schedule, so its credential is exercised far
+// more often than the administrator's should be. Each BMC therefore carries one dedicated Redfish
+// account with the ReadOnly role, whose password lives in its own Secret Manager container so it is
+// independently revocable per host. Creating that account IS a mutation and uses the administrator
+// credential once; that happens here, in convergence, and never inside the health check.
+//
+// ReadOnly is the DMTF Redfish predefined role holding only Login and ConfigureSelf
+// (extdeps.bmc.access redfish_rbac_policy): it can read every resource and change nothing but its
+// own password. The name is an underscore, not a hyphen, because OpenBMC refuses a hyphen in a
+// UserName (Base.1.16.0.PropertyValueFormatError, observed on srv1 2026-09-18).
+data bmc_health_reader_username: NonEmptyStr = "gunbc_health"
+
+fn bmc_health_reader_secret_id(host: HostIdentity) -> NonEmptyStr {
+  concat("bmc-", host as String, "-health-reader") as NonEmptyStr
+}
+
+// WHAT THE BMC SAYS ABOUT THE READER ACCOUNT. `role` is the wire RoleId as the BMC rendered it and is
+// compared to the ReadOnly wire name; it is kept as text because a BMC may carry an OEM role this
+// corpus does not model, and that account must be refused by name rather than coerced.
+type ReaderAccountObservation
+  = ReaderAccountAbsent
+  | ReaderAccountPresent { role: String, enabled: Bool }
+  | ReaderAccountUnreadable { cause: NonEmptyStr }
+
+type ReaderAccountPlan
+  = CreateReaderAccount
+  | ReaderAccountConverged
+  | ReaderAccountRefused { cause: NonEmptyStr }
+
+// AN EXISTING ACCOUNT OF THAT NAME WITH ANY OTHER ROLE IS REFUSED, NOT CORRECTED. This flow did not
+// create it, and demoting or disabling an account someone else made is a decision about their
+// access, not a convergence of ours. A disabled reader is refused for the same reason: re-enabling
+// it would resurrect whatever disabled it.
+fn role_is_read_only(role: String) -> Bool {
+  role == redfish_account_role_wire(role: AccountRoleReadOnly) as String
+}
+
+fn plan_reader_account(observation: ReaderAccountObservation) -> ReaderAccountPlan {
+  match observation {
+    ReaderAccountAbsent => CreateReaderAccount
+    ReaderAccountUnreadable { cause } => ReaderAccountRefused { cause: cause }
+    ReaderAccountPresent { role, enabled } =>
+      if !role_is_read_only(role: role) {
+        ReaderAccountRefused {
+          cause: concat("an account named ", bmc_health_reader_username as String, " already exists with role ", role, "; this flow does not change an account it did not create") as NonEmptyStr,
+        }
+      } else if !enabled {
+        ReaderAccountRefused {
+          cause: concat("the ", bmc_health_reader_username as String, " account exists but is disabled; re-enabling it is a decision about why it was disabled") as NonEmptyStr,
+        }
+      } else {
+        ReaderAccountConverged
+      }
+  }
+}
+
+// EVERY MEMBER MUST NAME ITSELF, OR THE COLLECTION WAS NOT READ. An element without exactly one
+// string @odata.id is not skipped: skipping it would shorten the membership, and a shortened
+// membership is how an unread reader account reads as absent and authorizes a create (review 67794).
+// Member lookups go through gunbc.scm.json_member, which keeps missing, duplicated, non-object and
+// wrong-shape apart instead of collapsing them into an absent value.
+fn member_ids(v: JsonValue) -> List<String>? {
+  match read_member(v: v, key: "Members") {
+    MemberArray { elements } => fold(elements, init: Present { value: [] }, f: (acc, e) => match acc {
+      none => none
+      Present { value: ids } => match read_string_member(v: e, key: "@odata.id") {
+        MemberString { value: id } => Present { value: concat(ids, [id]) }
+        _ => none
+      }
+    })
+    _ => none
+  }
+}
+
+fn enabled_member(v: JsonValue) -> Bool? {
+  match read_member_value(v: v, key: "Enabled") {
+    MemberValue { value: JsonBool { value } } => Present { value: value }
+    _ => none
+  }
+}
+
+// THE COLLECTION DECIDES PRESENCE, and only a document that parses and carries a Members array can
+// decide it. An unreadable collection is not an empty one: reading it as absent would authorize a
+// create against a BMC whose accounts nobody saw.
+fn reader_listed_in_accounts(body: String) -> ReaderListing {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ReaderListingUnreadable { cause: "the Redfish accounts collection is not a JSON document" }
+    JsonDocumentParsed { value } => match member_ids(v: value) {
+      none => ReaderListingUnreadable { cause: "the Redfish accounts collection carries no Members array, or a member without exactly one string @odata.id" }
+      Present { value: ids } =>
+        if any(ids, id => ends_with(s: id, suffix: concat("/Accounts/", bmc_health_reader_username as String))) {
+          ReaderListed
+        } else {
+          ReaderNotListed
+        }
+    }
+  }
+}
+
+type ReaderListing
+  = ReaderListed
+  | ReaderNotListed
+  | ReaderListingUnreadable { cause: NonEmptyStr }
+
+fn reader_account_from_json(body: String) -> ReaderAccountObservation {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ReaderAccountUnreadable { cause: "the Redfish account resource is not a JSON document" }
+    JsonDocumentParsed { value } => match read_string_member(v: value, key: "RoleId") {
+      MemberString { value: role } => match enabled_member(v: value) {
+        none => ReaderAccountUnreadable { cause: "the Redfish account resource carries no Enabled flag" }
+        Present { value: enabled } => ReaderAccountPresent { role: role, enabled: enabled }
+      }
+      _ => ReaderAccountUnreadable { cause: "the Redfish account resource carries no single string RoleId" }
+    }
+  }
+}
+
+// THE CREATE BODY, whose role is the modeled wire name rather than a retyped string.
+fn reader_account_create_body(password: String) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "UserName", value: json_string(s: bmc_health_reader_username as String)),
+    json_kv(key: "Password", value: json_string(s: password)),
+    json_kv(key: "RoleId", value: json_string(s: redfish_account_role_wire(role: AccountRoleReadOnly) as String)),
+    json_kv(key: "Enabled", value: json_bool(b: true)),
+  ]))
+}
