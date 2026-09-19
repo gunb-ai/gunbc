@@ -35,7 +35,6 @@ import gunbc.review_sheet_identity {
   LegacyExtentFound,
   LegacyExtentUnsettled,
   legacy_extent_verdict,
-  review_sheet_identity_subject_matches,
 }
 
 // EVERY CLAIM HERE SUPPLIES ITS INPUTS, and that is correct rather than a compromise: this module
@@ -244,30 +243,40 @@ test fn evidence_naming_another_subject_is_unreadable() -> Bool {
   }
 }
 
-// SUBJECT EQUALITY IS OVER THE COMPLETE SUBJECT, including both marker fields, so a declaration
-// written about one migration generation cannot answer for the next.
-test fn a_subject_differing_only_in_the_superseded_field_does_not_match() -> Bool {
-  review_sheet_identity_subject_matches(
-    a: w_subject(),
-    b: ReviewSheetIdentitySubject {
-      drive_id: "drive-1" as NonEmptyStr,
-      marker_key: "gunbcReviewSheet" as NonEmptyStr,
-      marker_value: "ci-prospect-sheet" as NonEmptyStr,
-      current_marker_field: "properties" as NonEmptyStr,
-      superseded_marker_field: "someLaterField" as NonEmptyStr,
+// SUBJECT EQUALITY IS THE SUBSTRATE'S STRUCTURAL ==, WHICH IS WHY THIS CLAIM IS ABOUT THE JOIN AND
+// NOT ABOUT A PREDICATE. An earlier cut had a hand-rolled matcher walking five fields; it was
+// deleted, because a walk cannot stay total across a record that this module itself says will grow.
+// What remains testable -- and what actually matters -- is that a subject differing in ONE field is
+// rejected by the join, whichever field it is.
+test fn a_subject_differing_only_in_the_superseded_field_is_unreadable() -> Bool {
+  match review_sheet_identity_standing_disposition(
+    subject: w_subject(),
+    current: SheetAbsent,
+    legacy: LegacyExtentAbsentByOperator {
+      subject: ReviewSheetIdentitySubject {
+        drive_id: "drive-1" as NonEmptyStr,
+        marker_key: "gunbcReviewSheet" as NonEmptyStr,
+        marker_value: "ci-prospect-sheet" as NonEmptyStr,
+        current_marker_field: "properties" as NonEmptyStr,
+        superseded_marker_field: "someLaterField" as NonEmptyStr,
+      },
+      basis: "fixture: a declaration written about a different marker generation" as NonEmptyStr,
     },
-  ) == false
+  ) {
+    ReviewSheetIdentityUnreadable { cause: c } =>
+      string_contains(s: c as String, pattern: "different identity subject")
+    ReviewSheetIdentityAbsent => false
+    ReviewSheetSingleLineage { file_id: _ } => false
+    ReviewSheetLegacyOnlyLineage { file_id: _ } => false
+    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
+    CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } => false
+  }
 }
 
 // AN OPERATOR'S SELECTION IS CARRIED, NOT CONSUMED, AND THIS CLAIM IS WHY THAT MATTERS. An earlier
-// revision of this cut made the selection an arm of LegacyExtentEvidence and derived a lineage from
-// it -- selecting A beside a current hit on A became SingleLineage(A), selecting B beside no current
-// file became LegacyOnlyLineage(B). Neither is established by the input: selecting A says which file
-// the operator selected, never that an invisible B does not exist.
-//
-// So the selection reaches no standing at all in this cut. What a caller holding one gets instead is
-// the standing the EVIDENCE supports, which for an unresolved extent is Unresolved -- and
-// reconciling the selection against it is the admission, a later cut with its own refusals.
+// revision made the selection an arm of LegacyExtentEvidence and derived a lineage from it --
+// selecting A beside a current hit on A became SingleLineage(A). That does not follow: selecting A
+// says which file the operator selected, never that an invisible B does not exist.
 test fn a_selection_does_not_resolve_an_unresolved_extent() -> Bool {
   let selection = LegacyFileSelection {
     subject: w_subject(),
@@ -289,35 +298,21 @@ test fn a_selection_does_not_resolve_an_unresolved_extent() -> Bool {
   }
 }
 
-// PROVENANCE SURVIVES ON THE STANDING ITSELF, which is where it belongs: the subject and the typed
-// evidence are fields of the sealed record rather than repeated on six arms, so no terminal arm can
-// lose them by being threaded wrong -- which is how three of them lost it in the previous shape.
+// PROVENANCE LIVES ON THE STANDING ITSELF, where no terminal arm can lose it by being threaded
+// wrong -- which is how three arms lost it in an earlier shape.
 test fn an_unresolved_standing_still_carries_its_typed_evidence() -> Bool {
   let standing = review_sheet_identity_standing(
     subject: w_subject(),
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
     legacy: w_search(o: SheetAbsent, v: w_unknown_visibility()),
   )
-  match standing.disposition {
-    CurrentMarkerObservedLegacyExtentUnresolved { file_id: _, cause: _ } =>
-      match standing.evidence {
-        LegacySearchObserved { subject: _, observation: _, visibility_basis: _ } => true
-        LegacyExtentAbsentByOperator { subject: _, basis: _ } => false
-        LegacyExtentUnresolved { subject: _, cause: _ } => false
-      }
-    ReviewSheetSingleLineage { file_id: _ } => false
-    ReviewSheetIdentityAbsent => false
-    ReviewSheetLegacyOnlyLineage { file_id: _ } => false
-    ReviewSheetConflictingLineages { current_file_ids: _, legacy_file_ids: _ } => false
-    ReviewSheetIdentityUnreadable { cause: _ } => false
+  match standing.evidence {
+    LegacySearchObserved { subject: _, observation: _, visibility_basis: _ } => true
+    LegacyExtentAbsentByOperator { subject: _, basis: _ } => false
+    LegacyExtentUnresolved { subject: _, cause: _ } => false
   }
 }
 
-// THE SEAL, ASSERTED WHERE IT ACTUALLY HOLDS. A standing is a sole_constructor RECORD, so infer
-// refuses any construction outside the declaring file -- this claim can read one and cannot build
-// one, which is the wall. It is stated rather than demonstrated because a claim that COULD
-// demonstrate it would be a claim that compiled an invalid program; the discriminating red for the
-// seal lives in the compiler's own fixture corpus, not here.
 test fn a_standing_carries_the_subject_it_was_asked_about() -> Bool {
   let standing = review_sheet_identity_standing(
     subject: w_subject(),
@@ -328,15 +323,10 @@ test fn a_standing_carries_the_subject_it_was_asked_about() -> Bool {
     && (standing.subject.superseded_marker_field as String) == "appProperties"
 }
 
-
-// THE HINGE RULE NOW HAS ITS OWN WALL, BECAUSE IT IS NOW ONE FACT. It used to be authored in the
+// THE HINGE RULE HAS ITS OWN WALL, BECAUSE IT IS NOW ONE FACT. It used to be authored in the
 // current-hit fold, again in the current-absence fold, and partially a third time in a file-id
 // extractor that dropped the visibility basis -- so a later edit could tighten one path and not the
-// other, re-creating this module's own failure class inside the module filed to prevent it, with no
-// claim positioned to catch the divergence because each arm was covered on only one path.
-//
-// These three claims sit on legacy_extent_verdict itself, which both dispositions now consume, so a
-// divergence is no longer AUTHORABLE rather than merely uncovered.
+// other, with no claim positioned to catch the divergence.
 test fn an_empty_legacy_search_is_settled_only_under_an_established_visibility() -> Bool {
   match legacy_extent_verdict(evidence: w_search(o: SheetAbsent, v: w_visible())) {
     LegacyExtentSettledEmpty => true

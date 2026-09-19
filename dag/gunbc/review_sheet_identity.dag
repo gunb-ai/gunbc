@@ -48,6 +48,19 @@ import gunbc.review_sheet_drive_converge {
 // Both marker fields are part of the subject because a SECOND relocation is possible. A declaration
 // written about the appProperties -> properties generation must not silently answer for a later one;
 // carrying both fields makes that mismatch decidable rather than invisible.
+// EQUALITY IS THE SUBSTRATE'S, NOT THIS MODULE'S. An earlier cut carried a
+// review_sheet_identity_subject_matches walking all five fields by hand, and the annotation on its
+// claim said the intent was TOTAL -- equality over the complete subject. A hand-rolled walk cannot
+// be total: this module says two lines below that a SECOND relocation is anticipated, so a sixth
+// field is a planned edit, and on the day it lands the predicate keeps answering true for two
+// subjects that differ in it -- admitting another subject's evidence as this one's and unlocking
+// exactly the adopt and create decisions that lost data in gunbc#11596.
+//
+// extdeps.transports.rest records this same lesson from the other side: five hand-rolled equality
+// predicates deleted because a duplicate of equality "decayed differently from the type it claimed
+// to compare". Its stated carve-out is a deliberate SUBSET of fields, where which facts constitute
+// identity is a modeled decision worth spelling. This is not a subset. It is the whole record, so
+// `a == b` is both shorter and the only form that stays correct when the record grows.
 type ReviewSheetIdentitySubject {
   drive_id: NonEmptyStr
   marker_key: NonEmptyStr
@@ -56,16 +69,6 @@ type ReviewSheetIdentitySubject {
   superseded_marker_field: NonEmptyStr
 }
 
-fn review_sheet_identity_subject_matches(
-  a: ReviewSheetIdentitySubject,
-  b: ReviewSheetIdentitySubject,
-) -> Bool {
-  (a.drive_id as String) == (b.drive_id as String)
-    && (a.marker_key as String) == (b.marker_key as String)
-    && (a.marker_value as String) == (b.marker_value as String)
-    && (a.current_marker_field as String) == (b.current_marker_field as String)
-    && (a.superseded_marker_field as String) == (b.superseded_marker_field as String)
-}
 
 // WHAT A LEGACY SEARCH'S SILENCE IS WORTH, WHICH IS THE WHOLE HINGE. appProperties are private to
 // the application that wrote them, so a search issued by a different OAuth client answers 200 with
@@ -182,7 +185,7 @@ fn review_sheet_identity_standing(
   current: ReviewSpreadsheetObservation,
   legacy: LegacyExtentEvidence,
 ) -> ReviewSheetIdentityStanding {
-  if review_sheet_identity_subject_matches(a: subject, b: legacy_extent_evidence_subject(e: legacy)) {
+  if subject == legacy_extent_evidence_subject(e: legacy) {
     ReviewSheetIdentityStanding {
       subject: subject,
       disposition: internal_disposition_over_matching_subject(current: current, legacy: legacy),
