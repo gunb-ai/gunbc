@@ -57,6 +57,7 @@ import gunbc.runner_host_retirement {
   ObligationFromCapturedSnapshot,
   ObligationFromSearchBound,
   CaptureUnavailable,
+  surplus_identity_disposition,
   host_retirement_obligation_basis_of,
 }
 import gunbc.build_provenance_join {
@@ -267,6 +268,7 @@ test fn a_complete_assessment_is_clear_of_blockers() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -287,6 +289,7 @@ test fn an_unavailable_roster_blocks_the_closure() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -312,6 +315,7 @@ test fn a_partial_roster_blocks_the_closure() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -331,6 +335,7 @@ test fn an_unimplemented_graceful_method_blocks_the_closure() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "actions-runner@srv2-01.service"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -352,6 +357,7 @@ test fn a_refused_planner_emitting_zero_operations_does_not_converge() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerRefusedAccess { cause: "ssh refused" },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -373,6 +379,7 @@ test fn a_filtering_planner_emitting_zero_operations_does_not_converge() -> Bool
         cause: "the committed-slot decoder did not recognize it",
       },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -393,6 +400,7 @@ test fn a_required_retiree_with_no_standing_blocks_the_closure() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -414,6 +422,7 @@ test fn settled_slots_with_an_outstanding_estate_do_not_converge() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       extra: [],
       estate: estate_cleanup_standing(standings: [
         EstateObligationDischarged { obligation: LivenessReconcileTimerRetired, evidence: "masked" },
@@ -500,6 +509,7 @@ test fn a_complete_assessment_with_operations_remaining_is_not_clear() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 1 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -538,6 +548,7 @@ test fn an_owned_surplus_member_of_a_complete_roster_blocks() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -572,6 +583,7 @@ test fn a_foreign_member_of_a_complete_roster_also_blocks() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -597,6 +609,7 @@ test fn a_contradictory_retiree_reading_blocks_the_assessment() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -619,6 +632,7 @@ test fn a_contradictory_retiree_reading_blocks_in_either_order() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -645,6 +659,7 @@ test fn an_executable_built_from_another_revision_blocks_the_assessment() -> Boo
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: build_provenance_blockers(
         verdict: join_build_provenance(
@@ -671,6 +686,7 @@ test fn an_unobserved_executable_identity_blocks_the_assessment() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: build_provenance_blockers(
         verdict: join_build_provenance(
@@ -695,6 +711,7 @@ test fn an_executable_built_from_the_selected_revision_leaves_the_assessment_cle
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: build_provenance_blockers(
         verdict: join_build_provenance(
@@ -730,6 +747,7 @@ test fn an_ungrounded_population_blocks_the_assessment() -> Bool {
         host: operator_host_srv2,
         bound: 21,
       ),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [],
     ),
@@ -751,8 +769,171 @@ test fn a_supplied_extra_blocker_blocks_the_assessment() -> Bool {
       method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
       planner: PlannerSawCompleteSubject { operations_emitted: 0 },
       basis: grounded_basis(),
+      obligation_population: one_required(),
       estate: complete_estate(),
       extra: [ClosureBlocker { subject: "assessment-build-provenance", cause: "unresolved" }],
+    ),
+  )
+}
+
+// ── R7: THE GROUNDED BASIS AND THE ASSESSED POPULATION MUST COVER EACH OTHER ─────────────────
+
+// THE REQUIRED CONTROL: a captured identity omitted from the assessed population. Grounding succeeds
+// because the basis is captured, and the previous verdict inspected only `required` -- so `v`
+// produced no blocker at all.
+test fn an_obligation_identity_missing_from_the_assessment_blocks() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: ObligationFromCapturedSnapshot {
+        observed_on: "2026-09-19" as NonEmptyStr,
+        units: [
+          "actions-runner@srv2-01.service" as NonEmptyStr,
+          "actions-runner@srv2-02.service" as NonEmptyStr,
+        ],
+      },
+      obligation_population: [
+        "actions-runner@srv2-01.service" as NonEmptyStr,
+        "actions-runner@srv2-02.service" as NonEmptyStr,
+      ],
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// AND THE OTHER DIRECTION: an assessed retiree the grounded capture does not support.
+test fn an_assessed_identity_no_authority_names_blocks() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: ObligationFromCapturedSnapshot {
+        observed_on: "2026-09-19" as NonEmptyStr,
+        units: ["actions-runner@srv2-09.service" as NonEmptyStr],
+      },
+      obligation_population: ["actions-runner@srv2-09.service" as NonEmptyStr],
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// A COMPLETE-EMPTY CAPTURE WITH AN EMPTY ASSESSED POPULATION COVERS EXACTLY, so the coverage join
+// does not make an honestly empty host permanently red.
+test fn a_complete_empty_capture_covers_an_empty_population() -> Bool {
+  assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: [],
+      standings: [],
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: ObligationFromCapturedSnapshot { observed_on: "2026-09-19" as NonEmptyStr, units: [] },
+      obligation_population: [],
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// ── R7: COVERAGE MUST PRESERVE BOTH OBLIGATION AUTHORITIES ───────────────────────────────────
+
+// AN IDENTITY CONTRIBUTED BY THE WIDTH TRANSITION IS SUPPORTED, and the previous fold rejected it.
+// Here the grounded capture names only u while the obligation authority names u and v -- v coming
+// from the width-transition arm -- and the assessment covers both. The earlier coverage check
+// compared against the capture alone and blocked v as unsupported, rejecting the very union
+// transition_required_retiring constructs.
+test fn a_width_transition_identity_is_supported_by_its_own_authority() -> Bool {
+  assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: [
+        "actions-runner@srv2-01.service" as NonEmptyStr,
+        "actions-runner@srv4-13.service" as NonEmptyStr,
+      ],
+      standings: [
+        RetirementComplete { unit: "actions-runner@srv2-01.service" },
+        RetirementComplete { unit: "actions-runner@srv4-13.service" },
+      ],
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      obligation_population: [
+        "actions-runner@srv2-01.service" as NonEmptyStr,
+        "actions-runner@srv4-13.service" as NonEmptyStr,
+      ],
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// OMISSION OF THE WIDTH-TRANSITION SIDE BLOCKS. Same authority population, and the assessment covers
+// only the capture's member -- so the identity the width transition names is unestablished.
+test fn omitting_the_width_transition_identity_blocks() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: one_required(),
+      standings: settled_standings(),
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      obligation_population: [
+        "actions-runner@srv2-01.service" as NonEmptyStr,
+        "actions-runner@srv4-13.service" as NonEmptyStr,
+      ],
+      estate: complete_estate(),
+      extra: [],
+    ),
+  )
+}
+
+// AN EXTRA IDENTITY NO AUTHORITY NAMES BLOCKS FROM THE OTHER DIRECTION.
+test fn an_assessed_identity_no_authority_names_still_blocks() -> Bool {
+  !assessment_is_clear_of_blockers(
+    v: retirement_assessment_verdict(
+      revision: "abc123" as NonEmptyStr,
+      host: operator_host_srv2,
+      roster: observed_roster(),
+      required: [
+        "actions-runner@srv2-01.service" as NonEmptyStr,
+        "actions-runner@srv2-99.service" as NonEmptyStr,
+      ],
+      standings: [
+        RetirementComplete { unit: "actions-runner@srv2-01.service" },
+        RetirementComplete { unit: "actions-runner@srv2-99.service" },
+      ],
+      method_subjects: [],
+      method_availability: retirement_method_availability(method: GracefulRetirement, unit: "x"),
+      planner: PlannerSawCompleteSubject { operations_emitted: 0 },
+      basis: grounded_basis(),
+      obligation_population: one_required(),
+      estate: complete_estate(),
+      extra: [],
     ),
   )
 }
