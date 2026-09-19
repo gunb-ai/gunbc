@@ -1,0 +1,181 @@
+module gunbc.spark.serving_load_probe_cli
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.measure { second }
+import extdeps.tools.curl { curl_bounded_get_argv }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.docker.cli { docker_exec_command }
+import extdeps.exec.command { argv_words }
+import extdeps.vllm.server { vllm_route_path, vllm_route_metrics }
+import extdeps.vllm.bench_serve { vllm_bench_serve_arguments }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_intent_network { operator_host_srv9, srv9_host_lan_endpoint }
+import gunbc.spark.model_snapshot_materialize {
+  SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable,
+}
+import gunbc.spark.serving_arm_launch { glm_native_container_name }
+import gunbc.spark.serving_rank_observe {
+  observed_rank_subject, observe_rank_container, RankInspected, RankInspectRefused,
+  observed_rank_incarnation, ObservedRankIncarnation,
+}
+import gunbc.spark.glm_group_b_relaunch_cli { with_group_b_access, rank_context }
+import gunbc.harness.harness_backend { harness_launch_from_body, harness_queue_from_body }
+import gunbc.spark.fabric_switch_observed { FabricGroupB }
+import gunbc.spark.serving_load_probe {
+  glm_native_serve_base_url,
+  SamePrincipal,
+  glm_native_live_subject_standing,
+  glm_native_smoke_protocol,
+  serving_load_observation, serving_load_observation_text,
+  drain_from_queue, window_from_drain, counter_continuity,
+  occupancy_trace_from_endpoint_scrapes,
+  bench_serve_from_remote, bench_serve_bucket_peak, bench_serve_itl, client_itl_text, client_bucket_peak_text,
+  WindowIsolated, WindowIsolationNotEstablished,
+  ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread,
+  DrainObservedIdle, DrainNotIdle, DrainUnread,
+}
+//
+// Witnesses supply metric bodies. This function drives `vllm bench serve` against the live native
+// GLM head. A non-idle drain REFUSES the start. An idle start is WindowIsolationNotEstablished:
+// naming actors who might arrive (window_from_drain's annotation) is not a traffic observation.
+// Client facts are derived from one BenchServeExecution minted from the remote operation.
+// glm_native_serving_load_wet exits 0 when the observation is captured. Qualification is a
+// declared frontier (request start events, reserved-window lease/exclusion, interval occupancy,
+// serve.py digest); this PR does not run a qualify command.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/spark/serving_load_probe_cli.dag --function glm_native_serving_load_wet
+
+data glm_native_serving_load_receipt_path: String = "target/glm-native-serving-load-observation.txt"
+data glm_native_serving_load_attempt_raw: String = "glm-native-serving-load"
+
+fn metrics_url() -> String {
+  join([glm_native_serve_base_url() as String, vllm_route_path(r: vllm_route_metrics) as String], "")
+}
+
+fn curl_metrics_argv() -> List<String> {
+  curl_bounded_get_argv(url: metrics_url(), connect_timeout: second(count: 2), max_time: second(count: 15))
+}
+
+fn bench_exec_argv() -> List<String> {
+  argv_words(command: docker_exec_command(
+    name: glm_native_container_name,
+    env: [],
+    argv: concat(["vllm"], vllm_bench_serve_arguments(req: glm_native_smoke_protocol)),
+  ))
+}
+
+// One metrics scrape keeps the remote run's arms: a refusal is never a body a parser can read.
+type MetricsScrape
+  = ScrapeBody { body: String }
+  | ScrapeUnreachable { step: String, cause: String }
+  | ScrapeExitedNonZero { step: String, exit_code: Int, stdout: String, stderr: String }
+
+fn scrape_metrics(ctx: SparkMaterializeContext, step: String) -> MetricsScrape {
+  match spark_remote_run(ctx: ctx, argv: curl_metrics_argv()) {
+    RemoteUnreachable { cause: c } => ScrapeUnreachable { step: step, cause: c }
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        ScrapeExitedNonZero { step: step, exit_code: code, stdout: out, stderr: err }
+      } else {
+        ScrapeBody { body: out }
+      }
+  }
+}
+
+fn scrape_refusal_text(s: MetricsScrape) -> String {
+  match s {
+    ScrapeBody { body: _ } => "scrape produced a body"
+    ScrapeUnreachable { step: st, cause: c } => join(["UNREACHABLE ", st, " ", c], "")
+    ScrapeExitedNonZero { step: st, exit_code: code, stdout: out, stderr: err } =>
+      join(["FAILED ", st, " exit=", to_string(code), " stderr=", err, " stdout=", out], "")
+  }
+}
+
+fn inspect_incarnation(ctx: SparkMaterializeContext) -> ObservedRankIncarnation?
+  uses net: Network
+{
+  let subject = observed_rank_subject(host: operator_host_srv9, container: glm_native_container_name)
+  match observe_rank_container(ctx: ctx, subject: subject) {
+    RankInspectRefused { refusal: _ } => none
+    RankInspected { subject: s, container: c } => observed_rank_incarnation(subject: s, c: c)
+  }
+}
+
+fn glm_native_serving_load_wet() -> ProcessExit
+  uses net: Network
+{
+  glm_native_serving_load_run()
+}
+
+fn glm_native_serving_load_run() -> ProcessExit
+  uses net: Network
+{
+  with_group_b_access(use: fn(trust, path, administrator, file) {
+    let ctx = rank_context(host: operator_host_srv9, trust: trust, path: path, administrator: administrator, credential_file: file)
+    let before_scrape = scrape_metrics(ctx: ctx, step: "metrics-before")
+    match before_scrape {
+      ScrapeUnreachable { step: _, cause: _ } => exit_failure(reason: scrape_refusal_text(s: before_scrape))
+      ScrapeExitedNonZero { step: _, exit_code: _, stdout: _, stderr: _ } => exit_failure(reason: scrape_refusal_text(s: before_scrape))
+      ScrapeBody { body: before } => {
+      let drain = drain_from_queue(q: harness_queue_from_body(body: before))
+      let window = window_from_drain(drain: drain)
+      match window {
+        WindowIsolated { grant: _, protected: _, deadline: _, drain: _, exclusion: _ } =>
+          exit_failure(reason: "an isolated window is not this arm's inhabitance path")
+        ForeignTrafficObserved { attributed_receipt: _, drain: _ } =>
+          exit_failure(reason: "attributed foreign traffic is not this arm's inhabitance path")
+        ForeignTrafficNotObserved { drain: _ } =>
+          exit_failure(reason: "foreign-traffic-not-observed is not this arm's inhabitance path")
+        ForeignTrafficUnread { cause: c, drain: _ } => exit_failure(reason: c as String)
+        WindowIsolationNotEstablished { cause: c, drain: d } =>
+          match d {
+            DrainNotIdle { running: _ } => exit_failure(reason: c as String)
+            DrainUnread { cause: u } => exit_failure(reason: u as String)
+            DrainObservedIdle => {
+      let before_incarnation = inspect_incarnation(ctx: ctx)
+      let bench = bench_serve_from_remote(protocol: glm_native_smoke_protocol, remote: spark_remote_run(ctx: ctx, argv: bench_exec_argv()))
+      let after_scrape = scrape_metrics(ctx: ctx, step: "metrics-after")
+      match after_scrape {
+        ScrapeUnreachable { step: _, cause: _ } => exit_failure(reason: scrape_refusal_text(s: after_scrape))
+        ScrapeExitedNonZero { step: _, exit_code: _, stdout: _, stderr: _ } => exit_failure(reason: scrape_refusal_text(s: after_scrape))
+        ScrapeBody { body: after } => {
+            let after_incarnation = inspect_incarnation(ctx: ctx)
+            let before_launch = harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: before)
+            let after_launch = harness_launch_from_body(group: FabricGroupB, address: srv9_host_lan_endpoint.address, body: after)
+            let occ = occupancy_trace_from_endpoint_scrapes(before_body: before, after_body: after)
+            let obs = serving_load_observation(
+              subject: glm_native_live_subject_standing(),
+              window: window,
+              continuity: counter_continuity(before: before_launch, after: after_launch),
+              occupancy: occ,
+              before_body: before,
+              after_body: after,
+              before_incarnation: before_incarnation,
+              after_incarnation: after_incarnation,
+              bench: bench,
+              provenance: SamePrincipal { principal: join(["group-B administrator ssh session on ", operator_host_srv9 as String, " (bench by docker exec, metrics by 127.0.0.1 scrape, same context)"], "") as NonEmptyStr },
+            )
+            let body = join([
+              "glm native serving-load wet at ", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+              serving_load_observation_text(o: obs),
+              "client itl (bench stdout): ", client_itl_text(d: bench_serve_itl(e: bench)), "\n",
+              "client bucket peak (bench stdout): ", client_bucket_peak_text(p: bench_serve_bucket_peak(e: bench)), "\n",
+            ], "")
+            let w = Filesystem.Write(path: glm_native_serving_load_receipt_path, content: body)
+            if !w.success {
+              exit_failure(reason: join(["receipt write failed: ", w.error], ""))
+            } else {
+              ExitSuccess
+            }
+        }
+      }
+            }
+          }
+      }
+      }
+    }
+  }, attempt_raw: glm_native_serving_load_attempt_raw, credential_file_name: "gunbc-glm-native-serving-load-admin-password" as NonEmptyStr)
+}
