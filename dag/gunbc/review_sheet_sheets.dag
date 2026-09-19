@@ -49,8 +49,11 @@ import extdeps.google.sheets {
   sheets_major_dimension_from_wire,
   DimensionRows,
   DimensionColumns,
-  a1_sheet_title_wire,
-  a1_qualified_range_wire,
+  A1RangeEncoding,
+  A1RangeEncoded,
+  A1TitleApostropheUnsupported,
+  a1_range_encode,
+  a1_range_encoding_text,
   a1_range_title_decode,
   a1_sheet_title_refusal_text,
   A1TitleQualified,
@@ -144,28 +147,28 @@ type SheetA1Range {
   end: SheetA1End
 }
 
-fn sheet_a1_range_wire(range: SheetA1Range) -> String {
+fn sheet_a1_range_wire(range: SheetA1Range) -> A1RangeEncoding {
   match range.end {
-    A1EndWholeTab => a1_sheet_title_wire(title: range.tab)
+    A1EndWholeTab => a1_range_encode(title: range.tab, cells: Absent)
     A1EndOpen { column: c } =>
-      a1_qualified_range_wire(
+      a1_range_encode(
         title: range.tab,
-        cells: concat(a1_cell_wire(cell: range.origin), concat(":", c.letter as String)),
+        cells: Present { value: concat(a1_cell_wire(cell: range.origin), concat(":", c.letter as String)) },
       )
     A1EndClosed { cell: c } =>
-      a1_qualified_range_wire(
+      a1_range_encode(
         title: range.tab,
-        cells: concat(a1_cell_wire(cell: range.origin), concat(":", a1_cell_wire(cell: c))),
+        cells: Present { value: concat(a1_cell_wire(cell: range.origin), concat(":", a1_cell_wire(cell: c))) },
       )
   }
 }
 
-fn sheet_qualified_cell(tab: NonEmptyStr, cell: A1Cell) -> String {
-  a1_qualified_range_wire(title: tab, cells: a1_cell_wire(cell: cell))
+fn sheet_qualified_cell(tab: NonEmptyStr, cell: A1Cell) -> A1RangeEncoding {
+  a1_range_encode(title: tab, cells: Present { value: a1_cell_wire(cell: cell) })
 }
 
-fn sheet_qualified_span(tab: NonEmptyStr, span: A1RowSpan) -> String {
-  a1_qualified_range_wire(title: tab, cells: a1_row_span_wire(span: span))
+fn sheet_qualified_span(tab: NonEmptyStr, span: A1RowSpan) -> A1RangeEncoding {
+  a1_range_encode(title: tab, cells: Present { value: a1_row_span_wire(span: span) })
 }
 
 type A1ReadbackStanding
@@ -255,12 +258,14 @@ fn a1_readback_standing(range: String) -> A1ReadbackStanding {
   }
 }
 
-fn value_range_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> ValueRange {
-  ValueRange {
-    range: sheet_qualified_cell(tab: tab, cell: write.a1),
-    majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
-    values: Present { value: [[write.value]] },
-  }
+// One pending write: its range encoding and the row-major values to write there.
+type EncodedValueWrite {
+  range: A1RangeEncoding
+  values: List<List<String>>
+}
+
+fn value_write_from_derived_write(write: DerivedCellWrite, tab: NonEmptyStr) -> EncodedValueWrite {
+  EncodedValueWrite { range: sheet_qualified_cell(tab: tab, cell: write.a1), values: [[write.value]] }
 }
 
 fn value_range_includes_column_letter(range: String, letter: String) -> Bool {
@@ -294,12 +299,8 @@ fn value_range_includes_column_letter(range: String, letter: String) -> Bool {
   }
 }
 
-fn value_ranges_from_append(row: AppendListingRow, tab: NonEmptyStr) -> List<ValueRange> {
-  map(row.runs, run => ValueRange {
-    range: sheet_qualified_span(tab: tab, span: run.a1),
-    majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
-    values: Present { value: [run.cells] },
-  })
+fn value_writes_from_append(row: AppendListingRow, tab: NonEmptyStr) -> List<EncodedValueWrite> {
+  map(row.runs, run => EncodedValueWrite { range: sheet_qualified_span(tab: tab, span: run.a1), values: [run.cells] })
 }
 
 type TabBoundWritePlan {
@@ -307,13 +308,36 @@ type TabBoundWritePlan {
   plan: ReviewSheetWritePlan
 }
 
-fn value_ranges_from_write_plan(bound: TabBoundWritePlan) -> List<ValueRange> {
-  concat(
-    map(bound.plan.patches, w => value_range_from_derived_write(write: w, tab: bound.tab)),
+// The plan's value ranges, or the typed refusal of the one tab title they all share.
+type WritePlanValueRanges
+  = WritePlanRanges { ranges: List<ValueRange> }
+  | WritePlanTitleRefused { encoding: A1RangeEncoding }
+
+fn value_ranges_from_write_plan(bound: TabBoundWritePlan) -> WritePlanValueRanges {
+  let writes = concat(
+    map(bound.plan.patches, w => value_write_from_derived_write(write: w, tab: bound.tab)),
     fold(bound.plan.appends, init: [], f: fn(acc, row) {
-      concat(acc, value_ranges_from_append(row: row, tab: bound.tab))
+      concat(acc, value_writes_from_append(row: row, tab: bound.tab))
     }),
   )
+  fold(writes, init: WritePlanRanges { ranges: [] }, f: fn(acc, w) {
+    match acc {
+      WritePlanTitleRefused { encoding: e } => WritePlanTitleRefused { encoding: e }
+      WritePlanRanges { ranges: done } =>
+        match w.range {
+          A1TitleApostropheUnsupported { title: t } =>
+            WritePlanTitleRefused { encoding: A1TitleApostropheUnsupported { title: t } }
+          A1RangeEncoded { wire: wire } =>
+            WritePlanRanges {
+              ranges: concat(done, [ValueRange {
+                range: wire,
+                majorDimension: Present { value: sheets_major_dimension_wire(d: DimensionRows) },
+                values: Present { value: w.values },
+              }]),
+            }
+        }
+    }
+  })
 }
 
 type ObservedSheetFromReadback
@@ -410,13 +434,16 @@ type ReviewSheetEnsureAssessment
 type SheetRequestCause
   = BoundedRequest { range: SheetA1Range }
   | ColumnBoundedRequest { range: SheetA1Range }
+  | TitleNotEncodable { range: SheetA1Range }
 
 fn sheet_request_cause_text(cause: SheetRequestCause) -> String {
   match cause {
     BoundedRequest { range: r } =>
-      concat("bounded GetValues request; append would write past unobserved rows: ", sheet_a1_range_wire(range: r))
+      concat("bounded GetValues request; append would write past unobserved rows: ", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
     ColumnBoundedRequest { range: r } =>
-      concat("column-bounded GetValues request; append would write past unobserved columns: ", sheet_a1_range_wire(range: r))
+      concat("column-bounded GetValues request; append would write past unobserved columns: ", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
+    TitleNotEncodable { range: r } =>
+      concat("GetValues request tab is not A1-encodable: ", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
   }
 }
 
@@ -426,32 +453,37 @@ fn review_sheet_ensure_assess(
   projection: ReviewSheetProjection,
   erasures: List<DerivedPayloadErasure>,
 ) -> ReviewSheetEnsureAssessment {
-  match requested.end {
-    A1EndClosed { cell: _ } =>
-      ReviewSheetRequestRejected { cause: BoundedRequest { range: requested } }
-    A1EndOpen { column: _ } =>
-      ReviewSheetRequestRejected { cause: ColumnBoundedRequest { range: requested } }
-    A1EndWholeTab =>
-      match observed_sheet_from_value_range(range: range) {
-        ReadbackUnreadable { reason: r } => ReviewSheetReadbackRejected { reason: r }
-        ReadbackObserved { observed: observed, tab: tab } =>
-          if (tab as String) != (requested.tab as String) {
-            ReviewSheetReadbackRejected {
-              reason: concat(
-                "readback tab ",
-                concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
-              ) as NonEmptyStr
-            }
-          } else {
-            ReviewSheetProjectionClassified {
-              observed: observed,
-              tab: tab,
-              classification: classify_review_sheet(
-                observed: observed,
-                projection: projection,
-                erasures: erasures,
-              ),
-            }
+  match sheet_a1_range_wire(range: requested) {
+    A1TitleApostropheUnsupported { title: _ } =>
+      ReviewSheetRequestRejected { cause: TitleNotEncodable { range: requested } }
+    A1RangeEncoded { wire: _ } =>
+      match requested.end {
+        A1EndClosed { cell: _ } =>
+          ReviewSheetRequestRejected { cause: BoundedRequest { range: requested } }
+        A1EndOpen { column: _ } =>
+          ReviewSheetRequestRejected { cause: ColumnBoundedRequest { range: requested } }
+        A1EndWholeTab =>
+          match observed_sheet_from_value_range(range: range) {
+            ReadbackUnreadable { reason: r } => ReviewSheetReadbackRejected { reason: r }
+            ReadbackObserved { observed: observed, tab: tab } =>
+              if (tab as String) != (requested.tab as String) {
+                ReviewSheetReadbackRejected {
+                  reason: concat(
+                    "readback tab ",
+                    concat(tab as String, concat(" is not the requested tab ", requested.tab as String)),
+                  ) as NonEmptyStr
+                }
+              } else {
+                ReviewSheetProjectionClassified {
+                  observed: observed,
+                  tab: tab,
+                  classification: classify_review_sheet(
+                    observed: observed,
+                    projection: projection,
+                    erasures: erasures,
+                  ),
+                }
+              }
           }
       }
   }

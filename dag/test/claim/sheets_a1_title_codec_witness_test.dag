@@ -2,8 +2,10 @@ module test.claim.sheets_a1_title_codec_witness
 
 import std.types { Bool, String, NonEmptyStr, Int }
 import extdeps.google.sheets {
-  a1_sheet_title_wire,
-  a1_qualified_range_wire,
+  a1_range_encode,
+  A1RangeEncoding,
+  A1RangeEncoded,
+  A1TitleApostropheUnsupported,
   a1_range_title_decode,
   A1RangeTitleDecode,
   A1TitleQualified,
@@ -13,65 +15,87 @@ import extdeps.google.sheets {
   A1SheetTitleRefusal,
   A1TitleUnterminatedQuote,
   A1TitleBadEscape,
+  A1TitleApostropheAmbiguous,
   A1TitleEmpty,
 }
 
-fn decoded_title_and_cells(d: A1RangeTitleDecode) -> String {
+fn encoded(e: A1RangeEncoding) -> String {
+  match e {
+    A1RangeEncoded { wire: w } => concat("wire|", w)
+    A1TitleApostropheUnsupported { title: t } => concat("unsupported|", t as String)
+  }
+}
+
+fn decoded(d: A1RangeTitleDecode) -> String {
   match d {
     A1TitleQualified { title: t, cells: c } => concat("qualified|", concat(t as String, concat("|", c)))
     A1TitleWholeSheet { title: t } => concat("whole|", t as String)
     A1TitleUnqualified { text: x } => concat("unqualified|", x)
     A1TitleRefused { refusal: A1TitleUnterminatedQuote } => "refused|unterminated"
     A1TitleRefused { refusal: A1TitleBadEscape { at: i } } => concat("refused|bad-escape@", to_string(i))
+    A1TitleRefused { refusal: A1TitleApostropheAmbiguous { at: i } } => concat("refused|ambiguous@", to_string(i))
     A1TitleRefused { refusal: A1TitleEmpty } => "refused|empty"
   }
 }
 
 fn round_trip(title: NonEmptyStr, cells: String) -> String {
-  decoded_title_and_cells(d: a1_range_title_decode(range: a1_qualified_range_wire(title: title, cells: cells)))
+  match a1_range_encode(title: title, cells: Present { value: cells }) {
+    A1RangeEncoded { wire: w } => decoded(d: a1_range_title_decode(range: w))
+    A1TitleApostropheUnsupported { title: t } => concat("unsupported|", t as String)
+  }
 }
 
 test fn a_title_with_a_space_is_quoted() -> Bool {
-  a1_qualified_range_wire(title: "Buyer Review" as NonEmptyStr, cells: "A1:C1") == "'Buyer Review'!A1:C1"
+  encoded(e: a1_range_encode(title: "Buyer Review" as NonEmptyStr, cells: Present { value: "A1:C1" }))
+    == "wire|'Buyer Review'!A1:C1"
 }
 
-test fn an_embedded_quote_is_doubled() -> Bool {
-  a1_qualified_range_wire(title: "Bob's" as NonEmptyStr, cells: "A1") == "'Bob''s'!A1"
-}
-
+// The guide: "'Sheet1' refers to the sheet."
 test fn a_plain_title_is_quoted_too() -> Bool {
-  a1_sheet_title_wire(title: "Sheet1" as NonEmptyStr) == "'Sheet1'"
+  encoded(e: a1_range_encode(title: "Sheet1" as NonEmptyStr, cells: Absent)) == "wire|'Sheet1'"
+}
+
+// The apostrophe's spelling is unobserved, so the encoder refuses rather than guess an escape.
+test fn an_apostrophe_title_is_refused_by_the_encoder() -> Bool {
+  encoded(e: a1_range_encode(title: "Bob's" as NonEmptyStr, cells: Present { value: "A1" })) == "unsupported|Bob's"
+    && encoded(e: a1_range_encode(title: "Jon's_Data" as NonEmptyStr, cells: Absent)) == "unsupported|Jon's_Data"
 }
 
 test fn a_spaced_title_round_trips() -> Bool {
   round_trip(title: "Buyer Review" as NonEmptyStr, cells: "A1:C1") == "qualified|Buyer Review|A1:C1"
 }
 
-test fn a_quoted_title_round_trips() -> Bool {
-  round_trip(title: "Bob's" as NonEmptyStr, cells: "A1") == "qualified|Bob's|A1"
-    && round_trip(title: "''" as NonEmptyStr, cells: "B2") == "qualified|''|B2"
-}
-
 test fn a_title_containing_a_bang_round_trips() -> Bool {
   round_trip(title: "Q3!final" as NonEmptyStr, cells: "A1:C1") == "qualified|Q3!final|A1:C1"
-    && round_trip(title: "Bob's!x" as NonEmptyStr, cells: "A1") == "qualified|Bob's!x|A1"
+}
+
+// The guide's own specimen, verbatim: "'Jon's_Data'!A1:D5 refers to ... a sheet named "Jon's_Data.""
+test fn the_guides_undoubled_apostrophe_specimen_decodes() -> Bool {
+  decoded(d: a1_range_title_decode(range: "'Jon's_Data'!A1:D5")) == "qualified|Jon's_Data|A1:D5"
+    && decoded(d: a1_range_title_decode(range: "'Jon's_Data'")) == "whole|Jon's_Data"
 }
 
 // What values.get returns for a plain title is the BARE spelling; it must decode.
 test fn a_bare_title_as_google_returns_it_decodes() -> Bool {
-  decoded_title_and_cells(d: a1_range_title_decode(range: "Sheet1!A1:Z1000")) == "qualified|Sheet1|A1:Z1000"
+  decoded(d: a1_range_title_decode(range: "Sheet1!A1:Z1000")) == "qualified|Sheet1|A1:Z1000"
 }
 
 test fn a_quoted_whole_sheet_range_decodes_without_a_bang() -> Bool {
-  decoded_title_and_cells(d: a1_range_title_decode(range: "'Buyer Review'")) == "whole|Buyer Review"
-    && decoded_title_and_cells(d: a1_range_title_decode(range: "A1:C1")) == "unqualified|A1:C1"
+  decoded(d: a1_range_title_decode(range: "'Buyer Review'")) == "whole|Buyer Review"
+    && decoded(d: a1_range_title_decode(range: "A1:C1")) == "unqualified|A1:C1"
 }
 
 test fn malformed_quoting_refuses_with_its_typed_cause() -> Bool {
-  decoded_title_and_cells(d: a1_range_title_decode(range: "'Buyer Review!A1:C1")) == "refused|unterminated"
-    && decoded_title_and_cells(d: a1_range_title_decode(range: "'Bob's'!A1")) == "refused|bad-escape@4"
-    && decoded_title_and_cells(d: a1_range_title_decode(range: "Bob's!A1")) == "refused|bad-escape@3"
-    && decoded_title_and_cells(d: a1_range_title_decode(range: "''!A1")) == "refused|empty"
-    && decoded_title_and_cells(d: a1_range_title_decode(range: "!A1")) == "refused|empty"
-    && decoded_title_and_cells(d: a1_range_title_decode(range: "")) == "refused|empty"
+  decoded(d: a1_range_title_decode(range: "'Buyer Review!A1:C1")) == "refused|unterminated"
+    && decoded(d: a1_range_title_decode(range: "Bob's!A1")) == "refused|bad-escape@3"
+    && decoded(d: a1_range_title_decode(range: "''!A1")) == "refused|empty"
+    && decoded(d: a1_range_title_decode(range: "!A1")) == "refused|empty"
+    && decoded(d: a1_range_title_decode(range: "")) == "refused|empty"
+}
+
+// '' reads as one escaped apostrophe or two literal ones, and an apostrophe after the first '!
+// leaves the title's end undecided; no source settles either, so both refuse.
+test fn an_ambiguous_apostrophe_refuses() -> Bool {
+  decoded(d: a1_range_title_decode(range: "'Jon''s'!A1")) == "refused|ambiguous@4"
+    && decoded(d: a1_range_title_decode(range: "'a'!b'!A1")) == "refused|ambiguous@5"
 }

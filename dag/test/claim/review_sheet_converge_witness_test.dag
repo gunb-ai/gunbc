@@ -82,6 +82,9 @@ import gunbc.review_sheet_sheets {
   BoundedRequest,
   ColumnBoundedRequest,
   value_ranges_from_write_plan,
+  WritePlanRanges,
+  WritePlanTitleRefused,
+  TitleNotEncodable,
   value_range_includes_column_letter,
   TabBoundWritePlan,
   ReadbackObserved,
@@ -101,6 +104,7 @@ import gunbc.review_sheet_sheets {
   live_sheets_transport_frontier,
 }
 import extdeps.google.sheets {
+  a1_range_encoding_text,
   ValueRange,
   sheets_major_dimension_wire,
   sheets_major_dimension_from_wire,
@@ -267,6 +271,13 @@ fn w_open_request(tab: NonEmptyStr) -> SheetA1Range {
   review_sheet_get_values_request(tab: tab)
 }
 
+fn w_plan_ranges(bound: TabBoundWritePlan) -> List<ValueRange> {
+  match value_ranges_from_write_plan(bound: bound) {
+    WritePlanRanges { ranges: r } => r
+    WritePlanTitleRefused { encoding: _ } => []
+  }
+}
+
 fn w_bounded_request(tab: NonEmptyStr) -> SheetA1Range {
   SheetA1Range {
     tab: tab,
@@ -292,6 +303,7 @@ fn assessment_tag(a: ReviewSheetEnsureAssessment) -> String {
     ReviewSheetRequestRejected { cause: c } => match c {
       BoundedRequest { range: _ } => "request:bounded"
       ColumnBoundedRequest { range: _ } => "request:column-bounded"
+      TitleNotEncodable { range: _ } => "request:title"
     }
     ReviewSheetReadbackRejected { reason: _ } => "readback"
     ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => "classified"
@@ -317,8 +329,9 @@ test fn assess_refuses_each_request_shape_under_its_own_cause() -> Bool {
 fn request_cause_range_wire(a: ReviewSheetEnsureAssessment) -> String {
   match a {
     ReviewSheetRequestRejected { cause: c } => match c {
-      BoundedRequest { range: r } => concat("bounded:", sheet_a1_range_wire(range: r))
-      ColumnBoundedRequest { range: r } => concat("column:", sheet_a1_range_wire(range: r))
+      BoundedRequest { range: r } => concat("bounded:", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
+      ColumnBoundedRequest { range: r } => concat("column:", a1_range_encoding_text(e: sheet_a1_range_wire(range: r)))
+      TitleNotEncodable { range: _ } => "title"
     }
     ReviewSheetReadbackRejected { reason: _ } => "readback"
     ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => "classified"
@@ -1025,7 +1038,7 @@ test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
           Present { value: w } =>
             a1_cell_wire(cell: w.a1) == "B2"
               && !string_contains(s: a1_cell_wire(cell: w.a1), pattern: "!")
-              && match value_ranges_from_write_plan(bound: bound) |> first {
+              && match w_plan_ranges(bound: bound) |> first {
                 Present { value: vr } =>
                   vr.range == "'Review'!B2"
                     && !string_contains(s: vr.range, pattern: "Review!Review!")
@@ -1048,7 +1061,7 @@ test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
   match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "OtherTab" as NonEmptyStr), range: range, projection: projection, erasures: []) {
     Apply { plan: bound } =>
       (bound.tab as String) == "OtherTab"
-        && match value_ranges_from_write_plan(bound: bound) |> first {
+        && match w_plan_ranges(bound: bound) |> first {
           Present { value: vr } =>
             vr.range == "'OtherTab'!B2"
               && !string_contains(s: vr.range, pattern: "Review!")
@@ -1240,7 +1253,7 @@ test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
   ) {
     Apply { plan: bound } =>
       (bound.tab as String) == "Review"
-        && match value_ranges_from_write_plan(bound: bound) |> first {
+        && match w_plan_ranges(bound: bound) |> first {
           Present { value: vr } => vr.range == "'Review'!B2"
           Absent => false
         }
@@ -1463,12 +1476,12 @@ test fn absent_listing_appends_a_located_row() -> Bool {
                               standing == w_standing_observed()
                                 && (run.cells |> count) == 3
                                 && all(
-                                  value_ranges_from_write_plan(
+                                  w_plan_ranges(
                                     bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                   ),
                                   vr => !value_range_includes_column_letter(range: vr.range, letter: "D"),
                                 )
-                                && match value_ranges_from_write_plan(
+                                && match w_plan_ranges(
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ) |> first {
                                   Present { value: vr } =>
@@ -1525,12 +1538,12 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
                             Present { value: _ } => false
                             Absent =>
                               all(
-                                value_ranges_from_write_plan(
+                                w_plan_ranges(
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ),
                                 vr => !value_range_includes_column_letter(range: vr.range, letter: "D"),
                               )
-                                && match value_ranges_from_write_plan(
+                                && match w_plan_ranges(
                                   bound: TabBoundWritePlan { tab: "Review" as NonEmptyStr, plan: p },
                                 ) |> first {
                                 Present { value: vr } =>
@@ -1646,11 +1659,11 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
       Scaffold { dissolves_to: SubstrateMandatoryTag, bind: _ } => false
       Terminal { reason: _ } => false
     }
-    && sheet_a1_range_wire(
+    && a1_range_encoding_text(e: sheet_a1_range_wire(
       range: review_sheet_get_values_request(
         tab: "Review" as NonEmptyStr,
       ),
-    ) == "'Review'"
+    )) == "'Review'"
     && match live_serviceusage_get_frontier {
       Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
         (b.decl_name as String) == "service_enablement_from_state_wire"
@@ -1679,7 +1692,7 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
                       raw: sheets_value_render_option_wire(o: review_sheet_get_value_render_option()),
                     ) {
                       Present { value: RenderFormattedValue } =>
-                        match value_ranges_from_write_plan(
+                        match w_plan_ranges(
                           bound: TabBoundWritePlan {
                             tab: "Review" as NonEmptyStr,
                             plan: ReviewSheetWritePlan {

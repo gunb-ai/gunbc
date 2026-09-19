@@ -4,7 +4,14 @@ import std.types { NonEmptyStr, String, Int, List, Secret, Bool, Float, HttpMeth
 import extdeps.transports.rest { RestOutcome }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.credentials { EnvVar }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority {
+  ExternalAuthority,
+  ExternalModelScope,
+  ExternalSubjectRef,
+  CitedFigureStanding,
+  TranscribedUncited,
+  cited_figure_read_obligation,
+}
 import extdeps.uri { Uri, Https }
 import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
@@ -233,37 +240,76 @@ fn sheets_value_render_option_from_wire(raw: String) -> SheetsValueRenderOption?
 }
 
 // A1 NOTATION: THE SHEET-TITLE TOKEN (sheets_a1_notation_citation). A qualified A1 range is
-// `<title>!<cells>`; the guide spells a title with a space as `'My Custom Sheet'!A:A` and states
-// single quotes are required for names with spaces, special characters or an alphanumeric
-// combination, and an embedded single quote is doubled inside the quotes. The ENCODER ALWAYS
-// QUOTES: one spelling, no "is this title a plain identifier" classifier to get wrong. The guide
-// states when quotes are REQUIRED and never forbids them elsewhere; that `'Sheet1'!A1` is admitted
-// is a BET read from that silence, not a sentence the guide prints and not observed by this repo.
-// It is grounded by the first live values.batchUpdate through gunbc.review_sheet_sheets, and if it
-// is refused, the remedy is a required-quoting classifier here and nowhere else.
-// The DECODER models what values.get actually returns in ValueRange.range: plain titles come back
-// bare (`Sheet1!A1:Z1000`), others quoted (`'Buyer Review'!A1:C1`), so both spellings decode. The
-// quoted title is scanned to its closing quote BEFORE any '!' is looked for, because a quoted
-// title may itself contain '!'.
+// `<title>!<cells>`. The guide's lines this codec rests on, verbatim:
+//   "Single quotes are required for sheet names with spaces or special characters."
+//   "'My Custom Sheet'!A:A refers to all the cells in the first column of a sheet named
+//   "My Custom Sheet.""
+//   "A1 (without quotes) refers to cell A1 in the first visible sheet. 'A1' refers to a sheet
+//   with the name A1."
+//   "'Sheet1' refers to the sheet."
+//   "'Jon's_Data'!A1:D5 refers to all the cells in the first five rows and four columns of a
+//   sheet named "Jon's_Data.""
+// So the ENCODER ALWAYS QUOTES: the guide itself says a quoted plain name ('Sheet1', 'A1') denotes
+// the sheet, and one spelling needs no "is this a plain identifier" classifier.
+// An APOSTROPHE inside a title is not grounded. The guide spells Jon's_Data UNDOUBLED, and whether
+// the API accepts or returns the doubled form is unobserved (a1_title_apostrophe_spelling_standing).
+// So the encoder REFUSES such a title rather than guess an escape, and the decoder reads only what
+// is unambiguous under both spellings.
 
-fn a1_sheet_title_wire(title: NonEmptyStr) -> String {
-  concat("'", concat(replace(title as String, "'", "''"), "'"))
+data a1_title_apostrophe_spelling_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "developers.google.com/sheets/api/guides/concepts#cell shows 'Jon's_Data'!A1:D5 with the apostrophe UNDOUBLED and states no escape rule; whether values.get returns, and values.batchUpdate accepts, a doubled '' inside a quoted title is unobserved. Discriminator: a live values.get and values.batchUpdate against a temporary tab whose title contains an apostrophe, reading the ValueRange.range spelling the API returns",
 }
 
-fn a1_qualified_range_wire(title: NonEmptyStr, cells: String) -> String {
-  concat(a1_sheet_title_wire(title: title), concat("!", cells))
+type A1RangeEncoding
+  = A1RangeEncoded { wire: String }
+  | A1TitleApostropheUnsupported { title: NonEmptyStr }
+
+fn a1_range_encoding_text(e: A1RangeEncoding) -> String {
+  match e {
+    A1RangeEncoded { wire: w } => w
+    A1TitleApostropheUnsupported { title: t } =>
+      concat(
+        "A1 sheet title contains an apostrophe, whose spelling is unobserved: ",
+        concat(
+          t as String,
+          concat(
+            " -- read obligation: ",
+            match cited_figure_read_obligation(standing: a1_title_apostrophe_spelling_standing) {
+              Present { value: o } => o as String
+              Absent => ""
+            },
+          ),
+        ),
+      )
+  }
+}
+
+// cells Absent is the whole-sheet range: the quoted title alone.
+fn a1_range_encode(title: NonEmptyStr, cells: String?) -> A1RangeEncoding {
+  if string_contains(s: title as String, pattern: "'") {
+    A1TitleApostropheUnsupported { title: title }
+  } else {
+    let token = concat("'", concat(title as String, "'"))
+    match cells {
+      Absent => A1RangeEncoded { wire: token }
+      Present { value: c } => A1RangeEncoded { wire: concat(token, concat("!", c)) }
+    }
+  }
 }
 
 type A1SheetTitleRefusal
   = A1TitleUnterminatedQuote
   | A1TitleBadEscape { at: Int }
+  | A1TitleApostropheAmbiguous { at: Int }
   | A1TitleEmpty
 
 fn a1_sheet_title_refusal_text(refusal: A1SheetTitleRefusal) -> String {
   match refusal {
     A1TitleUnterminatedQuote => "A1 sheet title: unterminated quote"
     A1TitleBadEscape { at: i } =>
-      concat("A1 sheet title: single quote not escaped as '' at offset ", to_string(i))
+      concat("A1 sheet title: apostrophe in an unquoted title at offset ", to_string(i))
+    A1TitleApostropheAmbiguous { at: i } =>
+      concat("A1 sheet title: '' is one escaped apostrophe or two literal ones; ambiguous at offset ", to_string(i))
     A1TitleEmpty => "A1 sheet title: empty title"
   }
 }
@@ -276,16 +322,24 @@ type A1RangeTitleDecode
 
 type A1TitleScan = A1ScanAt { index: Int } | A1ScanNone
 
-// Index of the closing quote of a quoted title that opened at 0; `''` is an escaped quote.
-fn a1_quoted_title_close_from(s: String, i: Int, len: Int) -> A1TitleScan {
+type A1QuotedClose = A1QuotedClosedAt { index: Int } | A1QuotedAmbiguousAt { index: Int } | A1QuotedUnterminated
+
+// Inside a quoted title opened at 0: an apostrophe followed by '!' or the end CLOSES the title; one
+// followed by any other character is a literal apostrophe (the guide's 'Jon's_Data'); a pair ''
+// is refused, because it reads as one escaped apostrophe or two literal ones and no source decides.
+fn a1_quoted_title_close_from(s: String, i: Int, len: Int) -> A1QuotedClose {
   if i >= len {
-    A1ScanNone
+    A1QuotedUnterminated
   } else if char_at(s, i) != "'" {
     a1_quoted_title_close_from(s: s, i: i + 1, len: len)
-  } else if (i + 1 < len) && (char_at(s, i + 1) == "'") {
-    a1_quoted_title_close_from(s: s, i: i + 2, len: len)
+  } else if i + 1 == len {
+    A1QuotedClosedAt { index: i }
+  } else if char_at(s, i + 1) == "!" {
+    A1QuotedClosedAt { index: i }
+  } else if char_at(s, i + 1) == "'" {
+    A1QuotedAmbiguousAt { index: i }
   } else {
-    A1ScanAt { index: i }
+    a1_quoted_title_close_from(s: s, i: i + 1, len: len)
   }
 }
 
@@ -305,20 +359,21 @@ fn a1_range_title_decode(range: String) -> A1RangeTitleDecode {
     A1TitleRefused { refusal: A1TitleEmpty }
   } else if char_at(range, 0) == "'" {
     match a1_quoted_title_close_from(s: range, i: 1, len: len) {
-      A1ScanNone => A1TitleRefused { refusal: A1TitleUnterminatedQuote }
-      A1ScanAt { index: close } => {
-        let body = substring(s: range, start: 1, end: close)
-        if body == "" {
+      A1QuotedUnterminated => A1TitleRefused { refusal: A1TitleUnterminatedQuote }
+      A1QuotedAmbiguousAt { index: i } => A1TitleRefused { refusal: A1TitleApostropheAmbiguous { at: i } }
+      A1QuotedClosedAt { index: close } => {
+        let title = substring(s: range, start: 1, end: close)
+        if title == "" {
           A1TitleRefused { refusal: A1TitleEmpty }
         } else if close + 1 == len {
-          A1TitleWholeSheet { title: replace(body, "''", "'") as NonEmptyStr }
-        } else if char_at(range, close + 1) == "!" {
-          A1TitleQualified {
-            title: replace(body, "''", "'") as NonEmptyStr,
-            cells: substring(s: range, start: close + 2, end: len),
-          }
+          A1TitleWholeSheet { title: title as NonEmptyStr }
         } else {
-          A1TitleRefused { refusal: A1TitleBadEscape { at: close } }
+          let cells = substring(s: range, start: close + 2, end: len)
+          match a1_char_from(s: cells, ch: "'", i: 0, end: string_length(s: cells)) {
+            A1ScanAt { index: q } =>
+              A1TitleRefused { refusal: A1TitleApostropheAmbiguous { at: close + 2 + q } }
+            A1ScanNone => A1TitleQualified { title: title as NonEmptyStr, cells: cells }
+          }
         }
       }
     }
