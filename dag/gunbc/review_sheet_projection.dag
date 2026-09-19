@@ -624,8 +624,15 @@ fn first_omitted_derived_column(row: ProjectionRow, schema: ReviewSheetSchema) -
   }
 }
 
+// ONE AUTHORITY FOR THE SCHEMA'S HEADER ROW. The names classify_review_sheet requires an observed
+// sheet to carry are exactly the names an initializer of a blank tab must write, in this order.
+// missing_schema_header consumes this, so the required set and the written row cannot drift apart.
+fn review_sheet_header_names(schema: ReviewSheetSchema) -> List<NonEmptyStr> {
+  concat([schema.identity_column], map(schema.columns, c => c.name))
+}
+
 fn missing_schema_header(schema: ReviewSheetSchema, header_by_name: Map<String, Int>) -> NonEmptyStr? {
-  let needed = concat([schema.identity_column], map(schema.columns, c => c.name))
+  let needed = review_sheet_header_names(schema: schema)
   needed |> filter(n => match header_by_name.lookup(n as String) {
     Present { value: _ } => false
     Absent => true

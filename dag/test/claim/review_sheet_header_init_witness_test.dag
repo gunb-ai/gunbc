@@ -1,0 +1,232 @@
+module test.claim.review_sheet_header_init_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import extdeps.google.sheets { ValueRange }
+import gunbc.review_sheet_projection {
+  ReviewSheetSchema,
+  ReviewColumn,
+  DerivedField,
+  OperatorEntered,
+  A1Cell,
+  A1Column,
+  a1_origin_cell,
+}
+import gunbc.review_sheet_sheets {
+  SheetA1Range,
+  A1EndClosed,
+  review_sheet_get_values_request,
+}
+import gunbc.review_sheet_header_init {
+  ReviewSheetHeaderInitDecision,
+  HeaderInitRequestRejected,
+  HeaderInitReadbackRejected,
+  HeaderInitWriteHeaderRow,
+  HeaderInitTabOccupied,
+  HeaderInitHeaderRowUnaddressable,
+  SheetHeaderRowWrite,
+  SheetOccupancy,
+  SheetCellLocation,
+  HeaderRowCell,
+  DataRowCell,
+  review_sheet_header_init,
+}
+
+// WHAT THESE SPECIMENS DISCRIMINATE. Every claim here supplies a ValueRange at the ONE interface
+// this module owns -- review_sheet_header_init -- rather than reaching a live Sheets read, and the
+// shapes supplied are the shapes gunbc.review_sheet_sheets grid_from_value_rows produces: an absent
+// values field for a blank tab, a row-major grid otherwise. The discriminating pairs are the point.
+// blank_tab_* and blank_header_row_over_data_* differ only in whether anything sits BELOW an empty
+// row 1, so an emptiness test that looked at the header row alone goes red on the second. The
+// whitespace specimen differs from the blank one by a single " ", so treating whitespace as empty
+// goes red there and nowhere else. The header-order claim reads the written cells joined in order,
+// so a set-equal-but-reordered header goes red. And the two rejection claims supply a malformed
+// readback and a bounded request, both of which are review_sheet_ensure_assess's own walls: they
+// stay green only while this module calls that fold and carries its arms through unqualified.
+//
+// MUTATION TABLE -- the wrong implementation each claim exists to catch, and what survives it.
+// (a) first_occupied_cell inspects observed.headers only and never the rows:
+//     a_blank_header_row_over_data_is_not_blank and whitespace_below_the_header_row_is_content go
+//     RED; every blank-tab claim, whitespace_in_the_header_row_is_content and the three rejection
+//     claims stay GREEN -- which is exactly why the data-below specimen has to exist.
+// (b) emptiness treats whitespace as empty (trimming before the != "" test):
+//     whitespace_in_the_header_row_is_content and whitespace_below_the_header_row_is_content go
+//     RED; a_blank_header_row_over_data_is_not_blank stays GREEN, because its occupancy is an "x".
+// (c) header_row_write emits the schema columns before the identity column, or in any order other
+//     than schema order: blank_tab_writes_the_schema_header_row_in_schema_order goes RED;
+//     blank_tab_header_write_is_tab_qualified_at_row_one stays GREEN, because the span is the same
+//     width whatever the order -- the joined-cells form is what makes the order observable.
+// (d) this module writes its own whole-tab and tab-identity checks instead of calling
+//     review_sheet_ensure_assess: an_unqualified_readback_is_refused_by_the_assessment,
+//     a_readback_of_another_tab_is_refused_by_the_assessment and
+//     a_bounded_request_is_refused_by_the_assessment go RED (a re-implementation admits the
+//     specimen instead of refusing it); every emptiness claim stays GREEN.
+// (e) the assessment's two rejection arms are flattened into one arm, or into a prose reason:
+//     a_bounded_request_is_refused_by_the_assessment goes RED, because decision_label separates
+//     request-rejected from readback-rejected; the readback claims stay GREEN under that flatten,
+//     which is why the bounded-request specimen is carried separately from the malformed ones.
+// (f) first_occupied_header_cell inspects header cell 0 only instead of enumerating the row:
+//     header_row_content_past_column_a_is_content goes RED; every other claim stays GREEN, because
+//     every OTHER occupied-header specimen here carries its content in column A. That asymmetry is
+//     the whole reason the specimen exists -- without it the column-0 reading of the header row is
+//     indistinguishable from the enumerating one, and it would stamp a header over anything sitting
+//     in B1 onward of an otherwise blank row 1. The data rows already had their non-first-column
+//     case; the header row did not. Both halves of that were RUN rather than reasoned: the mutation
+//     refused naming header_row_content_past_column_a_is_content, and a second run with only that
+//     claim removed passed, so the remaining claims really are blind to the column-0 reading.
+//
+// Each row above was RUN, and each run refused naming the claim that row lists first. Two notes on
+// the executed forms, because the table would otherwise read as stronger than what was measured.
+// Row (b) was applied as an explicit `!= " "` exemption on the occupancy filter: the tempting
+// spelling, a trim before the comparison, is not a mutation at all -- the substrate has no `trim`,
+// so it fails to compile and discriminates nothing. Row (d) was applied by replacing the
+// review_sheet_ensure_assess call with a ReviewSheetProjectionClassified built straight from
+// grid_from_value_rows, which is precisely the shape a module that decided those facts for itself
+// would have, and the unqualified-readback specimen went red under it while every emptiness claim
+// stayed green.
+
+data specimen_tab: NonEmptyStr = "Buyer Review" as NonEmptyStr
+
+fn specimen_schema() -> ReviewSheetSchema {
+  ReviewSheetSchema {
+    identity_column: "Listing" as NonEmptyStr,
+    columns: [
+      ReviewColumn { name: "Title" as NonEmptyStr, kind: DerivedField { source_field: "title" as NonEmptyStr } },
+      ReviewColumn { name: "Decision" as NonEmptyStr, kind: OperatorEntered },
+    ],
+  }
+}
+
+fn whole_tab_request() -> SheetA1Range {
+  review_sheet_get_values_request(tab: specimen_tab)
+}
+
+fn specimen_range(range: String, values: List<List<String>>?) -> ValueRange {
+  ValueRange { range: range, majorDimension: Present { value: "ROWS" }, values: values }
+}
+
+fn qualified_readback(values: List<List<String>>?) -> ValueRange {
+  specimen_range(range: "Buyer Review!A1:Z1000", values: values)
+}
+
+fn decide(range: ValueRange) -> ReviewSheetHeaderInitDecision {
+  review_sheet_header_init(requested: whole_tab_request(), range: range, schema: specimen_schema())
+}
+
+fn cells_joined(cells: List<String>) -> String {
+  fold(cells, init: "", f: fn(acc, c) { concat(acc, concat("|", c)) })
+}
+
+fn written_cells_joined(decision: ReviewSheetHeaderInitDecision) -> String {
+  match decision {
+    HeaderInitWriteHeaderRow { write: w } => cells_joined(cells: w.cells)
+    HeaderInitTabOccupied { tab: _, occupancy: _ } => "not-a-write"
+    HeaderInitRequestRejected { cause: _ } => "not-a-write"
+    HeaderInitReadbackRejected { reason: _ } => "not-a-write"
+    HeaderInitHeaderRowUnaddressable { tab: _, column_count: _ } => "not-a-write"
+  }
+}
+
+fn written_range(decision: ReviewSheetHeaderInitDecision) -> String {
+  match decision {
+    HeaderInitWriteHeaderRow { write: w } => w.range
+    HeaderInitTabOccupied { tab: _, occupancy: _ } => "not-a-write"
+    HeaderInitRequestRejected { cause: _ } => "not-a-write"
+    HeaderInitReadbackRejected { reason: _ } => "not-a-write"
+    HeaderInitHeaderRowUnaddressable { tab: _, column_count: _ } => "not-a-write"
+  }
+}
+
+fn occupancy_label(decision: ReviewSheetHeaderInitDecision) -> String {
+  match decision {
+    HeaderInitTabOccupied { tab: _, occupancy: o } =>
+      match o.location {
+        HeaderRowCell { column_index: c } => concat("header:", concat(to_string(c), concat(":", o.raw)))
+        DataRowCell { data_index: d, column_index: c } =>
+          concat("data:", concat(to_string(d), concat(":", concat(to_string(c), concat(":", o.raw)))))
+      }
+    HeaderInitWriteHeaderRow { write: _ } => "write"
+    HeaderInitRequestRejected { cause: _ } => "request-rejected"
+    HeaderInitReadbackRejected { reason: _ } => "readback-rejected"
+    HeaderInitHeaderRowUnaddressable { tab: _, column_count: _ } => "unaddressable"
+  }
+}
+
+fn decision_label(decision: ReviewSheetHeaderInitDecision) -> String {
+  match decision {
+    HeaderInitTabOccupied { tab: _, occupancy: _ } => "occupied"
+    HeaderInitWriteHeaderRow { write: _ } => "write"
+    HeaderInitRequestRejected { cause: _ } => "request-rejected"
+    HeaderInitReadbackRejected { reason: _ } => "readback-rejected"
+    HeaderInitHeaderRowUnaddressable { tab: _, column_count: _ } => "unaddressable"
+  }
+}
+
+test fn blank_tab_writes_the_schema_header_row_in_schema_order() -> Bool {
+  written_cells_joined(decision: decide(range: qualified_readback(values: Absent)))
+    == "|Listing|Title|Decision"
+}
+
+test fn blank_tab_header_write_is_tab_qualified_at_row_one() -> Bool {
+  written_range(decision: decide(range: qualified_readback(values: Absent))) == "Buyer Review!A1:C1"
+}
+
+test fn an_all_empty_grid_is_still_blank() -> Bool {
+  decision_label(decision: decide(range: qualified_readback(values: Present { value: [["", ""], ["", ""]] })))
+    == "write"
+}
+
+test fn a_blank_header_row_over_data_is_not_blank() -> Bool {
+  occupancy_label(decision: decide(range: qualified_readback(values: Present { value: [["", ""], ["", "x"]] })))
+    == "data:0:1:x"
+}
+
+test fn whitespace_in_the_header_row_is_content() -> Bool {
+  occupancy_label(decision: decide(range: qualified_readback(values: Present { value: [[" ", ""]] })))
+    == "header:0: "
+}
+
+test fn header_row_content_past_column_a_is_content() -> Bool {
+  occupancy_label(decision: decide(range: qualified_readback(values: Present { value: [["", "Notes"]] })))
+    == "header:1:Notes"
+}
+
+test fn whitespace_below_the_header_row_is_content() -> Bool {
+  occupancy_label(decision: decide(range: qualified_readback(values: Present { value: [["", ""], [" "]] })))
+    == "data:0:0: "
+}
+
+test fn a_populated_tab_hands_off_rather_than_writing() -> Bool {
+  decision_label(
+    decision: decide(range: qualified_readback(values: Present {
+      value: [["Listing", "Title", "Decision"], ["i-1", "widget", "buy"]],
+    })),
+  ) == "occupied"
+}
+
+// The next two claims are the single-authority controls. Neither condition is tested anywhere in
+// gunbc.review_sheet_header_init: an unqualified readback range and a bounded request are refused
+// by review_sheet_ensure_assess, so these go red the moment this module stops calling it and starts
+// deciding those facts for itself, and they go red again if its typed arms are flattened to prose.
+test fn an_unqualified_readback_is_refused_by_the_assessment() -> Bool {
+  decision_label(decision: decide(range: specimen_range(range: "A1:Z1000", values: Absent)))
+    == "readback-rejected"
+}
+
+test fn a_readback_of_another_tab_is_refused_by_the_assessment() -> Bool {
+  decision_label(decision: decide(range: specimen_range(range: "Other Tab!A1:Z1000", values: Absent)))
+    == "readback-rejected"
+}
+
+test fn a_bounded_request_is_refused_by_the_assessment() -> Bool {
+  decision_label(
+    decision: review_sheet_header_init(
+      requested: SheetA1Range {
+        tab: specimen_tab,
+        origin: a1_origin_cell(),
+        end: A1EndClosed { cell: A1Cell { column: A1Column { letter: "C" as NonEmptyStr }, row: 50 } },
+      },
+      range: qualified_readback(values: Absent),
+      schema: specimen_schema(),
+    ),
+  ) == "request-rejected"
+}
