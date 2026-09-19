@@ -5,7 +5,7 @@ import std.nat { Nat }
 import extdeps.http.client
 import extdeps.http.client { http_client_max_time_flag }
 import std.measure { Second, second }
-import extdeps.tools.curl { CurlExitOutcome, CurlTransferCompleted, curl_exit_outcome, curl_exit_outcome_name }
+import extdeps.tools.curl { CurlExitOutcome, CurlTransferCompleted, curl_exit_outcome, curl_exit_outcome_name, classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
 import std.fabric_db {
   FabricObject, FabricObjectRef, fabric_object_preimage, fabric_object_ref_wire,
   FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
@@ -70,16 +70,16 @@ fn served_reply_from(exit_code: Int, stdout: String, stderr: String) -> ServedRe
   }
 }
 
+// The status line is read by extdeps.tools.curl's own classifier for `-w '\n%{http_code}'`, never
+// re-parsed here; the body is everything before that final line.
 fn served_reply_from_status(stdout: String) -> ServedReply {
   let lines = split(stdout, separator: "\n")
-  let n = length(lines)
-  match first(lines |> skip(n: n - 1)) {
-    Absent => ServedFault { fault: FabricReplyUndecodable { detail: "no status line" } }
-    Present { value: status } => {
-      let body = join(lines |> take(n: n - 1), "\n")
-      if status == "200" { ServedAnswered { body: body } }
-      else { ServedFault { fault: FabricReplyUndecodable { detail: join(["HTTP ", status, ": ", body], "") as NonEmptyStr } } }
-    }
+  let body = join(lines |> take(n: length(lines) - 1), "\n")
+  match classify_curl_http_code_after_newline(stdout: stdout) {
+    CurlWroteNoHttpStatus { cause: c } => ServedFault { fault: FabricReplyUndecodable { detail: c } }
+    CurlWroteHttpStatus { status: st } =>
+      if (st as Int) == 200 { ServedAnswered { body: body } }
+      else { ServedFault { fault: FabricReplyUndecodable { detail: join(["HTTP ", to_string(st as Int), ": ", body], "") as NonEmptyStr } } }
   }
 }
 
