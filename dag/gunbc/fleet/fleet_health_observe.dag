@@ -1,0 +1,448 @@
+module gunbc.fleet_health_observe
+
+import extdeps.bmc.http
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.algebra { trim }
+import std.nat { Nat, nat_range_inclusive }
+import std.checked_arithmetic { CheckedNatOverflow, CheckedNatReady, checked_int_magnitude }
+import std.measure { celsius, rpm }
+import std.resources { Network }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import product.placement_supply { HostIdentity }
+import product.fan_tach {
+  FanTachEndpointIdentity,
+  FanTachSample,
+  FanTachWindow,
+  SampleRotating,
+  SampleUnavailable,
+  SampleZero,
+  fan_tach_window_of,
+}
+import product.host_health {
+  BmcEventKind,
+  BmcEventLogContinuityUnestablished,
+  BmcEventRecord,
+  BmcEventWindow,
+  BmcEventsObserved,
+  BmcThresholdClear,
+  BmcThresholdCritical,
+  BmcThresholdNonCritical,
+  BmcThresholdNonRecoverable,
+  BmcThresholdStanding,
+  BmcThresholdUnreported,
+  CorrectedMemoryErrorEvent,
+  HostHealthObserved,
+  HostSignalAttempt,
+  SignalNotExposedOutOfBand,
+  SignalObserved,
+  SignalUnreadable,
+  TemperatureReadingPresent,
+  TemperatureReadingUnavailable,
+  TemperatureSample,
+  TemperatureSensorDisabled,
+  TemperatureWindow,
+  UnclassifiedEvent,
+  UncorrectedMemoryErrorEvent,
+  host_health_observed,
+}
+import extdeps.bmc.redfish_telemetry {
+  RedfishHealth,
+  RedfishHealthCritical,
+  RedfishHealthOk,
+  RedfishHealthOther,
+  RedfishHealthUnreported,
+  RedfishHealthWarning,
+  RedfishLogEntry,
+  RedfishOtherReading,
+  RedfishReadingMissing,
+  RedfishReadingNull,
+  RedfishReadingValue,
+  RedfishRotationalRpm,
+  RedfishStateDisabled,
+  RedfishTelemetryPoint,
+  RedfishTemperatureCelsius,
+  redfish_log_entries,
+  redfish_member_ids,
+  redfish_sensor_point,
+  redfish_thermal_points,
+}
+import extdeps.bmc.openbmc_message_registry {
+  OpenBmcMemoryEccCorrectable,
+  OpenBmcMemoryEccUncorrectable,
+  openbmc_memory_ecc_message,
+}
+import extdeps.bmc.types {
+  BmcRedfishSurfaceRow,
+  RedfishDualThermalSurface,
+  RedfishLegacyChassisThermal,
+  RedfishThermalSubsystemSensorCollection,
+  RedfishThermalTelemetrySurface,
+  SurfaceShapeAmbiguous,
+  SurfaceShapeKnown,
+  SurfaceShapeUncatalogued,
+  bmc_redfish_surface_for,
+}
+import extdeps.bmc.capability { BmcFirmwareVersion, BmcFirmwareVersionParsed, BmcFirmwareVersionRefused, bmc_firmware_version_from_wire }
+import extdeps.bmc.endpoint { OpenBmc }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document }
+import gunbc.scm.json_member { MemberString, read_string_member }
+import gunbc.auth.netrc_binding {
+  NetrcBinding,
+  NetrcBindingPlaced,
+  NetrcBindingRefused,
+  NetrcBindingRefusedResidueRemains,
+  place_netrc_binding_privately,
+  shred_netrc_binding,
+}
+
+// THE FLEET HEALTH COLLECTOR: OUT OF BAND, READ ONLY, GOAL BLIND.
+//
+// Out of band by standing rule (operator, 2026-09-18): it talks only to a host's BMC over Redfish,
+// never to the host OS, and a signal the BMC does not expose is carried as not exposed rather than
+// fetched another way. Read only: every request it can make is an arm of FleetHealthRedfishRead,
+// whose only realization is health_redfish_read below, and every arm is a `readonly` GET on
+// redfish.Http -- no variant can name a POST, PATCH, reset, log clear or fan-control write. It
+// authenticates as the gunbc_health ReadOnly account (gunbc.bmc_health_reader) through a private,
+// per-run netrc it shreds on every path out. Goal blind: it takes no expectation; it reads the whole
+// telemetry surface and the whole event log, and the assessment decides what was expected.
+//
+// ONE WINDOW PER RUN: the event log is read at the opening and at the closing, and the telemetry is
+// sampled `samples` times between them. The surface is derived from the firmware the BMC reports
+// NOW, through the board's catalog, so a flash changes the route the next run takes rather than
+// leaving a stale per-host row behind it.
+type FleetHealthRedfishRead
+  = ReadManager
+  | ReadChassisThermal { chassis_id: NonEmptyStr }
+  | ReadChassisSensors { chassis_id: NonEmptyStr }
+  | ReadChassisSensor { chassis_id: NonEmptyStr, sensor_id: NonEmptyStr }
+  | ReadSystemEventLog
+
+type HealthReadResponse {
+  body: String
+  success: Bool
+}
+
+fn health_redfish_read(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHealthRedfishRead) -> HealthReadResponse
+  uses net: Network
+{
+  match read {
+    ReadManager => {
+      r = redfish.Http.GetManager(bmc_host: bmc_host, netrc_file: netrc)
+      return HealthReadResponse { body: r.body, success: r.success }
+    }
+    ReadChassisThermal { chassis_id: c } => {
+      r = redfish.Http.GetChassisThermal(bmc_host: bmc_host, chassis_id: c, netrc_file: netrc)
+      return HealthReadResponse { body: r.body, success: r.success }
+    }
+    ReadChassisSensors { chassis_id: c } => {
+      r = redfish.Http.GetChassisSensors(bmc_host: bmc_host, chassis_id: c, netrc_file: netrc)
+      return HealthReadResponse { body: r.body, success: r.success }
+    }
+    ReadChassisSensor { chassis_id: c, sensor_id: s } => {
+      r = redfish.Http.GetChassisSensor(bmc_host: bmc_host, chassis_id: c, sensor_id: s, netrc_file: netrc)
+      return HealthReadResponse { body: r.body, success: r.success }
+    }
+    ReadSystemEventLog => {
+      r = redfish.Http.GetSystemEventLogEntries(bmc_host: bmc_host, netrc_file: netrc)
+      return HealthReadResponse { body: r.body, success: r.success }
+    }
+  }
+}
+
+// What the fleet declares about reading one host's BMC: where it is, which chassis its telemetry
+// hangs under, and the board's surface catalog the live firmware is looked up in.
+type BmcTelemetryProfile {
+  host: HostIdentity
+  bmc_host: NonEmptyStr
+  chassis_id: NonEmptyStr
+  surface_catalog: List<BmcRedfishSurfaceRow>
+}
+
+fn manager_firmware(body: String) -> ObservationAttempt<BmcFirmwareVersion, NonEmptyStr> {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => ObservationRefused { cause: "the Redfish Manager response is not a JSON document" }
+    JsonDocumentParsed { value } => match read_string_member(v: value, key: "FirmwareVersion") {
+      MemberString { value: text } => match bmc_firmware_version_from_wire(wire: trim(s: text)) {
+        BmcFirmwareVersionParsed { version } => ObservationEstablished { observed: BmcFirmwareVersion { family: OpenBmc, version: version } }
+        BmcFirmwareVersionRefused { wire } => ObservationRefused { cause: concat("the BMC FirmwareVersion is not major.minor.patch: ", wire) as NonEmptyStr }
+      }
+      _ => ObservationRefused { cause: "the Redfish Manager carries no single string FirmwareVersion" }
+    }
+  }
+}
+
+fn telemetry_surface(telemetry: BmcTelemetryProfile, firmware: BmcFirmwareVersion) -> ObservationAttempt<RedfishThermalTelemetrySurface, NonEmptyStr> {
+  match bmc_redfish_surface_for(catalog: telemetry.surface_catalog, firmware: firmware) {
+    SurfaceShapeKnown { shape } => ObservationEstablished { observed: shape.thermal_surface }
+    SurfaceShapeUncatalogued { firmware: _ } => ObservationRefused { cause: "the BMC firmware is not in the board's Redfish surface catalog, so which resource carries its telemetry is not established" }
+    SurfaceShapeAmbiguous { firmware: _, matches: _ } => ObservationRefused { cause: "the BMC firmware matches more than one catalogued Redfish surface" }
+  }
+}
+
+fn read_json(bmc_host: NonEmptyStr, netrc: NonEmptyStr, read: FleetHealthRedfishRead, what: String) -> ObservationAttempt<String, NonEmptyStr>
+  uses net: Network
+{
+  let r = health_redfish_read(bmc_host: bmc_host, netrc: netrc, read: read)
+  return if r.success { ObservationEstablished { observed: r.body } } else { ObservationRefused { cause: concat("the Redfish ", what, " read failed: ", r.body) as NonEmptyStr } }
+}
+
+fn sample_sensor_collection(bmc_host: NonEmptyStr, netrc: NonEmptyStr, chassis_id: NonEmptyStr, ids: List<NonEmptyStr>) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr>
+  uses net: Network
+{
+  let empty: List<RedfishTelemetryPoint> = []
+  let initial: ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr> = ObservationEstablished { observed: empty }
+  let reversed = fold(ids, init: initial, f: (acc, id) => match acc {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: points } => {
+      let sensor_id = match reverse(split(s: id as String, delimiter: "/")).first() { Present { value: last } => last Absent => "" }
+      if sensor_id == "" { ObservationRefused { cause: concat("a Sensors member reference names no sensor: ", id as String) as NonEmptyStr } } else {
+        match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadChassisSensor { chassis_id: chassis_id, sensor_id: sensor_id as NonEmptyStr }, what: "Sensor") {
+          ObservationRefused { cause } => ObservationRefused { cause: cause }
+          ObservationEstablished { observed: body } => match redfish_sensor_point(body: body) {
+            ObservationRefused { cause } => ObservationRefused { cause: cause }
+            ObservationEstablished { observed: p } => ObservationEstablished { observed: concat([p], points) }
+          }
+        }
+      }
+    }
+  })
+  return match reversed {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: points } => ObservationEstablished { observed: reverse(points) }
+  }
+}
+
+fn sample_telemetry(bmc_host: NonEmptyStr, netrc: NonEmptyStr, chassis_id: NonEmptyStr, surface: RedfishThermalTelemetrySurface) -> ObservationAttempt<List<RedfishTelemetryPoint>, NonEmptyStr>
+  uses net: Network
+{
+  match surface {
+    RedfishLegacyChassisThermal => match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadChassisThermal { chassis_id: chassis_id }, what: "Thermal") {
+      ObservationRefused { cause } => return ObservationRefused { cause: cause }
+      ObservationEstablished { observed: body } => return redfish_thermal_points(body: body)
+    }
+    RedfishThermalSubsystemSensorCollection => match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadChassisSensors { chassis_id: chassis_id }, what: "Sensors collection") {
+      ObservationRefused { cause } => return ObservationRefused { cause: cause }
+      ObservationEstablished { observed: body } => match redfish_member_ids(body: body) {
+        ObservationRefused { cause } => return ObservationRefused { cause: cause }
+        ObservationEstablished { observed: ids } => return sample_sensor_collection(bmc_host: bmc_host, netrc: netrc, chassis_id: chassis_id, ids: ids)
+      }
+    }
+    RedfishDualThermalSurface => return ObservationRefused { cause: "the catalogued surface serves both Thermal and Sensors; which one is authoritative for this image is not modeled" }
+  }
+}
+
+fn fan_sample_of(p: RedfishTelemetryPoint) -> FanTachSample {
+  match p.reading {
+    RedfishReadingValue { whole } =>
+      if whole == 0 { SampleZero } else if whole < 0 { SampleUnavailable } else {
+        match checked_int_magnitude(a: whole) {
+          CheckedNatReady { value: n } => SampleRotating { speed: rpm(n) }
+          CheckedNatOverflow { cause: _ } => SampleUnavailable
+        }
+      }
+    RedfishReadingNull => SampleUnavailable
+    RedfishReadingMissing => SampleUnavailable
+  }
+}
+
+fn temperature_sample_of(p: RedfishTelemetryPoint) -> TemperatureSample {
+  match p.state {
+    RedfishStateDisabled => TemperatureSensorDisabled
+    _ => match p.reading {
+      RedfishReadingValue { whole } => TemperatureReadingPresent { celsius: celsius(whole) }
+      RedfishReadingNull => TemperatureReadingUnavailable
+      RedfishReadingMissing => TemperatureReadingUnavailable
+    }
+  }
+}
+
+fn bmc_standing_of(health: RedfishHealth) -> BmcThresholdStanding {
+  match health {
+    RedfishHealthOk => BmcThresholdClear
+    RedfishHealthWarning => BmcThresholdNonCritical
+    RedfishHealthCritical => BmcThresholdCritical
+    RedfishHealthOther { health: _ } => BmcThresholdUnreported
+    RedfishHealthUnreported => BmcThresholdUnreported
+  }
+}
+
+fn standing_rank(s: BmcThresholdStanding) -> Int {
+  match s {
+    BmcThresholdUnreported => 0
+    BmcThresholdClear => 1
+    BmcThresholdNonCritical => 2
+    BmcThresholdCritical => 3
+    BmcThresholdNonRecoverable => 4
+  }
+}
+
+fn is_fan(p: RedfishTelemetryPoint) -> Bool { match p.kind { RedfishRotationalRpm => true _ => false } }
+fn is_temperature(p: RedfishTelemetryPoint) -> Bool { match p.kind { RedfishTemperatureCelsius => true _ => false } }
+
+// Names are taken from the FIRST sample, and every later sample must carry the same named set: a
+// sensor that appears or vanishes mid-window is a population change, which refuses rather than
+// producing a window over fewer samples than the others.
+fn sample_names(samples: List<List<RedfishTelemetryPoint>>, pick: fn(RedfishTelemetryPoint) -> Bool) -> ObservationAttempt<List<NonEmptyStr>, NonEmptyStr> {
+  match samples.first() {
+    Absent => ObservationRefused { cause: "no telemetry sample was taken" }
+    Present { value: first } => {
+      let names = map(filter(first, pick), p => p.name)
+      if all(samples, s => map(filter(s, pick), p => p.name) == names) { ObservationEstablished { observed: names } }
+      else { ObservationRefused { cause: "the telemetry population changed during the window" } }
+    }
+  }
+}
+
+fn points_named(samples: List<List<RedfishTelemetryPoint>>, name: NonEmptyStr) -> List<RedfishTelemetryPoint> {
+  flat_map(samples, s => filter(s, p => p.name == name))
+}
+
+fn fan_windows(host: HostIdentity, samples: List<List<RedfishTelemetryPoint>>) -> HostSignalAttempt<List<FanTachWindow>> {
+  match sample_names(samples: samples, pick: is_fan) {
+    ObservationRefused { cause } => SignalUnreadable { cause: cause }
+    ObservationEstablished { observed: names } => SignalObserved { observed: flat_map(names, name =>
+      match fan_tach_window_of(endpoint: FanTachEndpointIdentity { host: host, name: name }, samples: map(points_named(samples: samples, name: name), p => fan_sample_of(p: p))) {
+        Present { value: w } => [w]
+        none => []
+      }) }
+  }
+}
+
+fn temperature_windows(host: HostIdentity, samples: List<List<RedfishTelemetryPoint>>) -> HostSignalAttempt<List<TemperatureWindow>> {
+  match sample_names(samples: samples, pick: is_temperature) {
+    ObservationRefused { cause } => SignalUnreadable { cause: cause }
+    ObservationEstablished { observed: names } => SignalObserved { observed: map(names, name => {
+      let points = points_named(samples: samples, name: name)
+      TemperatureWindow {
+        host: host,
+        sensor: name,
+        samples: map(points, p => temperature_sample_of(p: p)),
+        worst_bmc_standing: fold(points, init: BmcThresholdUnreported, f: (acc, p) => {
+          let s = bmc_standing_of(health: p.health)
+          if standing_rank(s: s) > standing_rank(s: acc) { s } else { acc }
+        }),
+      }
+    }) }
+  }
+}
+
+fn event_kind(message: NonEmptyStr) -> BmcEventKind {
+  match openbmc_memory_ecc_message(message: message as String) {
+    Present { value: OpenBmcMemoryEccCorrectable } => CorrectedMemoryErrorEvent
+    Present { value: OpenBmcMemoryEccUncorrectable } => UncorrectedMemoryErrorEvent
+    none => UnclassifiedEvent
+  }
+}
+
+fn strictly_increasing(ids: List<Int>) -> Bool {
+  fold(ids, init: -1, f: (prev, id) => if prev == -2 || id <= prev { -2 } else { id }) != -2
+}
+
+// THE OPENING'S NEWEST ENTRY MUST SURVIVE TO THE CLOSE. If it is gone, the log wrapped past it or was
+// cleared during the window, and "appended" cannot be computed: that is the continuity arm, never an
+// empty append. Service ids must also be strictly increasing in both reads, because they are the
+// only order this window trusts; the BMC clock orders nothing.
+fn event_window(opening: List<RedfishLogEntry>, closing: List<RedfishLogEntry>) -> BmcEventWindow {
+  let open_ids = map(opening, e => e.id)
+  let close_ids = map(closing, e => e.id)
+  if !strictly_increasing(ids: open_ids) || !strictly_increasing(ids: close_ids) {
+    BmcEventLogContinuityUnestablished { cause: "the event log's entry ids are not strictly increasing, so no order is established" }
+  } else {
+    match reverse(open_ids).first() {
+      Absent => BmcEventsObserved { history_count: 0, appended: map(closing, e => BmcEventRecord { id: e.id, kind: event_kind(message: e.message), message: e.message }) }
+      Present { value: newest } =>
+        if !any(close_ids, id => id == newest) {
+          BmcEventLogContinuityUnestablished { cause: "the opening's newest event log entry is gone at the close: the log wrapped past it or was cleared during the window" }
+        } else {
+          BmcEventsObserved {
+            history_count: count(opening),
+            appended: map(filter(closing, e => e.id > newest), e => BmcEventRecord { id: e.id, kind: event_kind(message: e.message), message: e.message }),
+          }
+        }
+    }
+  }
+}
+
+fn read_event_log(bmc_host: NonEmptyStr, netrc: NonEmptyStr) -> ObservationAttempt<List<RedfishLogEntry>, NonEmptyStr>
+  uses net: Network
+{
+  match read_json(bmc_host: bmc_host, netrc: netrc, read: ReadSystemEventLog, what: "system event log") {
+    ObservationRefused { cause } => return ObservationRefused { cause: cause }
+    ObservationEstablished { observed: body } => return redfish_log_entries(body: body)
+  }
+}
+
+// Neither image serves MemoryMetrics or a processor error resource (both 404 on 2026-09-18 with the
+// read-only account); memory errors reach this collector only as event log records on images whose
+// registry emits them. These two slots are therefore not exposed out of band on this surface, and
+// say so rather than being read another way.
+data memory_counter_not_exposed: NonEmptyStr = "Redfish serves no MemoryMetrics or memory error counter on this board's images; memory errors arrive only as event log records"
+data processor_counter_not_exposed: NonEmptyStr = "Redfish serves no processor or platform error counter on this board's images"
+
+fn observe_with_netrc(telemetry: BmcTelemetryProfile, netrc: NonEmptyStr, samples: Nat) -> HostHealthObserved
+  uses net: Network
+{
+  let bmc = telemetry.bmc_host
+  let opening = read_event_log(bmc_host: bmc, netrc: netrc)
+  let surface = match read_json(bmc_host: bmc, netrc: netrc, read: ReadManager, what: "Manager") {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: body } => match manager_firmware(body: body) {
+      ObservationRefused { cause } => ObservationRefused { cause: cause }
+      ObservationEstablished { observed: firmware } => telemetry_surface(telemetry: telemetry, firmware: firmware)
+    }
+  }
+  let sampled: ObservationAttempt<List<List<RedfishTelemetryPoint>>, NonEmptyStr> = match surface {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: s } => {
+      let empty: List<List<RedfishTelemetryPoint>> = []
+      let initial: ObservationAttempt<List<List<RedfishTelemetryPoint>>, NonEmptyStr> = ObservationEstablished { observed: empty }
+      fold(nat_range_inclusive(lo: 1, hi: samples), init: initial, f: (acc, i) => match acc {
+        ObservationRefused { cause } => ObservationRefused { cause: cause }
+        ObservationEstablished { observed: taken } => match sample_telemetry(bmc_host: bmc, netrc: netrc, chassis_id: telemetry.chassis_id, surface: s) {
+          ObservationRefused { cause } => ObservationRefused { cause: cause }
+          ObservationEstablished { observed: points } => ObservationEstablished { observed: concat([points], taken) }
+        }
+      })
+    }
+  }
+  let closing = read_event_log(bmc_host: bmc, netrc: netrc)
+  host_health_observed(
+    host: telemetry.host,
+    memory: SignalNotExposedOutOfBand { observed_surface: memory_counter_not_exposed },
+    processor_platform: SignalNotExposedOutOfBand { observed_surface: processor_counter_not_exposed },
+    fans: match sampled {
+      ObservationRefused { cause } => SignalUnreadable { cause: cause }
+      ObservationEstablished { observed: taken } => fan_windows(host: telemetry.host, samples: reverse(taken))
+    },
+    temperatures: match sampled {
+      ObservationRefused { cause } => SignalUnreadable { cause: cause }
+      ObservationEstablished { observed: taken } => temperature_windows(host: telemetry.host, samples: reverse(taken))
+    },
+    bmc_events: match opening {
+      ObservationRefused { cause } => SignalUnreadable { cause: cause }
+      ObservationEstablished { observed: o } => match closing {
+        ObservationRefused { cause } => SignalUnreadable { cause: cause }
+        ObservationEstablished { observed: c } => SignalObserved { observed: event_window(opening: o, closing: c) }
+      }
+    },
+  )
+}
+
+// The reader credential goes into a private per-run netrc that is shredded on every path out; a
+// shred that fails refuses the host's observation, because leaving the credential on disk is a
+// standing exposure this run created.
+fn observe_host_health(telemetry: BmcTelemetryProfile, reader_login: NonEmptyStr, reader_password: Secret, samples: Nat) -> ObservationAttempt<HostHealthObserved, NonEmptyStr>
+  uses net: Network
+{
+  match place_netrc_binding_privately(machine: telemetry.bmc_host, login: reader_login, password: reader_password) {
+    NetrcBindingRefused { cause } => return ObservationRefused { cause: cause }
+    NetrcBindingRefusedResidueRemains { cause } => return ObservationRefused { cause: concat("credential material may remain on disk: ", cause as String) as NonEmptyStr }
+    NetrcBindingPlaced { binding } => {
+      let observed = observe_with_netrc(telemetry: telemetry, netrc: binding.path as NonEmptyStr, samples: samples)
+      if shred_netrc_binding(binding: binding) == false {
+        return ObservationRefused { cause: "the per-run reader netrc could not be removed after the observation" }
+      }
+      return ObservationEstablished { observed: observed }
+    }
+  }
+}
