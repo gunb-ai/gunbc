@@ -1081,7 +1081,7 @@ service github.AppPublicRegistry {
 // INPUT, following the extdeps.google.sheets and github.Checks precedent and for the reason
 // list_app_installations_citation states outright: "You must use a JWT to access this endpoint." That
 // JWT is RS256-signed with the App's private key. The corpus CAN sign one on a host that holds the key
-// FILE -- extdeps.auth.jws over extdeps.tools.openssl, performed by gunbc.github_effect_perform -- but
+// FILE -- the extdeps.auth.jws signer, realized by gunbc.jws_signer_realize, performed by gunbc.github_effect_perform -- but
 // this service's callers (the census and org instruments) run where no key file is custodied, so for
 // them the minting step is still external and hourly (org_admin_auth: iat backdated up to 60s,
 // exp at most 10 minutes), and the boundary this module holds is that no caller can interpolate a token
