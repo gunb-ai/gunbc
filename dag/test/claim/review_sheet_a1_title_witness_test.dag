@@ -99,7 +99,7 @@ test fn readback_refuses_malformed_quoting_with_a_typed_reason() -> Bool {
   standing_text(s: a1_readback_standing(range: "'Buyer Review!A1:C1"))
     == "unreadable|A1 sheet title: unterminated quote: 'Buyer Review!A1:C1"
     && standing_text(s: a1_readback_standing(range: "'Jon''s'!A1:C1"))
-      == "unreadable|A1 sheet title: '' is one escaped apostrophe or two literal ones; ambiguous at offset 4: 'Jon''s'!A1:C1"
+      == "unreadable|A1 sheet title: apostrophe spelling is ambiguous, and the API's escape rule is unobserved; at offset 4: 'Jon''s'!A1:C1"
     && standing_text(s: a1_readback_standing(range: "''!A1:C1"))
       == "unreadable|A1 sheet title: empty title: ''!A1:C1"
 }
