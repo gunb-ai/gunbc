@@ -53,6 +53,23 @@ data body_lowering_qualified_block_call_source: String = "module wall.peer\n\nfn
 
 data body_lowering_qualified_path_dotted: String = "wall.peer.peer_leaf"
 
+// THE LOCAL-RECEIVER METHOD CALL IS PINNED, BECAUSE THE DOOR SITS ABOVE THE RECEIVER-METHOD ARM AT
+// ALL THREE SITES (review 68231 on gunbc#11683). Measured on main's fold on the normalize route:
+// `{ x.step(a: 1) }` reached the arrow body as Transform(x) -- operator `x`, method AND argument
+// erased (body_lower_try_primary_ident_call claims it before body_lower_try_postfix_projection in
+// body_lower_try_body_lowered) -- and `= x.step(a: 1)` as the atom `x`. So no executing lowering of
+// this shape is replaced; it now lowers like every other dotted chain, to a Transform whose
+// operator is the spine x.step, and what `x` denotes is the resolver's (a local head refuses
+// Unbound there, loud where the route was silent). This claim is red on main and pins the one
+// shape the reviewer named. IT ASSERTS THE CALLEE ONLY: the ARGUMENT row is the open half of
+// gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering and is not this PR's
+// subject -- measured on the same route, a plain `{ step(a: x) }` reaches the arrow body as
+// Transform(step) with the argument dropped and `{ step(x, 1) }` as the literal `1`, on main and
+// after this change alike.
+data body_lowering_local_receiver_call_source: String = "module recv\n\nfn f(x: Int) -> Int {\n  x.step(a: 1)\n}\n"
+
+data body_lowering_local_receiver_dotted: String = "x.step"
+
 fn body_lowering_source_parsed(text: String, file: Symbol) -> Outcome<Node> {
   match dag_prepared_grammar() {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
@@ -102,6 +119,13 @@ fn body_lowering_qualified_block_call_parsed() -> Outcome<Node> {
   )
 }
 
+fn body_lowering_local_receiver_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_local_receiver_call_source,
+    file: ^body_lowering_local_receiver_call_file
+  )
+}
+
 fn body_lowering_qualified_members(root: Node) -> Outcome<Node> {
   match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -111,6 +135,13 @@ fn body_lowering_qualified_members(root: Node) -> Outcome<Node> {
         Accepted { value: wall_n, diagnostics: _ } =>
           find_named_child(root: wall_n, name: ^peer)
       }
+  }
+}
+
+fn body_lowering_recv_members(root: Node) -> Outcome<Node> {
+  match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: captured, diagnostics: _ } => find_named_child(root: captured, name: ^recv)
   }
 }
 
@@ -147,6 +178,17 @@ fn body_lowering_body_is_path(body: Node, dotted: String) -> Bool {
 // NORMALIZED tree, before resolve replaces the spine with its canonical atom, so it reads the
 // positional row directly rather than through node_query node_is_call (whose callee reading is
 // the post-resolve Arrow-or-Atom shape).
+fn body_lowering_body_callee_is_path(body: Node, dotted: String) -> Bool {
+  match body.kind {
+    ComputationNode { behavior: Transform } =>
+      match node_positional_child_targets(node: body) {
+        Cons { head: callee, tail: _ } => body_lowering_body_is_path(body: callee, dotted: dotted)
+        Empty => false
+      }
+    _ => false
+  }
+}
+
 fn body_lowering_body_is_call_through_path(body: Node, dotted: String) -> Bool {
   match body.kind {
     ComputationNode { behavior: Transform } =>
@@ -176,6 +218,10 @@ test fn body_lowering_qualified_value_parses_holds() -> Bool {
 
 test fn body_lowering_qualified_call_parses_holds() -> Bool {
   body_lowering_parsed_holds(parsed_fixture: body_lowering_qualified_call_parsed())
+}
+
+test fn body_lowering_local_receiver_call_parses_holds() -> Bool {
+  body_lowering_parsed_holds(parsed_fixture: body_lowering_local_receiver_call_parsed())
 }
 
 test fn body_lowering_qualified_block_call_parses_holds() -> Bool {
@@ -226,6 +272,33 @@ test fn body_lowering_qualified_block_call_callee_is_the_whole_path() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: body, diagnostics: _ } =>
       body_lowering_body_is_call_through_path(body: body, dotted: body_lowering_qualified_path_dotted)
+  }
+}
+
+test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
+  match body_lowering_local_receiver_call_parsed() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: parsed, diagnostics: _ } =>
+      match normalize(parse_tree: parsed) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: tree, diagnostics: _ } =>
+          match body_lowering_recv_members(root: tree.root) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: members, diagnostics: _ } =>
+              match find_named_child(root: members, name: ^f) {
+                Rejected { diagnostics: _ } => false
+                Accepted { value: member, diagnostics: _ } =>
+                  match find_arrow_body_child(root: member) {
+                    Rejected { diagnostics: _ } => false
+                    Accepted { value: body, diagnostics: _ } =>
+                      body_lowering_body_callee_is_path(
+                        body: body,
+                        dotted: body_lowering_local_receiver_dotted
+                      )
+                  }
+              }
+          }
+      }
   }
 }
 
