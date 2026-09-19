@@ -9,6 +9,7 @@ import gunbc.network_boot_delivery { ArchitectureChainloader, DhcpFilenameHint }
 import gunbc.machine_intake_mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 import gunbc.site_uefi_arm64_pxe_edge { first_onboarding_known_client_mac }
 import extdeps.uri { Uri, Tftp }
+import extdeps.network.ipv4 { ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, MacWrongOctetCount }
 import gunbc.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
@@ -65,7 +66,7 @@ fn known_macs() -> List<Eui48Address> {
 fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget {
   match site_pxe_edge_chainloader_target(pin: pin) {
     Present { value: t } => t
-    Absent => SitePxeEdgeChainloaderTarget { filename: "unreachable", digest: digest_b, tftp_route: Uri { scheme: Tftp, locator: "unreachable/" } }
+    Absent => SitePxeEdgeChainloaderTarget { filename: "unreachable", digest: digest_b }
   }
 }
 
@@ -141,13 +142,13 @@ test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool {
 
 test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool {
   let t = target_of(pin: pinned(digest: digest_a))
-  match site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: t, known_client_macs: known_macs())).first() {
+  match site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196))).first() {
     Absent => false
     Present { value: cfg } =>
       cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
         && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
         && contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
-        && contains(cfg.content, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi")
+        && contains(cfg.content, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi,srv4,192.168.1.196")
         && contains(cfg.content, "tftp-root=/srv/gunbc-site-pxe-edge/tftp")
         && length(split(cfg.content, "dhcp-boot=")) == 2
         && site_pxe_edge_chainloader_path(target: t) as String == "/srv/gunbc-site-pxe-edge/tftp/snponly.efi"

@@ -24,7 +24,7 @@ type DnsmasqDirective =
   | DnsmasqDhcpMatchSet { tag: String, option: String, value: String }
   | DnsmasqDhcpOptionForceTag { tag: String, option: String, value: String }
   | DnsmasqDhcpHostSetTag { mac: String, tag: String }
-  | DnsmasqDhcpBootTags { tags: List<String>, target: String }
+  | DnsmasqDhcpBootTags { tags: List<String>, target: String, server_name: String, server_address: String }
   | DnsmasqLogDhcp
   | DnsmasqEnableTftp
   | DnsmasqTftpRoot { path: String }
@@ -42,8 +42,12 @@ fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
       concat(concat(concat("dhcp-option-force=tag:", tag), concat(",", option)), concat(",", value))
     DnsmasqDhcpHostSetTag { mac: mac, tag: tag } =>
       concat(concat("dhcp-host=", mac), concat(",set:", tag))
-    DnsmasqDhcpBootTags { tags: tags, target: target } =>
-      concat(concat("dhcp-boot=", fold(tags, init: "", f: (acc, t) => concat(acc, concat(concat("tag:", t), ",")))), target)
+    DnsmasqDhcpBootTags { tags: tags, target: target, server_name: name, server_address: address } =>
+      join([
+        "dhcp-boot=",
+        fold(tags, init: "", f: (acc, t) => concat(acc, concat(concat("tag:", t), ","))),
+        target, ",", name, ",", address,
+      ], "")
     DnsmasqLogDhcp => "log-dhcp"
     DnsmasqEnableTftp => "enable-tftp"
     DnsmasqTftpRoot { path: path } => concat("tftp-root=", path)

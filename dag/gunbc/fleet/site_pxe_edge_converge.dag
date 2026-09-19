@@ -6,7 +6,8 @@ import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, parse_ipv4_address }
+import gunbc.fleet_intent_network { srv4_host_lan_endpoint }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256_digest_content_hash }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_digest_from_line }
@@ -121,7 +122,6 @@ data site_pxe_edge_chainloader_pin: SitePxeEdgeChainloaderPin = SitePxeEdgeChain
 type SitePxeEdgeChainloaderTarget {
   filename: NonEmptyStr
   digest: ContentHash
-  tftp_route: Uri
 }
 
 fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderTarget? {
@@ -129,9 +129,9 @@ fn site_pxe_edge_chainloader_target(pin: SitePxeEdgeChainloaderPin) -> SitePxeEd
     SitePxeEdgeChainloaderUnpinned { obligation: _ } => Absent
     SitePxeEdgeChainloaderPinned { transport: t } =>
       match t {
-        ArchitectureChainloader { architecture: _, filename_hint: hint, chainloader_digest: d, tftp_root: route } =>
+        ArchitectureChainloader { architecture: _, filename_hint: hint, chainloader_digest: d, tftp_root: _ } =>
           match hint {
-            DhcpFilenameHint { filename: f } => Present { value: SitePxeEdgeChainloaderTarget { filename: f, digest: d, tftp_route: route } }
+            DhcpFilenameHint { filename: f } => Present { value: SitePxeEdgeChainloaderTarget { filename: f, digest: d } }
           }
       }
   }
@@ -149,15 +149,20 @@ type SitePxeEdgeFile {
   content: String
 }
 
+// THE TFTP SERVER ADDRESS IS srv4's MODELED LAN ENDPOINT, parsed rather than re-typed; a failure to
+// parse is a gate cause, never a guessed address.
+data site_pxe_edge_tftp_server_address: Ipv4ParseResult = parse_ipv4_address(text: srv4_host_lan_endpoint.address as String)
+
 // THE EDGE ROSTER THIS HOST SERVES, from the pinned transport's digest and TFTP route plus the parsed
 // known clients: the same SiteEdgeRoster type admission gates on, so the written config and a later
 // admission read one authored value.
-fn site_pxe_edge_roster(target: SitePxeEdgeChainloaderTarget, known_client_macs: List<Eui48Address>) -> SiteEdgeRoster {
+fn site_pxe_edge_roster(target: SitePxeEdgeChainloaderTarget, known_client_macs: List<Eui48Address>, tftp_server_address: Ipv4Address) -> SiteEdgeRoster {
   SiteEdgeRoster {
     site: operator_site,
     admitted_architectures: first_slice_admitted_architectures,
     chainloader_digest: target.digest,
-    tftp_root: target.tftp_route,
+    tftp_server_name: site_pxe_edge_host as NonEmptyStr,
+    tftp_server_address: tftp_server_address,
     known_client_macs: known_client_macs,
   }
 }
@@ -220,7 +225,10 @@ fn site_pxe_edge_gate_causes(
   dnsmasq_binary: SitePxeEdgeProbe,
   privilege: SitePxeEdgeProbe,
 ) -> List<String> {
-  (match roster {
+  (match site_pxe_edge_tftp_server_address {
+    Ipv4Parsed { address: _ } => []
+    Ipv4ParseFailed { error: _ } => ["tftp-server-address-unparseable: srv4_host_lan_endpoint.address is not an IPv4 address"]
+  }) + (match roster {
     MacParsed { address: _ } => []
     MacParseFailed { error: _ } => ["known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"]
   }) + concat(
@@ -496,7 +504,11 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
     Absent => [site_pxe_edge_unit_file()]
     Present { value: c } =>
       match first_onboarding_known_client_mac {
-        MacParsed { address: a } => site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: c, known_client_macs: [a]))
+        MacParsed { address: a } =>
+          match site_pxe_edge_tftp_server_address {
+            Ipv4Parsed { address: server } => site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: c, known_client_macs: [a], tftp_server_address: server))
+            Ipv4ParseFailed { error: _ } => [site_pxe_edge_unit_file()]
+          }
         MacParseFailed { error: _ } => [site_pxe_edge_unit_file()]
       }
   }

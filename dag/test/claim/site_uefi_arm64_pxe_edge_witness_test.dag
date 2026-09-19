@@ -13,6 +13,7 @@ import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
 import extdeps.provisioning.network_boot { ProxyDhcp }
 import gunbc.network_boot_delivery {
   SitePxeEdgeEstablished,
+  ArchitectureChainloader,
   SiteBootstrapDiscovery,
   SiteAnsweredDhcp,
   SiteDhcpRelay,
@@ -98,7 +99,8 @@ fn roster_of(macs: List<Eui48Address>) -> SiteEdgeRoster {
     site: "onboarding-segment-0c" as SiteIdentity,
     admitted_architectures: first_slice_admitted_architectures,
     chainloader_digest: content_hash_of_value(value: "ipxe-aarch64-fixture"),
-    tftp_root: Uri { scheme: Tftp, locator: "192.168.1.196/" },
+    tftp_server_name: "srv4",
+    tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196),
     known_client_macs: macs,
   }
 }
@@ -251,7 +253,7 @@ test fn proxy_dhcp_config_boots_only_known_arm64() -> Bool {
     && contains(cfg, "dhcp-range=192.168.1.0,proxy")
     && contains(cfg, "dhcp-match=set:efi-arm64,option:client-arch,11")
     && contains(cfg, "dhcp-host=02:00:00:00:0c:01,set:onboarding-known")
-    && contains(cfg, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi")
+    && contains(cfg, "dhcp-boot=tag:efi-arm64,tag:onboarding-known,snponly.efi,srv4,192.168.1.196")
     && contains(cfg, "iPXE bin-arm64-efi/snponly.efi per ipxe.org/howto/chainloading")
     && contains(cfg, "enable-tftp")
     && contains(cfg, "tftp-root=/srv/edge-tftp")
@@ -267,7 +269,8 @@ test fn an_edge_admitting_no_arm64_refuses_the_client_architecture() -> Bool {
       site: r.roster.site,
       admitted_architectures: [X86_64],
       chainloader_digest: r.roster.chainloader_digest,
-      tftp_root: r.roster.tftp_root,
+      tftp_server_name: r.roster.tftp_server_name,
+      tftp_server_address: r.roster.tftp_server_address,
       known_client_macs: r.roster.known_client_macs,
     },
     observed: r.observed,
@@ -287,4 +290,24 @@ test fn an_edge_admitting_no_arm64_refuses_the_client_architecture() -> Bool {
 test fn an_unprobed_dns_axis_is_unobserved_not_failed() -> Bool {
   let r = roster(macs: [known_mac], offer: boot_offer(mode: proxy_dhcp, filename: chainloader_filename), reachability: reach(dns: BootNetworkProbeUnobserved, route: ok(), https: ok()))
   not_established_with(admission: site_edge_client_admission(roster: r.roster, observed: r.observed, request: arm64_request(mac: known_mac)), expected: [BootNetworkAxisUnobserved { axis: BootNetworkDns }])
+}
+
+// THE ROUTE THE JOIN CHECKS IS THE SERVER THE CONFIG NAMES: an admitted edge's transport carries a
+// tftp_root built from the roster's tftp_server_address, the same address the dhcp-boot line renders.
+test fn admitted_edge_tftp_route_is_the_rendered_server() -> Bool {
+  let c = healthy_roster()
+  match site_edge_client_admission(roster: c.roster, observed: c.observed, request: arm64_request(mac: known_mac)) {
+    SiteEdgeClientAdmitted { standing: SitePxeEdgeEstablished { receipt: r } } =>
+      match r.edge.bootstrap_transport {
+        ArchitectureChainloader { architecture: _, filename_hint: _, chainloader_digest: _, tftp_root: route } =>
+          route == Uri { scheme: Tftp, locator: "192.168.1.196/" }
+      }
+    SiteEdgeClientAdmitted { standing: _ } => false
+    SiteEdgeUnknownMachineRefused { mac: _ } => false
+    SiteEdgeUnknownArchitectureRefused { arch_code: _ } => false
+    SiteEdgeNotEstablished { standing: _, unreachable: _ } => false
+    SiteEdgeClientArchitectureNotAdmitted { architecture: _ } => false
+    SiteEdgeChainloaderMismatch { client: _, chainloader: _ } => false
+    SiteEdgeDiscoveryRefused { refusal: _ } => false
+  }
 }
