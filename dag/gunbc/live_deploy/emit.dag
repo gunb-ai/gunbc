@@ -46,7 +46,7 @@ import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privi
 import gunbc.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
-  ServiceSlice, slice_memory_max, slice_memory_high,
+  ServiceSlice, slice_memory_max, slice_memory_high, slice_memory_swap_max,
   SystemdInstallSection, NotInstallable, Installable,
   SystemdUnitDirective, Description, After, Wants,
   SystemdServiceDirective, ServiceType, OneshotMode, SimpleMode, ExecStart, Restart,
@@ -443,9 +443,39 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
 // consulted, so while the number was the runner row's, any move to that row propagated to a host
 // whose runner allocation may have been REFUSED. Decoupling removes the propagation rather than
 // gating it: there is no longer a runner-derived number here to leak.
-data live_deploy_slice_memory_max: ByteSize = byte_size(17179869184)
+// THE ENVELOPE IS SIZED FROM THE UNIT'S OWN MEASURED PEAK, not from the 3.46 GB the 2026-09-12
+// note cited. With swap forbidden below, the bound stopped being decorative: at the 16 GiB bound the
+// serve process -- which systemd's unit accounting reported at "8.1G memory peak, 9.6G memory swap
+// peak" for its previous incarnation -- was OOM-killed inside the slice on 2026-09-18 23:07 UTC, and
+// the deployed-tree convergence oneshot ("5.2G memory peak") beside its restart at 23:44. Swap had
+// been absorbing the ~2 GB the serve workload exceeds the old bound by, silently. The instrument is
+// the unit's journal "Consumed ... memory peak, ... memory swap peak" line (systemd unit accounting)
+// for gunbc-roadmap.service and gunbc-tree-sync.service; re-derive there. 26 GiB max / 24 GiB high
+// (operator ruling 2026-09-18, the same envelope the runner slots moved to that day) covers serve
+// peak + convergence peak concurrently (~23 GB); why the serve footprint grew from 3.46 GB to ~18 GB
+// is a demand question (DESIGN section 2) this row does not answer and does not hide. That this
+// number EQUALS the runner slot's is a coincidence of two rulings on one day, not a derivation: the
+// row is authored here, and the witness pins that by reading this declaration, not by inequality.
+data live_deploy_slice_memory_max: ByteSize = byte_size(27917287424)
 
-data live_deploy_slice_memory_high: ByteSize = byte_size(16106127360)
+data live_deploy_slice_memory_high: ByteSize = byte_size(25769803776)
+
+// THE SLICE FORBIDS SWAP, because the deployment is a latency-bound operator-facing service and a
+// swapped page is a stall on the request path, not a memory saving. The host it shares (srv1) also
+// runs the required floor's runners, whose working sets outrank an idle interpreter heap under
+// global reclaim; the observed state before this row was the serve process at VmSwap 9.7 GB against
+// VmRSS 0.4 GB, and every request after an idle gap paying the swap-in -- the 5-10 s /healthz and
+// /approvals stalls that refused a live deploy and two approval-gated boot transactions (GH runs
+// 35377916920 and 35380154698, both fail-closed on a poll that returned no bytes in 5 s). The
+// instrument is /proc/<serve pid>/status VmSwap beside the unit's journal gap; re-derive there, not
+// from this sentence. Zero rather than a bound: any admitted swap is admitted latency. Growth stays
+// bounded by MemoryHigh and MemoryMax above -- a hard kernel boundary (throttling, allocation
+// failure, or the cgroup's own OOM kill), not an application refusal value -- so the deployment
+// fails or restarts inside its declared envelope rather than becoming a silently swapped control
+// plane. Lowering swap.max below existing usage does NOT drain what is already paged out: the live
+// closure is a new service incarnation whose MainPID reads VmSwap 0 kB and answers /healthz and
+// one status GET inside the client bound.
+data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 
 fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   SliceUnitFile {
@@ -455,6 +485,7 @@ fn live_deploy_slice_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
     slice: [
       slice_memory_max(bytes: live_deploy_slice_memory_max),
       slice_memory_high(bytes: live_deploy_slice_memory_high),
+      slice_memory_swap_max(bytes: live_deploy_slice_memory_swap_max),
     ],
     install: NotInstallable,
   }
