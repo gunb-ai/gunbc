@@ -26,7 +26,11 @@ import extdeps.bmc.ipmi_sdr {
   SdrLineDecoded,
   SdrLineUnstructured,
   SdrTemperatureDegreesC,
-  sdr_any_temperature_reading,
+  SdrTemperaturePublication,
+  TemperaturePublished,
+  TemperatureSensorsSilent,
+  TemperatureUndecodable,
+  sdr_temperature_publication,
   sdr_decode_line,
   sdr_decode_lines,
   sdr_decoded_lines,
@@ -230,10 +234,15 @@ test fn witness_fan_reading_arms_stay_distinct() -> Bool {
 
 // A DECODER GAP MUST NOT BE FILED AS THE SENSOR SAYING NOTHING, and this claim carries the exact
 // failure that made it matter. A fractional temperature is unparseable by parse_int; filed as
-// SdrTemperatureNoReading it made sdr_any_temperature_reading answer false on a SUCCESSFUL read,
+// SdrTemperatureNoReading it made the publication fold answer "no thermals" on a SUCCESSFUL read,
 // which produced HostPoweredOnPrePost and then FailsafeBeforeHostTelemetry -- silently disabling
 // FailsafeHeldAfterPost. The end-to-end assertion is the point: a posted host whose thermals are
 // merely UNDECODABLE must not read as a host that has not posted.
+//
+// THE FIRST VERSION OF THIS CLAIM ASSERTED THE DEFECT GREEN. It ended with
+// `sdr_any_temperature_reading(...) == false` under this same header -- pinning the widen it was
+// written to forbid, because the repair had stopped at the reading type and never reached the
+// predicate that consumes it. The assertion now runs the whole chain to post_state_of_round.
 //
 // "Device Present" is here because Mt. Collins really prints it -- its FANn_Presence sensors are
 // discrete, and fleet-converge run 35402673990 returned it on 48 lines. It is this decoder's gap,
@@ -248,9 +257,19 @@ test fn witness_unparseable_reading_is_a_decoder_gap_not_a_silent_sensor() -> Bo
   } && match sdr_temperature_reading(reading_text: "No Reading") {
     SdrTemperatureNoReading => true
     _ => false
-  } && sdr_any_temperature_reading(lines: sdr_decoded_lines(results: sdr_decode_lines(
+  } && match sdr_temperature_publication(lines: sdr_decoded_lines(results: sdr_decode_lines(
     stdout: "CPU0_Temp        | 01h | ok  |  3.1 | 45.5 degrees C\n"
-  ))) == false
+  ))) {
+    TemperatureUndecodable => true
+    _ => false
+  } && match post_state_of_round(round: witness_round_thermal(
+    publication: sdr_temperature_publication(lines: sdr_decoded_lines(results: sdr_decode_lines(
+      stdout: "CPU0_Temp        | 01h | ok  |  3.1 | 45.5 degrees C\n"
+    )))
+  )) {
+    HostPostStateUnobserved => true
+    _ => false
+  }
 }
 
 // AN EMPTY READING FIELD DECODES AS UNSTRUCTURED, AND MT. COLLINS REALLY PRINTS ONE. Its eight
@@ -265,8 +284,13 @@ test fn witness_blank_reading_field_is_unstructured_not_a_substituted_word() -> 
 }
 
 test fn witness_temperature_publication_discriminates_post() -> Bool {
-  sdr_any_temperature_reading(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_posted)))
-    && !sdr_any_temperature_reading(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_prepost)))
+  match sdr_temperature_publication(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_posted))) {
+    TemperaturePublished => true
+    _ => false
+  } && match sdr_temperature_publication(lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_temperature_stdout_prepost))) {
+    TemperatureSensorsSilent => true
+    _ => false
+  }
     && match sdr_temperature_reading(reading_text: "45 degrees C") {
       SdrTemperatureDegreesC { degrees: d } => celsius_count(c: d) == 45
       _ => false
@@ -288,13 +312,27 @@ fn witness_round(index: Int, power_on: Bool, thermal: Bool) -> FanObservationRou
   witness_round_read(index: index, power_on: power_on, thermal: thermal, thermal_readable: true)
 }
 
+fn witness_round_thermal(publication: SdrTemperaturePublication) -> FanObservationRound {
+  FanObservationRound {
+    observed_at: "2026-09-19T00:00:00Z" as NonEmptyStr,
+    round_index: 0,
+    power_on: true,
+    thermal_readable: true,
+    host_thermal: publication,
+    fan_lines: [],
+    fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
+    chassis_readable: true,
+  }
+}
+
 fn witness_round_read(index: Int, power_on: Bool, thermal: Bool, thermal_readable: Bool) -> FanObservationRound {
   FanObservationRound {
     observed_at: "2026-09-18T00:00:00Z" as NonEmptyStr,
     round_index: index,
     power_on: power_on,
     thermal_readable: thermal_readable,
-    host_thermal_published: thermal,
+    host_thermal: if thermal { TemperaturePublished } else { TemperatureSensorsSilent },
     fan_lines: sdr_decoded_lines(results: sdr_decode_lines(stdout: witness_fan_stdout)),
     fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
     temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),
@@ -342,7 +380,7 @@ fn witness_unreadable_chassis_round() -> FanObservationRound {
     round_index: 0,
     power_on: false,
     thermal_readable: true,
-    host_thermal_published: false,
+    host_thermal: TemperatureSensorsSilent,
     fan_lines: [],
     fan_undecoded_line_count: sdr_undecoded_line_count(count: 0),
     temperature_undecoded_line_count: sdr_undecoded_line_count(count: 0),

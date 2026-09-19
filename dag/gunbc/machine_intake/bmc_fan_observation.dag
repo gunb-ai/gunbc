@@ -12,10 +12,14 @@ import extdeps.bmc.ipmi_sdr {
   SdrFanReadingUnrecognised,
   SdrFanRpm,
   SdrTypeLine,
-  sdr_any_temperature_reading,
+  SdrTemperaturePublication,
+  TemperaturePublished,
+  TemperatureSensorsSilent,
+  TemperatureUndecodable,
   sdr_decode_lines,
   sdr_decoded_lines,
   sdr_fan_reading,
+  sdr_temperature_publication,
   sdr_unstructured_count,
 }
 import product.fan_tach { FanTachEndpointIdentity }
@@ -70,7 +74,7 @@ type FanObservationRound {
   round_index: Int
   power_on: Bool
   thermal_readable: Bool
-  host_thermal_published: Bool
+  host_thermal: SdrTemperaturePublication
   fan_lines: List<SdrTypeLine>
   fan_undecoded_line_count: SdrUndecodedLineCount
   temperature_undecoded_line_count: SdrUndecodedLineCount
@@ -95,6 +99,12 @@ type FanObservationRound {
 // So readability is carried BESIDE the reading, both on the round and in the rendered artifact, and
 // the post state refuses rather than guessing.
 //
+// AND THE READING ITSELF IS THREE-STATED FOR THE SAME REASON, which took a second pass to see. The
+// field was host_thermal_published: Bool, and false meant both "every sensor said nothing" (which
+// IS pre-POST) and "the decoder could not read what they said" (which is our gap). The second
+// collapsed onto the benign arm exactly as an unreadable transport once did, one layer down and
+// through a predicate rather than a flag.
+//
 // POST IS INFERRED FROM THERMAL PUBLICATION, AND THIS IS A BET RATHER THAN A READING.
 //
 // Nothing on the IPMI sensor surface reports "this host has completed POST". What is observable is
@@ -115,10 +125,12 @@ fn post_state_of_round(round: FanObservationRound) -> HostPostState {
     HostPoweredOff
   } else if !round.thermal_readable {
     HostPostStateUnobserved
-  } else if round.host_thermal_published {
-    HostPosted
   } else {
-    HostPoweredOnPrePost
+    match round.host_thermal {
+      TemperaturePublished => HostPosted
+      TemperatureSensorsSilent => HostPoweredOnPrePost
+      TemperatureUndecodable => HostPostStateUnobserved
+    }
   }
 }
 
@@ -190,7 +202,7 @@ fn observe_fan_round(
     round_index: round_index,
     power_on: if status.success { chassis_power_on(stdout: status.stdout) } else { false },
     thermal_readable: temps.success,
-    host_thermal_published: if temps.success { sdr_any_temperature_reading(lines: sdr_decoded_lines(results: temp_results)) } else { false },
+    host_thermal: if temps.success { sdr_temperature_publication(lines: sdr_decoded_lines(results: temp_results)) } else { TemperatureSensorsSilent },
     fan_lines: if fans.success { sdr_decoded_lines(results: fan_results) } else { [] },
     fan_undecoded_line_count: sdr_unstructured_count(results: fan_results),
     temperature_undecoded_line_count: sdr_unstructured_count(results: temp_results),
@@ -330,11 +342,19 @@ fn render_round(round: FanObservationRound) -> String {
     " chassis_readable=", to_string(round.chassis_readable),
     " power_on=", to_string(round.power_on),
     " thermal_readable=", to_string(round.thermal_readable),
-    " host_thermal_published=", to_string(round.host_thermal_published),
+    " host_thermal=", render_thermal_publication(publication: round.host_thermal),
     " fan_sensors=", to_string(round.fan_lines.length()),
     " fan_undecoded_line_count=", to_string(sdr_undecoded_line_count_value(c: round.fan_undecoded_line_count)),
     " temperature_undecoded_line_count=", to_string(sdr_undecoded_line_count_value(c: round.temperature_undecoded_line_count)),
   ], "")
+}
+
+fn render_thermal_publication(publication: SdrTemperaturePublication) -> String {
+  match publication {
+    TemperaturePublished => "published"
+    TemperatureSensorsSilent => "sensors-silent"
+    TemperatureUndecodable => "UNDECODABLE"
+  }
 }
 
 fn render_fan_line(round: FanObservationRound, line: SdrTypeLine) -> String {

@@ -260,13 +260,33 @@ fn sdr_unstructured_count(results: List<SdrLineResult>) -> SdrUndecodedLineCount
   }).length())
 }
 
-// WHETHER ANY HOST THERMAL SENSOR PRODUCED A NUMBER. This is the predicate the fan-policy derivation
-// actually consumes, and it is a fold over the whole temperature read rather than a lookup of one
-// named sensor, because sensor NAMES are per-build and the question is not about any particular one.
-fn sdr_any_temperature_reading(lines: List<SdrTypeLine>) -> Bool {
-  fold(lines, init: false, f: (acc, l) => match sdr_temperature_reading(reading_text: l.reading_text) {
-    SdrTemperatureDegreesC { degrees: _ } => true
+// WHAT A WHOLE TEMPERATURE READ ESTABLISHED, AS THREE STATES RATHER THAN A Bool.
+//
+// This is the value the fan-policy derivation actually consumes, and it was a Bool that answered
+// false for BOTH "every sensor said nothing" and "this decoder could not read what they said".
+// Adding SdrTemperatureUnrecognised to the reading type did not fix that: THE REPAIR STOPPED AT THE
+// TYPE and the predicate consuming it still folded the new arm onto the old false. So the exact
+// input the previous commit's prose claims to have fixed -- 45.5 degrees C -- still produced
+// host_thermal_published: false, HostPoweredOnPrePost and FailsafeBeforeHostTelemetry, silently
+// disabling the one finding this lane exists to report. A type gains an arm; every fold over it has
+// to gain one too, and nothing checks that but reading the consumers.
+//
+// PRECEDENCE, and it is deliberate: one decoded number means the host IS publishing, whatever else
+// failed to decode beside it. Undecodable only wins when nothing decoded, because that is when the
+// gap actually blocks the question.
+type SdrTemperaturePublication
+  = TemperaturePublished
+  | TemperatureSensorsSilent
+  | TemperatureUndecodable
+
+fn sdr_temperature_publication(lines: List<SdrTypeLine>) -> SdrTemperaturePublication {
+  fold(lines, init: TemperatureSensorsSilent, f: (acc, l) => match sdr_temperature_reading(reading_text: l.reading_text) {
+    SdrTemperatureDegreesC { degrees: _ } => TemperaturePublished
     SdrTemperatureNoReading => acc
-    SdrTemperatureUnrecognised { text: _ } => acc
+    SdrTemperatureUnrecognised { text: _ } => match acc {
+      TemperaturePublished => TemperaturePublished
+      TemperatureSensorsSilent => TemperatureUndecodable
+      TemperatureUndecodable => TemperatureUndecodable
+    }
   })
 }
