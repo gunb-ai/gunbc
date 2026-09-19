@@ -270,11 +270,7 @@ fn octet_words(values: List<Int>) -> List<Word> {
 
 fn octets_of(result: OctetsResult) -> List<Int> {
   match result {
-    OctetsReady { octets: octets } =>
-      match octet_int_values(octets: octets) {
-        OctetValuesReady { values: values } => values
-        OctetValuesRefused { cause: _ } => []
-      }
+    OctetsReady { octets: octets } => octet_int_values(octets: octets)
     OctetsRefused { cause: _ } => []
   }
 }
@@ -651,24 +647,21 @@ fn word_refuses_unrealizable(result: WordResult) -> Bool {
 // [256], and std.encoding consumed that projection on the base64 decode route. Reading a field is
 // where an uninhabitable word stops being a record and becomes a number a consumer will trust.
 test fn octet_projection_refuses_an_unqualified_member_holds() -> Bool {
-  match octet_int_values(octets: [Word { width: Width8, value: 256 }]) {
-    OctetValuesRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
-    OctetValuesRefused { cause: _ } => false
-    OctetValuesReady { values: _ } => false
+  match word_from_octets(width: Width8, octets: [Word { width: Width8, value: 256 }], endianness: BigEndian) {
+    WordRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
   }
 }
 
 test fn octet_projection_refuses_a_non_octet_member_holds() -> Bool {
-  match octet_int_values(octets: [Word { width: Width32, value: 1 }]) {
-    OctetValuesRefused { cause: OctetWidthMismatch { observed: _ } } => true
-    OctetValuesRefused { cause: _ } => false
-    OctetValuesReady { values: _ } => false
+  match word_from_octets(width: Width8, octets: [Word { width: Width32, value: 1 }], endianness: BigEndian) {
+    WordRefused { cause: OctetWidthMismatch { observed: _ } } => true
+    WordRefused { cause: _ } => false
+    WordReady { word: _ } => false
   }
 }
 
 test fn octet_projection_passes_qualified_members_holds() -> Bool {
-  match octet_int_values(octets: octet_words(values: [0, 1, 255])) {
-    OctetValuesReady { values: v } => v == [0, 1, 255]
-    OctetValuesRefused { cause: _ } => false
-  }
+  octets_of(result: word_to_octets(a: word32_or_zero(value: 255), endianness: BigEndian)) == [0, 0, 0, 255]
 }
