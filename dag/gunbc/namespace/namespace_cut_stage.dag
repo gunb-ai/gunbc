@@ -285,8 +285,10 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // resolver whose import universe IS the root being deleted, and DESIGN section 3 admits X as an
 // offline differential oracle only -- Y never derives its answer from it.
 //
-// WHY THE CENSUS HALF CANNOT BE DISCRIMINATED TODAY, three capabilities, each an undercount BY
-// CONSTRUCTION and none of them a missing file:
+// WHY THE CENSUS HALF CANNOT BE DISCRIMINATED TODAY. The prerequisites below are KNOWN NECESSARY
+// and are not claimed exhaustive -- the first cut of this note listed three as if they were the
+// set, review found a fourth mechanism the same day, and a set assembled by review is the same
+// defect one item longer. Each is an undercount BY CONSTRUCTION and none is a missing file:
 //   1. CALLS. v2 body lowering erases a call's callee and arguments before resolve, so a
 //      dependent reached through a call is Accepted after the strip and never enters the roster;
 //      resolve fails OPEN for the whole call population and, in the failure-mode row's own words,
@@ -301,10 +303,24 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 //      the failure-mode row's CENSUS CONSEQUENCE -- so restoring 1 and 2 adds nothing to it until
 //      the census resolves per module; and the interpreted whole-closure compile is refused on
 //      budget by gunbc.whole_corpus_compile_admission.
+//   4. OCCURRENCE COMPLETENESS, an obligation none of 1-3 discharges (side-chat review on
+//      gunbc#11735). v2.compiler.resolve resolve_children_homogeneous_scope returns a Rejected
+//      accumulator without visiting the remaining children -- the same shape in
+//      resolve_transform_children, resolve_edges_first_outer_then_inner and resolve_bind_edges --
+//      so a module with two independent post-cut refusals records the first and never observes
+//      the second: a truthful MODULE-level refusal and an incomplete OCCURRENCE-level population.
+//      An earlier parse or normalize refusal blocks a whole module the same way. Since what is
+//      owed is the occurrence residual and not a list of failed modules, running resolve once per
+//      module does not establish that every affected occurrence was observed. The census must
+//      report every site or explicitly REFUSE completeness; its discriminator is two independently
+//      failing sites in ONE module, each shown individually reachable by a control, both reported.
 // A roster taken now would be a strict undercount wearing the name of the census: the rung
 // inflation of DESIGN section 4b(1), and the shape review 64925 refused on XL-4 one row up. The
-// instrument lands when the three capabilities land, as the strip fold composed with the route,
-// and its FIRST discriminated run on the production route is the receipt this row holds.
+// instrument is the strip fold composed with a route that carries the necessary prerequisites
+// above AND answers the completeness obligation; its FIRST discriminated run on the production
+// route is the receipt this row holds. When that producer exists, the stage is read off this
+// roster like XL-4 (gunbc.compiler_frontend_program_status xl2_stage_standing, whose premise is
+// supplied rather than pinned).
 //
 // ONE REQUIREMENT ON THE THROWAWAY TREE ITSELF, found by the lane building capability 3
 // (vivid-lark-741, 2026-09-19) and stated here so it binds whoever executes the cut:
