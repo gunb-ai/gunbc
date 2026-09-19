@@ -553,7 +553,7 @@ fn live_deploy_approval_broker_unit_file(spec: DeploymentSpec, revision: Release
 }
 
 // THE PORT IS AN ARGUMENT SO THE DARK STAGE IS THE SAME UNIT, NOT A SECOND ONE. Stage 1 of
-// gunbc.auth.approval_broker_cutover installs this unit on the dark port, and stage 4's repoint
+// gunbc.auth.approval_broker_cutover installs this unit on the broker's one port, and stage 4's repoint
 // installs it on the serving port; if those were two unit producers, the process measured at stage
 // 2 would not be the process routed to at stage 5, and every reading taken would be about a build
 // nobody ran. One producer, one argument.
@@ -2125,7 +2125,7 @@ fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentS
 // also reloads the manager and RESTARTS the roadmap -- correct for a release deploy, and exactly
 // wrong for a stage that is supposed to add a process without disturbing the one already serving.
 //
-// So stage 1 has its own intent: write the broker's slice, write its unit on the DARK port, reload
+// So stage 1 has its own intent: write the broker's slice, write its unit on its one port, reload
 // the manager, enable and start ONLY gunbc-approval-broker.service. A daemon-reload does not
 // restart running units, so the roadmap keeps its PID and its incarnation across this.
 //

@@ -166,10 +166,10 @@ fn approval_broker_cutover_stage_label(stage: ApprovalBrokerCutoverStage) -> Non
 
 // WHAT EACH STAGE IS FOR, in the order the ordering exists to enforce:
 //
-//   1. DeployDark        -- the broker unit and slice are installed and started on the DARK port,
-//                           which nothing proxies to. Its store access is idle. The roadmap is
-//                           still the only process anything routes an approval to, so there is
-//                           still exactly one writer.
+//   1. DeployDark        -- the broker unit and slice are installed and started on the broker's
+//                           one port, with no front-door mount naming it and no writer authority.
+//                           A loopback client that finds the port is REFUSED, so the roadmap is
+//                           still the only process that can write the store.
 //   2. ProveRelease      -- the dark process reads back the release it was launched with. A process
 //                           that cannot say which release it is must never be routed to, because
 //                           every later stage's evidence would be about an unknown build.
@@ -379,14 +379,32 @@ fn dark_deployment_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal
 // THE READBACK MUST NAME THE CANDIDATE, NOT MERELY LOOK LIKE A REVISION. Three outcomes, and the
 // middle one is the whole of the repair: unreadable (nothing to compare), readable but a different
 // build (the stale-broker case, previously ADMITTED), and readable and this build.
+// DOES THE READBACK NAME THE CANDIDATE. It is its own coproduct rather than a Bool for the ordinary
+// reason -- the differing arm carries BOTH revisions, and a Bool would make the caller re-derive
+// them -- and it is a separate fold because an `if` whose branches are an Optional's two
+// constructors does not unify here: every admission in this file that mixes Present and Absent does
+// it through MATCH ARMS, and the two spellings are not interchangeable (resolve refused line 386
+// twice, in both branch orders, before this shape).
+type ReleaseCandidateMatch
+  = RevisionMatchesCandidate
+  | RevisionDiffersFromCandidate { expected: NonEmptyStr, observed: NonEmptyStr }
+
+fn release_revision_match(expected: NonEmptyStr, observed: NonEmptyStr) -> ReleaseCandidateMatch {
+  if (observed as String) == (expected as String) {
+    RevisionMatchesCandidate
+  } else {
+    RevisionDiffersFromCandidate { expected: expected, observed: observed }
+  }
+}
+
 fn release_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   match e.release_readback {
     ReleaseNotReadBack { detail: d } => Present { value: ReleaseUnreadable { detail: d } }
     ReleaseReadBack { revision: r } =>
-      if !((r as String) == (e.expected_release as String)) {
-        Present { value: ReleaseDoesNotMatchCandidate { expected: e.expected_release, observed: r } }
-      } else {
-        Absent
+      match release_revision_match(expected: e.expected_release, observed: r) {
+        RevisionMatchesCandidate => Absent
+        RevisionDiffersFromCandidate { expected: x, observed: o } =>
+          Present { value: ReleaseDoesNotMatchCandidate { expected: x, observed: o } }
       }
   }
 }
@@ -515,7 +533,7 @@ fn approval_broker_cutover_stage_discharged(
 fn cutover_refusal_reason(c: CutoverRefusal) -> NonEmptyStr {
   match c {
     DarkDeploymentNotListening { detail: d } =>
-      join(["the approval broker is not listening on its dark port: ", d as String], "") as NonEmptyStr
+      join(["the approval broker is not listening: ", d as String], "") as NonEmptyStr
     DarkDeploymentOnUnexpectedPort { observed: o, expected: x } =>
       join([
         "the approval broker answered on port ", to_string(o), " but this deployment binds it to ",
@@ -670,17 +688,25 @@ fn dark_install_evidence(
 // first is a constant pass from this caller and was being reported as a receipt that the plan is
 // consumed -- worse than an absent check, because it was cited as evidence (review 68058).
 //
-// WHAT NOW GOES RED FROM THIS CALLER, stated so the claim is not read as stronger than it is: a
-// probe that did not land, bytes that are not JSON, a JSON value that is not an object, a document
-// with no revision member or two of them, a non-string revision, and a revision that is not 40
-// lowercase hex -- plus, through dark_deployment_admission, a unit answering on a port this
-// deployment does not bind, and a broker that already holds writer authority at a dark stage.
+// WHAT GOES RED FROM THIS CALLER: a probe that did not land, bytes that are not JSON, a JSON value
+// that is not an object, a document with no revision member or two of them, a non-string revision,
+// a revision that is not 40 lowercase hex, and -- the case the cutover HOLD's item 4 named -- a
+// well-formed revision that is NOT THE CANDIDATE this deploy installed. Through
+// dark_deployment_admission it also reds on a unit answering a port this deployment does not bind,
+// and on a broker that already holds writer authority at a dark stage.
 //
-// WHAT THIS CALLER STILL CANNOT ESTABLISH, and the HOLD's item 4 names it: that the release read
-// back IS THE CANDIDATE this deploy installed. Any 40-hex value satisfies the reading today, so a
-// broker running a different admitted release passes. Closing that needs the evidence producers to
-// derive ReleaseMatchesCandidate rather than accept a well-formed revision, which is deferred work
-// and is recorded here rather than implied away.
+// THE CANDIDATE COMPARISON IS THE expected_release PARAMETER, supplied by the caller that performed
+// the install (gunbc.live_deploy.apply approval_broker_dark_install_readback_exit passes
+// candidate.revision) and never read back from the process being interrogated. release_admission
+// compares it and returns ReleaseDoesNotMatchCandidate naming both revisions, so a service that did
+// not restart is distinguishable from one that came back on an older admitted release.
+//
+// THIS PARAGRAPH PREVIOUSLY SAID THE OPPOSITE and survived the commit that closed the gap (review
+// 68395). It read "any 40-hex value satisfies the reading today ... which is deferred work", which
+// was true when written and false from the moment HOLD item 4 landed. DESIGN section 4c is about
+// annotations that restate what a declaration says; a row that CONTRADICTS the declaration under it
+// is the worse case, because the next reader either re-implements a wall that exists or files a
+// debt row for a discharged obligation.
 fn dark_install_release_discharged(
   listening_port: Port,
   read: ServeLivenessRead,

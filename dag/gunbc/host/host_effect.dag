@@ -38,7 +38,7 @@ import std.effects {
 
 // LiveDeployApprovalBrokerDarkInstall IS ITS OWN ARM BECAUSE IT IS ITS OWN EFFECT. It is stage 1
 // of the approval-broker cutover (gunbc.auth.approval_broker_cutover): it installs the broker's
-// slice and unit on the DARK port and starts only that unit, writing nothing the roadmap deployment
+// slice and unit on its one port and starts only that unit, writing nothing the roadmap deployment
 // owns and restarting nothing that is already serving. Folding it into LiveDeployApply would have
 // made an additive install indistinguishable from a release deploy at the one boundary where the
 // difference is the requirement (operator directive 2026-09-19: roadmap redeploys are frozen at the

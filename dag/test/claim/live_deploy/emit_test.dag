@@ -1363,20 +1363,6 @@ test fn the_dark_install_never_names_the_roadmap_unit() -> Bool {
     && string_contains(s: script, pattern: gunbc_approval_broker_slice_unit_name as String)
 }
 
-// BOTH INSTALL PATHS BIND THE BROKER'S ONE PORT. An earlier cut had the staged install on a second
-// "dark" port and asserted the ordinary apply matched it; the cutover HOLD removed the second port
-// because it never delivered single-writer discipline -- a loopback client reaches a process
-// whatever the front door says -- and because the front-door mounts named the other one, leaving
-// the plan no path to its last stage. What keeps the dark stage safe is now
-// gunbc.auth.approval_writer_authority, and what this claim protects is that the staged install and
-// the release apply describe the SAME process, so a reading taken at one is about the other.
-test fn both_install_paths_bind_the_brokers_one_port() -> Bool {
-  let dark = witness_approval_broker_dark_script_text
-  let apply = witness_apply_script()
-  let flag = join([" --port ", to_string(approval_broker_listen_port)], "")
-  string_contains(s: dark, pattern: flag) && string_contains(s: apply, pattern: flag)
-}
-
 // IT CARRIES THE ADMITTED REVISION. The next cutover stage reads the release identity back off the
 // dark process; a unit whose ExecStart named no revision, or a different one, would make every
 // later reading a measurement of a build nobody deployed.

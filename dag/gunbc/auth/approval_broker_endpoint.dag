@@ -57,12 +57,11 @@ data approval_broker_status_path_template: NonEmptyStr = "/approvals/\{escalatio
 data approval_broker_listen_port: Port = 8085
 
 // ── THE LOOPBACK BASE A LOCAL CLIENT POSTS TO, PARAMETERIZED BY PORT ────────────────────────
-// THE PORT IS AN ARGUMENT AND THAT IS THE POINT, not an oversight left to a caller. A boot run
-// files an approval and polls its standing over loopback; during the cutover the broker is up on
-// the DARK port and nothing proxies to it, so a client that hardcoded the serving port could not
-// reach the process the staging exists to exercise. Taking the port lets a boot run be pointed at
-// the dark broker before the front door moves, and at the serving broker after, WITHOUT the client
-// changing -- which is what makes the endpoint move a parameter rather than an edit.
+// THE PORT IS AN ARGUMENT SO A CALLER NAMES WHICH PROCESS IT MEANS, not because the broker moves.
+// It binds one port for its whole life (approval_broker_listen_port above), so a boot run reaches
+// the same address before and after the cutover; what changes is whether the write is ADMITTED
+// (gunbc.auth.approval_writer_authority). The parameter remains because a claim, a probe and a
+// rehearsal may each need to name a port explicitly rather than inherit one.
 //
 // IT IS LOOPBACK AND NOT THE TAILNET NAME because the client and the broker are the same host. The
 // address a CLIENT ON THE HOST dials and the address a PHONE dials are different facts with

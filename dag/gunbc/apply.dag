@@ -21,7 +21,8 @@ import gunbc.runner_capacity_realize { runner_capacity_apply_wet_exit }
 // approval-broker-dark IS A WORKFLOW RATHER THAN A MODE ON dashboard-srv1, because a mode would
 // have made an additive install one argument away from a release deploy at the exact moment roadmap
 // redeploys are frozen (operator directive 2026-09-19). It installs the broker's slice and unit on
-// the dark port and starts one unit; it writes nothing the roadmap deployment owns.
+// its one port and starts one unit; it writes nothing the roadmap deployment owns, and the unit it
+// starts holds no writer authority until the cutover transfers it.
 type ApplyWorkflow
   = DashboardSrv1
   | RunnerCapacity

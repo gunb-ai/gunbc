@@ -377,7 +377,11 @@ test fn front_door_repoint_installs_two_distinct_scoped_mounts() -> Bool {
 // the exact fold gunbc.live_deploy.apply calls -- with a reading the probe could actually return.
 
 fn dark_install_refuses(read: ServeLivenessRead) -> Bool {
-  match dark_install_release_discharged(listening_port: approval_broker_listen_port, read: read) {
+  match dark_install_release_discharged(
+    listening_port: approval_broker_listen_port,
+    read: read,
+    expected_release: cutover_fixture_revision,
+  ) {
     StageRefused { stage: _, cause: _ } => true
     StageAdmitted { stage: _ } => false
   }
@@ -419,6 +423,7 @@ test fn the_dark_install_admits_a_broker_that_named_its_release() -> Bool {
   match dark_install_release_discharged(
     listening_port: approval_broker_listen_port,
     read: probe_answered(body: cutover_fixture_liveness_body),
+    expected_release: cutover_fixture_revision,
   ) {
     StageAdmitted { stage: _ } => true
     StageRefused { stage: _, cause: _ } => false
@@ -432,6 +437,7 @@ test fn an_unanswered_probe_reports_the_unit_as_not_started() -> Bool {
   let e = dark_install_evidence(
     listening_port: approval_broker_listen_port,
     read: serve_liveness_read_from_probe(success: false, body: "", error: "no route to host" as NonEmptyStr),
+    expected_release: cutover_fixture_revision,
   )
   match e.dark {
     DarkUnitNotStarted { detail: _ } => true
