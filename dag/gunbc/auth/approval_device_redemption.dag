@@ -30,7 +30,7 @@ import gunbc.auth.approval_decision_store {
   approval_capability_expectation, approval_operator_login, json_field_string,
 }
 import gunbc.auth.approval_device_wire {
-  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, enrollment_id_for_code, RedemptionResponse, DeviceRedemptionSigningInput,
+  MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, enrollment_id_for_code, RedemptionResponse, EnrolmentReadback, EnrolmentStandingActive, EnrolmentStandingRevoked, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
 import gunbc.durable_cas_file_store {
@@ -677,6 +677,20 @@ fn parse_enrolment_record_of_kind(v: JsonValue, kind: EnrolmentRecordKind) -> En
   }
 }
 
+// THE READBACK IS A PROJECTION OF THE STORED STANDING, never a second enumeration of it: a live
+// enrolment reads back active, a revoked one revoked, and a slot that holds no enrolment -- unknown,
+// still an unspent code, or unreadable -- has no readback, so the route refuses it rather than
+// inventing a standing.
+fn enrolment_readback_of(standing: EnrolmentSlotStanding) -> EnrolmentReadback? {
+  match standing {
+    EnrolmentCodeConsumed { enrollment: e } => Present { value: EnrolmentReadback { enrollment_id: e.enrollment_id, standing: EnrolmentStandingActive } }
+    EnrolmentRevoked { enrollment: e, revoked_at: _, reason: _ } => Present { value: EnrolmentReadback { enrollment_id: e.enrollment_id, standing: EnrolmentStandingRevoked } }
+    EnrolmentCodeUnspent { challenge: _ } => none
+    EnrolmentCodeUnknown => none
+    EnrolmentSlotUnreadable { detail: _ } => none
+  }
+}
+
 fn observe_enrolment_slot(root: NonEmptyStr, code: NonEmptyStr) -> EnrolmentSlotStanding {
   match observe_cas_slot_state(root: root, key: code) {
     CasObservedUnreadable { cause: c } => EnrolmentSlotUnreadable { detail: concat("enrolment slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
@@ -742,7 +756,7 @@ data approval_apns_auth_key_secret_ref: SecretRef = secret_ref_pin_version(
 
 // ── Frontiers ────────────────────────────────────────────────────────────────────────────────
 data approval_device_routes_frontier: DissolutionCondition = unbound_dissolution(
-  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: an operator verb run over the fleet SSH administrator edge as the owner of approval_device_store_root that calls issue_enrolment_code and prints the code (never an HTTP issuer); POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire EnrolmentRequest and storing its PushRegistration, consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); reads at approval_device_pending_path and at device_request_path(escalation_id) (suffix read back through decode_path_segment) authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; GET device_enrollment_path(enrollment_id), its suffix read back through decode_path_segment, answering EnrolmentReadback from observe_enrollment, authenticated by an assertion over device_read_client_data; PUT approval_device_push_path decoding decode_push_update and storing the PushRegistration against the active enrolment, authenticated by an assertion over device_push_update_client_data; and file_and_notify's APNs publish rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login, for an enrolment whose POST answer was lost to be read back instead of re-created, and for a rotated APNs token to reach the server without a new enrolment",
+  description: "gunbc.roadmap_serve gains, BESIDE the existing /approve route and without changing it or the store record: an operator verb run over the fleet SSH administrator edge as the owner of approval_device_store_root that calls issue_enrolment_code and prints the code (never an HTTP issuer); POST approval_device_enrol_path decoding gunbc.auth.approval_device_wire EnrolmentRequest and storing its PushRegistration, consuming the code's slot through enrolment_admission as ONE CAS transition (generation 1 issued -> generation 2 enrolment); reads at approval_device_pending_path and at device_request_path(escalation_id) (suffix read back through decode_path_segment) authenticated by an App Attest assertion over device_read_client_data within approval_device_read_skew that return the stored request, a RedemptionChallenge and both verbs' capabilities; and POST approval_device_redeem_path decoding SignedRedemption, verifying its signature and platform_proof at the seams, and folding through redeem_device_over_store; GET device_enrollment_path(enrollment_id), its suffix read back through decode_path_segment, answering enrolment_readback_of(observe_enrollment(...)) and refusing when it is none, authenticated by an assertion over device_read_client_data; PUT approval_device_push_path decoding decode_push_update and storing the PushRegistration against the active enrolment, authenticated by an assertion over device_push_update_client_data; and file_and_notify's APNs publish rendering extdeps.apple.apns apns_push_type_wire, apns_priority_wire and apns_interruption_level_wire into headers and payload with approval_push_alert_title and approval_push_custom_keys, and the verifier configured with app_attest_app_id -- SUFFICIENT FOR one approval decided on the phone to be read back from approval_decision_store with decided_by naming the enrolled login, for an enrolment whose POST answer was lost to be read back instead of re-created, and for a rotated APNs token to reach the server without a new enrolment",
 )
 
 data ecdsa_verification_realization_frontier: DissolutionCondition = unbound_dissolution(

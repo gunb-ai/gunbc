@@ -31,9 +31,10 @@ import gunbc.auth.approval_device_redemption {
   device_redemption_admission, redeem_device_over_store,
   parse_enrolment_record, enrolment_json, enrolment_code_json, code_of_enrollment_id,
   enrolment_record_kind_generation, enrolment_record_kind_wire, enrolment_record_kind_of_wire, enrolment_record_kind_expectation,
-  IssuedCodeRecord, EnrolledRecord, RevokedRecord,
+  IssuedCodeRecord, EnrolledRecord, RevokedRecord, enrolment_readback_of,
 }
 import gunbc.auth.approval_device_wire {
+  EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire,
   DeviceRedemptionSigningInput, RedemptionChallenge, MobileIos, MobileAndroid,
   device_redemption_signing_input, enrolment_transcript, redemption_challenge_message, approval_device_audience,
 }
@@ -445,4 +446,18 @@ test fn witness_enrolment_record_kinds_round_trip_and_order() -> Bool {
     && cas_generation_count(g: enrolment_record_kind_generation(k: EnrolledRecord)) == cas_generation_count(g: enrolment_record_kind_generation(k: IssuedCodeRecord)) + 1
     && cas_generation_count(g: enrolment_record_kind_generation(k: RevokedRecord)) == cas_generation_count(g: enrolment_record_kind_generation(k: EnrolledRecord)) + 1
     && enrolment_record_kind_of_wire(s: "other") == none
+}
+
+// THE READBACK PROJECTS THE STORED STANDING: live -> active, revoked -> revoked, and no enrolment
+// (unknown, unspent code, unreadable) -> no readback at all.
+test fn witness_enrolment_readback_projects_the_stored_standing() -> Bool {
+  match fx_admitted_enrollment() {
+    Absent => false
+    Present { value: e } =>
+      match enrolment_readback_of(standing: EnrolmentCodeConsumed { enrollment: e }) { Present { value: r } => enrolment_standing_wire(s: r.standing) == enrolment_standing_wire(s: EnrolmentStandingActive) && r.enrollment_id == e.enrollment_id  Absent => false }
+        && match enrolment_readback_of(standing: EnrolmentRevoked { enrollment: e, revoked_at: "2026-09-17T11:00:00Z", reason: "lost" }) { Present { value: r } => enrolment_standing_wire(s: r.standing) == enrolment_standing_wire(s: EnrolmentStandingRevoked)  Absent => false }
+        && enrolment_readback_of(standing: EnrolmentCodeUnknown) == none
+        && enrolment_readback_of(standing: fx_live_code) == none
+        && enrolment_readback_of(standing: EnrolmentSlotUnreadable { detail: "x" }) == none
+  }
 }
