@@ -161,7 +161,7 @@ fn convergence_principal() -> WorkloadIdentityStanding {
 // THE GRANT ADMINISTRATOR IS UNBINDABLE BY CONSTRUCTION, not by omission: a principal that can both
 // grant and read escalates itself to every secret in the project.
 data grant_administrator_unbindable: WorkloadIdentityStanding = WorkloadIdentityUnbindable {
-  cause: "setIamPolicy is FleetCloudGrantAdministrator's operation and the workload may not hold it (gunbc.auth.gcp_secret_access no_principal_can_both_grant_and_read)" as NonEmptyStr,
+  cause: "setIamPolicy is FleetCloudGrantAdministrator's operation and the workload may not hold it (gunbc.spark.bootstrap_provision no_principal_can_both_grant_and_read)" as NonEmptyStr,
 }
 
 // A credential READ that a converge performs every time it runs.

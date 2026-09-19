@@ -63,7 +63,7 @@ type ProviderSurface
 // WORKLOAD IDENTITY. Whether a federated principal can be bound to this effect. "Bindable" is a
 // claim about the PROVIDER'S admission, not about whether a service account exists: setIamPolicy on
 // a fleet secret is not bindable to the convergence principal by construction
-// (gunbc.auth.gcp_secret_access no_principal_can_both_grant_and_read), however many service
+// (gunbc.spark.bootstrap_provision no_principal_can_both_grant_and_read), however many service
 // accounts the project has. The cause is carried so the census can say why.
 type WorkloadIdentityStanding
   = WorkloadIdentityBindable { member: NonEmptyStr }
