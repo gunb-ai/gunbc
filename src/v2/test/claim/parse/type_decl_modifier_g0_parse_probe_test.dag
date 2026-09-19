@@ -43,6 +43,7 @@ data sole_constructor_record_source: String = "module m\ntype T sole_constructor
 data unknown_modifier_red_source: String = "module m\ntype T not_a_modifier = Int\n"
 data modifier_spelling_as_data_name_source: String = "module m\ndata sole_constructor: Int = 1\n"
 data modifier_spelling_as_caret_source: String = "module m\nfn f() -> Int { ^sole_constructor }\n"
+data modifier_spelling_as_generic_param_source: String = "module m\ntype T<sole_constructor> = Int\n"
 
 test fn unmodified_type_alias_still_parses_holds() -> Bool {
   parse_outcome(src: unmodified_alias_source) == "ACCEPTED"
@@ -113,4 +114,42 @@ test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
     src: modifier_spelling_as_data_name_source,
     identity: ^sole_constructor
   )
+}
+
+// "NOT THE LEXEME" IS NOT "THE SAME IDENTITY AS BEFORE", and the gap between those two
+// facts is a second transition this change has to hold out. v2.compiler.02_parse resolves a
+// class stamp as exactly `StampClass => tok.class`, so promoting these spellings to their
+// own keyword classes moves a class-stamped site's published identity from ^dag_token_ident
+// to ^dag_token_kw_sole_constructor WITHOUT ever touching the stamp mode. A membership claim
+// that only says the interned lexeme is absent passes under both implementations, because
+// neither tree contains it. The claims below therefore assert the identity POSITIVELY --
+// what the site publishes, not merely what it does not -- at both class-stamped sites,
+// including the generic-parameter site, which carried no identity measurement at all.
+
+test fn caret_referenced_ident_publishes_the_generic_ident_class_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_caret_source,
+    identity: ^dag_token_ident
+  )
+}
+
+test fn caret_referenced_ident_does_not_publish_the_keyword_class_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_caret_source,
+    identity: ^dag_token_kw_sole_constructor
+  ) == false
+}
+
+test fn generic_param_publishes_the_generic_ident_class_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_generic_param_source,
+    identity: ^dag_token_ident
+  )
+}
+
+test fn generic_param_does_not_publish_the_keyword_class_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_generic_param_source,
+    identity: ^dag_token_kw_sole_constructor
+  ) == false
 }

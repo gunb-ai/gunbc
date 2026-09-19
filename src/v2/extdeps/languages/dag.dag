@@ -931,23 +931,45 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
   )
 }
 
-// The class-stamped sibling, for the two name sites that were dag_grammar_terminal
+// The identity-preserving sibling, for the two name sites that were dag_grammar_terminal
 // (StampClass) before the modifier classes were admitted: dag_grammar_caret_symbol_expr's
 // referenced identifier and dag_grammar_generic_params_expr's parameter names. Admitting
-// two more token classes is the whole of this change; routing those sites through the
-// lexeme-stamped helper would ALSO move them StampClass -> StampLexeme, which changes the
-// atom identity every caret literal and generic parameter carries corpus-wide
-// (v2.std.grammar StampLexeme, v2.compiler.02_parse symbol_intern_lexeme) and would
-// falsify v2.lens.identity_captured_navigation.analyze node_source_symbol_note, which
-// records the caret terminal as StampClass. That is a separate decision with its own
-// consumers; this row does not smuggle it (DESIGN section 4b(1): the reported rung must
-// equal the rung established by executed evidence, measured at a declared boundary).
+// two more token classes is the whole of this change, and PRESERVING THE STAMP MODE IS NOT
+// ENOUGH TO PRESERVE THE IDENTITY. Two distinct transitions have to be held out:
+//
+//   1. StampClass -> StampLexeme. Routing these sites through the lexeme-stamped helper
+//      would make every caret literal and generic parameter carry its own text as the
+//      node's atom identity (v2.compiler.02_parse symbol_intern_lexeme).
+//   2. The token CLASS a class stamp publishes. v2.compiler.02_parse resolves it as
+//      exactly `StampClass => tok.class`. Before promotion these spellings lexed as
+//      ^dag_token_ident, so a class-stamped site published ^dag_token_ident; once they lex
+//      as their own keyword classes, the SAME StampClass publishes
+//      ^dag_token_kw_sole_constructor instead. Holding the mode fixed does not hold the
+//      identity fixed.
+//
+// So the keyword arms bind the generic identifier identity explicitly: StampBinding
+// publishes a FIXED symbol (v2.std.grammar grammar_expr_terminal_bound), normalizing both
+// dedicated classes back onto ^dag_token_ident so a class-stamped site publishes exactly
+// what it published before promotion. That keeps
+// v2.lens.identity_captured_navigation.analyze node_source_symbol_note true as the
+// UNIVERSAL grammar property it states -- every caret literal carries the generic
+// ^dag_token_ident and never the particular spelling -- rather than true only of a corpus
+// that happens not to use these spellings as names. This PR deliberately makes
+// `^sole_constructor` legal and authors one in its own witness, so a census-relative
+// reading would not discharge the note (DESIGN section 4b(1): the reported rung must equal
+// the rung established by executed evidence).
 fn dag_grammar_ident_or_type_decl_modifier_name_class() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_ident),
     right: dag_grammar_choice(
-      left: dag_grammar_terminal(token_class: ^dag_token_kw_nominal_opaque),
-      right: dag_grammar_terminal(token_class: ^dag_token_kw_sole_constructor)
+      left: dag_grammar_terminal_bound(
+        token_class: ^dag_token_kw_nominal_opaque,
+        binding: ^dag_token_ident
+      ),
+      right: dag_grammar_terminal_bound(
+        token_class: ^dag_token_kw_sole_constructor,
+        binding: ^dag_token_ident
+      )
     )
   )
 }
