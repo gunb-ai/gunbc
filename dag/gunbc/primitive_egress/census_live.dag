@@ -14,13 +14,13 @@ import gunbc.seed_growth_admission { seed_growth_roster_all_declarations }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.primitive_egress.identity { FreeForm, MethodForm, FormlessSurface }
 import gunbc.primitive_egress.census {
-  SurfaceFact, surface_fact, interpreter_arm_fact,
+  SurfaceFact, surface_fact, interpreter_arm_facts,
   PrimitiveCallEdge, PrimitiveCallEntryRefusal, PrimitiveCallEdgeCensus,
   PrimitiveCallEdgeCensusRefused, PrimitiveCallEdgeCensusObserved,
   CensusInputs, PrimitiveCensus, primitive_census, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
   census_standing,
 }
-import gunbc.primitive_egress.dispositions { primitive_disposition_rows }
+import gunbc.primitive_egress.dispositions { primitive_evidence_rows }
 import gunbc.primitive_egress.receipt { census_receipt_lines }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -50,7 +50,7 @@ fn emit_surface_facts() -> List<SurfaceFact> {
 }
 
 fn interpreter_surface_facts() -> List<SurfaceFact> {
-  v1_interpreter_primitive_arms() |> map(arm => interpreter_arm_fact(arm: arm))
+  v1_interpreter_primitive_arms() |> flat_map(arm => interpreter_arm_facts(arm: arm))
 }
 
 fn live_surface_facts() -> List<SurfaceFact> {
@@ -77,13 +77,14 @@ fn hand_roster_rows_absent_from_registry() -> List<String> {
 // its own entry prefix.
 //
 // WHY THE SCOPE IS A PARAMETER, AND A LABEL. One walk is one resolution of its pool followed by
-// a module walk: for dag ∪ src/v2 that is ~1000 s and ~32 GB peak in a `gunbc run` (measured
-// 2026-09-19: 6062 sources, 1190 src/v2 modules walked, 5250 call sites), which a loaded
-// session host reclaims before the full three-walk census finishes. A scope names WHICH entry
-// prefixes the consumer walk covers and the receipt carries it, so a bounded run is an honest
-// projection -- "v2-reached identities first" is the program's own order -- and never reports
-// an unwalked layer's identities as unused: a finding that depends on consumers is only rendered
-// against the walked scope. Each scope is its own instrument label
+// a module walk, and its cost is an instrument reading, not a number this file carries:
+// `gunbc test //gunbc/instruments:primitive-egress-census-v2` prints the trace marks
+// (`primitive-call-edges.close / .resolve / .walk`) and the receipt's `entries_resolved`; the
+// whole-corpus label runs three such walks, which a loaded session host reclaims before they
+// finish. A scope names WHICH entry prefixes the consumer walk covers and the receipt carries it,
+// so a bounded run is an honest projection -- "v2-reached identities first" is the program's own
+// order -- and never reports an unwalked layer's identities as unused: a finding that depends on
+// consumers is only rendered against the walked scope. Each scope is its own instrument label
 // (gunbc.instrument_targets primitive_egress_census_{v2,dag,seed}_label), never a flag.
 data admitted_corpus_pool_roots: List<String> = ["dag", "src/v2"]
 data seed_pool_roots: List<String> = ["dag", "src/v1"]
@@ -171,7 +172,7 @@ fn live_census(scope: CensusScope) -> LiveCensus {
           edges: edges,
           entries_refused: refused,
           projections: primitive_projection_roster(),
-          dispositions: primitive_disposition_rows(),
+          dispositions: primitive_evidence_rows(),
           seed_growth_decls: seed_growth_roster_all_declarations(),
         }),
         entries_resolved: n,

@@ -5,9 +5,18 @@ import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json }
 import gunbc.primitive_egress.category { category_label }
 import gunbc.primitive_egress.disposition {
-  PrimitiveDispositionRow, PrimitiveDisposition, PureDagComputation, BoundHostEffect, TargetKernelRealization,
-  CompilerQueryFrontier, Unresolved, UnresolvedCause, MixedSemanticQuestions, ContractAbsent, ConflictingRealizations,
-  SubjectUnestablished, DispositionClass, disposition_class_label, row_class, row_owner_lane,
+  PrimitiveEvidence, PrimitiveDisposition, PureDagComputation, BoundHostEffect, TargetKernelRealization,
+  CompilerQueryFrontier, Unresolved, UnresolvedCause, MixedSemanticQuestions, ConflictingRealizations,
+  SubjectUnestablished, RefusalContractIncomplete, OperationAuthorityAbsent, TargetKernelUnqualified, SeedGrowthOwnershipAbsent,
+  DispositionClass, disposition_class_label, disposition_class, row_owner_lane,
+  ExternalSubjectStanding, NoExternalSubject, ObservesOrMutates, ExternalSubjectUnestablished,
+  ComputationStanding, PureComputationOverInputs, NoPureComputationHalf, ComputationUnestablished,
+  RefusalStanding, RefusalsTyped, RefusalsUnmodeled, RefusalsNotApplicable,
+  RealizationStanding, NoNativeRealizationClaim, NativeRealizationOfModeledOperation,
+  CompilerQueryStanding, NotACompilerQuery, QueryOverAcceptedProduct,
+  MeaningConflict, NoMeaningConflict, SurfacesDisagree,
+  OperationAuthorityStanding, AuthorityDeclared, AuthorityRequired, ReferenceBodyStanding, ReferenceBodyExists, ReferenceBodyAbsent,
+  EquivalenceQualification, QualifiedByWitness, EquivalenceUnqualified,
 }
 import gunbc.primitive_egress.identity { JoinRoute, JoinedByD0AliasTable, JoinedByEgressAliasRow, JoinedBySpelling, form_label }
 import gunbc.primitive_egress.census {
@@ -17,6 +26,7 @@ import gunbc.primitive_egress.census {
   unused_primitives, consumers_with_unresolved_callee, duplicate_realizations, interpreter_arm_without_emitted_route,
   zero_disposition, multiple_disposition, exactly_one_disposition, unresolved_identities, v2_projection, v1_only_projection,
   shared_v1_v2_identities, aliased_identities, compiler_query_without_seed_growth_row, standings_of_class,
+  consumer_only_identities, projection_only_identities, seed_growth_only_identities,
   PureDagComputationClass, BoundHostEffectClass, TargetKernelRealizationClass, CompilerQueryFrontierClass, UnresolvedClass,
   census_standing, CensusStanding, CensusHeld, CensusDidNotHold, CensusRefused,
 }
@@ -65,40 +75,103 @@ fn fact_json(f: JoinedSurfaceFact) -> JsonValue {
   ])
 }
 
+fn kv_kind(kind: String, key: String, value: String) -> JsonValue {
+  json_object(members: [json_kv(key: "kind", value: json_string(s: kind)), json_kv(key: key, value: json_string(s: value))])
+}
+
 fn cause_json(c: UnresolvedCause) -> JsonValue {
   match c {
     MixedSemanticQuestions { questions: qs } => json_object(members: [json_kv(key: "kind", value: json_string(s: "MixedSemanticQuestions")), json_kv(key: "questions", value: strs(xs: qs |> map(q => q as String)))])
-    ContractAbsent { detail: d } => json_object(members: [json_kv(key: "kind", value: json_string(s: "ContractAbsent")), json_kv(key: "detail", value: json_string(s: d as String))])
-    ConflictingRealizations { detail: d } => json_object(members: [json_kv(key: "kind", value: json_string(s: "ConflictingRealizations")), json_kv(key: "detail", value: json_string(s: d as String))])
-    SubjectUnestablished { detail: d } => json_object(members: [json_kv(key: "kind", value: json_string(s: "SubjectUnestablished")), json_kv(key: "detail", value: json_string(s: d as String))])
+    ConflictingRealizations { detail: d } => kv_kind(kind: "ConflictingRealizations", key: "detail", value: d as String)
+    SubjectUnestablished { detail: d } => kv_kind(kind: "SubjectUnestablished", key: "detail", value: d as String)
+    RefusalContractIncomplete { detail: d } => kv_kind(kind: "RefusalContractIncomplete", key: "detail", value: d as String)
+    OperationAuthorityAbsent { home: h } => kv_kind(kind: "OperationAuthorityAbsent", key: "home", value: h as String)
+    TargetKernelUnqualified { detail: d } => kv_kind(kind: "TargetKernelUnqualified", key: "detail", value: d as String)
+    SeedGrowthOwnershipAbsent { producer: p } => kv_kind(kind: "SeedGrowthOwnershipAbsent", key: "producer", value: declaration_ref_display_key(ref: p))
   }
 }
 
-fn disposition_json(row: PrimitiveDispositionRow) -> JsonValue {
+fn authority_json(a: OperationAuthorityStanding) -> JsonValue {
+  match a {
+    AuthorityDeclared { declaration: d } => kv_kind(kind: "AuthorityDeclared", key: "declaration", value: declaration_ref_display_key(ref: d))
+    AuthorityRequired { home: h } => kv_kind(kind: "AuthorityRequired", key: "home", value: h as String)
+  }
+}
+
+fn evidence_json(e: PrimitiveEvidence) -> JsonValue {
+  let external = match e.external_subject {
+    NoExternalSubject => json_object(members: [json_kv(key: "kind", value: json_string(s: "NoExternalSubject"))])
+    ObservesOrMutates { operation: o, subject: s, provider: _, ambient_realization: a } => json_object(members: [json_kv(key: "kind", value: json_string(s: "ObservesOrMutates")), json_kv(key: "operation", value: json_string(s: o as String)), json_kv(key: "subject", value: json_string(s: s as String)), json_kv(key: "ambient_realization", value: json_string(s: a as String))])
+    ExternalSubjectUnestablished { detail: d } => kv_kind(kind: "ExternalSubjectUnestablished", key: "detail", value: d as String)
+  }
+  let computation = match e.computation {
+    PureComputationOverInputs { authority: a, inputs: i, result: r, body: _ } => json_object(members: [json_kv(key: "kind", value: json_string(s: "PureComputationOverInputs")), json_kv(key: "authority", value: authority_json(a: a)), json_kv(key: "inputs", value: json_string(s: i as String)), json_kv(key: "result", value: json_string(s: r as String))])
+    NoPureComputationHalf => json_object(members: [json_kv(key: "kind", value: json_string(s: "NoPureComputationHalf"))])
+    ComputationUnestablished { detail: d } => kv_kind(kind: "ComputationUnestablished", key: "detail", value: d as String)
+  }
+  let refusals = match e.refusals {
+    RefusalsTyped => json_string(s: "RefusalsTyped")
+    RefusalsUnmodeled { detail: d } => kv_kind(kind: "RefusalsUnmodeled", key: "detail", value: d as String)
+    RefusalsNotApplicable => json_string(s: "RefusalsNotApplicable")
+  }
+  let realization = match e.realization {
+    NoNativeRealizationClaim => json_object(members: [json_kv(key: "kind", value: json_string(s: "NoNativeRealizationClaim"))])
+    NativeRealizationOfModeledOperation { authority: a, required_semantics: s, target_realization: t, reference: r, equivalence: q } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "NativeRealizationOfModeledOperation")),
+        json_kv(key: "authority", value: json_string(s: declaration_ref_display_key(ref: a))),
+        json_kv(key: "required_semantics", value: json_string(s: s as String)),
+        json_kv(key: "target_realization", value: json_string(s: t as String)),
+        json_kv(key: "reference_body", value: match r { ReferenceBodyExists { declaration: d } => json_string(s: declaration_ref_display_key(ref: d))  ReferenceBodyAbsent => json_string(s: "ReferenceBodyAbsent") }),
+        json_kv(key: "equivalence", value: match q { QualifiedByWitness { declaration: d } => json_string(s: declaration_ref_display_key(ref: d))  EquivalenceUnqualified { obligation: o } => kv_kind(kind: "EquivalenceUnqualified", key: "obligation", value: o as String) }),
+      ])
+  }
+  let query = match e.compiler_query {
+    NotACompilerQuery => json_object(members: [json_kv(key: "kind", value: json_string(s: "NotACompilerQuery"))])
+    QueryOverAcceptedProduct { judgment_subject: j, accepted_compiler_product: p, current_host_producer: h, deletion_trigger: t } => json_object(members: [json_kv(key: "kind", value: json_string(s: "QueryOverAcceptedProduct")), json_kv(key: "judgment_subject", value: json_string(s: j as String)), json_kv(key: "accepted_compiler_product", value: json_string(s: p as String)), json_kv(key: "host_producer", value: json_string(s: declaration_ref_display_key(ref: h))), json_kv(key: "deletion_trigger", value: json_string(s: t as String))])
+  }
+  let conflict = match e.conflict {
+    NoMeaningConflict => json_string(s: "NoMeaningConflict")
+    SurfacesDisagree { detail: d } => kv_kind(kind: "SurfacesDisagree", key: "detail", value: d as String)
+  }
+  json_object(members: [
+    json_kv(key: "external_subject", value: external),
+    json_kv(key: "computation", value: computation),
+    json_kv(key: "refusals", value: refusals),
+    json_kv(key: "realization", value: realization),
+    json_kv(key: "compiler_query", value: query),
+    json_kv(key: "conflict", value: conflict),
+    json_kv(key: "located_evidence", value: json_string(s: e.located_evidence as String)),
+    json_kv(key: "next_observation", value: json_string(s: e.next_observation as String)),
+  ])
+}
+
+fn disposition_json(row: PrimitiveEvidence, d: PrimitiveDisposition) -> JsonValue {
   let lane = row_owner_lane(row: row)
   let base = [
-    json_kv(key: "class", value: json_string(s: disposition_class_label(c: row_class(row: row)))),
+    json_kv(key: "class", value: json_string(s: disposition_class_label(c: disposition_class(d: d)))),
     json_kv(key: "category", value: json_string(s: category_label(category: row.category))),
     json_kv(key: "owner_issue", value: json_int(n: lane.issue)),
     json_kv(key: "owner_lane", value: json_string(s: lane.label as String)),
+    json_kv(key: "derived_from", value: evidence_json(e: row)),
   ]
-  match row.disposition {
-    PureDagComputation { operation_authority: _, modeled_inputs: i, result_contract: r, dag_body: _ } =>
-      json_object(members: concat(base, [json_kv(key: "modeled_inputs", value: json_string(s: i as String)), json_kv(key: "result_contract", value: json_string(s: r as String))]))
+  match d {
+    PureDagComputation { operation_authority: a, modeled_inputs: i, result_contract: r, dag_body: _ } =>
+      json_object(members: concat(base, [json_kv(key: "operation_authority", value: json_string(s: declaration_ref_display_key(ref: a))), json_kv(key: "modeled_inputs", value: json_string(s: i as String)), json_kv(key: "result_contract", value: json_string(s: r as String))]))
     BoundHostEffect { operation_identity: o, logical_subject: s, provider_interface: _, current_ambient_realization: a } =>
       json_object(members: concat(base, [json_kv(key: "operation", value: json_string(s: o as String)), json_kv(key: "logical_subject", value: json_string(s: s as String)), json_kv(key: "ambient_realization", value: json_string(s: a as String))]))
-    TargetKernelRealization { semantic_operation_authority: a, required_semantics: s, target_realization: t, reference_body: _, equivalence: _ } =>
-      json_object(members: concat(base, [json_kv(key: "semantic_authority", value: json_string(s: declaration_ref_display_key(ref: a))), json_kv(key: "required_semantics", value: json_string(s: s as String)), json_kv(key: "target_realization", value: json_string(s: t as String))]))
-    CompilerQueryFrontier { judgment_subject: j, accepted_compiler_product: p, current_host_producer: h, deletion_trigger: t } =>
-      json_object(members: concat(base, [json_kv(key: "judgment_subject", value: json_string(s: j as String)), json_kv(key: "accepted_compiler_product", value: json_string(s: p as String)), json_kv(key: "host_producer", value: json_string(s: declaration_ref_display_key(ref: h))), json_kv(key: "deletion_trigger", value: json_string(s: t as String))]))
-    Unresolved { cause: c, located_evidence: e, candidate_classes: ks, settling_observation: o } =>
-      json_object(members: concat(base, [json_kv(key: "cause", value: cause_json(c: c)), json_kv(key: "located_evidence", value: json_string(s: e as String)), json_kv(key: "candidate_classes", value: strs(xs: ks |> map(k => disposition_class_label(c: k)))), json_kv(key: "settling_observation", value: json_string(s: o as String))]))
+    TargetKernelRealization { semantic_operation_authority: a, required_semantics: s, target_realization: t, reference_body: b, equivalence_witness: w } =>
+      json_object(members: concat(base, [json_kv(key: "semantic_authority", value: json_string(s: declaration_ref_display_key(ref: a))), json_kv(key: "required_semantics", value: json_string(s: s as String)), json_kv(key: "target_realization", value: json_string(s: t as String)), json_kv(key: "reference_body", value: json_string(s: declaration_ref_display_key(ref: b))), json_kv(key: "equivalence_witness", value: json_string(s: declaration_ref_display_key(ref: w)))]))
+    CompilerQueryFrontier { judgment_subject: j, accepted_compiler_product: p, current_host_producer: h, seed_growth_rows: rs, deletion_trigger: t } =>
+      json_object(members: concat(base, [json_kv(key: "judgment_subject", value: json_string(s: j as String)), json_kv(key: "accepted_compiler_product", value: json_string(s: p as String)), json_kv(key: "host_producer", value: json_string(s: declaration_ref_display_key(ref: h))), json_kv(key: "seed_growth_rows", value: strs(xs: decl_keys(ds: rs))), json_kv(key: "deletion_trigger", value: json_string(s: t as String))]))
+    Unresolved { cause: c, candidate_classes: ks } =>
+      json_object(members: concat(base, [json_kv(key: "cause", value: cause_json(c: c)), json_kv(key: "candidate_classes", value: strs(xs: ks |> map(k => disposition_class_label(c: k))))]))
   }
 }
 
 fn match_json(m: DispositionMatch) -> JsonValue {
   match m {
-    ExactlyOneDisposition { row: r } => disposition_json(row: r)
+    ExactlyOneDisposition { evidence: r, disposition: d } => disposition_json(row: r, d: d)
     NoDisposition => json_object(members: [json_kv(key: "class", value: json_string(s: "NONE")), json_kv(key: "matching_dispositions", value: json_int(n: 0))])
     MultipleDispositions { rows: rs } => json_object(members: [json_kv(key: "class", value: json_string(s: "MULTIPLE")), json_kv(key: "matching_dispositions", value: json_int(n: count(rs)))])
   }
@@ -168,7 +241,10 @@ fn census_receipt_lines(c: PrimitiveCensus, scope: String, entries_resolved: Int
     population_line(name: "exactly_one_disposition", members: names(ss: exactly_one_disposition(c: c))),
     population_line(name: "zero_disposition", members: names(ss: zero_disposition(c: c))),
     population_line(name: "multiple_disposition", members: names(ss: multiple_disposition(c: c))),
-    population_line(name: "dispositions_naming_no_identity", members: c.dispositions_naming_no_identity |> map(r => r.identity.slug as String)),
+    population_line(name: "evidence_rows_naming_no_identity", members: c.dispositions_naming_no_identity |> map(r => r.identity.slug as String)),
+    population_line(name: "consumer_only_identities", members: names(ss: consumer_only_identities(c: c))),
+    population_line(name: "projection_only_identities", members: names(ss: projection_only_identities(c: c))),
+    population_line(name: "seed_growth_only_identities", members: names(ss: seed_growth_only_identities(c: c))),
     population_line(name: "pure_dag_computation", members: names(ss: standings_of_class(c: c, wanted: PureDagComputationClass))),
     population_line(name: "bound_host_effect", members: names(ss: standings_of_class(c: c, wanted: BoundHostEffectClass))),
     population_line(name: "target_kernel_realization", members: names(ss: standings_of_class(c: c, wanted: TargetKernelRealizationClass))),

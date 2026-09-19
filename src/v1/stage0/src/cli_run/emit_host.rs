@@ -1404,9 +1404,10 @@ fn primitive_call_edges_from_module(
 /// ONE RESOLUTION, NOT ONE PER ENTRY (DESIGN section 6b, the #11401 R1 specimen). The first cut
 /// of this query resolved every entry as its own closure through `resolve_entry_with_index`:
 /// that assembled a graph per entry, re-typed the v2 compiler modules whenever the typed cache's
-/// cap evicted them, and pinned every assembled graph in `resolved_graph_memo` (25 GiB before the
-/// first receipt, measured 2026-09-18). The population is a walk over ONE resolved corpus, so the
-/// query now takes the same route `gunbc compile --source-root` takes for a primary root:
+/// cap evicted them, and pinned every assembled graph in `resolved_graph_memo` (the
+/// `primitive-call-edges.*` trace marks and the process RSS are the instrument for that cost).
+/// The population is a walk over ONE resolved corpus, so the query now takes the same route
+/// `gunbc compile --source-root` takes for a primary root:
 /// `primary_root_subject_closure` for each pool root, one `compile_to_resolved_with_options`
 /// over the union under the floor's compile-clean admission (modules outside that closure enter
 /// the name census only), and a walk over every module of that single `ResolvedGraph`.
@@ -1422,8 +1423,8 @@ pub fn compile_dag_primitive_call_edges(
 ) -> crate::cli_run::PrimitiveCallEdgeCensus {
     // ON A THREAD WITH A LARGE STACK. The one-resolution graph over the corpus is dropped when
     // this query returns, and dropping a deeply nested `Rc<Node>` chain recurses once per level:
-    // on the default 8 MiB main stack that overflowed twice on 2026-09-19 AFTER the walk had
-    // finished. The stack is reserved virtual memory, committed only as touched.
+    // on the default main stack that overflowed AFTER the walk had finished (2026-09-19). The
+    // stack is reserved virtual memory, committed only as touched.
     let outcome = std::thread::scope(|scope| {
         std::thread::Builder::new()
             .name("primitive-call-edges".to_string())

@@ -17,6 +17,12 @@ import std.primitive_identity {
 // alias row claims IS its own primitive, and the census still refuses to classify it unless a
 // disposition row names it.
 //
+// FILESYSTEM.READ AND FILESYSTEM.LIST ARE TWO IDENTITIES. The interpreter roster carries the
+// checkout carve-out as one row spelled "Filesystem.Read|List"; the census splits that spelling
+// at `|` into one surface fact per operation (gunbc.primitive_egress.census interpreter_arm_facts),
+// because D13 chose operation-plus-logical-subject grain and Read and List differ in arguments,
+// result shape, ordering question and refusals. No alias row may collapse them.
+//
 // WHY ALIASES ARE FORM-SCOPED. The interpreter dispatches free calls and method calls through
 // different arm families, and one spelling can name different arms in the two forms:
 // `append` is the `list_push` arm as a free call and the `concat` arm as a method. Aliasing it
@@ -82,7 +88,6 @@ fn egress_alias_rows() -> List<SpellingAliasRow> {
     spelling_alias(spelling: "merge", canonical: "map_merge", reason: "method_call.merge overlays one map on another and increments the map_merge mutation counter -- the method spelling of the map_merge free call"),
     spelling_alias(spelling: "push", canonical: "append", reason: "push is a third spelling on the method_call.concat arm beside append; it joins the append identity so the append conflict (element push on the algebra template versus concatenation on the interpreter arm) is carried once"),
     spelling_alias(spelling: "list_concat", canonical: "concat", reason: "extdeps.languages.rust.emit rt row list_concat -> rc_list_concat is the List realization name of concat; the bridge-family arm of the same name realizes it in the interpreter"),
-    spelling_alias(spelling: "Filesystem.Read|List", canonical: "filesystem_read", reason: "the service_dispatch.Filesystem.checkout_input carve-out row in gunbc.v1_interpreter_primitive_surface is the interpreter's own Filesystem read dispatch; it answers the same subject as the filesystem_read contract, registry row and bridge"),
     spelling_alias(spelling: "fold", canonical: "fold_list", reason: "std.primitive_identity primitive_fold_list_spelling_fork_note: contract/algebra carry fold, interpreter/emit carry fold_list, one operation; the D0 table binds the surface rows and this row binds the resolved consumer edges (AlgebraMethod template fold)"),
   ]
 }
