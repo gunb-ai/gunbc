@@ -5322,6 +5322,61 @@ pub(crate) fn floor_cgroup_envelope(when: &str) {
     }
 }
 
+/// THE LEAF'S memory.stat PARTITION, ON EVERY BEAT, BECAUSE memory.peak IS NOT A DEMAND.
+///
+/// `memory.current` and `memory.peak` charge page cache alongside anonymous memory, and a run
+/// that is being reclaimed down to its `memory.high` line finishes clean precisely because the
+/// cache half of that charge is reclaimable. So a peak read at the throttle line is a CEILING
+/// that includes cache, and sizing anything to it -- a cell row, a microVM guest whose kernel
+/// can reclaim its own cache just as well -- treats a bet as a fact (DESIGN 4d, operator ruling
+/// sunny-ant-606 2026-09-19). What a machine has to HOLD is the part reclaim cannot give back:
+/// anonymous pages, unevictable pages, shmem, and the kernel's own unreclaimable slab, stacks,
+/// page tables, per-cpu and socket memory. Those are the fields carried here, beside the
+/// reclaimable file and slab figures so the split is visible in the same line, and beside
+/// `memory.current` so the partition can be checked against the charge it partitions.
+///
+/// Sampled every beat rather than every tenth, because `memory.stat` has no `.peak` and the
+/// maximum over samples is the only bound available; a ten-minute cadence would undercount a
+/// short anonymous spike by whatever it missed. One file read per beat, leaf only -- the
+/// ancestors' partitions are their whole subtrees and say nothing about this run.
+///
+/// Every field is printed as read or as `na`; a missing key is never rendered as zero, for the
+/// reason `floor_resource_sample` gives.
+pub(crate) fn floor_cgroup_stat_partition(when: &str) {
+    let leaf = floor_cgroup_dir();
+    let body = std::fs::read_to_string(format!("{leaf}/memory.stat")).ok();
+    let key = |k: &str| -> String {
+        body.as_deref()
+            .and_then(|b| {
+                b.lines().find_map(|l| {
+                    l.strip_prefix(k)
+                        .and_then(|r| r.strip_prefix(' '))
+                        .map(|v| v.trim().to_string())
+                })
+            })
+            .unwrap_or_else(|| "na".to_string())
+    };
+    let current = std::fs::read_to_string(format!("{leaf}/memory.current"))
+        .map(|v| v.trim().to_string())
+        .unwrap_or_else(|_| "na".to_string());
+    eprintln!(
+        "[floor-cgroup] when={when} stat_level={leaf} current={current} \
+         nonreclaimable=[anon,{},unevictable,{},shmem,{},slab_unreclaimable,{},kernel_stack,{},\
+         pagetables,{},percpu,{},sock,{}] reclaimable=[file,{},slab_reclaimable,{},file_dirty,{}]",
+        key("anon"),
+        key("unevictable"),
+        key("shmem"),
+        key("slab_unreclaimable"),
+        key("kernel_stack"),
+        key("pagetables"),
+        key("percpu"),
+        key("sock"),
+        key("file"),
+        key("slab_reclaimable"),
+        key("file_dirty"),
+    );
+}
+
 ///
 /// `planning_index` is the parse phase's `DeclarationIndex`, LENT rather than rebuilt: the
 /// floor's planning row derives the match-bearing consumers of a changed coproduct from it
@@ -5358,6 +5413,7 @@ pub fn run_required_floor(
         );
     }
     floor_cgroup_envelope("floor-entry");
+    floor_cgroup_stat_partition("floor-entry");
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
     eprintln!("[floor-phase] phase=strict-preparation state=started");

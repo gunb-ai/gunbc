@@ -42809,6 +42809,9 @@ fn spawn_floor_heartbeat() {
             )
         );
         beat += 1;
+        // The memory.stat partition every beat (one file read); the full multi-level
+        // envelope every tenth. See floor_cgroup_stat_partition for why the cadences differ.
+        floor_cgroup_stat_partition(&format!("beat-{beat}"));
         if beat % 10 == 0 {
             floor_cgroup_envelope(&format!("beat-{beat}"));
         }
