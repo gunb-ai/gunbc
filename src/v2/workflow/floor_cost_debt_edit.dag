@@ -1,0 +1,416 @@
+module v2.workflow.floor_cost_debt_edit
+
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { LexRules, Token, token_stream_all }
+import v2.std.collection { List }
+import v2.std.algebra { Cons, Empty, ListHeadResult, HeadFound, HeadAbsent, list_head, ListTailResult, TailFound, TailAbsent, list_tail, list_reverse }
+import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import std.measure { EvalStepCount }
+import std.types { GitRef, FilePath }
+import extdeps.git
+import v2.workflow.required_floor {
+  ClaimCeilingTier,
+  GrandfatheredTier,
+  NewWitnessTier,
+  claim_ceiling_eval_step_budget
+}
+
+// WHICH CEILING A CHANGED COST-DEBT WITNESS IS JUDGED AGAINST (operator ruling, 2026-09-19, relayed
+// by proud-tern-736): "NARROW YES. A touched cost-debt witness keeps its rostered budget tier ONLY
+// when the edit's sole change is removing test-fn references (conjuncts/calls); any other edit to it
+// still re-judges at the new-witness tier."
+//
+// A COST-DEBT ROW HAS NO TIER OF ITS OWN, so "rostered tier" needs a reading, and this is it. The
+// grandfathered cut (`v2.workflow.floor_grandfathered_roster`) took only identities the floor
+// PLANNED, and a debt row is never planned -- it is withheld (`DeclinedCostDebt`). The budget it was
+// withheld against is the ceiling of its era, the 500ms-equivalent `GrandfatheredTier`, so that is
+// the tier a pure removal keeps. The row still EXECUTES for its verdict: the 2026-08-30 rule that a
+// changed witness must answer stands, and keeping the row withheld would pass an edited witness by
+// not running it (snappy-koi-46, 2026-09-19). The wall deadline stays armed on both arms.
+//
+// "PURE REMOVAL" IS DECIDED FROM STRUCTURE AND FROM NOTHING THE AUTHOR WRITES. Both sides of the
+// declaration are read through the corpus's own lexer (`v2.compiler.tokenize` over
+// `dag_language_model`), and the head token stream must be the base stream with one or more WHOLE
+// CALL CONJUNCTS deleted and nothing else changed -- so the head's references are a subset of the
+// base's by construction. A conjunct is `&& path(args)` (trailing) or `path(args) &&` (leading),
+// with `path` one or more dotted identifiers and `args` balanced. Signature, literals, operators,
+// order and every surviving token must be identical. Any other difference, including an edit that
+// removes a conjunct AND adds anything, re-judges.
+//
+// PRECEDENCE IS WHY THE NEIGHBOURS ARE CHECKED, not only the deleted tokens. Deleting `&& f()` from
+// `a && f() == b` leaves `a == b`, which is not `a` with a conjunct removed. So a trailing deletion
+// must be followed by a token that binds no tighter than `&&` (another `&&` or `||`, a closing
+// bracket, a comma, an identifier starting the next arm, or the end), and a leading deletion must be
+// preceded by one that opens an operand (`(`, `{`, `[`, `,`, `=`, `=>`, `&&`, `||`, `if`, `then`,
+// `else`, `return`, or the start). Everything outside those sets refuses: the lists are allowlists,
+// so an unforeseen neighbour re-judges rather than keeps the tier.
+//
+// THE CALLEE'S KIND IS NOT RESOLVED HERE. The ruling names test-fn references; this rule admits the
+// deletion of any call conjunct. Deleting a conjunct can only weaken what the body asserts, and
+// never adds work, which is the property the tier keeps; resolving the callee would need the
+// namespace the host has not prepared at planning time. A reviewer who needs the narrower reading
+// should know it is not what this function decides.
+//
+// THE HOST'S SHARE IS READING THE HEAD FILE AND KNOWING WHICH WITNESS SITES ARE CHANGED DEBT ROWS.
+// The base is read here (`git.Core.Show` at the floor's resolved comparison base, the same read
+// `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census` performs), and the decision and
+// the tier are this module's.
+
+type CostDebtEditReJudgeCause =
+    WitnessNotDeclaredAtBase
+  | WitnessNotDeclaredAtHead
+  | WitnessSourceDidNotTokenize
+  | WitnessTokensUnchanged
+  | EditIsNotAConjunctRemoval
+
+type CostDebtWitnessEdit =
+    PureConjunctRemoval { removed_conjuncts: Int }
+  | ReJudgedAsNewWitness { cause: CostDebtEditReJudgeCause }
+
+type CostDebtChangedWitnessCeiling {
+  edit: CostDebtWitnessEdit
+  tier: ClaimCeilingTier
+  budget: EvalStepCount
+}
+
+fn cost_debt_edit_tier(edit: CostDebtWitnessEdit) -> ClaimCeilingTier {
+  match edit {
+    PureConjunctRemoval { removed_conjuncts: _ } => GrandfatheredTier {}
+    ReJudgedAsNewWitness { cause: _ } => NewWitnessTier {}
+  }
+}
+
+fn cost_debt_changed_witness_ceiling(edit: CostDebtWitnessEdit) -> CostDebtChangedWitnessCeiling {
+  let tier = cost_debt_edit_tier(edit: edit)
+  CostDebtChangedWitnessCeiling {
+    edit: edit,
+    tier: tier,
+    budget: claim_ceiling_eval_step_budget(tier: tier)
+  }
+}
+
+fn cost_debt_edit_cause_label(cause: CostDebtEditReJudgeCause) -> String {
+  match cause {
+    WitnessNotDeclaredAtBase => "witness_not_declared_at_base"
+    WitnessNotDeclaredAtHead => "witness_not_declared_at_head"
+    WitnessSourceDidNotTokenize => "witness_source_did_not_tokenize"
+    WitnessTokensUnchanged => "witness_tokens_unchanged"
+    EditIsNotAConjunctRemoval => "edit_is_not_a_conjunct_removal"
+  }
+}
+
+// ---- tokens of one declaration ----
+
+fn cost_debt_edit_source_tokens(source: String, rules: LexRules) -> Optional<List<Token>> {
+  match tokenize(text: source, file: ^cost_debt_edit_source, rules: rules) {
+    Accepted { value: stream, diagnostics: _ } => optional_present(value: token_stream_all(stream: stream))
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+type DeclScanPhase =
+    DeclSeeking
+  | DeclSawTest
+  | DeclSawFn
+  | DeclInSignature
+  | DeclInBody { depth: Int }
+  | DeclDone
+
+// `tokens` is accumulated IN REVERSE (cons, then one `list_reverse` at the end): an append per
+// token would copy the accumulator every step, the quadratic shape DESIGN section 6 always fixes.
+type DeclScan {
+  phase: DeclScanPhase
+  tokens: List<Token>
+}
+
+fn decl_scan_seek(tok: Token) -> DeclScan {
+  if tok.class == ^dag_token_ident && tok.lexeme == "test" {
+    DeclScan { phase: DeclSawTest {}, tokens: Cons { head: tok, tail: Empty } }
+  } else {
+    DeclScan { phase: DeclSeeking {}, tokens: [] }
+  }
+}
+
+fn decl_scan_step(acc: DeclScan, tok: Token, function: String) -> DeclScan {
+  match acc.phase {
+    DeclDone => acc
+    DeclSeeking => decl_scan_seek(tok: tok)
+    DeclSawTest =>
+      if tok.class == ^dag_token_kw_fn {
+        DeclScan { phase: DeclSawFn {}, tokens: Cons { head: tok, tail: acc.tokens } }
+      } else {
+        decl_scan_seek(tok: tok)
+      }
+    DeclSawFn =>
+      if tok.class == ^dag_token_ident && tok.lexeme == function {
+        DeclScan { phase: DeclInSignature {}, tokens: Cons { head: tok, tail: acc.tokens } }
+      } else {
+        decl_scan_seek(tok: tok)
+      }
+    DeclInSignature =>
+      if tok.class == ^dag_token_lbrace {
+        DeclScan { phase: DeclInBody { depth: 1 }, tokens: Cons { head: tok, tail: acc.tokens } }
+      } else {
+        DeclScan { phase: DeclInSignature {}, tokens: Cons { head: tok, tail: acc.tokens } }
+      }
+    DeclInBody { depth: d } => {
+      let tokens = Cons { head: tok, tail: acc.tokens }
+      if tok.class == ^dag_token_lbrace {
+        DeclScan { phase: DeclInBody { depth: d + 1 }, tokens: tokens }
+      } else if tok.class == ^dag_token_rbrace {
+        if d == 1 {
+          DeclScan { phase: DeclDone {}, tokens: tokens }
+        } else {
+          DeclScan { phase: DeclInBody { depth: d - 1 }, tokens: tokens }
+        }
+      } else {
+        DeclScan { phase: DeclInBody { depth: d }, tokens: tokens }
+      }
+    }
+  }
+}
+
+// The whole `test fn <function> ... { ... }` declaration, signature included, so a signature edit
+// is a difference like any other. Absent when the declaration is not found closed.
+fn cost_debt_edit_decl_tokens(tokens: List<Token>, function: String) -> Optional<List<Token>> {
+  let scan = fold(tokens, init: DeclScan { phase: DeclSeeking {}, tokens: [] }, f: fn(acc, tok) {
+    decl_scan_step(acc: acc, tok: tok, function: function)
+  })
+  match scan.phase {
+    DeclDone => optional_present(value: list_reverse(xs: scan.tokens))
+    DeclSeeking => optional_absent()
+    DeclSawTest => optional_absent()
+    DeclSawFn => optional_absent()
+    DeclInSignature => optional_absent()
+    DeclInBody { depth: _ } => optional_absent()
+  }
+}
+
+// ---- the removal walk ----
+
+type ConjunctForm =
+    TrailingConjunct
+  | LeadingConjunct
+
+type RemovalPhase =
+    WalkAligned
+  | WalkAfterAndAnd
+  | WalkCallName { form: ConjunctForm }
+  | WalkCallDot { form: ConjunctForm }
+  | WalkCallArgs { form: ConjunctForm, depth: Int }
+  | WalkLeadingNeedsAndAnd
+  | WalkBroken
+
+type RemovalWalk {
+  head: List<Token>
+  phase: RemovalPhase
+  removed: Int
+  prev_kept: Optional<Symbol>
+  follower_pending: Bool
+}
+
+fn removal_tokens_equal(a: Token, b: Token) -> Bool {
+  a.class == b.class && a.lexeme == b.lexeme
+}
+
+fn removal_safe_follower(class: Symbol) -> Bool {
+  class == ^dag_token_and_and
+    || class == ^dag_token_or_or
+    || class == ^dag_token_rparen
+    || class == ^dag_token_rbrace
+    || class == ^dag_token_rbracket
+    || class == ^dag_token_comma
+    || class == ^dag_token_ident
+}
+
+fn removal_operand_opener(prev: Optional<Symbol>) -> Bool {
+  match prev {
+    Absent => true
+    Present { value: class } =>
+      class == ^dag_token_and_and
+        || class == ^dag_token_or_or
+        || class == ^dag_token_lparen
+        || class == ^dag_token_lbrace
+        || class == ^dag_token_lbracket
+        || class == ^dag_token_comma
+        || class == ^dag_token_eq
+        || class == ^dag_token_fat_arrow
+        || class == ^dag_token_kw_if
+        || class == ^dag_token_kw_then
+        || class == ^dag_token_kw_else
+        || class == ^dag_token_kw_return
+  }
+}
+
+fn removal_walk_with_phase(w: RemovalWalk, phase: RemovalPhase) -> RemovalWalk {
+  RemovalWalk { head: w.head, phase: phase, removed: w.removed, prev_kept: w.prev_kept, follower_pending: w.follower_pending }
+}
+
+fn removal_walk_broken(w: RemovalWalk) -> RemovalWalk {
+  removal_walk_with_phase(w: w, phase: WalkBroken {})
+}
+
+fn removal_walk_aligned_step(w: RemovalWalk, b: Token) -> RemovalWalk {
+  if w.follower_pending && !removal_safe_follower(class: b.class) {
+    removal_walk_broken(w: w)
+  } else {
+    let cleared = RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed, prev_kept: w.prev_kept, follower_pending: false }
+    let head_matches = match list_head(xs: cleared.head) {
+      HeadAbsent => false
+      HeadFound { value: h } => removal_tokens_equal(a: h, b: b)
+    }
+    if head_matches {
+      let rest = match list_tail(xs: cleared.head) {
+        TailAbsent => []
+        TailFound { tail: t } => t
+      }
+      RemovalWalk { head: rest, phase: WalkAligned {}, removed: cleared.removed, prev_kept: optional_present(value: b.class), follower_pending: false }
+    } else if b.class == ^dag_token_and_and {
+      removal_walk_with_phase(w: cleared, phase: WalkAfterAndAnd {})
+    } else if b.class == ^dag_token_ident && removal_operand_opener(prev: cleared.prev_kept) {
+      removal_walk_with_phase(w: cleared, phase: WalkCallName { form: LeadingConjunct {} })
+    } else {
+      removal_walk_broken(w: cleared)
+    }
+  }
+}
+
+fn removal_walk_call_closed(w: RemovalWalk, form: ConjunctForm) -> RemovalWalk {
+  match form {
+    TrailingConjunct =>
+      RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed + 1, prev_kept: w.prev_kept, follower_pending: true }
+    LeadingConjunct => removal_walk_with_phase(w: w, phase: WalkLeadingNeedsAndAnd {})
+  }
+}
+
+fn removal_walk_step(w: RemovalWalk, b: Token) -> RemovalWalk {
+  match w.phase {
+    WalkBroken => w
+    WalkAligned => removal_walk_aligned_step(w: w, b: b)
+    WalkAfterAndAnd =>
+      if b.class == ^dag_token_ident {
+        removal_walk_with_phase(w: w, phase: WalkCallName { form: TrailingConjunct {} })
+      } else {
+        removal_walk_broken(w: w)
+      }
+    WalkCallName { form: f } =>
+      if b.class == ^dag_token_dot {
+        removal_walk_with_phase(w: w, phase: WalkCallDot { form: f })
+      } else if b.class == ^dag_token_lparen {
+        removal_walk_with_phase(w: w, phase: WalkCallArgs { form: f, depth: 1 })
+      } else {
+        removal_walk_broken(w: w)
+      }
+    WalkCallDot { form: f } =>
+      if b.class == ^dag_token_ident {
+        removal_walk_with_phase(w: w, phase: WalkCallName { form: f })
+      } else {
+        removal_walk_broken(w: w)
+      }
+    WalkCallArgs { form: f, depth: d } =>
+      if b.class == ^dag_token_lparen {
+        removal_walk_with_phase(w: w, phase: WalkCallArgs { form: f, depth: d + 1 })
+      } else if b.class == ^dag_token_rparen {
+        if d == 1 {
+          removal_walk_call_closed(w: w, form: f)
+        } else {
+          removal_walk_with_phase(w: w, phase: WalkCallArgs { form: f, depth: d - 1 })
+        }
+      } else {
+        w
+      }
+    WalkLeadingNeedsAndAnd =>
+      if b.class == ^dag_token_and_and {
+        RemovalWalk { head: w.head, phase: WalkAligned {}, removed: w.removed + 1, prev_kept: w.prev_kept, follower_pending: false }
+      } else {
+        removal_walk_broken(w: w)
+      }
+  }
+}
+
+// THE DECISION OVER TWO TOKEN STREAMS. The claim-grain interface: witnesses supply the streams'
+// sources directly (DESIGN section 3, a witness discriminates at one interface).
+fn cost_debt_edit_from_decl_tokens(base: List<Token>, head: List<Token>) -> CostDebtWitnessEdit {
+  let walk = fold(base, init: RemovalWalk { head: head, phase: WalkAligned {}, removed: 0, prev_kept: optional_absent(), follower_pending: false }, f: fn(acc, b) {
+    removal_walk_step(w: acc, b: b)
+  })
+  let head_exhausted = match list_head(xs: walk.head) {
+    HeadAbsent => true
+    HeadFound { value: _ } => false
+  }
+  let aligned = match walk.phase {
+    WalkAligned => true
+    WalkAfterAndAnd => false
+    WalkCallName { form: _ } => false
+    WalkCallDot { form: _ } => false
+    WalkCallArgs { form: _, depth: _ } => false
+    WalkLeadingNeedsAndAnd => false
+    WalkBroken => false
+  }
+  if !(aligned && head_exhausted) {
+    ReJudgedAsNewWitness { cause: EditIsNotAConjunctRemoval {} }
+  } else if walk.removed == 0 {
+    ReJudgedAsNewWitness { cause: WitnessTokensUnchanged {} }
+  } else {
+    PureConjunctRemoval { removed_conjuncts: walk.removed }
+  }
+}
+
+type DeclReading =
+    DeclSourceUntokenizable
+  | DeclNotFound
+  | DeclFound { tokens: List<Token> }
+
+fn cost_debt_edit_decl_of(source: String, function: String, rules: LexRules) -> DeclReading {
+  match cost_debt_edit_source_tokens(source: source, rules: rules) {
+    Absent => DeclSourceUntokenizable {}
+    Present { value: tokens } =>
+      match cost_debt_edit_decl_tokens(tokens: tokens, function: function) {
+        Absent => DeclNotFound {}
+        Present { value: decl } => DeclFound { tokens: decl }
+      }
+  }
+}
+
+// THE DECISION OVER TWO FILE SOURCES, which is what the witnesses exercise and what the wet entry
+// below calls once the base is read.
+// The language model is built ONCE per decision and lent to both sides.
+fn cost_debt_edit_from_sources(base_source: String, head_source: String, function: String) -> CostDebtWitnessEdit {
+  let rules = dag_language_model().lex
+  match cost_debt_edit_decl_of(source: base_source, function: function, rules: rules) {
+    DeclSourceUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
+    DeclNotFound => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} }
+    DeclFound { tokens: base_decl } =>
+      match cost_debt_edit_decl_of(source: head_source, function: function, rules: rules) {
+        DeclSourceUntokenizable => ReJudgedAsNewWitness { cause: WitnessSourceDidNotTokenize {} }
+        DeclNotFound => ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtHead {} }
+        DeclFound { tokens: head_decl } =>
+          cost_debt_edit_from_decl_tokens(base: base_decl, head: head_decl)
+      }
+  }
+}
+
+// THE WET ENTRY THE HOST CALLS for a changed cost-debt witness. A base that cannot be shown -- the
+// path absent at the base, a rename, a failed read -- is not a pure removal, so it re-judges; it
+// never keeps the tier by default.
+fn cost_debt_changed_witness_ceiling_at_base(
+  base: String,
+  path: String,
+  function: String,
+  head_source: String
+) -> CostDebtChangedWitnessCeiling {
+  let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+  if !shown.success {
+    cost_debt_changed_witness_ceiling(edit: ReJudgedAsNewWitness { cause: WitnessNotDeclaredAtBase {} })
+  } else {
+    cost_debt_changed_witness_ceiling(
+      edit: cost_debt_edit_from_sources(base_source: shown.content, head_source: head_source, function: function)
+    )
+  }
+}
