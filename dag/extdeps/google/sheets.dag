@@ -279,6 +279,34 @@ type SheetsColor {
   blue: Float
 }
 
+// THE FIELD PATHS A MASK IS BUILT FROM, NAMED ONCE, BECAUSE A MASK AND A DECODE ARE ONE FACT.
+// A spreadsheets.get field mask is a list of upstream field paths, and every consumer that spells
+// one as a literal is authoring a second representation of what its own decode reads. That fork
+// is not theoretical: the format actuator's readback was changed to select a sheet by its
+// sheetId while its two masks still asked for no sheetId at all, so the selector looked for a
+// field the request had told Sheets not to send -- the grid read matched no sheet whatsoever and
+// the converge refused every time (review 68553). Nothing caught it because a mask literal and a
+// decode fold have no relation a compiler or a claim can check.
+//
+// These rows are that relation. A consumer composes its mask from the same named path its decode
+// keys on, so widening the reading and widening the request are one edit rather than two that can
+// drift. They are extdeps facts because the spelling is upstream's, not ours.
+data sheets_field_sheet_id: String = "sheets.properties.sheetId"
+
+data sheets_field_sheet_title: String = "sheets.properties.title"
+
+data sheets_field_sheet_index: String = "sheets.properties.index"
+
+data sheets_field_frozen_row_count: String = "sheets.properties.gridProperties.frozenRowCount"
+
+data sheets_field_conditional_formats: String = "sheets.conditionalFormats"
+
+data sheets_field_user_entered_format: String = "sheets.data.rowData.values.userEnteredFormat"
+
+fn sheets_field_mask(paths: List<String>) -> String {
+  join(paths, ",")
+}
+
 data spreadsheet_first_sheet_id: Int = 0
 
 // THE READ SIDE OF A COLOUR, AND IT IS NOT THE WRITE SIDE'S TYPE. Google's JSON omits a field whose

@@ -33,6 +33,11 @@ import gunbc.review_sheet_projection {
 import extdeps.google.sheets
 import extdeps.google.sheets {
   SheetsColor,
+  sheets_field_mask,
+  sheets_field_sheet_id,
+  sheets_field_frozen_row_count,
+  sheets_field_conditional_formats,
+  sheets_field_user_entered_format,
   SpreadsheetRead,
   SheetsSheetRead,
   SheetsColorRead,
@@ -572,9 +577,24 @@ fn header_format_of(read: SpreadsheetRead, sheet_id: Int) -> HeaderFormatReading
 // The split is along what each question actually needs. Grid data is expensive and MUST stay bounded
 // to the header row. The frozen row count and the conditional rules are sheet metadata, need no grid
 // data at all, and must NOT be range-filtered.
-data review_sheet_format_grid_field_mask: String = "sheets.data.rowData.values.userEnteredFormat"
+// BOTH MASKS NOW REQUEST THE sheetId, AND OMITTING IT BROKE THE PRODUCTION PATH OUTRIGHT.
+// When the readback stopped taking the head of the sheet list and started selecting the sheet
+// whose sheetId is the LOCATED one, these two masks kept their old spelling -- so the selector
+// keyed on a field the request had told Sheets not to send. The grid mask asked for no
+// properties at all, so no sheet ever matched and converge_review_sheet_format answered
+// FormatConvergeRefused for every workbook; the metadata mask carried properties without the id,
+// so absent-is-zero made it match only when the located tab happened to be tab zero -- the exact
+// assumption this change exists to remove, reintroduced in the one place nothing was looking
+// (review 68553).
+//
+// The masks are composed from extdeps.google.sheets field-path rows rather than spelled here, so
+// the path the decode keys on and the path the request asks for are ONE declaration. That is the
+// repair: the defect was not a forgotten string, it was a mask and a decode being two
+// representations of one fact with nothing joining them, which is what let widening the reading
+// and widening the request come apart.
+data review_sheet_format_grid_field_mask: String = sheets_field_mask(paths: [sheets_field_sheet_id, sheets_field_user_entered_format])
 
-data review_sheet_format_meta_field_mask: String = "sheets.properties.gridProperties.frozenRowCount,sheets.conditionalFormats"
+data review_sheet_format_meta_field_mask: String = sheets_field_mask(paths: [sheets_field_sheet_id, sheets_field_frozen_row_count, sheets_field_conditional_formats])
 
 // THE RANGE IS QUALIFIED BY THE LOCATED TITLE, and the bare form this replaced is the READ side of
 // the same defect the constant sheetId was on the write side. gunbc.review_sheet_sheets

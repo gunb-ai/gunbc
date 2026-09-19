@@ -20,6 +20,10 @@ import extdeps.google.sheets {
   SheetsSheetPropertiesRead,
   sheets_sheet_id_read,
   sheets_sheet_index_read,
+  sheets_field_mask,
+  sheets_field_sheet_id,
+  sheets_field_sheet_title,
+  sheets_field_sheet_index,
 }
 import v2.std.algebra { fold_list }
 
@@ -283,7 +287,7 @@ fn first_review_tab_candidate(items: List<ReviewTabCandidate>) -> ReviewTabCandi
 // the read does not grow with the census, and it names the three fields the candidate is built
 // from -- a mask wider than the reading is a cost nobody asked for, and one narrower is a field
 // that silently arrives absent.
-data review_tab_locator_field_mask: String = "sheets.properties.sheetId,sheets.properties.title,sheets.properties.index"
+data review_tab_locator_field_mask: String = sheets_field_mask(paths: [sheets_field_sheet_id, sheets_field_sheet_title, sheets_field_sheet_index])
 
 // THE READ THAT MAKES THE MINT LEGITIMATE. Every arm that is not a 200 is TabUnreadable carrying
 // the transport's own account of why, because a locator that answered TabAbsent to a 403 would

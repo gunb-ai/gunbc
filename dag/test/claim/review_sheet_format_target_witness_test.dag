@@ -6,6 +6,7 @@ import extdeps.google.sheets {
   SheetsSheetRead,
   SheetsSheetPropertiesRead,
   spreadsheet_first_sheet_id,
+  sheets_field_sheet_id,
 }
 import gunbc.review_sheet_tab_locator {
   ReviewTabStanding,
@@ -19,6 +20,9 @@ import gunbc.review_sheet_tab_locator {
 import gunbc.review_sheet_format_actuator {
   FormatRequestPlan,
   format_request_plan,
+  review_sheet_format_grid_field_mask,
+  review_sheet_format_meta_field_mask,
+  located_sheet,
   HeaderRangeStanding,
   HeaderRangeWire,
   HeaderRangeUnqualifiable,
@@ -147,4 +151,74 @@ test fn a_title_needing_a1_quoting_declines_the_range_instead_of_guessing_the_en
     TabAmbiguous { candidates: _ } => false
     TabUnreadable { cause: _ } => false
   }
+}
+
+// THE READBACK MUST BE ABLE TO FIND THE TAB THE WRITES ADDRESS, AND FOR ONE REVISION IT COULD NOT.
+// Selecting the sheet by its located sheetId was landed while both field masks still asked for no
+// sheetId, so the selector keyed on a field the request had suppressed: the grid read matched no
+// sheet at all and the converge refused every workbook, and the metadata read matched only tab
+// zero (review 68553). Every claim above stayed green through it, because all of them read the
+// REQUEST PLAN and none of them ran the DECODE against a response shaped by the mask. These three
+// close that gap at the seam where it opened.
+
+fn sheet_with_properties(sheet_id: Int) -> SheetsSheetRead {
+  SheetsSheetRead {
+    properties: Present {
+      value: SheetsSheetPropertiesRead {
+        sheetId: Present { value: sheet_id },
+        title: none,
+        index: none,
+        gridProperties: none,
+      }
+    },
+    data: none,
+    conditionalFormats: none,
+  }
+}
+
+fn read_of(sheets_read: List<SheetsSheetRead>) -> SpreadsheetRead {
+  SpreadsheetRead { spreadsheetId: none, sheets: Present { value: sheets_read } }
+}
+
+// (a) THE DECODE FINDS THE LOCATED TAB, and it is asked for a non-zero id beside a zero one so a
+// selector that still answered "the first sheet" would pick the wrong record and fail here.
+test fn the_readback_selects_the_sheet_carrying_the_located_id_not_the_first_one() -> Bool {
+  match located_sheet(
+    read: read_of(sheets_read: [sheet_with_properties(sheet_id: 0), sheet_with_properties(sheet_id: 918273645)]),
+    sheet_id: 918273645,
+  ) {
+    Absent => false
+    Present { value: sheet } =>
+      match sheet.properties {
+        Absent => false
+        Present { value: props } =>
+          match props.sheetId {
+            Absent => false
+            Present { value: id } => id == 918273645
+          }
+      }
+  }
+}
+
+// (b) A RESPONSE CARRYING NO PROPERTIES FINDS NOTHING, which is the shape the narrow grid mask
+// produced. The arm itself is correct -- an unread sheet may not be adopted -- and the defect was
+// that the REQUEST guaranteed this arm for every tab. Asserting it here pins the decode's honest
+// behaviour so the mask claims below carry the whole weight of the repair.
+test fn a_response_with_no_properties_locates_no_sheet_rather_than_defaulting_to_the_first() -> Bool {
+  match located_sheet(
+    read: read_of(sheets_read: [SheetsSheetRead { properties: none, data: none, conditionalFormats: none }]),
+    sheet_id: 918273645,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// (c) BOTH MASKS REQUEST THE FIELD THE SELECTOR KEYS ON. This is the claim that would have caught
+// the defect, and it is an identity join rather than a spelling check: the masks are composed
+// from extdeps.google.sheets sheets_field_sheet_id and this asserts that same row is present in
+// each, so a mask narrowed back to its old spelling reddens here.
+test fn both_readback_masks_request_the_sheet_id_the_selector_keys_on() -> Bool {
+  string_contains(s: review_sheet_format_grid_field_mask, pattern: sheets_field_sheet_id)
+    && string_contains(s: review_sheet_format_meta_field_mask, pattern: sheets_field_sheet_id)
 }
