@@ -2,6 +2,17 @@ module gunbc.review_sheet_spreadsheet_actuator
 
 import std.types { NonEmptyStr, String, Bool }
 import std.resources { Network }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactRead,
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read,
+  filesystem_failure_kind_name,
+}
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import gunbc.ensure { EnsurePolicy }
 import extdeps.transports.rest {
@@ -25,9 +36,28 @@ import gunbc.review_sheet_drive_converge {
   SheetPageIncomplete,
   SheetSearchUnreadable,
   SpreadsheetCreatePlan,
+  SpreadsheetMarkerMigrationPlan,
+  SpreadsheetPlan,
+  SpreadsheetCreate,
+  SpreadsheetMigrateMarker,
+  SupersededSearchReading,
+  SupersededNotConsulted,
+  SupersededRead,
+  SupersededMarkerVisibility,
+  superseded_visibility_unobservable,
+  SupersededMarkerDeclaration,
+  NoDeclaration,
+  DeclaredNoLegacySheet,
+  DeclaredLegacySheetId,
+  DeclarationUnreadable,
+  visibility_from_declaration,
+  ensure_review_spreadsheet_with_declaration,
+  review_sheet_no_legacy_sheet_declaration_path,
+  review_sheet_legacy_sheet_id_declaration_path,
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
+  review_sheet_superseded_search_query,
 }
 
 // THE HARDER AMBIGUITY, AND THE REASON THE KEY IS CHOSEN BEFORE THE CALL. A lost answer from
@@ -45,15 +75,21 @@ type SpreadsheetConvergeOutcome
   = SpreadsheetAdopted { file_id: NonEmptyStr }
   | SpreadsheetCreatedAndVerified { file_id: NonEmptyStr }
   | SpreadsheetCreateUnverified { cause: NonEmptyStr }
+  | SpreadsheetMarkerMigratedAndVerified { file_id: NonEmptyStr }
+  | SpreadsheetMarkerMigrationUnverified { cause: NonEmptyStr }
   | SpreadsheetConvergeRefused { cause: NonEmptyStr }
 
+// THE QUERY IS A PARAMETER NOW, BECAUSE TWO QUESTIONS SHARE ONE READ. Both the current-marker and
+// the superseded-marker searches are files.list over one drive differing only in the q string, and
+// every arm of the outcome classification below is identical for the two. Forking this function per
+// marker generation would duplicate five refusal arms to vary one argument.
 fn read_spreadsheet(
   drive_id: NonEmptyStr,
-  marker_value: NonEmptyStr,
+  query: String,
 ) -> ReviewSpreadsheetObservation uses net: Network {
   let read = drive.Files.ListFiles(
     drive_id: drive_id as String,
-    query: review_sheet_search_query(marker_value: marker_value),
+    query: query,
   )
   match classify_rest_outcome(standing: RestReadExchange { rest: read.outcome }) {
     RestExchangeSucceeded => spreadsheet_from_file_list(list: read.list)
@@ -86,7 +122,7 @@ fn verify_created_spreadsheet(
   marker_value: NonEmptyStr,
   create_detail: NonEmptyStr,
 ) -> SpreadsheetConvergeOutcome uses net: Network {
-  match read_spreadsheet(drive_id: drive_id, marker_value: marker_value) {
+  match read_spreadsheet(drive_id: drive_id, query: review_sheet_search_query(marker_value: marker_value)) {
     SheetObservedOne { file_id: id } => SpreadsheetCreatedAndVerified { file_id: id }
     SheetAbsent =>
       SpreadsheetCreateUnverified {
@@ -154,23 +190,261 @@ fn perform_spreadsheet_create(
   }
 }
 
+// THE READBACK IS A SEARCH, NOT THE PATCH'S OWN ANSWER, AND IT ASSERTS THE ID RATHER THAN A COUNT.
+// files.update answering 200 establishes that Drive accepted a write; it does not establish that a
+// search on the current marker now reaches this file, which is the only property the migration
+// exists to produce. So the verification re-asks the ORIGINAL question -- the current-marker query
+// that found nothing before the write -- and requires the answer to be the file we patched.
+//
+// EXACTLY-ONE IS NOT ENOUGH HERE and the difference is not pedantic: a concurrent create elsewhere
+// would also answer exactly-one, and adopting it would hand this converge a different spreadsheet
+// than the one holding the operator's data -- the original defect with the roles reversed. The id
+// comparison is what makes the readback about this actuation rather than about the drive.
+fn verify_marker_migration(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+  expected_file_id: NonEmptyStr,
+  migration_detail: NonEmptyStr,
+) -> SpreadsheetConvergeOutcome uses net: Network {
+  match read_spreadsheet(drive_id: drive_id, query: review_sheet_search_query(marker_value: marker_value)) {
+    SheetObservedOne { file_id: id } =>
+      if (id as String) == (expected_file_id as String) {
+        SpreadsheetMarkerMigratedAndVerified { file_id: id }
+      } else {
+        SpreadsheetConvergeRefused {
+          cause: join(
+            [
+              migration_detail as String,
+              ", and the current marker now reaches ",
+              id as String,
+              " rather than the file it was written onto (",
+              expected_file_id as String,
+              "); another file answers for this identity and only an operator can say which is real",
+            ],
+            "",
+          ) as NonEmptyStr
+        }
+      }
+    SheetAbsent =>
+      SpreadsheetMarkerMigrationUnverified {
+        cause: join(
+          [migration_detail as String, ", and no file carries the current marker afterwards; the write did not take and was not refused"],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetDuplicated { file_ids: ids } =>
+      SpreadsheetConvergeRefused {
+        cause: join(
+          [migration_detail as String, ", and two or more files now carry the current marker (", join(ids, ", "), "); a second lineage exists and only an operator can say which is real"],
+          "",
+        ) as NonEmptyStr
+      }
+    SheetSearchIncomplete =>
+      SpreadsheetMarkerMigrationUnverified {
+        cause: join([migration_detail as String, ", and the verifying search was incomplete, so the migration may not be reported as done"], "") as NonEmptyStr
+      }
+    SheetPageIncomplete { next_page_token: _ } =>
+      SpreadsheetMarkerMigrationUnverified {
+        cause: join([migration_detail as String, ", and the verifying search returned one page of a longer list; a page is not the list"], "") as NonEmptyStr
+      }
+    SheetSearchUnreadable { reason: r } =>
+      SpreadsheetMarkerMigrationUnverified {
+        cause: join([migration_detail as String, ", and the verifying read could not settle it: ", r as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// AN AMBIGUOUS COMMIT VERIFIES RATHER THAN REFUSES, FOR THE SAME REASON THE CREATE PATH DOES: the
+// question after a lost answer is not what the call said but what the drive now holds. Unlike the
+// create path this write is IDEMPOTENT -- writing one properties key twice leaves the same file in
+// the same state -- so a lost answer here cannot have minted anything, and re-reading settles it.
+fn perform_marker_migration(
+  drive_id: NonEmptyStr,
+  plan: SpreadsheetMarkerMigrationPlan,
+) -> SpreadsheetConvergeOutcome uses net: Network {
+  let patched = drive.Files.UpdateFileProperties(
+    file_id: plan.file_id as String,
+    marker_property_value: plan.marker_property_value as String,
+  )
+  match classify_rest_outcome(standing: RestMutationExchange { rest: patched.outcome }) {
+    RestExchangeSucceeded =>
+      verify_marker_migration(
+        drive_id: drive_id,
+        marker_value: plan.marker_property_value,
+        expected_file_id: plan.file_id,
+        migration_detail: join(["files.update answered success for ", plan.file_id as String], "") as NonEmptyStr,
+      )
+    RestExchangeCommitAmbiguous { detail } =>
+      verify_marker_migration(
+        drive_id: drive_id,
+        marker_value: plan.marker_property_value,
+        expected_file_id: plan.file_id,
+        migration_detail: join(["files.update left the write ambiguous for ", plan.file_id as String, " (", detail, ")"], "") as NonEmptyStr,
+      )
+    RestExchangeStatusRefused { status, body } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.update refused with status ", to_string(status), ": ", body], "") as NonEmptyStr
+      }
+    RestExchangeUnreached { cause } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.update never reached Drive: ", cause as String], "") as NonEmptyStr
+      }
+    RestExchangeUndecodable { status, cause } =>
+      SpreadsheetConvergeRefused {
+        cause: join(["files.update answered ", to_string(status), " with an unreadable body: ", cause as String], "") as NonEmptyStr
+      }
+  }
+}
+
+// THE SECOND SEARCH IS ISSUED ON EVERY NON-REFUSING CURRENT OBSERVATION, AND THAT COSTS A SECOND
+// files.list ON EVERY RUN INCLUDING THE STEADY STATE. An earlier cut issued it only when the current
+// search found nothing, and justified the skip exactly here: an adopted sheet settles the identity.
+// That sentence is only true if the identity has ONE SPELLING, which is what this whole module
+// exists to deny -- properties reaching A while appProperties still reaches B is a converged-looking
+// Noop that leaves B invisible forever.
+//
+// So the cost was accepted rather than avoided, and it is one list call per converge, not one per
+// row. The REFUSING arms still skip it, and that is not an optimisation either: they have already
+// refused for a reason no superseded-marker file could repair, so issuing the read could not change
+// the decision.
+// THE DECLARATION IS READ FROM DISK, WHICH IS WHAT MAKES THE ARM REACHABLE OUTSIDE A FIXTURE. The
+// id file wins over the absence file: supplying an id is the more specific statement, and an
+// operator who wrote both has told us a sheet exists, so honouring the weaker one would create
+// beside it.
+fn read_declaration_file(path: String) -> FilesystemExactRead uses fs: std.resources.Filesystem {
+  let r = Filesystem.Read(path: path)
+  filesystem_exact_read(
+    path: path,
+    content: r.content,
+    success: r.success,
+    error: r.error,
+    error_kind: r.error_kind,
+  )
+}
+
+// THE ID FILE WINS WHEN IT IS READABLE AND REFUSES WHEN IT IS NOT. It never falls through to the
+// weaker declaration: an operator who wrote an id has told us a sheet exists, and degrading to the
+// absence file on a read failure would create beside it. Only a host-typed ABSENT advances to the
+// second file, which is the one arm that genuinely means "this was not declared".
+fn read_superseded_declaration() -> SupersededMarkerDeclaration uses fs: std.resources.Filesystem {
+  match read_declaration_file(path: review_sheet_legacy_sheet_id_declaration_path) {
+    FilesystemExactPathRead { path: p, content: c } =>
+      if trim(c) == "" {
+        DeclarationUnreadable {
+          path: p,
+          cause: "the file exists and is empty, which declares nothing; an operator who meant to declare no legacy sheet writes the other file" as NonEmptyStr,
+        }
+      } else {
+        DeclaredLegacySheetId {
+          file_id: trim(c) as NonEmptyStr,
+          basis: join(["an operator supplied this file id at ", p], "") as NonEmptyStr,
+        }
+      }
+    FilesystemExactPathUnreadable { path: p, kind: k, error: e } =>
+      DeclarationUnreadable {
+        path: p,
+        cause: join(["the host refused this read as ", filesystem_failure_kind_name(kind: k), ": ", e], "") as NonEmptyStr,
+      }
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      DeclarationUnreadable {
+        path: p,
+        cause: join(["the host answered an unrecognized failure kind ", o, ": ", e], "") as NonEmptyStr,
+      }
+    FilesystemExactPathAbsent { path: _ } => read_no_legacy_sheet_declaration()
+  }
+}
+
+fn read_no_legacy_sheet_declaration() -> SupersededMarkerDeclaration uses fs: std.resources.Filesystem {
+  match read_declaration_file(path: review_sheet_no_legacy_sheet_declaration_path) {
+    FilesystemExactPathRead { path: p, content: c } =>
+      if trim(c) == "" {
+        DeclarationUnreadable {
+          path: p,
+          cause: "the file exists and is empty, so it declares nothing; an empty file is not an assertion that the drive is empty" as NonEmptyStr,
+        }
+      } else {
+        DeclaredNoLegacySheet {
+          basis: join(["an operator declared this drive holds no superseded-marked review sheet at ", p], "") as NonEmptyStr,
+        }
+      }
+    FilesystemExactPathUnreadable { path: p, kind: k, error: e } =>
+      DeclarationUnreadable {
+        path: p,
+        cause: join(["the host refused this read as ", filesystem_failure_kind_name(kind: k), ": ", e], "") as NonEmptyStr,
+      }
+    FilesystemExactPathKindUnrecognized { path: p, observed: o, error: e } =>
+      DeclarationUnreadable {
+        path: p,
+        cause: join(["the host answered an unrecognized failure kind ", o, ": ", e], "") as NonEmptyStr,
+      }
+    FilesystemExactPathAbsent { path: _ } => NoDeclaration
+  }
+}
+
+fn perform_superseded_read(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+  declaration: SupersededMarkerDeclaration,
+) -> SupersededSearchReading uses net: Network {
+  SupersededRead {
+    observation: read_spreadsheet(
+      drive_id: drive_id,
+      query: review_sheet_superseded_search_query(marker_value: marker_value),
+    ),
+    visibility: visibility_from_declaration(declaration: declaration),
+  }
+}
+
+fn read_superseded_marker(
+  drive_id: NonEmptyStr,
+  marker_value: NonEmptyStr,
+  observed: ReviewSpreadsheetObservation,
+  declaration: SupersededMarkerDeclaration,
+) -> SupersededSearchReading uses net: Network {
+  match observed {
+    SheetAbsent => perform_superseded_read(drive_id: drive_id, marker_value: marker_value, declaration: declaration)
+    SheetObservedOne { file_id: _ } => perform_superseded_read(drive_id: drive_id, marker_value: marker_value, declaration: declaration)
+    SheetDuplicated { file_ids: _ } => SupersededNotConsulted
+    SheetSearchIncomplete => SupersededNotConsulted
+    SheetPageIncomplete { next_page_token: _ } => SupersededNotConsulted
+    SheetSearchUnreadable { reason: _ } => SupersededNotConsulted
+  }
+}
+
 fn converge_review_spreadsheet(
   drive_id: NonEmptyStr,
   sheet_name: NonEmptyStr,
   marker_value: NonEmptyStr,
   policy: EnsurePolicy,
-) -> SpreadsheetConvergeOutcome uses net: Network {
-  let observed = read_spreadsheet(drive_id: drive_id, marker_value: marker_value)
-  match ensure_review_spreadsheet(
+) -> SpreadsheetConvergeOutcome uses net: Network, fs: std.resources.Filesystem {
+  let observed = read_spreadsheet(
+    drive_id: drive_id,
+    query: review_sheet_search_query(marker_value: marker_value),
+  )
+  let declaration = read_superseded_declaration()
+  let superseded = read_superseded_marker(
+    drive_id: drive_id,
+    marker_value: marker_value,
+    observed: observed,
+    declaration: declaration,
+  )
+  match ensure_review_spreadsheet_with_declaration(
     policy: policy,
     observed: observed,
+    superseded: superseded,
+    declaration: declaration,
     drive_id: drive_id,
     sheet_name: sheet_name,
     marker_value: marker_value,
   ) {
     Noop => spreadsheet_noop_outcome(observed: observed)
     Refuse { reason: r } => SpreadsheetConvergeRefused { cause: r }
-    Apply { plan: p } => perform_spreadsheet_create(plan: p)
+    Apply { plan: p } =>
+      match p {
+        SpreadsheetCreate { create: c } => perform_spreadsheet_create(plan: c)
+        SpreadsheetMigrateMarker { migrate: m } =>
+          perform_marker_migration(drive_id: drive_id, plan: m)
+      }
   }
 }
 
@@ -202,6 +476,10 @@ fn spreadsheet_noop_outcome(observed: ReviewSpreadsheetObservation) -> Spreadshe
 
 fn spreadsheet_outcome_text(o: SpreadsheetConvergeOutcome) -> String {
   match o {
+    SpreadsheetMarkerMigratedAndVerified { file_id: id } =>
+      join(["adopted sheet ", id as String, " and migrated it from the superseded marker to the current one"], "")
+    SpreadsheetMarkerMigrationUnverified { cause: c } =>
+      join(["marker migration UNVERIFIED: ", c as String], "")
     SpreadsheetAdopted { file_id: id } => join(["adopted existing sheet ", id as String], "")
     SpreadsheetCreatedAndVerified { file_id: id } =>
       join(["created and verified by readback: ", id as String], "")

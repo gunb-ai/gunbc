@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.identity_relation_modelled_at_its_current_spelling_only
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data identity_relation_modelled_at_its_current_spelling_only: RecurringFailureMode = RecurringFailureMode {
+  identity: "identity_relation_modelled_at_its_current_spelling_only" as NonEmptyStr,
+
+  receipts: [
+    "**a durable subject's identity is relocated, the lookup is rewritten to the new location, and every subject still at the old one becomes invisible -- so a converge observes absence and CREATES A SECOND COPY of a thing that already exists** (INVALID STATE: an identity relation -- a marker property, a label key, a tag name, an annotation, a naming convention, a path -- is moved, and the query that resolves it is updated to name the new location and only the new location.",
+
+    "Both halves of that change are correct read alone: the new location is the right one, and the query correctly implements it.",
+
+    "What is missing is that the RELATION is 'is this my subject', while the query now answers the narrower 'does this subject record its identity where I currently write it'. The two agreed before the move and agree again after every subject has migrated; in between they differ, and nothing in either edit says the in-between exists.",
+
+    "HARM, AND IT IS THE WORST SHAPE AN IDEMPOTENCE FAILURE TAKES. The lookup does not error -- it returns a clean, well-formed, complete EMPTY result, which is the one answer that authorizes a create. So the converge mints a duplicate, and the duplicate is not a wasted row: the original holds the accumulated state and the new one is what every subsequent run adopts, because the new one carries the new marker. The system converges perfectly onto the wrong subject, reports success, and the real one goes dark while still existing. No refusal fires at any point.",
+
+    "DISTINGUISHING FACT: the create is authorized by an absence that was never established over the identity's full extent. The tell is available at authoring time and does not need the incident -- a diff that changes WHERE an identity is recorded while the population recorded at the old place is nonempty or unmeasured, with no read of the old place surviving in the change.",
+
+    "RECOGNITION RULE: when the location of an identity moves, the lookup owes BOTH locations until a census establishes the old one is empty, and the create arm must be unreachable unless every location has been read and has answered absent. A search of the new location alone is not an observation of absence, exactly as an `incompleteSearch` is not.",
+
+    "**DISTINCT FROM ITS NEIGHBOURS, and the boundary is what the instrument was pointed at.** [[absent_reads_identically_to_never_looked]] is an instrument that MISSED its subject -- wrong path, wrong window, wrong directory -- and the repair is to record the looked-at set. Here the instrument reached exactly the region it was aimed at and reported it correctly; the SUBJECT moved out from under the aim, so recording the looked-at set would faithfully record a region that no longer contains the subject. [[readback_scoped_to_exclude_the_effect_it_verifies]] is a request whose scope excludes an effect this process itself performed; here the excluded subject predates the process entirely. [[a_probe_symbol_that_cannot_exist_records_a_false_absence]] is a probe that could never have answered yes; this probe could have, one revision earlier.",
+
+    "**SPECIMEN (zesty-crane-846, gunbc#11485 caused it, this row lands with the repair, 2026-09-18).** `gunbc.review_sheet_drive_converge` `review_sheet_search_query` was rewritten from Drive's `appProperties` to `properties` for a credential-visibility reason that was itself correct -- the bootstrap create and the recurring search run under different OAuth clients, and an app-private marker reads as absent to the other one. The operator's live spreadsheet carried the old field. The next converge searched, found nothing, and created a second spreadsheet; it was recovered by hand, and nothing in the model would have recovered it. THE REPAIR IS NOT A SECOND QUERY BOLTED ON: `SupersededSearchReading` makes 'we did not look' a state distinct from 'we looked and found nothing', and the create arm is unreachable from the first -- so skipping the read cannot mint a file, which is the property a second query alone would not have.",
+
+    "RUNG FOUND AT: 1, mitigatable, and only by a human noticing two spreadsheets. CEILING: 3, structurally guaranteed. The relation is DECIDABLE from the corpus -- which locations an identity has occupied is authored history, not an external fact -- so a change that relocates an identity can be refused at acceptance unless the lookup reads every location the identity has occupied. NEXT TRIGGER: a modeled carrier for an identity relation that holds its locations as an ordered set rather than a single string, with the resolver derived from that set, so a relocation is an APPEND and a lookup that reads one element is unwritable rather than merely wrong.",
+
+    "**WHY NO WITNESS HELD IT, WHICH IS THE PART WORTH CARRYING.** gunbc#11485 shipped with a witness asserting the search query names `properties` and the marker key -- a claim that is TRUE, that went green, and that is about the query's spelling rather than about the relation the query is supposed to decide. A witness can only discriminate at the boundary it is pointed at, and every witness in that module was pointed at the new spelling because the new spelling was what the change was about. The absent claim is the one nobody writes: that a subject recorded under the PREVIOUS spelling is still found."
+  ],
+
+  evidence: [],
+}

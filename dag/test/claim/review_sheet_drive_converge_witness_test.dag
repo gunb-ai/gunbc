@@ -32,9 +32,31 @@ import gunbc.review_sheet_drive_converge {
   SheetDuplicated,
   SheetSearchIncomplete,
   SheetSearchUnreadable,
+  SheetPageIncomplete,
+  SpreadsheetPlan,
+  SupersededSearchReading,
+  SpreadsheetCreate,
+  SpreadsheetMigrateMarker,
+  SupersededNotConsulted,
+  SupersededRead,
+  SupersededMarkerVisibility,
+  SupersededFieldVisibleToThisClient,
+  SupersededFieldVisibilityUnobservable,
+  superseded_visibility_unobservable,
+  SupersededMarkerDeclaration,
+  NoDeclaration,
+  DeclaredNoLegacySheet,
+  DeclaredLegacySheetId,
+  DeclarationUnreadable,
+  visibility_from_declaration,
+  ensure_review_spreadsheet_with_declaration,
   spreadsheet_from_file_list,
   ensure_review_spreadsheet,
   review_sheet_search_query,
+  review_sheet_superseded_search_query,
+  review_sheet_marker_query,
+  review_sheet_current_marker_property_field,
+  review_sheet_superseded_marker_property_field,
   review_sheet_marker_property_key,
 }
 
@@ -230,6 +252,7 @@ test fn incomplete_search_refuses_rather_than_creating() -> Bool {
         nextPageToken: none
       }
     ),
+    superseded: SupersededNotConsulted,
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
     marker_value: "ci-prospect-sheet" as NonEmptyStr,
@@ -253,13 +276,27 @@ test fn complete_search_with_no_files_creates() -> Bool {
         nextPageToken: none
       }
     ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: w_visible(),
+    },
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
     marker_value: "ci-prospect-sheet" as NonEmptyStr,
   ) {
     Apply { plan: p } =>
-      (p.marker_property_value as String) == "ci-prospect-sheet"
-        && (p.drive_id as String) == (w_drive() as String)
+      match p {
+        SpreadsheetCreate { create: c } =>
+          (c.marker_property_value as String) == "ci-prospect-sheet"
+            && (c.drive_id as String) == (w_drive() as String)
+        SpreadsheetMigrateMarker { migrate: _ } => false
+      }
     Noop => false
     Refuse { reason: _ } => false
   }
@@ -275,6 +312,10 @@ test fn exactly_one_match_adopts_without_writing() -> Bool {
         nextPageToken: none
       }
     ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    },
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
     marker_value: "ci-prospect-sheet" as NonEmptyStr,
@@ -298,6 +339,7 @@ test fn duplicate_matches_refuse_and_name_both() -> Bool {
         nextPageToken: none
       }
     ),
+    superseded: SupersededNotConsulted,
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
     marker_value: "ci-prospect-sheet" as NonEmptyStr,
@@ -308,6 +350,598 @@ test fn duplicate_matches_refuse_and_name_both() -> Bool {
     Noop => false
     Apply { plan: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE SUPERSEDED MARKER
+// ---------------------------------------------------------------------------------------------
+// These six claims are one wall and its controls. The wall is that absence under the CURRENT marker
+// no longer authorizes a create by itself, because that is exactly the state gunbc#11485 produced
+// on a drive already holding a review sheet, and a create there minted a duplicate beside live data.
+
+// THIS GOES THROUGH THE PRODUCTION FOLD RATHER THAN NAMING THE ARM, and that is the repair review
+// 67720 asked for. An earlier cut constructed SupersededFieldVisibleToThisClient directly here, and
+// it was the ONLY constructor anywhere -- so the claims below were green through a value the
+// actuator could never emit, and bootstrap was dead while they said it was reachable. Routing the
+// fixture through visibility_from_declaration means these claims exercise the same fold the
+// actuator calls, and deleting that fold reds them.
+fn w_visible() -> SupersededMarkerVisibility {
+  visibility_from_declaration(
+    declaration: DeclaredNoLegacySheet {
+      basis: "fixture: an operator declared this drive holds no superseded-marked review sheet" as NonEmptyStr
+    }
+  )
+}
+
+fn w_absent_page() -> DriveFileList {
+  DriveFileList { files: Present { value: [] }, incompleteSearch: Present { value: false }, nextPageToken: none }
+}
+
+fn w_ensure_absent(superseded: SupersededSearchReading) -> UpsertDecision<SpreadsheetPlan> {
+  ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: superseded,
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  )
+}
+
+// A FILE CARRYING ONLY THE OLD MARKER IS ADOPTED AND MIGRATED, NOT DUPLICATED. This is the claim
+// that would have gone red before the change: the fold had no way to be told about such a file, so
+// it answered Apply-create over a drive that already held the sheet.
+test fn superseded_marked_file_migrates_rather_than_creating() -> Bool {
+  match w_ensure_absent(
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-sheet")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    }
+  ) {
+    Apply { plan: p } =>
+      match p {
+        SpreadsheetMigrateMarker { migrate: m } =>
+          (m.file_id as String) == "legacy-sheet"
+            && (m.marker_property_value as String) == "ci-prospect-sheet"
+        SpreadsheetCreate { create: _ } => false
+      }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE WALL ABOVE. Both searches complete and both find nothing, which is a
+// genuinely empty drive, and a create is the right answer there. Without this claim a fold that
+// refused every absence would satisfy every other claim in this section while making the converge
+// unable to ever mint the first sheet.
+test fn absence_under_both_markers_still_creates() -> Bool {
+  match w_ensure_absent(
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: w_visible(),
+    }
+  ) {
+    Apply { plan: p } =>
+      match p {
+        SpreadsheetCreate { create: c } => (c.drive_id as String) == (w_drive() as String)
+        SpreadsheetMigrateMarker { migrate: _ } => false
+      }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// THE DECLARED ID DOES NOT OVERRIDE A DISAGREEING POSITIVE FIND. This is the arm review 67779
+// found missing: current marker absent, superseded search naming A, declaration naming B. The first
+// cut patched B and answered MigratedAndVerified while A stayed on the superseded marker and went
+// dark with success reported -- silent wrongness, and the same identity split the failure-mode row
+// in this PR describes.
+test fn a_declared_id_disagreeing_with_the_superseded_find_refuses() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-A")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "declared-B" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "legacy-A")
+        && string_contains(s: r as String, pattern: "declared-B")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// A REFUSING CURRENT SEARCH STOPS THE LINE BEFORE ANY WRITE. The declared id used to bypass these
+// arms entirely, so a patch could land while it was still unknown whether a current-marked sheet
+// existed -- which is how a second one gets minted.
+test fn a_declared_id_does_not_bypass_an_unreadable_current_search() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList { files: none, incompleteSearch: Present { value: false }, nextPageToken: none }
+    ),
+    superseded: SupersededNotConsulted,
+    declaration: DeclaredLegacySheetId {
+      file_id: "declared-B" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "could not be read")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// A DUPLICATED SUPERSEDED FIND REFUSES EVEN WHEN THE DECLARED ID IS ONE OF THEM. An earlier cut
+// treated membership as adjudication and migrated, which abandons the other files: the next run
+// finds the migrated one, answers Noop, never consults the superseded field again, and they go dark
+// with success reported. The refusal must name EVERY id, because the operator has to settle this
+// with all of them in view.
+test fn a_declared_id_among_superseded_duplicates_still_refuses() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-A"), w_file(id: "legacy-B")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "legacy-A" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "legacy-A")
+        && string_contains(s: r as String, pattern: "legacy-B")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE AGREEMENT CONTROL, without which a fold that refused every declared id would satisfy both
+// claims above while making the id route dead.
+test fn a_declared_id_agreeing_with_the_superseded_find_migrates() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-A")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "legacy-A" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Apply { plan: p } =>
+      match p {
+        SpreadsheetMigrateMarker { migrate: m } => (m.file_id as String) == "legacy-A"
+        SpreadsheetCreate { create: _ } => false
+      }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// AN UNREADABLE DECLARATION REFUSES AND NEVER DEGRADES TO THE WEAKER ONE. A file that exists and
+// cannot be read says something unknown, not nothing; the first cut of this reader fell through to
+// the absence file and would have created beside the very sheet the operator declared by id.
+test fn an_unreadable_declaration_refuses_the_whole_decision() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclarationUnreadable {
+      path: ".gunbc/review-sheet-legacy-file-id",
+      cause: "fixture: the host refused this read as permission_denied" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "not an absent one")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// A DECLARATION DOES NOT DISARM THE LEGACY-LINEAGE WALL. The declared id matches the current find,
+// so there is nothing to migrate -- and the superseded search still names a second file. Answering
+// Noop here would let installing a declaration hide exactly what the undeclared path refuses.
+test fn a_declaration_matching_the_current_hit_still_refuses_a_second_lineage() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "current-A")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-B")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "current-A" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "current-A")
+        && string_contains(s: r as String, pattern: "legacy-B")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE CONTROL: the same declaration with a SILENT superseded search still adopts, so the wall above
+// has not closed the ordinary post-migration steady state.
+test fn a_declaration_matching_the_current_hit_adopts_when_no_second_lineage_exists() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "current-A")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "current-A" as NonEmptyStr,
+      basis: "fixture" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Noop => true
+    Refuse { reason: _ } => false
+    Apply { plan: _ } => false
+  }
+}
+
+// A CURRENT HIT DOES NOT HIDE A LEGACY LINEAGE. This is the adopt-path half of the original
+// incident: properties reaches A, appProperties still reaches B, and returning Noop on the current
+// hit alone leaves B invisible to every later run.
+test fn a_current_hit_beside_a_disagreeing_legacy_find_refuses() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "current-A")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-B")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "current-A")
+        && string_contains(s: r as String, pattern: "legacy-B")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE CONTROL, AND IT IS WHAT KEEPS THE ABOVE FROM STOPPING EVERY RUN. A sheet already carrying BOTH
+// markers is one lineage, not two, and it adopts silently -- which is the steady state after any
+// successful migration.
+test fn a_current_hit_matching_the_legacy_find_still_adopts() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "same-sheet")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "same-sheet")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Noop => true
+    Refuse { reason: _ } => false
+    Apply { plan: _ } => false
+  }
+}
+
+// AN UNREADABLE LEGACY SEARCH STILL ADOPTS, deliberately: that is the ignorance this whole migration
+// generation lives inside, and refusing there would stop every steady-state run for a condition no
+// read can settle (DESIGN section 4d over-prohibition).
+test fn a_current_hit_with_an_unreadable_legacy_search_still_adopts() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(
+      list: DriveFileList {
+        files: Present { value: [w_file(id: "current-A")] },
+        incompleteSearch: Present { value: false },
+        nextPageToken: none
+      }
+    ),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList { files: none, incompleteSearch: Present { value: false }, nextPageToken: none }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Noop => true
+    Refuse { reason: _ } => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE OPERATOR'S ID IS ADOPTED AHEAD OF EVERY SEARCH, which is the route that recovers a sheet no
+// search can reach. Both searches answer absent here -- the state that refuses without a
+// declaration -- and the id turns that same state into a migration.
+test fn a_declared_legacy_file_id_is_adopted_ahead_of_the_searches() -> Bool {
+  match ensure_review_spreadsheet_with_declaration(
+    policy: EnsureMayApply,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    },
+    declaration: DeclaredLegacySheetId {
+      file_id: "operator-supplied-sheet" as NonEmptyStr,
+      basis: "fixture: supplied from the Drive URL" as NonEmptyStr,
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Apply { plan: p } =>
+      match p {
+        SpreadsheetMigrateMarker { migrate: m } => (m.file_id as String) == "operator-supplied-sheet"
+        SpreadsheetCreate { create: _ } => false
+      }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// THE CONTROL FOR THE DECLARATION FOLD ITSELF: with NO declaration the visibility stays
+// unobservable, so the create arm is closed. This is what makes the two claims above discriminate
+// rather than merely pass -- the fixture cannot reach the permissive arm without a declaration.
+test fn no_declaration_leaves_the_superseded_visibility_unobservable() -> Bool {
+  match visibility_from_declaration(declaration: NoDeclaration) {
+    SupersededFieldVisibilityUnobservable { reason: _ } => true
+    SupersededFieldVisibleToThisClient { basis: _ } => false
+  }
+}
+
+// THE WALL THE FIRST REVISION OF THIS CHANGE DID NOT HAVE, AND ITS ABSENCE MADE THE FIX REPRODUCE
+// THE DEFECT. Both markers answer absent, and the superseded one was read under a client whose
+// identity this repository cannot observe. extdeps.google.drive already establishes that
+// appProperties are private to the CREATING application, so an empty result there has two preimages
+// -- no legacy sheet, or a legacy sheet this client cannot see -- and the response cannot tell them
+// apart. Creating on that is the same duplicate this whole change exists to prevent.
+test fn absence_under_an_unobservable_superseded_client_refuses_the_create() -> Bool {
+  match w_ensure_absent(
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(list: w_absent_page()),
+      visibility: superseded_visibility_unobservable(),
+    }
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "cannot establish absence")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// A SEARCH NEVER ISSUED MAY NOT AUTHORIZE A CREATE, and this is the arm that makes the wall
+// structural rather than advisory: SupersededNotConsulted has no path to Apply, so a caller that
+// skips the second read cannot mint a file no matter what the first read said.
+test fn unconsulted_superseded_search_refuses_the_create() -> Bool {
+  match w_ensure_absent(superseded: SupersededNotConsulted) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "never searched")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// AN UNREADABLE SECOND SEARCH REFUSES RATHER THAN WIDENING TO ABSENCE. This is DESIGN section 5's
+// rule applied to the exact place the original defect lived: the failure arm that looks harmless is
+// the one that treats "we could not tell" as "there is nothing there".
+test fn unreadable_superseded_search_refuses_the_create() -> Bool {
+  match w_ensure_absent(
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList { files: none, incompleteSearch: Present { value: false }, nextPageToken: none }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    }
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "absence is not established")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// Two files under the OLD marker is the shape a marker move mints when it runs twice, and it is a
+// refusal for the same reason a current-marker duplicate is: choosing either abandons the other.
+test fn duplicate_superseded_matches_refuse_and_name_both() -> Bool {
+  match w_ensure_absent(
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-one"), w_file(id: "legacy-two")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    }
+  ) {
+    Refuse { reason: r } =>
+      string_contains(s: r as String, pattern: "legacy-one")
+        && string_contains(s: r as String, pattern: "legacy-two")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// ADOPTING A LEGACY-MARKED FILE IS A WRITE, so observe-only refuses it and says why. Returning Noop
+// here would have an observe-only run report a converged sheet that no later search can find.
+test fn observe_only_refuses_the_marker_migration() -> Bool {
+  match ensure_review_spreadsheet(
+    policy: EnsureObserveOnly,
+    observed: spreadsheet_from_file_list(list: w_absent_page()),
+    superseded: SupersededRead {
+      observation: spreadsheet_from_file_list(
+        list: DriveFileList {
+          files: Present { value: [w_file(id: "legacy-sheet")] },
+          incompleteSearch: Present { value: false },
+          nextPageToken: none
+        }
+      ),
+      visibility: superseded_visibility_unobservable(),
+    },
+    drive_id: w_drive(),
+    sheet_name: "CI prospect sheet" as NonEmptyStr,
+    marker_value: "ci-prospect-sheet" as NonEmptyStr,
+  ) {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: "observe-only")
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// THE "DIFFER ONLY IN THE FIELD" RELATION IS NO LONGER ASSERTED HERE, BECAUSE IT IS NOW BUILT.
+// Both queries come from review_sheet_marker_query and the field is the only thing either caller
+// supplies, so there is no state in which they could differ elsewhere for a claim to discover. An
+// earlier revision authored the relation twice and then tested that the two copies agreed; that
+// test was worse than absent -- its final conjunct compared the lowercase pattern "properties has
+// { key" against a string containing "appProperties has { key", where the P is capital, so the
+// substring never matched, the negation was permanently true, and the `||` short-circuited before
+// the other query was ever inspected. It was green by construction while its own annotation cited
+// it as establishing the property the migration decision rests on (DESIGN section 4b: ask whether
+// the check's RED is authorable before writing the check).
+//
+// WHAT REPLACES IT IS THE PART THAT CAN STILL GO RED. Two things remain falsifiable after the
+// construction: a wrapper drifting from the shared builder, and the two field declarations being
+// set to the same spelling -- which would make the superseded search a second copy of the current
+// one, find nothing, and return this converge to the behaviour that minted the duplicate.
+test fn each_marker_query_is_the_shared_builder_at_its_declared_field() -> Bool {
+  let v = "ci-prospect-sheet" as NonEmptyStr
+  (review_sheet_search_query(marker_value: v)
+    == review_sheet_marker_query(
+         marker_field: review_sheet_current_marker_property_field,
+         marker_value: v,
+       ))
+    && (review_sheet_superseded_search_query(marker_value: v)
+      == review_sheet_marker_query(
+           marker_field: review_sheet_superseded_marker_property_field,
+           marker_value: v,
+         ))
+}
+
+// THE TWO LOCATIONS MUST BE DIFFERENT LOCATIONS. If the superseded field were edited to the current
+// spelling the second search would ask the first question again, answer absent for the same reason,
+// and the create arm would open over a drive holding a legacy-marked sheet -- the original defect,
+// reached through the mechanism built to prevent it.
+test fn the_superseded_field_is_not_the_current_one() -> Bool {
+  let v = "ci-prospect-sheet" as NonEmptyStr
+  (! ((review_sheet_superseded_marker_property_field as String)
+        == (review_sheet_current_marker_property_field as String)))
+    && (! (review_sheet_superseded_search_query(marker_value: v)
+            == review_sheet_search_query(marker_value: v)))
+}
+
+// The superseded query names Drive's appProperties, keys on the declared marker property, and
+// excludes trashed files for the same reason the current one does: a sheet the operator threw away
+// is not a sheet to adopt, and adopting one would write into a file they have already discarded.
+test fn superseded_query_names_the_old_field_and_excludes_trashed() -> Bool {
+  let legacy = review_sheet_superseded_search_query(marker_value: "ci-prospect-sheet" as NonEmptyStr)
+  string_contains(s: legacy, pattern: "appProperties has {")
+    && string_contains(s: legacy, pattern: review_sheet_marker_property_key as String)
+    && string_contains(s: legacy, pattern: "trashed=false")
+    && string_contains(s: legacy, pattern: google_sheet_mime_type as String)
 }
 
 test fn absent_files_field_is_unreadable_not_absent() -> Bool {
@@ -397,6 +1031,7 @@ test fn a_partial_file_page_refuses_rather_than_adopting() -> Bool {
         nextPageToken: Present { value: "PAGE2" }
       }
     ),
+    superseded: SupersededNotConsulted,
     drive_id: w_drive(),
     sheet_name: "CI prospect sheet" as NonEmptyStr,
     marker_value: "ci-prospect-sheet" as NonEmptyStr,

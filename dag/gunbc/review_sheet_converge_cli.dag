@@ -8,6 +8,14 @@ import gunbc.review_sheet_format_actuator {
   format_converge_is_converged,
 }
 import gunbc.review_sheet_projection { ci_prospect_sheet_schema }
+import gunbc.review_sheet_spreadsheet_actuator { read_superseded_declaration }
+import gunbc.review_sheet_drive_converge {
+  SupersededMarkerDeclaration,
+  NoDeclaration,
+  DeclaredNoLegacySheet,
+  DeclaredLegacySheetId,
+  DeclarationUnreadable,
+}
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
@@ -55,6 +63,8 @@ import gunbc.review_sheet_spreadsheet_actuator {
   SpreadsheetConvergeOutcome,
   SpreadsheetAdopted,
   SpreadsheetCreatedAndVerified,
+  SpreadsheetMarkerMigratedAndVerified,
+  SpreadsheetMarkerMigrationUnverified,
   SpreadsheetCreateUnverified,
   SpreadsheetConvergeRefused,
   converge_review_spreadsheet,
@@ -146,7 +156,7 @@ fn converge_review_sheet_all(
   writer: ServiceAccountEmail,
   drive_id: NonEmptyStr,
   policy: EnsurePolicy,
-) -> ReviewSheetConvergeReport uses net: Network {
+) -> ReviewSheetConvergeReport uses net: Network, fs: std.resources.Filesystem {
   ReviewSheetConvergeReport {
     sheets_api: converge_service_enablement(
       token: token,
@@ -215,6 +225,8 @@ fn spreadsheet_is_converged(o: SpreadsheetConvergeOutcome) -> Bool {
   match o {
     SpreadsheetAdopted { file_id: _ } => true
     SpreadsheetCreatedAndVerified { file_id: _ } => true
+    SpreadsheetMarkerMigratedAndVerified { file_id: _ } => true
+    SpreadsheetMarkerMigrationUnverified { cause: _ } => false
     SpreadsheetCreateUnverified { cause: _ } => false
     SpreadsheetConvergeRefused { cause: _ } => false
   }
@@ -306,7 +318,7 @@ fn converge_drive_half(
   drive_id: NonEmptyStr,
   writer: ServiceAccountEmail,
   policy: EnsurePolicy,
-) -> DriveHalfReport uses net: Network {
+) -> DriveHalfReport uses net: Network, fs: std.resources.Filesystem {
   DriveHalfReport {
     membership: converge_drive_membership(drive_id: drive_id, writer: writer, policy: policy),
     spreadsheet: converge_review_spreadsheet(
@@ -332,7 +344,7 @@ fn drive_half_text(r: DriveHalfReport) -> String {
   )
 }
 
-fn converge_drive_half_cli() -> ProcessExit uses net: Network {
+fn converge_drive_half_cli() -> ProcessExit uses net: Network, fs: std.resources.Filesystem {
   match calling_home_resolution() {
     HomeUnresolved { cause: c } => exit_failure(reason: c as String)
     HomeResolved { project_id: _, writer: w } =>
@@ -359,6 +371,8 @@ fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposit
   match o {
     SpreadsheetAdopted { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
     SpreadsheetCreatedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
+    SpreadsheetMarkerMigratedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
+    SpreadsheetMarkerMigrationUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
   }
@@ -455,3 +469,33 @@ data review_sheet_whole_estate_consumer_frontier_rows: List<FrontierRow> = [
     dissolution: unbound_dissolution(description: "an in-process credential read for the GCP services (auth_source on extdeps.cloud.gcp.serviceusage, iam and iam_admin, or an in-process reader in gunbc.auth.access_token_source), landing with the argv-free entry point that calls this declaration"),
   )
 ]
+
+
+// THE EXECUTING CONSUMER OF THE DECLARATION READER, and it exists because a CLAIM CANNOT DISCHARGE
+// THIS PAIRING. The witnesses construct SupersededMarkerDeclaration directly; claims in this corpus
+// are pure, so none of them can call a function that performs a filesystem read. The honest
+// discharge is an entry point that runs it, which is the shape gunbc.instruments.github_app_acquire
+// uses for its own custody reads rather than asserting them in prose.
+//
+// WHAT IT REPORTS IS ONE THING, NOT FOUR, AND AN EARLIER NOTE HERE CLAIMED OTHERWISE. It said an
+// operator could run it "to see which declaration is in force" -- but std.process ExitSuccess has NO
+// reason channel, so the three non-refusing arms exit zero and say nothing, and the only text that
+// reaches a human is the refusal. That is the same defect as the annotation this PR already fixed
+// one commit earlier: a note asserting a behaviour the declaration does not have. The precedent it
+// cites is honest about exactly this -- census_app_registration_instruction_receipt says outright
+// that an already-acquired App "exits zero and produces no registration URL at all".
+//
+// SO THIS IS A PRE-FLIGHT REFUSAL AND NOTHING MORE: run it before a converge and it fails loudly
+// when a declaration exists and cannot be read, which is the state that would otherwise be
+// discovered mid-converge. Exit zero means only that nothing here blocks. Reporting which
+// declaration is in force needs a channel ExitSuccess does not have, and inventing one by returning
+// ExitFailure for an informational path would conflate "nothing is wrong" with "this failed".
+fn review_sheet_declaration_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
+  match read_superseded_declaration() {
+    DeclarationUnreadable { path: p, cause: c } =>
+      exit_failure(reason: join(["the declaration at ", p, " could not be read: ", c as String], ""))
+    NoDeclaration => ExitSuccess
+    DeclaredNoLegacySheet { basis: _ } => ExitSuccess
+    DeclaredLegacySheetId { file_id: _, basis: _ } => ExitSuccess
+  }
+}

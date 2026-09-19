@@ -398,6 +398,44 @@ service drive.Permissions {
 // where test.claim.review_sheet_transport_pin_witness search_query_carries_the_declared_property_key
 // reads the query BUILT from the declaration and therefore ties the declaration to the search. The
 // write side has no such tie and is asserted by a human reading two lines.
+//
+// THE MARKER IS WRITABLE AFTER CREATION, AND THAT IS NOT A CONVENIENCE -- IT IS THE ONLY WAY
+// BACK TO A FILE WHOSE MARKER MOVED. gunbc#11485 changed the review sheet's identity field from
+// appProperties to properties for a credential-visibility reason that was correct, and a file
+// already carrying the old field became unfindable by the new search: the next converge observed
+// absence and minted a second spreadsheet beside the first. Recovering from that needs a write
+// that ADDS the current field to an existing file, which files.create cannot do and no read can
+// substitute for.
+//
+// PATCH RATHER THAN PUT, BECAUSE THE SEMANTICS ARE THE SAFETY PROPERTY. files.update with PATCH
+// merges the named fields; the properties map itself merges by key, so writing one key leaves
+// every other property on the file untouched. A PUT would replace the resource and silently drop
+// properties this repository does not know about and did not write.
+//
+// THE PROPERTY NAME IS A THIRD COPY OF ONE FACT AND THIS OPERATION CANNOT AVOID IT. Its authority is
+// gunbc.review_sheet_drive_converge review_sheet_marker_property_key, which every SEARCH query is
+// built from; the write side spells it as a literal because the body builder emits field names as
+// SYNTAX and cannot take a field name from a parameter. CreateFile above carries the second copy and
+// states the same constraint; this PATCH is the third, and adding it does not make the limitation
+// new -- it makes it wider, which is worth saying rather than leaving a reader to count.
+//
+// WHAT WOULD ACTUALLY CLOSE IT is a body builder that accepts a field NAME as a parameter, at which
+// point all three copies collapse into the one declaration. Until then no claim in this corpus can
+// reach these literals, so the three spellings agreeing is checked on the search side and asserted
+// by a human reading three lines on the write side. That asymmetry is the residue, not a choice.
+//
+// THE FIELD MASK MUST SATISFY THE DECLARED RESPONSE TYPE. An earlier cut asked for `id` alone while
+// mapping 200 to DriveFile, whose id, name and mimeType are all required -- so a perfectly
+// successful PATCH would have decoded short and classified as RestExchangeUndecodable, reporting a
+// write that LANDED as a transport failure, and the readback would never have run. Asking for fewer
+// fields than the declared type requires is not an economy; it is a decode refusal waiting for its
+// first success.
+//
+// THE SUPERSEDED FIELD IS NOT CLEARED HERE, and that is deliberate rather than unfinished. A file
+// carrying BOTH markers is found by either search and is adoptable by both, so leaving the old
+// one is the state that fails safe while any reader of the old field may still exist. Clearing it
+// is a second write with its own readback and belongs to whatever establishes that no such reader
+// remains.
 service drive.Files {
   config {
     endpoint: drive_api_base
@@ -423,6 +461,31 @@ service drive.Files {
     }
     response {
       200 => DriveFileList
+      400 => DriveError
+      401 => DriveError
+      403 => DriveError
+      404 => DriveError
+      429 => DriveError
+      5xx => DriveError
+    }
+  }
+
+  operation UpdateFileProperties {
+    input {
+      file_id: String
+      marker_property_value: String
+    }
+    output { file_id: String from "id", outcome: RestOutcome }
+    transport rest {
+      method: PATCH,
+      path: "/files/\{file_id\}",
+      query: { supportsAllDrives: "true", fields: "id,name,mimeType" },
+      body: {
+        properties: { gunbcReviewSheet: marker_property_value }
+      }
+    }
+    response {
+      200 => DriveFile
       400 => DriveError
       401 => DriveError
       403 => DriveError
