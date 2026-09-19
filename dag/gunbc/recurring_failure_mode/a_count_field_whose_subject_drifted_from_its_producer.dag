@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_count_field_whose_subject_drifted_from_its_producer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_count_field_whose_subject_drifted_from_its_producer: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_count_field_whose_subject_drifted_from_its_producer" as NonEmptyStr,
+
+  receipts: [
+    "**a count field whose subject drifted from its producer** (one field names a population, a different fold materializes that population, and a later change narrows the materializer without narrowing the field. Both remain internally consistent, so nothing refuses; the two simply answer different questions under one name.)",
+
+    "INVALID STATE: a reported count that no producer will ever create. gunbc.ci_runner_placement conservation_host_deployment sets runner_count from gunbc_runner_slots_per_host -- the host's total committed slot width -- while gunbc.runner_slot_provision desired_runner_slot_members enumerates that width and FILTERS OUT every exact fabric_execution_slot_identity. Placement and gunbc.runner_deploy_emit therefore report one runner per fabric cell that the provisioner never materializes, and the fleet aggregate (fleet_concurrent_runs, known_derived_runs) carries the same surplus.",
+
+    "WHY IT SURVIVES REVIEW: the divergence is not visible in either module. The producer filters correctly and says so; the consumer reads an authority that is correct for its own name. The defect lives in the RELATION between them, which no single file states, and it is silent because both numbers are real -- one is the width, the other is the deployable population, and only the field name claims they are the same.",
+
+    "WHY IT GROWS WITHOUT AN EDIT: the gap is the size of the filtered set, so it widens whenever the filtered authority gains a member. It was one phantom runner while gunbc.runner_slot_allocation fabric_execution_slot_identities held the single srv3-06 canary; gunbc#11625 adds srv3-07, srv4-06 and srv4-07 and takes it to four, with no line in that diff touching either count.",
+
+    "THE HARM IS BOUNDED TO REPORTING, AND THAT BOUND IS CHECKED RATHER THAN ASSUMED (review 68510, independently). The actuation consumers all roster from the FILTERED population: gunbc.runner_host_grants, gunbc.runner_service_activation and gunbc.runner_host_file_converge each read gunbc.runner_slot_provision desired_runner_slot_members, so no phantom runner is ever installed, registered or granted. The surplus reaches the reported count, the fleet aggregate and the emitted manifest, and stops there. That is what keeps this row at MITIGATABLE rather than higher: an operator or a capacity plan can act on runners that do not exist, but the fleet cannot build one.",
+
+    "THE DISCRIMINATOR. RED: a field whose name denotes a deployable or materialized population, read from an authority that denotes CAPACITY, while a separate fold derives the materialized set by filtering that same capacity. GREEN: the two agree because the materializer does not filter, or the field is read from the filtering authority, or the two subjects are separately named and both are asserted.",
+
+    "WHY THE OBVIOUS FIX IS NOT THE FIX, measured rather than argued. Substituting host_github_slot_count -- which already exists in gunbc.runner_slot_allocation and is already consumed by gunbc.runner_capacity_plan -- reddens two witnesses in test.claim.runner_placement_witness that assert the CURRENT subject outright: witness_live_effective_runners_derives_declared_count compares the field to gunbc_runner_slots_per_host under a note reading 'THE SUBJECT IS srv3\\'S DECLARED WIDTH', and witness_live_plan_is_conservation_sound folds it. The field is not mislabelled by accident; it means the width, and the deployable count needs a name of its own.",
+
+    "RUNG: found at MITIGATABLE and not climbing on its own. Nothing refuses today -- the emitted manifest is simply wrong by the size of the filtered set -- and the harm is an operator or a capacity plan acting on runners that do not exist. CEILING 4, structurally impossible: two subjects that a single field currently fuses can be two fields, at which point 'the deployable count' and 'the committed width' cannot be confused because neither can be spelled as the other.",
+
+    "NEXT-RUNG TRIGGER, naming the capability: RunnerHostDeployment carries the deployable Actions population as its own field, derived from the same filter gunbc.runner_slot_provision desired_runner_slot_members applies, with gunbc.runner_deploy_emit serializing it and the two placement witnesses above moved onto whichever field each is actually about. Until that lands the divergence is bounded by the fabric execution population and countable from it.",
+
+    "REVIEW TELL: a count read from a capacity authority and emitted under a deployment name; a filter applied in a provisioner with no corresponding subtraction at the reporting seam; a witness asserting a count equals a width, sitting beside a fold that removes members from that width.",
+  ],
+
+  evidence: [],
+}

@@ -4,8 +4,14 @@ import std.types { Bool, List, String, NonEmptyStr, list_length }
 import std.algebra { trim }
 import gunbc.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv4 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_width_transition { required_retirees_for_host }
+import gunbc.runner_slot_allocation {
+  fabric_execution_slot_identities,
+  gunbc_runner_slots_per_host,
+}
+import gunbc.runner_unit { runner_slot_unit_name }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
 import product.placement_supply { HostIdentity }
 import gunbc.host_effect { HostEffectTransport }
 import gunbc.host_operation_exec {
@@ -334,15 +340,62 @@ type HostInterruptionAuthorizationStanding
   = HostInterruptionAuthorizationPresent { authorization: InterruptionAuthorization }
   | HostInterruptionAuthorizationAbsent { host: HostIdentity, cause: String }
 
-fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAuthorizationStanding {
+// THE FABRIC REASSIGNMENT IS ITS OWN OPERATOR DECISION AND ITS OWN SCOPE, carried beside the width
+// decisions rather than folded into them. Neither width decision reaches these units: srv4's names
+// 13-21 and srv1's says outright that it "does not name srv1-01..12". The reassigned identities are
+// all inside the committed width, so without this row every one of them is a required retiree that
+// no authorization permits -- which is a refusal, correctly, and not a state this change may leave
+// standing while declaring the cells.
+data fabric_purpose_interruption_reason: NonEmptyStr = "operator decision 2026-09-19, scoped to the committed slots reassigned from GitHub Actions to fabric execution (srv3-06, srv3-07, srv4-06, srv4-07): their runners may be taken over for the fabric widening. The decision does not extend to any other slot on those hosts, to sessions, or to the deployment service, and it is derived from gunbc.runner_slot_allocation fabric_execution_slot_identities so that a cell added later carries the same permission and an identity removed from that authority loses it" as NonEmptyStr
+
+fn host_width_interruption_scope(host: HostIdentity) -> List<NonEmptyStr> {
   if (host as String) == (operator_host_srv1 as String) {
-    HostInterruptionAuthorizationPresent { authorization: srv1_transition_interruption_authorization }
+    srv1_transition_interruption_authorization.scope
   } else if (host as String) == (operator_host_srv4 as String) {
-    HostInterruptionAuthorizationPresent { authorization: srv4_transition_interruption_authorization }
+    srv4_transition_interruption_authorization.scope
   } else {
+    []
+  }
+}
+
+// THE TWO PERMISSIONS COMPOSE AND THEIR REASONS TRAVEL WITH THEM. A host may be mid-width-transition
+// AND reassigning a purpose -- srv4 is both -- so the scope is the union and the reason names the
+// decision that covers each part. Collapsing them into one sentence would make a single row answer
+// for two decisions taken on different days for different populations, which is the fork this
+// module's sole_constructor exists to prevent from being minted casually.
+fn host_interruption_reason(host: HostIdentity) -> NonEmptyStr {
+  let width = host_width_interruption_scope(host: host)
+  let fabric = fabric_purpose_retirees_for_host(host: host)
+  if list_length(items: width) == 0 {
+    fabric_purpose_interruption_reason
+  } else if list_length(items: fabric) == 0 {
+    width_decision_reason(host: host)
+  } else {
+    join([width_decision_reason(host: host) as String, " | ", fabric_purpose_interruption_reason as String], "") as NonEmptyStr
+  }
+}
+
+fn width_decision_reason(host: HostIdentity) -> NonEmptyStr {
+  if (host as String) == (operator_host_srv1 as String) {
+    srv1_transition_interruption_authorization.operator_reason
+  } else {
+    srv4_transition_interruption_authorization.operator_reason
+  }
+}
+
+fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAuthorizationStanding {
+  let scope = concat(host_width_interruption_scope(host: host), fabric_purpose_retirees_for_host(host: host))
+  if list_length(items: scope) == 0 {
     HostInterruptionAuthorizationAbsent {
       host: host,
       cause: join([host as String, " has no operator interruption authorization for this width transition, so surplus slots may be neither masked nor deleted"], ""),
+    }
+  } else {
+    HostInterruptionAuthorizationPresent {
+      authorization: InterruptionAuthorization {
+        scope: scope,
+        operator_reason: host_interruption_reason(host: host),
+      }
     }
   }
 }
@@ -363,8 +416,43 @@ fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAu
 //     authorization        -> which of those required retirees may be interrupted
 //     census               -> what is presently visible, and where the two disagree
 //     retirement readback  -> completion, per required identity
+// A SLOT CAN LEAVE THE GITHUB POPULATION WITHOUT THE WIDTH MOVING, AND UNTIL NOW NOTHING SAID SO.
+//
+// required_retirees_for_host derives its set from a WIDTH TRANSITION: prior width down to committed
+// width, so srv4's 13..21 and srv1's 13..50. That covers a slot the host stops having. It does not
+// cover a slot the host still has whose PURPOSE changed -- and gunbc.runner_slot_allocation
+// reassigns exactly that: a committed index stops serving GitHub Actions and becomes a fabric
+// execution cell. The index is inside the width, so the width transition produces no retiree for it,
+// no authorization is consulted, and nothing refuses. The fabric cell's directory and cgroup slice
+// can then be established on a slot whose Actions runner is still running there.
+//
+// THIS IS NOT HYPOTHETICAL AND IT PREDATES THE WIDENING THAT EXPOSED IT. srv3-06 has been a declared
+// fabric member since the canary landed while its runner stayed live (operator, 2026-09-19), so the
+// gap is already open on one slot; reassigning srv3-07, srv4-06 and srv4-07 widens it to four.
+//
+// THE OBLIGATION IS DERIVED FROM THE FABRIC POPULATION RATHER THAN AUTHORED BESIDE IT, which is the
+// whole reason it can be trusted to keep covering. A fifth cell added to
+// fabric_execution_slot_identities acquires its retirement obligation with no edit here, exactly as
+// gunbc.fabric_cell_converge acquires its desired members. An authored list would have to be
+// remembered, and the evidence that it would not be is that this hole opened the first time.
+//
+// MEMBERSHIP IS INTERSECTED WITH THE COMMITTED WIDTH ON PURPOSE. A fabric identity outside the width
+// is not a slot the host ever provisioned as a runner, so there is no runner to retire and asserting
+// one would invent an obligation nobody owes.
+fn fabric_purpose_retirees_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+  fabric_execution_slot_identities()
+    |> filter(id => (id.host as String) == (host as String)
+                 && id.slot_index <= gunbc_runner_slots_per_host(host: host))
+    |> map(id => runner_slot_unit_name(slot: id))
+}
+
+// THE TWO SOURCES ARE UNIONED, NOT SUBSTITUTED. A host mid-width-transition that also reassigns a
+// purpose owes both sets, and dropping either would retire fewer units than the transition requires.
 fn transition_required_retiring(host: HostIdentity) -> List<NonEmptyStr> {
-  required_retirees_for_host(host: host)
+  concat(
+    required_retirees_for_host(host: host),
+    fabric_purpose_retirees_for_host(host: host)
+  )
 }
 
 // PERMISSION IS CHECKED OVER THE OBLIGATION, NEVER SUBSTITUTED FOR IT. A required retiree the

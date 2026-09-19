@@ -8,7 +8,10 @@ import gunbc.runner_slot_allocation {
   CommittedSlotMember,
   SlotOutsideCommittedPopulation,
   runner_slot_membership,
-  srv3_fabric_canary_slot,
+  srv3_fabric_first_slot,
+  srv3_fabric_second_slot,
+  srv4_fabric_first_slot,
+  srv4_fabric_second_slot,
   host_fabric_slot_count,
   host_github_slot_count,
   gunbc_runner_slot_allocation_wall_holds,
@@ -386,19 +389,43 @@ test fn an_identity_outside_the_committed_population_is_refused_not_classified()
 // srv3-06 rather than derived as "the top index", so the counts below are projections of it. If
 // this ever regresses to index arithmetic, a width change would silently relabel a slot that may be
 // running work -- which is why the identity is asserted directly here and not just its count.
-test fn the_fabric_member_is_an_authored_identity_not_a_top_index_rule() -> Bool {
-  srv3_fabric_canary_slot().slot_index == 6
-    && (srv3_fabric_canary_slot().host as String) == (operator_host_srv3 as String)
-    && host_fabric_slot_count(host: operator_host_srv3) == 1
-    && host_fabric_slot_count(host: operator_host_srv4) == 0
+test fn the_fabric_members_are_authored_identities_not_a_top_index_rule() -> Bool {
+  srv3_fabric_first_slot().slot_index == 6
+    && (srv3_fabric_first_slot().host as String) == (operator_host_srv3 as String)
+    && srv3_fabric_second_slot().slot_index == 7
+    && (srv3_fabric_second_slot().host as String) == (operator_host_srv3 as String)
+    && srv4_fabric_first_slot().slot_index == 6
+    && (srv4_fabric_first_slot().host as String) == (operator_host_srv4 as String)
+    && srv4_fabric_second_slot().slot_index == 7
+    && (srv4_fabric_second_slot().host as String) == (operator_host_srv4 as String)
+    && host_fabric_slot_count(host: operator_host_srv3) == 2
+    && host_fabric_slot_count(host: operator_host_srv4) == 2
+    && host_fabric_slot_count(host: operator_host_srv1) == 0
+    && host_fabric_slot_count(host: operator_host_srv2) == 0
 }
 
-test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
+// RENAMED WITH THE POPULATION IT DESCRIBES (2026-09-18). It was
+// srv3_slot_six_is_the_only_fabric_slot_in_the_fleet, and both its name and its srv4 clause asserted
+// the one-slot canary; the widening to two members on each of srv3 and srv4 makes the name false and
+// the clause red. It is repaired rather than deleted because its LAW is untouched and is the one
+// this family exists for: membership is an EXACT IDENTITY, so an index that is fabric on one host is
+// not fabric on another, and a neighbouring index on the same host is not fabric either.
+//
+// srv1-06 IS THE SHARPEST CLAUSE HERE and is why the row keeps a same-index cross-host case. srv1's
+// committed width is well above six, so srv1-06 is a real committed slot that an index rule would
+// classify as fabric; only the authored list says otherwise. srv2-06 fails for a different reason --
+// srv2's width is a refusal, so the identity is outside the committed population entirely -- and the
+// two are kept side by side because they are different mechanisms reaching the same answer.
+test fn the_fabric_members_are_exactly_the_authored_identities() -> Bool {
   membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 6))
-    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv4, slot_index: 6))
+    && membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 7))
+    && membership_is_fabric(m: runner_slot_membership(host: operator_host_srv4, slot_index: 6))
+    && membership_is_fabric(m: runner_slot_membership(host: operator_host_srv4, slot_index: 7))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
-    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 5))
-    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv2, slot_index: 5))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 8))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv4, slot_index: 5))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv1, slot_index: 6))
+    && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv2, slot_index: 6))
 }
 
 // THE FIVE LIVE srv3 RUNNERS KEEP THEIR IDENTITIES. Fabric slots are taken from the TOP of the
@@ -417,12 +444,19 @@ test fn srv3_slot_six_is_the_only_fabric_slot_in_the_fleet() -> Bool {
 // deregistering a live runner: slots one through five are asserted individually, so a fabric role
 // that slid onto one of them would be caught here rather than absorbed into a count.
 //
-// The minus-one is deliberate rather than minus host_fabric_slot_count. Subtracting the measured
+// The subtrahend is deliberate rather than minus host_fabric_slot_count. Subtracting the measured
 // fabric count would make this row true for ANY number of fabric members, including zero, which is
 // the general conservation already asserted by
 // slot_purposes_partition_every_host_committed_width. THIS row is about the specific
-// carve: srv3 gives up exactly one slot to the fabric. Writing it as the general identity would
-// leave that claim asserted nowhere.
+// carve. Writing it as the general identity would leave that claim asserted nowhere.
+//
+// IT MOVED 1 -> 2 WITH THE POPULATION (2026-09-18), AND AN INTERMEDIATE REVISION OF THIS CHANGE GOT
+// IT WRONG IN THE WAY THE PARAGRAPH ABOVE FORBIDS, which is why the mistake is recorded rather than
+// quietly corrected: it rewrote the subtrahend as host_fabric_slot_count(srv3), collapsing the row
+// into measure() == measure() and deleting the only place the specific carve is claimed. The
+// literal is the content here. srv3 gives up exactly TWO slots to the fabric, and that is a
+// declared decision (operator, 2026-09-18: two execution slots on each of srv3 and srv4), so it is
+// written as the number it is while the WIDTH beside it stays derived.
 test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
   !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 1))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 2))
@@ -430,7 +464,7 @@ test fn introducing_the_fabric_slot_deregisters_no_live_runner() -> Bool {
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 4))
     && !membership_is_fabric(m: runner_slot_membership(host: operator_host_srv3, slot_index: 5))
     && host_github_slot_count(host: operator_host_srv3)
-         == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
+         == gunbc_runner_slots_per_host(host: operator_host_srv3) - 2
 }
 
 test fn the_slot_row_quota_is_the_surveyed_cores_per_slot() -> Bool {

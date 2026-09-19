@@ -3,6 +3,7 @@ module gunbc.runner_slot_allocation
 import std.types { Int, String, List, Bool }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.realization_width { byte_size_saturating_sub }
 import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
@@ -15,6 +16,17 @@ import gunbc.session_reservation_policy {
   SessionReservationBytesResolution,
   ReservationBytes, ReservationBytesNotApplicable, ReservationBytesUnestablished,
   session_reservation_bytes,
+}
+import gunbc.host_memory_observation {
+  HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
+  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured,
+  gunbc_ci_host_usable_ram_for,
+  gunbc_ci_host_fixed_overhead_for,
+  oomd_actuation_floor,
+}
+import gunbc.fabric_control_plane_charge {
+  HostFabricControlPlaneClaim, ControlPlaneNotPlaced, ControlPlaneClaimResolved, ControlPlaneClaimUnmeasured,
+  host_fabric_control_plane_claim,
 }
 import gunbc.ci_failure_class { FloorOutcome, NoFailure, FloorFailed, Structural, floor_outcome_blocks_merge }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
@@ -144,7 +156,7 @@ data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RE
 //
 // THIS IS A DECLARED HAZARD IN THIS DIFF, NOT A RESOLVED ONE. The per-slot row is FLEET-UNIFORM, so
 // raising it raises srv2 too -- and srv2's five HELD slots at 26 GiB demand 130 GiB against a
-// measured 125.09 GiB of usable RAM (`gunbc.ci_floor_measurement` `gunbc_ci_srv2_memtotal_measured`,
+// measured 125.09 GiB of usable RAM (`gunbc.host_memory_observation` `gunbc_ci_srv2_memtotal_measured`,
 // 134314512384 bytes), BEFORE any overhead or session charge. At 16 GiB the same five demanded
 // 80 GiB and fit with room; the hazard is created by this row, not inherited.
 //
@@ -327,7 +339,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 //
 // THESE ARE NOT BACK-COMPUTED FROM THE WIDTHS THEY REPLACE in the sense that would make them
 // unfalsifiable: each is checkable against the measured host RAM in
-// `gunbc.ci_floor_measurement` `gunbc_ci_host_usable_ram_for` less the session reservation this
+// `gunbc.host_memory_observation` `gunbc_ci_host_usable_ram_for` less the session reservation this
 // module already imports. srv1: MemTotal 539281129472 (502.24 GiB, /proc/meminfo, read 2026-08-23)
 // less the 55834574848 (52 GiB) session allowance leaves 450.24 GiB, against a 400 GiB envelope --
 // the 50.24 GiB residue being fixed overhead, the oomd actuation floor and the control-plane
@@ -338,15 +350,125 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // a cycle -- today they sit in `gunbc.ci_floor_measurement` and `gunbc.ci_runner_placement`, both
 // of which import this one -- at which point the envelope is computed from them and this authored
 // row deletes rather than being kept beside a derivation of the same number.
+// THE ENVELOPE IS DERIVED FROM THE HOST, AND AN UNESTABLISHED INPUT REFUSES IN THE RESOLUTION
+// BELOW -- though host_runner_memory_envelope_bytes still flattens that refusal to zero for its
+// existing callers, which is stated exactly at that function and is NOT closed by this change
+// (operator direction 2026-09-18: "we can't assume a uniform fleet, i would just derive as
+// much as possible from the actual state of the machines here"). What stood here was one authored
+// literal per host and an `else` arm of 0, which is the conflation DESIGN 5 forbids at its most
+// consequential: a host measured to have no runner memory and a host nobody wrote a row for
+// produced the same Int, so every consumer downstream read "this machine has no capacity" for what
+// was actually "nobody answered". srv2 was the live instance of that second reading.
+//
+// FIVE TERMS, EACH FROM ITS OWN AUTHORITY, AND NONE OF THEM AUTHORED HERE. Usable RAM and fixed
+// overhead come from gunbc.host_memory_observation -- per-host /proc/meminfo reads and the operator
+// allowance -- the session slice from gunbc.session_reservation_policy, the oomd actuation headroom
+// from oomd_actuation_floor as a fraction of THIS host's RAM, and the control-plane charge from
+// gunbc.fabric_control_plane_charge. The first two were unreachable from this module until the
+// extraction that accompanies this change; that cycle is what forced the literals, and its removal
+// is what retires them.
+//
+// EVERY ARM THAT CANNOT ANSWER REFUSES BY NAME, WHICH IS WHY THIS IS A CHAIN AND NOT A SUM. None of
+// the five inputs has a total projection to bytes, and that is deliberate at each authority --
+// gunbc.fabric_control_plane_charge says so outright, that a total function from its claim to
+// ByteSize cannot exist honestly because one arm has no bytes to return. So the derivation matches
+// each in turn and carries the refusing input's own cause outward; there is no spelling of "derive
+// the envelope" that skips a refusal, rather than one a reviewer has to notice.
+type RunnerMemoryEnvelope
+  = RunnerMemoryEnvelopeDerived { bytes: ByteSize }
+  | RunnerMemoryEnvelopeUnestablished { cause: String }
+
+fn host_runner_memory_envelope_resolution(host: HostIdentity) -> RunnerMemoryEnvelope {
+  match gunbc_ci_host_fixed_overhead_for(host: host) {
+    HostFixedOverheadUnmeasured =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: "host fixed overhead is unmeasured: the envelope cannot be derived without knowing what the host owes its own residents"
+      }
+    HostFixedOverheadMeasured { bytes: overhead, provenance: _ } =>
+      envelope_after_overhead(host: host, overhead: overhead)
+    HostFixedOverheadAllowance { bytes: overhead, reason: _ } =>
+      envelope_after_overhead(host: host, overhead: overhead)
+  }
+}
+
+fn envelope_after_overhead(host: HostIdentity, overhead: ByteSize) -> RunnerMemoryEnvelope {
+  match gunbc_ci_host_usable_ram_for(host: host) {
+    HostUsableRamUnmeasured =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: "host usable RAM is unmeasured: no /proc/meminfo MemTotal read exists for this host"
+      }
+    HostUsableRamMeasured { bytes: usable, provenance: _ } =>
+      envelope_after_usable(host: host, usable: usable, overhead: overhead)
+    HostUsableRamConservativeLowerBound { bytes: usable, basis: _ } =>
+      envelope_after_usable(host: host, usable: usable, overhead: overhead)
+  }
+}
+
+fn envelope_after_usable(host: HostIdentity, usable: ByteSize, overhead: ByteSize) -> RunnerMemoryEnvelope {
+  match session_reservation_bytes(host: host) {
+    ReservationBytesUnestablished { cause: why } =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: concat("host session reservation is unestablished, so the subtraction cannot be performed: ", why)
+      }
+    ReservationBytesNotApplicable =>
+      envelope_after_session(host: host, usable: usable, overhead: overhead, session: byte_size(0))
+    ReservationBytes { bytes: session } =>
+      envelope_after_session(host: host, usable: usable, overhead: overhead, session: session)
+  }
+}
+
+fn envelope_after_session(host: HostIdentity, usable: ByteSize, overhead: ByteSize, session: ByteSize) -> RunnerMemoryEnvelope {
+  match host_fabric_control_plane_claim(host: host) {
+    ControlPlaneClaimUnmeasured { cause: why } =>
+      RunnerMemoryEnvelopeUnestablished {
+        cause: concat("fabric control-plane resident is placed on this host with an unmeasured envelope: ", why)
+      }
+    ControlPlaneNotPlaced =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: byte_size(0))
+    ControlPlaneClaimResolved { memory: m } =>
+      envelope_final(usable: usable, overhead: overhead, session: session, control_plane: m)
+  }
+}
+
+fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, control_plane: ByteSize) -> RunnerMemoryEnvelope {
+  RunnerMemoryEnvelopeDerived {
+    bytes: byte_size_saturating_sub(
+      total: byte_size_saturating_sub(
+        total: byte_size_saturating_sub(
+          total: byte_size_saturating_sub(total: usable, reserved: overhead),
+          reserved: session
+        ),
+        reserved: control_plane
+      ),
+      reserved: oomd_actuation_floor(host: usable)
+    )
+  }
+}
+
+// WHERE THE CLASS HAS *NOT* CLIMBED, SAID HERE RATHER THAN LEFT FOR A READER TO DISCOVER (DESIGN
+// 4b(1), rung honesty; review 67854). The resolution above carries the distinction between a host
+// with no runner memory and a host whose inputs nobody established. THIS SHIM THEN DISCARDS IT: the
+// unestablished arm becomes 0, host_memory_admitted_width divides that 0, and the consumer sees the
+// same Int it saw before. So the conflation is closed AT THE RESOLUTION and is still open AT THIS
+// SEAM, and any reading of the annotation above as "an unestablished host can no longer be read as
+// a number" is wrong at this line.
+//
+// WHY THE SHIM SURVIVES THIS CHANGE rather than being propagated now: host_memory_admitted_width has
+// 32 references across seven modules, so the typed standing is a sweep with its own blast radius,
+// not a rider on an envelope repair. The module note above already names that construction fix --
+// replace the Int API with MemoryWidthDerived / MemoryWidthUnestablished -- and the deploy seam
+// already performs it, so gunbc.runner_host_deploy RunnerHostDeployAdmission constructs no
+// operational row for an unestablished host and the zero cannot reach a deployment.
+//
+// NEXT-RUNG TRIGGER, naming the capability and not an artifact: host_memory_admitted_width and this
+// function return a typed standing, so that no caller anywhere in the corpus can obtain an Int for a
+// host whose envelope was never established. Until then the zero is bounded by the deploy-seam
+// admission and by nothing else, and that is the honest rung -- mechanically preventable at the
+// boundary, not structurally impossible at the type.
 fn host_runner_memory_envelope_bytes(host: HostIdentity) -> Int {
-  if (host as String) == (operator_host_srv1 as String) {
-    429496729600
-  } else if (host as String) == (operator_host_srv3 as String) {
-    498216206336
-  } else if (host as String) == (operator_host_srv4 as String) {
-    498216206336
-  } else {
-    0
+  match host_runner_memory_envelope_resolution(host: host) {
+    RunnerMemoryEnvelopeDerived { bytes: b } => byte_size_count(b: b)
+    RunnerMemoryEnvelopeUnestablished { cause: _ } => 0
   }
 }
 
@@ -695,6 +817,137 @@ fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
 type DerivedRunnerWidth
   = DerivedRunnerWidthSlots { slots: Int }
   | DerivedRunnerWidthUnresolved { cause: String }
+
+// WHY A WIDTH IS ZERO IS A FACT OF THIS MODULE, NOT A GUESS ITS CONSUMER MAY MAKE (review 67902).
+// gunbc_runner_slots_per_host reaches zero by FOUR independent routes -- a refused slot shape, a
+// held width of zero, an unresolved derivation, or a derived three-axis minimum in which some axis
+// admits nothing -- and nothing outside this function can tell them apart. An earlier revision of
+// this change had gunbc.ci_runner_placement infer the reason from the memory envelope alone, which
+// named the one cause LEAST likely to be true on the live fleet: memory binds nowhere today, as
+// test.claim.host_allocation_conservation memory_is_not_the_binding_axis asserts on srv1, srv3 and
+// srv4. That is DESIGN 5's fabricated plausible output, and it is worse than the bare refusal it
+// replaced because it reads as a located diagnosis.
+//
+// SO THE CAUSE IS DERIVED BY WALKING THE SAME TREE THE WIDTH WALKS. Each arm reports what it
+// actually observed, the unresolved arm carries its upstream cause verbatim, and the axis arm names
+// the axis that bound rather than asserting one. A width that is NOT zero has no cause to report and
+// says so, so this function cannot be used to manufacture an explanation for a healthy host.
+type RunnerWidthZeroCause
+  = WidthZeroFromSlotShape { cause: String }
+  | WidthZeroFromHeldWidth { cause: String }
+  | WidthZeroFromUnresolvedDerivation { cause: String }
+  | WidthZeroFromBindingAxis { axis: String, cause: String }
+  | WidthIsNotZero { slots: Int }
+
+fn runner_width_zero_cause(host: HostIdentity) -> RunnerWidthZeroCause {
+  match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
+    RunnerSlotShapeRefusedZeroMemoryMax =>
+      WidthZeroFromSlotShape {
+        cause: "the fleet slot shape declares a zero MemoryMax, so no host admits any runner at all"
+      }
+    RunnerSlotShapeAdmitted =>
+      match host_held_runner_width(host: host) {
+        Present { value: held } =>
+          if held == 0 {
+            WidthZeroFromHeldWidth {
+              cause: "this host carries an authored held runner width of zero, which outranks the derivation"
+            }
+          } else {
+            WidthIsNotZero { slots: held }
+          }
+        Absent =>
+          match gunbc_derived_runner_slots_per_host(host: host) {
+            DerivedRunnerWidthUnresolved { cause: why } =>
+              WidthZeroFromUnresolvedDerivation { cause: why }
+            DerivedRunnerWidthSlots { slots: n } =>
+              if n == 0 { zero_binding_axis(host: host) } else { WidthIsNotZero { slots: n } }
+          }
+      }
+  }
+}
+
+// THE AXIS IS REPORTED IN THE ORDER THE MINIMUM IS TAKEN, and a tie names the first that binds
+// rather than inventing a combined cause: two axes admitting zero is two readings to take, and the
+// operator needs one of them named, not a sentence that averages them.
+fn zero_binding_axis(host: HostIdentity) -> RunnerWidthZeroCause {
+  match host_cpu_admitted_width(host: host) {
+    CpuWidthUnresolved { cause: c } => WidthZeroFromUnresolvedDerivation { cause: c }
+    CpuAdmitsWidth { slots: by_cpu } =>
+      if by_cpu == 0 {
+        WidthZeroFromBindingAxis {
+          axis: "cpu",
+          cause: "the CPU axis admits no slot on this host at the declared cores-per-slot"
+        }
+      } else {
+        zero_after_cpu(host: host)
+      }
+  }
+}
+
+// THE MEMORY AXIS IS ASKED THROUGH THE RESOLUTION, NEVER THROUGH THE Int SHIM (review 68489).
+//
+// An earlier revision of this walk tested host_memory_admitted_width(host) == 0 and, on zero,
+// reported the memory axis as the binding one. That divides host_runner_memory_envelope_bytes, which
+// flattens RunnerMemoryEnvelopeUnestablished to zero -- so a host whose envelope inputs were NEVER
+// ESTABLISHED was reported as a host measured to have less than one slot of capacity. srv2 is
+// exactly that host and is live and enrolled, so the walk emitted a confident located claim about a
+// machine nobody has measured, through admit_or_refuse_zero_width, to an operator.
+//
+// THAT IS THE DEFECT THIS WHOLE FUNCTION EXISTS TO REMOVE, REINTRODUCED ONE LAYER DOWN. The
+// annotation at gunbc.ci_runner_placement zero_width_cause describes it in terms -- a cause the code
+// did not compute, naming the least likely explanation on the live fleet -- and this walk was the
+// repair. Asking the same question through a total projection to Int put it straight back, because
+// the shim answers zero for two different states and only the resolution tells them apart.
+//
+// So the unestablished arm is carried out with its own upstream cause, and the Int is consulted ONLY
+// on the arm where the envelope actually derived.
+// THE d != 0 DISK ARM ANSWERS THE DISAGREEMENT, NOT WidthIsNotZero (review 68510). This walk is
+// only entered when the derived width IS zero, so an arm reaching it with every axis positive is a
+// contradiction between the minimum and its terms, not a fact about the host. Answering
+// WidthIsNotZero there rendered "the width is not zero on this host, so no zero-width cause exists
+// to report" -- and gunbc.ci_runner_placement emits that string INSIDE a ZeroRunnerWidth refusal, so
+// the refusal's own cause asserted there was no refusal. The DiskWidthUnconstrained arm two lines
+// below already handled the identical state honestly; the asymmetry was the defect.
+fn zero_after_cpu(host: HostIdentity) -> RunnerWidthZeroCause {
+  match host_runner_memory_envelope_resolution(host: host) {
+    RunnerMemoryEnvelopeUnestablished { cause: why } =>
+      WidthZeroFromUnresolvedDerivation {
+        cause: concat("the runner memory envelope could not be derived on this host, so no axis verdict is available: ", why)
+      }
+    RunnerMemoryEnvelopeDerived { bytes: _ } =>
+      if host_memory_admitted_width(host: host) == 0 {
+        WidthZeroFromBindingAxis {
+          axis: "memory",
+          cause: "the memory axis admits no slot on this host: its DERIVED runner memory envelope divided by the slot MemoryMax is zero"
+        }
+      } else {
+        match host_disk_admitted_width(host: host) {
+          DiskAdmitsWidth { slots: d, provenance: prov } =>
+            if d == 0 {
+              WidthZeroFromBindingAxis { axis: "disk", cause: concat("the disk axis admits no slot on this host: ", prov) }
+            } else {
+              WidthZeroFromUnresolvedDerivation {
+                cause: "the width is zero while every axis admits a positive width, which is a disagreement between the minimum and its terms rather than a host fact"
+              }
+            }
+          DiskWidthUnconstrained { reason: _ } =>
+            WidthZeroFromUnresolvedDerivation {
+              cause: "the width is zero but no axis reports zero, which is a disagreement between the minimum and its terms rather than a host fact"
+            }
+        }
+      }
+  }
+}
+
+fn runner_width_zero_cause_text(c: RunnerWidthZeroCause) -> String {
+  match c {
+    WidthZeroFromSlotShape { cause: why } => concat("zero runner width from the slot shape: ", why)
+    WidthZeroFromHeldWidth { cause: why } => concat("zero runner width from a held allocation: ", why)
+    WidthZeroFromUnresolvedDerivation { cause: why } => concat("zero runner width from an unresolved derivation: ", why)
+    WidthZeroFromBindingAxis { axis: a, cause: why } => concat(concat(concat("zero runner width bound by the ", a), " axis: "), why)
+    WidthIsNotZero { slots: _ } => "the width is not zero on this host, so no zero-width cause exists to report"
+  }
+}
 
 fn gunbc_derived_runner_slots_per_host(host: HostIdentity) -> DerivedRunnerWidth {
   match host_cpu_admitted_width(host: host) {
@@ -1419,17 +1672,67 @@ type RunnerSlotMembership
 // So the fabric member is AUTHORED as an identity and the counts are PROJECTIONS over it. srv3-06
 // stays srv3-06 when the width moves, and if the width ever falls below 6 the slot leaves the
 // committed population and says so, rather than the fabric role sliding onto srv3-05.
-data srv3_fabric_canary_slot_index: Nat = 6
+data fabric_first_slot_index: Nat = 6
 
-fn srv3_fabric_canary_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv3, slot_index: srv3_fabric_canary_slot_index }
+fn srv3_fabric_first_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: fabric_first_slot_index }
 }
 
-// srv3 CARRIES THE ONE FABRIC EXECUTION SLOT AND srv1 DELIBERATELY DOES NOT (operator, 2026-08-21).
-// The control plane is taking a temporary srv1 slice, so the executor is placed on a DIFFERENT host:
-// a control plane and the capacity it schedules failing together is the common-mode failure the
-// placement exists to avoid. srv3 over srv4 because both admit 6 at memory and srv4 additionally
-// carries the apply-time disk preflight, so srv3 has fewer axes able to refuse it.
+// THE SECOND MEMBER ON EACH EXECUTION HOST, AUTHORED AS AN IDENTITY FOR THE SAME REASON THE FIRST
+// WAS. Index 7 sits beside 6 rather than at the top of the committed width, because an index near
+// the width is an index that MOVES when the width moves: the width is a derived three-axis minimum
+// and it has already changed once under this module (the 2026-08-22 DIMM upgrade), so pinning a
+// member to "the top two" would re-create the sliding-role defect in a slower form.
+data fabric_second_slot_index: Nat = 7
+
+fn srv3_fabric_second_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: fabric_second_slot_index }
+}
+
+fn srv4_fabric_first_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv4, slot_index: fabric_first_slot_index }
+}
+
+fn srv4_fabric_second_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv4, slot_index: fabric_second_slot_index }
+}
+
+// srv3 AND srv4 CARRY TWO FABRIC EXECUTION SLOTS EACH AND srv1 DELIBERATELY DOES NOT (operator,
+// 2026-08-21, widened 2026-09-18). The canary population was one slot on one host, which made
+// placement a selection with a single admissible candidate -- a front standing as a winner, not a
+// placement. Two hosts is the smallest population in which a failure domain can be chosen.
+//
+// WHY srv1 STAYS OUT, RE-DERIVED RATHER THAN INHERITED, because the 2026-08-21 reason no longer
+// describes the tree: that ruling excluded srv1 because the control plane was taking a temporary
+// srv1 slice, and `gunbc.fabric_control_plane_charge` `fabric_control_plane_placement` is
+// ControlPlaneUnplaced -- the control plane is on no host at all. The constraint that survives is a
+// RELATION between two placements, neither of which is pinned: the control plane must not share a
+// host with the capacity it schedules. Filling every host with execution slots would settle that
+// relation by omission, so srv1 is held free as the host the control plane can still land on. If
+// the control plane is later pinned elsewhere, srv1 becomes admissible and this note is the reason
+// to revisit rather than a standing prohibition.
+//
+// srv2 IS ABSENT AND THAT IS A REFUSAL IT AUTHORED, NOT AN OMISSION HERE. Its committed width is
+// zero because host_runner_memory_envelope_resolution answers RunnerMemoryEnvelopeUnestablished for
+// it: the session-slice denominator on that host is unestablished on measured evidence
+// (gunbc.session_reservation_policy srv2_session_aggregate_denominator), so the subtraction cannot
+// be performed at all. Any index on srv2 therefore lands in SlotOutsideCommittedPopulation, and srv2
+// enters this list when its session charge is measured, by no other route.
+//
+// AN EARLIER REVISION OF THIS NOTE DESCRIBED A MECHANISM THIS SAME CHANGE DELETED, which is worth
+// recording rather than silently rewriting. It said the width was zero because
+// host_runner_memory_envelope_bytes "has no arm for it" and warned against "restoring a special-case
+// arm". That was true while the envelope was one authored literal per host with an else arm of zero.
+// This change replaced those literals with a derivation over five authorities, so there are no arms
+// to restore or bypass; the refusal now comes from an input that cannot answer rather than from a
+// table that never named the host. The warning it carried is preserved in the derivation itself,
+// where an unestablished input refuses by name instead of resolving to a number.
+//
+// NO WIDTH FIGURE IS QUOTED HERE ON PURPOSE. An earlier revision of this note said srv3 and srv4
+// "both admit 6 at memory"; the derived widths are 12, memory admits 17 on srv3 and CPU is the
+// binding axis, and the note had been wrong since the 2026-08-22 DIMM upgrade with nothing able to
+// notice. The widths are a derived three-axis minimum -- read them from
+// gunbc_runner_slots_per_host, never from prose.
 //
 // THIS IS THE EXECUTION MEMBER ONLY. The srv1 control-plane slice is NOT a member of this list and
 // must not become one: an allocatable executor and a statically pinned bootstrap have opposite
@@ -1438,7 +1741,12 @@ fn srv3_fabric_canary_slot() -> RunnerSlotIdentity {
 // start. Overloading one variant across both would erase exactly that distinction, which is why
 // the variant is named SlotServesFabricExecution rather than SlotServesComputeFabric.
 fn fabric_execution_slot_identities() -> List<RunnerSlotIdentity> {
-  [srv3_fabric_canary_slot()]
+  [
+    srv3_fabric_first_slot(),
+    srv3_fabric_second_slot(),
+    srv4_fabric_first_slot(),
+    srv4_fabric_second_slot(),
+  ]
 }
 
 fn identity_is_fabric_execution_member(identity: RunnerSlotIdentity) -> Bool {

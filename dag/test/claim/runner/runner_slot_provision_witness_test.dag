@@ -399,27 +399,47 @@ test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
 // have proposed installing a GitHub Actions runner over srv3's fabric execution slot -- and
 // reconcile would have seen it as an ordinary missing member, so apply would have done it with no
 // refusal anywhere. The width says how many slots exist; it does not say what they are for.
-test fn the_fabric_slot_is_not_a_provisioning_target() -> Bool {
+// srv3-07 MOVED SIDES (2026-09-18) AND THAT IS WHY THIS ROW IS EDITED RATHER THAN LEFT ALONE. It was
+// the positive control here -- the index just above the canary, asserted PRESENT to prove the row
+// excludes the fabric member specifically rather than truncating the desired set. srv3-07 is now the
+// second fabric member, so it must be absent for exactly the reason srv3-06 is, and the control
+// moves up to srv3-08.
+//
+// THE CONTROL IS STILL LOAD-BEARING and must not be dropped just because there are two exclusions
+// now: without an index asserted PRESENT above the excluded ones, a desired set that simply stopped
+// at srv3-05 would satisfy every other clause.
+test fn the_fabric_slots_are_not_provisioning_targets() -> Bool {
   let names = map(
     desired_runner_slot_members(deploy: wt_srv3_deploy()),
     m => runner_slot_member_key(m: m) as String,
   )
   (any(names, n => n == "srv3-06") == false)
+    && (any(names, n => n == "srv3-07") == false)
     && any(names, n => n == "srv3-05")
-    && any(names, n => n == "srv3-07")
+    && any(names, n => n == "srv3-08")
 }
 
 // THE POSITIVE CONTROL AND THE ARITHMETIC, without which the row above is satisfied by a desired set
-// that is simply too small. srv3 gives up exactly one slot to the fabric; every other host carries
+// that is simply too small. srv3 and srv4 each give up exactly two slots to the fabric; srv1 carries
 // no fabric member and loses nothing.
-test fn only_the_fabric_host_loses_a_provisioning_target() -> Bool {
+//
+// THE COUNTS ARE AUTHORED POLICY AND THE WIDTHS ARE DERIVED, which is why the two appear
+// differently. `gunbc_runner_slots_per_host` is called rather than transcribed -- a width literal
+// here would go stale the next time an axis moves, as the prose in the authority did across the
+// 2026-08-22 DIMM upgrade -- while the per-host fabric count IS a declared decision (operator,
+// 2026-09-18: two execution slots on each of srv3 and srv4) and is therefore written as the literal
+// it is. Widening the population without editing this row leaves the subtraction disagreeing with
+// the authority, which is the discrimination this control exists to provide.
+test fn only_the_fabric_hosts_lose_provisioning_targets() -> Bool {
   list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy()))
-    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 1
-    && host_fabric_slot_count(host: operator_host_srv3) == 1
+    == gunbc_runner_slots_per_host(host: operator_host_srv3) - 2
+    && host_fabric_slot_count(host: operator_host_srv3) == 2
     && list_length(items: desired_runner_slot_members(deploy: wt_srv4_deploy()))
-         == gunbc_runner_slots_per_host(host: operator_host_srv4)
+         == gunbc_runner_slots_per_host(host: operator_host_srv4) - 2
+    && host_fabric_slot_count(host: operator_host_srv4) == 2
     && list_length(items: desired_runner_slot_members(deploy: wt_srv1_deploy()))
          == gunbc_runner_slots_per_host(host: operator_host_srv1)
+    && host_fabric_slot_count(host: operator_host_srv1) == 0
 }
 
 
