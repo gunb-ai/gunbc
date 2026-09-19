@@ -4,6 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.prometheus.client { PrometheusMetricType, PrometheusCounter, PrometheusGauge, PrometheusHistogram }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -469,19 +470,20 @@ fn vllm_histogram_series_name(m: VllmServingMetric, s: HistogramStatistic) -> No
   }
 }
 
-fn vllm_metric_exports_histogram_statistics(m: VllmServingMetric) -> Bool {
+// Each family's Prometheus type as vLLM's metrics module registers it (Histogram, Counter or Gauge).
+fn vllm_metric_type(m: VllmServingMetric) -> PrometheusMetricType {
   match m {
-    InterTokenLatencySeconds => true
-    IterationTokensTotal => true
-    KvCacheUsagePerc => false
-    NumRequestsRunning => false
-    NumRequestsWaiting => false
-    NumRequestsWaitingByReason => false
-    PrefixCacheQueries => false
-    PrefixCacheHits => false
-    PromptTokensTotal => false
-    GenerationTokensTotal => false
-    NumPreemptionsTotal => false
-    EstimatedFlopsPerGpuTotal => false
+    InterTokenLatencySeconds => PrometheusHistogram
+    IterationTokensTotal => PrometheusHistogram
+    KvCacheUsagePerc => PrometheusGauge
+    NumRequestsRunning => PrometheusGauge
+    NumRequestsWaiting => PrometheusGauge
+    NumRequestsWaitingByReason => PrometheusGauge
+    PrefixCacheQueries => PrometheusCounter
+    PrefixCacheHits => PrometheusCounter
+    PromptTokensTotal => PrometheusCounter
+    GenerationTokensTotal => PrometheusCounter
+    NumPreemptionsTotal => PrometheusCounter
+    EstimatedFlopsPerGpuTotal => PrometheusCounter
   }
 }

@@ -27,6 +27,24 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
+// THE METRIC FAMILY TYPE, as the text exposition format declares it on each family's `# TYPE` line
+// (prometheus.io/docs/instrumenting/exposition_formats). Only a histogram family exports the
+// `_sum` and `_count` series a histogram delta reads; a counter or gauge of the same name does not.
+type PrometheusMetricType
+  = PrometheusCounter
+  | PrometheusGauge
+  | PrometheusHistogram
+  | PrometheusSummary
+
+fn prometheus_metric_type_word(t: PrometheusMetricType) -> String {
+  match t {
+    PrometheusCounter => "counter"
+    PrometheusGauge => "gauge"
+    PrometheusHistogram => "histogram"
+    PrometheusSummary => "summary"
+  }
+}
+
 // THE PROCESS COLLECTOR IS THE CLIENT LIBRARY'S, NOT THE SERVING ENGINE'S.
 //
 // Anything exporting through prometheus_client on Linux also exports a small population of series

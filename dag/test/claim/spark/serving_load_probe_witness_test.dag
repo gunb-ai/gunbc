@@ -3,6 +3,7 @@ module test.claim.spark.serving_load_probe_witness
 import std.types { Bool, String, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.vllm.metrics { GenerationTokensTotal }
 import std.decimal { ExactDecimal, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import extdeps.prometheus.client { prometheus_sample_value_reading, SampleValueExact, SampleValueNotFinite, SampleValueUnreadable }
 import std.measure { token_count, token_count_value, tokens_per_second_count, millisecond, millisecond_count }
@@ -19,6 +20,7 @@ import gunbc.spark.vllm_endpoint_process_launch {
 }
 import gunbc.harness.harness_backend { harness_queue_from_body }
 import gunbc.spark.serving_load_probe {
+  histogram_delta, HistogramDeltaRead, HistogramDeltaUnread, HistogramCounterReset,
   SamePrincipal, DriverObserverSplit, provenance_text, ProbeProvenance,
   DrainObservedIdle, DrainNotIdle, ExclusionNotEstablished, ExclusionEstablished, WindowIsolated,
   WindowIsolationNotEstablished, ForeignTrafficObserved, ForeignTrafficNotObserved, ForeignTrafficUnread, window_from_drain,
@@ -737,4 +739,12 @@ test fn the_receipt_prints_the_provenance_its_caller_supplied() -> Bool {
   string_contains(s: same, pattern: "same-principal fixture principal")
     && !string_contains(s: same, pattern: "driver-observer-split")
     && string_contains(s: provenance_text(p: DriverObserverSplit { driver: "d" as NonEmptyStr, observer: "o" as NonEmptyStr }), pattern: "driver-observer-split driver=d observer=o")
+}
+
+test fn a_histogram_delta_on_a_counter_family_is_refused_by_its_type() -> Bool {
+  match histogram_delta(before_body: fx_idle, after_body: fx_after, metric: GenerationTokensTotal) {
+    HistogramDeltaUnread { cause: c } => string_contains(s: c as String, pattern: "counter family")
+    HistogramDeltaRead { sum: _, count: _ } => false
+    HistogramCounterReset { cause: _ } => false
+  }
 }

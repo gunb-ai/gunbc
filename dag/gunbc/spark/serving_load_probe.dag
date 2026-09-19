@@ -11,10 +11,11 @@ import v2.std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.capacity.lease { LeaseGrant }
 import extdeps.prometheus.client {
+  PrometheusCounter, PrometheusGauge, PrometheusHistogram, PrometheusSummary,
   SampleValueExact, SampleValueNotFinite, SampleValueUnreadable, prometheus_sample_value_reading,
 }
 import extdeps.vllm.metrics {
-  VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal, PromptTokensTotal, HistogramSum, HistogramCount, vllm_metric_exports_histogram_statistics,
+  VllmServingMetric, InterTokenLatencySeconds, IterationTokensTotal, NumPreemptionsTotal, GenerationTokensTotal, PromptTokensTotal, HistogramSum, HistogramCount, vllm_metric_type,
 }
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, PoissonProcess, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_serve_source_standing, vllm_bench_backend_route,
@@ -309,9 +310,11 @@ fn nat_delta(after: Nat, before: Nat) -> Nat? {
 
 // The sum is read through the projection's own reader, so its unit is the caller's, never guessed here.
 fn histogram_delta(before_body: String, after_body: String, metric: VllmServingMetric) -> HistogramDelta {
-  if !vllm_metric_exports_histogram_statistics(m: metric) {
-    HistogramDeltaUnread { cause: "this metric does not export histogram sum/count" as NonEmptyStr }
-  } else {
+  match vllm_metric_type(m: metric) {
+    PrometheusCounter => HistogramDeltaUnread { cause: "this metric is a counter family, which exports no histogram sum/count" as NonEmptyStr }
+    PrometheusGauge => HistogramDeltaUnread { cause: "this metric is a gauge family, which exports no histogram sum/count" as NonEmptyStr }
+    PrometheusSummary => HistogramDeltaUnread { cause: "this metric is a summary family; its sum/count are not read as a histogram delta here" as NonEmptyStr }
+    PrometheusHistogram => {
     match harness_histogram_statistic_value(body: before_body, metric: metric, statistic: HistogramSum) {
       Absent => HistogramDeltaUnread { cause: "histogram sum missing on the first body" as NonEmptyStr }
       Present { value: bs } =>
@@ -363,6 +366,7 @@ fn histogram_delta(before_body: String, after_body: String, metric: VllmServingM
             }
         }
     }
+  }
   }
 }
 
@@ -1273,7 +1277,7 @@ data glm_native_bench_seed: Nat = 20260918
 // tokens; bench-serve's total token throughput also counts prefill and answers a different question.
 data glm_native_smoke_protocol: VllmBenchServeRequest = vllm_bench_serve_request(
   backend: OpenaiChat,
-  base_url: "http://127.0.0.1:30000" as NonEmptyStr,
+  base_url: join(["http://127.0.0.1:", to_string(glm_native_concurrent_profile.serve_port)], "") as NonEmptyStr,
   model: glm_native_concurrent_profile.served_alias,
   tokenizer: glm_native_engine_tokenizer_path,
   dataset: glm_native_sweep_dataset,
@@ -1288,7 +1292,7 @@ fn bench_labeled_nat(body: String, label: String) -> Nat? {
   text_labeled_count(body: text_without_sudo_prompt(body: body), label: label)
 }
 
-fn bench_labeled_milli_from_seconds(body: String, label: String) -> Nat? {
+fn bench_labeled_thousandths(body: String, label: String) -> Nat? {
   match text_field_last_word(body: text_without_sudo_prompt(body: body), label: label) {
     Absent => none
     Present { value: last_word } => field_to_milli(field: last_word)
@@ -1326,7 +1330,7 @@ fn client_output_from_bench_stdout(body: String) -> ClientOutputTokens {
 }
 
 fn scrape_millis_from_bench_stdout(body: String) -> Millisecond? {
-  match bench_labeled_milli_from_seconds(body: body, label: "Benchmark duration (s)") {
+  match bench_labeled_thousandths(body: body, label: "Benchmark duration (s)") {
     Absent => none
     Present { value: n } => Present { value: millisecond(count: n) }
   }
@@ -1357,7 +1361,7 @@ fn client_bucket_peak_from_bench_stdout(body: String, client_max_concurrency: Na
 }
 
 fn client_latency_from_bench_stdout(body: String, window: ProbeWindowStanding) -> ClientBenchLatency {
-  match bench_labeled_milli_from_seconds(body: body, label: "Output token throughput (tok/s)") {
+  match bench_labeled_thousandths(body: body, label: "Output token throughput (tok/s)") {
     Absent => ClientBenchLatencyUnread { cause: "vllm bench serve stdout carried no unique Output token throughput (tok/s) line" as NonEmptyStr }
     Present { value: th } =>
       match bench_labeled_whole_milli(body: body, label: "Mean TPOT (ms)") {
