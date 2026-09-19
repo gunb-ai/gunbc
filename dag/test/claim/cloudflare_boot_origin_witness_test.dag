@@ -4,6 +4,7 @@ import std.types { Bool, NonEmptyStr, String, list_length }
 import std.decl_ref { decl_ref }
 import std.content_hash { Sha256Digest, Sha256DigestHex, Sha256Hash, Sha1Hash, Sha1Digest, Sha1DigestHex }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.crypto.mac { MacKeyId }
 import extdeps.uri { Uri, uri_https, uri_from_wire }
 import gunbc.network_boot_delivery {
   FleetBootServiceReceipt,
@@ -95,7 +96,7 @@ fn receipt_at(domain: Uri) -> FleetBootServiceReceipt {
   FleetBootServiceReceipt {
     https_boot_endpoint: uri_https(locator: "boot.example.test"),
     origin_custom_domain: domain,
-    signing_key_identity: "fixture-key",
+    signing_key_identity: "fixture-key" as MacKeyId,
     observation: decl_ref(module_path: "test.claim.cloudflare_boot_origin_witness", decl_name: "receipt_at"),
     observed_at: 0,
   }
@@ -171,18 +172,18 @@ test fn readback_refuses_r2_dev() -> Bool {
 }
 
 test fn readback_confirms_only_the_published_digest() -> Bool {
-  let ok = match classify_boot_readback(object: kernel_a(), observation: BootReadbackServed { served_digest: digest(hex: digest_a_hex) }) {
-    BootObjectReadBackConfirmed { key: _ } => true
+  let ok = match classify_boot_readback(object: kernel_a(), observation: BootReadbackServed { served_digest: digest(hex: digest_a_hex), served_from: uri_https(locator: "boot-origin.example.test") }) {
+    BootObjectReadBackConfirmed { key: _, served_from: _ } => true
     BootObjectReadBackMismatch { key: _, served: _ } => false
     BootObjectReadBackUnavailable { key: _, cause: _ } => false
   }
-  let stale = match classify_boot_readback(object: kernel_a(), observation: BootReadbackServed { served_digest: digest(hex: digest_b_hex) }) {
-    BootObjectReadBackConfirmed { key: _ } => false
+  let stale = match classify_boot_readback(object: kernel_a(), observation: BootReadbackServed { served_digest: digest(hex: digest_b_hex), served_from: uri_https(locator: "boot-origin.example.test") }) {
+    BootObjectReadBackConfirmed { key: _, served_from: _ } => false
     BootObjectReadBackMismatch { key: _, served: _ } => true
     BootObjectReadBackUnavailable { key: _, cause: _ } => false
   }
   let gone = match classify_boot_readback(object: kernel_a(), observation: BootReadbackUnserved { cause: "404" }) {
-    BootObjectReadBackConfirmed { key: _ } => false
+    BootObjectReadBackConfirmed { key: _, served_from: _ } => false
     BootObjectReadBackMismatch { key: _, served: _ } => false
     BootObjectReadBackUnavailable { key: _, cause: _ } => true
   }
@@ -283,11 +284,15 @@ test fn readback_refuses_r2_dev_in_any_case() -> Bool {
 }
 
 fn member_evidence(slot: BootBundleMember, hex: String, publish_answer: BootPutAnswer, served_hex: String) -> BootBundleMemberEvidence {
+  member_evidence_from(slot: slot, hex: hex, publish_answer: publish_answer, served_hex: served_hex, origin: "boot-origin.example.test")
+}
+
+fn member_evidence_from(slot: BootBundleMember, hex: String, publish_answer: BootPutAnswer, served_hex: String, origin: NonEmptyStr) -> BootBundleMemberEvidence {
   let object = BootBundleObject { member: slot, digest: digest(hex: hex) }
   BootBundleMemberEvidence {
     object: object,
     publish: classify_boot_publish(object: object, answer: publish_answer),
-    readback: classify_boot_readback(object: object, observation: BootReadbackServed { served_digest: digest(hex: served_hex) }),
+    readback: classify_boot_readback(object: object, observation: BootReadbackServed { served_digest: digest(hex: served_hex), served_from: uri_https(locator: origin) }),
   }
 }
 
@@ -373,4 +378,15 @@ test fn bundle_refuses_a_key_occupied_by_other_bytes() -> Bool {
 test fn bundle_refuses_a_member_in_the_wrong_slot() -> Bool {
   let swapped = member_evidence(slot: BootBundleInitrd, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex)
   is_refused(st: standing(kernel: kernel_ok(), initrd: initrd_ok(), root: swapped), member: BootBundleRoot, cause: BootBundleMemberInWrongSlot, observation_decl: "publication_fixture")
+}
+
+// review 68098: served_from is the observed readback origin, so a bundle read back from anywhere but
+// the fleet's custom domain carries that origin and the join's route check can go red.
+test fn bundle_served_from_is_the_observed_readback_origin() -> Bool {
+  let elsewhere_root = member_evidence_from(slot: BootBundleRoot, hex: digest_c_hex, publish_answer: BootPutCreated {}, served_hex: digest_c_hex, origin: "stale-edge.example.test")
+  match standing(kernel: kernel_ok(), initrd: initrd_ok(), root: elsewhere_root) {
+    BootBundleAvailable { receipt: rc } => (rc.served_from.locator as String) == "stale-edge.example.test"
+    BootBundleRefused { member: _, cause: _, observation: _ } => false
+    BootBundleUnobserved => false
+  }
 }

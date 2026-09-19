@@ -195,20 +195,20 @@ fn boot_readback_locator(receipt: FleetBootServiceReceipt, key: NonEmptyStr) -> 
 // A READBACK CONFIRMS ONLY THE DIGEST IT WAS PUBLISHED UNDER. Served bytes hashing to anything else
 // (a stale edge, a wrong object) are a mismatch, and an unreadable object is not a confirmation.
 type BootReadbackObservation
-  = BootReadbackServed { served_digest: Sha256Digest }
+  = BootReadbackServed { served_digest: Sha256Digest, served_from: Uri }
   | BootReadbackUnserved { cause: NonEmptyStr }
 
 type BootReadbackVerdict
-  = BootObjectReadBackConfirmed { key: NonEmptyStr }
+  = BootObjectReadBackConfirmed { key: NonEmptyStr, served_from: Uri }
   | BootObjectReadBackMismatch { key: NonEmptyStr, served: Sha256Digest }
   | BootObjectReadBackUnavailable { key: NonEmptyStr, cause: NonEmptyStr }
 
 fn classify_boot_readback(object: BootBundleObject, observation: BootReadbackObservation) -> BootReadbackVerdict {
   let key = boot_object_key(digest: object.digest)
   match observation {
-    BootReadbackServed { served_digest: s } =>
+    BootReadbackServed { served_digest: s, served_from: origin } =>
       if content_hash_eq_cryptographic(left: s, right: object.digest) {
-        BootObjectReadBackConfirmed { key: key }
+        BootObjectReadBackConfirmed { key: key, served_from: origin }
       } else {
         BootObjectReadBackMismatch { key: key, served: s }
       }
@@ -234,9 +234,8 @@ fn boot_origin_is_separate_from_durable_origin() -> Bool {
 // THE AVAILABILITY RECEIPT IS PRODUCED HERE AND DECLARED IN 0A (gunbc.network_boot_delivery
 // BootBundleAvailabilityReceipt). A member counts only when its create-only PUT published it or found
 // the same bytes already there, AND its readback through the custom domain served that digest, AND it
-// sits in the slot it claims. served_from is the fleet receipt's origin_custom_domain itself, so it
-// cannot disagree with the endpoint the join requires. Any member short of that leaves the bundle
-// Unobserved: a partial bundle is not a smaller available one.
+// sits in the slot it claims. served_from is the origin the readbacks were observed at. A member
+// observed wrong is refused, and a member never observed leaves the bundle Unobserved; see below.
 type BootBundleMemberEvidence {
   object: BootBundleObject
   publish: BootPublishVerdict
@@ -248,7 +247,7 @@ type BootBundleMemberEvidence {
 // found wrong, and becomes gunbc.network_boot_delivery BootBundleRefused naming the member, the cause
 // and the observation that saw it. Only a failed PUT or an unserved readback is absence (Unobserved).
 type BootMemberVerdict
-  = BootMemberHolds
+  = BootMemberHolds { served_from: Uri }
   | BootMemberAbsent
   | BootMemberRefused { member: BootBundleMember, cause: BootBundleObservedRefusal, observation: DeclarationRef }
 
@@ -273,7 +272,7 @@ fn classify_boot_member(
 
 fn classify_boot_member_readback(verdict: BootReadbackVerdict, slot: BootBundleMember, readback_observation: DeclarationRef) -> BootMemberVerdict {
   match verdict {
-    BootObjectReadBackConfirmed { key: _ } => BootMemberHolds
+    BootObjectReadBackConfirmed { key: _, served_from: origin } => BootMemberHolds { served_from: origin }
     BootObjectReadBackMismatch { key: _, served: _ } =>
       BootMemberRefused { member: slot, cause: BootBundleReadBackServedOtherBytes, observation: readback_observation }
     BootObjectReadBackUnavailable { key: _, cause: _ } => BootMemberAbsent
@@ -282,10 +281,27 @@ fn classify_boot_member_readback(verdict: BootReadbackVerdict, slot: BootBundleM
 
 fn boot_member_holds(verdict: BootMemberVerdict) -> Bool {
   match verdict {
-    BootMemberHolds => true
+    BootMemberHolds { served_from: _ } => true
     BootMemberAbsent => false
     BootMemberRefused { member: _, cause: _, observation: _ } => false
   }
+}
+
+// THE ROUTE IS THE ONE THE READBACKS OBSERVED, never the fleet receipt's expectation (review 68098).
+// When every holding member was served from the fleet's custom domain that is the answer; otherwise
+// the first member origin that differs from it is reported, so gunbc.network_boot_delivery's
+// RouteBundleServedFrom comparison is over an observed fact and can go red.
+fn observed_bundle_origin(verdicts: List<BootMemberVerdict>, expected: Uri) -> Uri {
+  fold(verdicts, init: expected, f: (acc, v) =>
+    if acc != expected {
+      acc
+    } else {
+      match v {
+        BootMemberHolds { served_from: origin } => origin
+        BootMemberAbsent => acc
+        BootMemberRefused { member: _, cause: _, observation: _ } => acc
+      }
+    })
 }
 
 // A refusal on any member wins, in kernel, initrd, root order so the first located cause is reported;
@@ -298,7 +314,7 @@ fn first_boot_member_refusal(verdicts: List<BootMemberVerdict>) -> BootBundleAva
         match v {
           BootMemberRefused { member: m, cause: c, observation: o } =>
             Present { value: BootBundleRefused { member: m, cause: c, observation: o } }
-          BootMemberHolds => none
+          BootMemberHolds { served_from: _ } => none
           BootMemberAbsent => none
         }
     })
@@ -326,7 +342,7 @@ fn boot_bundle_availability(
             kernel_digest: Sha256Hash(kernel.object.digest),
             initrd_digest: Sha256Hash(initrd.object.digest),
             root_digest: Sha256Hash(root.object.digest),
-            served_from: fleet.origin_custom_domain,
+            served_from: observed_bundle_origin(verdicts: verdicts, expected: fleet.origin_custom_domain),
             publication_observation: publication_observation,
             readback_observation: readback_observation,
           }
