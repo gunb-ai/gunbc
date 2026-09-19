@@ -1,0 +1,141 @@
+module v2.lens.reference_derived_residency_reading
+
+import gunbc.namespace_reference_derived_residency_qualification {
+  CarrierKeyPopulation,
+  CarrierPayloadGrain,
+  IdentityDigestPerKey,
+  KeyedBySingleSubject,
+  KeyedByWholePoolPopulation,
+  ProducerCarrierReading,
+  SyntaxNodePerKey,
+}
+import std.decl_ref { DeclarationRef }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Instantiation,
+  Node,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes,
+}
+
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// DERIVES a ProducerCarrierReading from the type declaration the producer actually holds, so the
+// reading moves when the declaration moves. The alternative -- hand-authoring the reading from a
+// prose read of the producer -- transcribes an instrument's output (DESIGN section 6) and produces a
+// row that keeps whatever it was set to after the producer is bounded, which is the defect review
+// 68631 named on gunbc#11740 and is the reason this module exists.
+//
+// THE TWO STRUCTURAL QUESTIONS, and both are decidable off the declaration. Does the field's declared
+// type mention `Node` -- that is, is the payload SYNTAX rather than a bounded per-key record? And is
+// it held per member of a population rather than for one subject -- a `Map`, `List` or `FreeMonoid`
+// rather than a bare field? The pair is what separates `ReferenceDerivedPool.trees:
+// Map<String, Node>` from `LocatedModuleRoot.root: Node`: both mention `Node`, and only the first
+// scales with the corpus.
+//
+// SCOPE, STATED BECAUSE IT IS NOT A GENERAL RESIDENCY ANALYSER. This reads ONE declaration at a time
+// and does not follow a field's type into the module that declares it. That is deliberate rather than
+// unfinished: the two carriers the filed class names -- `v2.lens.module_graph ReferenceDerivedPool`
+// and `v2.std.symbol_index SymbolIndex` -- are each read as their own reading and both enter one
+// ProductionLifecycleReading, which is exactly what makes an obligation written against either one
+// alone insufficient. A transitive reader would let `index: SymbolIndex` answer for the index without
+// the index's own declaration being present, which is a weaker check, not a stronger one.
+
+fn node_atom_is(n: Node, needle: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => id == needle
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn subtree_mentions_atom(root: Node, needle: Symbol) -> Bool {
+  length(xs: node_subtree_nodes(root: root) |> filter(n => node_atom_is(n: n, needle: needle))) > 0
+}
+
+// The collection constructors a per-key population is spelled with in this corpus. A field whose type
+// names none of them holds ONE value, however large that value is.
+fn type_expr_is_keyed_population(target: Node) -> Bool {
+  subtree_mentions_atom(root: target, needle: ^Map)
+    || subtree_mentions_atom(root: target, needle: ^List)
+    || subtree_mentions_atom(root: target, needle: ^FreeMonoid)
+}
+
+fn type_expr_holds_syntax(target: Node) -> Bool {
+  subtree_mentions_atom(root: target, needle: ^Node)
+}
+
+fn field_is_whole_population_syntax(target: Node) -> Bool {
+  type_expr_holds_syntax(target: target) && type_expr_is_keyed_population(target: target)
+}
+
+// A declaration's reading is its WORST field: one field holding syntax per population member is
+// enough to make the carrier scale with the corpus, whatever the other fields hold.
+fn decl_has_whole_population_syntax_field(decl: Node) -> Bool {
+  match decl.kind {
+    TypeNode { connective: _ } =>
+      fold(decl.children, init: false, f: fn(acc, edge) {
+        match edge.label {
+          Named { name: _ } => acc || field_is_whole_population_syntax(target: edge.target)
+          Positional => acc
+        }
+      })
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn decl_has_syntax_field(decl: Node) -> Bool {
+  match decl.kind {
+    TypeNode { connective: _ } =>
+      fold(decl.children, init: false, f: fn(acc, edge) {
+        match edge.label {
+          Named { name: _ } => acc || type_expr_holds_syntax(target: edge.target)
+          Positional => acc
+        }
+      })
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn carrier_payload_grain_of(decl: Node) -> CarrierPayloadGrain {
+  if decl_has_syntax_field(decl: decl) {
+    SyntaxNodePerKey
+  } else {
+    IdentityDigestPerKey
+  }
+}
+
+fn carrier_key_population_of(decl: Node) -> CarrierKeyPopulation {
+  if decl_has_whole_population_syntax_field(decl: decl) {
+    KeyedByWholePoolPopulation
+  } else {
+    KeyedBySingleSubject
+  }
+}
+
+fn carrier_reading_from_type_decl(
+  carrier: DeclarationRef,
+  decl: Node,
+) -> ProducerCarrierReading {
+  ProducerCarrierReading {
+    carrier: carrier,
+    grain: carrier_payload_grain_of(decl: decl),
+    population: carrier_key_population_of(decl: decl),
+  }
+}

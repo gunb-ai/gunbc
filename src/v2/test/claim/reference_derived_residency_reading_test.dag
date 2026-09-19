@@ -1,0 +1,199 @@
+module v2.test.claim.reference_derived_residency_reading
+
+import gunbc.namespace_reference_derived_residency_qualification {
+  BoundedRealizationQualified,
+  BoundedRealizationRefused,
+  IdentityDigestPerKey,
+  KeyedBySingleSubject,
+  KeyedByWholePoolPopulation,
+  LifecycleReadingAbsent,
+  ProducerCarrierReading,
+  ProductionLifecycleReading,
+  SyntaxNodePerKey,
+  WholeCorpusSyntaxAtConstructionPeak,
+  WholeCorpusSyntaxRetainedAtReturn,
+  qualify_bounded_realization,
+}
+import std.decl_ref { decl_ref }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.reference_derived_residency_reading { carrier_reading_from_type_decl }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Instantiation,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+}
+import std.types { Int }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WITNESSES FOR THE DERIVATION, at the one interface it answers at: given a type declaration, what
+// grain and population does the carrier hold. The declarations are SUPPLIED here rather than computed
+// (DESIGN section 3), because the subject of these claims is the derivation and not the ingest that
+// would produce a declaration.
+//
+// THE PAIRING OBLIGATION IS OPEN, AND IT IS STATED RATHER THAN QUIETLY OMITTED. DESIGN section 3
+// requires one inhabitance claim that the real producer emits these shapes, and this module does NOT
+// carry one, because the route that would supply it does not work: a standalone single-file ingest of
+// src/v2/lens/module_graph.dag does not yield field type expressions to read. MEASURED, not assumed,
+// over three attempts at this head:
+//   tokenize + parse_module            27827 subtree nodes, ZERO Named edges labelled the declaration
+//   located_roots_from_source_root_ingest  1628 subtree nodes, 1340 Named edges, ONE ^Node atom
+//   symbol_index_fill_module_root over that root  does not resolve the declaration's qualified name
+// The reading a normalized single-file root carries is names, not declared types, and normalization
+// of a module with imports needs its closure. So the derivation must run where field type expressions
+// are present -- the compile-door lens path, which is where v2.lens.lifecycle_carrier reads field
+// types through edge_field_type_name today. THAT INTEGRATION IS THE NAMED NEXT STEP and until it
+// lands NOTHING HERE ESTABLISHES A PROPERTY OF THE LIVE PRODUCER. An earlier revision of this branch
+// asserted one from a hand-authored row; review 68631 on gunbc#11740 refused it and was right to.
+
+fn atom(identity: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: identity } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn positional_to(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn named_to(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+// `Map<K, V>` as the tree spells it: an instantiation whose children are the constructor and its
+// arguments.
+fn map_of(key: Symbol, value: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [positional_to(target: atom(identity: ^Map)), positional_to(target: atom(identity: key)), positional_to(target: atom(identity: value))],
+    occurrence_id: OccurrenceSynthetic,
+  }
+}
+
+fn record_of(fields: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: fields, occurrence_id: OccurrenceSynthetic }
+}
+
+// The producer's tree map: syntax, held per member of the pool population.
+fn trees_like_declaration() -> Node {
+  record_of(fields: [named_to(name: ^trees, target: map_of(key: ^String, value: ^Node))])
+}
+
+// The second route to the same population, through the index.
+fn symbol_index_like_declaration() -> Node {
+  record_of(fields: [named_to(name: ^entries, target: map_of(key: ^QualifiedName, value: ^Node))])
+}
+
+// Syntax, but for ONE subject rather than a population.
+fn single_subject_declaration() -> Node {
+  record_of(fields: [named_to(name: ^root, target: atom(identity: ^Node))])
+}
+
+// A bounded population: a per-key digest instead of a tree. This is the shape a bounded realization
+// would have, and the derivation must distinguish it from the first two.
+fn name_table_declaration() -> Node {
+  record_of(fields: [named_to(name: ^entries, target: map_of(key: ^QualifiedName, value: ^ContentHash))])
+}
+
+fn reading_of(decl_name: String, decl: Node) -> ProducerCarrierReading {
+  carrier_reading_from_type_decl(
+    carrier: decl_ref(module_path: "v2.lens.module_graph", decl_name: decl_name),
+    decl: decl,
+  )
+}
+
+fn is_whole_population_syntax(r: ProducerCarrierReading) -> Bool {
+  match r.grain {
+    SyntaxNodePerKey =>
+      match r.population {
+        KeyedByWholePoolPopulation => true
+        KeyedBySingleSubject => false
+      }
+    IdentityDigestPerKey => false
+    ModuleQualifiedNamePerKey => false
+  }
+}
+
+test fn a_tree_map_declaration_derives_as_whole_population_syntax() -> Bool {
+  is_whole_population_syntax(r: reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()))
+}
+
+test fn an_index_entries_declaration_derives_as_whole_population_syntax() -> Bool {
+  is_whole_population_syntax(r: reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()))
+}
+
+// THE DISCRIMINATING CONTRAST. A declaration that holds a Node for ONE subject is syntax and is not a
+// population. A derivation that answered "holds a Node" would collapse this into the two above and
+// could not describe any bounded producer at all.
+test fn a_single_subject_node_field_is_not_whole_population_syntax() -> Bool {
+  !is_whole_population_syntax(r: reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()))
+}
+
+// THE OTHER HALF OF THE SAME CONTRAST: a population whose per-key payload is a digest rather than a
+// tree is bounded, which is what makes the check capable of ever going green on a repaired producer.
+test fn a_digest_keyed_population_is_not_whole_population_syntax() -> Bool {
+  !is_whole_population_syntax(r: reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()))
+}
+
+fn lifecycle_from(constructed: List<ProducerCarrierReading>) -> ProductionLifecycleReading {
+  ProductionLifecycleReading {
+    subject: decl_ref(module_path: "v2.lens.module_graph", decl_name: "load_reference_derived_pool"),
+    constructed: constructed,
+    retained_at_return: [],
+  }
+}
+
+// THE DERIVATION FEEDS THE QUALIFIER, so the two halves are joined by execution rather than by
+// assertion: readings derived from declarations refuse, and readings derived from bounded
+// declarations qualify.
+test fn derived_readings_of_the_two_carriers_refuse_at_construction_peak() -> Bool {
+  match qualify_bounded_realization(
+    reading: lifecycle_from(
+      constructed: [
+        reading_of(decl_name: "ReferenceDerivedPool", decl: trees_like_declaration()),
+        reading_of(decl_name: "SymbolIndex", decl: symbol_index_like_declaration()),
+      ],
+    ),
+  ) {
+    BoundedRealizationQualified { subject: _ } => false
+    BoundedRealizationRefused { subject: _, failure: failure } =>
+      match failure {
+        WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => true
+        WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
+        LifecycleReadingAbsent => false
+      }
+  }
+}
+
+test fn derived_readings_of_a_bounded_producer_qualify() -> Bool {
+  match qualify_bounded_realization(
+    reading: lifecycle_from(
+      constructed: [
+        reading_of(decl_name: "SymbolIndex", decl: name_table_declaration()),
+        reading_of(decl_name: "LocatedModuleRoot", decl: single_subject_declaration()),
+      ],
+    ),
+  ) {
+    BoundedRealizationQualified { subject: _ } => true
+    BoundedRealizationRefused { subject: _, failure: _ } => false
+  }
+}
+
+// Probe only: the six claims above as one bitmask, so a verification run pays ONE closure typecheck
+// instead of six. Asserts nothing and is not enrolled.
+fn residency_reading_probe_bits() -> Int {
+  (if a_tree_map_declaration_derives_as_whole_population_syntax() { 1 } else { 0 })
+    + (if an_index_entries_declaration_derives_as_whole_population_syntax() { 2 } else { 0 })
+    + (if a_single_subject_node_field_is_not_whole_population_syntax() { 4 } else { 0 })
+    + (if a_digest_keyed_population_is_not_whole_population_syntax() { 8 } else { 0 })
+    + (if derived_readings_of_the_two_carriers_refuse_at_construction_peak() { 16 } else { 0 })
+    + (if derived_readings_of_a_bounded_producer_qualify() { 32 } else { 0 })
+}

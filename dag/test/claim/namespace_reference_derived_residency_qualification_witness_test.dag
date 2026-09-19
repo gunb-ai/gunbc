@@ -17,10 +17,8 @@ import gunbc.namespace_reference_derived_residency_qualification {
   BoundedRealizationResourceQualificationOutstanding,
   qualify_bounded_realization,
   admit_bounded_realization,
-  reference_derived_pool_lifecycle_reading,
-  bounded_reference_derived_pool_specimen,
 }
-import std.types { Bool, List, String }
+import std.types { Bool, Int, List, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 
 // Witnesses for the residency qualification of the reference-derived graph producer. The three RED
@@ -78,7 +76,7 @@ fn rdrq_reading(
 // POSITIVE CONTROL. A name table keyed by the pool population plus the one subject tree under
 // production qualifies. Without this arm every red below would be satisfied by a qualifier that
 // refuses everything.
-fn a_name_table_pool_with_one_subject_tree_qualifies() -> Bool {
+test fn a_name_table_pool_with_one_subject_tree_qualifies() -> Bool {
   match qualify_bounded_realization(
     reading: rdrq_reading(
       constructed: [rdrq_bounded_index_carrier(), rdrq_subject_tree_carrier()],
@@ -90,30 +88,10 @@ fn a_name_table_pool_with_one_subject_tree_qualifies() -> Bool {
   }
 }
 
-// The producer as it stands refuses, and it refuses on CONSTRUCTION PEAK with nothing retained.
-fn the_live_reference_derived_pool_refuses_at_construction_peak() -> Bool {
-  match qualify_bounded_realization(reading: reference_derived_pool_lifecycle_reading) {
-    BoundedRealizationQualified { subject: _ } => false
-    BoundedRealizationRefused { subject: _, failure: failure } =>
-      match failure {
-        WholeCorpusSyntaxAtConstructionPeak { carrier: _ } => true
-        WholeCorpusSyntaxRetainedAtReturn { carrier: _ } => false
-        LifecycleReadingAbsent => false
-      }
-  }
-}
-
-fn the_bounded_specimen_beside_it_qualifies() -> Bool {
-  match qualify_bounded_realization(reading: bounded_reference_derived_pool_specimen) {
-    BoundedRealizationQualified { subject: _ } => true
-    BoundedRealizationRefused { subject: _, failure: _ } => false
-  }
-}
-
 // RED CONTROL 1 -- the whole-pool-build-then-release specimen. Nothing survives the call, so an
 // after-the-fact reading is indistinguishable from the bounded one above; the construction boundary is
 // what separates them.
-fn a_whole_pool_build_that_releases_before_returning_still_refuses() -> Bool {
+test fn a_whole_pool_build_that_releases_before_returning_still_refuses() -> Bool {
   match qualify_bounded_realization(
     reading: rdrq_reading(
       constructed: [rdrq_syntax_carrier(decl_name: "ReferenceDerivedPool")],
@@ -132,7 +110,7 @@ fn a_whole_pool_build_that_releases_before_returning_still_refuses() -> Bool {
 
 // RED CONTROL 2 -- retention moved out of `trees` and into the index. A check written against the
 // tree map alone would go green here while the same population stays resident.
-fn retention_moved_into_the_symbol_index_still_refuses() -> Bool {
+test fn retention_moved_into_the_symbol_index_still_refuses() -> Bool {
   match qualify_bounded_realization(
     reading: rdrq_reading(
       constructed: [rdrq_subject_tree_carrier(), rdrq_index_syntax_carrier()],
@@ -151,7 +129,7 @@ fn retention_moved_into_the_symbol_index_still_refuses() -> Bool {
 
 // The retained-at-return arm is reachable on its own: a producer whose construction is bounded but
 // which hands back a whole-corpus index refuses at the second boundary rather than the first.
-fn a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() -> Bool {
+test fn a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() -> Bool {
   match qualify_bounded_realization(
     reading: rdrq_reading(
       constructed: [rdrq_bounded_index_carrier()],
@@ -170,7 +148,7 @@ fn a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() -> Bool
 
 // RED CONTROL 3 -- an empty reading is not a bound. A qualifier that defaulted to qualified would
 // hand every unmeasured producer a pass.
-fn an_empty_lifecycle_reading_refuses_rather_than_qualifying() -> Bool {
+test fn an_empty_lifecycle_reading_refuses_rather_than_qualifying() -> Bool {
   match qualify_bounded_realization(reading: rdrq_reading(constructed: [], retained_at_return: [])) {
     BoundedRealizationQualified { subject: _ } => false
     BoundedRealizationRefused { subject: _, failure: failure } =>
@@ -185,10 +163,15 @@ fn an_empty_lifecycle_reading_refuses_rather_than_qualifying() -> Bool {
 // THE CONSUMPTION ARM, which is where the filed class actually bites: semantic delivery of the
 // instrument is true and the bounded-realization claim is still not admitted, because the resource
 // qualification is a separate argument with no arm that semantic delivery can satisfy.
-fn semantic_delivery_alone_does_not_admit_a_bounded_realization_claim() -> Bool {
+test fn semantic_delivery_alone_does_not_admit_a_bounded_realization_claim() -> Bool {
   match admit_bounded_realization(
     semantic_delivered: true,
-    resource: qualify_bounded_realization(reading: reference_derived_pool_lifecycle_reading),
+    resource: qualify_bounded_realization(
+      reading: rdrq_reading(
+        constructed: [rdrq_syntax_carrier(decl_name: "ReferenceDerivedPool")],
+        retained_at_return: [],
+      ),
+    ),
   ) {
     BoundedRealizationAdmitted { subject: _ } => false
     BoundedRealizationSemanticDeliveryOutstanding => false
@@ -198,10 +181,15 @@ fn semantic_delivery_alone_does_not_admit_a_bounded_realization_claim() -> Bool 
 
 // And the converse arm, so the admission is not simply unreachable: a qualified resource reading with
 // semantic delivery outstanding is also not an admission.
-fn resource_qualification_alone_does_not_admit_either() -> Bool {
+test fn resource_qualification_alone_does_not_admit_either() -> Bool {
   match admit_bounded_realization(
     semantic_delivered: false,
-    resource: qualify_bounded_realization(reading: bounded_reference_derived_pool_specimen),
+    resource: qualify_bounded_realization(
+      reading: rdrq_reading(
+        constructed: [rdrq_bounded_index_carrier(), rdrq_subject_tree_carrier()],
+        retained_at_return: [],
+      ),
+    ),
   ) {
     BoundedRealizationAdmitted { subject: _ } => false
     BoundedRealizationSemanticDeliveryOutstanding => true
@@ -210,13 +198,31 @@ fn resource_qualification_alone_does_not_admit_either() -> Bool {
 }
 
 // The positive control for the admission itself.
-fn both_evidences_together_admit_the_claim() -> Bool {
+test fn both_evidences_together_admit_the_claim() -> Bool {
   match admit_bounded_realization(
     semantic_delivered: true,
-    resource: qualify_bounded_realization(reading: bounded_reference_derived_pool_specimen),
+    resource: qualify_bounded_realization(
+      reading: rdrq_reading(
+        constructed: [rdrq_bounded_index_carrier(), rdrq_subject_tree_carrier()],
+        retained_at_return: [],
+      ),
+    ),
   ) {
     BoundedRealizationAdmitted { subject: _ } => true
     BoundedRealizationSemanticDeliveryOutstanding => false
     BoundedRealizationResourceQualificationOutstanding { failure: _ } => false
   }
+}
+
+// Probe only: the eight claims above as one bitmask, so a verification run pays ONE closure typecheck
+// instead of eight. Asserts nothing and is not enrolled.
+fn rdrq_probe_bits() -> Int {
+  (if a_name_table_pool_with_one_subject_tree_qualifies() { 1 } else { 0 })
+    + (if a_whole_pool_build_that_releases_before_returning_still_refuses() { 2 } else { 0 })
+    + (if retention_moved_into_the_symbol_index_still_refuses() { 4 } else { 0 })
+    + (if a_bounded_build_handing_back_a_whole_corpus_index_refuses_at_return() { 8 } else { 0 })
+    + (if an_empty_lifecycle_reading_refuses_rather_than_qualifying() { 16 } else { 0 })
+    + (if semantic_delivery_alone_does_not_admit_a_bounded_realization_claim() { 32 } else { 0 })
+    + (if resource_qualification_alone_does_not_admit_either() { 64 } else { 0 })
+    + (if both_evidences_together_admit_the_claim() { 128 } else { 0 })
 }
