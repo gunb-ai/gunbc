@@ -2,16 +2,10 @@ module test.claim.bmc_intake_first_contact_witness
 
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.machine_intake_bmc_first_contact_standing {
-  BmcFirmwareFamilyStanding,
-  FamilyObserved,
-  FamilyUnobserved,
-}
+import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
 import gunbc.machine_intake_mtjade1_access_observation { mtjade1_firmware_family_standing }
-import extdeps.bmc.endpoint { AmiMegaRac }
 import gunbc.tools.bmc_intake_first_contact {
   HostUnreachable,
-  IntakeRedfishSurface,
   RedfishHttpSurface,
   WriteOutUnreadable,
   classify_intake_probe,
@@ -55,41 +49,28 @@ test fn w_intake_probe_success_without_write_out_line_is_unreadable() -> Bool {
   }
 }
 
-// NEITHER SURFACE CONSTRUCTS A FAMILY, WHICH IS THE CLAIM THE TRIGGERS DEPEND ON. An earlier
-// revision of this branch wrote "a wet ProbeServiceRoot read binds FamilyObserved" into four
-// triggers and two annotations. It cannot: a 200 service root is served by several firmware
-// families, and a 404 establishes the absence of that surface rather than MegaRAC. The claim is
-// stated as a FOLD from an intake surface to a standing so it can actually be run, and the fold
-// is total in the only way that is honest -- every surface, reachable or not, answers unobserved.
+// THE PROMOTION THIS BRANCH'S TRIGGERS DEPEND ON IS UNCONSTRUCTIBLE, NOT CHECKED, and saying so
+// is the whole correction. IntakeRedfishSurface carries no BmcFirmwareFamily in any arm --
+// RedfishHttpSurface holds an HttpStatus and a blob, HostUnreachable a cause and stderr,
+// WriteOutUnreadable a blob and a cause -- so no total fold from it can reach FamilyObserved
+// without inventing a family from nothing. That is DESIGN section 4b rung 4: the invalid state
+// has no constructor in the canonical model, and validation is unnecessary because the bad state
+// cannot be written.
 //
-// THE RED IS AUTHORABLE AND THE THIRD CONJUNCT IS IT: a future fold that promotes a 200 into
-// FamilyObserved reddens this, which is precisely the promotion the triggers must not license.
-fn intake_surface_family_standing(surface: IntakeRedfishSurface) -> BmcFirmwareFamilyStanding {
-  match surface {
-    RedfishHttpSurface { status: _, blob: _ } => mtjade1_firmware_family_standing
-    HostUnreachable { cause: _, transport_stderr: _ } => mtjade1_firmware_family_standing
-    WriteOutUnreadable { blob: _, cause: _ } => mtjade1_firmware_family_standing
-  }
-}
-
-fn standing_is_unobserved(standing: BmcFirmwareFamilyStanding) -> Bool {
-  match standing {
+// AN EARLIER REVISION OF THIS FILE "PROVED" IT INSTEAD, AND THE PROOF WAS A DECORATION (review
+// 68252). It defined a fold from surface to standing that discarded its argument and returned the
+// same constant in every arm, so a 200 and a 404 answered unobserved for any input whatsoever;
+// the promotion it claimed to forbid lived in this test file and no production path could redden
+// it. The operator asked for that RED and I built something that could not go red, then cited it
+// in two frontier triggers as the property they rest on -- the exact shape ten earlier commits on
+// this branch deleted elsewhere, surviving in the one file whose prose defended it.
+//
+// What remains is the one conjunct that can actually fail: this unit's standing is unobserved
+// today, and re-binding it to FamilyObserved without the separate per-unit discriminator reddens
+// this claim.
+test fn w_mtjade1_firmware_family_is_unobserved_until_a_discriminator_lands() -> Bool {
+  match mtjade1_firmware_family_standing {
     FamilyUnobserved { discriminator: _ } => true
     FamilyObserved { family: _ } => false
   }
-}
-
-test fn w_neither_a_200_nor_a_404_redfish_surface_observes_a_family() -> Bool {
-  standing_is_unobserved(
-    standing: intake_surface_family_standing(
-      surface: classify_intake_probe(reached_host: true, blob: "{\"RedfishVersion\":\"1.6.0\"}\n200", transport_stderr: ""),
-    ),
-  )
-    && standing_is_unobserved(
-      standing: intake_surface_family_standing(
-        surface: classify_intake_probe(reached_host: true, blob: "{}\n404", transport_stderr: ""),
-      ),
-    )
-    && standing_is_unobserved(standing: mtjade1_firmware_family_standing)
-    && standing_is_unobserved(standing: FamilyObserved { family: AmiMegaRac }) == false
 }
