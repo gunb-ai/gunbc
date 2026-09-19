@@ -34,7 +34,12 @@ import extdeps.crypto.mac {
 import gunbc.machine_intake_subject { IntakeAttemptId }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref }
 import gunbc.network_boot_delivery {
-  signed_boot_manifest_window_refusal,
+  signed_boot_manifest_window,
+  ManifestWindowOpen,
+  ManifestWindowNotYetValid,
+  ManifestWindowExpired,
+  ManifestVerificationNotYetValid,
+  ManifestVerificationExpired,
   SignedBootManifestIdentity,
   SignedBootManifestStanding,
   SignedBootManifestVerified,
@@ -247,9 +252,10 @@ fn join_verified_mac(
   } else if attempt_nonce_spent(spent: expectation.spent_attempt_nonces, attempt_id: ticket.claims.identity.attempt_id, nonce: ticket.claims.identity.nonce) {
     refused(class: ManifestVerificationReplay)
   } else {
-    match signed_boot_manifest_window_refusal(identity: ticket.claims.identity, at: expectation.redeemed_at) {
-      Present { value: window_class } => refused(class: window_class)
-      Absent => BootManifestAuthentic { claims: ticket.claims }
+    match signed_boot_manifest_window(identity: ticket.claims.identity, at: expectation.redeemed_at) {
+      ManifestWindowNotYetValid => refused(class: ManifestVerificationNotYetValid)
+      ManifestWindowExpired => refused(class: ManifestVerificationExpired)
+      ManifestWindowOpen => BootManifestAuthentic { claims: ticket.claims }
     }
   }
 }

@@ -93,6 +93,10 @@ import gunbc.network_boot_delivery {
   BootBundleAvailabilityStanding,
   BootBundleAvailable,
   BootBundleUnobserved,
+  BootBundleRefused,
+  BootBundleRoot,
+  BootBundleReadBackServedOtherBytes,
+  NetworkBootDeliveryBundleRefused,
   BootBundleInitrd,
   ManifestJoinBundleDigestDisagrees,
   NetworkBootDeliveryTrustRefused,
@@ -362,6 +366,7 @@ test fn four_receipts_join_to_established() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -391,6 +396,7 @@ test fn missing_fleet_unestablishes_serving() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -420,6 +426,7 @@ test fn missing_site_is_not_missing_fleet_serving() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -495,6 +502,7 @@ test fn site_architecture_refusal_is_located_on_the_join() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -569,6 +577,7 @@ test fn wrong_target_boot_control_unestablishes_override() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -612,6 +621,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -644,6 +654,7 @@ test fn manifest_for_other_unit_unestablishes_artifacts() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -688,6 +699,7 @@ test fn unsigned_manifest_identity_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -723,6 +735,7 @@ test fn verification_refused_manifest_is_located_on_artifacts() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -772,6 +785,7 @@ test fn expired_verified_manifest_does_not_establish_artifacts() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -807,6 +821,7 @@ test fn unobserved_client_unestablishes_client_mode() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -848,6 +863,7 @@ test fn http_boot_arm64_client_is_client_mode_refused() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -974,6 +990,7 @@ test fn forged_established_edge_wrong_chainloader_arch_does_not_join() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1021,6 +1038,7 @@ test fn ticket_architecture_not_admitted_on_edge_is_located() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1087,6 +1105,7 @@ test fn ticket_architecture_not_on_slice_is_located() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1136,6 +1155,7 @@ test fn established_edge_chainloader_digest_must_match_ticket() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -1185,6 +1205,7 @@ test fn fleet_signing_key_must_match_ticket() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -1211,6 +1232,7 @@ test fn unestablished_trust_does_not_join() -> Bool {
   }
   match join_network_boot_delivery(inputs: inputs) {
     NetworkBootDeliveryTrustUnestablished => true
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryEstablished { evidence: _ } => false
@@ -1255,6 +1277,7 @@ test fn controlled_network_trust_can_establish() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1286,6 +1309,7 @@ test fn foreign_site_edge_does_not_join() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1322,6 +1346,7 @@ test fn frozen_srv4_plan_as_client_observation_names_the_client_axis() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1358,6 +1383,7 @@ test fn frozen_srv4_plan_observation_cannot_establish_delivery() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1407,6 +1433,7 @@ test fn http_boot_ticket_does_not_join_uefi_arm64_client() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1451,6 +1478,7 @@ test fn foreign_client_observation_site_names_the_client_axis() -> Bool {
     NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1520,6 +1548,7 @@ test fn uefi_pxe_with_firmware_https_only_is_not_production_trusted() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
 }
@@ -1546,6 +1575,7 @@ test fn reaching_a_different_https_endpoint_does_not_establish() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
   }
 }
@@ -1571,6 +1601,7 @@ test fn manifest_tftp_root_other_than_the_site_edge_refuses() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
   }
 }
@@ -1588,6 +1619,7 @@ test fn verified_manifest_without_published_bundle_does_not_establish() -> Bool 
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1615,6 +1647,7 @@ test fn single_bundle_digest_mismatch_names_the_member() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1697,6 +1730,7 @@ test fn firmware_https_ground_for_another_endpoint_is_refused() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
 }
@@ -1728,6 +1762,7 @@ test fn secure_boot_ground_for_another_target_is_refused() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
 }
@@ -1759,6 +1794,7 @@ test fn secure_boot_ground_for_another_chainloader_is_refused() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
 }
@@ -1786,6 +1822,7 @@ test fn controlled_network_ground_for_another_site_is_refused() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
 }
@@ -1811,6 +1848,7 @@ test fn reaching_a_different_artifact_origin_does_not_establish() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
   }
 }
@@ -1842,6 +1880,7 @@ test fn bundle_read_back_from_another_origin_does_not_establish() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
   }
 }
@@ -1861,6 +1900,7 @@ test fn manifest_verified_before_not_before_is_refused() -> Bool {
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
     NetworkBootDeliveryTrustRefused { cause: _ } => false
     NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
   }
@@ -1877,6 +1917,30 @@ test fn manifest_for_another_attempt_is_refused() -> Bool {
     NetworkBootDeliveryArchitectureRefused { cause: _ } => false
     NetworkBootDeliveryClientModeRefused { arch: _ } => false
     NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliverySiteUnestablished => false
+    NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
+    NetworkBootDeliveryTrustUnestablished => false
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
+    NetworkBootDeliveryTrustRefused { cause: _ } => false
+    NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => false
+  }
+}
+
+// A read-back WAS observed and the origin served other bytes for the root: that is a refusal
+// naming the member and cause, not the missing-artifacts axis an unrun publisher leaves (review
+// 68011). Discriminates against folding every shortfall into BootBundleUnobserved.
+test fn bundle_read_back_serving_other_bytes_is_refused_not_missing() -> Bool {
+  let stale = BootBundleRefused { member: BootBundleRoot, cause: BootBundleReadBackServedOtherBytes, observation: obs }
+  match join_network_boot_delivery(inputs: inputs_varying(trust: production_trust(), site: site_ok(), bundle: stale)) {
+    NetworkBootDeliveryBundleRefused { member: BootBundleRoot, cause: BootBundleReadBackServedOtherBytes, observation: _ } => true
+    NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => false
+    NetworkBootDeliveryUnestablished { missing: _ } => false
+    NetworkBootDeliveryEstablished { evidence: _ } => false
+    NetworkBootDeliveryEvidenceRefused { axis: _, observation: _ } => false
+    NetworkBootDeliveryArchitectureRefused { cause: _ } => false
+    NetworkBootDeliveryClientModeRefused { arch: _ } => false
+    NetworkBootDeliveryTargetMismatch { axis: _ } => false
+    NetworkBootDeliveryManifestRefused { cause: _ } => false
     NetworkBootDeliverySiteUnestablished => false
     NetworkBootDeliverySiteMismatch { axis: _, expected: _, observed: _ } => false
     NetworkBootDeliveryTrustUnestablished => false

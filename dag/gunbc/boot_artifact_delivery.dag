@@ -119,6 +119,9 @@ import gunbc.network_boot_delivery {
   NetworkBootDeliveryTrustUnestablished,
   NetworkBootDeliveryTrustRefused,
   NetworkBootDeliveryRouteMismatch,
+  NetworkBootDeliveryBundleRefused,
+  BootBundleMember,
+  BootBundleObservedRefusal,
   NetworkBootTrustRefusal,
   NetworkBootRouteAxis,
   NetworkBootDeliveryUnestablished,
@@ -372,6 +375,7 @@ type BootDeliveryCandidateIneligibility
   | CandidateNetworkBootTrustUnestablished
   | CandidateNetworkBootTrustRefused { cause: NetworkBootTrustRefusal }
   | CandidateNetworkBootRouteMismatch { axis: NetworkBootRouteAxis, expected: Uri, observed: Uri }
+  | CandidateNetworkBootBundleRefused { member: BootBundleMember, cause: BootBundleObservedRefusal, observation: DeclarationRef }
 
 type BootDeliveryCandidateStanding
   = CandidateEligible
@@ -701,6 +705,8 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
       CandidateIneligible { cause: CandidateNetworkBootTrustRefused { cause: cause } }
     NetworkBootDeliveryRouteMismatch { axis: axis, expected: expected, observed: observed } =>
       CandidateIneligible { cause: CandidateNetworkBootRouteMismatch { axis: axis, expected: expected, observed: observed } }
+    NetworkBootDeliveryBundleRefused { member: member, cause: cause, observation: observation } =>
+      CandidateIneligible { cause: CandidateNetworkBootBundleRefused { member: member, cause: cause, observation: observation } }
   }
 }
 
@@ -856,6 +862,7 @@ fn build_boot_artifact_delivery(
         NetworkBootDeliveryTrustUnestablished => none
         NetworkBootDeliveryTrustRefused { cause: _ } => none
         NetworkBootDeliveryRouteMismatch { axis: _, expected: _, observed: _ } => none
+        NetworkBootDeliveryBundleRefused { member: _, cause: _, observation: _ } => none
       }
   }
 }
