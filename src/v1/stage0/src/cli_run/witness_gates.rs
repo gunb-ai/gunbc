@@ -296,13 +296,7 @@ pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
             Ok(None)
         }
         CompileCleanScopePlan::WholeTree => {
-            eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
-            let roots = witness_layer_roots();
-            let mei = build_multi_entry_index_primary_precedence(&roots);
-            load_compile_clean_entry_sources(&roots, &mei, None).map(|mut sources| {
-                append_test_floor_compile_clean_inject(&mut sources);
-                Some(sources)
-            })
+            compile_clean_whole_tree_sources_and_index().map(|(sources, _)| Some(sources))
         }
         CompileCleanScopePlan::Scoped { entry_paths } => {
             eprintln!(
@@ -329,6 +323,19 @@ pub(crate) fn witness_layer_roots_compile_clean_sources_for_plan(
 /// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
 /// Skip/whole-tree/skip-vs-run authority lives in `tools.dag_compile_clean_scope` (including
 /// `RequireWholeTree` for non-docs infra/Rust touches with no shard intersection).
+/// The whole-tree entry closure together with the witness-layer index it was loaded from. The index
+/// is returned rather than dropped so a caller that needs the name census and the corpus claim
+/// consults this one build instead of re-walking both roots (review 68591).
+pub(crate) fn compile_clean_whole_tree_sources_and_index(
+) -> Result<(Vec<Rc<v1_compiler_compile::SourceFile>>, MultiEntryIndex), String> {
+    eprintln!("compile-clean scope: whole-tree entry closure (witness_layer_roots)");
+    let roots = witness_layer_roots();
+    let mei = build_multi_entry_index_primary_precedence(&roots);
+    let mut sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
+    append_test_floor_compile_clean_inject(&mut sources);
+    Ok((sources, mei))
+}
+
 pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,

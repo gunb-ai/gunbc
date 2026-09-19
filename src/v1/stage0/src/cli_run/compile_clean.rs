@@ -310,7 +310,7 @@ pub(crate) fn compile_clean_pipeline_options_for_sources(
         return Rc::new(v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: false,
             census_only_sources: Rc::new(im::Vector::new()),
-            corpus: corpus,
+            corpus,
         });
     }
     eprintln!(
@@ -320,17 +320,8 @@ pub(crate) fn compile_clean_pipeline_options_for_sources(
     Rc::new(v1_compiler_compile::CompilePipelineOptions {
         analyze_complexity: false,
         census_only_sources: Rc::new(census_only.into()),
-        corpus: corpus,
+        corpus,
     })
-}
-
-/// The whole-tree compile-clean routes consult the witness-layer index, so their pipeline states
-/// CorpusKnown and a ledger row naming a deleted module refuses there (review 68429).
-fn compile_clean_whole_tree_options(
-    sources: &[Rc<v1_compiler_compile::SourceFile>],
-) -> Rc<v1_compiler_compile::CompilePipelineOptions> {
-    let index = build_multi_entry_index_primary_precedence(&witness_layer_roots());
-    compile_clean_pipeline_options_for_sources(Some(&index), sources)
 }
 
 pub(crate) fn compile_clean_scope_plan_from_touched_paths(
@@ -671,12 +662,10 @@ pub(crate) fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
 /// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
 /// (`compile_to_resolved` on the whole-tree source closure).
 pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<ErrorNode>>, String> {
-    let plan = CompileCleanScopePlan::WholeTree;
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
-        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
-        Some(s) => s,
-    };
-    let options = compile_clean_whole_tree_options(&sources);
+    // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
+    // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
+    let (sources, index) = compile_clean_whole_tree_sources_and_index()?;
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
     let result =
         v1_compiler_compile::compile_to_resolved_with_options(Rc::new(sources.into()), options);
     Ok(result
@@ -689,12 +678,10 @@ pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<Error
 
 pub(crate) fn compile_clean_whole_tree_resolved(
 ) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
-    let plan = CompileCleanScopePlan::WholeTree;
-    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
-        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
-        Some(s) => s,
-    };
-    let options = compile_clean_whole_tree_options(&sources);
+    // The index the closure was loaded from supplies the census and the corpus claim, so a ledger
+    // row naming a deleted module refuses here (review 68429) without a second build (review 68591).
+    let (sources, index) = compile_clean_whole_tree_sources_and_index()?;
+    let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
     Ok(v1_compiler_compile::compile_to_resolved_with_options(
         Rc::new(sources.into()),
         options,
