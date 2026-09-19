@@ -1188,11 +1188,15 @@ fn parse_observe_iso_sha256_observed(stdout: String) -> NonEmptyStr? {
     none
   } else {
     let tail = parts.skip(n: 1).first()
-    let token = split(s: split(s: tail, delimiter: "\n").first(), delimiter: " ").first()
-    if token.length() == 0 {
-      none
-    } else {
-      Present { value: token as NonEmptyStr }
+    let line = split(s: tail, delimiter: "\n").first()
+    match get(xs: split(s: line, delimiter: " "), index: 0) {
+      Absent => none
+      Present { value: token } =>
+        if token.length() == 0 {
+          none
+        } else {
+          Present { value: token as NonEmptyStr }
+        }
     }
   }
 }
