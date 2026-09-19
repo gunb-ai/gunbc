@@ -482,6 +482,8 @@ fn site_pxe_edge_file_results(
 // ORDER: privilege, dnsmasq binary and chainloader digest (the gate), then every desired file, then
 // activation only when the gate is open and every file settled, then the unit's active state read
 // back. A closed gate still observes the files, so an observe dispatch says what WOULD be written.
+// Every effect is sequenced by a let; the unit read-back is bound after activation, never ordered by
+// its position in the result record.
 fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode) -> SitePxeEdgeRun
   uses net: Network
 {
@@ -508,12 +510,13 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
         SitePxeEdgeProbeRefused { reason: "not attempted: gate closed or a file did not settle" }
       }
   }
+  let unit_active = observe_site_pxe_edge_unit_active(target: target, context: context)
   SitePxeEdgeRun {
     mode: mode,
     gate_causes: causes,
     files: results,
     activation: activation,
-    unit_active: observe_site_pxe_edge_unit_active(target: target, context: context),
+    unit_active: unit_active,
   }
 }
 
