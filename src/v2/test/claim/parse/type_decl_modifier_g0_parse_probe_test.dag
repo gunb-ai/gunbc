@@ -5,9 +5,12 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.language_model { LanguageModel }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol, node_subtree_nodes }
+import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -63,4 +66,51 @@ test fn sole_constructor_as_a_data_name_still_parses_holds() -> Bool {
 
 test fn sole_constructor_as_a_caret_symbol_still_parses_holds() -> Bool {
   parse_outcome(src: modifier_spelling_as_caret_source) == "ACCEPTED"
+}
+
+// STAMP MODE IS NOT PART OF THIS CHANGE (review 67851). Admitting two more token classes
+// at a name site must not also move that site StampClass -> StampLexeme: a lexeme stamp
+// makes the terminal carry its own text as the node's atom identity
+// (v2.compiler.02_parse symbol_intern_lexeme), which changes the identity every caret
+// literal and generic parameter carries corpus-wide and falsifies
+// v2.lens.identity_captured_navigation.analyze node_source_symbol_note. The two sites that
+// were class-stamped on main route through dag_grammar_ident_or_type_decl_modifier_name_class.
+// The pair below discriminates in both directions on ONE spelling: the same word is absent
+// from the caret tree's atom identities (class-stamped) and present in the data-decl tree's
+// (lexeme-stamped). Routing the caret site through the lexeme helper turns the first red.
+
+fn parsed_tree_carries_atom(src: String, identity: Symbol) -> Bool {
+  let lm = probe_cached_lm
+  match tokenize(text: src, file: ^probe, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: art, diagnostics: _ } =>
+          fold_list(
+            xs: node_subtree_nodes(root: art.tree),
+            empty: false,
+            cons: fn(acc, n) {
+              match node_atom_identity_optional(node: n) {
+                Present { value: id } => acc || id == identity
+                Absent => acc
+              }
+            }
+          )
+      }
+  }
+}
+
+test fn caret_referenced_ident_stays_class_stamped_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_caret_source,
+    identity: ^sole_constructor
+  ) == false
+}
+
+test fn data_decl_name_is_lexeme_stamped_holds() -> Bool {
+  parsed_tree_carries_atom(
+    src: modifier_spelling_as_data_name_source,
+    identity: ^sole_constructor
+  )
 }

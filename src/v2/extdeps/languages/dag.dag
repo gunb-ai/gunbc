@@ -738,7 +738,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name()),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name_class()),
       right: dag_grammar_terminal(token_class: ^dag_token_gt)
     )
   )
@@ -927,6 +927,27 @@ fn dag_grammar_ident_or_type_decl_modifier_name() -> GrammarExpr {
     right: dag_grammar_choice(
       left: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_nominal_opaque),
       right: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_sole_constructor)
+    )
+  )
+}
+
+// The class-stamped sibling, for the two name sites that were dag_grammar_terminal
+// (StampClass) before the modifier classes were admitted: dag_grammar_caret_symbol_expr's
+// referenced identifier and dag_grammar_generic_params_expr's parameter names. Admitting
+// two more token classes is the whole of this change; routing those sites through the
+// lexeme-stamped helper would ALSO move them StampClass -> StampLexeme, which changes the
+// atom identity every caret literal and generic parameter carries corpus-wide
+// (v2.std.grammar StampLexeme, v2.compiler.02_parse symbol_intern_lexeme) and would
+// falsify v2.lens.identity_captured_navigation.analyze node_source_symbol_note, which
+// records the caret terminal as StampClass. That is a separate decision with its own
+// consumers; this row does not smuggle it (DESIGN section 4b(1): the reported rung must
+// equal the rung established by executed evidence, measured at a declared boundary).
+fn dag_grammar_ident_or_type_decl_modifier_name_class() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: ^dag_token_ident),
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal(token_class: ^dag_token_kw_nominal_opaque),
+      right: dag_grammar_terminal(token_class: ^dag_token_kw_sole_constructor)
     )
   )
 }
@@ -1293,7 +1314,7 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
 fn dag_grammar_caret_symbol_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_caret),
-    right: dag_grammar_ident_or_type_decl_modifier_name()
+    right: dag_grammar_ident_or_type_decl_modifier_name_class()
   )
 }
 
