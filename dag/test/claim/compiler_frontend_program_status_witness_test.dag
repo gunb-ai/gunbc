@@ -95,6 +95,7 @@ import gunbc.compiler_frontend_program_status {
   RehearsalProducerAvailable,
   xl2_stage_standing,
   rehearsal_producer_standing,
+  needs,
   all_missing_instruments,
   conditionally_awaited_instruments,
   stages_awaiting,
@@ -651,12 +652,12 @@ test fn xl2_is_not_derivable_while_the_rehearsal_residual_has_no_producer() -> B
        }
 }
 
-// THE RECOVERY CONTROL: the classification can be LEFT when its premise changes. The arm above
-// pins today's answer; this one supplies the other answer at the boundary the live arm consumes
-// (xl2_stage_standing) and checks that delivery evidence then decides the stage exactly as it
-// does for XL-4 -- outstanding on the empty roster, outstanding when only XL-4's kind is held,
-// Clear when the rehearsal kind is held. Without this, a NotDerivable pin would have held forever
-// after an honest rehearsal was recorded (side-chat review on gunbc#11735).
+// THE RECOVERY CONTROL AT THE HELPER'S BOUNDARY: with the producer supplied Available, delivery
+// evidence decides the stage exactly as it does for XL-4 -- outstanding on the empty roster,
+// outstanding when only XL-4's kind is held, Clear when the rehearsal kind is held. And with the
+// producer supplied Unavailable, a held rehearsal receipt is STILL Clear: the literal classifies
+// the undelivered state and cannot veto delivery. An earlier cut of this test asserted the
+// opposite in its last conjunct and thereby pinned the veto (side-chat review on gunbc#11735).
 test fn xl2_reads_its_delivery_roster_once_a_producer_is_supplied_available() -> Bool {
   let rehearsal_held = [
     StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
@@ -669,8 +670,33 @@ test fn xl2_reads_its_delivery_roster_once_a_producer_is_supplied_available() ->
       expected: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: []))
     && standing_is(want: ClassOutstanding, s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: other_kind_held))
     && standing_is(want: ClassClear, s: xl2_stage_standing(producer: RehearsalProducerAvailable, held: rehearsal_held))
+    && standing_is(want: ClassClear,
+         s: xl2_stage_standing(
+              producer: RehearsalProducerUnavailable { why: "fixture" as NonEmptyStr, cause: needs(i: ExactOccurrenceResidualCensus) },
+              held: rehearsal_held))
     && standing_is(want: ClassNotDerivable,
-         s: xl2_stage_standing(producer: rehearsal_producer_standing(), held: rehearsal_held))
+         s: xl2_stage_standing(
+              producer: RehearsalProducerUnavailable { why: "fixture" as NonEmptyStr, cause: needs(i: ExactOccurrenceResidualCensus) },
+              held: other_kind_held))
+}
+
+// THE LIVE CONNECTION: the live standing is the decision over the LIVE roster with the LIVE
+// literal, and that same decision over the live roster plus one honest rehearsal receipt is Clear
+// with the literal untouched. The second conjunct is what fails when the roster is disconnected
+// from the decision (an Unavailable branch that ignores `held`), which is the defect the previous
+// head carried. What execution cannot discriminate on an empty live roster is a constant with
+// the identical why and cause -- stated in the carrier, and the same limit XL-4's arm has.
+test fn xl2_live_standing_is_the_delivery_decision_over_the_live_roster() -> Bool {
+  let live = xl2_stage_standing(producer: rehearsal_producer_standing(), held: held_stage_delivery_receipts)
+  let delivered = concat(held_stage_delivery_receipts, [
+    StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
+  ])
+  standing_class_label(c: standing_class(s: stage_status(s: StageXL2RootDeletionRehearsal)))
+      == standing_class_label(c: standing_class(s: live))
+    && standing_outstanding_members(s: stage_status(s: StageXL2RootDeletionRehearsal))
+      == standing_outstanding_members(s: live)
+    && standing_is(want: ClassClear,
+         s: xl2_stage_standing(producer: rehearsal_producer_standing(), held: delivered))
 }
 
 // F3 -- XL-2 AND XL-4 CLEAR ON DELIVERY, NOT ON ACTIVATION, AND ACT-0 IS NOT THEIR PREREQUISITE.
