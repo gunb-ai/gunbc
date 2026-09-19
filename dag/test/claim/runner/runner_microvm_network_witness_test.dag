@@ -22,6 +22,7 @@ import gunbc.runner_microvm_network {
   RulesetListed, RulesetUnreadable, slot_network_readback,
   runner_slot_conntrack_flush_command, runner_slot_conntrack_list_command,
   runner_microvm_nft_list_command, slot_network_readback_consumer_frontier,
+  runner_microvm_guest_resolver, guest_resolver_configuration_frontier,
 }
 import std.dissolution { UnboundDissolution, BoundDissolution }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
@@ -197,7 +198,7 @@ test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
 test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool {
   let text = runner_microvm_nft_ruleset_text()
   string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
-    && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" udp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
+    && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n  }")
     && string_contains(s: text, pattern: "policy accept")
     && !string_contains(s: text, pattern: "policy drop")
 }
@@ -316,6 +317,23 @@ test fn conntrack_commands_are_keyed_by_this_slots_guest_source() -> Bool {
 test fn the_ruleset_readback_lists_our_table_and_its_consumer_is_a_frontier() -> Bool {
   argv_words(command: runner_microvm_nft_list_command()) == ["nft", "list", "table", "inet", "gunbc_microvm"]
     && match slot_network_readback_consumer_frontier {
+      UnboundDissolution { description: _ } => true
+      BoundDissolution { trigger: _ } => false
+    }
+}
+
+// THE DNS GRANT IS THE ONE RESOLVER THE GUEST IS TOLD ABOUT, AND NOTHING WIDER. The reds: a port-53
+// grant with no destination (every public host on 53, an exfiltration channel out of a default-deny
+// guest -- review 68173), and a boot directive naming a resolver the ruleset does not admit.
+test fn the_dns_grant_is_the_booted_resolver_and_no_other_host() -> Bool {
+  let resolver = render_ipv4_address(addr: runner_microvm_guest_resolver()) as String
+  let text = runner_microvm_nft_ruleset_text()
+  let arg = runner_slot_guest_ip_boot_arg(net: runner_slot_network(slot: slot(i: 7)))
+  !string_contains(s: text, pattern: "\" udp dport 53")
+    && !string_contains(s: text, pattern: "\" tcp dport 53")
+    && string_contains(s: text, pattern: join(["ip daddr ", resolver, "/32 udp dport 53 accept"], ""))
+    && string_contains(s: arg, pattern: join([":eth0:off:", resolver], ""))
+    && match guest_resolver_configuration_frontier {
       UnboundDissolution { description: _ } => true
       BoundDissolution { trigger: _ } => false
     }

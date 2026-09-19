@@ -5,6 +5,8 @@ import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import gunbc.runner_microvm_network {
   RunnerSlotNetwork, runner_slot_host_cidr, runner_slot_guest_ip_boot_arg,
   runner_microvm_network_supernet,
+  GuestEgressPolicy, runner_microvm_guest_egress_policy,
+  IpV6Standing, IpV6DisabledOnDataPath, IpV6DefaultDenyRuleset, IpV6Unaddressed,
 }
 
 // THE EGRESS PATH A RAW RUNNER HOST OWES, and why it is not the one the shared hosts run.
@@ -76,10 +78,16 @@ data runner_host_uplink: HostUplinkConfiguration = StaticFromObservedOfferCandid
 // the BMC, the rest of the LAN, and any other attempt's tap.
 type ChainStance = DefaultDrop | DefaultAccept
 
+// THE GUEST-FACING GRANTS AND DENIALS ARE CONSUMED, NOT RESTATED. They are
+// gunbc.runner_microvm_network runner_microvm_guest_egress_policy, the same rows the shared hosts'
+// ruleset is folded from; an earlier revision listed them here as prose and the two drifted (review
+// 68173: a "selected resolver" here against any-host port 53 there). What this host adds is its OWN
+// chain stances: it owns the whole forwarding policy, so its forward chain default-drops at host
+// grain where the shared hosts cannot.
 type EgressPolicyShape {
   host_input: ChainStance
   forward: ChainStance
-  explicit_grants: List<NonEmptyStr>
+  guest: GuestEgressPolicy
   explicit_denials: List<NonEmptyStr>
   nat: NonEmptyStr
 }
@@ -87,36 +95,16 @@ type EgressPolicyShape {
 data runner_host_egress_policy: EgressPolicyShape = EgressPolicyShape {
   host_input: DefaultDrop,
   forward: DefaultDrop,
-  explicit_grants: [
-    "loopback on the host",
-    "established and related, both directions",
-    "guest to the selected resolver, for name resolution only",
-    "guest to the qualification destination class on TCP 443",
-  ],
+  guest: runner_microvm_guest_egress_policy,
   explicit_denials: [
     "guest to the BMC and any management address",
-    "guest to the LAN, private, link-local and multicast ranges",
     "tap to tap -- no attempt may reach another attempt",
-    "everything not named above",
   ],
   nat: "masquerade the admitted guest prefix on the host uplink, and nothing else",
 }
 
-// TCP 443 TO A DESTINATION CLASS IS NOT "GITHUB ONLY", and calling it that would be the kind of
-// precision this lane keeps having to walk back. A static address list for a CDN-fronted service is
-// stale the moment it is written, so the honest description is a default-deny policy with one broad
-// allowance. Narrowing it properly means an authenticated egress proxy as the single permitted
-// destination, which is its own design.
-data egress_grant_precision: NonEmptyStr = "the TCP 443 grant is a destination CLASS, not a GitHub-only rule; a static address list cannot honestly express a CDN-fronted service and the narrow form is an egress proxy"
-
-// IPv6 IS AN EXPLICIT STANDING RATHER THAN AN OVERSIGHT. An IPv4-only ruleset on a dual-stack host
-// is a default-allow wearing a default-deny's name, because everything the v4 policy denies remains
-// reachable over v6.
-type IpV6Standing
-  = IpV6DisabledOnDataPath
-  | IpV6DefaultDenyRuleset
-  | IpV6Unaddressed { risk: NonEmptyStr }
-
+// THIS HOST DISABLES v6 ON THE DATA PATH (read back as 1 on the filtered-egress-4 run); the shared
+// hosts cannot, and filter it instead. One standing type, two host facts.
 data runner_host_ipv6: IpV6Standing = IpV6DisabledOnDataPath
 
 // ── what the kernel must carry, since nothing is modular ────────────────────────────────────────

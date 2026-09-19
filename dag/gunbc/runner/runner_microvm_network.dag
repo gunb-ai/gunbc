@@ -14,7 +14,7 @@ import gunbc.executor_privileged_operation {
 }
 import extdeps.nftables.ruleset {
   NftTable, NftChain, NftRule, NftMatch, NftFamily, NftInet, NftHook, NftForward, NftPostrouting,
-  NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPolicy, NftPolicyAccept,
+  NftChainPriority, NftPriorityFilter, NftPrioritySrcnat, NftPolicy, NftPolicyAccept, NftPolicyDrop,
   NftChainType, NftTypeFilter, NftTypeNat,
   NftVerdict, NftAccept, NftDrop, NftMasquerade,
   NftInputInterfaceWildcard, NftOutputInterfaceWildcard, NftSourceAddressPrefix,
@@ -121,7 +121,7 @@ fn runner_slot_network_as_microvm_networking(net: RunnerSlotNetwork) -> RunnerMi
 // THE GUEST IS CONFIGURED BY THE KERNEL COMMAND LINE AND CARRIES NO DHCP CLIENT, which removes a
 // whole service from the guest and a whole failure mode from the boot. The kernel's own ip= syntax
 // (Documentation/admin-guide/nfs/nfsroot.rst) is
-//   ip=<client>:<server>:<gateway>:<netmask>:<hostname>:<device>:<autoconf>
+//   ip=<client>:<server>:<gateway>:<netmask>:<hostname>:<device>:<autoconf>:<dns0>
 // and the empty fields are REQUIRED separators rather than omissions -- a form with fewer colons is
 // a different, silently-misparsed directive. autoconf is "off" because every field is supplied
 // here; leaving it unset would have the kernel try DHCP anyway and stall the boot on a link where
@@ -181,6 +181,8 @@ fn runner_slot_guest_ip_boot_arg(net: RunnerSlotNetwork) -> String {
     runner_microvm_network_guest_interface as String,
     ":",
     runner_microvm_network_autoconf_off as String,
+    ":",
+    render_ipv4_address(addr: runner_microvm_guest_resolver()) as String,
   ], "")
 }
 
@@ -240,7 +242,7 @@ fn runner_microvm_forward_chain() -> NftChain {
     chain_type: NftTypeFilter,
     hook: NftForward,
     priority: NftPriorityFilter,
-    policy: NftPolicyAccept,
+    policy: forward_chain_policy(g: runner_microvm_guest_egress_policy.grain),
     rules: concat(
       [
         NftRule {
@@ -256,40 +258,79 @@ fn runner_microvm_forward_chain() -> NftChain {
   }
 }
 
-// --- guest egress: default-deny at TAP grain, not host grain ---
+// --- guest egress: ONE typed policy, and the rules are folded from it ---
 
-// THIS IS WHERE gunbc.runner.runner_host_filtered_egress's DefaultDrop STANCE IS HONOURED, AND ITS
-// GRAIN IS THE TAP. That module states forward: DefaultDrop for a host this fleet owns entirely.
-// srvN is not that host (dockerd's tables, see the chain policy above), so the chain policy stays
-// accept and the default-deny is the LAST RULE OF A TAP-SCOPED LIST: every packet a guest sends
-// matches a rule written for it or reaches the final drop. Traffic that did not enter through a
-// gunbc tap matches none of these rows and keeps whatever verdict the host's other tables give it.
-// So the stance holds for guests -- the only principal it was ever about -- and not for the host.
+// THE POLICY IS DATA AND THE RULESET IS ITS PROJECTION. An earlier revision of this change wrote the
+// rule list by hand and joined it to gunbc.runner.runner_host_filtered_egress's policy with a
+// comment, which let the two disagree (review 68173). The policy now lives here, typed, because that
+// module already imports this one -- declaring it there would make this module's consumption an
+// import cycle -- and runner_host_filtered_egress consumes these rows instead of restating them.
 //
-// THE ORDER IS THE POLICY. Established first, so replies to admitted flows are never re-judged. The
-// v6 refusal before any v4 grant, because in the inet family an `ip daddr` match is false on a v6
-// packet and a v6 flow would otherwise reach the port grants. The private-range denials ABOVE the
-// port grants, because the 443 grant is a destination class and 192.168.x.y:443 is in it -- the
-// Mt. Collins run (gunbc.runner.runner_filtered_egress_receipt denied_paths) is the receipt that
-// this ordering is what stopped a guest reaching its own BMC. The grants are the ones that run
-// admitted: name resolution, and TCP 443 for github.com and the Actions endpoints.
-//
-// The resolver the guest uses must therefore be PUBLIC: a private resolver is denied by the rows
-// above the DNS grant, and that is the intended reading of "guest to the selected resolver", not an
-// accident of ordering.
-data runner_microvm_guest_denied_destinations: List<NonEmptyStr> = [
-  "10.0.0.0/8" as NonEmptyStr,
-  "172.16.0.0/12" as NonEmptyStr,
-  "192.168.0.0/16" as NonEmptyStr,
-  "100.64.0.0/10" as NonEmptyStr,
-  "169.254.0.0/16" as NonEmptyStr,
-  "127.0.0.0/8" as NonEmptyStr,
-  "224.0.0.0/4" as NonEmptyStr,
-]
+// THE GRAIN IS A FIELD, NOT A COMMENT. A host that owns its whole forwarding policy can default-drop
+// at the chain; a host where other tables hook forward (srv2's dockerd) cannot, because every table
+// runs and any drop wins. There the default-deny is the LAST RULE OF A TAP-SCOPED LIST, and a packet
+// that did not enter through a gunbc tap matches no row here.
+type ForwardDenyGrain
+  = HostChainDefaultDrop
+  | TapScopedFinalDrop { chain_policy_reason: NonEmptyStr }
 
-data runner_microvm_guest_dns_port: Int = 53
+// IPv6 IS AN EXPLICIT STANDING RATHER THAN AN OVERSIGHT. An IPv4-only ruleset on a dual-stack host is
+// a default-allow wearing a default-deny's name. In the inet family an `ip daddr` match is false on
+// a v6 packet, so under DefaultDenyRuleset the v6 drop must precede every v4 grant.
+type IpV6Standing
+  = IpV6DisabledOnDataPath
+  | IpV6DefaultDenyRuleset
+  | IpV6Unaddressed { risk: NonEmptyStr }
 
-data runner_microvm_guest_tls_port: Int = 443
+// A GRANT NAMES ITS DESTINATION. "Any destination the denials left" and "the one resolver" are
+// materially different grants on the same port, so the difference is a constructor, not a reading.
+type GuestEgressDestination
+  = AnyUndeniedDestination
+  | NamedDestination { address: Ipv4Address }
+
+type GuestEgressGrant {
+  transport: NftTransport
+  port: Int
+  destination: GuestEgressDestination
+}
+
+type GuestEgressPolicy {
+  grain: ForwardDenyGrain
+  ipv6: IpV6Standing
+  denied_destinations: List<NonEmptyStr>
+  grants: List<GuestEgressGrant>
+}
+
+// THE RESOLVER IS ONE NAMED PUBLIC ADDRESS. 1.1.1.1 is the resolver the Mt. Collins filtered-egress
+// run answered through (gunbc.runner.runner_filtered_egress_receipt admitted_paths, guest-dns); it is
+// public, so the private-range denials never shadow it. The guest is told it at boot as the ip=
+// directive's dns0 field, so the grant and the guest's configuration are one row.
+fn runner_microvm_guest_resolver() -> Ipv4Address {
+  ipv4_address(octet1: 1, octet2: 1, octet3: 1, octet4: 1)
+}
+
+// TCP 443 IS A DESTINATION CLASS, NOT "GITHUB ONLY": github.com and the Actions endpoints are
+// CDN-fronted, so a static address list is stale when written. The narrow form is an egress proxy.
+data runner_microvm_guest_egress_policy: GuestEgressPolicy = GuestEgressPolicy {
+  grain: TapScopedFinalDrop {
+    chain_policy_reason: "other tables hook forward on srvN (dockerd on srv2) and every table runs with any drop winning, so a chain-level drop would drop traffic this fleet does not own" as NonEmptyStr,
+  },
+  ipv6: IpV6DefaultDenyRuleset,
+  denied_destinations: [
+    "10.0.0.0/8" as NonEmptyStr,
+    "172.16.0.0/12" as NonEmptyStr,
+    "192.168.0.0/16" as NonEmptyStr,
+    "100.64.0.0/10" as NonEmptyStr,
+    "169.254.0.0/16" as NonEmptyStr,
+    "127.0.0.0/8" as NonEmptyStr,
+    "224.0.0.0/4" as NonEmptyStr,
+  ],
+  grants: [
+    GuestEgressGrant { transport: NftUdp, port: 53, destination: NamedDestination { address: runner_microvm_guest_resolver() } },
+    GuestEgressGrant { transport: NftTcp, port: 53, destination: NamedDestination { address: runner_microvm_guest_resolver() } },
+    GuestEgressGrant { transport: NftTcp, port: 443, destination: AnyUndeniedDestination },
+  ],
+}
 
 fn from_guest_tap(m: List<NftMatch>, verdict: NftVerdict) -> NftRule {
   NftRule {
@@ -298,32 +339,62 @@ fn from_guest_tap(m: List<NftMatch>, verdict: NftVerdict) -> NftRule {
   }
 }
 
-fn runner_microvm_guest_egress_rules() -> List<NftRule> {
+fn grant_destination_matches(d: GuestEgressDestination) -> List<NftMatch> {
+  match d {
+    AnyUndeniedDestination => []
+    NamedDestination { address: a } =>
+      [NftDestinationAddressPrefix { cidr: join([render_ipv4_address(addr: a) as String, "/32"], "") as NonEmptyStr }]
+  }
+}
+
+fn grant_rule(g: GuestEgressGrant) -> NftRule {
+  from_guest_tap(
+    m: concat(grant_destination_matches(d: g.destination), [NftTransportDestinationPort { transport: g.transport, port: g.port }]),
+    verdict: NftAccept,
+  )
+}
+
+fn ipv6_rules(v: IpV6Standing) -> List<NftRule> {
+  match v {
+    IpV6DefaultDenyRuleset => [from_guest_tap(m: [NftNetworkProtocolIpv6], verdict: NftDrop)]
+    IpV6DisabledOnDataPath => []
+    IpV6Unaddressed { risk: _ } => []
+  }
+}
+
+fn final_drop_rules(g: ForwardDenyGrain) -> List<NftRule> {
+  match g {
+    TapScopedFinalDrop { chain_policy_reason: _ } => [from_guest_tap(m: [], verdict: NftDrop)]
+    HostChainDefaultDrop => []
+  }
+}
+
+fn forward_chain_policy(g: ForwardDenyGrain) -> NftPolicy {
+  match g {
+    TapScopedFinalDrop { chain_policy_reason: _ } => NftPolicyAccept
+    HostChainDefaultDrop => NftPolicyDrop
+  }
+}
+
+// THE ORDER IS THE POLICY: established first, so replies to admitted flows are never re-judged; the
+// v6 refusal before any v4 grant; the denials ABOVE the grants, because the 443 grant is a class and
+// 192.168.x.y:443 is in it (the Mt. Collins receipt's denied_paths is this ordering holding); the
+// grants; then the grain's final drop.
+fn guest_egress_rules(p: GuestEgressPolicy) -> List<NftRule> {
   concat(
     concat(
-      [
-        from_guest_tap(m: [NftConnectionTrackingEstablished], verdict: NftAccept),
-        from_guest_tap(m: [NftNetworkProtocolIpv6], verdict: NftDrop),
-      ],
-      map(runner_microvm_guest_denied_destinations, c =>
-        from_guest_tap(m: [NftDestinationAddressPrefix { cidr: c }], verdict: NftDrop)),
+      concat(
+        concat([from_guest_tap(m: [NftConnectionTrackingEstablished], verdict: NftAccept)], ipv6_rules(v: p.ipv6)),
+        map(p.denied_destinations, c => from_guest_tap(m: [NftDestinationAddressPrefix { cidr: c }], verdict: NftDrop)),
+      ),
+      map(p.grants, g => grant_rule(g: g)),
     ),
-    [
-      from_guest_tap(
-        m: [NftTransportDestinationPort { transport: NftUdp, port: runner_microvm_guest_dns_port }],
-        verdict: NftAccept,
-      ),
-      from_guest_tap(
-        m: [NftTransportDestinationPort { transport: NftTcp, port: runner_microvm_guest_dns_port }],
-        verdict: NftAccept,
-      ),
-      from_guest_tap(
-        m: [NftTransportDestinationPort { transport: NftTcp, port: runner_microvm_guest_tls_port }],
-        verdict: NftAccept,
-      ),
-      from_guest_tap(m: [], verdict: NftDrop),
-    ],
+    final_drop_rules(g: p.grain),
   )
+}
+
+fn runner_microvm_guest_egress_rules() -> List<NftRule> {
+  guest_egress_rules(p: runner_microvm_guest_egress_policy)
 }
 
 // THE MASQUERADE MATCHES ON SOURCE AND NOT ON OUTPUT INTERFACE, which removes an observation this
@@ -622,4 +693,14 @@ fn runner_microvm_nft_list_command() -> ArgvCommand {
 // satisfied by #11670 importing the type, or by a witness calling the fold.
 data slot_network_readback_consumer_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: the microVM slot lifecycle controller's host teardown readback (gunbc#11670). TRIGGER: that controller executes teardown on a host, runs runner_slot_conntrack_flush_command, reads runner_slot_conntrack_list_command and runner_microvm_nft_list_command, and derives CellReady or CellQuarantined from slot_network_readback. SUFFICIENT FOR deleting this row. NOT satisfied by an import of the type or by a witness calling the fold." as NonEmptyStr,
+)
+
+// DECLARED FRONTIER (DESIGN 3c). The kernel records dns0 in /proc/net/pnp; it does not write
+// /etc/resolv.conf. NAMED CONSUMER: the guest image (gunbc.runner_guest_image), whose resolver
+// configuration must read the booted dns0 so the guest resolves through the one address the DNS
+// grant admits. TRIGGER: the guest image links /etc/resolv.conf to /proc/net/pnp (or derives it from
+// dns0 at boot) and a booted guest resolves github.com through runner_microvm_guest_resolver.
+// SUFFICIENT FOR deleting this row. NOT satisfied by the boot argument carrying dns0 alone.
+data guest_resolver_configuration_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: gunbc.runner_guest_image resolver configuration. TRIGGER: the guest image makes /etc/resolv.conf follow the booted dns0 (/proc/net/pnp) and a booted guest resolves github.com through runner_microvm_guest_resolver. SUFFICIENT FOR deleting this row. NOT satisfied by the ip= boot argument carrying dns0 alone." as NonEmptyStr,
 )
