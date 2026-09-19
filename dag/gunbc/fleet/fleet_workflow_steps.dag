@@ -21,12 +21,10 @@ import std.measure { minute_count }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
-  Step, RunStep, UsesStep,
-  checkout_action, setup_rust_action, cache_action,
-  google_auth_action,
-  upload_artifact_action, download_artifact_action,
+  Step, RunStep, UsesStep, 
   max_job_timeout_minutes,
 }
+import gunbc.action_use_admission { cache_action, checkout_action, download_artifact_action, google_auth_action, setup_rust_action, upload_artifact_action }
 import gunbc.ci_workflow_expressions {
   ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
 }

@@ -4,12 +4,15 @@ import std.measure { minute_count }
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, checkout_action,
+  Workflow, Job, Step, RunStep, UsesStep, 
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
-  WorkflowPermissions, PermRead, PermWrite,
-  upload_artifact_action, download_artifact_action,
+  WorkflowPermissions, PermRead, PermWrite, 
   RunnerSpec, RunsOnExpression,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+}
+import gunbc.action_use_admission {
+  checkout_action, download_artifact_action, upload_artifact_action,
+  admit_workflow_action_uses, WorkflowActionUsesAdmitted, WorkflowActionUsesRefused, workflow_action_uses_refusal_reason,
 }
 import gunbc.fleet.app_control_plane_converge { app_control_plane_receipt_path }
 import gunbc.fleet.org_actions_converge { org_actions_validation_receipt_path }
@@ -1902,10 +1905,15 @@ type FleetConvergeYamlGenerationOutcome
 data fleet_converge_capability_closure_refusal: String = "REFUSED gunbc.fleet_converge_workflow: a step consumes a capability that no preceding step provides (gunbc.workflow_capability_closure). No workflow yaml was emitted. Fix the step roles in ci_prelude_bound_steps_with_checkout / fleet_converge_build_job_annotations, or the order of the steps themselves."
 
 fn expected_fleet_converge_yml() -> FleetConvergeYamlGenerationOutcome {
-  match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
-    WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
-      FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
-    WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+  match admit_workflow_action_uses(workflow: fleet_converge_workflow) {
+    WorkflowActionUsesRefused { refusals: rs } =>
+      FleetConvergeYamlGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.fleet_converge_workflow", refusals: rs) }
+    WorkflowActionUsesAdmitted =>
+      match admit_workflow_toolchain_homes(workflow: fleet_converge_workflow) {
+        WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
+          FleetConvergeYamlGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
+        WorkflowToolchainHomesAdmitted => fleet_converge_yml_after_toolchain_admission()
+      }
   }
 }
 
