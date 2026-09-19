@@ -5,7 +5,7 @@ import v2.std.logic { Bool }
 import gunbc.floor_cost_distribution {
   ClaimCostReading, ObservedCpuReading, RightCensoredCpuReading, CpuLowerBoundWithoutCeiling,
 }
-import std.measure { Millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond, millisecond_count }
 
 // ROSTER ADMISSION BY CONSTRUCTION FOR `v2.workflow.floor_cost_debt`.
 //
@@ -38,10 +38,33 @@ import std.measure { Millisecond, millisecond_count }
 // decodes this list onto enrolment Roster ground. The withhold HashSet union into
 // `floor_cost_debt_roster` remains a later consumer: the first identity that would otherwise
 // be appended as a string after this PR is authored here as a `FloorCostDebtReadingAttempt`
-// and nowhere else. Until then this list is Empty, which is the honest population.
+// and nowhere else.
 
+// FIRST AUTHORED ATTEMPT (gunbc#11622), and so the first execution of the enrolment Roster arm.
+//
+// The whole real access.PosixEffectivePrincipal service body parses in 640-681ms across three
+// floor runs, over the 500ms per-subject CPU line. The reading below is from floor run
+// 35432097694, whose one-run cost ruler read the cost as LINEAR in content: the per-block
+// increments add exactly, and two operations cost 2x one plus fixed overhead. So there is no
+// cost-shape defect to fix; this is what one real service costs to parse. The row stays whole
+// and per-PR because the composition of the blocks is what it evidences.
+//
+// STATED DIVERGENCE (DESIGN §3b): this is an honest measured cost, not deferred work, and nothing
+// will pay it down. It is filed under the cost-debt carrier because that is the modeled ground the
+// enrolment-margin decision accepts. The naming mismatch is noted, not endorsed, and no second
+// category is forked for it.
+//
+// STATED GAP (DESIGN §6, name the instrument): FloorCostDebtReadingAttempt carries no field naming
+// the run that produced its reading, so 681 / 239893 is re-derivable only through the run id in
+// this comment. That workaround dissolves when the attempt type carries its producing instrument.
 fn floor_cost_debt_typed_admission_attempts() -> List<FloorCostDebtReadingAttempt> {
-  []
+  [
+    FloorCostDebtReadingAttempt {
+      identity: "v2.test.parse.g0_service_decl_parse_probe.posix_effective_principal_service_parses_holds",
+      reading: ObservedCpuReading { cpu_ms: millisecond(count: 681), eval_steps: 239893 },
+      verdict: FloorCostDebtReachedAVerdict,
+    },
+  ]
 }
 
 fn floor_cost_debt_typed_admitted_identities(ceiling_ms: Millisecond) -> List<String> {
