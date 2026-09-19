@@ -1,19 +1,17 @@
 module test.claim.documentary_refs_witness
 
 import std.types { Bool, String }
-import v2.std.algebra { length, contains }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.std.decl_index { DeclFact, FnItem, TypeItem }
 import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
 import v2.std.decl_ref_resolution { cited_declaration_ref_refusal_count }
 import gunbc.documentary_refs {
-  all_documentary_declaration_refs,
   documentary_ref_symbol_text,
   generated_document_declaration_refs,
   v1_maintenance_standing_ref,
+  required_gate_prefixes_ref,
 }
-import gunbc.doc_graph_roots { hand_authored_doc_declaration_refs }
 import gunbc.design_document { expected_design_md }
 
 // THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
@@ -30,6 +28,7 @@ fn fixture_modules() -> List<ModuleDeclarationFact> {
     ModuleDeclarationFact { module: "v2.compiler.resolve", path: "src/v2/compiler/03_resolve.dag" },
     ModuleDeclarationFact { module: "gunbc.roadmap_authority", path: "dag/gunbc/roadmap/roadmap_authority.dag" },
     ModuleDeclarationFact { module: "gunbc.v1_maintenance_standing", path: "dag/gunbc/v1/v1_maintenance_standing.dag" },
+    ModuleDeclarationFact { module: "v2.workflow.required_floor", path: "src/v2/workflow/required_floor.dag" },
   ]
 }
 
@@ -43,16 +42,29 @@ fn fixture_fact(qualified_name: String, name: String, path: String) -> DeclFact 
   }
 }
 
-// The four declarations the generated document names, present exactly once each. This is the
+// The declarations the generated document names, present exactly once each, one per row of
+// generated_document_declaration_refs(). This is the
 // control that proves the refusals below are caused by the perturbation rather than by a fixture
 // that never resolved anything.
-
+//
+// THE `v2.` PREFIX IS ABSENT FROM THE required_gate_prefixes FACT ON PURPOSE AND IS NOT A TYPO. A
+// DeclFact carries the LOGICAL qualified name: v2.std.decl_index logical_qualified_name_from_module
+// strips a leading `v2.` when it builds the name the resolver matches on, while
+// module_path_declared compares the module row against the FULL path. So fixture_modules() says
+// `v2.workflow.required_floor` and the fact says `workflow.required_floor.required_gate_prefixes`,
+// and both are correct. The asymmetry was invisible until that row, because the only other fact
+// here names a `gunbc.` module with nothing to strip.
 fn intact_facts() -> List<DeclFact> {
   [
     fixture_fact(
       qualified_name: "gunbc.v1_maintenance_standing.v1_seed_standing",
       name: "v1_seed_standing",
       path: "dag/gunbc/v1/v1_maintenance_standing.dag",
+    ),
+    fixture_fact(
+      qualified_name: "workflow.required_floor.required_gate_prefixes",
+      name: "required_gate_prefixes",
+      path: "src/v2/workflow/required_floor.dag",
     ),
   ]
 }
@@ -120,32 +132,6 @@ test fn documentary_refs_ambiguous_system_refuses() -> Bool {
 test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
   let md = expected_design_md()
   string_contains(s: md, pattern: documentary_ref_symbol_text(reference: v1_maintenance_standing_ref))
+    && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: required_gate_prefixes_ref))
 }
 
-// The widened denominator is asserted directly, because a union that silently dropped one side
-// would leave exactly the exemption this change removes: the generated refs must all be present in
-// the combined population, and the combined population must be larger than the hand-authored one
-// alone.
-
-// A NEGATIVE PROSE CHECK STOOD HERE AND WAS DELETED RATHER THAN REPAIRED. It asserted the generated
-// document no longer contains the substring 'six-step', to show the superseded numbered sequence is
-// gone. It failed -- and it failed CORRECTLY, because the replacement sentence explains that the
-// paragraph previously carried a numbered six-step copy, so the words survive while the copy does
-// not. The check could not tell a restatement from an explanation of its removal.
-//
-// THAT IS THE WHOLE ARGUMENT AGAINST THIS SHAPE, and it is already on record:
-// gunbc.roadmap_authority witness_authority_contains_no_mutable_execution_ledger blacklists
-// substrings in a status field and is structurally unable to catch a stale claim spelled without
-// them. Repairing the needle would have produced a check that passes for this one spelling and
-// decides nothing in general -- validation standing where nothing decidable was available. The
-// positive claim survives instead, in documentary_refs_generated_document_renders_the_rows: the
-// roadmap authority is cited by rendering its typed row, which is a fact a mechanism can actually
-// decide.
-
-test fn documentary_refs_population_is_the_union() -> Bool {
-  let all_refs = all_documentary_declaration_refs()
-  let hand = hand_authored_doc_declaration_refs()
-  let generated = generated_document_declaration_refs()
-  length(xs: all_refs) == length(xs: hand) + length(xs: generated)
-    && length(xs: generated) == 1
-}

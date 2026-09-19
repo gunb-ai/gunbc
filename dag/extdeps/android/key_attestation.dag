@@ -1,0 +1,34 @@
+module extdeps.android.key_attestation
+
+import std.types { NonEmptyStr, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// Android Keystore hardware-backed key attestation. A key generated with setAttestationChallenge
+// yields an X.509 chain carrying the KeyDescription extension (OID 1.3.6.1.4.1.11129.2.1.17). The
+// verifier must NOT assume the extension sits in the leaf: it reads the first occurrence in the
+// chain that chains to a trusted root, checks every certificate against Google's revocation list,
+// and trusts the CURRENT set of Google attestation roots (more than one; the page lists them). The
+// extension carries:
+// the attestation challenge, security level (Software / TrustedEnvironment / StrongBox), and the key's
+// authorization list (purpose, userAuthenticationType, per-operation auth, attestationApplicationId
+// naming the package and signing-certificate digests).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "source.android.com/docs/security/features/keystore/attestation"
+  }
+}
+
+data key_description_extension_oid: NonEmptyStr = "1.3.6.1.4.1.11129.2.1.17"
+
+type KeymasterSecurityLevel
+  = SecurityLevelSoftware
+  | SecurityLevelTrustedEnvironment
+  | SecurityLevelStrongBox
+
+// Unlike App Attest, Android attests THE DECISION KEY ITSELF, including whether its use requires
+// per-operation biometric authorization -- so no second key is needed to bind app to key.
+type AndroidAttestationChain {
+  certificates_der_b64: List<NonEmptyStr>
+}

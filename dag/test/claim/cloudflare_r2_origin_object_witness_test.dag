@@ -344,7 +344,8 @@ fn declared_bucket_name() -> String {
 test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential() -> Bool {
   match resolve_origin_target(direction: OriginRead, key: "fabric-m0/v1/commit/attempt-1") {
     OriginTargetRefused { cause: _ } => false
-    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus } =>
+    OriginTargetReady { locator: locator, access_key_id: access_key_id, token_value: locus, create_only: create_only } =>
+      create_only &&
       (locator.bucket_name as String) == declared_bucket_name()
         && locator.endpoint.account_id == (fleet_cloudflare_account_id as String)
         && (locator.key as String) == "fabric-m0/v1/commit/attempt-1"
@@ -361,7 +362,7 @@ test fn origin_read_target_resolves_to_the_declared_bucket_and_read_credential()
 // retired into the write twin of the read test above, deliberately.
 test fn origin_write_target_refuses_until_the_write_credential_is_pinned() -> Bool {
   match resolve_origin_target(direction: OriginWrite, key: "k") {
-    OriginTargetReady { locator: _, access_key_id: _, token_value: _ } => false
+    OriginTargetReady { locator: _, access_key_id: _, token_value: _, create_only: _ } => false
     OriginTargetRefused { cause: cause } =>
       string_contains(s: cause as String, pattern: "run_object_write")
         && string_contains(s: cause as String, pattern: "gunbc.cloudflare.r2_token_mint_run")

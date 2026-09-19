@@ -65,6 +65,42 @@ firmware, or endpoint interoperability. The tested srv5 leg was the mutated spec
 was restored and verified at 50G; all eight legs were verified at their known-good 50G state
 after the experiment.
 
+## FS support escalation (2026-09-18)
+
+FS support asked us to follow the CRS812 breakout documentation: force the port speed with
+auto-negotiation off (`auto-negotiation=no speed=100G-baseCR2` on the odd sub-ports). That
+is the configuration already tested above. They also asked whether the ConnectX-7 was
+actually up when the switch reported link-ok. To answer, one operator-approved retest ran on
+the srv5 leg only (`qsfp56-dd-1-1`, 12:55:07-12:56:00 UTC). Both credentials were loaded
+before the change and the restore was armed to run on exit, which closes the expired-token
+failure above.
+
+- **FS's exact configuration was applied** on the switch with `fec91` and a bounce. The
+  host was forced to `100G_2X` with RS-FEC and bounced.
+- **Both ends were read at +10s and +30s, with the same result each time:**
+  - CRS812: `link-ok`, `rate=100Gbps`.
+  - ConnectX-7: `mstlink State: Polling`, speed N/A.
+  - Linux: `NO-CARRIER`, carrier 0. `ethtool`: `Link detected: no (Autoneg, No partner
+    detected)`, active FEC None.
+  - Ping across the fabric link: 100% loss.
+- **Answer to FS: no, the ConnectX-7 was not operationally up.** The switch's 100G reading
+  describes only its own side.
+- **RouterOS reports `eeprom-checksum: bad` for the QSFP-DD end at the healthy 50G state
+  too.** On its own, the flag therefore does not explain the 100G failure.
+- **The restore was verified from both ends:**
+  - Switch: 50G-baseCR2, fec91, link-ok.
+  - Host: Active, 50G, 2 lanes, RS(528,514), carrier 1.
+  - Ping to .14 and .12: 0% loss.
+- **Operator sent the evidence to FS the same day** (after redacting it): the CRS812 system
+  information and hide-sensitive export, the port and module information, the ConnectX-7
+  mstlink/ethtool/module EEPROM baselines, and simultaneous captures from both ends for the
+  forced test and the restore. Awaiting FS engineering's review. Cable: FS
+  QDD-400G-4QPC015, host-end serial S2630771509-2. Switch: RouterOS 7.20.8. NIC firmware:
+  28.45.4028.
+
+The verdict above stands unchanged. The leading hypothesis is still unproven, and the next
+step is still the substitution control below, unless FS identifies a configuration error.
+
 ## Next step: a substitution control, not more configuration
 
 The single experiment that isolates cable/coding from switch/NIC/signal-integrity is a

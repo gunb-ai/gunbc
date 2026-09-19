@@ -23,6 +23,7 @@ import v2.std.qualified_name {
 }
 import v2.compiler.resolution_provenance { ReferenceSite }
 import v2.extdeps.languages.dag {
+  dag_node_is_float_literal_atom,
   dag_node_is_int_literal_atom,
   dag_surface_module_header_metadata_edge,
   namespace_graft_spine_segment_edge_optional,
@@ -56,7 +57,7 @@ import v2.extdeps.languages.dag {
 // it too. What the lens does see is a qualified name in a TYPE position, where the production
 // survives.
 //
-// SO NEITHER INSTRUMENT SEES A QUALIFIED BODY REFERENCE, and the overlap between them is the
+// SO NEITHER INSTRUMENT SAW A QUALIFIED BODY REFERENCE, and the overlap between them was the
 // type-position qualified name rather than the whole qualified class. That is also why
 // warm-ibex-518's deleted parse walk was genuinely a duplicate: it keyed on the same production.
 //
@@ -64,10 +65,19 @@ import v2.extdeps.languages.dag {
 // the collector over the tree THE RESOLVER CONSUMES -- a site must be something resolution
 // resolves, and the lens reads the parse tree. The lens is itself a declared SCAFFOLD whose own
 // dissolution names a symbol_index_fill-derived projection, so consuming its recogniser would be
-// building on a scaffold. Its disposition is repointed at this module instead, and the overlap is
-// recorded as a DECLARED FRONTIER rather than as consolidated: two enumerators stand today, on two
-// trees, and this one becomes the single authority when it covers qualified sites -- which waits on
-// the dotted-reference capability, still under verification and NOT escalated to another lane.
+// building on a scaffold. Its disposition is repointed at this module instead.
+//
+// THE QUALIFIED CLASS NOW REACHES THIS COLLECTOR ON THE PRODUCTION ROUTE IN BODY AND PARAMETER-TYPE
+// POSITION (smart-lynx-554, gunbc#11582), AND NOT BY AN EDIT HERE. The tree was the defect: v2
+// body lowering truncated every dotted chain to an infix over its first dot, or a qualified type
+// to its first atom, so the spine this walk already folds (qualified_name_from_node) was never
+// constructed from source. Now that body_lower_dotted_reference_optional constructs it, this walk
+// emits one site per chain with the full spelling -- v2.test.claim.namespace_xl0
+// call_argument_mention_survival is the enrolled receipt. It is NOT yet the single authority at
+// class grain: a qualified FIELD type never reaches this tree because the graft drops the
+// declaration (the parse-tree lens still sees it -- v2.test.claim.namespace_xl0
+// qualified_site_enumerator_differential measures the disagreement), and a dotted CALLEE is the
+// call class. The lens's dissolution stays pending on those two frontiers.
 // WHAT COUNTS AS A MENTION, AND WHY A DECLARATION IS NOT ONE. In the v2 containment tree a
 // declaration's NAME is an EDGE LABEL (v2.compiler.symbol_index_fill binds at
 // Named { name } edges and indexes edge.target as the declaration), so a declared name never
@@ -209,6 +219,8 @@ fn reference_sites_in_node(
       match node.kind {
         TypeNode { connective: Atom { identity: sym } } =>
           if dag_node_is_int_literal_atom(node: node) {
+            acc
+          } else if dag_node_is_float_literal_atom(node: node) {
             acc
           } else {
             collection_snoc_site(

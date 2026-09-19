@@ -63,6 +63,22 @@ type CodeSearchRepository {
   fork: Bool
 }
 
+// THE 1000-RESULT CEILING, AS A DECLARATION RATHER THAN A SENTENCE. The annotation at the head of
+// this module already says the endpoint caps a query at 1000 results however many exist, and a
+// number living only in prose cannot be folded, compared, or refused against -- which is exactly
+// what a consumer must do to know whether its query was fully enumerable. total_count is GitHub's
+// claim about how many results EXIST; this is the most any caller may retrieve. When the first
+// exceeds the second the query is SATURATED: its pages are a truncation of an answer whose size is
+// known, and the honest response is to subdivide the query rather than to report what came back as
+// a population.
+data retrievable_result_ceiling: Int = 1000
+
+// The deepest page a caller may request without passing the ceiling, derived rather than authored
+// so that changing the ceiling or the page size cannot leave a stale bound behind.
+fn deepest_retrievable_page(per_page: Int) -> Int {
+  retrievable_result_ceiling / per_page
+}
+
 type CodeSearchHit {
   name: String
   path: String
