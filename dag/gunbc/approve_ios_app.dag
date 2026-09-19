@@ -1,23 +1,19 @@
 module gunbc.approve_ios_app
 
-import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // THE iOS APPROVAL APP IS SEED-RETAINED HAND-AUTHORED SWIFT (operator ruling: apps/approve-ios/ in
 // this repository, SwiftUI, iOS 17+). It is a realization of gunbc.auth.approval_device_wire (the
 // byte contract) and gunbc.auth.approval_device_redemption (the server's admission)
 // and of extdeps.apple.{secure_enclave, app_attest, apns}; it declares no wire fact of its own. Its
-// byte builders are held to the .dag folds by vectors the .dag witness emits into the fixture below
-// and the app's XCTest reads -- one authority, read from two sides, nothing hand-copied.
+// byte builders are held to the .dag folds by vectors the .dag witness emits into
+// dag/test/fixture/approval_device_redemption/vectors.json, which apps/approve-ios/project.yml
+// carries into the test bundle -- one authority, read from two sides, nothing hand-copied.
 //
 // WHY HAND-AUTHORED, stated as the §7 frontier row requires: extdeps.languages.swift carries a
 // subject citation and no emit transforms, so the substrate cannot emit this program today. The
 // trigger names the CAPABILITY: the Swift target gaining emission sufficient for this app, at which
 // point the Swift source is a generated artifact and this row retires with it.
-data approve_ios_source_root: NonEmptyStr = "apps/approve-ios"
-
-data approve_ios_vector_fixture_path: NonEmptyStr = "dag/test/fixture/approval_device_redemption/vectors.json"
-
 data approve_ios_hand_authored_swift_frontier: DissolutionCondition = unbound_dissolution(
   description: "apps/approve-ios is hand-authored Swift realizing gunbc.auth.approval_device_wire because extdeps.languages.swift has a subject citation and no emit transforms. DISSOLVES WHEN the Swift target gains emit transforms SUFFICIENT FOR emitting the app's protocol layer (the two byte builders, the wire records and the enclave/App Attest bindings) from the .dag authority, so that the Swift under apps/approve-ios/Approve is a generated artifact drift-gated like every other and the XCTest vector check becomes redundant with the emitter's own equivalence evidence",
 )
