@@ -1,6 +1,6 @@
 module gunbc.generated_workflow_provenance
 
-import std.types { String }
+import std.types { String, List }
 import gunbc.generated_artifact {
   GeneratedArtifact,
   WitnessFloorYamlArtifact,
@@ -20,6 +20,21 @@ type GeneratedWorkflowProvenance {
   generator: String
   authority: String
 }
+
+// THE SAME THREE WORKFLOWS AS A LIST, beside the match that gives each its provenance, for a consumer
+// that must ask which files under .github/workflows a generator owns without evaluating the whole
+// generated-artifact registry (its cost is re-derived by claim_batch's eval_steps on
+// test.claim.action_use_admission_witness). This list is NOT a second authority for that
+// population: test.claim.action_use_admission_witness
+// generated_workflow_artifacts_are_exactly_the_registry_workflows joins it to
+// gunbc.generated_artifact generated_artifact_registry by identity in BOTH directions, so a row
+// that outlives its generator (the direction that would let the census skip a hand-authored file)
+// refuses, as does a generated workflow missing here.
+data generated_workflow_artifacts: List<GeneratedArtifact> = [
+  WitnessFloorYamlArtifact,
+  FleetConvergeYamlArtifact,
+  FleetDesiredAdmissionYamlArtifact,
+]
 
 fn generated_workflow_provenance(a: GeneratedArtifact) -> GeneratedWorkflowProvenance? {
   match a {

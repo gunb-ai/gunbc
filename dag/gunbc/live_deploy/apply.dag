@@ -636,7 +636,7 @@ fn live_deploy_retract_srv1_operator_wet() -> ProcessExit {
 // on that receipt, not a deleted target-decision label: the join reads apply_outcome.
 
 fn live_deploy_post_apply_readiness(spec: DeploymentSpec, access: DeployAccess) -> LiveDeployReadinessOutcome {
-  match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: spec), transport: access.transport) {
+  match live_deploy_healthz_get_for_port(port: deployment_plan_listen_port(spec: spec), spec: spec, transport: access.transport) {
     HealthzProbeRefused { probe_error: e } => LiveDeployReadinessRefused { detail: e }
     HealthzBodyRead { body: b } =>
       match observe_running_release_identity(healthz_body: b) {
