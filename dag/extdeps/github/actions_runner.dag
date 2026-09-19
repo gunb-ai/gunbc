@@ -17,12 +17,13 @@ import extdeps.toolchain.types {
   Riscv64,
   Wasm32,
 }
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, Int }
+import std.algebra { trim }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
-import extdeps.languages.json.emit { JsonString }
+import extdeps.languages.json.emit { JsonString, JsonNumber, JsonValue }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -182,45 +183,137 @@ data actions_runner_registration_file_name: String = ".runner"
 
 data actions_runner_cache_dir: String = "/opt/actions-runner-cache"
 
-// THE REGISTRATION FILE SAYS WHETHER THE REGISTRATION CAN OUTLIVE ONE JOB. `.runner` is the JSON
-// `config.sh` writes; its `Ephemeral` member is the string "True" when the runner was configured
-// with `--ephemeral`. Upstream semantics (docs.github.com, "Autoscaling with self-hosted runners",
-// Using ephemeral runners): an ephemeral runner is automatically unregistered from GitHub after it
-// completes one job, and is not re-registered by restarting the process. So an ephemeral
-// registration file beside a unit that is neither active nor enabled records a registration GitHub
-// has already dropped; nothing remains to `config.sh remove`, and no credential is needed to know
-// it. A persistent registration (`Ephemeral` absent or "False") stays registered org-side until
-// removed, which needs an org-scoped removal token this repository does not hold, so a persistent
-// registration is NOT decidable from the file alone.
+// THE REGISTRATION FILE CARRIES AN IDENTITY AND A LIFETIME POLICY, AND ONLY THE SECOND WAS RETAINED.
+//
+// `.runner` is the JSON `config.sh` writes. Its members include `AgentId` (the numeric registration
+// identifier GitHub addresses that runner by), `AgentName` (the name the registration was created
+// with) and `GitHubUrl` (the organization it registered against), alongside `Ephemeral`.
+//
+// THE DECODER PREVIOUSLY KEPT ONLY `Ephemeral` AND DISCARDED THE IDENTITY. That was sufficient while
+// the only question asked of the file was "can this registration outlive one job", and it is not
+// sufficient for the question a retirement asks: WHICH remote object does this local tree correspond
+// to. The numeric id is the answer -- GitHub's organization runner GET and DELETE endpoints address
+// that id -- and re-deriving it from a name is not possible, because names are neither unique across
+// incarnations nor stable.
+//
+// WHAT THE `Ephemeral` MEMBER DOES AND DOES NOT ESTABLISH, corrected here because the previous text
+// on this declaration asserted more than upstream supports. Upstream (docs.github.com, "Autoscaling
+// with self-hosted runners", Using ephemeral runners) documents that an ephemeral runner is
+// automatically unregistered AFTER IT COMPLETES ONE JOB. The earlier annotation read that as: an
+// ephemeral registration file beside a unit that is neither active nor enabled records a registration
+// GitHub has already dropped, so nothing remains to remove and no credential is needed to know it.
+//
+// THAT INFERENCE IS NOT SUPPORTED AND IS WITHDRAWN. `Ephemeral: True` answers a LIFETIME POLICY
+// question -- what will happen when a job completes -- and says nothing about whether the condition
+// has occurred. A registration can be created and then stopped before it ever runs a job, or before
+// the disconnected-runner removal window elapses, and in both cases it is still held remotely while
+// its local tree is inactive and disabled. Current remote presence is establishable only by an
+// authorized per-id observation against the organization, and a local file cannot substitute for one.
 type ActionsRunnerRegistration
   = ActionsRunnerRegistrationPersistent
   | ActionsRunnerRegistrationEphemeral
 
+// THE IDENTITY BINDING THE FILE RECORDS. Three facts about ONE remote registration, kept together
+// because separating them re-creates the overloaded-name problem this type exists to remove: the id
+// is what addresses the object, the name is what corroborates it, and the org is the scope both are
+// meaningful in.
+type ActionsRunnerCapturedIdentity {
+  agent_id: Int
+  agent_name: NonEmptyStr
+  github_url: NonEmptyStr
+}
+
+type ActionsRunnerRegistrationRecord {
+  identity: ActionsRunnerCapturedIdentity
+  lifecycle: ActionsRunnerRegistration
+}
+
 type ActionsRunnerRegistrationRead
-  = ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistration }
+  = ActionsRunnerRegistrationDecoded { record: ActionsRunnerRegistrationRecord }
   | ActionsRunnerRegistrationUnreadable { reason: String }
 
 data actions_runner_registration_ephemeral_member: String = "Ephemeral"
+data actions_runner_registration_agent_id_member: String = "AgentId"
+data actions_runner_registration_agent_name_member: String = "AgentName"
+data actions_runner_registration_github_url_member: String = "GitHubUrl"
+
+// EVERY IDENTITY MEMBER IS REQUIRED, and a file missing one is UNREADABLE rather than partially
+// decoded. A record carrying an id and no org names an object in an unstated scope; one carrying a
+// name and no id cannot be addressed at all. The lifetime policy keeps its existing absent-means-
+// persistent reading, which is a documented upstream default rather than a guess.
+fn actions_runner_registration_lifecycle_of(doc: JsonValue) -> ActionsRunnerRegistrationRead {
+  match json_object_unique_member(v: doc, key: actions_runner_registration_ephemeral_member) {
+    JsonMemberFound { value: JsonString { value: flag } } =>
+      if flag == "True" {
+        actions_runner_registration_with_lifecycle(doc: doc, lifecycle: ActionsRunnerRegistrationEphemeral)
+      } else if flag == "False" {
+        actions_runner_registration_with_lifecycle(doc: doc, lifecycle: ActionsRunnerRegistrationPersistent)
+      } else {
+        ActionsRunnerRegistrationUnreadable { reason: concat(".runner Ephemeral is outside True/False: ", flag) }
+      }
+    JsonMemberFound { value: _ } => ActionsRunnerRegistrationUnreadable { reason: ".runner Ephemeral is not a string" }
+    JsonMemberAbsent =>
+      actions_runner_registration_with_lifecycle(doc: doc, lifecycle: ActionsRunnerRegistrationPersistent)
+    JsonMemberDuplicated { count: _ } => ActionsRunnerRegistrationUnreadable { reason: ".runner Ephemeral is duplicated" }
+    JsonMemberNotAnObject => ActionsRunnerRegistrationUnreadable { reason: ".runner is not a JSON object" }
+  }
+}
+
+fn actions_runner_registration_number_member(doc: JsonValue, key: String) -> Int? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonNumber { lexeme: lx } } => parse_int(s: trim(s: lx as String))
+    JsonMemberFound { value: JsonString { value: t } } => parse_int(s: trim(s: t))
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn actions_runner_registration_text_member(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: t } } =>
+      if trim(s: t) == "" { none } else { Present { value: trim(s: t) } }
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn actions_runner_registration_with_lifecycle(
+  doc: JsonValue,
+  lifecycle: ActionsRunnerRegistration,
+) -> ActionsRunnerRegistrationRead {
+  match actions_runner_registration_number_member(doc: doc, key: actions_runner_registration_agent_id_member) {
+    Absent => ActionsRunnerRegistrationUnreadable { reason: ".runner AgentId is absent, duplicated, or not a number" }
+    Present { value: id } =>
+      match actions_runner_registration_text_member(doc: doc, key: actions_runner_registration_agent_name_member) {
+        Absent => ActionsRunnerRegistrationUnreadable { reason: ".runner AgentName is absent, duplicated, empty, or not a string" }
+        Present { value: name } =>
+          match actions_runner_registration_text_member(doc: doc, key: actions_runner_registration_github_url_member) {
+            Absent => ActionsRunnerRegistrationUnreadable { reason: ".runner GitHubUrl is absent, duplicated, empty, or not a string" }
+            Present { value: url } =>
+              ActionsRunnerRegistrationDecoded {
+                record: ActionsRunnerRegistrationRecord {
+                  identity: ActionsRunnerCapturedIdentity {
+                    agent_id: id,
+                    agent_name: name as NonEmptyStr,
+                    github_url: url as NonEmptyStr,
+                  },
+                  lifecycle: lifecycle,
+                },
+              }
+          }
+      }
+  }
+}
 
 fn actions_runner_registration_decode(raw: String) -> ActionsRunnerRegistrationRead {
   match parse_json_document(s: raw) {
     JsonDocumentUnreadable { gap } =>
       ActionsRunnerRegistrationUnreadable { reason: concat(".runner is ", json_document_gap_text(gap: gap)) }
-    JsonDocumentParsed { value: doc } =>
-      match json_object_unique_member(v: doc, key: actions_runner_registration_ephemeral_member) {
-        JsonMemberFound { value: JsonString { value: flag } } =>
-          if flag == "True" {
-            ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral }
-          } else if flag == "False" {
-            ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent }
-          } else {
-            ActionsRunnerRegistrationUnreadable { reason: concat(".runner Ephemeral is outside True/False: ", flag) }
-          }
-        JsonMemberFound { value: _ } => ActionsRunnerRegistrationUnreadable { reason: ".runner Ephemeral is not a string" }
-        JsonMemberAbsent => ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationPersistent }
-        JsonMemberDuplicated { count: _ } => ActionsRunnerRegistrationUnreadable { reason: ".runner Ephemeral is duplicated" }
-        JsonMemberNotAnObject => ActionsRunnerRegistrationUnreadable { reason: ".runner is not a JSON object" }
-      }
+    JsonDocumentParsed { value: doc } => actions_runner_registration_lifecycle_of(doc: doc)
   }
 }
 
