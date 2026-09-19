@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.disposition { Disposition, SingleAuthority }
 import product.fabric.sanitation {
   CellId, CellReadiness, CellReady, CellQuarantined, UnprovenFact, FactNotObserved,
-  required_sanitation_facts, cell_readiness_line,
+  required_sanitation_facts,
 }
 
 data runner_microvm_cell_readiness_disposition: Disposition = SingleAuthority
@@ -142,40 +142,6 @@ fn admission_of_record(record: CellReadinessRecord, allocation_generation: Int) 
           } else {
             CellWithdrawn { cell: c, withdrawal: CellGenerationMismatch { settled: g, allocated: allocation_generation } }
           }
-      }
-  }
-}
-
-fn cell_incarnation_admitted(admission: CellIncarnationAdmission) -> Bool {
-  match admission {
-    CellIncarnationAdmitted { cell: _, generation: _ } => true
-    CellRecoveryRequired { cell: _, generation: _, attempt: _ } => false
-    CellWithdrawn { cell: _, withdrawal: _ } => false
-    HostWithdrawn { withdrawal: _ } => false
-  }
-}
-
-fn cell_incarnation_admission_text(admission: CellIncarnationAdmission) -> String {
-  match admission {
-    CellIncarnationAdmitted { cell: c, generation: g } =>
-      join([c as String, ": admitted at generation ", to_string(g)], "")
-    CellRecoveryRequired { cell: c, generation: g, attempt: a } =>
-      join([c as String, ": recovery required -- attempt ", a as String, " at generation ", to_string(g), " never settled, so its teardown runs before any admission"], "")
-    CellWithdrawn { cell: c, withdrawal: w } =>
-      match w {
-        CellNeverSettled => join([c as String, ": withdrawn -- no readback has ever established this cell empty"], "")
-        CellQuarantinedAt { generation: g, unproven: u } =>
-          join([c as String, ": withdrawn -- ", cell_readiness_line(readiness: CellQuarantined { cell: c, unproven: u }), " at generation ", to_string(g)], "")
-        CellGenerationMismatch { settled: s, allocated: a } =>
-          join([c as String, ": withdrawn -- readiness was settled at generation ", to_string(s), " but the allocation is generation ", to_string(a)], "")
-      }
-    HostWithdrawn { withdrawal: w } =>
-      match w {
-        HostStoreUnreadable { reason: r } => join(["host withdrawn -- the cell readiness store is unreadable: ", r as String], "")
-        HostStoreNotRootOwned { owner_uid: u, mode: m } =>
-          join(["host withdrawn -- the cell readiness store is owned by uid ", to_string(u), " mode ", m as String, ", so any record in it could have been written by a tenant"], "")
-        HostStoreAmbiguous { cell: c, records: n } =>
-          join(["host withdrawn -- the cell readiness store holds ", to_string(n), " records for ", c as String, ", so it is not a store of one fact per cell"], "")
       }
   }
 }

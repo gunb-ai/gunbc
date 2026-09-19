@@ -38,8 +38,10 @@ import gunbc.runner_unit {
   lifecycle_intent_stops_finished_incarnation,
   gunbc_runner_main_exits_when_incarnation_ends,
 }
+import product.fabric.sanitation { CellId }
 import gunbc.runner_microvm_cell_readiness {
-  CellIncarnationAdmission, cell_incarnation_admitted, cell_incarnation_admission_text,
+  CellIncarnationAdmission, CellIncarnationAdmitted, CellRecoveryRequired, CellWithdrawn,
+  HostWithdrawn, HostWithdrawal, CellWithdrawal,
 }
 import extdeps.github.actions_runner { ActionsRunnerRelease, actions_runner_release_2_337_0 }
 import extdeps.virtualization.firecracker {
@@ -441,9 +443,14 @@ type VmmProcessTopology = VmmIsMainProcess | VmmUnderLifecycleController
 // joins the allocation generation to the readiness recorded at the previous one. It is consumed
 // FIRST, before any static gate: a cell that is withdrawn is withdrawn whatever the VM looks like,
 // and reporting a malformed VM for a quarantined cell would send the operator to the wrong fact.
+// Its three non-admitting arms stay three arms here, because their remedies differ: host grain (fix
+// the store; no cell on the host may start), cell grain (this cell's readback), and recovery required
+// (not a refusal to act but the instruction to run the lost attempt's teardown first).
 type RunnerMicroVmAdmission
   = RunnerMicroVmAdmitted
-  | RunnerMicroVmRefusedCellNotAdmitted { reason: String }
+  | RunnerMicroVmRefusedHostWithdrawn { withdrawal: HostWithdrawal }
+  | RunnerMicroVmRefusedCellWithdrawn { cell: CellId, withdrawal: CellWithdrawal }
+  | RunnerMicroVmRecoveryRequired { cell: CellId, generation: Int, attempt: NonEmptyStr }
   | RunnerMicroVmRefusedOrphanableUnit { reason: String }
   | RunnerMicroVmRefusedSharedCredential { reason: String }
   | RunnerMicroVmRefusedMalformedVm { reason: String }
@@ -471,17 +478,20 @@ fn runner_microvm_admission(
   config: FirecrackerVmConfig,
   reserve: RealizationReserve,
 ) -> RunnerMicroVmAdmission {
-  if !cell_incarnation_admitted(admission: cell) {
-    RunnerMicroVmRefusedCellNotAdmitted { reason: cell_incarnation_admission_text(admission: cell) }
-  } else {
-    runner_microvm_admission_after_cell(
-      topology: topology,
-      intent: intent,
-      main_exits_when_incarnation_ends: main_exits_when_incarnation_ends,
-      transport: transport,
-      config: config,
-      reserve: reserve,
-    )
+  match cell {
+    HostWithdrawn { withdrawal: w } => RunnerMicroVmRefusedHostWithdrawn { withdrawal: w }
+    CellWithdrawn { cell: c, withdrawal: w } => RunnerMicroVmRefusedCellWithdrawn { cell: c, withdrawal: w }
+    CellRecoveryRequired { cell: c, generation: g, attempt: a } =>
+      RunnerMicroVmRecoveryRequired { cell: c, generation: g, attempt: a }
+    CellIncarnationAdmitted { cell: _, generation: _ } =>
+      runner_microvm_admission_after_cell(
+        topology: topology,
+        intent: intent,
+        main_exits_when_incarnation_ends: main_exits_when_incarnation_ends,
+        transport: transport,
+        config: config,
+        reserve: reserve,
+      )
   }
 }
 

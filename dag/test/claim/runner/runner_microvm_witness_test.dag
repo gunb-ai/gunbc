@@ -11,8 +11,8 @@ import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControl
 import gunbc.runner_unit { RunnerUnitLifecycleIntent }
 import product.fabric.sanitation { CellId, CellReady, CellQuarantined, FactNotObserved, CgroupEmpty }
 import gunbc.runner_microvm_cell_readiness {
-  CellIncarnationAdmission, CellReadinessStoreRead, StoreRead, StoreRootOwned, CellSettled,
-  cell_incarnation_admission,
+  CellIncarnationAdmission, CellReadinessStoreRead, StoreRead, StoreUnreadable, StoreRootOwned,
+  CellSettled, CellAttemptInFlight, CellQuarantinedAt, HostStoreUnreadable, cell_incarnation_admission,
 }
 import extdeps.virtualization.firecracker {
   FirecrackerMachineConfig,
@@ -52,7 +52,9 @@ import gunbc.runner_microvm {
   RunnerMicroVmRefusedMalformedVm,
   RunnerMicroVmRefusedEnvelopeDisagreement,
   RunnerMicroVmRefusedEnvelopeUnresolved,
-  RunnerMicroVmRefusedCellNotAdmitted,
+  RunnerMicroVmRefusedHostWithdrawn,
+  RunnerMicroVmRefusedCellWithdrawn,
+  RunnerMicroVmRecoveryRequired,
   RunnerMicroVmSizing,
   MicroVmSized,
   MicroVmSizeUnresolved,
@@ -103,7 +105,9 @@ fn admission_is_orphan_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
-    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
   }
 }
 
@@ -115,7 +119,9 @@ fn admission_is_credential_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
-    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
   }
 }
 
@@ -127,7 +133,9 @@ fn admission_is_envelope_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
-    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
   }
 }
 
@@ -144,7 +152,9 @@ fn admission_is_admitted(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
-    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
   }
 }
 
@@ -165,7 +175,9 @@ fn admission_refuses_naming_the_missing_reserve(a: RunnerMicroVmAdmission) -> Bo
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedMalformedVm { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
-    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
   }
 }
 
@@ -177,7 +189,9 @@ fn admission_is_malformed_refusal(a: RunnerMicroVmAdmission) -> Bool {
     RunnerMicroVmRefusedSharedCredential { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeDisagreement { reason: _ } => false
     RunnerMicroVmRefusedEnvelopeUnresolved { reason: _ } => false
-    RunnerMicroVmRefusedCellNotAdmitted { reason: _ } => false
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: _ } => false
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: _ } => false
+    RunnerMicroVmRecoveryRequired { cell: _, generation: _, attempt: _ } => false
   }
 }
 
@@ -792,7 +806,7 @@ test fn a_quarantined_cell_refuses_an_otherwise_admissible_microvm() -> Bool {
     reserve: witness_reserve,
   )
   let refused_with_cause = match quarantined {
-    RunnerMicroVmRefusedCellNotAdmitted { reason: r } => cause_mentions(cause: r, needle: "cgroup-empty")
+    RunnerMicroVmRefusedCellWithdrawn { cell: _, withdrawal: CellQuarantinedAt { generation: 0, unproven: _ } } => true
     _ => false
   }
   refused_with_cause
@@ -805,4 +819,39 @@ test fn a_quarantined_cell_refuses_an_otherwise_admissible_microvm() -> Bool {
       config: mvp_sized_config(),
       reserve: witness_reserve,
     ))
+}
+
+// THE THREE NON-ADMITTING ARMS STAY DISTINCT THROUGH THE ADMISSION (review 68119): an unreadable
+// store is a HOST refusal, an in-flight record is RECOVERY REQUIRED, and neither is the quarantine arm
+// above. A collapse into one refusal would still pass the quarantine witness and fail this one.
+test fn host_withdrawal_and_recovery_required_are_not_a_cell_refusal() -> Bool {
+  let host = match runner_microvm_admission(
+    cell: cell_incarnation_admission(store: StoreUnreadable { reason: "EACCES" as NonEmptyStr }, cell: "srv1-01" as CellId, allocation_generation: 1),
+    topology: VmmUnderLifecycleController,
+    intent: repaired_lifecycle_intent,
+    main_exits_when_incarnation_ends: true,
+    transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+    config: mvp_sized_config(),
+    reserve: witness_reserve,
+  ) {
+    RunnerMicroVmRefusedHostWithdrawn { withdrawal: HostStoreUnreadable { reason: _ } } => true
+    _ => false
+  }
+  let recovery = match runner_microvm_admission(
+    cell: cell_incarnation_admission(
+      store: StoreRead { ownership: StoreRootOwned, records: [CellAttemptInFlight { cell: "srv1-01" as CellId, generation: 0, attempt: "lost" as NonEmptyStr }] },
+      cell: "srv1-01" as CellId,
+      allocation_generation: 1,
+    ),
+    topology: VmmUnderLifecycleController,
+    intent: repaired_lifecycle_intent,
+    main_exits_when_incarnation_ends: true,
+    transport: JitConfigOnReadOnlyDrive { drive_id: "jitcfg" },
+    config: mvp_sized_config(),
+    reserve: witness_reserve,
+  ) {
+    RunnerMicroVmRecoveryRequired { cell: _, generation: 0, attempt: _ } => true
+    _ => false
+  }
+  host && recovery
 }
