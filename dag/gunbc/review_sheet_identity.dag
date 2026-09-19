@@ -1,0 +1,391 @@
+module gunbc.review_sheet_identity
+
+import std.types { NonEmptyStr, String, List, Bool }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.decl_ref { decl_ref }
+import std.dissolution { unbound_dissolution }
+import gunbc.review_sheet_drive_converge {
+  ReviewSpreadsheetObservation,
+  SheetObservedOne,
+  SheetAbsent,
+  SheetDuplicated,
+  SheetSearchIncomplete,
+  SheetPageIncomplete,
+  SheetSearchUnreadable,
+}
+
+// WHAT THIS MODULE IS, AND WHY IT IS PURE. gunbc#11485 relocated the review sheet's identity from
+// Drive's appProperties to properties. The reason was right -- the two fields differ in VISIBILITY,
+// not merely in spelling, and an app-private marker is invisible to a search issued by a different
+// OAuth client -- but the relocation left a generation boundary that nothing modelled: a file
+// carrying only the old field is still the review sheet, and no query built from the new field can
+// reach it. The next converge searched, got a clean empty result, and created a second spreadsheet
+// beside one holding real data.
+//
+// THE REPAIR THAT FAILED, AND WHY IT IS WORTH STATING HERE RATHER THAN IN A COMMIT. A first attempt
+// bolted a second search and an operator declaration onto the effectful converge, and took ten
+// review rounds -- most of them finding a defect introduced by the previous round's fix, and nearly
+// all of them ONE ERROR: a conclusion assigned to a reading that had not established it. An empty
+// appProperties search establishes "this OAuth client received no matching rows". It does not
+// establish "no legacy-marked file exists". Those were collapsed at the producer, inside effectful
+// routing, where no type recorded the difference.
+//
+// So the semantics land FIRST and alone. A read has no meaning until the model says what fact it can
+// establish; this module says it, performs nothing, and the producers that follow are written
+// against it rather than deciding it again.
+//
+// ITS CONSUMERS ARE A DECLARED FRONTIER, AND THE ROWS AT THE FOOT OF THIS MODULE ARE WHAT MAKES
+// THAT A DECLARATION RATHER THAN A SENTENCE. An earlier revision of this cut asserted the frontier
+// in prose and enrolled nothing -- which is the same defect as an annotation standing in for a
+// claim: the dissolution census could not see it, so "declared" meant only that I had said so.
+
+// THE SUBJECT IS CARRIED IN CONTENT, NEVER IMPLIED BY A FILENAME. The operator declarations this
+// contract admits are files at fixed paths, and a path says nothing about WHICH sheet, WHICH drive
+// or WHICH generation it speaks for. A declaration that outlives its subject is worse than an absent
+// one: it is a stale assertion that still reads as authoritative, and the decisions it unlocks --
+// adopt this file, create a new one -- are exactly the decisions that lose data when they are wrong.
+//
+// Both marker fields are part of the subject because a SECOND relocation is possible. A declaration
+// written about the appProperties -> properties generation must not silently answer for a later one;
+// carrying both fields makes that mismatch decidable rather than invisible.
+// EQUALITY IS THE SUBSTRATE'S, NOT THIS MODULE'S. An earlier cut carried a
+// review_sheet_identity_subject_matches walking all five fields by hand, and the annotation on its
+// claim said the intent was TOTAL -- equality over the complete subject. A hand-rolled walk cannot
+// be total: this module says two lines below that a SECOND relocation is anticipated, so a sixth
+// field is a planned edit, and on the day it lands the predicate keeps answering true for two
+// subjects that differ in it -- admitting another subject's evidence as this one's and unlocking
+// exactly the adopt and create decisions that lost data in gunbc#11596.
+//
+// extdeps.transports.rest records this same lesson from the other side: five hand-rolled equality
+// predicates deleted because a duplicate of equality "decayed differently from the type it claimed
+// to compare". Its stated carve-out is a deliberate SUBSET of fields, where which facts constitute
+// identity is a modeled decision worth spelling. This is not a subset. It is the whole record, so
+// `a == b` is both shorter and the only form that stays correct when the record grows.
+type ReviewSheetIdentitySubject {
+  drive_id: NonEmptyStr
+  marker_key: NonEmptyStr
+  marker_value: NonEmptyStr
+  current_marker_field: NonEmptyStr
+  superseded_marker_field: NonEmptyStr
+}
+
+
+// WHAT A LEGACY SEARCH'S SILENCE IS WORTH, WHICH IS THE WHOLE HINGE. appProperties are private to
+// the application that wrote them, so a search issued by a different OAuth client answers 200 with
+// an empty list against a drive that holds a legacy-marked sheet. The response is well-formed,
+// complete, and means nothing about the world -- only about this client.
+//
+// A POSITIVE FIND IS THE ONLY SELF-PROVING ARM, AND ITS SCOPE IS ONE OBSERVATION. Seeing the marker
+// proves this client could see THIS marker on THIS file at THIS moment. It must never be carried
+// forward as a standing claim that later empty answers from the same client are meaningful: a
+// different file may have been marked by a different application, so visibility is not a property
+// the client acquires once.
+// THERE IS NO COMPATIBLE-EMPTY ARM, AND ITS ABSENCE IS THE POINT. Two revisions tried to build one
+// and both were wrong in the same direction -- claiming an observation the corpus cannot make.
+//
+// The first carried `basis: NonEmptyStr`, so a producer could mint the settled-empty verdict that
+// authorizes adopt and create by writing a sentence. The second compared two ServiceAccountEmail
+// values, which is the WRONG IDENTITY GRAIN: Google scopes appProperties to the requesting
+// APPLICATION -- the OAuth client id the access token was obtained with -- and a service-account
+// principal is not that subject. ServiceAccountEmail is also a bare String alias, so the comparison
+// was two freely supplied strings; a caller passing the same one twice minted compatibility, which
+// is exactly what my own witness did.
+//
+// SO THE ARM IS GONE RATHER THAN WEAKENED. An empty appProperties search is ALWAYS unresolved here,
+// because nothing in this corpus observes the OAuth application identity of the token it holds, and
+// a carrier that cannot be filled honestly is modelled as unfillable rather than filled with the
+// nearest available string. Nothing is lost that was real: a positive find is still self-proving, a
+// subject-bound operator declaration still establishes an absent extent, and LegacyFileSelection
+// still carries a chosen file for a later admission.
+//
+// WHAT WOULD REINTRODUCE IT is a genuine observation of both application identities --
+// ObservedMarkerWriterOAuthClient against ObservedSearchingTokenOAuthClient -- grounded in
+// credential provenance or token configuration. That is a capability, not a field, and it is not
+// this cut's.
+type LegacySearchVisibilityBasis
+  = PositiveFindEstablishesVisibility
+  | SearchVisibilityUnresolved { cause: NonEmptyStr }
+
+// AN OPERATOR'S CHOICE OF FILE IS NOT EVIDENCE ABOUT THE EXTENT, AND IT LIVES OUTSIDE THE EVIDENCE
+// CARRIER FOR THAT REASON. Selecting file A establishes WHICH FILE THE OPERATOR SELECTED. It does
+// not establish that an invisible file B does not exist, and selecting B does not establish that B
+// is the only legacy lineage. An earlier revision put the selection inside LegacyExtentEvidence and
+// derived SingleLineage(A) and LegacyOnlyLineage(B) from it -- the same defect this module exists to
+// close, an extent conclusion drawn from evidence that does not cover the extent, arriving through a
+// declaration instead of through an empty search.
+//
+// The selection is therefore carried, not consumed here. Reconciling it against a standing -- and
+// against a contradicting observation, an exact file-by-id preflight and the intended subject -- is
+// an ADMISSION, and admission is a later cut with its own refusals.
+type LegacyFileSelection {
+  subject: ReviewSheetIdentitySubject
+  file_id: NonEmptyStr
+  basis: NonEmptyStr
+}
+
+// EVIDENCE KEEPS ITS PROVENANCE, AND THE ARM THAT WAS MISSING IS THE REASON. An earlier model mapped
+// an operator's "there is no legacy sheet here" onto a VISIBILITY verdict -- laundering a statement
+// about the world into a statement about what this credential can see. They may licence the same
+// decision; they are different facts, and only one of them is something a human can know.
+type LegacyExtentEvidence
+  = LegacyExtentAbsentByOperator { subject: ReviewSheetIdentitySubject, basis: NonEmptyStr }
+  | LegacySearchObserved {
+      subject: ReviewSheetIdentitySubject,
+      observation: ReviewSpreadsheetObservation,
+      visibility_basis: LegacySearchVisibilityBasis,
+    }
+  | LegacyExtentUnresolved { subject: ReviewSheetIdentitySubject, cause: NonEmptyStr }
+
+fn legacy_extent_evidence_subject(e: LegacyExtentEvidence) -> ReviewSheetIdentitySubject {
+  match e {
+    LegacyExtentAbsentByOperator { subject: s, basis: _ } => s
+    LegacySearchObserved { subject: s, observation: _, visibility_basis: _ } => s
+    LegacyExtentUnresolved { subject: s, cause: _ } => s
+  }
+}
+
+// THE STANDING IS DERIVED, NOT DECIDED IN ROUTING. Every arm names what is known and carries the
+// evidence it was derived from, so a consumer that acts on one can always be asked what established
+// it. CurrentMarkerObservedLegacyExtentUnresolved is the arm the first attempt lacked entirely: a
+// current-marked file was FOUND and the legacy extent could not be settled, which is neither a
+// converged single lineage nor an observed conflict. Collapsing it into the former is what reported
+// success over a drive that held two.
+// TWO TYPES, BECAUSE THE LANGUAGE SEALS ONE SHAPE AND NOT THE OTHER, AND AN EARLIER REVISION OF
+// THIS MODULE CLAIMED A SEAL IT DID NOT HAVE. It wrote `type ReviewSheetIdentityStanding
+// sole_constructor = <coproduct>` and an annotation saying the honest route was the only route.
+// BOTH HALVES OF THAT WERE FALSE and the PR's whole safety claim rested on them:
+//
+//   sole_constructor IS DISCARDED ON A COPRODUCT RHS. v1.02_parse parse_type_body_after_eq threads
+//   it into the anonymous-record arm and drops it on every other `=` right-hand side -- a leaf
+//   alias, a coproduct -- and says so in its own note. The hole is the rostered class
+//   gunbc.recurring_failure_mode modifier_accepted_on_a_shape_its_check_cannot_see, which carries
+//   its probe (test.fixture.sole_constructor_variant_probe.definer) and its next-rung trigger. So
+//   any module could still author an arm directly.
+//
+//   THERE IS NO FUNCTION VISIBILITY IN THIS LANGUAGE. v1.03_resolve get_exported_names exports
+//   every module item unconditionally, so the internal_ prefix those helpers carry is a NAMING
+//   CONVENTION and nothing more. "Private to this fold" was a sentence, not a mechanism.
+//
+// That is rung inflation in the sense DESIGN section 4b(1) names -- a reported guarantee above the
+// one executed evidence establishes -- and it is worse than sitting low, because a wall cited as
+// coverage stops anyone looking for the real one.
+//
+// WHAT THE LANGUAGE ACTUALLY PROVIDES is a seal on RECORDS, enforced by file: infer's
+// sole_constructor_construction_diags refuses a construction whose span.file differs from the
+// declaring type's. So the authority is a sealed RECORD, and the ordinary judgement it carries is a
+// plain coproduct that anyone may build and any claim may test.
+//
+// AND THE HELPER BYPASS IS CLOSED BY WHAT THE HELPERS RETURN, NOT BY HIDING THEM. They are
+// importable and always will be; they now yield a DISPOSITION, which carries no authority. A caller
+// entering at internal_disposition_over_current_hit gets exactly what it computed and cannot make
+// it a standing, because minting one is possible only in this file and only through the route that
+// checks the subject first.
+type ReviewSheetIdentityDisposition
+  = ReviewSheetIdentityAbsent
+  | ReviewSheetSingleLineage { file_id: NonEmptyStr }
+  | ReviewSheetLegacyOnlyLineage { file_id: NonEmptyStr }
+  | ReviewSheetConflictingLineages { current_file_ids: List<String>, legacy: LegacyExtentVerdict }
+  | CurrentMarkerObservedLegacyExtentUnresolved { file_id: NonEmptyStr, cause: NonEmptyStr }
+  | ReviewSheetIdentityUnreadable { cause: NonEmptyStr }
+
+// THE SUBJECT AND THE EVIDENCE LIVE HERE RATHER THAN ON EVERY ARM, which also retires a repetition
+// the previous shape carried: six arms each restating the same two fields is one fact written six
+// times, and threading provenance through them by hand is how three of them lost it.
+type ReviewSheetIdentityStanding sole_constructor {
+  subject: ReviewSheetIdentitySubject
+  disposition: ReviewSheetIdentityDisposition
+  evidence: LegacyExtentEvidence
+}
+
+// A DECLARATION FOR ANOTHER SUBJECT IS NOT EVIDENCE ABOUT THIS ONE, and this refusal is why the
+// subject is carried in content at all. It is checked BEFORE the observation is read, because a
+// mismatched declaration cannot be made relevant by anything the search returns. This is the only
+// mint of a standing anywhere.
+fn review_sheet_identity_standing(
+  subject: ReviewSheetIdentitySubject,
+  current: ReviewSpreadsheetObservation,
+  legacy: LegacyExtentEvidence,
+) -> ReviewSheetIdentityStanding {
+  if subject == legacy_extent_evidence_subject(e: legacy) {
+    ReviewSheetIdentityStanding {
+      subject: subject,
+      disposition: internal_disposition_over_matching_subject(current: current, legacy: legacy),
+      evidence: legacy,
+    }
+  } else {
+    ReviewSheetIdentityStanding {
+      subject: subject,
+      disposition: ReviewSheetIdentityUnreadable {
+        cause: "the legacy-extent evidence names a different identity subject, so it establishes nothing about this one" as NonEmptyStr,
+      },
+      evidence: legacy,
+    }
+  }
+}
+
+// THE ACCESSOR CONSUMERS AND CLAIMS READ. A standing is a sealed record, so this is how its
+// judgement is reached without anyone being able to mint one.
+fn review_sheet_identity_standing_disposition(
+  subject: ReviewSheetIdentitySubject,
+  current: ReviewSpreadsheetObservation,
+  legacy: LegacyExtentEvidence,
+) -> ReviewSheetIdentityDisposition {
+  review_sheet_identity_standing(subject: subject, current: current, legacy: legacy).disposition
+}
+
+fn internal_disposition_over_matching_subject(
+  current: ReviewSpreadsheetObservation,
+  legacy: LegacyExtentEvidence,
+) -> ReviewSheetIdentityDisposition {
+  match current {
+    SheetSearchUnreadable { reason: r } => ReviewSheetIdentityUnreadable { cause: r }
+    SheetSearchIncomplete =>
+      ReviewSheetIdentityUnreadable {
+        cause: "Drive reported incompleteSearch for the current marker, so exactly-one is not established" as NonEmptyStr,
+      }
+    SheetPageIncomplete { next_page_token: _ } =>
+      ReviewSheetIdentityUnreadable {
+        cause: "the current-marker listing is one page of several, so a second current-marked file may sit unread" as NonEmptyStr,
+      }
+    SheetDuplicated { file_ids: ids } =>
+      ReviewSheetConflictingLineages {
+        current_file_ids: ids,
+        legacy: legacy_extent_verdict(evidence: legacy),
+      }
+    SheetObservedOne { file_id: current_id } =>
+      internal_disposition_over_current_hit(current_id: current_id, legacy: legacy)
+    SheetAbsent => internal_disposition_over_current_absence(legacy: legacy)
+  }
+}
+
+// THE LEGACY-EXTENT VERDICT IS DECIDED ONCE, AND AN EARLIER REVISION DECIDED IT THREE TIMES. The
+// hinge rule of this whole module -- an empty legacy search is a real absence ONLY under an
+// established visibility basis -- was authored in the current-hit fold, authored again in the
+// current-absence fold, and partially re-derived a third time in a file-id extractor that dropped
+// the visibility basis entirely. Three sites, one fact.
+//
+// THAT IS NOT MERELY REDUNDANT, IT IS THE MODULE'S OWN FAILURE CLASS AIMED AT ITSELF. A later edit
+// tightening the rule on one path and not the other re-creates
+// an_absent_reading_assigned_an_extent_conclusion INSIDE the module filed to prevent it, and no
+// claim would catch the divergence because each arm was covered on only one of the two paths.
+//
+// So the observation and its visibility collapse to one verdict here, and the two dispositions
+// differ only in what they NAME that verdict when a current-marked file was or was not found --
+// which is the only thing that actually differs between them.
+//
+// AND THE CONFLICT ARM CARRIES THE VERDICT RATHER THAN A LIST OF IDS, which closes the last place
+// the collapse survived. An earlier cut kept a file-id extractor beside this fold, and it answered
+// the SAME empty list for a settled-empty legacy extent and an unsettled one -- so an operator
+// reading ReviewSheetConflictingLineages { current: [A,B], legacy_file_ids: [] } could not tell
+// "there is definitely nothing on the old marker" from "the old marker could not be read". That is
+// this module's filed class surviving at the one site whose annotation said it was closed, which is
+// worse than surviving somewhere unremarked. The extractor is deleted; there is no second reading.
+type LegacyExtentVerdict
+  = LegacyExtentSettledEmpty
+  | LegacyExtentFound { file_ids: List<String> }
+  | LegacyExtentUnsettled { cause: NonEmptyStr }
+
+fn legacy_extent_verdict(evidence: LegacyExtentEvidence) -> LegacyExtentVerdict {
+  match evidence {
+    LegacyExtentAbsentByOperator { subject: _, basis: _ } => LegacyExtentSettledEmpty
+    LegacyExtentUnresolved { subject: _, cause: c } => LegacyExtentUnsettled { cause: c }
+    LegacySearchObserved { subject: _, observation: o, visibility_basis: v } =>
+      match o {
+        SheetObservedOne { file_id: f } => LegacyExtentFound { file_ids: [f as String] }
+        SheetDuplicated { file_ids: ids } => LegacyExtentFound { file_ids: ids }
+        SheetSearchUnreadable { reason: r } => LegacyExtentUnsettled { cause: r }
+        SheetSearchIncomplete =>
+          LegacyExtentUnsettled {
+            cause: "Drive reported incompleteSearch for the superseded marker, so the legacy extent is not established" as NonEmptyStr,
+          }
+        SheetPageIncomplete { next_page_token: _ } =>
+          LegacyExtentUnsettled {
+            cause: "the superseded-marker listing is one page of several, so the legacy extent is not established" as NonEmptyStr,
+          }
+        SheetAbsent =>
+          match v {
+                PositiveFindEstablishesVisibility =>
+              LegacyExtentUnsettled {
+                cause: "the legacy search returned nothing and the only visibility basis on offer was a positive find, which this observation did not make" as NonEmptyStr,
+              }
+            SearchVisibilityUnresolved { cause: c } => LegacyExtentUnsettled { cause: c }
+          }
+      }
+  }
+}
+
+// A CURRENT HIT SETTLES NOTHING ON ITS OWN. The legacy verdict decides whether the found file is the
+// single lineage, one of two, or a lineage whose sibling cannot be ruled out.
+fn internal_disposition_over_current_hit(
+  current_id: NonEmptyStr,
+  legacy: LegacyExtentEvidence,
+) -> ReviewSheetIdentityDisposition {
+  match legacy_extent_verdict(evidence: legacy) {
+    LegacyExtentSettledEmpty => ReviewSheetSingleLineage { file_id: current_id }
+    LegacyExtentUnsettled { cause: c } =>
+      CurrentMarkerObservedLegacyExtentUnresolved { file_id: current_id, cause: c }
+    LegacyExtentFound { file_ids: ids } =>
+      if ids == [current_id as String] {
+        ReviewSheetSingleLineage { file_id: current_id }
+      } else {
+        ReviewSheetConflictingLineages {
+          current_file_ids: [current_id as String],
+          legacy: LegacyExtentFound { file_ids: ids },
+        }
+      }
+  }
+}
+
+// NO CURRENT-MARKED FILE. The same verdict, named differently because there is nothing to adopt: a
+// legacy file found here IS the sheet carrying only the old marker, and an unsettled extent is
+// UNREADABLE rather than absent, because creating on it is how the duplicate was minted.
+fn internal_disposition_over_current_absence(
+  legacy: LegacyExtentEvidence,
+) -> ReviewSheetIdentityDisposition {
+  match legacy_extent_verdict(evidence: legacy) {
+    LegacyExtentSettledEmpty => ReviewSheetIdentityAbsent
+    LegacyExtentUnsettled { cause: c } => ReviewSheetIdentityUnreadable { cause: c }
+    LegacyExtentFound { file_ids: ids } =>
+      match first(ids) {
+        Present { value: only } =>
+          if ids == [only] {
+            ReviewSheetLegacyOnlyLineage { file_id: only as NonEmptyStr }
+          } else {
+            ReviewSheetConflictingLineages { current_file_ids: [], legacy: LegacyExtentFound { file_ids: ids } }
+          }
+        Absent =>
+          ReviewSheetIdentityUnreadable {
+            cause: "the legacy extent reported a find with no file ids, which no producer should emit" as NonEmptyStr,
+          }
+      }
+  }
+}
+
+// THE CONSUMER FRONTIER, ENROLLED SO THE DISSOLUTION CENSUS CAN SEE IT. Nothing in the corpus reads
+// these declarations yet, and that is deliberate rather than incidental: the semantics land first so
+// the producers are written against a contract instead of inventing one inside effectful routing,
+// which is how the incident this module exists to prevent was produced.
+//
+// THE TRIGGER IS EXECUTION, NOT EXISTENCE. A Cut 2 module that merely imports these types does not
+// retire these rows; what retires them is the producer route running -- the Drive superseded-marker
+// query and the subject-bound declaration reader emitting LegacyExtentEvidence, and that evidence
+// reaching review_sheet_identity_standing on the real path. A frontier whose trigger is satisfied by
+// an import would be discharged by the weakest possible consumer.
+data review_sheet_identity_consumer_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_identity", decl_name: "review_sheet_identity_standing"),
+    reason: "the complete join. It has no caller: the superseded-marker producer that would supply its current observation and its legacy-extent evidence is the next cut, and landing that producer first would have let it decide these meanings inside effectful routing again -- the failure this module exists to close",
+    dissolution: unbound_dissolution(description: "dissolves when the Drive superseded-marker producer and the subject-bound operator-declaration reader EXECUTE against this contract -- emitting LegacyExtentEvidence and passing it with a current-marker observation into review_sheet_identity_standing on the production route. A module that imports these types without running that route does not fire this"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_identity", decl_name: "LegacyExtentEvidence"),
+    reason: "the evidence carrier the producers must emit. No producer constructs it yet, so every arm is currently inhabited only by claims",
+    dissolution: unbound_dissolution(description: "dissolves when the Cut 2 producers construct LegacySearchObserved from a live Drive query and LegacyExtentAbsentByOperator from a subject-bound declaration file, both on the production route"),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.review_sheet_identity", decl_name: "LegacyFileSelection"),
+    reason: "an operator's choice of file, carried rather than consumed. It is deliberately NOT part of LegacyExtentEvidence -- selecting a file establishes which file was selected, never that no other lineage exists -- so nothing in this cut reads it. Its consumer is the declared-id ADMISSION, which reconciles a selection against a standing, a contradicting observation and an exact file-by-id preflight",
+    dissolution: unbound_dissolution(description: "dissolves when the declared-id admission executes: a selection reconciled against a review_sheet_identity_standing and an exact file-by-id read, producing a typed admission or refusal on the production route"),
+  ),
+]
+
