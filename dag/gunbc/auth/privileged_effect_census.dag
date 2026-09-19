@@ -1,8 +1,7 @@
 module gunbc.auth.privileged_effect_census
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key, declaration_ref_in_list }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { Bool, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list }
 import std.human_intervention { FleetOnce, DeviceOnce, EveryProvision }
 import gunbc.spark.bootstrap_provision {
   fleet_cloud_principal_standing,
@@ -19,7 +18,7 @@ import gunbc.auth.authorization_pattern_selection {
   OperatorOwnSession, PastedOperatorToken,
   AuthorizationPatternSelection, PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
-  select_authorization_pattern, selection_text, pattern_label,
+  select_authorization_pattern,
 }
 
 // ── EVERY PRIVILEGED-EFFECT SITE IN dag/, CLASSIFIED BY EXECUTING THE SELECTION ──────────────
@@ -505,28 +504,10 @@ fn undecidable_sites() -> List<SiteVerdict> {
   filter(census_verdicts(), v => verdict_is_undecidable(v: v))
 }
 
-fn conformance_text(c: SiteConformance) -> String {
-  match c {
-    Conforms => "conforms"
-    DivergesWithReason { reason: r } => concat("diverges with reason: ", r as String)
-    Diverges => "DIVERGES (no reason stated)"
-    SiteNotDecidable { standing: s } => concat("not decidable: ", selection_text(s: s))
-  }
-}
-
-fn verdict_line(v: SiteVerdict) -> String {
-  join([
-    declaration_ref_display_key(ref: v.site), " | ", selection_text(s: v.selection), " | ", conformance_text(c: v.conformance),
-  ], "")
-}
-
-fn render_census() -> String {
-  join(map(census_verdicts(), v => verdict_line(v: v)), "\n")
-}
-
 // THE IDENTITY JOIN between what the census finds unreasoned and what the follow-up roster admits.
 // Both directions: a found site the roster does not name is undeclared debt; a rostered site the
-// census no longer finds is a paid debt whose row was not retired.
+// census no longer finds is a paid debt whose row was not retired. Both are executed by
+// test.claim.authorization_pattern_selection_witness, which is the census's consumer.
 fn unrostered_unreasoned_divergences() -> List<DeclarationRef> {
   filter(map(unreasoned_divergences(), v => v.site), s => !declaration_ref_in_list(target: s, refs: follow_up_sites))
 }
@@ -534,23 +515,4 @@ fn unrostered_unreasoned_divergences() -> List<DeclarationRef> {
 fn rostered_but_not_diverging() -> List<DeclarationRef> {
   let found = map(unreasoned_divergences(), v => v.site)
   filter(follow_up_sites, s => !declaration_ref_in_list(target: s, refs: found))
-}
-
-// THE GATE, runnable as an entry: `gunbc run --source-root dag --source-root src/v2 --entry
-// dag/gunbc/auth/privileged_effect_census.dag --function census_gate`. Exit 0 when every site is
-// decidable and the follow-up join holds; otherwise the rendered census is the reason.
-fn census_gate() -> ProcessExit {
-  let undecidable = undecidable_sites()
-  let unrostered = unrostered_unreasoned_divergences()
-  let stale = rostered_but_not_diverging()
-  if (undecidable |> count) == 0 && (unrostered |> count) == 0 && (stale |> count) == 0 {
-    ExitSuccess
-  } else {
-    exit_failure(reason: join([
-      "privileged effect census: undecidable=", to_string((undecidable |> count)),
-      " unrostered-unreasoned=", to_string((unrostered |> count)),
-      " rostered-but-conforming=", to_string((stale |> count)),
-      "\n", render_census(),
-    ], ""))
-  }
 }

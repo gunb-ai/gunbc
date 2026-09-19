@@ -632,16 +632,3 @@ fn select_authorization_pattern(e: PrivilegedEffect) -> AuthorizationPatternSele
     RealizationSelectionRefused { defects: ds } => PatternSelectionRefused { defects: ds }
   }
 }
-
-fn selection_text(s: AuthorizationPatternSelection) -> String {
-  match s {
-    PatternSelected { pattern: p, receipt: _ } => concat("selected: ", pattern_label(p: p) as String)
-    ManualStepRequired { step: st, receipt: _ } =>
-      join(["manual step required: ", st.identity as String, " -- ", st.instruction as String], "")
-    NoAdmissiblePattern { causes: cs, scope: _ } =>
-      concat("no admissible pattern: ", join(map(cs, c => c as String), "; "))
-    PatternSelectionNeedsEvidence { needs: ns } => concat("needs evidence: ", to_string((ns |> count)))
-    PatternSelectionNeedsPolicy { survivors: sv } => concat("needs policy over survivors: ", to_string((sv |> count)))
-    PatternSelectionRefused { defects: ds } => concat("refused: ", join(map(ds, d => d as String), "; "))
-  }
-}
