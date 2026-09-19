@@ -2,7 +2,7 @@ module test.claim.approval_broker_cutover_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, Int, Port }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.running_release_identity { running_release_revision_key }
 import gunbc.auth.approval_writer_authority {
   ApprovalWriterAuthority, RoadmapWriter, BrokerWriter, approval_writer_authority,
@@ -24,6 +24,11 @@ import gunbc.auth.approval_broker_marker {
   ApprovalBrokerMarker, ObservedMarker, NoMarkerInBody, MarkerObserved,
   ConfirmHandlerObserved, DecisionHandlerObserved, SubmissionHandlerObserved, StatusHandlerObserved,
   BrokerNoRouteMatched, approval_broker_served_token,
+}
+import gunbc.auth.approval_broker_demand {
+  BrokerDemandPhase, ColdLoadOnly, SubmissionAndNotification, ConfirmPage, Redemption, StatusPoll,
+  PeakOfIncarnationExercising, broker_demand_from_incarnations, broker_demand_observed_max,
+  broker_demand_phases, broker_demand_phase_label,
 }
 import gunbc.auth.approval_broker_cutover {
   ApprovalBrokerCutoverStage,
@@ -80,20 +85,37 @@ fn nothing_observed() -> ApprovalBrokerCutoverEvidence {
   }
 }
 
+// THE FIXTURE READING IS BUILT BY THE REAL PRODUCER, not asserted as a DemandMeasured literal.
+// That is the pairing obligation for every claim below that supplies a demand value (DESIGN
+// section 3): if the fixture minted the admitting arm directly, the producer could refuse
+// everything a real run hands it and every one of these claims would stay green. Going through
+// broker_demand_from_incarnations means the plan's admitting path is exercised end to end by the
+// same fold production uses.
+fn fixture_incarnation_peaks() -> List<PeakOfIncarnationExercising> {
+  [
+    PeakOfIncarnationExercising { phase: ColdLoadOnly, bytes: byte_size(900000000) },
+    PeakOfIncarnationExercising { phase: SubmissionAndNotification, bytes: byte_size(1250000000) },
+    PeakOfIncarnationExercising { phase: ConfirmPage, bytes: byte_size(980000000) },
+    PeakOfIncarnationExercising { phase: Redemption, bytes: byte_size(1180000000) },
+    PeakOfIncarnationExercising { phase: StatusPoll, bytes: byte_size(940000000) },
+  ]
+}
+
+fn fixture_demand_reading() -> BrokerDemandReading {
+  broker_demand_from_incarnations(
+    peaks: fixture_incarnation_peaks(),
+    idle_resident_before: byte_size(300000000),
+    idle_resident_after: byte_size(320000000),
+    declared_concurrency: 1,
+  )
+}
+
 fn everything_observed() -> ApprovalBrokerCutoverEvidence {
   ApprovalBrokerCutoverEvidence {
     dark: DarkUnitListening { port: approval_broker_listen_port },
     expected_release: cutover_fixture_revision,
     release_readback: release_readback_from_read(read: observe_serve_liveness(body: cutover_fixture_liveness_body)),
-    demand: DemandMeasured {
-      cold_load_peak: byte_size(900000000),
-      idle_resident: byte_size(300000000),
-      submission_peak: byte_size(950000000),
-      confirm_page_peak: byte_size(400000000),
-      redemption_peak: byte_size(950000000),
-      status_poll_peak: byte_size(350000000),
-      declared_concurrency: 1,
-    },
+    demand: fixture_demand_reading(),
     front_door: FrontDoorPointsAtBroker { port: approval_broker_listen_port },
     confirm_probe: RouteClassAnswered { status: 200, observed: MarkerObserved { process: BrokerProcess, marker: ConfirmHandlerObserved } },
     decide_probe: RouteClassAnswered { status: 400, observed: MarkerObserved { process: BrokerProcess, marker: DecisionHandlerObserved } },
@@ -248,6 +270,107 @@ test fn cutover_reads_a_marked_404_as_the_wrong_fold_not_a_missing_answer() -> B
     }
     StageAdmitted { stage: _ } => false
   }
+}
+
+// ── THE GATE'S ADMITTING ARM IS REACHABLE BY THE PRODUCTION FOLD ────────────────────────────
+// THE CLAIM THAT WOULD HAVE CAUGHT THE DEFECT THIS MODULE WAS BUILT TO FIX. Before
+// gunbc.auth.approval_broker_demand existed, DemandMeasured was constructed ONLY in this file`s
+// fixture: the cutover gate refused correctly, every claim here passed, two reviewers approved it,
+// and no production fold could ever supply the value that lets the plan advance. A gate whose
+// admitting arm is unreachable refuses forever, which reads as safety and is an unfinished path.
+//
+// So this asserts the ROUTE and not just the answer: the reading handed to admission came out of
+// broker_demand_from_incarnations, and MeasureDemand is admitted. Delete the producer and this
+// cannot be written at all; make the producer refuse a well-formed run and it goes red.
+test fn the_production_producer_can_build_a_reading_that_admits_the_measure_stage() -> Bool {
+  let reading = fixture_demand_reading()
+  let measured = match reading {
+    DemandMeasured { incarnation_peaks: _, idle_resident_before: _, idle_resident_after: _, declared_concurrency: _ } => true
+    DemandUnmeasured { missing: _ } => false
+  }
+  measured && stage_is_admitted(stage: MeasureDemand, e: everything_observed())
+}
+
+// ── A MISSING PHASE IS NOT A SMALLER MEASUREMENT ────────────────────────────────────────────
+// COVERAGE IS AN IDENTITY JOIN AGAINST THE PHASE ROSTER, not a count (DESIGN section 5). This drops
+// the redemption incarnation and keeps four readings; a count-based check comparing against five
+// would also fail here, so the discriminating case is the SIBLING claim below, which keeps the
+// count at five while naming one phase twice.
+test fn a_phase_with_no_incarnation_refuses_the_whole_reading() -> Bool {
+  let reading = broker_demand_from_incarnations(
+    peaks: [
+      PeakOfIncarnationExercising { phase: ColdLoadOnly, bytes: byte_size(900000000) },
+      PeakOfIncarnationExercising { phase: SubmissionAndNotification, bytes: byte_size(1250000000) },
+      PeakOfIncarnationExercising { phase: ConfirmPage, bytes: byte_size(980000000) },
+      PeakOfIncarnationExercising { phase: StatusPoll, bytes: byte_size(940000000) },
+    ],
+    idle_resident_before: byte_size(300000000),
+    idle_resident_after: byte_size(320000000),
+    declared_concurrency: 1,
+  )
+  match reading {
+    DemandUnmeasured { missing: m } => string_contains(s: m as String, pattern: "redemption")
+    DemandMeasured { incarnation_peaks: _, idle_resident_before: _, idle_resident_after: _, declared_concurrency: _ } => false
+  }
+}
+
+// FIVE READINGS THAT NUMBER FIVE AND COVER FOUR PHASES. This is the case a count equality admits
+// and an identity join refuses, so it is what makes the roster join load-bearing rather than
+// decorative -- and it is a real run shape: two runs folded together, one phase measured twice and
+// another never, with the total still looking right.
+test fn five_readings_naming_four_phases_are_refused() -> Bool {
+  let reading = broker_demand_from_incarnations(
+    peaks: [
+      PeakOfIncarnationExercising { phase: ColdLoadOnly, bytes: byte_size(900000000) },
+      PeakOfIncarnationExercising { phase: SubmissionAndNotification, bytes: byte_size(1250000000) },
+      PeakOfIncarnationExercising { phase: ConfirmPage, bytes: byte_size(980000000) },
+      PeakOfIncarnationExercising { phase: ConfirmPage, bytes: byte_size(990000000) },
+      PeakOfIncarnationExercising { phase: StatusPoll, bytes: byte_size(940000000) },
+    ],
+    idle_resident_before: byte_size(300000000),
+    idle_resident_after: byte_size(320000000),
+    declared_concurrency: 1,
+  )
+  match reading {
+    DemandUnmeasured { missing: m } => string_contains(s: m as String, pattern: "redemption")
+      || string_contains(s: m as String, pattern: "confirm-page")
+    DemandMeasured { incarnation_peaks: _, idle_resident_before: _, idle_resident_after: _, declared_concurrency: _ } => false
+  }
+}
+
+// ── A PEAK THAT DOES NOT EXCEED IDLE DID NOT OBSERVE THE EXERCISE ───────────────────────────
+// THE FAILURE THIS PROTOCOL IS MOST EXPOSED TO, and it is the quiet one: reading memory.peak from
+// the wrong cgroup, or after the incarnation has already stopped, hands back a SMALL PLAUSIBLE
+// NUMBER rather than an error. Nothing about the shape is wrong, the run reports success, and the
+// slice gets sized from a process that was never exercised. A peak at or below what the process
+// sits on when idle has not seen the route run.
+test fn a_peak_at_or_below_idle_resident_is_refused_as_unobserved() -> Bool {
+  let reading = broker_demand_from_incarnations(
+    peaks: [
+      PeakOfIncarnationExercising { phase: ColdLoadOnly, bytes: byte_size(900000000) },
+      PeakOfIncarnationExercising { phase: SubmissionAndNotification, bytes: byte_size(1250000000) },
+      PeakOfIncarnationExercising { phase: ConfirmPage, bytes: byte_size(250000000) },
+      PeakOfIncarnationExercising { phase: Redemption, bytes: byte_size(1180000000) },
+      PeakOfIncarnationExercising { phase: StatusPoll, bytes: byte_size(940000000) },
+    ],
+    idle_resident_before: byte_size(300000000),
+    idle_resident_after: byte_size(320000000),
+    declared_concurrency: 1,
+  )
+  match reading {
+    DemandUnmeasured { missing: m } => string_contains(s: m as String, pattern: "confirm-page")
+      && string_contains(s: m as String, pattern: "idle resident")
+    DemandMeasured { incarnation_peaks: _, idle_resident_before: _, idle_resident_after: _, declared_concurrency: _ } => false
+  }
+}
+
+// ── THE BOUND IS THE MAX ACROSS INCARNATIONS ────────────────────────────────────────────────
+// This is the fold stage 3 tightens the slice rows from, so it is what makes the readings CONSUMED
+// rather than merely gating (DESIGN section 3c). The discriminating part is that it does NOT return
+// the last reading or the cold-load reading: the fixture`s largest is the submission incarnation,
+// which is neither first nor last in the list.
+test fn the_slice_bound_derives_from_the_largest_incarnation() -> Bool {
+  byte_size_count(b: broker_demand_observed_max(peaks: fixture_incarnation_peaks())) == 1250000000
 }
 
 // ── A CORRECT 200 FROM THE ROADMAP IS THE STATE THIS STAGE EXISTS TO CATCH ──────────────────

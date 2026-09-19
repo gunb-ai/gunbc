@@ -24,6 +24,10 @@ import gunbc.auth.approval_broker_endpoint {
   approval_broker_confirm_front_door, approval_broker_status_front_door,
 }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_enable_argv }
+import gunbc.auth.approval_broker_demand {
+  BrokerDemandReading, DemandUnmeasured, DemandMeasured,
+  BrokerDemandPhase, PeakOfIncarnationExercising, broker_demand_phase_label,
+}
 import gunbc.auth.approval_writer_authority {
   ApprovalWriterAuthority, RoadmapWriter, BrokerWriter, approval_writer_authority,
   ApprovalServingProcess, RoadmapProcess, BrokerProcess,
@@ -254,27 +258,20 @@ fn release_readback_from_read(read: ServeLivenessRead) -> ReleaseReadback {
 // THE SIX READINGS ARE ONE VALUE BECAUSE THEY ARE ONE QUESTION. A bound derived from five of them
 // is a bound with an unmeasured peak in it, and the peak that is missing is the one that will be
 // hit. Absence is not zero, so the unmeasured state is its own arm rather than a reading of 0.
-// THE READINGS ARE ByteSize, NOT Int, AND THE REASON IS THIS STAGE'S OWN PRODUCT (review 68036).
-// Stage 3 exists to TIGHTEN gunbc.live_deploy.emit approval_broker_slice_memory_max and
-// approval_broker_slice_memory_high from these numbers, and those two rows are ByteSize. A bare Int
-// here would have put the measurement and the bound it feeds in two different unit systems at the
-// one seam where they are compared -- so a reading could be handed to a bound without anything
-// establishing they were the same quantity. std.measure already owns this, and the same PR consumes
-// it correctly one module away; a second unit system for bytes is the section 3 fork.
+// ── THE DEMAND READING LIVES IN ITS OWN MODULE NOW ──────────────────────────────────────────
+// IT MOVED BECAUSE IT GAINED A PRODUCER. While DemandMeasured was declared here, the only thing
+// that built one was a witness fixture, so this plan's admitting arm was unreachable in production
+// -- the gate below could refuse forever and never pass. gunbc.auth.approval_broker_demand now owns
+// the vocabulary AND the fold that constructs a reading from what a run actually observed, and this
+// module consumes it. The plan decides what a reading permits; it does not decide what a reading
+// IS, and it never had the observations to construct one.
 //
-// declared_concurrency stays an Int because it is a COUNT of in-flight requests, not a quantity of
-// memory -- and that is the distinction ByteSize exists to keep, not an exception to it.
-type BrokerDemandReading
-  = DemandUnmeasured { missing: NonEmptyStr }
-  | DemandMeasured {
-      cold_load_peak: ByteSize
-      idle_resident: ByteSize
-      submission_peak: ByteSize
-      confirm_page_peak: ByteSize
-      redemption_peak: ByteSize
-      status_poll_peak: ByteSize
-      declared_concurrency: Int
-    }
+// WHAT THE READINGS BECAME, because the shape changed rather than just moving: five named per-phase
+// peak fields became a roster-checked list of PeakOfIncarnationExercising. The old fields invited
+// exactly the misreading their names carried -- confirm_page_peak read as the confirm page's
+// marginal cost -- when every number is a whole incarnation's peak including its cold load, which
+// is what the slice must actually hold. The reasons the readings are ByteSize rather than Int
+// (review 68036) and that declared_concurrency stays an Int move with them.
 
 type FrontDoorStanding
   = FrontDoorPointsAtRoadmap
@@ -461,8 +458,7 @@ fn demand_admission(e: ApprovalBrokerCutoverEvidence) -> CutoverRefusal? {
   match e.demand {
     DemandUnmeasured { missing: m } => Present { value: DemandNotMeasured { missing: m } }
     DemandMeasured {
-      cold_load_peak: _, idle_resident: _, submission_peak: _,
-      confirm_page_peak: _, redemption_peak: _, status_poll_peak: _,
+      incarnation_peaks: _, idle_resident_before: _, idle_resident_after: _,
       declared_concurrency: _,
     } => Absent
   }

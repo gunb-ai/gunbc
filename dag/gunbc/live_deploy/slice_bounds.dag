@@ -106,12 +106,28 @@ data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 // until an approval poll times out. A wrong bound here costs a restart; a shared heap cost boot 15.
 //
 // THE MEASUREMENT IS STAGE 3 AND THE PLAN REFUSES WITHOUT IT. gunbc.auth.approval_broker_cutover
-// will not admit repointing the front door while BrokerDemandReading is DemandUnmeasured, so the
-// six readings -- cold bind and load peak, idle resident, submission-plus-notification peak,
-// confirm-page peak, redemption peak, status-poll peak -- are taken against the dark broker before
-// anything routes to it, and these two rows are tightened from them. The instrument is the unit's
-// journal "Consumed ... memory peak" line for gunbc-approval-broker.service, the same one the row
-// above names; re-derive there rather than from this sentence.
+// will not admit repointing the front door while the reading is DemandUnmeasured, so the readings
+// are taken against the dark broker before anything routes to it, and these two rows are tightened
+// from them -- from broker_demand_observed_max, the fold that answers what the slice must hold.
+//
+// THE INSTRUMENT SENTENCE THAT STOOD HERE WAS FALSE AND IS CORRECTED RATHER THAN DELETED. It read:
+// "the instrument is the unit's journal `Consumed ... memory peak` line for
+// gunbc-approval-broker.service, the same one the row above names". That line reports ONE number --
+// the cgroup's peak across the unit's whole lifetime -- so it can establish the lifetime peak and
+// nothing finer. It cannot separate a confirm-page peak from a redemption peak, and this sentence
+// claimed it yielded six readings. Naming an instrument (DESIGN section 6) is only half the
+// obligation; its RESOLUTION has to match the fields being derived from it.
+//
+// THE REAL PROTOCOL IS ONE INCARNATION PER ROUTE CLASS, and it is forced by a measured kernel fact
+// rather than chosen: memory.peak is monotone over a cgroup's life and reset-by-write returns
+// EINVAL on the deployed kernel, so no second read within one incarnation describes a later phase.
+// Each reading therefore comes from its own incarnation -- start, cold load, exactly one route
+// class, read memory.peak, stop -- and is that incarnation's TRUE peak INCLUDING its cold load,
+// which is precisely what this slice has to hold because every incarnation systemd starts cold
+// loads. Restarting repeatedly is free only because the broker is dark and unrouted at that stage.
+// The authority for all of it, including the retirement trigger, is
+// gunbc.auth.approval_broker_demand broker_demand_reset_unavailable; re-derive there rather than
+// from this sentence.
 data approval_broker_slice_memory_max: ByteSize = byte_size(6442450944)
 
 data approval_broker_slice_memory_high: ByteSize = byte_size(5368709120)
