@@ -1,6 +1,6 @@
 module extdeps.tools.openssl
 
-import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.types { String, NonEmptyStr, Int, Bool, List, Unit }
 import std.integer { UInt8 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
