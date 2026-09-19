@@ -304,10 +304,13 @@ data realized_workflow_projection_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-// THE REALIZED-FILE PROJECTION EXAMINES ONLY THE LINES THAT CAN CARRY A USE. The census must cover
-// every file GitHub executes, generated ones included, and neither a full YAML parse nor a scan
-// that interprets every line fits one claim's eval-step budget (claim_batch re-derives the cost on
-// test.claim.action_use_admission_witness). Admission needs two things per use, and neither needs
+// THE REALIZED-FILE PROJECTION DOES STRUCTURAL WORK ONLY ON THE LINES THAT CAN CARRY A USE. The
+// census must cover every file GitHub executes, generated ones included, and neither a full YAML
+// parse nor a scan that interprets every line's structure fits one claim's eval-step budget
+// (claim_batch re-derives the cost on test.claim.action_use_admission_witness). Every line pays one
+// cheap test -- whether it opens with a double-quoted key carrying an escape -- because that is the
+// one spelling of a `uses` key that need not contain the token `uses`, so it cannot sit behind the
+// token filter; every other test runs only on lines that contain `uses`. Admission needs two things per use, and neither needs
 // the surrounding structure:
 //   - the value, from the line's own `uses:` key; and
 //   - the SITE, from the value's own shape: GitHub resolves a job-level `uses:` only as a reusable
@@ -315,7 +318,7 @@ data realized_workflow_projection_frontier_rows: List<FrontierRow> = [
 //     `./.github/workflows/<file>`, and a step-level one never names a workflow file. A job-level
 //     `uses:` naming a plain action is a workflow GitHub itself rejects, so no substituted runtime
 //     can run from it.
-// Every line that names `uses` is examined, including lines inside script bodies: a script line
+// Every line that names `uses` is examined structurally, including lines inside script bodies: a script line
 // spelled exactly as a `uses:` key is treated as a use and must be admitted, which fails closed.
 // Unmodeled spellings refuse rather than pass: a quoted or flow-mapping `uses` key, an anchor or
 // alias value, and an empty value. Whole-file facts are read once: exactly one top-level `jobs`, and
