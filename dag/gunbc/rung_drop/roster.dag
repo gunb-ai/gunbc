@@ -62,6 +62,7 @@ import gunbc.rung_drop.determinism_transitive_reachability { determinism_transit
 import gunbc.rung_drop.transitional_admission_exception { transitional_admission_exception }
 import gunbc.rung_drop.v2_native_route_off_the_merge_path { v2_native_route_off_the_merge_path }
 import gunbc.rung_drop.consumed_row_owner_charge_unenforced { consumed_row_owner_charge_unenforced }
+import gunbc.rung_drop.approval_store_single_writer_by_agreement { approval_store_single_writer_by_agreement }
 import gunbc.rung_drop.owner_deletion_follow_up_charge_removed { owner_deletion_follow_up_charge_removed }
 import gunbc.rung_drop.main_per_commit_floor_verdict { main_per_commit_floor_verdict }
 import gunbc.rung_drop.v1_consumer_census_live_population_off_the_merge_path { v1_consumer_census_live_population_off_the_merge_path }
@@ -145,6 +146,7 @@ data rung_drop_roster: List<RungDrop> = [
   type_reference_location_fallback_keys_production_realization,
   persisted_resolved_graph_disk_probe_unqualified_format,
   self_host_emit_derisk_claim_unobserved,
+  approval_store_single_writer_by_agreement,
 ]
 
 // THE DERIVATION THE PROJECTION USES, so "standing today" has one authority and not two. The

@@ -1,0 +1,53 @@
+module gunbc.rung_drop.approval_store_single_writer_by_agreement
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { StructurallyImpossible, MechanicallyPreventable }
+
+// DECLARED 2026-09-19 beside the change that introduces the second writer, not at the stage that
+// would first depend on it (parent directive, same day: write the row now, not at stage E). The
+// approval-broker split gives one host two processes that can open a single-writer 0600 store, and
+// gunbc.auth.approval_writer_authority makes the non-writer REFUSE. That is a real wall and it is
+// not the one the store's discipline assumed.
+//
+// WHAT THE PREVIOUS RUNG ACTUALLY WAS, stated precisely so the drop is not overstated. Before the
+// split there was ONE process with the keys and the store root, so a second writer was not refused
+// -- it did not exist. The invalid state had no constructor, which is structural impossibility, and
+// it held for the ordinary reason such things hold: nobody had built the second process yet.
+//
+// WHAT IT IS NOW. Two processes, both compiled with the store root and both able to read the
+// keyring, agreeing at runtime about which of them may write. The refusal is total, typed and on
+// the path -- every mutating route consults it before any store effect, and claims run the real
+// request fold under both process identities -- so the class is MECHANICALLY PREVENTABLE. It is not
+// structural: the guarantee is an agreement between two programs that read the same declaration,
+// and a process that does not read it is not bound by it. A broker or roadmap binary built from a
+// revision before this row, or run by hand from an older checkout, writes whatever its code allows.
+//
+// THE POPULATION IS BOUNDED AND NAMED rather than "the deployment": exactly the window in which two
+// serving processes on one host both hold store-capable configuration. It opens when the broker
+// unit is first installed and closes when the store's generations stop being openable by both
+// principals. It is NOT retired by moving writer authority to the broker -- that changes which
+// process refuses, not whether the guarantee is by agreement.
+
+data approval_store_single_writer_by_agreement: RungDrop = RungDrop {
+  identity: "approval_store_single_writer_by_agreement" as NonEmptyStr,
+
+  subject: "two serving processes on one host can both open the single-writer approval store, and which of them may write is decided by a declaration they agree to consult rather than by a permission either one cannot bypass",
+
+  declared: "2026-09-19",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: StructurallyImpossible,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged {
+      replacement: "gunbc.auth.approval_writer_authority approval_write_admission, consulted by both mutating routes before any store effect; the terminal replacement is a POSIX-principal restriction on the store generations",
+    },
+    population: [
+      "gunbc-roadmap.service and gunbc-approval-broker.service on srv1, for the window in which both run under the service principal with gunbc.auth.approval_decision_store approval_decision_store_root readable and both keyrings loadable",
+      "any gunbc serve process started by hand from a checkout whose revision predates gunbc.auth.approval_writer_authority, which reads no such declaration at all",
+    ],
+    restoration_trigger: "THE CAPABILITY: the approval store's generations are writable by exactly ONE POSIX principal, and the other serving process's account cannot open them -- so a second writer is refused by the kernel rather than by agreement. SUFFICIENT FOR: attempting a store write as the non-writer principal and observing the OS refusal, with the broker principal alone holding the submission MAC key, the capability MAC key, the publisher token and the store, and the roadmap principal unable to read any of them. Nothing smaller retires this row. In particular: moving writer authority to the broker does NOT retire it -- that changes which process refuses, not whether the guarantee is by agreement; nor does deleting the roadmap's approval routes, because the roadmap process would still hold a principal that can open the store; nor does a claim over approval_write_admission, which establishes that the fold refuses and not that a process which skips the fold is stopped.",
+  }
+}
