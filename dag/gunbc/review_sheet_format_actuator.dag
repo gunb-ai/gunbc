@@ -33,7 +33,11 @@ import gunbc.review_sheet_projection {
 import extdeps.google.sheets
 import extdeps.google.sheets {
   SheetsColor,
-  spreadsheet_first_sheet_id,
+  sheets_field_mask,
+  sheets_field_sheet_id,
+  sheets_field_frozen_row_count,
+  sheets_field_conditional_formats,
+  sheets_field_user_entered_format,
   SpreadsheetRead,
   SheetsSheetRead,
   SheetsColorRead,
@@ -42,6 +46,13 @@ import extdeps.google.sheets {
   sheets_color_channel_read,
 }
 import v2.std.algebra { fold_list }
+import gunbc.review_sheet_tab_locator { LocatedReviewTab }
+import gunbc.review_sheet_sheets {
+  A1TabQualification,
+  A1TabQualifiesUnquoted,
+  A1TabNeedsQuoting,
+  a1_tab_qualification,
+}
 
 // THE PALETTE IS CITED AND THE CHANNELS ARE DERIVED. gunbc.design.catalog carries okabe_ito as a
 // CitedUpstream set anchored at jfly.uni-koeln.de, and it is the right set for this sheet for a
@@ -205,16 +216,114 @@ fn classify_format_step(step: NonEmptyStr, outcome: RestOutcome) -> FormatStepOu
   }
 }
 
-fn freeze_header(spreadsheet_id: NonEmptyStr) -> FormatStepOutcome uses net: Network {
-  let r = sheets.Spreadsheets.SetFrozenRows(
-    spreadsheet_id: spreadsheet_id as String,
-    sheet_id: spreadsheet_first_sheet_id,
+// THE REQUESTS ARE DERIVED BEFORE ANY OF THEM IS SENT, AND THAT IS WHAT MAKES THE ADDRESSING
+// WITNESSABLE. Every batchUpdate below names a sheetId, and until this change every one of them
+// named the constant extdeps.google.sheets spreadsheet_first_sheet_id -- so the formatter wrote to
+// whatever tab happened to be first, in a file whose tab identity nothing had established. The
+// sheetId now comes from a gunbc.review_sheet_tab_locator LocatedReviewTab, which has no
+// constructor outside the function that read the workbook's metadata.
+//
+// The request records exist so that the addressing is a VALUE a claim can read rather than an
+// argument inside an effect. format_request_plan is a pure fold from the located tab and the
+// schema to every request this actuator would send, and test.claim.review_sheet_format_target_witness
+// asserts that each one carries the located sheetId; the step functions take a request and pass
+// its fields through. WHAT THAT DOES NOT ESTABLISH, said plainly: the claim reads the plan, not the
+// wire, so it discriminates a plan built from the constant and does NOT discriminate a step
+// rewritten to ignore the request it was handed. Closing that needs the mock corpus to carry the
+// three batchUpdate operations, which it does not.
+type FreezeRowsRequest {
+  spreadsheet_id: String
+  sheet_id: Int
+  frozen_row_count: Int
+}
+
+type HeaderBandRequest {
+  spreadsheet_id: String
+  sheet_id: Int
+  start_row: Int
+  end_row: Int
+  start_col: Int
+  end_col: Int
+}
+
+type StandingRuleRequest {
+  spreadsheet_id: String
+  sheet_id: Int
+  start_row: Int
+  start_col: Int
+  end_col: Int
+  match_text: String
+  rule_index: Int
+}
+
+fn freeze_rows_request(tab: LocatedReviewTab) -> FreezeRowsRequest {
+  FreezeRowsRequest {
+    spreadsheet_id: tab.spreadsheet_id as String,
+    sheet_id: tab.sheet_id,
     frozen_row_count: review_sheet_header_row_count,
+  }
+}
+
+fn header_band_request(tab: LocatedReviewTab, schema: ReviewSheetSchema) -> HeaderBandRequest {
+  HeaderBandRequest {
+    spreadsheet_id: tab.spreadsheet_id as String,
+    sheet_id: tab.sheet_id,
+    start_row: 0,
+    end_row: review_sheet_header_row_count,
+    start_col: 0,
+    end_col: schema_column_count(schema: schema),
+  }
+}
+
+fn standing_rule_request(
+  tab: LocatedReviewTab,
+  match_text: String,
+  rule_index: Int,
+  standing_col: Int,
+) -> StandingRuleRequest {
+  StandingRuleRequest {
+    spreadsheet_id: tab.spreadsheet_id as String,
+    sheet_id: tab.sheet_id,
+    start_row: review_sheet_header_row_count,
+    start_col: standing_col,
+    end_col: standing_col + 1,
+    match_text: match_text,
+    rule_index: rule_index,
+  }
+}
+
+type FormatRequestPlan {
+  freeze: FreezeRowsRequest
+  header: HeaderBandRequest
+  opportunity: StandingRuleRequest
+  arbitrage: StandingRuleRequest
+  incompatible: StandingRuleRequest
+  required: StandingRuleRequest
+  replay: StandingRuleRequest
+}
+
+fn format_request_plan(tab: LocatedReviewTab, schema: ReviewSheetSchema, standing_col: Int) -> FormatRequestPlan {
+  FormatRequestPlan {
+    freeze: freeze_rows_request(tab: tab),
+    header: header_band_request(tab: tab, schema: schema),
+    opportunity: standing_rule_request(tab: tab, match_text: "Opportunity", rule_index: 0, standing_col: standing_col),
+    arbitrage: standing_rule_request(tab: tab, match_text: "Arbitrage", rule_index: 1, standing_col: standing_col),
+    incompatible: standing_rule_request(tab: tab, match_text: "Incompatible", rule_index: 2, standing_col: standing_col),
+    required: standing_rule_request(tab: tab, match_text: "Required", rule_index: 3, standing_col: standing_col),
+    replay: standing_rule_request(tab: tab, match_text: "Replay", rule_index: 4, standing_col: standing_col),
+  }
+}
+
+fn freeze_header(q: FreezeRowsRequest) -> FormatStepOutcome uses net: Network {
+  let r = sheets.Spreadsheets.SetFrozenRows(
+    spreadsheet_id: q.spreadsheet_id,
+    sheet_id: q.sheet_id,
+    frozen_row_count: q.frozen_row_count,
   )
   classify_format_step(step: "freeze header row" as NonEmptyStr, outcome: r.outcome)
 }
 
-fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) -> FormatStepOutcome uses net: Network {
+fn format_header_band(q: HeaderBandRequest) -> FormatStepOutcome uses net: Network {
   match header_background_color() {
     SheetsColorUnderivable { cause: c } =>
       FormatStepRefused { step: "header band" as NonEmptyStr, cause: c }
@@ -224,12 +333,12 @@ fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) ->
           FormatStepRefused { step: "header band" as NonEmptyStr, cause: c }
         SheetsColorDerived { color: fg } => {
           let r = sheets.Spreadsheets.FormatCellRange(
-            spreadsheet_id: spreadsheet_id as String,
-            sheet_id: spreadsheet_first_sheet_id,
-            start_row: 0,
-            end_row: review_sheet_header_row_count,
-            start_col: 0,
-            end_col: schema_column_count(schema: schema),
+            spreadsheet_id: q.spreadsheet_id,
+            sheet_id: q.sheet_id,
+            start_row: q.start_row,
+            end_row: q.end_row,
+            start_col: q.start_col,
+            end_col: q.end_col,
             background: bg,
             foreground: fg,
             bold: true,
@@ -240,44 +349,30 @@ fn format_header_band(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema) ->
   }
 }
 
-fn color_standing(
-  spreadsheet_id: NonEmptyStr,
-  match_text: String,
-  color: SheetsColorReading,
-  rule_index: Int,
-  standing_col: Int,
-) -> FormatStepOutcome uses net: Network {
+fn color_standing(q: StandingRuleRequest, color: SheetsColorReading) -> FormatStepOutcome uses net: Network {
   match color {
     SheetsColorUnderivable { cause: c } =>
       FormatStepRefused {
-        step: join(["standing colour for ", match_text], "") as NonEmptyStr,
+        step: join(["standing colour for ", q.match_text], "") as NonEmptyStr,
         cause: c,
       }
-    SheetsColorDerived { color: fg } => color_standing_derived(
-      spreadsheet_id: spreadsheet_id, match_text: match_text, color: fg,
-      rule_index: rule_index, standing_col: standing_col)
+    SheetsColorDerived { color: fg } => color_standing_derived(q: q, color: fg)
   }
 }
 
-fn color_standing_derived(
-  spreadsheet_id: NonEmptyStr,
-  match_text: String,
-  color: SheetsColor,
-  rule_index: Int,
-  standing_col: Int,
-) -> FormatStepOutcome uses net: Network {
+fn color_standing_derived(q: StandingRuleRequest, color: SheetsColor) -> FormatStepOutcome uses net: Network {
   let r = sheets.Spreadsheets.AddTextColorRule(
-    spreadsheet_id: spreadsheet_id as String,
-    sheet_id: spreadsheet_first_sheet_id,
-    start_row: review_sheet_header_row_count,
-    start_col: standing_col,
-    end_col: standing_col + 1,
-    match_text: match_text,
+    spreadsheet_id: q.spreadsheet_id,
+    sheet_id: q.sheet_id,
+    start_row: q.start_row,
+    start_col: q.start_col,
+    end_col: q.end_col,
+    match_text: q.match_text,
     foreground: color,
-    rule_index: rule_index,
+    rule_index: q.rule_index,
   )
   classify_format_step(
-    step: join(["standing colour for ", match_text], "") as NonEmptyStr,
+    step: join(["standing colour for ", q.match_text], "") as NonEmptyStr,
     outcome: r.outcome,
   )
 }
@@ -333,25 +428,15 @@ type FormatReport {
 // The steps are named individually rather than folded over the roster because each is an EFFECT
 // and the report names which one refused. A fold would answer "one of five failed", which is the
 // shape of diagnostic this session has repeatedly had to go back and re-derive.
-fn format_review_sheet(spreadsheet_id: NonEmptyStr, schema: ReviewSheetSchema, standing_col: Int) -> FormatReport uses net: Network {
+fn format_review_sheet(plan: FormatRequestPlan) -> FormatReport uses net: Network {
   FormatReport {
-    freeze: freeze_header(spreadsheet_id: spreadsheet_id),
-    header: format_header_band(spreadsheet_id: spreadsheet_id, schema: schema),
-    opportunity: color_standing(
-      spreadsheet_id: spreadsheet_id, match_text: "Opportunity",
-      color: standing_admitted_color(), rule_index: 0, standing_col: standing_col),
-    arbitrage: color_standing(
-      spreadsheet_id: spreadsheet_id, match_text: "Arbitrage",
-      color: standing_admitted_color(), rule_index: 1, standing_col: standing_col),
-    incompatible: color_standing(
-      spreadsheet_id: spreadsheet_id, match_text: "Incompatible",
-      color: standing_refused_color(), rule_index: 2, standing_col: standing_col),
-    required: color_standing(
-      spreadsheet_id: spreadsheet_id, match_text: "Required",
-      color: standing_refused_color(), rule_index: 3, standing_col: standing_col),
-    replay: color_standing(
-      spreadsheet_id: spreadsheet_id, match_text: "Replay",
-      color: standing_refused_color(), rule_index: 4, standing_col: standing_col),
+    freeze: freeze_header(q: plan.freeze),
+    header: format_header_band(q: plan.header),
+    opportunity: color_standing(q: plan.opportunity, color: standing_admitted_color()),
+    arbitrage: color_standing(q: plan.arbitrage, color: standing_admitted_color()),
+    incompatible: color_standing(q: plan.incompatible, color: standing_refused_color()),
+    required: color_standing(q: plan.required, color: standing_refused_color()),
+    replay: color_standing(q: plan.replay, color: standing_refused_color()),
   }
 }
 
@@ -409,20 +494,20 @@ type FormatObservation
 // THE SECOND READ IS UNRANGED AND CARRIES NO GRID DATA, so the conditional rules are not filtered
 // away by a range chosen to bound something else. It is cheap for the same reason: sheet metadata
 // without grid data does not grow with the census.
-fn read_format_meta(spreadsheet_id: NonEmptyStr, grid: SpreadsheetRead) -> FormatObservation uses net: Network {
+fn read_format_meta(tab: LocatedReviewTab, grid: SpreadsheetRead) -> FormatObservation uses net: Network {
   let meta = sheets.Spreadsheets.GetSpreadsheetMetadata(
-    spreadsheet_id: spreadsheet_id as String,
+    spreadsheet_id: tab.spreadsheet_id as String,
     fields: review_sheet_format_meta_field_mask,
   )
   match classify_rest_outcome(standing: RestReadExchange { rest: meta.outcome }) {
     RestExchangeSucceeded =>
-      match first_sheet(read: meta.result) {
+      match located_sheet(read: meta.result, sheet_id: tab.sheet_id) {
         Absent =>
           FormatUnreadable {
-            cause: "spreadsheets.get answered with no sheets for the metadata read, so the frozen row count and the conditional rules could not be observed" as NonEmptyStr
+            cause: "the metadata read answered with no sheet carrying the located sheetId, so the frozen row count and the conditional rules of the tab this converge addresses could not be observed" as NonEmptyStr
           }
         Present { value: meta_sheet } =>
-          match header_format_of(read: grid) {
+          match header_format_of(read: grid, sheet_id: tab.sheet_id) {
             HeaderFormatUnreadable { cause: c } => FormatUnreadable { cause: c }
             HeaderFormatRead { format: h } =>
               FormatObserved {
@@ -463,11 +548,11 @@ type HeaderFormatReading
   = HeaderFormatRead { format: SheetsCellFormatRead? }
   | HeaderFormatUnreadable { cause: NonEmptyStr }
 
-fn header_format_of(read: SpreadsheetRead) -> HeaderFormatReading {
-  match first_sheet(read: read) {
+fn header_format_of(read: SpreadsheetRead, sheet_id: Int) -> HeaderFormatReading {
+  match located_sheet(read: read, sheet_id: sheet_id) {
     Absent =>
       HeaderFormatUnreadable {
-        cause: "the grid read answered with no sheets, so the first sheet's header format could not be read and nothing may be adopted from it" as NonEmptyStr
+        cause: "the grid read answered with no sheet carrying the located sheetId, so the header format of the tab this converge addresses could not be read and nothing may be adopted from it" as NonEmptyStr
       }
     Present { value: sheet } => HeaderFormatRead { format: observed_header_format(sheet: sheet) }
   }
@@ -492,11 +577,32 @@ fn header_format_of(read: SpreadsheetRead) -> HeaderFormatReading {
 // The split is along what each question actually needs. Grid data is expensive and MUST stay bounded
 // to the header row. The frozen row count and the conditional rules are sheet metadata, need no grid
 // data at all, and must NOT be range-filtered.
-data review_sheet_format_grid_field_mask: String = "sheets.data.rowData.values.userEnteredFormat"
+// BOTH MASKS NOW REQUEST THE sheetId, AND OMITTING IT BROKE THE PRODUCTION PATH OUTRIGHT.
+// When the readback stopped taking the head of the sheet list and started selecting the sheet
+// whose sheetId is the LOCATED one, these two masks kept their old spelling -- so the selector
+// keyed on a field the request had told Sheets not to send. The grid mask asked for no
+// properties at all, so no sheet ever matched and converge_review_sheet_format answered
+// FormatConvergeRefused for every workbook; the metadata mask carried properties without the id,
+// so absent-is-zero made it match only when the located tab happened to be tab zero -- the exact
+// assumption this change exists to remove, reintroduced in the one place nothing was looking
+// (review 68553).
+//
+// The masks are composed from extdeps.google.sheets field-path rows rather than spelled here, so
+// the path the decode keys on and the path the request asks for are ONE declaration. That is the
+// repair: the defect was not a forgotten string, it was a mask and a decode being two
+// representations of one fact with nothing joining them, which is what let widening the reading
+// and widening the request come apart.
+data review_sheet_format_grid_field_mask: String = sheets_field_mask(paths: [sheets_field_sheet_id, sheets_field_user_entered_format])
 
-data review_sheet_format_meta_field_mask: String = "sheets.properties.gridProperties.frozenRowCount,sheets.conditionalFormats"
+data review_sheet_format_meta_field_mask: String = sheets_field_mask(paths: [sheets_field_sheet_id, sheets_field_frozen_row_count, sheets_field_conditional_formats])
 
-data review_sheet_header_range: String = "A1:Q1"
+// THE RANGE IS QUALIFIED BY THE LOCATED TITLE, and the bare form this replaced is the READ side of
+// the same defect the constant sheetId was on the write side. gunbc.review_sheet_sheets
+// a1_readback_standing already refuses an unqualified A1 range in as many words -- "BatchUpdate
+// would hit the first tab" -- and this module was sending one. The title comes from the located
+// tab, never from the Drive file's display name: they are written by different systems into
+// different places and renaming one does not touch the other.
+data review_sheet_header_cells: String = "A1:Q1"
 
 // THE FIRST ELEMENT OF A LIST, ONCE PER TYPE, AND THE GENERIC IT REPLACES DID NOT SURVIVE CONTACT.
 // An earlier revision wrote one generic first_of<T> folding over List<T> with `none` as the initial
@@ -543,22 +649,39 @@ fn first_cell(items: List<SheetsCellDataRead>) -> SheetsCellDataRead? {
   )
 }
 
-fn first_sheet_of(items: List<SheetsSheetRead>) -> SheetsSheetRead? {
+// THE SHEET IS SELECTED BY ITS LOCATED ID, NOT BY BEING FIRST. Both folds this replaced took the
+// head of the response's sheet list, which is the same assumption the constant sheetId made on the
+// write side wearing a different hat: a readback that inspects the first tab while the writes
+// address the located one would report UNVERIFIED for a correctly formatted sheet, or -- worse, in
+// the case the two happen to coincide today -- report VERIFIED for a tab nobody wrote to. The
+// readback and the write must address the same tab for the readback to be evidence at all.
+fn sheet_read_has_id(sheet: SheetsSheetRead, sheet_id: Int) -> Bool {
+  match sheet.properties {
+    Absent => false
+    Present { value: props } =>
+      match props.sheetId {
+        Absent => sheet_id == 0
+        Present { value: id } => id == sheet_id
+      }
+  }
+}
+
+fn sheet_with_id(items: List<SheetsSheetRead>, sheet_id: Int) -> SheetsSheetRead? {
   fold_list(
     items,
     none,
     (acc, x) =>
       match acc {
         Present { value: v } => Present { value: v }
-        Absent => Present { value: x }
+        Absent => if sheet_read_has_id(sheet: x, sheet_id: sheet_id) { Present { value: x } } else { none }
       },
   )
 }
 
-fn first_sheet(read: SpreadsheetRead) -> SheetsSheetRead? {
+fn located_sheet(read: SpreadsheetRead, sheet_id: Int) -> SheetsSheetRead? {
   match read.sheets {
     Absent => none
-    Present { value: sheets } => first_sheet_of(items: sheets)
+    Present { value: ss } => sheet_with_id(items: ss, sheet_id: sheet_id)
   }
 }
 
@@ -611,15 +734,37 @@ fn observed_header_format(sheet: SheetsSheetRead) -> SheetsCellFormatRead? {
   }
 }
 
-fn read_format(spreadsheet_id: NonEmptyStr) -> FormatObservation uses net: Network {
+type HeaderRangeStanding
+  = HeaderRangeWire { range: String }
+  | HeaderRangeUnqualifiable { cause: NonEmptyStr }
+
+fn review_sheet_header_range(tab: LocatedReviewTab) -> HeaderRangeStanding {
+  match a1_tab_qualification(tab: tab.title) {
+    A1TabNeedsQuoting { cause: c } => HeaderRangeUnqualifiable { cause: c }
+    A1TabQualifiesUnquoted { tab: t } =>
+      HeaderRangeWire { range: join([t as String, "!", review_sheet_header_cells], "") }
+  }
+}
+
+fn read_format(tab: LocatedReviewTab) -> FormatObservation uses net: Network {
+  match review_sheet_header_range(tab: tab) {
+    HeaderRangeUnqualifiable { cause: c } =>
+      FormatUnreadable {
+        cause: join(["the located tab's title cannot qualify an A1 range, so the header read would have been unqualified and would have hit whichever tab is first: ", c as String], "") as NonEmptyStr
+      }
+    HeaderRangeWire { range: r } => read_format_at(tab: tab, range: r)
+  }
+}
+
+fn read_format_at(tab: LocatedReviewTab, range: String) -> FormatObservation uses net: Network {
   let grid = sheets.Spreadsheets.GetSpreadsheet(
-    spreadsheet_id: spreadsheet_id as String,
-    range: review_sheet_header_range,
+    spreadsheet_id: tab.spreadsheet_id as String,
+    range: range,
     fields: review_sheet_format_grid_field_mask,
     include_grid_data: true,
   )
   match classify_rest_outcome(standing: RestReadExchange { rest: grid.outcome }) {
-    RestExchangeSucceeded => read_format_meta(spreadsheet_id: spreadsheet_id, grid: grid.result)
+    RestExchangeSucceeded => read_format_meta(tab: tab, grid: grid.result)
     RestExchangeStatusRefused { status, body } =>
       FormatUnreadable {
         cause: join(["spreadsheets.get answered ", to_string(status), ": ", body], "") as NonEmptyStr
@@ -698,8 +843,22 @@ type FormatConvergeOutcome
 // THE READBACK IS THE SAME READ THE CONVERGE OPENED WITH, not a trusted echo of the writes. A
 // batchUpdate answering 200 has told us what it did, not what the sheet now carries, and the
 // distance between those two is where the first live run lost an hour.
+// THE SUBJECT IS A LOCATED TAB, NOT A FILE ID. The parameter used to be the spreadsheet's file id
+// alone, which named the workbook and left every request inside it to address tab zero. A
+// LocatedReviewTab names the workbook AND the tab, and it has no constructor outside
+// gunbc.review_sheet_tab_locator, so a caller cannot reach this function with a tab it asserted
+// rather than observed.
+//
+// WHAT THIS CONVERGE VERIFIES, STATED AT ITS ACTUAL STRENGTH. format_is_converged compares three
+// facts read back off the located tab: the frozen row count exactly, the header cell's background
+// and foreground at swatch width, and the NUMBER of conditional format rules. It does not compare
+// each rule's condition or colour, so a tab carrying five unrelated rules reads as converged; it
+// does not check the header band's extent or the standing column's position; and it reads
+// userEnteredFormat, so it verifies what this repository wrote rather than what a viewer sees.
+// FormatAppliedAndVerified means those three facts hold on the tab that was addressed -- which is
+// the fact this change adds, and it is a smaller claim than "the sheet is formatted".
 fn converge_review_sheet_format(
-  spreadsheet_id: NonEmptyStr,
+  tab: LocatedReviewTab,
   schema: ReviewSheetSchema,
 ) -> FormatConvergeOutcome uses net: Network {
   match standing_column_index(schema: schema) {
@@ -708,12 +867,12 @@ fn converge_review_sheet_format(
         cause: "the supplied schema carries no ListingStanding column, so there is no column to colour by standing and painting a positional guess would colour whatever now sits there" as NonEmptyStr
       }
     StandingColumnAt { index: standing_col } =>
-      converge_format_with_standing(spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col)
+      converge_format_with_standing(tab: tab, schema: schema, standing_col: standing_col)
   }
 }
 
 fn converge_format_with_standing(
-  spreadsheet_id: NonEmptyStr,
+  tab: LocatedReviewTab,
   schema: ReviewSheetSchema,
   standing_col: Int,
 ) -> FormatConvergeOutcome uses net: Network {
@@ -730,7 +889,7 @@ fn converge_format_with_standing(
             SheetsColorUnderivable { cause: c } => FormatConvergeRefused { cause: c }
             SheetsColorDerived { color: fg } =>
               converge_with_desired(
-                spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col,
+                tab: tab, schema: schema, standing_col: standing_col,
                 inclusive_max: m, header_bg: bg, header_fg: fg)
           }
       }
@@ -738,14 +897,14 @@ fn converge_format_with_standing(
 }
 
 fn converge_with_desired(
-  spreadsheet_id: NonEmptyStr,
+  tab: LocatedReviewTab,
   schema: ReviewSheetSchema,
   standing_col: Int,
   inclusive_max: Int,
   header_bg: SheetsColor,
   header_fg: SheetsColor,
 ) -> FormatConvergeOutcome uses net: Network {
-  let observed = read_format(spreadsheet_id: spreadsheet_id)
+  let observed = read_format(tab: tab)
   match observed {
     FormatUnreadable { cause: c } =>
       FormatConvergeRefused {
@@ -756,8 +915,8 @@ fn converge_with_desired(
         FormatAlreadyConverged
       } else {
         verify_applied_format(
-          spreadsheet_id: spreadsheet_id,
-          report: format_review_sheet(spreadsheet_id: spreadsheet_id, schema: schema, standing_col: standing_col),
+          tab: tab,
+          report: format_review_sheet(plan: format_request_plan(tab: tab, schema: schema, standing_col: standing_col)),
           inclusive_max: inclusive_max,
           header_bg: header_bg,
           header_fg: header_fg,
@@ -767,14 +926,14 @@ fn converge_with_desired(
 }
 
 fn verify_applied_format(
-  spreadsheet_id: NonEmptyStr,
+  tab: LocatedReviewTab,
   report: FormatReport,
   inclusive_max: Int,
   header_bg: SheetsColor,
   header_fg: SheetsColor,
 ) -> FormatConvergeOutcome uses net: Network {
   if format_report_all_applied(r: report) {
-    if format_is_converged(o: read_format(spreadsheet_id: spreadsheet_id), inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg) {
+    if format_is_converged(o: read_format(tab: tab), inclusive_max: inclusive_max, header_bg: header_bg, header_fg: header_fg) {
       FormatAppliedAndVerified { report: report }
     } else {
       FormatAppliedUnverified {

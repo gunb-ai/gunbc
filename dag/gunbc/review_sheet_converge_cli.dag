@@ -61,6 +61,15 @@ import gunbc.review_sheet_spreadsheet_actuator {
   spreadsheet_outcome_text,
 }
 import gunbc.review_sheet_drive_converge { ci_prospect_sheet_marker_value }
+import gunbc.review_sheet_tab_locator {
+  ReviewTabStanding,
+  TabLocated,
+  TabAbsent,
+  TabAmbiguous,
+  TabUnreadable,
+  locate_review_tab,
+  review_tab_standing_text,
+}
 
 // THE ONE ENTRY POINT. Everything an operator would otherwise do in a console is reachable from
 // here, and the sequence is the dependency order rather than a preference: the APIs cannot be
@@ -351,23 +360,47 @@ fn converge_drive_half_cli() -> ProcessExit uses net: Network {
 // just verified by readback. A converge that refused has no id to format, and formatting a sheet
 // whose identity was not settled is how the first live run wrote properties into a file nobody
 // could find again.
+// THE SKIP TEXT NAMES NO CAUSE OF ITS OWN, and that stopped being cosmetic when the locator
+// landed. It read "no converged spreadsheet", which was true while the only way to skip was a
+// spreadsheet that did not converge; there are now three more ways -- the tab is absent, ambiguous
+// or unreadable -- and the sentence would have asserted a converge failure that did not happen,
+// sending an operator to look at Drive for a problem that is inside the workbook. The carried
+// cause already says which it was, so the prefix says only that formatting did not run.
 type FormatDisposition
   = FormatAttempted { outcome: FormatConvergeOutcome }
   | FormatSkipped { cause: NonEmptyStr }
 
+// THE FILE ID IS NOT ENOUGH AND THIS IS WHERE THAT WAS DISCOVERED. The converge above establishes
+// WHICH SPREADSHEET by a marker property on the Drive file; it establishes nothing about which tab
+// inside it the review lives in, and the formatter used to fill that gap with the constant zero.
+// The locator is now between them: the file id it reads from the converge is the spreadsheet it
+// asks Sheets about, and only a TabLocated reaches the formatter. Absent, ambiguous and unreadable
+// each skip formatting with the locator's own account of why, because formatting the wrong tab is
+// a silent wrong answer and skipping is a loud one.
 fn format_converged_spreadsheet(o: SpreadsheetConvergeOutcome) -> FormatDisposition uses net: Network {
   match o {
-    SpreadsheetAdopted { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
-    SpreadsheetCreatedAndVerified { file_id: id } => FormatAttempted { outcome: converge_review_sheet_format(spreadsheet_id: id, schema: ci_prospect_sheet_schema()) }
+    SpreadsheetAdopted { file_id: id } => format_located_tab(file_id: id)
+    SpreadsheetCreatedAndVerified { file_id: id } => format_located_tab(file_id: id)
     SpreadsheetCreateUnverified { cause: c } => FormatSkipped { cause: c }
     SpreadsheetConvergeRefused { cause: c } => FormatSkipped { cause: c }
+  }
+}
+
+fn format_located_tab(file_id: NonEmptyStr) -> FormatDisposition uses net: Network {
+  let standing = locate_review_tab(spreadsheet_id: file_id)
+  match standing {
+    TabLocated { tab: t } =>
+      FormatAttempted { outcome: converge_review_sheet_format(tab: t, schema: ci_prospect_sheet_schema()) }
+    TabAbsent => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
+    TabAmbiguous { candidates: _ } => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
+    TabUnreadable { cause: _ } => FormatSkipped { cause: review_tab_standing_text(s: standing) as NonEmptyStr }
   }
 }
 
 fn format_disposition_text(d: FormatDisposition) -> String {
   match d {
     FormatAttempted { outcome: o } => format_converge_text(o: o)
-    FormatSkipped { cause: c } => join(["formatting skipped, no converged spreadsheet: ", c as String], "")
+    FormatSkipped { cause: c } => join(["formatting skipped: ", c as String], "")
   }
 }
 

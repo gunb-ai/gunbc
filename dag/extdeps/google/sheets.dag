@@ -279,6 +279,34 @@ type SheetsColor {
   blue: Float
 }
 
+// THE FIELD PATHS A MASK IS BUILT FROM, NAMED ONCE, BECAUSE A MASK AND A DECODE ARE ONE FACT.
+// A spreadsheets.get field mask is a list of upstream field paths, and every consumer that spells
+// one as a literal is authoring a second representation of what its own decode reads. That fork
+// is not theoretical: the format actuator's readback was changed to select a sheet by its
+// sheetId while its two masks still asked for no sheetId at all, so the selector looked for a
+// field the request had told Sheets not to send -- the grid read matched no sheet whatsoever and
+// the converge refused every time (review 68553). Nothing caught it because a mask literal and a
+// decode fold have no relation a compiler or a claim can check.
+//
+// These rows are that relation. A consumer composes its mask from the same named path its decode
+// keys on, so widening the reading and widening the request are one edit rather than two that can
+// drift. They are extdeps facts because the spelling is upstream's, not ours.
+data sheets_field_sheet_id: String = "sheets.properties.sheetId"
+
+data sheets_field_sheet_title: String = "sheets.properties.title"
+
+data sheets_field_sheet_index: String = "sheets.properties.index"
+
+data sheets_field_frozen_row_count: String = "sheets.properties.gridProperties.frozenRowCount"
+
+data sheets_field_conditional_formats: String = "sheets.conditionalFormats"
+
+data sheets_field_user_entered_format: String = "sheets.data.rowData.values.userEnteredFormat"
+
+fn sheets_field_mask(paths: List<String>) -> String {
+  join(paths, ",")
+}
+
 data spreadsheet_first_sheet_id: Int = 0
 
 // THE READ SIDE OF A COLOUR, AND IT IS NOT THE WRITE SIDE'S TYPE. Google's JSON omits a field whose
@@ -297,6 +325,20 @@ fn sheets_color_channel_read(channel: Float?) -> Float {
   match channel {
     Present { value: v } => v
     Absent => 0.0
+  }
+}
+
+fn sheets_sheet_id_read(id: Int?) -> Int {
+  match id {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
+fn sheets_sheet_index_read(index: Int?) -> Int {
+  match index {
+    Present { value: v } => v
+    Absent => 0
   }
 }
 
@@ -335,8 +377,29 @@ type SheetsGridPropertiesRead {
   frozenRowCount: Int?
 }
 
+// title AND index ARE THE TAB'S IDENTITY AND THEY ARE NOT THE FILE'S. A spreadsheet is a Drive
+// file with a display name, and every tab inside it carries its own title -- upstream calls the
+// file a Spreadsheet and each tab a Sheet, and sheets.properties.title is the tab's. Modelling
+// only sheetId left a consumer with no way to name the tab it had located, so the values path took
+// a title from its caller and the format path addressed sheet 0. Both are here because both come
+// back in one spreadsheets.get: sheetId is what a batchUpdate request addresses, title is what an
+// A1 range qualifies with, and index is the tab's position in the workbook, carried because the
+// response carries it and a consumer adjudicating two tabs needs to say which one it means.
+//
+// All three are Optional, and the three absences do NOT mean the same thing. sheetId and index
+// are Int and a first tab has 0 for both, which equals the proto3 default and is therefore OMITTED
+// from the JSON -- exactly as a zero colour channel and an unfrozen frozenRowCount are omitted, and
+// absent IS zero for the same reason. sheets_sheet_id_read and sheets_sheet_index_read are the only
+// places that say so, beside sheets_color_channel_read which already said it for a channel.
+//
+// title is NOT that case. Its proto3 default is the empty string and upstream never names a tab
+// with one, so an absent title is a response this model could not read rather than a tab called
+// nothing -- and a consumer that substituted a name there would be inventing the tab's identity.
+// Nothing here decides that; the type keeps the distinction and the consumer refuses on it.
 type SheetsSheetPropertiesRead {
   sheetId: Int?
+  title: String?
+  index: Int?
   gridProperties: SheetsGridPropertiesRead?
 }
 

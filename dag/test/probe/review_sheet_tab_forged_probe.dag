@@ -1,0 +1,81 @@
+module test.probe.review_sheet_tab_forged_probe
+
+// THIS MODULE MUST NOT RESOLVE. A located review tab is minted only by
+// gunbc.review_sheet_tab_locator, and only by the function that performed the spreadsheets.get
+// metadata read -- the same egress discipline gunbc.durable_exclusive_hold_file_store states for
+// its sealed plans. The three forgeries below are the three routes a caller would otherwise take,
+// and each one reinstates the defect the locator exists to remove.
+//
+// (a) THE RECORD ITSELF. A hand-built LocatedReviewTab { sheet_id: 0 } is the constant
+// extdeps.google.sheets spreadsheet_first_sheet_id wearing the name of an observation: handed to
+// converge_review_sheet_format it addresses tab zero again, and every refusal downstream of it
+// reads "the located tab" while the located tab was a literal. LocatedReviewTab is
+// sole_constructor, so this refuses at the record as SoleConstructorViolation.
+//
+// (b) THE MINT, CALLED WITH AN AUTHORED RESPONSE. review_tab_standing_from_read is the only
+// function that builds the record, and a caller handing it a two-sheet workbook trimmed to one
+// would obtain a TabLocated for a tab it chose rather than one it read. It is admit_callers-sealed
+// to the live read and to the named witnesses, so this refuses as ConstructorCallAdmissionRefused.
+//
+// (c) THE MINT'S CALLER. review_tab_standing_of_outcome takes the transport outcome beside the
+// response, so leaving it open would be a second door: RestOk beside an authored body reaches the
+// same mint. It is sealed for exactly that reason and refuses at its own name.
+//
+// The witness test.claim.review_sheet_tab_refusal_probe_witness enrolls this probe and asserts
+// each refusal class at its subject by name. dag/test/probe/ sits under the whole-tree
+// strict-resolve exclusion, so this source reaches the compiler only through that witness.
+
+import std.types { NonEmptyStr, String, Int }
+import extdeps.transports.rest { RestOutcome, RestOk }
+import extdeps.google.sheets { SpreadsheetRead, SheetsSheetRead, SheetsSheetPropertiesRead }
+import gunbc.review_sheet_tab_locator {
+  LocatedReviewTab,
+  ReviewTabStanding,
+  review_tab_standing_from_read,
+  review_tab_standing_of_outcome,
+}
+
+fn forged_located_tab_over_the_constant_sheet_id(spreadsheet_id: NonEmptyStr) -> LocatedReviewTab {
+  LocatedReviewTab {
+    spreadsheet_id: spreadsheet_id,
+    sheet_id: 0,
+    title: "CI prospect sheet" as NonEmptyStr,
+  }
+}
+
+fn authored_single_tab_response(sheet_id: Int, title: String) -> SpreadsheetRead {
+  SpreadsheetRead {
+    spreadsheetId: none,
+    sheets: Present {
+      value: [
+        SheetsSheetRead {
+          properties: Present {
+            value: SheetsSheetPropertiesRead {
+              sheetId: Present { value: sheet_id },
+              title: Present { value: title },
+              index: Present { value: 0 },
+              gridProperties: none,
+            }
+          },
+          data: none,
+          conditionalFormats: none,
+        },
+      ]
+    },
+  }
+}
+
+fn mint_a_located_tab_from_an_authored_response(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {
+  review_tab_standing_from_read(
+    spreadsheet_id: spreadsheet_id,
+    read: authored_single_tab_response(sheet_id: 0, title: "Sheet1"),
+  )
+}
+
+fn mint_a_located_tab_from_an_authored_ok_outcome(spreadsheet_id: NonEmptyStr) -> ReviewTabStanding {
+  review_tab_standing_of_outcome(
+    spreadsheet_id: spreadsheet_id,
+    outcome: RestOk,
+    read: authored_single_tab_response(sheet_id: 0, title: "Sheet1"),
+  )
+}
