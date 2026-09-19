@@ -99,3 +99,14 @@ test fn a_test_called_in_a_default_is_refused() -> Bool {
 test fn a_qualified_test_called_in_a_default_is_refused() -> Bool {
   blocking_subject_count_for(source: qualified_default_call_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.qualified_default_call.helper") == 1
 }
+
+// The CONTROL row's identity admits nothing: a source that inhabits it exactly -- the same module,
+// referrer and target, with the declared count -- still refuses at the referrer (side-chat review
+// of 504596b). Without this the synthetic fixture row would be a standing admission any author
+// could reach by naming a module after it.
+data control_identity_source: String = "module wall.fixture.paid_down\nimport std.types { Bool }\ntest fn leaf() -> Bool { true }\nfn reader() -> Bool { leaf() }\n"
+
+// DISCRIMINATING RED: a reference on the control row's exact identity is refused, not admitted.
+test fn a_reference_on_the_control_identity_is_refused() -> Bool {
+  blocking_subject_count_for(source: control_identity_source, wanted_class: "TestCodeReferenced", wanted_subject: "wall.fixture.paid_down.reader") == 1
+}

@@ -223,7 +223,9 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
 // census. The census holds the indexed modules OUTSIDE the compile closure, so a whole-tree compile
 // has an empty census and the most complete knowledge there is; reading an empty census as
 // ignorance made the orphan refusal unreachable on exactly the run that deletes a module (review
-// 68429). A compile-clean route states CorpusKnown; every other compile is CorpusUnknown.
+// 68429). The caller states CorpusKnown only when its index spans every witness-layer root the
+// ledger's rows are derived from; an index over narrower user roots is CorpusUnknown, because a row
+// whose module lies outside it is absent from that compile, not orphaned (review 68527).
 type CorpusScope = CorpusKnown | CorpusUnknown
 
 type CompilePipelineOptions {
@@ -239,17 +241,19 @@ type CompilePipelineOptions {
 // diagnostics, the Empty/Cons poisoning class).
 
 // TEST CODE IS ENTERED ONLY BY THE WITNESS RUNNER. A `test` marker (v1.std.core DeclarationMarker)
-// segregates test code from serving code, and three references cross that segregation:
-//   - a call whose resolved target is a TestMarked declaration, from anywhere, including another
-//     test in its module: a test that calls a test re-runs a claim already enrolled on its own, so
-//     its cost and verdict are duplicated work (DESIGN section 2) and it tests more than one
-//     interface (section 3, a witness discriminates at one interface);
-//   - a TestMarked declaration used as a function VALUE, or named in an import, which is how a
-//     test reaches a caller without a call site: a value bound here and applied through a local
-//     binding (LocallyBoundCall) is decided where the value is taken, not where it is applied;
-//   - an import, by a module that declares no test, of a module that does: serving code
-//     depending on test code.
-// Both are decided here from the typed graph and the parsed marker, once per compile.
+// segregates test code from serving code, and any reference that reaches a TestMarked declaration
+// crosses that segregation. The marker is item-scoped, so the wall is too:
+//   - a call whose target is a TestMarked declaration, from anywhere, including another test in
+//     its module: a test that calls a test re-runs a claim already enrolled on its own, so its cost
+//     and verdict are duplicated work (DESIGN section 2) and it tests more than one interface
+//     (section 3, a witness discriminates at one interface);
+//   - a TestMarked declaration used as a function VALUE, including as a parameter default, which is
+//     how a test reaches a caller without a call site: a value bound here and applied through a
+//     local binding (LocallyBoundCall) is decided where the value is taken, not where it is applied;
+//   - a named import of a TestMarked declaration, which is serving code depending on test code.
+// A module is never classified by its members: importing an ordinary declaration out of a module
+// that also holds tests is not a reference.
+// All are decided here from the typed graph and the parsed marker, once per compile.
 //
 // THE LEDGER IS A RATCHET AT IDENTITY GRAIN. The references that existed when this wall landed
 // are admitted per (module, referrer, target) with an exact count -- the count is only how many
@@ -337,7 +341,82 @@ fn test_reference_debt() -> List<TestReferenceDebtRow> {
     test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_every_rank_names_this_fleets_leg_and_hca", occurrences: 1),
     test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_the_engine_argv_states_the_profiles_batching_bounds", occurrences: 1),
     test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_the_group_b_arm_plans_exactly_four_ranks", occurrences: 1),
-    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_the_utilisation_argv_is_the_profiles_value_at_full_precision", occurrences: 1)
+    test_reference_row(module_name: "test.claim.spark.serving_arm_launch_witness_test", referrer: "w_all_serving_arm_launch_claims_hold", target: "test.claim.spark.serving_arm_launch_witness_test.w_the_utilisation_argv_is_the_profiles_value_at_full_precision", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.compiler.compile_eval_thesis_proof", referrer: "isolate_t1_holds", target: "v2.test.claim.compiler.compile_eval_thesis_proof.compile_eval_bool_reaches_node_value_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.compiler.compile_eval_thesis_proof", referrer: "isolate_t2_holds", target: "v2.test.claim.compiler.compile_eval_thesis_proof.compile_eval_bool_via_compile_entry_refuses_underived_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.compiler.compile_eval_thesis_proof", referrer: "isolate_t3_holds", target: "v2.test.claim.compiler.compile_eval_thesis_proof.compile_eval_unit_unrepresentable_red_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "<import>", target: "v2.test.generated.language_behavior_equivalence.witness_dag_surface_language_identity", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "<import>", target: "v2.test.generated.language_behavior_equivalence.witness_lbe_conj_snapshot_pass", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "<import>", target: "v2.test.generated.language_behavior_equivalence.witness_lbe_disj_snapshot_pass", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "<import>", target: "v2.test.generated.language_behavior_equivalence.witness_lbe_transform_snapshot_pass", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "<import>", target: "v2.test.generated.language_behavior_equivalence.witness_testgen_schedules_three_lbe_generators", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "generated_wishlist_dispatched_count_holds", target: "v2.test.generated.testgen_category_wishlist.dispatched_non_tautological_generator_count_is_four", occurrences: 1),
+    test_reference_row(module_name: "v2.test.claim.generated_conformance_floor", referrer: "generated_wishlist_pending_count_holds", target: "v2.test.generated.testgen_category_wishlist.pending_non_tautological_generator_count_is_three", occurrences: 1),
+    test_reference_row(module_name: "v2.test.complexity_gate.budget_roster_completeness", referrer: "complexity_budget_roster_family_gate_holds", target: "v2.test.complexity_gate.budget_roster_completeness.complexity_budget_roster_unrated_declared_budget_semantic_red_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.discrimination_gate.discrimination_roster", referrer: "discrimination_family_gate", target: "v2.test.discrimination_gate.discrimination_roster.mixed_input_non_perturbed_control_correctly_rejected", occurrences: 1),
+    test_reference_row(module_name: "v2.test.discrimination_gate.discrimination_roster", referrer: "discrimination_family_gate", target: "v2.test.discrimination_gate.discrimination_roster.negative_control_correctly_rejected", occurrences: 1),
+    test_reference_row(module_name: "v2.test.discrimination_gate.discrimination_roster", referrer: "discrimination_family_gate", target: "v2.test.discrimination_gate.discrimination_roster.non_perturbed_control_correctly_rejected", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_green_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_green_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_green_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "<import>", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "native_selected_logic_interpreter_oracle_holds", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_green_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "native_selected_logic_interpreter_oracle_holds", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_green_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "native_selected_logic_interpreter_oracle_holds", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_green_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "native_selected_logic_planted_red_oracle_holds", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "native_selected_logic_planted_red_oracle_holds", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.execution.native_selected_witness_bundle_production", referrer: "native_selected_logic_planted_red_oracle_holds", target: "v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.grounding_typescript.sg_claims", referrer: "ts_g2_sg5_absence_fail_closed_holds", target: "v2.test.grounding_typescript.sg_claims.ts_g2_sg5_collection_realization_absence_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.lens_application.sg_claims", referrer: "lens_application_introspect_advisory_holds", target: "v2.test.lens_application.apply_lens_introspect_rejection_is_advisory.apply_lens_introspect_rejection_is_advisory_claim_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.lens_application.sg_claims", referrer: "lens_application_synthesis_gap_polynomial_holds", target: "v2.test.lens_synthesis.synthesis_gap_polynomial.synthesis_gap_poly_lens_non_empty", occurrences: 1),
+    test_reference_row(module_name: "v2.test.lens_cost.bounded_summation", referrer: "claim_bounded_summation", target: "v2.test.lens_cost.bounded_summation.bounded_summation_expr_authority_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner", referrer: "p9_registry_owner_receipt_holds", target: "v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner.p9_registry_fn_names_unique", occurrences: 1),
+    test_reference_row(module_name: "v2.test.lens_idempotency.sg_claims", referrer: "lens_idempotency_write_effect_holds", target: "v2.test.lens_idempotency.write_effect.idempotency_write_effect_claim_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.lens_non_fold_residue.non_fold_residue_test", referrer: "witness_non_fold_residue_synthetic_unrostered_red_holds", target: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_synthetic_unrostered_red_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.lens_non_fold_residue.non_fold_residue_test", referrer: "witness_non_fold_residue_wildcard_red_fixture_holds", target: "v2.test.lens_non_fold_residue.non_fold_residue_test.non_fold_residue_wildcard_red_fixture_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.lens_structural_resolution.binds_to_resolved", referrer: "binds_to_resolved_claim_passes", target: "v2.test.lens_structural_resolution.binds_to_resolved.binds_to_resolved_claim_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.door_real_module_probe", referrer: "quad_with_peer_greens_under_namespace_only_projection", target: "v2.test.long.door_real_module_probe.quad_namespace_only_resolve_accepts_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.door_real_module_probe", referrer: "quad_with_peer_import_scoped_reds_ambiguous_export_holds", target: "v2.test.long.door_real_module_probe.quad_import_scoped_admission_reds_ambiguous_export_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.parse_table_memo_governed_witness", referrer: "witness_door_insert_then_lookup_refused_for_recompute_table", target: "v2.test.long.parse_table_memo_governed_witness.witness_door_insert_refused_for_recompute_table", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.parse_table_memo_governed_witness", referrer: "witness_door_insert_then_lookup_refused_for_recompute_table", target: "v2.test.long.parse_table_memo_governed_witness.witness_door_lookup_refused_for_recompute_table", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.parse_table_memo_governed_witness", referrer: "witness_door_lookup_then_insert_refused_for_recompute_table", target: "v2.test.long.parse_table_memo_governed_witness.witness_door_insert_refused_for_recompute_table", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.parse_table_memo_governed_witness", referrer: "witness_door_lookup_then_insert_refused_for_recompute_table", target: "v2.test.long.parse_table_memo_governed_witness.witness_door_lookup_refused_for_recompute_table", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.pick_ingested_probe", referrer: "pick_probe_eval_equals_holds", target: "v2.test.long.pick_ingested_structural_lowering.pick_ingested_pick_false_executes_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.pick_ingested_probe", referrer: "pick_probe_eval_equals_holds", target: "v2.test.long.pick_ingested_structural_lowering.pick_ingested_pick_true_executes_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.pick_ingested_probe", referrer: "pick_probe_pipeline_resolves_holds", target: "v2.test.long.pick_ingested_structural_lowering.pick_ingested_pipeline_resolves_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.pick_ingested_probe", referrer: "pick_probe_swapped_arms_structural_red_holds", target: "v2.test.long.pick_ingested_structural_lowering.pick_ingested_normalized_swapped_arms_structural_red_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "<import>", target: "v2.test.manual.body_lowering_projection_call.body_lowering_field_access_postfix_rejects", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "<import>", target: "v2.test.manual.body_lowering_projection_call.body_lowering_normalize_accepts_projection_module", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "<import>", target: "v2.test.manual.body_lowering_projection_call.body_lowering_projection_lowers_to_transform", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "wave1_gate1_a1_projection_call_lowers_witness_holds", target: "v2.test.manual.body_lowering_projection_call.body_lowering_projection_lowers_to_transform", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "wave1_gate1_a1_projection_call_normalize_accepts_witness_holds", target: "v2.test.manual.body_lowering_projection_call.body_lowering_normalize_accepts_projection_module", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_a1_projection_call_witness", referrer: "wave1_gate1_a1_projection_field_access_refuses_witness_holds", target: "v2.test.manual.body_lowering_projection_call.body_lowering_field_access_postfix_rejects", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "<import>", target: "v2.test.long.bind_eval_by_execution.bind_census_ingested_executes_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "<import>", target: "v2.test.long.bind_eval_by_execution.bind_census_ingested_wrong_value_red_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "<import>", target: "v2.test.long.loop_eval_by_execution.loop_census_ingested_executes_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "<import>", target: "v2.test.long.loop_eval_by_execution.loop_census_ingested_wrong_value_red_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "wave1_gate1_d_ingested_bind_executes_witness_holds", target: "v2.test.long.bind_eval_by_execution.bind_census_ingested_executes_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "wave1_gate1_d_ingested_bind_executes_witness_holds", target: "v2.test.long.bind_eval_by_execution.bind_census_ingested_wrong_value_red_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "wave1_gate1_d_ingested_loop_executes_witness_holds", target: "v2.test.long.loop_eval_by_execution.loop_census_ingested_executes_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_d_ingested_bind_loop_eval_witness", referrer: "wave1_gate1_d_ingested_loop_executes_witness_holds", target: "v2.test.long.loop_eval_by_execution.loop_census_ingested_wrong_value_red_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_general_body_producer_witness", referrer: "wave1_gate1_ingested_match_normalize_yields_match_holds", target: "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_arrow_has_match_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.long.wave1_gate1_general_body_producer_witness", referrer: "wave1_gate1_ingested_match_resolves_holds", target: "v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_resolves_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.cross_language_add_python_to_typescript", referrer: "<import>", target: "v2.test.manual.typescript_effect_io_emit.ts_effect_io_emit_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.cross_language_add_python_to_typescript", referrer: "cross_language_add_python_to_typescript_chain_status_holds", target: "v2.test.manual.typescript_effect_io_emit.ts_effect_io_emit_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.field_access_emit", referrer: "field_access_emit_holds_keystone", target: "v2.test.manual.field_access_emit.field_access_emit_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.field_access_emit", referrer: "field_access_grammar_inverse_holds_keystone", target: "v2.test.manual.field_access_emit.field_access_grammar_inverse_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.field_access_emit", referrer: "field_access_ingest_via_coerce_holds_keystone", target: "v2.test.manual.field_access_emit.field_access_ingest_via_coerce_matches_canonical", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.inhabitant_neutralization", referrer: "<import>", target: "v2.test.manual.ingest_bridge.ingest_cross_language_compile_accepts_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.inhabitant_neutralization", referrer: "inhabitant_neutralization_same_language_cross_language_compile_accepts_holds", target: "v2.test.manual.ingest_bridge.ingest_cross_language_compile_accepts_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_emit_holds_keystone", target: "v2.test.manual.record_construct_emit.record_construct_emit_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_grammar_inverse_holds_keystone", target: "v2.test.manual.record_construct_emit.record_construct_grammar_inverse_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.record_construct_emit", referrer: "record_construct_ingest_via_coerce_holds_keystone", target: "v2.test.manual.record_construct_emit.record_construct_ingest_via_coerce_matches_canonical", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_naming_discriminates", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_naming_discriminates", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_screaming_snake", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_screaming_snake_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.rust_wire_serde_naming_policy_test", referrer: "unified_claim_rust_wire_serde_snake_case", target: "v2.test.manual.rust_wire_serde_naming_policy_test.witness_rust_wire_serde_snake_case_holds", occurrences: 1),
+    test_reference_row(module_name: "v2.test.manual.sg_rc_layering", referrer: "sg_rc_f1_dual_boundary_holds", target: "v2.test.manual.sg_rc_layering.sg_rc_f1_value_dual_boundary_holds", occurrences: 1)
   ]
 }
 
@@ -598,6 +677,18 @@ fn test_reference_budget_diag(row: TestReferenceDebtRow, counts: Map<String, Int
   }
 }
 
+// ONLY A CORPUS DEBT ROW ADMITS. The fixture control row exists to exercise the paid-down budget
+// arm, and a scope that shields it from the orphan judgment must not also make it admission
+// authority: a source that inhabits its exact identity would otherwise have a new serving-to-test
+// reference admitted with a matching count (side-chat review of 504596b). A reference on the
+// control identity therefore refuses like any unledgered one.
+fn test_reference_admission_insert(acc: Map<String, Bool>, row: TestReferenceDebtRow) -> Map<String, Bool> {
+  match row.scope {
+    CorpusDebtRow => map_insert(acc, test_reference_key(module_name: row.module_name, referrer: row.referrer, target: row.target), true)
+    FixtureControlRow => acc
+  }
+}
+
 fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>, census: CensusKnowledge) -> List<ErrorNode> {
   let test_keys = test_marked_declaration_keys(typed: typed, source_indices: source_indices)
   let modules_by_name = typed.modules |> fold(init: empty_map(), f: (acc, m) => map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m))
@@ -610,7 +701,7 @@ fn test_reference_diagnostics(typed: ResolvedGraph, source_indices: Map<String, 
     if map_contains_key(acc, test_reference_occurrence_key(o: o)) { acc } else { map_insert(acc, test_reference_occurrence_key(o: o), o.span) }
   )
   let debt = test_reference_debt()
-  let debt_keys = debt |> fold(init: empty_map(), f: (acc, r) => map_insert(acc, test_reference_key(module_name: r.module_name, referrer: r.referrer, target: r.target), true))
+  let debt_keys = debt |> fold(init: empty_map(), f: (acc, r) => test_reference_admission_insert(acc: acc, row: r))
   let occurrence_diags = occurrences |> map(o => test_reference_occurrence_diag(o: o, debt_keys: debt_keys))
   let budget_diags = debt |> flat_map(r => test_reference_budget_diag(row: r, counts: counts, first_spans: first_spans, compiled_modules: compiled_modules, census: census))
   concat(occurrence_diags, budget_diags)

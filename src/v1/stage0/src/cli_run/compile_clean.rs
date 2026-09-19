@@ -277,6 +277,27 @@ pub(crate) fn compile_clean_census_fill_hard_diagnostics(
         .collect()
 }
 
+/// Whether a compile knows the corpus the test-reference ledger is written against. An index is
+/// not enough: the ordinary compile transaction indexes whatever `--source-root`s it was given, and
+/// a ledger row whose module lives under a root that was not indexed is absent from that compile,
+/// not orphaned (review 68527). So the claim is made only when the index spans every witness-layer
+/// root, which are the roots the ledger's rows are derived from; any narrower index is CorpusUnknown.
+fn compile_clean_corpus_scope(index: Option<&MultiEntryIndex>) -> v1_compiler_compile::CorpusScope {
+    let norm = |r: &str| r.trim_end_matches('/').trim_start_matches("./").to_string();
+    let spans = index.is_some_and(|idx| {
+        let indexed: std::collections::HashSet<String> =
+            idx.source_roots.iter().map(|r| norm(r)).collect();
+        witness_layer_roots()
+            .iter()
+            .all(|r| indexed.contains(&norm(r)))
+    });
+    if spans {
+        v1_compiler_compile::CorpusScope::CorpusKnown
+    } else {
+        v1_compiler_compile::CorpusScope::CorpusUnknown
+    }
+}
+
 pub(crate) fn compile_clean_pipeline_options_for_sources(
     index: Option<&MultiEntryIndex>,
     compiled: &[Rc<v1_compiler_compile::SourceFile>],
@@ -284,14 +305,7 @@ pub(crate) fn compile_clean_pipeline_options_for_sources(
     let census_only = index
         .map(|idx| compile_clean_census_only_sources_for_compiled(idx, compiled))
         .unwrap_or_default();
-    // Every compile-clean route knows the corpus: the census is the indexed pool outside the
-    // closure, and an EMPTY census on a whole-tree compile means everything was compiled, not that
-    // nothing is known (review 68429). The corpus claim is only made when an index was consulted.
-    let corpus = if index.is_some() {
-        v1_compiler_compile::CorpusScope::CorpusKnown
-    } else {
-        v1_compiler_compile::CorpusScope::CorpusUnknown
-    };
+    let corpus = compile_clean_corpus_scope(index);
     if census_only.is_empty() {
         return Rc::new(v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: false,
@@ -1811,4 +1825,29 @@ pub(crate) fn compile_clean_broad_stop_line_blocks_skip(
     ]
     .iter()
     .any(|check| workspace_relative_repo_path(check) == entry_rel)
+}
+
+#[cfg(test)]
+mod corpus_scope_tests {
+    use super::*;
+
+    // The corpus claim follows the index's roots, not its presence (review 68527): an index over
+    // a root narrower than the witness layer must not make the ledger's rows look orphaned.
+    #[test]
+    fn an_index_over_narrower_roots_does_not_know_the_corpus() {
+        let narrow = build_multi_entry_index_primary_precedence(&["src/v1".to_string()]);
+        assert_eq!(
+            compile_clean_corpus_scope(Some(&narrow)),
+            v1_compiler_compile::CorpusScope::CorpusUnknown
+        );
+        assert_eq!(
+            compile_clean_corpus_scope(None),
+            v1_compiler_compile::CorpusScope::CorpusUnknown
+        );
+        let whole = build_multi_entry_index_primary_precedence(&witness_layer_roots());
+        assert_eq!(
+            compile_clean_corpus_scope(Some(&whole)),
+            v1_compiler_compile::CorpusScope::CorpusKnown
+        );
+    }
 }
