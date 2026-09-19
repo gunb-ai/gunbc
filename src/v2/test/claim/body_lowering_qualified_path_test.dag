@@ -7,7 +7,7 @@ import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_lex }
 import std.algebra { Cons, Empty }
 import v2.std.algebra { length }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, diagnostics_list_has_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -301,28 +301,56 @@ test fn body_lowering_local_receiver_call_callee_is_the_whole_path() -> Bool {
   }
 }
 
-// A CALL BEFORE THE END OF THE CHAIN REFUSES; IT DOES NOT ERASE. `wall.peer.peer_leaf().tail` was
-// lowered to the atom `wall` on the same route (review 68165 on gunbc#11683 found the annotation
-// calling that "the existing refusal"). Its own fixture, parsed separately: the shape is not a
-// lowering the front end models yet, so normalize must stop the line with a located reason rather
-// than hand the head atom to the arrow body.
-data body_lowering_call_before_chain_end_source: String = "module wall.peer\n\nfn uses_projected_call() -> Bool = wall.peer.peer_leaf().tail\n"
+// A CALL BEFORE THE END OF THE CHAIN IS LIVE CORPUS IDIOM AND IS STILL ERASED TODAY. `fields.skip(n:
+// index).first()` is the shape of v2.workflow.floor_terminal_ledger_wire ledger_wire_field_at (and
+// three more sites review 68280 on gunbc#11683 named). The dotted door names it and DECLINES it,
+// so normalize keeps Accepting those modules; the existing arms then lower it to the head atom
+// with no diagnostic -- the open method-on-a-value shape of gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering. Two claims: the positive control that the module
+// still Accepts (the wall this PR must not lower), and the today-row pinning the erasure, which
+// flips loudly the day the shape is lowered or refused.
+data body_lowering_receiver_chain_mid_call_source: String = "module recv\n\nfn field_at(fields: List<Int>, index: Int) -> Int = fields.skip(n: index).first()\n"
 
-test fn body_lowering_call_before_chain_end_refuses() -> Bool {
-  match body_lowering_source_parsed(
-    text: body_lowering_call_before_chain_end_source,
-    file: ^body_lowering_call_before_chain_end_file
-  ) {
-    Rejected { diagnostics: _ } => false
+fn body_lowering_receiver_chain_mid_call_parsed() -> Outcome<Node> {
+  body_lowering_source_parsed(
+    text: body_lowering_receiver_chain_mid_call_source,
+    file: ^body_lowering_receiver_chain_mid_call_file
+  )
+}
+
+fn body_lowering_receiver_chain_mid_call_body() -> Outcome<Node> {
+  match body_lowering_receiver_chain_mid_call_parsed() {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: parsed, diagnostics: _ } =>
       match normalize(parse_tree: parsed) {
-        Rejected { diagnostics: d } =>
-          (d.head.reason == ^body_lowering_reason_dotted_call_before_chain_end)
-            || diagnostics_list_has_reason(
-              xs: d.tail,
-              reason: ^body_lowering_reason_dotted_call_before_chain_end
-            )
-        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: tree, diagnostics: _ } =>
+          match body_lowering_recv_members(root: tree.root) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: members, diagnostics: _ } =>
+              match find_named_child(root: members, name: ^field_at) {
+                Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                Accepted { value: member, diagnostics: _ } => find_arrow_body_child(root: member)
+              }
+          }
+      }
+  }
+}
+
+test fn body_lowering_receiver_chain_with_mid_call_still_accepts_holds() -> Bool {
+  match body_lowering_receiver_chain_mid_call_body() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn body_lowering_receiver_chain_with_mid_call_is_erased_today_holds() -> Bool {
+  match body_lowering_receiver_chain_mid_call_body() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: body, diagnostics: _ } =>
+      match node_atom_identity_optional(node: body) {
+        Present { value: id } => id == ^fields
+        Absent => false
       }
   }
 }

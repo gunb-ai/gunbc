@@ -1535,11 +1535,8 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   } else if body_lower_sequence_left_is_lbrace(captured: node) {
     outcome_accepted(value: optional_absent())
   } else {
-    match body_lower_dotted_chain_lowered(node: node) {
-      Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: dotted, diagnostics: dd } =>
-      match dotted {
-      Present { value: spine } => outcome_with_diagnostics(value: optional_present(value: spine), diagnostics: dd)
+    match body_lower_dotted_chain_lowered_optional(node: node) {
+      Present { value: spine } => outcome_accepted(value: optional_present(value: spine))
       Absent =>
     match body_lower_try_fold_behavior_optional(node: node) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1662,7 +1659,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                 }
             }
         }
-    }
     }
     }
   }
@@ -2655,10 +2651,10 @@ fn body_lower_postfix_projection_step(repeat_elem: Node) -> Optional<Symbol> {
 // every suffix slot is EMPTY (the spine) and a chain whose LAST segment carries a CALL suffix
 // (`a.b.f(x)`: a Transform whose operator is the spine, the call class
 // gunbc.recurring_failure_mode call_expression_erased_at_v2_body_lowering read off the same walk).
-// A call on a NON-final segment (`a.f().b`) REFUSES with a located reason rather than declining,
-// because declining handed it to the first-atom fallback, which erased it (review 68165 on
-// gunbc#11683). A brace suffix (`a.b.C { f: v }`) and an `as` suffix still answer Absent and the
-// existing arms run unchanged for them.
+// A call on a NON-final segment (`a.f().b`) is named by the walk and DECLINED: it is live corpus
+// idiom the existing arms still erase (the receipt is on the class row; see DottedChainTailRead).
+// A brace suffix (`a.b.C { f: v }`) and an `as` suffix answer Absent and the existing arms run
+// unchanged for them.
 fn body_lower_dotted_head_symbol_optional(node: Node) -> Optional<Symbol> {
   match node_atom_identity_optional(node: node) {
     Present { value: sym } =>
@@ -2702,9 +2698,9 @@ fn body_lower_dotted_suffix_slot_is_empty(repeat_elem: Node) -> Bool {
 // ONE WALK OVER THE CHAIN'S TAIL, READ BY BOTH DOTTED READERS. Every repeat element must be a
 // dot-projection step; every suffix slot must be empty EXCEPT the last, which may carry a call
 // suffix -- then the chain is a call THROUGH the path (`a.b.f(x)`), the whole path is the
-// callee and its argument row is read from that element. A call anywhere else is refused by the
-// read below; any other suffix kind is not this shape and the walk declines so the existing arms
-// run unchanged.
+// callee and its argument row is read from that element. A call anywhere else is named by the
+// read below and declined; any other suffix kind is not this shape and the walk declines so the
+// existing arms run unchanged.
 // A second walker for the call class would be a second authority for "this is a dotted chain"
 // (review 67903 on gunbc#11612 refused exactly that fork), so the call reading and the value
 // reading share this one and differ only in what they build from its answer.
@@ -2713,12 +2709,20 @@ type DottedChainTail {
   call_elem: Optional<Node>
 }
 
-// A CALL SLOT ON A NON-FINAL SEGMENT (`a.f().b`) IS REFUSED, NOT DECLINED. Declining it would hand
-// the chain to the first-atom fallback, which erases everything after `a` with no diagnostic --
-// erasure reading as acceptance (review 68165 on gunbc#11683 caught the annotation claiming it
-// "reaches the existing refusal" when the existing refusal is never reached on this route). The
-// shape is not modelled as a lowering yet -- a call result projected by a further segment is the
-// method-on-a-value class -- so it stops the line here with a located reason.
+// A CALL SLOT ON A NON-FINAL SEGMENT (`a.f().b`) IS NAMED, AND DECLINED. It is the method-on-a-value
+// class -- a call result projected by a further segment -- which no lowering models yet, and it is
+// live corpus idiom in exactly this position (review 68280 on gunbc#11683 named four sites:
+// v2.workflow.floor_diff_observe floor_env_optional `shell.Env.Get(name: env_name).value`,
+// v2.workflow.floor_terminal_ledger_wire ledger_wire_field_at `fields.skip(n: index).first()`,
+// v2.test.claim.cargo_build_run_argv_witness `argv.skip(n: index).first()`, and the registered
+// lens v2.lens.schedule_lens `plan.schedule.skip(n: 1).first()`). Refusing it here made normalize
+// of those modules red where it Accepted, so the door DECLINES it to the existing arms, which still
+// erase it to the head atom with no diagnostic -- stated so erasure is not read as refusal (review
+// 68165): that erasure is a receipt on gunbc.recurring_failure_mode
+// call_expression_erased_at_v2_body_lowering and is pinned as a today-row by
+// v2.test.claim.body_lowering_qualified_path, so the day it is lowered or refused the row flips
+// loudly. The arm is kept as a named verdict rather than folded into NotThisShape so the reader
+// that finally models it has its hook.
 type DottedChainTailRead
   = DottedChainTailFound { tail: DottedChainTail }
   | DottedChainTailNotThisShape
@@ -2809,8 +2813,8 @@ fn body_lower_dotted_chain_read(node: Node) -> DottedChainTailRead {
   }
 }
 
-// The operand reader's presentation: the spine alone. A call or a refusal is an expression, not
-// an operand reference, and the expression sites read those through body_lower_dotted_chain_lowered.
+// The operand reader's presentation: the spine alone. A call is an expression, not
+// an operand reference, and the expression sites read those through body_lower_dotted_chain_lowered_optional.
 fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
   match body_lower_dotted_chain_read(node: node) {
     DottedChainTailNotThisShape => optional_absent()
@@ -2827,8 +2831,9 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
 }
 
 // THE ONE DOOR THE EXPRESSION SITES CONSULT, AND IT SITS ABOVE THE FIRST-ATOM FALLBACK. A dotted
-// chain lowers to its spine, or to a call through its spine, or -- a call before the last segment
-// -- refuses; and nothing else claims a chain before this reader has answered. The order is the
+// chain lowers to its spine, or to a call through its spine; a call before the last segment is
+// declined (see DottedChainTailRead); and nothing else claims a chain this door admits before it
+// has answered. The order is the
 // construction (review 67903 on gunbc#11612): body_lower_pattern_first_atom_optional, consulted
 // first, claimed the chain's head atom and the rest of the chain vanished, so a guard beside the
 // fallback asking "is this dotted?" would have been a second authority for what this reader
@@ -2844,31 +2849,21 @@ fn body_lower_dotted_reference_optional(node: Node) -> Optional<Node> {
 // chain to one spine and leaves what the head denotes to v2.compiler.resolve
 // try_resolve_qualified_name_node, which refuses a chain whose head is a local binder as Unbound
 // (its own header states that standing) -- loud where the route was silent.
-fn body_lower_dotted_chain_lowered(node: Node) -> Outcome<Optional<Node>> {
+fn body_lower_dotted_chain_lowered_optional(node: Node) -> Optional<Node> {
   match body_lower_dotted_chain_read(node: node) {
-    DottedChainTailNotThisShape => outcome_accepted(value: optional_absent())
-    DottedChainCallBeforeEnd { call_elem: call_elem } =>
-      outcome_rejected(
-        d: body_lower_diagnostic(
-          reason: ^body_lowering_reason_dotted_call_before_chain_end,
-          n: call_elem
-        )
-      )
+    DottedChainTailNotThisShape => optional_absent()
+    DottedChainCallBeforeEnd { call_elem: _ } => optional_absent()
     DottedChainTailFound { tail: chain } =>
       match chain.call_elem {
         Absent =>
-          outcome_accepted(
-            value: optional_present(
-              value: body_lower_qualified_name_spine_node(segments: chain.segments, source: node)
-            )
+          optional_present(
+            value: body_lower_qualified_name_spine_node(segments: chain.segments, source: node)
           )
         Present { value: call_elem } =>
-          outcome_accepted(
-            value: optional_present(
-              value: body_lower_transform_call(
-                operator: body_lower_qualified_name_spine_node(segments: chain.segments, source: node),
-                args: body_lower_postfix_projection_args(repeat_elem: call_elem)
-              )
+          optional_present(
+            value: body_lower_transform_call(
+              operator: body_lower_qualified_name_spine_node(segments: chain.segments, source: node),
+              args: body_lower_postfix_projection_args(repeat_elem: call_elem)
             )
           )
       }
@@ -4941,11 +4936,8 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
         d: body_lower_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: shell)
       )
     Present { value: captured } =>
-      match body_lower_dotted_chain_lowered(node: captured) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: dotted, diagnostics: dd } =>
-      match dotted {
-        Present { value: spine } => outcome_with_diagnostics(value: spine, diagnostics: dd)
+      match body_lower_dotted_chain_lowered_optional(node: captured) {
+        Present { value: spine } => outcome_accepted(value: spine)
         Absent =>
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
@@ -4991,7 +4983,6 @@ fn body_lower_postfix_expr(shell: Node) -> Outcome<Node> {
           }
       }
       }
-      }
   }
   }
 }
@@ -5018,11 +5009,8 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
             Present { value: transform } =>
               Accepted { value: transform, diagnostics: d }
             Absent =>
-      match body_lower_dotted_chain_lowered(node: captured) {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: dotted, diagnostics: dd } =>
-      match dotted {
-        Present { value: spine } => outcome_with_diagnostics(value: spine, diagnostics: dd)
+      match body_lower_dotted_chain_lowered_optional(node: captured) {
+        Present { value: spine } => outcome_accepted(value: spine)
         Absent =>
       match body_lower_pattern_first_atom_optional(node: captured) {
         Present { value: atom } => outcome_accepted(value: atom)
@@ -5066,7 +5054,6 @@ fn body_lower_primary_expr(shell: Node) -> Outcome<Node> {
                   }
               }
           }
-      }
       }
       }
       }
