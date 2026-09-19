@@ -38,6 +38,7 @@ import gunbc.live_deploy.spec {
 }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.repository_convergence_placement { convergence_unit_doc }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
 import extdeps.systemd { MemoryMax, MemoryHigh, MemorySwapMax }
 import extdeps.http.server { HttpServerListenConfig }
@@ -837,4 +838,46 @@ fn has_slice_directive_val(dirs: List<SystemdSliceDirective>, target: ByteSize, 
       _ => false
     }
   })
+}
+
+// ── THE TREE-CONVERGENCE ONESHOT MUST NOT SHARE THE BROKER SLICE ────────────────────────────
+// THE BRIEF NAMED THIS AND main SUPPLIED THE NUMBER THAT MAKES IT LOAD-BEARING. The split was
+// ordered with "the tree-convergence oneshot must not share the broker slice", which read as an
+// ordinary separation requirement until the 2026-09-18 receipt in gunbc.live_deploy.slice_bounds
+// recorded that oneshot at a 5.2 GB peak beside the serve unit's OOM kill. The broker slice is
+// 6 GiB. A convergence run inside it would consume nearly the whole allowance and leave the broker
+// to be killed by a process that has nothing to do with approvals -- which is the co-tenancy this
+// entire change exists to remove, reintroduced one cgroup down.
+//
+// IT HOLDS BY CONSTRUCTION TODAY, and the claim exists because construction is not self-asserting:
+// the convergence unit names deployment_slice_unit_name and the broker unit names its own, so the
+// property is true until someone edits either Slice= line. THE RED IS EXACTLY THAT EDIT.
+test fn the_convergence_oneshot_does_not_join_the_broker_slice() -> Bool {
+  let convergence = convergence_unit_doc(
+    spec: live_spec(),
+    candidate: deploy_witness_release_revision as String,
+    receipt_path: "/opt/gunbc/receipts/repository-convergence.json",
+    working_directory: "/opt/gunbc/gunbc",
+  )
+  string_contains(
+    s: convergence,
+    pattern: join(["Slice=", deployment_slice_unit_name(names: live_spec().names) as String], ""),
+  )
+    && !string_contains(
+      s: convergence,
+      pattern: join(["Slice=", gunbc_approval_broker_slice_unit_name as String], ""),
+    )
+}
+
+// AND THE BROKER IS THE ONLY UNIT IN ITS SLICE. The claim above says one particular neighbour stays
+// out; this says the slice has exactly one member among the units this deployment emits, so a unit
+// added later cannot join it by default and inherit the approval loop's allowance.
+test fn only_the_broker_unit_joins_the_broker_slice() -> Bool {
+  let broker = live_deploy_approval_broker_unit_file(spec: live_spec(), revision: live_revision())
+  let roadmap = live_deploy_serve_unit_file(spec: live_spec(), revision: live_revision())
+  let belt = live_deploy_belt_service_unit_file(spec: live_spec())
+  let broker_slice = ServiceSlice { name: gunbc_approval_broker_slice_unit_name }
+  service_has(file: broker, target: broker_slice)
+    && !service_has(file: roadmap, target: broker_slice)
+    && !service_has(file: belt, target: broker_slice)
 }
