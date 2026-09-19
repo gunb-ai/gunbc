@@ -44,14 +44,22 @@ import v2.std.algebra { fold_list }
 // is the very assumption being removed rather than a weaker version of it.
 //
 // WHY NOT THE OTHER RULE (converge a specifically named tab and read it back). It is the stronger
-// rule and it is the one this lane should end at, but it is not buildable today: naming a tab means
-// a spreadsheets.batchUpdate addSheet request this corpus does not model, and it means a title
-// codec -- the A1 title syntax, gunbc#11703, still in flight -- to say what a valid title is and
-// how it quotes inside a range. Building exactly-one first is not a weaker substitute for that
-// convergence; it is its OBSERVATION HALF, which the named-tab rule needs anyway to read its own
-// write back. Nothing here has to be deleted when the second half lands: a named converge adds an
-// Apply arm ahead of this read, and this read stays the independent readback (DESIGN section 3d --
-// selection precedes convergence, and a convergence primitive reads back independently).
+// rule and it is the one this lane should end at. It needed two things this corpus lacked, and
+// ONE OF THEM HAS SINCE ARRIVED: the A1 title codec, gunbc#11703, landed as extdeps.google.sheets
+// a1_range_encode while this change was in review, so saying what a valid title is and how it
+// quotes inside a range is now a solved problem and this module's formatter calls it.
+//
+// WHAT REMAINS IS THE WRITE HALF, and it is the whole of the remaining gap: naming a tab means a
+// spreadsheets.batchUpdate addSheet request, which extdeps.google.sheets does not model at all --
+// there is no operation to issue, not merely an awkward one. So exactly-one stays the rule today,
+// and the trigger for revisiting it is now singular and checkable rather than a pair: an addSheet
+// operation on the sheets.Spreadsheets service.
+//
+// Building exactly-one first is not a weaker substitute for that convergence; it is its
+// OBSERVATION HALF, which the named-tab rule needs anyway to read its own write back. Nothing here
+// has to be deleted when the write half lands: a named converge adds an Apply arm ahead of this
+// read, and this read stays the independent readback (DESIGN section 3d -- selection precedes
+// convergence, and a convergence primitive reads back independently).
 //
 // AND THE FIT IS REAL RATHER THAN CONVENIENT. The only creator of this file is
 // converge_review_spreadsheet, which calls drive.Files.CreateFile with the Google Sheets MIME type

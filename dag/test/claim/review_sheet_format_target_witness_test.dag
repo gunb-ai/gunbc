@@ -135,7 +135,7 @@ test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool {
   match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Prospects2026") {
     TabLocated { tab: t } =>
       match review_sheet_header_range(tab: t) {
-        HeaderRangeWire { range: r } => r == join(["Prospects2026", "!", review_sheet_header_cells], "")
+        HeaderRangeWire { range: r } => r == join(["'Prospects2026'", "!", review_sheet_header_cells], "")
         HeaderRangeUnqualifiable { cause: _ } => false
       }
     TabAbsent => false
@@ -144,14 +144,35 @@ test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool {
   }
 }
 
-// A TITLE THAT NEEDS A1 QUOTING REFUSES RATHER THAN BEING CONCATENATED. The quoting codec is
-// gunbc#11703 and is in flight; writing a second one here to get past a title with a space would
-// be the fork that PR exists to prevent, so the range declines and the converge reports it.
-test fn a_title_needing_a1_quoting_declines_the_range_instead_of_guessing_the_encoding() -> Bool {
+// A TITLE WITH A SPACE ENCODES, AND THIS CLAIM ASSERTED THE OPPOSITE UNTIL gunbc#11703 LANDED.
+// While no encoder existed this branch refused such a title, and the claim here pinned that
+// refusal. Quoting makes a space legal, so the refusal was forbidding more than the evidence
+// supported (DESIGN section 4d) and the claim was pinning the over-prohibition in place. Both are
+// replaced by the real behaviour: extdeps.google.sheets a1_range_encode wraps the title and the
+// range is usable. A claim is not owed its old verdict when the world it described has changed.
+test fn a_title_with_a_space_is_quoted_by_the_codec_rather_than_declined() -> Bool {
   match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Prospects 2026") {
     TabLocated { tab: t } =>
       match review_sheet_header_range(tab: t) {
-        HeaderRangeUnqualifiable { cause: c } => string_contains(s: c as String, pattern: "11703")
+        HeaderRangeWire { range: r } => r == join(["'Prospects 2026'", "!", review_sheet_header_cells], "")
+        HeaderRangeUnqualifiable { cause: _ } => false
+      }
+    TabAbsent => false
+    TabAmbiguous { candidates: _ } => false
+    TabUnreadable { cause: _ } => false
+  }
+}
+
+// AND THE ONE THING THE CODEC REALLY CANNOT SPELL STILL REFUSES. An apostrophe inside a quoted A1
+// title has no observed wire spelling -- extdeps.google.sheets a1_title_apostrophe_spelling_standing
+// is TranscribedUncited and names the live read that would settle it -- so the encoder declines
+// rather than guessing a doubling rule, and the formatter carries that refusal out with the
+// codec's own text instead of substituting its own account of why.
+test fn a_title_with_an_apostrophe_declines_the_range_rather_than_guessing_an_escape() -> Bool {
+  match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Jon's Data") {
+    TabLocated { tab: t } =>
+      match review_sheet_header_range(tab: t) {
+        HeaderRangeUnqualifiable { cause: c } => string_contains(s: c as String, pattern: "apostrophe")
         HeaderRangeWire { range: _ } => false
       }
     TabAbsent => false
