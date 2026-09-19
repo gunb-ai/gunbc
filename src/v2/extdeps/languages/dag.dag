@@ -963,21 +963,32 @@ fn dag_grammar_field_decl_expr() -> GrammarExpr {
     left: dag_grammar_binding_name_terminal(),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_colon),
-      right: dag_grammar_sequence(
-        left: dag_grammar_nonterminal(production: ^dag_production_type_expr),
-        right: dag_grammar_sequence(
-          left: dag_grammar_optional(
-            element: dag_grammar_sequence(
-              left: dag_grammar_terminal(token_class: ^dag_token_kw_from),
-              right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
-            )
-          ),
-          right: dag_grammar_optional(
-            element: dag_grammar_sequence(
-              left: dag_grammar_terminal(token_class: ^dag_token_eq),
-              right: dag_grammar_nonterminal(production: ^dag_production_expr)
-            )
-          )
+      right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+    )
+  )
+}
+
+// A service io field: the general field plus v1 parse_field's `[from "key"] [= default]` tail.
+// SCOPED TO THE SERVICE io_block ON PURPOSE. v1 admits the tail on every field, but the only
+// executing evidence here is inside a service, which normalize refuses before resolve. Admitting
+// it on the shared field_decl_block would widen `type` / variant declarations
+// (`dag/extdeps/browser/browser.dag` `BrowserConfig` declares defaults) with no evidence of what
+// resolve does with the extra child. So general field defaults and `from` stay a loud parse
+// refusal: named remainder for the type-declaration lane, not a silent widening (review 68343).
+fn dag_grammar_io_field_decl_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_field_decl_expr(),
+    right: dag_grammar_sequence(
+      left: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_kw_from),
+          right: dag_grammar_terminal(token_class: ^dag_token_string_literal)
+        )
+      ),
+      right: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_eq),
+          right: dag_grammar_nonterminal(production: ^dag_production_expr)
         )
       )
     )
@@ -1809,8 +1820,9 @@ fn dag_grammar_test_fn_decl_expr() -> GrammarExpr {
 // through dag_grammar_contextual_name_terminal wherever a plain ident stands (qualified names,
 // primary expr, decl names) and through dag_grammar_binding_name_terminal in binding slots — a
 // keyword that is only reserved, not name-admitted, refuses ordinary `from` / `transport` /
-// `input` uses. The reserved keywords are NOT widened into ident positions. Fields carry v1's
-// `Type [from "key"] [= default]` tail (extdeps.shell `Find` declares `max_depth: Int = 1`).
+// `input` uses. The reserved keywords are NOT widened into ident positions. io fields carry v1's
+// `Type [from "key"] [= default]` tail (extdeps.shell `Find` declares `max_depth: Int = 1`);
+// general type fields do not (see dag_grammar_io_field_decl_expr).
 // The v2-inline operation form and service-level `config` are v1-admitted and not yet in this
 // nest — named remainder, not a silent drop. Parsing is not lowering: dag_surface_service_decl has
 // no body-lowering producer, so it lands on the existing lowered | wrapper-retained frontier
@@ -1856,7 +1868,15 @@ fn dag_grammar_io_block_expr() -> GrammarExpr {
       left: dag_grammar_terminal(token_class: ^dag_token_kw_input),
       right: dag_grammar_terminal(token_class: ^dag_token_kw_output)
     ),
-    right: dag_grammar_nonterminal(production: ^dag_production_field_decl_block)
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
+      right: dag_grammar_sequence(
+        left: dag_grammar_optional(
+          element: dag_grammar_comma_list_expr(item: dag_grammar_io_field_decl_expr())
+        ),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+      )
+    )
   )
 }
 

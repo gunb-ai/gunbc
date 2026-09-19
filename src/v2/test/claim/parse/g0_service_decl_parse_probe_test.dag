@@ -75,6 +75,14 @@ data exit_entry_without_arrow_red_source: String = "module m\nservice S {\n  ope
 // refusal pinned here is the missing expression, not a missing message.
 data mock_entry_without_expr_red_source: String = "module m\nservice S {\n  operation Op {\n    mock_response {\n      0 =>\n    }\n  }\n}\n"
 
+// The io field tail is service-scoped: a general type field with a default or a `from` key still
+// refuses at parse, and the plain type control shows the refusal is the tail, not the type.
+data plain_type_source: String = "module m\ntype T { x: Int }\n"
+
+data type_field_default_red_source: String = "module m\ntype T { x: Int = 1 }\n"
+
+data type_field_from_red_source: String = "module m\ntype T { x: Int from \"k\" }\n"
+
 data keyword_as_name_source: String = "module m\nfn f(from: Int, input: Int) -> Int { let transport = from\n transport + input }\n"
 
 test fn fn_control_still_parses_holds() -> Bool {
@@ -133,6 +141,18 @@ test fn exit_entry_without_arrow_still_refuses_holds() -> Bool {
 
 test fn mock_entry_without_expr_still_refuses_holds() -> Bool {
   refuses(src: mock_entry_without_expr_red_source)
+}
+
+test fn plain_type_still_parses_holds() -> Bool {
+  parses(src: plain_type_source)
+}
+
+test fn type_field_default_still_refuses_holds() -> Bool {
+  refuses(src: type_field_default_red_source)
+}
+
+test fn type_field_from_key_still_refuses_holds() -> Bool {
+  refuses(src: type_field_from_red_source)
 }
 
 // ROUTE, not only parse. A service parses but has no body-lowering producer yet, so normalize must
