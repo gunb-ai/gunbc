@@ -549,12 +549,16 @@ fn runner_slot_units_from_list_units(stdout: String) -> List<String> {
   )
 }
 
-// THE POPULATION IS THE UNION, DESIRED FIRST. A desired slot the manager does not hold must be seen as
-// NOT-LOADED rather than skipped, and a loaded slot outside the desired roster -- a leftover
-// incarnation, a slot added by hand -- is still a unit a restart can orphan from. list-units names each
-// unit the manager holds once, so the loaded half needs no de-duplication of its own.
-fn runner_slot_population_units(desired: List<NonEmptyStr>, loaded: List<String>) -> List<NonEmptyStr> {
-  concat(desired, map(filter(loaded, l => !any(desired, d => (d as String) == l)), l => l as NonEmptyStr))
+// THE POPULATION IS THE UNION, DESIRED FIRST, THEN THE REQUIRED RETIREES, THEN LOADED EXTRAS. A
+// desired slot the manager does not hold must be seen as NOT-LOADED rather than skipped, and a loaded
+// slot outside both rosters -- a leftover incarnation, a slot added by hand -- is still a unit a
+// restart can orphan from. A required retiree is a member BY DECLARATION, never by listing: absence
+// from list-units is not retirement, whose completion is the retirement authority's verdict over
+// inhibition, a stopped service and an empty or absent cgroup. list-units names each unit the manager
+// holds once, so the loaded half needs no de-duplication of its own.
+fn runner_slot_population_units(desired: List<NonEmptyStr>, retired: List<NonEmptyStr>, loaded: List<String>) -> List<NonEmptyStr> {
+  let declared = concat(desired, filter(retired, r => !any(desired, d => (d as String) == (r as String))))
+  concat(declared, map(filter(loaded, l => !any(declared, d => (d as String) == l)), l => l as NonEmptyStr))
 }
 
 fn show_block_value(lines: List<String>, property: SystemdUnitProperty) -> String? {
@@ -785,15 +789,14 @@ fn observe_runner_slot_population(
       if !listed.success {
         SlotPopulationUnobservable { reason: join(["systemctl list-units exit=", to_string(listed.exit_code), " ", trim(s: listed.stderr)], "") }
       } else {
-        let units = runner_slot_population_units(desired: subject.desired_units, loaded: runner_slot_units_from_list_units(stdout: listed.stdout))
+        let units = runner_slot_population_units(desired: subject.desired_units, retired: subject.retired_units, loaded: runner_slot_units_from_list_units(stdout: listed.stdout))
         match typed_argv_exec_over_fleet_ssh(target: subject.target, context: context, argv: systemctl_show_properties_argv(units: units, properties: runner_slot_show_properties)) {
           TypedArgvExecRefused { reason: why } => SlotPopulationUnobservable { reason: why }
           TypedArgvExecConverged { result: shown } =>
             if !shown.success {
               SlotPopulationUnobservable { reason: join(["systemctl show exit=", to_string(shown.exit_code), " ", trim(s: shown.stderr)], "") }
             } else {
-              let retirees = filter(subject.retired_units, r => any(units, u => (u as String) == (r as String)))
-              let retirements = map(retirees, r => runner_retirement_standing(o: observe_runner_retirement(transport: FleetSsh { target: subject.target, context: context }, unit: r)))
+              let retirements = map(subject.retired_units, r => runner_retirement_standing(o: observe_runner_retirement(transport: FleetSsh { target: subject.target, context: context }, unit: r)))
               SlotPopulationObserved { units: classify_runner_slot_population(units: units, retirements: retirements, show_stdout: shown.stdout, intent: gunbc_runner_lifecycle_intent) }
             }
         }

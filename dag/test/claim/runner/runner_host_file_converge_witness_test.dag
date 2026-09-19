@@ -18,6 +18,7 @@ import gunbc.runner_slot_retirement {
   CgroupObservedPopulated,
   runner_retirement_standing,
   retirement_observation_from_readings,
+  retirement_unit,
 }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
@@ -462,6 +463,7 @@ test fn the_population_is_desired_units_then_loaded_extras() -> Bool {
   map(
     runner_slot_population_units(
       desired: ["actions-runner@srv1-01.service" as NonEmptyStr, "actions-runner@srv1-03.service" as NonEmptyStr],
+      retired: [],
       loaded: runner_slot_units_from_list_units(stdout: list_units_fixture),
     ),
     u => u as String,
@@ -647,4 +649,50 @@ test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
   let missing = "Id=actions-runner@srv1-12.service\nLoadState=not-found\nNeedDaemonReload=no\nExitType=main\nKillMode=control-group"
   let show = join([srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 11), masked: srv1_unit_names(slot: 13, limit: 21)), missing], "\n\n")
   !runner_slot_population_effective(population: srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: show))
+}
+
+// RED: a required retiree that list-units OMITS is still observed. Absence from a listing is not
+// retirement, so the population is built from the real srv1 subject's desired and retired rosters
+// (live 01..12, retiring 13..50 per gunbc.runner_width_transition) over a listing that names every
+// slot but 21; slot 21 must still be a member, its retirement standing must still be joined, and
+// forty-nine healthy units must not carry the verdict.
+fn srv1_list_units_without_21() -> String {
+  join(map(concat(srv1_unit_names(slot: 1, limit: 20), srv1_unit_names(slot: 22, limit: 50)), u => concat(u, " loaded active running GitHub Actions runner")), "\n")
+}
+
+fn srv1_population_over_listing(retirements: List<RunnerRetirementStanding>, show: String) -> RunnerSlotPopulation {
+  match witness_subject() {
+    Absent => SlotPopulationUnobservable { reason: "no srv1 subject" }
+    Present { value: s } =>
+      SlotPopulationObserved {
+        units: classify_runner_slot_population(
+          units: runner_slot_population_units(desired: s.desired_units, retired: s.retired_units, loaded: runner_slot_units_from_list_units(stdout: srv1_list_units_without_21())),
+          retirements: retirements,
+          show_stdout: show,
+          intent: gunbc_runner_lifecycle_intent,
+        ),
+      }
+  }
+}
+
+fn population_holds(pop: RunnerSlotPopulation, unit: String, wire: String) -> Bool {
+  match pop {
+    SlotPopulationUnobservable { reason: _ } => false
+    SlotPopulationObserved { units: us } => any(us, r => (r.unit as String) == unit && standing_wire_of(st: r.standing) == wire)
+  }
+}
+
+test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses() -> Bool {
+  let omitted = "actions-runner@srv1-21.service"
+  let healthy = srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: srv1_unit_names(slot: 13, limit: 50))
+  let still_running = map(srv1_drained(), st => if retirement_unit(s: st) == omitted {
+    runner_retirement_standing(o: retirement_observation_from_readings(unit: omitted as NonEmptyStr, unit_file_state: "masked", active_state: "active", occupancy: CgroupObservedPopulated { count: 2 }))
+  } else { st })
+  let running_pop = srv1_population_over_listing(retirements: still_running, show: healthy)
+  let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_unit_names(slot: 1, limit: 12), masked: concat(srv1_unit_names(slot: 13, limit: 20), srv1_unit_names(slot: 22, limit: 50))))
+  population_holds(pop: running_pop, unit: omitted, wire: "retirement-incomplete")
+    && !runner_slot_population_effective(population: running_pop)
+    && population_holds(pop: unread_pop, unit: omitted, wire: "unread")
+    && !runner_slot_population_effective(population: unread_pop)
+    && runner_slot_population_effective(population: srv1_population_over_listing(retirements: srv1_drained(), show: healthy))
 }
