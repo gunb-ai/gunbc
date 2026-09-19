@@ -70,7 +70,7 @@ import gunbc.network_boot_delivery {
   ArchitectureChainloader,
   DhcpFilenameHint,
 }
-import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly, ipxe_build_target_path }
+import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacParseError }
 import gunbc.site_uefi_arm64_pxe_edge { SiteEdgeRoster, site_edge_proxy_dhcp_config, first_onboarding_known_client_mac }
 import gunbc.fleet_physical_inventory { operator_site }
@@ -257,7 +257,7 @@ fn site_pxe_edge_gate_causes(
           }) + (if (target.filename as String) == (ipxe_arm64_efi_snponly.image as String) {
             []
           } else {
-            [ChainloaderNotTheIpxeArm64Build { pinned: target.filename, expected: ipxe_build_target_path(target: ipxe_arm64_efi_snponly) }]
+            [ChainloaderNotTheIpxeArm64Build { pinned: target.filename, expected: ipxe_arm64_efi_snponly.image }]
           })
       }
   }) + (match dnsmasq_binary {
