@@ -162,17 +162,20 @@ type CgroupEventsLineReading
 type CgroupEventsLineScan {
   seen: Int
   key_matches: Bool
-  value: String?
+  value: String
 }
 
+// `value` IS ONLY MEANINGFUL AT `seen == 2` UNDER A MATCHING KEY, and the reading below reads it
+// only there -- so it is a plain String, not an optional: an optional would add an `Absent` arm
+// at the read that the scan can never produce, a decoration standing where exhaustiveness was.
 fn cgroup_events_populated_line(line: String) -> CgroupEventsLineReading {
-  let scan = fold(split(s: trim(s: line), delimiter: " "), init: CgroupEventsLineScan { seen: 0, key_matches: false, value: none }, f: (acc, w) =>
+  let scan = fold(split(s: trim(s: line), delimiter: " "), init: CgroupEventsLineScan { seen: 0, key_matches: false, value: "" }, f: (acc, w) =>
     if w == "" {
       acc
     } else if acc.seen == 0 {
-      CgroupEventsLineScan { seen: 1, key_matches: w == (cgroup_v2_events_populated_key as String), value: none }
+      CgroupEventsLineScan { seen: 1, key_matches: w == (cgroup_v2_events_populated_key as String), value: "" }
     } else if acc.seen == 1 && acc.key_matches {
-      CgroupEventsLineScan { seen: 2, key_matches: true, value: Present { value: w } }
+      CgroupEventsLineScan { seen: 2, key_matches: true, value: w }
     } else {
       CgroupEventsLineScan { seen: acc.seen + 1, key_matches: acc.key_matches, value: acc.value }
     })
@@ -183,10 +186,7 @@ fn cgroup_events_populated_line(line: String) -> CgroupEventsLineReading {
   } else if scan.seen > 2 {
     CgroupEventsLineMalformed { cause: "cgroup.events carried a `populated` line with more than one value" }
   } else {
-    match scan.value {
-      Present { value: v } => CgroupEventsLinePopulated { value: v }
-      Absent => CgroupEventsLineMalformed { cause: "cgroup.events carried a `populated` key with no value" }
-    }
+    CgroupEventsLinePopulated { value: scan.value }
   }
 }
 
