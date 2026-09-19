@@ -51,6 +51,23 @@ import v2.workflow.required_floor {
 // `else`, `return`, or the start). Everything outside those sets refuses: the lists are allowlists,
 // so an unforeseen neighbour re-judges rather than keeps the tier.
 //
+// THIS IS A DIVERGENCE FROM THE GRAMMAR, STATED WITH ITS REASON (review 68240). The two allowlists
+// and the declaration scan re-state, lexically, facts `v2.extdeps.languages.dag`'s grammar owns --
+// what is a conjunct of an `&&` chain, where a declaration ends. The faithful reading compares the
+// parsed conjunct lists of the `test fn` at base and head through `v2.compiler.parse`. It is not
+// used because it does not fit the floor this rule serves: parsing two one-line `test fn`s through
+// `parse_module` measured above the NEW-WITNESS eval-step ceiling on its own, before any tree walk,
+// so no witness of a parse-based rule could run on the required floor, and preparing the grammar
+// explicitly cost roughly ten times that ceiling. Re-derive both by running a claim that parses two
+// such sources under `claim_batch` and reading its `eval_steps`. The lexical reading is the
+// conservative one -- every neighbour it does not list re-judges -- so the divergence can only
+// withhold the grandfathered tier, never grant it wrongly.
+//
+// DISSOLVES WHEN parsing a single `test fn` declaration at base and head fits inside the new-witness
+// ceiling with room for its tree walk -- a served prepared grammar, or a declaration-grain parse
+// entry. Then this module compares parsed conjunct lists, and the allowlists and `decl_scan_step`
+// are deleted rather than kept beside the parse.
+//
 // THE CALLEE'S KIND IS NOT RESOLVED HERE. The ruling names test-fn references; this rule admits the
 // deletion of any call conjunct. Deleting a conjunct can only weaken what the body asserts, and
 // never adds work, which is the property the tier keeps; resolving the callee would need the
