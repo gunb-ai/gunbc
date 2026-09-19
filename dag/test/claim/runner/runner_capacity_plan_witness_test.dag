@@ -28,6 +28,7 @@ import gunbc.runner_capacity_plan {
 }
 import gunbc.fleet_runner_connectivity {
   incident_2026_08_06_roster_fixture,
+  incident_2026_08_06_managed_roster_fixture,
   RosterReadUnavailable,
   RosterObserved,
   OrganizationRunnerRosterEvidence,
@@ -73,11 +74,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Retyping 7 as 22 puts the same landmine one width further out. Asking for committed + 1 keeps the
 // request above the ceiling by construction, so this stays a check on the refusal arm rather than
 // on whatever number the fleet happened to commit the day it was written.
+//
+// THE ROSTER IS THE MANAGED-PAIR SLICE, SUPPLIED AT THE INTERFACE, AND IT USED TO BE THE WHOLE ORG.
+// This row went red on 2026-09-15 (#11204) without the ceiling arm changing: that change deleted
+// srv2's held width, so the whole-org corpus's srv2-01/02/05 stopped resolving to a committed slot
+// and the planner refused the plan before admission was ever consulted -- correctly, and
+// the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations now asserts exactly
+// that. This row's subject is the admission ceiling on srv3 and srv4; srv2's standing is not in it,
+// and consuming the org corpus here gave the row the union of every host's subject (DESIGN 3, a
+// witness discriminates at one interface). The slice is the same corpus rows projected, not a copy.
 test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: gunbc_runner_slots_per_host(host: operator_host_srv3) + 1,
     srv4_width: gunbc_runner_slots_per_host(host: operator_host_srv4) + 1,
-    roster: incident_2026_08_06_roster_fixture()
+    roster: incident_2026_08_06_managed_roster_fixture()
   )
   match plan {
     PlanReady { hosts: _ } =>
@@ -119,28 +129,51 @@ fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
 // decoding the observation is what made it harmful -- a real roster has holes and a count cannot see
 // them. srv4 must additionally add 06 because it has no fabric member; srv3 must not, because 06 is
 // its fabric slot. So the pair also still discriminates purpose, which is what it was named for.
+//
+// SAME ROSTER MOVE AS THE ROW ABOVE: the managed-pair slice of the 2026-08-06 corpus, which carries
+// the holes this row is about ({01,02,04,05} on both hosts) and nothing about srv2.
 test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
-  let plan = runner_capacity_plan(
-    srv3_width: 6,
-    srv4_width: 6,
-    roster: incident_2026_08_06_roster_fixture()
-  )
+  let roster = incident_2026_08_06_managed_roster_fixture()
+  let plan = runner_capacity_plan(srv3_width: 6, srv4_width: 6, roster: roster)
   match plan {
     PlanReady { hosts: _ } =>
       added_indices(actions: addition_actions(
         host: operator_host_srv3, requested_width: 6,
-        observed: observed_prefix_from_roster(host: operator_host_srv3)
+        observed: observed_prefix_from_roster(host: operator_host_srv3, roster: roster)
       )) == [3]
         && added_indices(actions: addition_actions(
              host: operator_host_srv4, requested_width: 6,
-             observed: observed_prefix_from_roster(host: operator_host_srv4)
+             observed: observed_prefix_from_roster(host: operator_host_srv4, roster: roster)
            )) == [3, 6]
     PlanRefused { reason: _ } => false
   }
 }
 
-fn observed_prefix_from_roster(host: HostIdentity) -> List<RunnerSlotIdentity> {
-  match observed_github_slot_identities(host: host, roster: incident_2026_08_06_roster_fixture()) {
+// THE WHOLE 2026-08-06 CORPUS, AND WHAT IT ESTABLISHES IS A REFUSAL. incident_2026_08_06_roster_fixture
+// was what gunbc.apply and gunbc.runner_capacity_realize handed the planner until they moved to the
+// live read (gunbc.fleet.organization_runner_roster_read); against the fleet as committed today the
+// planner REFUSES this corpus, naming srv2-01. srv2's commitment is unestablished since
+// the 26/25 GiB transition, so its three 2026-08-06 registrations resolve to no committed slot, and
+// a registration the fleet cannot account for is refused rather than dropped
+// (a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped is the srv9-01 form of
+// the same law). The pair with at_the_committed_width_additions_follow_purpose_not_count is the
+// discriminator: the same corpus minus srv2 plans, the whole corpus refuses, so the refusal is about
+// srv2 and not about the planner disliking every roster.
+//
+// WHEN srv2'S COMMITMENT IS RE-ESTABLISHED THIS ROW GOES RED, AND THAT IS ITS JOB: the corpus then
+// resolves again and the row is re-derived by the change that re-establishes srv2, not by editing
+// the 2026-08-06 rows to fit the fleet of the day.
+test fn the_whole_org_corpus_is_refused_while_srv2_holds_unaccounted_registrations() -> Bool {
+  match runner_capacity_plan(srv3_width: 6, srv4_width: 6, roster: incident_2026_08_06_roster_fixture()) {
+    PlanReady { hosts: _ } => false
+    PlanRefused { reason: r } =>
+      string_contains(s: r, pattern: "resolves to no committed fleet slot")
+        && string_contains(s: r, pattern: "srv2-01")
+  }
+}
+
+fn observed_prefix_from_roster(host: HostIdentity, roster: OrganizationRunnerRosterEvidence) -> List<RunnerSlotIdentity> {
+  match observed_github_slot_identities(host: host, roster: roster) {
     GitHubSlotPopulationObserved { identities: ids } => ids
     GitHubSlotPopulationUnreadable { reason: _ } => []
     GitHubSlotPopulationDuplicateRegistration { slot: _ } => []
