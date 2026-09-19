@@ -2,6 +2,8 @@ module gunbc.machine_intake_host_capture_envelope
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.optional { Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.posix.shell_command_language { posix_single_quote }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS (DESIGN §4). The census program that runs on the host EMITS
 // this envelope and the boot run's verdict PARSES it. Before this module the two sides were spelled
@@ -101,16 +103,17 @@ fn host_capture_marker_line(machine: NonEmptyStr, marker: HostCaptureEnvelopeMar
   )
 }
 
-fn host_capture_sh_quote(s: String) -> String {
-  concat("'", join(split(s: s, delimiter: "'"), "'\\''"), "'")
-}
+// THE CAPTURE PROGRAM IS SHELL TEXT BUILT BY CONCATENATION, and that carrier half is declared rather
+// than left implicit: what it runs and how it is framed are modeled (the roster and the envelope
+// tokens above, read by the parser too), but the program that sequences them is a string.
+data host_capture_program_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.machine_intake_host_capture_envelope host_capture_program / host_capture_stage_program / host_capture_edac_counters_command / host_capture_workload_command -- concat-built POSIX sh for the live-session census (exec to the console, per-stage section/argv/exit framing, sync, halt), quoting through extdeps.posix.shell_command_language posix_single_quote. DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) renders a stage roster through orchestration emit without a medium-as-string scaffold, at which point these renderers become one emitted program derived from the same roster rows.")
 
 fn host_capture_stage_program(stage: HostCaptureStage) -> String {
   let name = stage.name as String
   concat(
-    "echo ", host_capture_sh_quote(s: concat(host_capture_section_open, name, host_capture_line_close)), "\n",
-    "echo ", host_capture_sh_quote(s: concat(host_capture_argv_open, name, ": ", stage.command as String)), "\n",
-    "sh -c ", host_capture_sh_quote(s: stage.command as String), " 2>&1\n",
+    "echo ", posix_single_quote(spelling: concat(host_capture_section_open, name, host_capture_line_close)), "\n",
+    "echo ", posix_single_quote(spelling: concat(host_capture_argv_open, name, ": ", stage.command as String)), "\n",
+    "sh -c ", posix_single_quote(spelling: stage.command as String), " 2>&1\n",
     "echo \"", host_capture_exit_open, name, ": $?\"\n",
   )
 }
