@@ -196,21 +196,19 @@ fn gunbc_runner_slot_desired() -> RunnerSlotDesired {
     tasks_max: 16384,
     cpu_weight: 100,
     cpu_quota: gunbc_runner_slot_cpu_quota(),
-    labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] }
+    labels: RunnerSlotLabels { github_labels: ["gunbc-heavy"] }
   }
 }
 
-// ── registration labels: declared class labels UNION the host label ─────────────────────────────
+// ── runner label vocabulary ───────────────────────────────────────────────────────────────────────
 //
-// ONE COMPOSITION, EVERY PRODUCER. The slot declares its platform/class labels above (gunbc-heavy
-// stays the class authority); a registration additionally answers to the label of the host it
-// EXECUTES ON. Unit-file registration, JIT mint, the replace postcondition and the org-roster
-// readback all take their label set from runner_registration_labels, and every host-pinned selector
-// spells its host through runner_host_label, so a registration and the selector meant to reach it
-// cannot disagree about how a host becomes a label.
+// THE SLOT DECLARES ONLY ITS CLASS LABEL (gunbc-heavy). Provenance, OS and architecture are facts
+// about the host and are derived from its ComputeOffer by gunbc.runner_spec_from_offer; spelling
+// them here too would be a second source for them. gunbc.runner_registration_labels composes the
+// three parts.
 //
-// THE HOST LABEL IS WHERE THE RUNNER RUNS, never a host it mutates over SSH: the argument is the
-// slot's own host (RunnerSlotIdentity.host), not a convergence subject.
+// THE HOST LABEL IS WHERE THE RUNNER RUNS, never a host it mutates over SSH: every caller passes
+// a slot's own host (RunnerSlotIdentity.host) or the host a job is pinned to.
 fn runner_host_label(host: HostIdentity) -> String {
   host as String
 }
@@ -231,13 +229,6 @@ fn runner_labels_satisfy_selector(held: List<String>, selector: List<String>) ->
 
 fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
   runner_labels_satisfy_selector(held: a, selector: b) && runner_labels_satisfy_selector(held: b, selector: a)
-}
-
-fn runner_registration_labels(host: HostIdentity) -> List<String> {
-  runner_label_set_union(
-    a: gunbc_runner_slot_desired().labels.github_labels,
-    b: [runner_host_label(host: host)],
-  )
 }
 
 // Unknown hosts refuse rather than defaulting. A width is a claim about a specific machine's RAM,

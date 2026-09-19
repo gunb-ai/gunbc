@@ -22,7 +22,10 @@ import gunbc.fleet_intent_network {
 }
 import gunbc.runner_slot_allocation {
   gunbc_runner_slots_per_host, committed_slot_identities,
-  runner_registration_labels, runner_label_sets_equal,
+  runner_label_sets_equal,
+}
+import gunbc.runner_registration_labels {
+  runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
 }
 import gunbc.runner_lifecycle { runner_slot_instance_name }
 import gunbc.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
@@ -205,7 +208,7 @@ data incident_runner_version: NonEmptyStr = "2.334.0"
 
 // THE CORPUS PINNED STATUS, NOT LABELS. Each fixture registration carries the class labels plus
 // the label of the host it names, i.e. the registration contract
-// (gunbc.runner_slot_allocation runner_registration_labels) spelled independently here, so the
+// (gunbc.runner_registration_labels runner_registration_labels) spelled independently here, so the
 // connectivity rows below exercise status while label divergence is exercised by its own reds.
 data incident_runner_class_labels: List<NonEmptyStr> = [
   "self-hosted" as NonEmptyStr,
@@ -455,17 +458,20 @@ fn registration_verdict_or(
     Present { value: reg } =>
       match reg.status {
         // AN ONLINE REGISTRATION IS HEALTHY ONLY UNDER THE SLOT'S OWN LABELS. The desired side is
-        // runner_registration_labels of the slot's host, compared as a set; a runner online under a
+        // gunbc.runner_registration_labels of the slot's host, compared as a set (a host whose labels do
+        // not resolve is Unknown, not Healthy); a runner online under a
         // missing class label, a missing host label, or ANOTHER host's label is online and still
         // unreachable by the selectors meant for this slot, so it is not counted healthy.
         GitHubRunnerOnline =>
-          if runner_label_sets_equal(
-               a: map(reg.labels, l => l as String),
-               b: runner_registration_labels(host: incarnation.slot.host),
-             ) {
-            SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
-          } else {
-            SlotConnectivityLabelsDiverge { slot: incarnation.slot, registration_id: reg.id }
+          match runner_registration_labels(host: incarnation.slot.host) {
+            RegistrationLabelsRefused { host: _, cause: c } =>
+              SlotConnectivityUnknown { slot: incarnation.slot, reason: c as String }
+            RegistrationLabelsResolved { labels: want } =>
+              if runner_label_sets_equal(a: map(reg.labels, l => l as String), b: want) {
+                SlotConnectivityHealthy { slot: incarnation.slot, registration_id: reg.id }
+              } else {
+                SlotConnectivityLabelsDiverge { slot: incarnation.slot, registration_id: reg.id }
+              }
           }
         GitHubRunnerOffline =>
           SlotConnectivityDetached { slot: incarnation.slot, registration_id: reg.id }
