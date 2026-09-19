@@ -168,7 +168,25 @@ final class ProtocolVectorTests: XCTestCase {
         let f = try WireDecode.fetchedRequest(Data(try envelope("fetched_request").utf8))
         XCTAssertNotEqual(f.approve, f.deny)
         XCTAssertEqual(try WireDecode.enrolmentReadback(Data(try envelope("enrolment_readback").utf8)).standing, .active)
-        XCTAssertFalse(try WireDecode.redemptionResponse(Data(try envelope("redemption_response").utf8)).outcome.isEmpty)
+        // Every redemption_response_* envelope decodes and names its DeviceRedemptionOutcome arm.
+        let responses = try load().envelope.filter { $0.name.hasPrefix("redemption_response_") }
+        XCTAssertFalse(responses.isEmpty, "no redemption_response_* envelopes")
+        for r in responses {
+            let o = try WireDecode.redemptionResponse(Data(r.body.utf8))
+            XCTAssertTrue(o.outcome.hasPrefix("Device"), r.name + ": " + o.outcome)
+            XCTAssertFalse(o.message.isEmpty, r.name)
+        }
+    }
+
+    /// The detail screen's strict read of the stored request: the store's rendering decodes, and a
+    /// record missing any of requester / purpose / destructive / expires_at is refused.
+    func testStoredRequestSummaryIsStrict() throws {
+        let full = #"{"kind":"request","escalation_id":"e","request_revision":"r","attempt":"a","requester":"ops","purpose":"Boot","destructive":true,"issued_at":"2026-09-18T12:00:00Z","expires_at":"2026-09-18T12:10:00Z","key_id":"k"}"#
+        let s = try StoredRequestSummary(json: full)
+        XCTAssertEqual(s.requester, "ops"); XCTAssertTrue(s.destructive); XCTAssertEqual(s.expires_at, "2026-09-18T12:10:00Z")
+        XCTAssertThrowsError(try StoredRequestSummary(json: #"{"kind":"request"}"#))
+        XCTAssertThrowsError(try StoredRequestSummary(json: #"{"requester":"ops","purpose":"Boot","destructive":true}"#))
+        XCTAssertThrowsError(try StoredRequestSummary(json: "not json"))
     }
 
     /// The strict reader refuses an unknown member, an empty string, an unadmitted kind, and a

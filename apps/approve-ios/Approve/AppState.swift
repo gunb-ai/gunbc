@@ -37,7 +37,7 @@ final class AppState: ObservableObject {
         do { state = try EnrolmentStore.load() } catch { lastError = error.localizedDescription }
         if state.enrolled != nil {
             UIApplication.shared.registerForRemoteNotifications()
-            if let t = apnsToken { await forwardToken(t) }
+            await convergePushToken()
         }
     }
 
@@ -51,28 +51,43 @@ final class AppState: ObservableObject {
         state = s
     }
 
-    // ── APNs ─────────────────────────────────────────────────────────────────────────────────
+    // ── APNs: one serialized convergence loop over the latest desired token ──────────────────
+    /// The token most recently delivered is the DESIRED token; the loop below converges the
+    /// server onto it. One loop at a time (`converging`), and a completion records success only
+    /// if the token it forwarded is still the desired one — otherwise it continues with the newer.
+    private var converging = false
+
     func tokenDelivered(_ hex: String) {
         apnsToken = hex
-        guard installed, state.enrolled != nil else { return }   // buffered until install()
-        Task { await forwardToken(hex) }
+        guard installed else { return }            // buffered until install()
+        Task { await convergePushToken() }
     }
 
-    /// PUT /approve/device/push for a token the server has not been told about. The assertion covers
-    /// device_push_update_client_data, which frames the exact body bytes sent.
-    private func forwardToken(_ hex: String) async {
-        guard case .enrolled(var e) = state, e.forwarded_apns_token != hex else { return }
-        do {
-            let client = try requireClient()
-            let body = WireEncode.pushUpdate(registration(hex))
-            let requestedAt = Self.now()
-            let auth = try await assertion(e, requestedAt: requestedAt,
-                                           clientData: devicePushUpdateClientData(enrollmentId: e.enrollment_id, requestedAt: requestedAt, pushBodyJson: body))
-            try await client.updatePush(bodyJson: body, auth)
-            e.forwarded_apns_token = hex
-            try transition(.enrolled(e))
-        } catch {
-            lastError = "APNs token not forwarded: \(error.localizedDescription)"
+    /// PUT /approve/device/push until the server holds the desired token. Idempotent to call: a
+    /// second caller while a loop runs returns at once and the running loop sees the new desired
+    /// token on its next iteration. Runs after any adoption of Enrolled too, so a token buffered
+    /// during SubmissionUnknown is forwarded.
+    func convergePushToken() async {
+        guard !converging else { return }
+        converging = true
+        defer { converging = false }
+        while case .enrolled(var e) = state, let desired = apnsToken, e.forwarded_apns_token != desired {
+            do {
+                let client = try requireClient()
+                let body = WireEncode.pushUpdate(registration(desired))
+                let requestedAt = Self.now()
+                let auth = try await assertion(e, requestedAt: requestedAt,
+                                               clientData: devicePushUpdateClientData(enrollmentId: e.enrollment_id, requestedAt: requestedAt, pushBodyJson: body))
+                try await client.updatePush(bodyJson: body, auth)
+                // Record success only for the token that is STILL desired; else loop with the newer.
+                guard apnsToken == desired, case .enrolled(var now) = state else { continue }
+                now.forwarded_apns_token = desired
+                e = now
+                try transition(.enrolled(e))
+            } catch {
+                lastError = "APNs token not forwarded: \(error.localizedDescription)"
+                return
+            }
         }
     }
 
@@ -116,72 +131,101 @@ final class AppState: ObservableObject {
     }
 
     /// Step 2, remote: attest over the fixed transcript (reusing a previous attestation if one was
-    /// generated), register for push, POST. A lost answer moves to SubmissionUnknown; a refusal
-    /// stays Prepared so the operator can retry with the SAME material.
+    /// generated), register for push, then PERSIST SubmissionUnknown and only then POST. From the
+    /// moment the POST may have left the device the durable state says so: a crash, a transport or
+    /// decode failure, a failed persist of Enrolled, or a refusal after a retry ("code already
+    /// used") all leave SubmissionUnknown standing, and only an authenticated readback resolves it.
     func submit() async {
         lastError = nil
-        guard case .prepared(var p) = state else { return }
+        let p: PreparedEnrolment
+        switch state {
+        case .prepared(var q):
+            do {
+                if q.attestation_b64 == nil {
+                    q.attestation_b64 = try await AppAttest.attest(keyId: q.attest_key_id, transcript: q.transcript).attestation_b64
+                    try transition(.prepared(q))
+                }
+            } catch { lastError = error.localizedDescription; return }
+            p = q
+        case .submissionUnknown(let q):
+            p = q                                   // a retry re-sends the same material
+        default:
+            return
+        }
         do {
             let client = try requireClient()
-            if p.attestation_b64 == nil {
-                p.attestation_b64 = try await AppAttest.attest(keyId: p.attest_key_id, transcript: p.transcript).attestation_b64
-                try transition(.prepared(p))
-            }
             let token = try await awaitToken()
             let submission = EnrolmentRequest(
                 code: p.code, platform: .ios, decision_key: p.decision_key_pub,
                 evidence: IosAppAttestBoundDecisionKey(attest_key_id: p.attest_key_id, attestation_b64: p.attestation_b64!),
                 push: registration(token))
-            let grant: EnrolmentGrant
-            do { grant = try await client.enrol(submission) }
-            catch let e as WireError where e.outcomeUnknown {
-                try transition(.submissionUnknown(p))
-                throw e
-            }
-            // The attest key id is persisted as ENROLLED only now, after the server verified it.
-            try transition(.enrolled(EnrolledDevice(
+            try transition(.submissionUnknown(p))   // BEFORE the bytes leave
+            let grant = try await client.enrol(submission)
+            try adopt(EnrolledDevice(
                 enrollment_id: grant.enrollment_id, decision_key_blob: p.decision_key_blob,
-                attest_key_id: p.attest_key_id, forwarded_apns_token: token)))
+                attest_key_id: p.attest_key_id, forwarded_apns_token: token))
         } catch {
+            // Whatever failed — transport, decode, a refusal, persisting Enrolled — the durable
+            // state stays SubmissionUnknown; readback is the only way forward.
             lastError = error.localizedDescription
         }
     }
 
-    /// After an ambiguous POST: re-read before generating anything new, via
-    /// GET /approve/device/enrollments/<enrollment_id> under the App Attest key just attested. The
-    /// id is enrollment_id_for_code over the code persisted in Prepared, so nothing is asked for.
+    /// The one place Enrolled is entered. The attest key id is persisted as ENROLLED only here,
+    /// after the server verified it; then push-token convergence runs for any buffered token.
+    private func adopt(_ e: EnrolledDevice) throws {
+        try transition(.enrolled(e))
+        Task { await convergePushToken() }
+    }
+
+    /// The only resolution of SubmissionUnknown: GET /approve/device/enrollments/<enrollment_id>
+    /// under the App Attest key just attested, keyed by enrollment_id_for_code over the persisted
+    /// code. Active adopts; revoked is terminal; an explicit absence (HTTP 404) returns the material
+    /// to Prepared so the same keys and attestation are submitted again. Anything else (transport,
+    /// decode, other statuses) leaves SubmissionUnknown standing.
     func resolveUnknownSubmission() async {
         lastError = nil
         guard case .submissionUnknown(let p) = state else { return }
+        let enrollmentId = enrollmentIdForCode(p.code)
+        let probe = EnrolledDevice(enrollment_id: enrollmentId, decision_key_blob: p.decision_key_blob,
+                                   attest_key_id: p.attest_key_id, forwarded_apns_token: nil)
         do {
             let client = try requireClient()
-            let enrollmentId = enrollmentIdForCode(p.code)
             let path = Route.enrollment(enrollmentId)
-            let probe = EnrolledDevice(enrollment_id: enrollmentId, decision_key_blob: p.decision_key_blob,
-                                       attest_key_id: p.attest_key_id, forwarded_apns_token: nil)
             let back = try await client.readback(path, try await readAuth(probe, path: path))
             switch back.standing {
             case .active:
-                try transition(.enrolled(EnrolledDevice(
+                try adopt(EnrolledDevice(
                     enrollment_id: back.enrollment_id, decision_key_blob: p.decision_key_blob,
-                    attest_key_id: p.attest_key_id, forwarded_apns_token: nil)))
+                    attest_key_id: p.attest_key_id, forwarded_apns_token: nil))
             case .revoked:
                 try transition(.revoked(probe, reason: "enrolment \(back.enrollment_id) is revoked"))
             }
+        } catch WireError.status(404, _) {
+            do { try transition(.prepared(p)) } catch { lastError = error.localizedDescription }
         } catch {
             lastError = error.localizedDescription
         }
     }
 
-    /// Retry the identical POST (same key, same attestation, same transcript): generates nothing new.
-    func retrySubmission() async {
-        guard case .submissionUnknown(let p) = state else { return }
-        do { try transition(.prepared(p)) } catch { lastError = error.localizedDescription; return }
-        await submit()
+    /// Re-send the identical POST from SubmissionUnknown (same key, same attestation, same
+    /// transcript). The state does not leave SubmissionUnknown to do it.
+    func retrySubmission() async { await submit() }
+
+    /// Only from Prepared: nothing has left the device, so nothing can be stranded on the server.
+    func startOver() {
+        guard case .prepared = state else { return }
+        do { try transition(.unenrolled) } catch { lastError = error.localizedDescription }
     }
 
-    func startOver() {
-        do { try transition(.unenrolled) } catch { lastError = error.localizedDescription }
+    /// From a terminal state (key invalidated, revoked): the old enrolment decides nothing any more.
+    func enrolAgain() {
+        switch state {
+        case .keyInvalidated, .revoked:
+            do { try transition(.unenrolled) } catch { lastError = error.localizedDescription }
+        default:
+            return
+        }
     }
 
     // ── Authenticated reads ──────────────────────────────────────────────────────────────────

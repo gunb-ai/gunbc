@@ -55,14 +55,16 @@ struct EnrolmentPendingView: View {
                 }
             case .submissionUnknown:
                 Section("Submission outcome unknown") {
-                    Text("The server may or may not have accepted this enrolment. Re-read before generating anything new.")
+                    Text("The server may or may not have accepted this enrolment. The keys, attestation and code are kept until an authenticated re-read says active, revoked or absent; nothing new is generated.")
                     Button("Re-read enrolment") { run { await state.resolveUnknownSubmission() } }.disabled(busy)
                     Button("Retry the same submission") { run { await state.retrySubmission() } }.disabled(busy)
                 }
             default:
                 EmptyView()
             }
-            Section { Button("Start over", role: .destructive) { state.startOver() } }
+            if case .prepared = state.state {
+                Section { Button("Start over", role: .destructive) { state.startOver() } }
+            }
             if let e = state.lastError { Section("Refused") { Text(e).foregroundStyle(.red) } }
         }
         .navigationTitle("Enrolment")
@@ -81,7 +83,7 @@ struct DeadEnrolmentView: View {
     var body: some View {
         Form {
             Section(title) { Text(reason) }
-            Section { Button("Enrol again") { state.startOver() } }
+            Section { Button("Enrol again") { state.enrolAgain() } }
         }
         .navigationTitle(title)
     }
@@ -109,17 +111,31 @@ struct InboxView: View {
     }
 }
 
-/// What the stored request says today, read from its existing fields. Once the store carries
-/// ApprovalTarget and the access lifetime (approval_target_frontier) these become typed facts
-/// returned by the server; until then nothing here is invented — an absent field renders as absent.
+/// What the operator decides on: the stored request's requester, purpose, destructive and expires_at
+/// (gunbc.auth.approval_decision_store stored_request_json), decoded STRICTLY from the exact text
+/// that is signed. Any missing member or a failed parse REFUSES the presentation, and the decision
+/// buttons stay disabled: the app never asks for a signature over something it could not read.
+/// Typed ApprovalTarget and the access lifetime wait on approval_target_frontier.
 struct StoredRequestSummary {
-    var purpose: String?
-    var destructive: Bool?
+    var requester: String
+    var purpose: String
+    var destructive: Bool
+    var expires_at: String
 
-    init(json: String) {
-        let obj = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any]
-        purpose = obj?["purpose"] as? String
-        destructive = obj?["destructive"] as? Bool
+    init(json: String) throws {
+        let v: Any
+        do { v = try JSONSerialization.jsonObject(with: Data(json.utf8)) }
+        catch { throw WireError.refused(at: "stored_request_text", cause: error.localizedDescription) }
+        guard let o = v as? [String: Any] else { throw WireError.refused(at: "stored_request_text", cause: "not an object") }
+        func string(_ k: String) throws -> String {
+            guard let s = o[k] as? String, !s.isEmpty else { throw WireError.refused(at: "stored_request_text." + k, cause: "missing") }
+            return s
+        }
+        requester = try string("requester")
+        purpose = try string("purpose")
+        guard let d = o["destructive"] as? Bool else { throw WireError.refused(at: "stored_request_text.destructive", cause: "missing") }
+        destructive = d
+        expires_at = try string("expires_at")
     }
 }
 
@@ -127,6 +143,7 @@ struct DetailView: View {
     @EnvironmentObject var state: AppState
     let pending: PendingApproval
     @State private var fetched: FetchedRequest?
+    @State private var summary: StoredRequestSummary?
     @State private var outcome: RedemptionOutcome?
     @State private var error: String?
     @State private var busy = false
@@ -135,17 +152,18 @@ struct DetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let f = fetched {
-                    let summary = StoredRequestSummary(json: f.stored_request_text)
-                    if let purpose = summary.purpose {
-                        Text(purpose).font(.title3)
+                    if let s = summary {
+                        Text(s.purpose).font(.title3)
+                        Text("requested by \(s.requester)")
+                        Label(s.destructive ? "Destructive" : "Not destructive", systemImage: s.destructive ? "exclamationmark.triangle" : "checkmark.shield")
+                            .foregroundStyle(s.destructive ? .red : .secondary)
+                        // The request's own expiry, from the stored record. The access lifetime is
+                        // not carried by the store yet (approval_target_frontier).
+                        Text("Request expires \(s.expires_at)").font(.caption).foregroundStyle(.secondary)
+                        Text("Refresh required after \(f.challenge.expires_at)").font(.caption2).foregroundStyle(.secondary)
+                    } else {
+                        Text("Stored request unreadable; deciding is refused.").foregroundStyle(.red)
                     }
-                    if let d = summary.destructive {
-                        Label(d ? "Destructive" : "Not destructive", systemImage: d ? "exclamationmark.triangle" : "checkmark.shield")
-                            .foregroundStyle(d ? .red : .secondary)
-                    }
-                    // The deadline shown is the LINK's expiry (the redemption challenge), not how long
-                    // any access lasts; the access lifetime is not carried by the store yet.
-                    Text("Link expires \(f.challenge.expires_at)").font(.caption).foregroundStyle(.secondary)
                     DisclosureGroup("Stored request (exactly what is signed)") {
                         Text(f.stored_request_text)
                             .font(.system(.footnote, design: .monospaced))
@@ -162,7 +180,7 @@ struct DetailView: View {
                             Spacer()
                             Button("Approve") { decide(f, .approve) }.buttonStyle(.borderedProminent)
                         }
-                        .disabled(busy)
+                        .disabled(busy || summary == nil)
                     }
                 } else if error == nil {
                     ProgressView()
@@ -173,8 +191,12 @@ struct DetailView: View {
         }
         .navigationTitle(pending.escalation_id)
         .task {
-            do { fetched = try await state.fetch(pending.escalation_id) }
-            catch { self.error = error.localizedDescription }
+            do {
+                let f = try await state.fetch(pending.escalation_id)
+                fetched = f
+                do { summary = try StoredRequestSummary(json: f.stored_request_text) }
+                catch { self.error = error.localizedDescription }
+            } catch { self.error = error.localizedDescription }
         }
     }
 
