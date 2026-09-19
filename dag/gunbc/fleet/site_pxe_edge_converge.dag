@@ -4,9 +4,9 @@ import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
 import std.algebra { trim }
 import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, serialize_content_hash }
 import extdeps.uri { Uri }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, parse_ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address }
 import gunbc.fleet_intent_network { srv4_host_lan_endpoint }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { sha256_digest_content_hash }
@@ -71,7 +71,7 @@ import gunbc.network_boot_delivery {
   DhcpFilenameHint,
 }
 import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly, ipxe_build_target_path }
-import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed }
+import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacParseError }
 import gunbc.site_uefi_arm64_pxe_edge { SiteEdgeRoster, site_edge_proxy_dhcp_config, first_onboarding_known_client_mac }
 import gunbc.fleet_physical_inventory { operator_site }
 
@@ -218,50 +218,67 @@ type SitePxeEdgeChainloaderObservation
 // EVERY REASON TO WITHHOLD THE DAEMON, COUNTED, NOT THE FIRST ONE. A daemon offering a filename the
 // TFTP root cannot serve, or a digest nobody pinned, is an edge that answers wrongly; so any cause
 // here closes the gate and nothing is written or started.
+// EVERY REASON THE GATE STAYS CLOSED, TYPED. A closed set of causes with their payloads (the parse
+// errors, both digests, both filenames) kept as values; site_pxe_edge_run_text renders them, and no
+// consumer has to recover a cause from prose. Probe refusals stay a String: that is open-ended stderr.
+type SitePxeEdgeGateCause
+  = TftpServerAddressUnparseable { error: Ipv4ParseError }
+  | KnownClientMacUnparseable { error: MacParseError }
+  | ChainloaderUnpinned { obligation: NonEmptyStr }
+  | ChainloaderUnobservable { reason: String }
+  | ChainloaderDigestMismatch { observed: ContentHash, pinned: ContentHash }
+  | ChainloaderNotTheIpxeArm64Build { pinned: NonEmptyStr, expected: NonEmptyStr }
+  | DnsmasqBinaryRefused { reason: String }
+  | AdministratorPrivilegeRefused { reason: String }
+
 fn site_pxe_edge_gate_causes(
   roster: MacParseResult,
   pin: SitePxeEdgeChainloaderPin,
   chainloader: SitePxeEdgeChainloaderObservation,
   dnsmasq_binary: SitePxeEdgeProbe,
   privilege: SitePxeEdgeProbe,
-) -> List<String> {
+) -> List<SitePxeEdgeGateCause> {
   (match site_pxe_edge_tftp_server_address {
     Ipv4Parsed { address: _ } => []
-    Ipv4ParseFailed { error: _ } => ["tftp-server-address-unparseable: srv4_host_lan_endpoint.address is not an IPv4 address"]
+    Ipv4ParseFailed { error: e } => [TftpServerAddressUnparseable { error: e }]
   }) + (match roster {
     MacParsed { address: _ } => []
-    MacParseFailed { error: _ } => ["known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"]
-  }) + concat(
-    concat(
+    MacParseFailed { error: e } => [KnownClientMacUnparseable { error: e }]
+  }) + (match pin {
+    SitePxeEdgeChainloaderUnpinned { obligation: o } => [ChainloaderUnpinned { obligation: o }]
+    SitePxeEdgeChainloaderPinned { transport: _ } =>
       match site_pxe_edge_chainloader_target(pin: pin) {
-        Absent => [concat("chainloader-unpinned: ", site_pxe_edge_pin_obligation(pin: pin))]
+        Absent => []
         Present { value: target } =>
-          match chainloader {
-            ChainloaderDigestUnobservable { reason: r } => [concat("chainloader-unobservable: ", r)]
+          (match chainloader {
+            ChainloaderDigestUnobservable { reason: r } => [ChainloaderUnobservable { reason: r }]
             ChainloaderDigestObserved { digest: d } =>
-              if content_hash_equal(left: d, right: target.digest) { [] } else { ["chainloader-digest-mismatch"] }
-          } + (if (target.filename as String) == (ipxe_arm64_efi_snponly.image as String) {
+              if content_hash_equal(left: d, right: target.digest) { [] } else { [ChainloaderDigestMismatch { observed: d, pinned: target.digest }] }
+          }) + (if (target.filename as String) == (ipxe_arm64_efi_snponly.image as String) {
             []
           } else {
-            [join(["chainloader-not-the-ipxe-arm64-build: pinned ", target.filename as String, ", expected ", ipxe_build_target_path(target: ipxe_arm64_efi_snponly) as String], "")]
+            [ChainloaderNotTheIpxeArm64Build { pinned: target.filename, expected: ipxe_build_target_path(target: ipxe_arm64_efi_snponly) }]
           })
-      },
-      match dnsmasq_binary {
-        SitePxeEdgeProbeHeld => []
-        SitePxeEdgeProbeRefused { reason: r } => [concat("dnsmasq-binary: ", r)]
-      },
-    ),
-    match privilege {
-      SitePxeEdgeProbeHeld => []
-      SitePxeEdgeProbeRefused { reason: r } => [concat("administrator-privilege: ", r)]
-    },
-  )
+      }
+  }) + (match dnsmasq_binary {
+    SitePxeEdgeProbeHeld => []
+    SitePxeEdgeProbeRefused { reason: r } => [DnsmasqBinaryRefused { reason: r }]
+  }) + (match privilege {
+    SitePxeEdgeProbeHeld => []
+    SitePxeEdgeProbeRefused { reason: r } => [AdministratorPrivilegeRefused { reason: r }]
+  })
 }
 
-fn site_pxe_edge_pin_obligation(pin: SitePxeEdgeChainloaderPin) -> String {
-  match pin {
-    SitePxeEdgeChainloaderUnpinned { obligation: o } => o as String
-    SitePxeEdgeChainloaderPinned { transport: _ } => "pinned"
+fn site_pxe_edge_gate_cause_text(cause: SitePxeEdgeGateCause) -> String {
+  match cause {
+    TftpServerAddressUnparseable { error: _ } => "tftp-server-address-unparseable: srv4_host_lan_endpoint.address is not an IPv4 address"
+    KnownClientMacUnparseable { error: _ } => "known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"
+    ChainloaderUnpinned { obligation: o } => concat("chainloader-unpinned: ", o as String)
+    ChainloaderUnobservable { reason: r } => concat("chainloader-unobservable: ", r)
+    ChainloaderDigestMismatch { observed: o, pinned: p } => join(["chainloader-digest-mismatch: observed ", serialize_content_hash(hash: o) as String, ", pinned ", serialize_content_hash(hash: p) as String], "")
+    ChainloaderNotTheIpxeArm64Build { pinned: p, expected: e } => join(["chainloader-not-the-ipxe-arm64-build: pinned ", p as String, ", expected ", e as String], "")
+    DnsmasqBinaryRefused { reason: r } => concat("dnsmasq-binary: ", r)
+    AdministratorPrivilegeRefused { reason: r } => concat("administrator-privilege: ", r)
   }
 }
 
@@ -403,7 +420,7 @@ type SitePxeEdgeFileResult {
 
 type SitePxeEdgeRun {
   mode: SitePxeEdgeMode
-  gate_causes: List<String>
+  gate_causes: List<SitePxeEdgeGateCause>
   files: List<SitePxeEdgeFileResult>
   activation: SitePxeEdgeProbe
   unit_active: SitePxeEdgeProbe
@@ -586,7 +603,7 @@ fn site_pxe_edge_file_outcome_wire(outcome: SitePxeEdgeFileOutcome) -> String {
 fn site_pxe_edge_run_text(run: SitePxeEdgeRun) -> String {
   join([
     "mode=", match run.mode { SitePxeEdgeObserveOnly => "observe" SitePxeEdgeApply => "apply" }, "\n",
-    join(map(run.gate_causes, c => join(["gate-closed ", c, "\n"], "")), ""),
+    join(map(run.gate_causes, c => join(["gate-closed ", site_pxe_edge_gate_cause_text(cause: c), "\n"], "")), ""),
     join(map(run.files, r => join(["file ", r.file.subject as String, " path=", r.file.path as String, " before=", site_pxe_edge_file_standing_wire(standing: r.before), " outcome=", site_pxe_edge_file_outcome_wire(outcome: r.outcome), "\n"], "")), ""),
     "activation=", site_pxe_edge_probe_wire(probe: run.activation), "\n",
     "unit-active=", site_pxe_edge_probe_wire(probe: run.unit_active), "\n",

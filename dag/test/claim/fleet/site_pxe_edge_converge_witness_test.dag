@@ -26,6 +26,14 @@ import gunbc.site_pxe_edge_converge {
   site_pxe_edge_chainloader_target,
   site_pxe_edge_chainloader_path,
   site_pxe_edge_gate_causes,
+  TftpServerAddressUnparseable,
+  KnownClientMacUnparseable,
+  ChainloaderUnpinned,
+  ChainloaderUnobservable,
+  ChainloaderDigestMismatch,
+  ChainloaderNotTheIpxeArm64Build,
+  DnsmasqBinaryRefused,
+  AdministratorPrivilegeRefused,
   site_pxe_edge_digest_observation,
   site_pxe_edge_desired_files,
   site_pxe_edge_roster,
@@ -91,7 +99,16 @@ test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
     privilege: SitePxeEdgeProbeHeld,
   )
   length(causes) == 1 && (match causes.first() {
-    Present { value: c } => starts_with(s: c, prefix: "chainloader-unpinned: ")
+    Present { value: c } => match c {
+      ChainloaderUnpinned { obligation: _ } => true
+      TftpServerAddressUnparseable { error: _ } => false
+      KnownClientMacUnparseable { error: _ } => false
+      ChainloaderUnobservable { reason: _ } => false
+      ChainloaderDigestMismatch { observed: _, pinned: _ } => false
+      ChainloaderNotTheIpxeArm64Build { pinned: _, expected: _ } => false
+      DnsmasqBinaryRefused { reason: _ } => false
+      AdministratorPrivilegeRefused { reason: _ } => false
+    }
     Absent => false
   })
 }
@@ -103,7 +120,7 @@ test fn mismatched_digest_closes_the_gate() -> Bool {
     chainloader: ChainloaderDigestObserved { digest: digest_b },
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
-  ) == ["chainloader-digest-mismatch"]
+  ) == [ChainloaderDigestMismatch { observed: digest_b, pinned: digest_a }]
 }
 
 test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool {
@@ -113,7 +130,7 @@ test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool
     chainloader: ChainloaderDigestObserved { digest: digest_a },
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
-  ) == ["chainloader-not-the-ipxe-arm64-build: pinned grubnetaa64.efi, expected bin-arm64-efi/snponly.efi"]
+  ) == [ChainloaderNotTheIpxeArm64Build { pinned: "grubnetaa64.efi", expected: "bin-arm64-efi/snponly.efi" }]
 }
 
 test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
@@ -123,7 +140,7 @@ test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
     chainloader: ChainloaderDigestUnobservable { reason: "no such file" },
     dnsmasq_binary: SitePxeEdgeProbeRefused { reason: "absent" },
     privilege: SitePxeEdgeProbeHeld,
-  ) == ["chainloader-unobservable: no such file", "dnsmasq-binary: absent"]
+  ) == [ChainloaderUnobservable { reason: "no such file" }, DnsmasqBinaryRefused { reason: "absent" }]
 }
 
 test fn sha256sum_line_parses_to_the_pinned_hash() -> Bool {
@@ -179,5 +196,5 @@ test fn an_unparseable_roster_closes_the_gate() -> Bool {
     chainloader: ChainloaderDigestObserved { digest: digest_a },
     dnsmasq_binary: SitePxeEdgeProbeHeld,
     privilege: SitePxeEdgeProbeHeld,
-  ) == ["known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"]
+  ) == [KnownClientMacUnparseable { error: MacWrongOctetCount { observed_count: 5 } }]
 }
