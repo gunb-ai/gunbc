@@ -6,14 +6,18 @@ import v2.compiler.compile {
   NativeCensusModuleResolveRefused,
   NativeCensusModuleResolved,
   NativeCensusModuleOutcome,
+  NativeTestContext,
   native_census_module_resolution,
   native_census_modules,
   native_census_residual_rows,
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
+import v2.compiler.native_test_vocabulary { NativeTestFileRefusal }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list, length }
+import v2.std.collection { Map }
+import v2.std.integer { Int }
 import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
 import extdeps.communication.medium { Lossless, Medium }
@@ -95,28 +99,115 @@ data census_probe_ingest: SourceRootIngest = Cons {
   }
 }
 
-fn census_probe_outcome_for(module_name: String) -> Optional<NativeCensusModuleOutcome> {
+// ONE NULLARY PRODUCER, FORCED ONCE, BECAUSE THE FLOOR BUILDS A FRESH EVALUATION FRAME PER CLAIM.
+//
+// WHAT THIS REPLACES AND WHY. The first shape of this file was a `census_probe_outcome_for(module)`
+// helper that each claim called, and every call re-entered native_test_context_from_ingest -- the
+// language model, the grammar preparation and the tokenize/parse/normalize of all three specimens,
+// once per claim. The required floor measured the result and refused it: four identities at
+// 197116-200054 evaluator steps against the 72300-step new-witness budget of
+// v2.workflow.required_floor claim_eval_step_budget_for_identity (run 35464948266, job
+// 105955463881, cause=completed_over_cost_requirement). The cost was never what the claims
+// ASSERT -- each inspects one module's outcome -- it was one call whose result shape is all they
+// read, which is the shape DESIGN section 3's standing rule names: a claim whose evaluation is
+// dominated by ONE call it only inspects the result of.
+//
+// THE REPAIR IS TO STOP RECOMPUTING, NOT TO RAISE THE LINE (v2.workflow.floor_pure_producer_share's
+// own words). This declaration is nullary and pure, so it is preparation-forceable: enrolled as a
+// WARM row it is evaluated once during strict preparation and billed there, and each claim below
+// then reads a value rather than rebuilding a front end. The precedent is exact --
+// v2.test.native_decl_selection's four witnesses drove this same native_test_context_from_ingest
+// over one synthetic ingest, were refused on the same ground, and were repaired by the warm row
+// `v2.test.native_decl_selection.collision_resolved` rather than by moving or excusing them.
+//
+// THE REAL ROUTE STILL EXECUTES, WHICH IS THE POINT OF THE PAIRING OBLIGATION. Sharing moves WHERE
+// the front end is paid, not WHETHER it runs: this producer performs the same tokenize, parse,
+// normalize and resolve over the same supplied bytes that the driver's census-resolve mode performs
+// over a source root. Deleting the integration still reds every claim below.
+type CensusProbeOutcomes
+  = CensusProbeContextRefused
+  | CensusProbeOutcomesDecided {
+      clean: NativeCensusModuleOutcome
+      unbound: NativeCensusModuleOutcome
+      poison: NativeCensusModuleOutcome
+      unbound_residual_rows: Int
+    }
+
+fn census_probe_outcome_in(
+  context: NativeTestContext,
+  index: Map<Symbol, NativeTestFileRefusal>,
+  module_name: String
+) -> Optional<NativeCensusModuleOutcome> {
+  fold_list(
+    xs: native_census_modules(ingest: census_probe_ingest),
+    empty: optional_absent(),
+    cons: fn(acc, entry) {
+      if entry.module == module_name {
+        optional_present(
+          value: native_census_module_resolution(
+            context: context,
+            refusal_index: index,
+            entry: entry
+          )
+        )
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// THE RESIDUAL FAN-OUT IS COUNTED HERE RATHER THAN IN THE CLAIM, so the claim that asserts
+// occurrence grain reads an Int instead of re-entering the resolver to obtain the diagnostics it
+// would then fan out. The count is the fan-out's own arithmetic: one row per diagnostic, which is
+// head plus tail.
+fn census_probe_unbound_rows(entry: NativeCensusModule, outcome: NativeCensusModuleOutcome) -> Int {
+  match outcome {
+    NativeCensusModuleResolveRefused { diagnostics: d } =>
+      length(xs: native_census_residual_rows(entry: entry, diagnostics: d))
+    NativeCensusModuleFileRefused => 0
+    NativeCensusModuleResolved => 0
+  }
+}
+
+fn census_probe_unbound_entry() -> NativeCensusModule {
+  NativeCensusModule {
+    module: "v2.census_probe_unbound",
+    path: ^census_probe_unbound_cu
+  }
+}
+
+fn census_probe_outcomes() -> CensusProbeOutcomes {
   match native_test_context_from_ingest(ingest: census_probe_ingest) {
-    Rejected { diagnostics: _ } => optional_absent()
+    Rejected { diagnostics: _ } => CensusProbeContextRefused
     Accepted { value: context, diagnostics: _ } => {
       let index = native_lane_file_refusal_index(refusals: context.file_refusals)
-      fold_list(
-        xs: native_census_modules(ingest: census_probe_ingest),
-        empty: optional_absent(),
-        cons: fn(acc, entry) {
-          if entry.module == module_name {
-            optional_present(
-              value: native_census_module_resolution(
-                context: context,
-                refusal_index: index,
-                entry: entry
-              )
-            )
-          } else {
-            acc
-          }
-        }
+      let unbound = census_probe_outcome_in(
+        context: context,
+        index: index,
+        module_name: "v2.census_probe_unbound"
       )
+      match unbound {
+        Absent => CensusProbeContextRefused
+        Present { value: unbound_outcome } =>
+          match census_probe_outcome_in(context: context, index: index, module_name: "v2.census_probe_clean") {
+            Absent => CensusProbeContextRefused
+            Present { value: clean_outcome } =>
+              match census_probe_outcome_in(context: context, index: index, module_name: "v2.census_probe_poison") {
+                Absent => CensusProbeContextRefused
+                Present { value: poison_outcome } =>
+                  CensusProbeOutcomesDecided {
+                    clean: clean_outcome,
+                    unbound: unbound_outcome,
+                    poison: poison_outcome,
+                    unbound_residual_rows: census_probe_unbound_rows(
+                      entry: census_probe_unbound_entry(),
+                      outcome: unbound_outcome
+                    )
+                  }
+              }
+          }
+      }
     }
   }
 }
@@ -129,10 +220,10 @@ test fn census_roster_carries_every_declared_module_holds() -> Bool {
 }
 
 test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
-  match census_probe_outcome_for(module_name: "v2.census_probe_unbound") {
-    Absent => false
-    Present { value: outcome } =>
-      match outcome {
+  match census_probe_outcomes() {
+    CensusProbeContextRefused => false
+    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, unbound_residual_rows: _ } =>
+      match unbound {
         NativeCensusModuleResolveRefused { diagnostics: _ } => true
         NativeCensusModuleFileRefused => false
         NativeCensusModuleResolved => false
@@ -141,22 +232,16 @@ test fn census_unbound_module_is_resolve_refused_holds() -> Bool {
 }
 
 // THE RESIDUAL IS AT OCCURRENCE GRAIN, and this is the claim that keeps it there. The rows carry the
-// resolver's own Diagnostic, each with the locus a downstream occurrence rewrite joins on; a census
-// that folded a module's diagnostics to one reason would still satisfy the claim above it and would
-// be useless to the wave that consumes it.
+// resolver's own Diagnostic, each with the locus a downstream occurrence rewrite joins on, and there
+// is ONE ROW PER DIAGNOSTIC rather than one per refusing module. A census that folded a module's
+// diagnostics to a single reason would still satisfy the claim above it -- the module would still
+// read resolve_refused -- and would be useless to the wave that consumes it.
 test fn census_resolve_refusal_yields_a_located_row_per_diagnostic_holds() -> Bool {
-  match census_probe_outcome_for(module_name: "v2.census_probe_unbound") {
-    Absent => false
-    Present { value: outcome } =>
-      match outcome {
-        NativeCensusModuleResolveRefused { diagnostics: d } =>
-          length(xs: native_census_residual_rows(
-            entry: NativeCensusModule {
-              module: "v2.census_probe_unbound",
-              path: ^census_probe_unbound_cu
-            },
-            diagnostics: d
-          )) == length(xs: d.tail) + 1
+  match census_probe_outcomes() {
+    CensusProbeContextRefused => false
+    CensusProbeOutcomesDecided { clean: _, unbound: unbound, poison: _, unbound_residual_rows: rows } =>
+      match unbound {
+        NativeCensusModuleResolveRefused { diagnostics: d } => rows == length(xs: d.tail) + 1
         NativeCensusModuleFileRefused => false
         NativeCensusModuleResolved => false
       }
@@ -164,12 +249,14 @@ test fn census_resolve_refusal_yields_a_located_row_per_diagnostic_holds() -> Bo
 }
 
 // THE DISCRIMINATOR AGAINST "ANY REFUSAL IS A RESIDUAL". The poison file refuses in the front end,
-// so the census must attribute it to the CONTEXT and not to the resolver it never entered.
+// so the census must attribute it to the CONTEXT and not to the resolver it never entered. Without
+// this arm every claim here is satisfied by a census that reports every refusal as a resolve
+// refusal, which would inflate the residual with files the strip never affected.
 test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool {
-  match census_probe_outcome_for(module_name: "v2.census_probe_poison") {
-    Absent => false
-    Present { value: outcome } =>
-      match outcome {
+  match census_probe_outcomes() {
+    CensusProbeContextRefused => false
+    CensusProbeOutcomesDecided { clean: _, unbound: _, poison: poison, unbound_residual_rows: _ } =>
+      match poison {
         NativeCensusModuleFileRefused => true
         NativeCensusModuleResolveRefused { diagnostics: _ } => false
         NativeCensusModuleResolved => false
@@ -179,12 +266,12 @@ test fn census_poison_module_is_file_refused_not_resolve_refused_holds() -> Bool
 
 // THE DENOMINATOR IS NOT EMPTY AND IT IS NOT ALL REFUSALS. Without this arm every claim above is
 // satisfied by a census that refuses everything, which is the failure gunbc#11582 landed and
-// withdrew: a discriminator that turned out to agree with its subject for the wrong reason.
+// withdrew: a discriminator that agreed with its subject for the wrong reason.
 test fn census_clean_module_resolves_holds() -> Bool {
-  match census_probe_outcome_for(module_name: "v2.census_probe_clean") {
-    Absent => false
-    Present { value: outcome } =>
-      match outcome {
+  match census_probe_outcomes() {
+    CensusProbeContextRefused => false
+    CensusProbeOutcomesDecided { clean: clean, unbound: _, poison: _, unbound_residual_rows: _ } =>
+      match clean {
         NativeCensusModuleResolved => true
         NativeCensusModuleFileRefused => false
         NativeCensusModuleResolveRefused { diagnostics: _ } => false
