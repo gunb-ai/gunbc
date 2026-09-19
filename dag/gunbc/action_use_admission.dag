@@ -386,6 +386,20 @@ fn uses_line_spells_a_uses_key(line: String) -> Bool {
 // whose quoted KEY -- a leading double-quoted span closed by `":` -- carries a backslash, rather than
 // guessing what the key is. Quoted text with no `":` (a script argument) is not a key and passes.
 fn uses_line_has_escaped_quoted_key(line: String) -> Bool {
+  if !string_contains(s: line, pattern: "\":") {
+    false
+  } else if !string_contains(s: line, pattern: "\\") {
+    false
+  } else {
+    uses_line_quoted_key_has_escape(line: line)
+  }
+}
+
+// The branches above are what every line pays -- written as branches, not `&&`, because the
+// interpreter evaluates both operands of `&&` (gunbc.recurring_failure_mode
+// realization_arms_diverge_on_whether_the_program_refuses), which would run this split on every
+// line. Only a line carrying both a `":` and a backslash is split.
+fn uses_line_quoted_key_has_escape(line: String) -> Bool {
   let text = substring(s: line, start: yaml_indent_of(line: line), end: line.length())
   let body = if starts_with(s: text, prefix: "- ") { substring(s: text, start: 2, end: text.length()) } else { text }
   starts_with(s: body, prefix: "\"") && string_contains(s: body, pattern: "\":") && string_contains(s: fold(split(s: body, delimiter: "\":"), init: "", f: fn(acc, part) { if acc == "" { part } else { acc } }), pattern: "\\")
