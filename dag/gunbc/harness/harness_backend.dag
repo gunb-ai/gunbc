@@ -4,6 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, Timestamp, EpochSecs }
 import std.nat { Nat }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.algebra { trim }
+import v2.std.algebra { filter }
 import v2.std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { Second, second, second_count }
@@ -14,7 +15,8 @@ import gunbc.serving.serving_availability {
 }
 import extdeps.vllm.metrics {
   VllmServingMetric, NumRequestsWaiting, NumRequestsRunning, NumRequestsWaitingByReason, GenerationTokensTotal,
-  vllm_metric_name, vllm_waiting_reason_label, vllm_waiting_reason_capacity,
+  HistogramStatistic, vllm_metric_name, vllm_histogram_series_name,
+  vllm_waiting_reason_label, vllm_waiting_reason_capacity,
 }
 import extdeps.prometheus.client { ProcessStartTimeSeconds, prometheus_process_series_name }
 import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_wire }
@@ -361,6 +363,14 @@ fn harness_gauge_value(body: String, metric: VllmServingMetric) -> String? {
   harness_metric_line_value(body: body, prefix: join([vllm_metric_name(m: metric) as String, "{"], ""), selector: SeriesByName)
 }
 
+fn harness_histogram_statistic_value(body: String, metric: VllmServingMetric, statistic: HistogramStatistic) -> String? {
+  harness_metric_line_value(
+    body: body,
+    prefix: join([vllm_histogram_series_name(m: metric, s: statistic) as String, "{"], ""),
+    selector: SeriesByName,
+  )
+}
+
 // THE LABEL PAIR IS BUILT ONCE, HERE, from the label key and value rows the upstream module carries,
 // so no consumer spells a Prometheus label rendering of its own.
 fn harness_labelled_gauge_value(body: String, metric: VllmServingMetric, label: NonEmptyStr, value: NonEmptyStr) -> String? {
@@ -544,5 +554,62 @@ fn harness_observe_engine_at(endpoint: ServingRouteEndpoint, at: EpochSecs) -> H
       launch: harness_launch_from_body(group: group, address: serving_route_endpoint_wire(e: endpoint) as String, body: read.body),
       progress: harness_progress_sample(body: read.body, at: at),
     }
+  }
+}
+
+fn line_is_sudo_password_prompt(line: String) -> Bool {
+  match first(split(s: trim(s: line), delimiter: "[sudo] password for")) {
+    Absent => false
+    Present { value: prefix } => prefix == ""
+  }
+}
+
+fn text_without_sudo_prompt(body: String) -> String {
+  join(filter(xs: split(s: body, delimiter: "\n"), predicate: fn(line) { !line_is_sudo_password_prompt(line: line) }), "\n")
+}
+
+fn text_labeled_field(body: String, label: String) -> String? {
+  let needle = join([label, ":"], "")
+  let lines = split(s: body, delimiter: "\n")
+  let matching = filter(lines, l => starts_with(s: trim(s: l), prefix: needle))
+  if length(matching) != 1 {
+    none
+  } else {
+    match first(matching) {
+      Absent => none
+      Present { value: line } => {
+        let parts = split(s: line, delimiter: ":")
+        if length(parts) < 2 {
+          none
+        } else {
+          last(parts)
+        }
+      }
+    }
+  }
+}
+
+fn text_field_last_word(body: String, label: String) -> String? {
+  match text_labeled_field(body: body, label: label) {
+    Absent => none
+    Present { value: t } => last(split(s: trim(s: t), delimiter: " "))
+  }
+}
+
+fn text_labeled_count(body: String, label: String) -> Nat? {
+  match text_field_last_word(body: body, label: label) {
+    Absent => none
+    Present { value: last_word } => harness_gauge_count(text: trim(s: last_word))
+  }
+}
+
+fn text_labeled_head_count(body: String, label: String) -> Nat? {
+  match text_field_last_word(body: body, label: label) {
+    Absent => none
+    Present { value: last_word } =>
+      match first(split(s: trim(s: last_word), delimiter: ".")) {
+        Absent => none
+        Present { value: whole } => harness_gauge_count(text: whole)
+      }
   }
 }
