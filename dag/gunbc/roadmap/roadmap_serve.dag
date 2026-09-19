@@ -597,6 +597,13 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
 // the tick that wrote the body was given, with no refusal, because a pre-rendered body carries no
 // record of the plan it came from. That is a real seam between two processes, not a gap inside this
 // fold, and it is stated rather than papered over: nothing here can detect the mismatch.
+// THE APPROVAL ARM DECLARES WHICH PROCESS IT IS, and that is what stops this mount being a second
+// writer. The four approval folds are the broker's own, so nothing inside them can tell they were
+// reached from here; the arm below passes RoadmapProcess, so the two routes that MUTATE the store
+// consult gunbc.auth.approval_writer_authority and refuse the moment authority moves to the broker
+// -- while this table is still mounting them for rollback (side-chat HOLD item 3: port identity is
+// not writer authority, and roadmap route code may stay only if its store effects are gated by the
+// same authority).
 fn roadmap_serve_invoke_over(
   instance: HostDashboardInstance,
   plan: RoadmapAuthorityProjection,
@@ -665,13 +672,6 @@ fn roadmap_serve_invoke_over(
     ObservationJsonHandler => served_observation_standing_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
-    // THE ARM DECLARES WHICH PROCESS IT IS, and that is what stops this mount being a second
-    // writer. The handler folds are the broker's own, so nothing inside them can tell they were
-    // reached from here; passing RoadmapProcess means the two mutating routes consult
-    // gunbc.auth.approval_writer_authority and refuse the moment authority moves to the broker,
-    // while this table is still mounting them for rollback (side-chat HOLD item 3: port identity is
-    // not writer authority, and route code may stay only if its store effects are gated by the same
-    // authority).
     ApprovalBrokerCutoverHandler { route: r } =>
       approval_broker_invoke(handler: r, params: params, request: request, process: RoadmapProcess)
   }
