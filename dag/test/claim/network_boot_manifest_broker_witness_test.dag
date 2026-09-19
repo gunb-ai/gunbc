@@ -23,6 +23,7 @@ import gunbc.network_boot_delivery {
   ManifestVerificationNotYetValid,
   ManifestVerificationMac,
   ManifestVerificationVerifiedKey,
+  ManifestVerificationWrongMessage,
   ProductionTrustedBootstrap,
   ControlledNetworkBootstrap,
   BootstrapTrustUnestablished,
@@ -311,6 +312,33 @@ test fn a_mac_verified_under_a_different_key_than_the_pinned_root_is_refused() -
         ),
       ) {
         BootManifestRefused { class: c } => c == ManifestVerificationVerifiedKey
+        BootManifestAuthentic { claims: _ } => false
+      }
+  }
+}
+
+// The message-binding wall at the verify interface: a MacVerified whose
+// message is not the ticket's signing input must refuse, whatever key and
+// suite it carries. redeem never reaches this arm (it MACs the same input it
+// presents), so this supplied-input claim is the arm's only discriminating red.
+test fn a_mac_verified_over_a_different_message_is_refused() -> Bool {
+  let claims = claims_for(id: good_identity())
+  let ticket = SignedBootManifestTicket { claims: claims, tag_hex: "00" }
+  match signed_boot_manifest_signing_input(c: claims) {
+    Absent => false
+    Present { value: presented } =>
+      match verify_signed_boot_manifest(
+        ticket: ticket,
+        expectation: expectation_at(spent: []),
+        presented: presented,
+        mac_result: mac_verification_from_implementation(
+          key_id: broker_key_id,
+          suite: HmacSha256,
+          message: concat(presented as String, "-tampered") as NonEmptyStr,
+          implementation_verified: true,
+        ),
+      ) {
+        BootManifestRefused { class: c } => c == ManifestVerificationWrongMessage
         BootManifestAuthentic { claims: _ } => false
       }
   }
