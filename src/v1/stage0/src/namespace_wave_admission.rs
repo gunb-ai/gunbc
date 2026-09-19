@@ -1422,8 +1422,18 @@ pub fn carried_admissions_from_messages(
 /// Read the admissions carried by the commits `base..head`, oldest first.
 ///
 /// On a pull-request run those are the branch's commits (and the synthetic merge commit, which
-/// carries no block); on a merge-queue run they are the squash commits of the composition, whose
-/// messages keep every branch commit's message. Main's own commits are outside the range by the
+/// carries no block); on a merge-queue run they are the squash commits of the composition.
+///
+/// DECLARED EXTERNAL BOUNDARY, OBSERVED AND NOT CONVERGED. That a queue squash commit keeps the
+/// branch commits' messages is the GitHub repository setting `squash_merge_commit_message`
+/// (`COMMIT_MESSAGES`), read live 2026-09-19 and observed on merge_group commit
+/// 67d6d727b7ea91b8b6305e2fe1e13350ce75795d, whose message carries each branch commit's body. No
+/// authority in this corpus owns or converges that setting -- `gunbc.repo_ruleset` converges the
+/// queue's `merge_method` but not repository merge settings -- so it is a bet at the boundary, not
+/// a deduced fact (DESIGN section 4d). Its failure direction is CLOSED: a queue squash that dropped
+/// the bodies would carry no block, the delta would be unadjudicated, and the queue run would
+/// refuse -- a stall, never a silent admission. Next rung: repository merge-settings convergence
+/// beside `repo_ruleset`'s queue policy. Main's own commits are outside the range by the
 /// merge base, so a landed change's admissions never reach a later change's run.
 pub fn load_carried_admissions(
     workspace: &Path,
@@ -1767,10 +1777,12 @@ fn parse_decl_ref_list(
 /// or on a roster-source edit) and, before gunbc#11481, the two `merge_group` follow-up charges all
 /// existed to get a consumed row OFF main after its owner landed it. Admissions are now carried by
 /// the change's own commit messages and never reach main's tree, so there is no consumed row on
-/// main to charge anyone for; a carried row the base already satisfies is a printed receipt. The
-/// drops `gunbc.rung_drop.consumed_row_owner_charge_unenforced` and
-/// `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` are retired by that capability, not by
-/// re-adding a charge. Lifecycle is derived from the candidate-set proof, never predicted by an
+/// main to charge anyone for; a carried row the base already satisfies is a printed receipt.
+/// `gunbc.rung_drop.consumed_row_owner_charge_unenforced` is retired by that capability, not by
+/// re-adding a charge. `gunbc.rung_drop.owner_deletion_follow_up_charge_removed` is NOT retired:
+/// its population is empty (the field is gone) but its trigger -- resolving a follow-up number
+/// against the forge -- has not fired, so it stays Standing and inert. The row is the authority
+/// for its standing; this sentence only points at it. Lifecycle is derived from the candidate-set proof, never predicted by an
 /// authored row. Policy authority: `gunbc.namespace_wave_admission` `namespace_wave_admission_note`.
 pub fn wave_admission_refusal(outcome: &WaveAdmissionOutcome) -> Option<String> {
     match outcome {
