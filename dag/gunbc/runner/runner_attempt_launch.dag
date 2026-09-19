@@ -80,7 +80,7 @@ data jit_mint_http_realization_frontier: DissolutionCondition = unbound_dissolut
 // firecracker_jailer_chroot_root. SUFFICIENT FOR deleting this row. NOT satisfied by
 // creating an empty jit.bin beside the workspace.
 data jail_jit_device_staging_frontier: DissolutionCondition = unbound_dissolution(
-  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_authorized_steps. TRIGGER: gunbc#10923 mint supplies encoded_jit_config and this planner writes that blob at firecracker_jailer_chroot_root/.../jit.bin so the in-jail path /jit.bin names a file the VMM can open. SUFFICIENT FOR deleting this row. NOT satisfied by an empty placeholder beside work.img." as NonEmptyStr,
+  description: "NAMED CONSUMER: gunbc.runner_attempt_launch plan_authorized_steps. TRIGGER: gunbc#10923 mint supplies encoded_jit_config and this planner writes gunbc.runner_microvm jit_drive_content(encoded_jit_config) -- the sector-padded environment-file bytes the guest agent reads from the device jit_drive_guest_device resolves, never the bare blob -- at firecracker_jailer_chroot_root/.../jit.bin so the in-jail path /jit.bin names a file the VMM can open. SUFFICIENT FOR deleting this row. NOT satisfied by an empty placeholder beside work.img." as NonEmptyStr,
 )
 
 // SHADOW MEANS SHADOW. No fleet-converge entry, no dual dispatch, no "use Y when available".

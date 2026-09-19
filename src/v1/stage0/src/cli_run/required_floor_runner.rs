@@ -5639,9 +5639,19 @@ pub fn run_required_floor(
             &policy_frame,
             "v2.workflow.required_floor.required_gate_prefixes",
         )?;
+        // THE GATE'S SECOND SELECTOR KIND (`v2.workflow.required_floor`
+        // `required_gate_authored_modules`, `RequiredGateSelector`): authored module NAMES,
+        // matched at segment boundaries -- the module-seed rule below, not the prefix rule.
+        // They join `closure_module_seeds`, so preparation and site disposition admit them
+        // under one rule by construction.
+        let authored_modules = floor_decode_module_prefix_roster(
+            &policy_frame,
+            "v2.workflow.required_floor.required_gate_authored_modules",
+        )?;
         let schedule = local_repo_wet_schedule(&policy_frame)?;
-        (prefixes, schedule)
+        ((prefixes, authored_modules), schedule)
     };
+    let (required_gate_prefixes, required_gate_authored_modules) = required_gate_prefixes;
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
     // and a gate roster that happened not to reach `v2.workflow.required_floor` refused with
@@ -5781,6 +5791,7 @@ pub fn run_required_floor(
     let closure_module_seeds: Vec<String> = REQUIRED_FLOOR_RUNTIME_AUTHORITY_MODULES
         .iter()
         .map(|m| m.to_string())
+        .chain(required_gate_authored_modules.iter().cloned())
         .chain(changed_module_seeds.iter().cloned())
         .chain(
             compile_subject
@@ -6380,10 +6391,29 @@ pub fn run_required_floor(
         &hermetic,
         "v2.workflow.required_floor.required_gate_prefixes",
     )?;
-    if required_gate_prefixes.is_empty() {
+    let required_gate_authored_modules = floor_decode_module_prefix_roster(
+        &hermetic,
+        "v2.workflow.required_floor.required_gate_authored_modules",
+    )?;
+    // ONE ADMISSION DECISION, READ TWICE BELOW (`v2.workflow.required_floor`
+    // `required_gate_admits`): a family prefix matches textually, an authored module name
+    // matches itself or a module it contains by name -- the same rule that seeded it.
+    let required_gate_admits = |module_path: &str| -> bool {
+        required_gate_prefixes
+            .iter()
+            .any(|prefix| module_path.starts_with(prefix.as_str()))
+            || required_gate_authored_modules
+                .iter()
+                .any(|name| module_name_is_or_is_contained_by(module_path, name))
+    };
+    // THE GATE IS EMPTY ONLY WHEN BOTH SELECTOR ROSTERS ARE: an authored-module row admits
+    // a module as surely as a family row does, so an empty prefix roster beside a populated
+    // authored-module roster is a gate that plans claims, not one that greens over nothing.
+    if required_gate_prefixes.is_empty() && required_gate_authored_modules.is_empty() {
         return Err("REQUIRED-FLOOR REFUSAL cause=RequiredGateRosterEmpty — \
-                    v2.workflow.required_floor.required_gate_prefixes admits nothing, so the \
-                    floor would plan zero claims and green over an empty population"
+                    v2.workflow.required_floor.required_gate_prefixes and \
+                    required_gate_authored_modules both admit nothing, so the floor would plan \
+                    zero claims and green over an empty population"
             .to_string());
     }
     // ── the witness roster, as the `.dag` discovery authority answers it ──────────────────
@@ -6753,9 +6783,7 @@ pub fn run_required_floor(
             Some(dot) => &identity[..dot],
             None => identity,
         };
-        required_gate_prefixes
-            .iter()
-            .any(|prefix| module_path.starts_with(prefix.as_str()))
+        required_gate_admits(module_path)
     };
     // RETURNS WHAT IT REMOVED, at identity grain and carrying which of the two grounds removed
     // it. The counts were already printed; what did not exist was the per-identity fact, and the
@@ -6874,9 +6902,7 @@ pub fn run_required_floor(
         let fixture_prefix = fixture_home_prefixes
             .iter()
             .find(|prefix| file.module_path.starts_with(prefix.as_str()));
-        let inside_required_gate = required_gate_prefixes
-            .iter()
-            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
+        let inside_required_gate = required_gate_admits(&file.module_path);
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {

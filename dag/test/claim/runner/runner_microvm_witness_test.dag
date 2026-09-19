@@ -723,7 +723,7 @@ fn allowance_is(bytes: ByteSize) -> Bool {
 // directive, or a shape that read a different row, reds here. What this does not establish is
 // pids.max as applied inside a booted guest -- that readback is the first guest attempt's.
 test fn the_task_ceiling_is_applied_as_the_guest_units_tasks_max() -> Bool {
-  let unit = serialize_systemd_unit_file(file: runner_guest_agent_unit())
+  let unit = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: "/dev/vdb" as NonEmptyStr))
   string_contains(s: unit, pattern: join(["TasksMax=", to_string(gunbc_runner_microvm_task_ceiling())], ""))
     && gunbc_runner_microvm_task_ceiling() == gunbc_runner_slot_desired().tasks_max
     && match shape_of(
