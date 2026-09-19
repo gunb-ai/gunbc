@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.disposition { Disposition, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address, render_ipv4_cidr, Ipv4Prefix, ipv4_prefix, render_ipv4_prefix }
 import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, MacAddressScope, LocallyAdministered, mac_address_scope }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_microvm { RunnerMicroVmNetworking, GuestNetworkTap }
@@ -304,7 +304,7 @@ type HostEgressGrain {
 }
 
 type GuestEgressPolicy {
-  denied_destinations: List<NonEmptyStr>
+  denied_destinations: List<Ipv4Prefix>
   grants: List<GuestEgressGrant>
 }
 
@@ -334,13 +334,13 @@ data runner_microvm_guest_tls_port: Port = 443
 // CDN-fronted, so a static address list is stale when written. The narrow form is an egress proxy.
 data runner_microvm_guest_egress_policy: GuestEgressPolicy = GuestEgressPolicy {
   denied_destinations: [
-    "10.0.0.0/8" as NonEmptyStr,
-    "172.16.0.0/12" as NonEmptyStr,
-    "192.168.0.0/16" as NonEmptyStr,
-    "100.64.0.0/10" as NonEmptyStr,
-    "169.254.0.0/16" as NonEmptyStr,
-    "127.0.0.0/8" as NonEmptyStr,
-    "224.0.0.0/4" as NonEmptyStr,
+    ipv4_prefix(o1: 10, o2: 0, o3: 0, o4: 0, length: 8),
+    ipv4_prefix(o1: 172, o2: 16, o3: 0, o4: 0, length: 12),
+    ipv4_prefix(o1: 192, o2: 168, o3: 0, o4: 0, length: 16),
+    ipv4_prefix(o1: 100, o2: 64, o3: 0, o4: 0, length: 10),
+    ipv4_prefix(o1: 169, o2: 254, o3: 0, o4: 0, length: 16),
+    ipv4_prefix(o1: 127, o2: 0, o3: 0, o4: 0, length: 8),
+    ipv4_prefix(o1: 224, o2: 0, o3: 0, o4: 0, length: 4),
   ],
   grants: [
     GuestEgressGrant { transport: NftUdp, port: runner_microvm_guest_dns_port, destination: NamedDestination { address: runner_microvm_guest_resolver() } },
@@ -360,7 +360,7 @@ fn grant_destination_matches(d: GuestEgressDestination) -> List<NftMatch> {
   match d {
     AnyUndeniedDestination => []
     NamedDestination { address: a } =>
-      [NftDestinationAddressPrefix { cidr: join([render_ipv4_address(addr: a) as String, "/32"], "") as NonEmptyStr }]
+      [NftDestinationAddressPrefix { cidr: render_ipv4_cidr(addr: a, prefix: 32) }]
   }
 }
 
@@ -417,7 +417,7 @@ fn guest_egress_rules(p: GuestEgressPolicy, host: HostEgressGrain) -> List<NftRu
           ],
           ipv6_rules(v: host.ipv6),
         ),
-        map(p.denied_destinations, c => from_guest_tap(m: [NftDestinationAddressPrefix { cidr: c }], verdict: NftDrop)),
+        map(p.denied_destinations, c => from_guest_tap(m: [NftDestinationAddressPrefix { cidr: render_ipv4_prefix(p: c) }], verdict: NftDrop)),
       ),
       map(p.grants, g => grant_rule(g: g)),
     ),
