@@ -18530,9 +18530,6 @@ pub fn run_claims_in_process(
         let closure_subject = format!("in-process-claim:{entry}");
         for function in functions {
             let (outcome, _receipt) = run_claim_measured(&ctx, &closure_subject, function);
-            // Frame exit: the eval memo must not retain values across claims sharing
-            // this ctx (byte-unbounded, the 20GiB-class kills — same as the gate path).
-            v1_interpreter::eval_call_memo_frame_exit(&ctx);
             if outcome == ClaimOutcome::Pass {
                 println!("PASS {function}");
             } else {

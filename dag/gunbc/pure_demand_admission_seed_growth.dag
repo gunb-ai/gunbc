@@ -1,0 +1,52 @@
+module gunbc.pure_demand_admission_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the change that makes admission precede identity on the seed's
+// pure-call path (gunbc.recurring_failure_mode.memo_key_rehashes_a_growing_persistent_value,
+// second instance). The change is a NET DELETION of the seed: the eval-frame result memo
+// (EvalCallMemo, its entry cap, its GUNBC_EVAL_MEMO realization switch, its frame-exit eviction,
+// its get/put/counters, and value_fast_eq) and its provider row extdeps.realization.eval_memo are
+// gone, because std.materialization_ladder never discharges a demand into a provider scoped to one
+// shared-state frame -- the memo's admitted population was empty by construction and the identity
+// it derived per call was pure cost. Deletions offset nothing under gunbc.seed_growth_admission,
+// so the two items the change ADDS are enumerated here on their own.
+//
+// WHAT IS ADDED, AND WHY IT IS AN ODOMETER AND NOT A DECISION. `argument_identities_derived`
+// reads a per-frame count of argument positions that reached `eval_recompute_arg_key`;
+// `note_argument_identity_derived` is its single writer, called from the three keying sites
+// (`eval_recompute_key`, `eval_recompute_partial_key`, `cross_claim_args_hash`) and nowhere else.
+// Neither adds an arm, a decision or an evaluation order. They exist so the fact this change
+// establishes -- an undeclared single pure demand derives NO identity -- is executable evidence
+// rather than an assertion: v1_compiler tests/pure_demand_recompute_admission reads the odometer
+// back at zero on the production route and goes red when unconditional keying is restored, with the
+// recompute-trace ledger (which legitimately keys) as its positive control. The count is also
+// printed on the [recompute-trace] totals line so the ledger discloses its own keying work.
+//
+// WHY RUST IS STILL NEEDED: the keying sites are inside the seed evaluator's call path, which is
+// the boundary this change repairs; no .dag fold observes an individual identity derivation, and a
+// .dag-side counter would be a second representation of a count the evaluator alone can produce.
+//
+// WHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits
+// by PURPOSE. The seed interpreter is what executes every v2 source today -- the self-host compile
+// (v2.compiler.compile), the required floor's witnesses and every instrument -- and each of those
+// paid an identity derivation per pure call that no admission had asked for, quadratic wherever a
+// fold threads a growing value through recursion. Removing a cost the ladder already prescribes
+// away, and leaving the seed smaller, is BehaviorPreservingRedundancyRemoval in the shape the
+// standing already records; the semantics are unchanged (recompute was always one of the two
+// realizations, declared identical) and the refused classes are untouched: no new language
+// behavior, no compatibility obligation (GUNBC_EVAL_MEMO is retired, not kept as a no-op arm), no
+// escape hatch, no seed capability, and the exported surface grows by exactly the one reader
+// enumerated below.
+data pure_demand_admission_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "argument_identities_derived", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "note_argument_identity_derived", field: WholeDeclaration }
+  ],
+  reason: "A per-frame ODOMETER of argument identities derived, with one reader and one writer, added so that 'an undeclared single pure demand derives no identity' is executable evidence with an enrolled RED (tests/pure_demand_recompute_admission) rather than a sentence. No arm, decision or evaluation order is added; the change it accompanies deletes the eval-frame result memo, its realization switch and its provider row, because std.materialization_ladder rule 5 prescribes Recompute for an undeclared single pure demand and rule 1 prescribes Share for a within-frame repeat, so a within-frame result memo had no admitted population. Admitted against the v1 freeze by purpose: every interpreted v2 route, including the self-host compile and the required floor, paid the deleted per-call identity derivation.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both items and this row when demand identity is derived by the demand engine (docs/plans/demand-engine-program.md M1: demand identity and the dependency read set as modeled carriers), at which point which demands derive an identity is a fact of the derived demand population and the seed's keying sites -- the recompute-trace ledger and the cross-claim tier -- retire with the interpreter under the failure-mode row's program remedy. NOT retired by the odometer reading zero everywhere: zero is the property the control guards, and deleting the guard because it holds is deleting the evidence that it holds.",
+  current_boundary: "One Cell on InterpContext, incremented at the three keying sites and read by the enrolled control and by the [recompute-trace] totals line. It changes no verdict and no value; cost on the production route is zero increments (no keying site runs there), and under the trace ledger one Cell add per argument position beside a content hash that already dominates it."
+}

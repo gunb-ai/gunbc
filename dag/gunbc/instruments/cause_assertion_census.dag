@@ -629,8 +629,11 @@ fn cause_complete_report(acquisition: CauseCorpusAcquisition, declarations: List
 }
 
 // On-demand only. Whole-corpus acquisition must not enter ordinary witness discovery.
-// GUNBC_EVAL_MEMO=0 gunbc run --source-root dag --source-root src/v2 \
+// gunbc run --source-root dag --source-root src/v2 \
 //   --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=/tmp/causes.tsv
+// (The GUNBC_EVAL_MEMO=0 prefix this invocation once carried selected the seed's recompute
+// realization over its eval-frame result memo; that memo is retired -- an undeclared single
+// demand derives no identity -- so recompute is the only realization and the prefix is gone.)
 fn census(report: String) -> ProcessExit {
   let roots = ["dag", "src/v2"]
   match floor_discovery_source_inventory_live(pool_roots: roots) {
@@ -642,7 +645,7 @@ fn census(report: String) -> ProcessExit {
         let acquisition = cause_corpus_acquire(subjects: subjects, modules: module_declaration_facts_live(pool_roots: roots))
         let complete = count(acquisition.refusals) == 0
         let content = if complete {
-          join([join(["rederive with selected realization: GUNBC_EVAL_MEMO=0 gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=", report], ""),
+          join([join(["rederive with: gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/cause_assertion_census.dag --function census --arg report=", report], ""),
             cause_complete_report(acquisition: acquisition, declarations: data_decl_type_facts(pool_roots: roots))], "\n")
         } else {
           join(["ACQUISITION_REFUSED: no negative coverage conclusions are available",
