@@ -1281,7 +1281,13 @@ fn primitive_call_callee_of_target(
 /// Record the callee of ONE node when the resolver did NOT establish it as a source declaration
 /// or a local binding -- the only two callee kinds that are not the census subject; everything
 /// else is a primitive identity the resolver minted or a site where it minted nothing, and both
-/// are rows. The descent is `collect_primitive_call_edges`.
+/// are rows. A local binding reaches this arm in two spellings: as a `LocallyBoundCall` target
+/// and as `FunctionValueCallSemantics`, which the inferer mints when the callee is a body binding
+/// (`let f = ...; f(x)`) and so carries no target at all. Both are one callee kind, the local,
+/// and neither is a row: the census subject is the CALL edge to a primitive, and a primitive can
+/// only be named in call position (there is no value-position primitive reference for a local to
+/// capture), so the value a body binding holds was already walked at its own call sites.
+/// The descent is `collect_primitive_call_edges`.
 fn primitive_call_edge_at(
     texpr: &Rc<crate::v1_std_core::Node>,
     caller_module: &str,
