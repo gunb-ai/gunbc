@@ -8,7 +8,7 @@ import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file, serialize_systemd_drop_in }
 import gunbc.runner_microvm {
   RunnerGuestImage, gunbc_runner_guest_image, jit_drive_content, jit_drive_newline_sector,
-  jit_drive_guest_device, runner_microvm_vm_config, attach_workspace_drive, jit_transport_drive_id,
+  jit_drive_guest_device, JitDriveDevice, JitDriveNotAttached, runner_microvm_vm_config, attach_workspace_drive, jit_transport_drive_id,
   gunbc_runner_jit_transport, gunbc_runner_microvm_declared_size, GuestNetworkAbsent,
 }
 import extdeps.virtualization.firecracker {
@@ -36,6 +36,13 @@ import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn the_credential_device() -> NonEmptyStr {
+  match jit_drive_guest_device() {
+    JitDriveDevice { device: d } => d
+    JitDriveNotAttached { cause: _ } => "/dev/credential-drive-not-attached" as NonEmptyStr
+  }
+}
 
 data a_digest: NonEmptyStr = "1111111111111111111111111111111111111111111111111111111111111111" as NonEmptyStr
 data b_digest: NonEmptyStr = "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr
@@ -151,7 +158,7 @@ test fn two_images_differing_only_in_the_runner_release_do_not_share_a_path() ->
 // command can be spawned at all. The red is either one missing, or the power-off regressing to a
 // command line (which cannot run on the start-failed arm).
 test fn the_guest_agent_powers_the_machine_off_on_every_arm() -> Bool {
-  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image))
+  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: the_credential_device()))
   string_contains(s: text, pattern: "SuccessAction=poweroff-force")
     && string_contains(s: text, pattern: "FailureAction=poweroff-force")
     && !string_contains(s: text, pattern: "poweroff -f")
@@ -163,7 +170,7 @@ test fn the_guest_agent_powers_the_machine_off_on_every_arm() -> Bool {
 // re-enter: the listener's exit is the unit's exit. The red is any revision that launches run.sh (or
 // run-helper.sh), or adds a restart policy, either of which keeps a spent one-job VM alive.
 test fn the_listener_runs_once_with_no_relaunch_loop() -> Bool {
-  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image))
+  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: the_credential_device()))
   string_contains(s: text, pattern: "ExecStart=/opt/actions-runner/bin/Runner.Listener run")
     && !string_contains(s: text, pattern: "run.sh")
     && !string_contains(s: text, pattern: "run-helper")
@@ -174,7 +181,7 @@ test fn the_listener_runs_once_with_no_relaunch_loop() -> Bool {
 // THE CREDENTIAL IS READ FROM THE DEVICE BY systemd, NEVER PASSED ON A COMMAND LINE, and every program
 // the agent runs is named absolutely (the Mt. Collins PATH lesson). The job PATH is declared.
 test fn the_credential_arrives_by_environment_file_and_every_program_is_absolute() -> Bool {
-  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image))
+  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: the_credential_device()))
   string_contains(s: text, pattern: "EnvironmentFile=-/dev/vdb")
     && !string_contains(s: text, pattern: "--jitconfig")
     && string_contains(s: text, pattern: "Environment=PATH=/usr/local/sbin:")
@@ -182,7 +189,7 @@ test fn the_credential_arrives_by_environment_file_and_every_program_is_absolute
     && string_contains(s: text, pattern: "ExecStartPre=/opt/actions-runner/bin/Runner.Listener --version")
     && string_contains(s: text, pattern: "ExecStartPost=/usr/bin/echo gunbc-guest-observation runner-started")
     && string_contains(s: text, pattern: "ExecStopPost=-/usr/bin/echo gunbc-guest-observation runner-exited")
-    && string_contains(s: text, pattern: join([" exit_code=", "$", "{EXIT_CODE} exit_status=", "$", "{EXIT_STATUS}"], ""))
+    && string_contains(s: text, pattern: join([" exit_code=", "$", "{", "EXIT_CODE", "}", " exit_status=", "$", "{", "EXIT_STATUS", "}"], ""))
 }
 
 // THE DRIVE BYTES SURVIVE A BLOCK DEVICE. Firecracker drops a partial tail sector, so the contract
@@ -265,11 +272,13 @@ test fn the_filesystem_size_operand_is_denominated_rather_than_a_block_count() -
     && any(xs: c.arguments, predicate: fn(w) { w == "-d" })
 }
 
-// THE DEVICE THE GUEST READS IS WHERE THE VM CONFIGURATION PUTS THE CREDENTIAL DRIVE. Applied to the
-// real runner_microvm_vm_config, before and after the workspace drive is appended: a reorder or a
-// prepended drive moves the credential off /dev/vdb and reds here. Without this, the guest's
-// tolerant EnvironmentFile=- would read the rootfs and boot as the no-credential arm, silently. The
-// control is the same function naming the root drive /dev/vda and an unattached id nothing.
+// THE DEVICE THE GUEST READS IS DERIVED FROM THE DRIVE LIST, AND THE DERIVATION MATCHES WHAT A REAL
+// GUEST SAW. The oracle is /dev/vdb as observed on hardware (gunbc.runner.runner_first_job_receipt:
+// the Mt. Collins guest read its credential off /dev/vdb with root=/dev/vda), not a copy of a
+// production row. Applied to the real runner_microvm_vm_config before and after the workspace drive,
+// and to the rendered unit: prepending a drive moves the derived name, reds the hardware pin here,
+// and the rendered EnvironmentFile= follows the derivation rather than a literal. Controls: root is
+// /dev/vda, an unattached id has no name.
 test fn the_credential_device_is_where_the_vm_config_puts_the_credential_drive() -> Bool {
   let cfg = runner_microvm_vm_config(
     rootfs_path: "/r/rootfs.ext4",
@@ -281,9 +290,12 @@ test fn the_credential_device_is_where_the_vm_config_puts_the_credential_drive()
   )
   let with_work = attach_workspace_drive(config: cfg, path: "/r/work.img")
   let jit = jit_transport_drive_id(t: gunbc_runner_jit_transport)
-  let expected = jit_drive_guest_device as String
-  (match firecracker_drive_guest_device(drives: cfg.drives, drive_id: jit) { Present { value: d } => d == expected  Absent => false })
-    && (match firecracker_drive_guest_device(drives: with_work.drives, drive_id: jit) { Present { value: d } => d == expected  Absent => false })
+  let observed_on_hardware = "/dev/vdb"
+  let unit = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: the_credential_device()))
+  (match jit_drive_guest_device() { JitDriveDevice { device: d } => d as String == observed_on_hardware  JitDriveNotAttached { cause: _ } => false })
+    && string_contains(s: unit, pattern: concat("EnvironmentFile=-", observed_on_hardware))
+    && (match firecracker_drive_guest_device(drives: cfg.drives, drive_id: jit) { Present { value: d } => d == observed_on_hardware  Absent => false })
+    && (match firecracker_drive_guest_device(drives: with_work.drives, drive_id: jit) { Present { value: d } => d == observed_on_hardware  Absent => false })
     && (match firecracker_drive_guest_device(drives: cfg.drives, drive_id: "rootfs" as NonEmptyStr) { Present { value: d } => d == "/dev/vda"  Absent => false })
     && (match firecracker_drive_guest_device(drives: cfg.drives, drive_id: "absent" as NonEmptyStr) { Present { value: _ } => false  Absent => true })
 }

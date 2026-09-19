@@ -40,7 +40,10 @@ import extdeps.systemd.unit_file {
   ServiceStandardOutput, ServiceStandardError, OutputJournalAndConsole,
   WantedBy, serialize_systemd_unit_file, serialize_systemd_drop_in,
 }
-import gunbc.runner_microvm { RunnerGuestImage, gunbc_runner_guest_image, jit_drive_guest_device }
+import gunbc.runner_microvm {
+  RunnerGuestImage, gunbc_runner_guest_image,
+  JitDriveDeviceResolution, JitDriveDevice, JitDriveNotAttached, jit_drive_guest_device,
+}
 import gunbc.command_runner {
   run_shell_commands, LocalExec,
 }
@@ -391,7 +394,7 @@ data guest_agent_real_job_acceptance_frontier: DissolutionCondition = unbound_di
 // adding a restart policy has to delete a declaration to do it.
 //
 // THE CREDENTIAL IS READ BY systemd FROM THE READ-ONLY DEVICE (gunbc.runner_microvm
-// jit_drive_guest_device) as an environment file whose single assignment is the listener's own
+// jit_drive_guest_device, passed in as credential_device) as an environment file whose single assignment is the listener's own
 // argument variable. No `--jitconfig <blob>` appears on any command line.
 fn runner_guest_version_readback_command() -> NonEmptyStr {
   join([actions_runner_base_dir, actions_runner_listener_relative_path, " --version"], "") as NonEmptyStr
@@ -423,7 +426,7 @@ fn runner_guest_listener_command() -> NonEmptyStr {
 // before powering off -- a one-job VM has nothing else whose orderly stop matters.
 data runner_guest_agent_end_action: SystemdUnitStateAction = UnitActionPoweroffForce
 
-fn runner_guest_agent_unit(image: RunnerGuestImage) -> SystemdUnitFile {
+fn runner_guest_agent_unit(image: RunnerGuestImage, credential_device: NonEmptyStr) -> SystemdUnitFile {
   ServiceUnitFile {
     unit: [
       Description { text: "gunbc ephemeral Actions runner guest agent" as NonEmptyStr },
@@ -438,7 +441,7 @@ fn runner_guest_agent_unit(image: RunnerGuestImage) -> SystemdUnitFile {
       WorkingDirectory { path: actions_runner_base_dir as NonEmptyStr },
       Environment { assignment: runner_guest_job_path },
       Environment { assignment: runner_guest_job_home },
-      EnvironmentFileIfPresent { path: jit_drive_guest_device },
+      EnvironmentFileIfPresent { path: credential_device },
       ServiceStandardOutput { stream: OutputJournalAndConsole },
       ServiceStandardError { stream: OutputJournalAndConsole },
       ExecStartPre { command: guest_observation_emit_command(event: GuestBooted, image: image) },
@@ -712,7 +715,15 @@ fn measure_artifact_wet(root: String, artifact: GuestBaseArtifact) -> GuestArtif
 }
 
 fn write_guest_agent_unit_wet(root: String, image: RunnerGuestImage) -> ProcessExit {
-  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: image))
+  match jit_drive_guest_device() {
+    JitDriveNotAttached { cause: c } =>
+      exit_failure(reason: join(["runner_guest_image: no guest device names the credential drive, so no agent was rendered: ", c], ""))
+    JitDriveDevice { device: d } => write_guest_agent_unit_for_device_wet(root: root, image: image, credential_device: d)
+  }
+}
+
+fn write_guest_agent_unit_for_device_wet(root: String, image: RunnerGuestImage, credential_device: NonEmptyStr) -> ProcessExit {
+  let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: image, credential_device: credential_device))
   let a = Filesystem.Write(path: runner_guest_agent_unit_path(root: root, image: image), content: text)
   if !a.success {
     exit_failure(reason: join(["runner_guest_image: guest agent unit write refused: ", a.error], ""))
