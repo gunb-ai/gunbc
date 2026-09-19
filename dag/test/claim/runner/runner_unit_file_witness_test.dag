@@ -30,8 +30,8 @@ import gunbc.runner_lifecycle { runner_lifecycle_jit_wrapper_path }
 import gunbc.runner_unit {
   RunnerUnitLifecycleIntent,
   gunbc_runner_lifecycle_intent,
-  gunbc_runner_listener_is_main_process,
-  lifecycle_intent_cannot_orphan,
+  gunbc_runner_main_exits_when_incarnation_ends,
+  lifecycle_intent_stops_finished_incarnation,
 }
 import gunbc.runner_host_deploy {
   admitted_deploy_for,
@@ -114,7 +114,7 @@ fn as_installed_intent() -> RunnerUnitLifecycleIntent {
 
 test fn the_rendered_unit_carries_the_declared_teardown_pair() -> Bool {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
-  string_contains(s: text, pattern: "\nExitType=cgroup\n")
+  string_contains(s: text, pattern: "\nExitType=main\n")
     && string_contains(s: text, pattern: "\nKillMode=control-group\n")
 }
 
@@ -126,16 +126,17 @@ test fn the_as_installed_teardown_renders_differently_and_cannot_be_mistaken_for
 }
 
 // The property the unit exists to hold, joined to the render rather than asserted beside it: the
-// intent this module renders satisfies it on this fleet, and the pair the fleet currently runs does
-// not. Both arms are needed -- without the second, an intent that guaranteed nothing would pass.
-test fn the_rendered_intent_is_the_one_that_cannot_orphan() -> Bool {
-  lifecycle_intent_cannot_orphan(
+// intent this module renders satisfies it on this fleet, and the pair the fleet ran before any
+// teardown drop-in does not. Both arms are needed -- without the second, an intent that guaranteed
+// nothing would pass.
+test fn the_rendered_intent_is_the_one_that_stops_a_finished_incarnation() -> Bool {
+  lifecycle_intent_stops_finished_incarnation(
     intent: gunbc_runner_lifecycle_intent,
-    listener_is_main_process: gunbc_runner_listener_is_main_process,
+    main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
   )
-    && !lifecycle_intent_cannot_orphan(
+    && !lifecycle_intent_stops_finished_incarnation(
       intent: as_installed_intent(),
-      listener_is_main_process: gunbc_runner_listener_is_main_process,
+      main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
     )
 }
 
